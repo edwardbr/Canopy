@@ -3,6 +3,8 @@ Copyright (c) 2026 Edward Boggis-Rolfe
 All rights reserved.
 -->
 
+![Canopy](image.png)
+
 # Canopy
 
 [![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-red.svg)](LICENSE)
