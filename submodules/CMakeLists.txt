@@ -72,11 +72,41 @@ if(CANOPY_STANDALONE)
     add_subdirectory(wslay)
 
     # llhttp for HTTP parsing - build as simple static library
+    # Install dependencies and generate llhttp.c from TypeScript source
+    find_program(NODE_EXECUTABLE node)
+    find_program(NPM_EXECUTABLE npm)
+
+    if(NOT NODE_EXECUTABLE)
+      message(FATAL_ERROR "node executable not found")
+    endif()
+
+    add_custom_target(llhttp_install_deps
+      COMMAND ${CMAKE_COMMAND} -E env NPM_CONFIG_LOGLEVEL=error
+              ${NPM_EXECUTABLE} install --ignore-scripts
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
+      COMMENT "Installing llhttp dependencies"
+    )
+
+    add_custom_command(
+      OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c
+             ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h
+      COMMAND ${CMAKE_COMMAND} -E env NODE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/llhttp/node_modules
+              ${NODE_EXECUTABLE} --import tsx bin/generate.ts
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
+      DEPENDS llhttp_install_deps
+      COMMENT "Generating llhttp.c and llhttp.h"
+    )
+
     add_library(llhttp_static STATIC
       ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c
       ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
       ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c
     )
+    add_custom_target(llhttp_generate DEPENDS
+      ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h
+    )
+    add_dependencies(llhttp_static llhttp_generate)
     target_include_directories(llhttp_static PUBLIC
       ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build
       ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native

@@ -68,6 +68,8 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 - **C++17 Compiler**: Clang 10+, GCC 9.4+, or Visual Studio 2019+
 - **CMake**: 3.24 or higher
 - **Build System**: Ninja (recommended)
+- **Node.js**: 18+ (for llhttp code generation)
+- **OpenSSL**: Development headers (libssl-dev on Linux, OpenSSL SDK on Windows)
 
 ### Build
 
