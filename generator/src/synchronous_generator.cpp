@@ -208,13 +208,9 @@ namespace synchronous_generator
         std::ignore = from_host;
         std::ignore = lib;
         std::ignore = is_in;
+        std::ignore = is_out;
         std::ignore = is_const;
         std::ignore = count;
-
-        if (is_out)
-        {
-            throw std::runtime_error("REFERENCE does not support out vals");
-        }
 
         print_type pt = static_cast<print_type>(option);
         switch (pt)
@@ -229,6 +225,9 @@ namespace synchronous_generator
             return fmt::format("{}_, ", name);
         case STUB_PARAM_CAST:
             return fmt::format("{}_", name);
+        case STUB_MARSHALL_OUT:
+            return fmt::format("{0}_, ", name);
+
         case LOCAL_OPTIMISTIC_PTR_CALL:
             return fmt::format("{}", name);
         default:

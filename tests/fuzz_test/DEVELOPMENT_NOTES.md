@@ -156,7 +156,6 @@ target_link_libraries(target PRIVATE rpc::rpc_host my_idl_host test_fixtures)
 ### User Feedback Applied
 - Created independent solution (not linking to existing IDLs)
 - Focused on shared_ptr testing between zones
-- Avoided by_value attributes
 - Individual parameter passing for shared_ptr
 - No shared_ptr in containers or structures
 - Saving notes as requested

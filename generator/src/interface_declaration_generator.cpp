@@ -97,11 +97,6 @@ namespace interface_declaration_generator
             std::ignore = is_const;
             std::ignore = count;
 
-            if (is_out)
-            {
-                throw std::runtime_error("REFERENCE does not support out vals");
-            }
-
             print_type pt = static_cast<print_type>(option);
             switch (pt)
             {

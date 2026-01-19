@@ -428,7 +428,25 @@ error_code get_service([out] rpc::shared_ptr<i_service>& service);
 
 **Exception**: Pointer types may be useful only when both objects share the same memory address space (e.g., shared memory regions between processes).
 
-### Pointer Type Restrictions for Smart Pointers
+**Use Cases** (rare):
+Marshalling pointers only use within zones that share the same address space, not recommended for handles
+- `[in]` parameters: For pointer types (`T*`) where you need to serialize the pointer address
+- `[out]` parameters: For double pointers (`T**`) or pointer references (`T*&`) to receive an address
+
+**Example**:
+```idl
+// Pointer to single value - serializes the address
+error_code process_value([in] const int* value);
+
+// Pointer reference - serializes the address
+error_code allocate_value([out] int*& value);
+```
+
+Node the [by_value] attribute is now deprecated, and this feature will be removed.
+
+**Security Warning**: Raw pointer values are memory addresses that should **never** be used for unrestricted environments (e.g., web clients, untrusted networks). Pointer serialization only makes sense when both caller and callee exist in the same address space or have carefully controlled shared memory access.
+
+## Pointer Type Restrictions for Smart Pointers
 
 **Important**: `rpc::shared_ptr` and `rpc::optimistic_ptr` can only be `[in]` OR `[out]`, never `[in, out]`:
 
@@ -646,7 +664,7 @@ namespace yyy
     interface i_example
     {
         [description="Adds two integers and returns the result"]
-        error_code add(int a, int b, [out, by_value] int& c);
+        error_code add(int a, int b, [out] int& c);
 
         [description="Creates a new foo object instance"]
         error_code create_foo([out] rpc::shared_ptr<xxx::i_foo>& target);
@@ -703,7 +721,7 @@ namespace yyy {
 class i_example : public rpc::interface<i_example>
 {
 public:
-    virtual CORO_TASK(error_code) add(int a, int b, [out, by_value] int& c) = 0;
+    virtual CORO_TASK(error_code) add(int a, int b, [out] int& c) = 0;
     virtual ~i_example() = default;
 
     static std::vector<rpc::function_info> get_function_info();
@@ -719,7 +737,7 @@ public:
 class i_example_proxy : public rpc::interface_proxy<i_example>
 {
 public:
-    virtual CORO_TASK(error_code) add(int a, int b, [out, by_value] int& c) override
+    virtual CORO_TASK(error_code) add(int a, int b, [out] int& c) override
     {
         // Serialization and network send
         // Deserialization of response

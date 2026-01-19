@@ -100,13 +100,9 @@ namespace yas_generator
             std::ignore = from_host;
             std::ignore = lib;
             std::ignore = is_in;
+            std::ignore = is_out;
             std::ignore = is_const;
             std::ignore = count;
-
-            if (is_out)
-            {
-                throw std::runtime_error("REFERENCE does not support out vals");
-            }
 
             switch (opt)
             {

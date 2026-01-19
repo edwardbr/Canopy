@@ -130,13 +130,6 @@ TEST(JSONSchemaValidationTest, IFooAllFunctionsSchemaValidation)
                     val, buffer, rpc::encoding::yas_json);
                 serialization_success = (err == 0);
             }
-            else if (func_info.name == "do_something_in_by_val_ref")
-            {
-                int val = create_dummy_value<int>();
-                auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::do_something_in_by_val_ref(
-                    val, buffer, rpc::encoding::yas_json);
-                serialization_success = (err == 0);
-            }
             else if (func_info.name == "do_something_in_move_ref")
             {
                 auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::do_something_in_move_ref(

@@ -115,12 +115,6 @@ namespace marshalled_tests
             RPC_INFO("got {}", val);
             CO_RETURN rpc::error::OK();
         }
-        CORO_TASK(error_code) do_something_in_by_val_ref(const int& val) override
-        {
-            std::ignore = val;
-            RPC_INFO("got {}", val);
-            CO_RETURN rpc::error::OK();
-        }
         CORO_TASK(error_code) do_something_in_move_ref(int&& val) override
         {
             std::ignore = val;

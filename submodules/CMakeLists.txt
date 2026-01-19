@@ -82,16 +82,16 @@ if(CANOPY_STANDALONE)
 
     add_custom_target(llhttp_install_deps
       COMMAND ${CMAKE_COMMAND} -E env NPM_CONFIG_LOGLEVEL=error
-              ${NPM_EXECUTABLE} install --ignore-scripts
+      ${NPM_EXECUTABLE} install --ignore-scripts
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
       COMMENT "Installing llhttp dependencies"
     )
 
     add_custom_command(
       OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c
-             ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h
+      ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h
       COMMAND ${CMAKE_COMMAND} -E env NODE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/llhttp/node_modules
-              ${NODE_EXECUTABLE} --import tsx bin/generate.ts
+      ${NODE_EXECUTABLE} --import tsx bin/generate.ts
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
       DEPENDS llhttp_install_deps
       COMMENT "Generating llhttp.c and llhttp.h"

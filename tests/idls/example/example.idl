@@ -12,7 +12,7 @@ namespace yyy
     interface i_example
     {
         [description=R"__(Adds two integers and 
-        returns the result)__"] error_code add(int a, int b, [out, by_value] int& c);
+        returns the result)__"] error_code add(int a, int b, [out] int& c);
         [description="Creates a new foo object instance"] error_code create_foo([out] rpc::shared_ptr<xxx::i_foo>& target);
         [description="Creates a new baz object instance"] error_code create_baz([out] rpc::shared_ptr<xxx::i_baz>& val);
 

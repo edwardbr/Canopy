@@ -33,7 +33,7 @@ The `CanopyGenerate()` function in `/tests/idls/CMakeLists.txt` handles the code
 For the IDL function:
 ```idl
 [description="Adds two integers and returns the result"] 
-error_code add(int a, int b, [out, by_value] int& c);
+error_code add(int a, int b, [out] int& c);
 ```
 
 The generated `i_example::get_function_info()` will include:

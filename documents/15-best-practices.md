@@ -242,11 +242,11 @@ Zone 1 (Root)
 ### Performance Tips
 
 ```idl
-// Use by_value for small structs (faster serialization)
-error_code process([in, by_value] small_struct data);
+// Use references for struct passing
+error_code process([in] const small_struct& data);
 
-// Use pointers for large data
-error_code process([in] const large_struct* data);
+// Or this consider using references
+error_code process([in] const large_struct& data);
 ```
 
 ## 8. Testing

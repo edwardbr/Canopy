@@ -71,7 +71,7 @@ After implementing MCP support, RPC interfaces decorated with descriptions:
 
 ```idl
 [description="Adds two integers and returns the result"] 
-error_code add(int a, int b, [out, by_value] int& c);
+error_code add(int a, int b, [out] int& c);
 ```
 
 Will generate function_info with MCP-compatible metadata:
@@ -119,7 +119,7 @@ The main example IDL file (`../idls/example/example.idl`) now includes MCP descr
 
 ```idl
 [description="Adds two integers and returns the result"] 
-error_code add(int a, int b, [out, by_value] int& c);
+error_code add(int a, int b, [out] int& c);
 
 [description="Creates a new foo object instance"] 
 error_code create_foo([out] rpc::shared_ptr<xxx::i_foo>& target);

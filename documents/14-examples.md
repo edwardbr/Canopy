@@ -18,10 +18,10 @@ namespace calculator
     {
         interface i_calculator
         {
-            error_code add(int a, int b, [out, by_value] int& result);
-            error_code subtract(int a, int b, [out, by_value] int& result);
-            error_code multiply(int a, int b, [out, by_value] int& result);
-            error_code divide(int a, int b, [out, by_value] int& result);
+            error_code add(int a, int b, [out] int& result);
+            error_code subtract(int a, int b, [out] int& result);
+            error_code multiply(int a, int b, [out] int& result);
+            error_code divide(int a, int b, [out] int& result);
         };
     }
 }
