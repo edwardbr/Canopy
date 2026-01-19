@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Check CMake formatting
         run: |
-          sudo apt install cmake-format
+          pip install cmake-format==0.6.13
           git ls-files -- \*.cmake \*CMakeLists.txt | xargs cmake-format --check
       - name: Check clang formatting
         run: |

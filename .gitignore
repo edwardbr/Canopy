@@ -1,12 +1,16 @@
 Debug
 Release
 .vs
-.vscode
 x64
 test
 /build*
+# VSCode user-specific files (ignore these)
 .vscode/launch.json
-.vscode/settings.json
+.vscode/tasks.json
+.vscode/.ropeproject
+# VSCode shared project files (commit these)
+!.vscode/settings.json
+!.vscode/extensions.json
 node_modules
 demos/websocket/client/websocket_proto.js
 demos/websocket/server/www/websocket_proto.js

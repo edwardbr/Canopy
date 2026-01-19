@@ -203,9 +203,40 @@ canopy/
 
 ---
 
+## Development Setup
+
+### Code Formatting
+
+This project uses `cmake-format` for CMake files and `clang-format` for C++ files.
+
+**Install cmake-format (version 0.6.13 required):**
+```bash
+pip install cmake-format==0.6.13
+```
+
+**VSCode Setup:**
+1. Open the project in VSCode
+2. Install recommended extensions when prompted (or manually install `cheshirekow.cmake-format`)
+3. The workspace settings will automatically use `.cmake-format.yaml` for formatting
+4. Format-on-save is enabled by default
+
+**Manual formatting:**
+```bash
+# Check CMake formatting
+git ls-files -- \*.cmake \*CMakeLists.txt | xargs cmake-format --check
+
+# Apply CMake formatting
+git ls-files -- \*.cmake \*CMakeLists.txt | xargs cmake-format -i
+
+# Apply C++ formatting
+clang-format -i <file>
+```
+
+---
+
 ## Contributing
 
-Canopy is actively maintained. 
+Canopy is actively maintained.
 
 - Performance optimizations
 - New transport implementations
