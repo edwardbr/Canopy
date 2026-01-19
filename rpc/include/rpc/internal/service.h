@@ -21,6 +21,7 @@
 #include <rpc/internal/remote_pointer.h>
 #include <rpc/internal/coroutine_support.h>
 #include <rpc/internal/service_proxy.h>
+
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
 #endif
@@ -399,7 +400,7 @@ namespace rpc
 
         template<class T>
         friend CORO_TASK(int) rpc::stub_bind_in_param(uint64_t protocol_version,
-            rpc::service& serv,
+            const std::shared_ptr<rpc::service>& serv,
             rpc::caller_zone caller_zone_id,
             const rpc::interface_descriptor& encap,
             rpc::shared_ptr<T>& iface);
@@ -411,7 +412,7 @@ namespace rpc
             rpc::interface_descriptor& descriptor);
 
         template<class T>
-        friend CORO_TASK(int) rpc::stub_bind_out_param(rpc::service& zone,
+        friend CORO_TASK(int) rpc::stub_bind_out_param(const std::shared_ptr<rpc::service>& zone,
             uint64_t protocol_version,
             rpc::caller_zone caller_zone_id,
             const rpc::shared_ptr<T>& iface,

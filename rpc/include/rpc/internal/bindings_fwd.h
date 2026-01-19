@@ -50,7 +50,7 @@ namespace rpc
     template<class T>
     CORO_TASK(int)
     stub_bind_in_param(uint64_t protocol_version,
-        rpc::service& serv,
+        const std::shared_ptr<rpc::service>& serv,
         caller_zone caller_zone_id,
         const rpc::interface_descriptor& encap,
         rpc::shared_ptr<T>& iface);
