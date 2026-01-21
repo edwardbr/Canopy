@@ -367,13 +367,6 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_add_ref(
-                get_zone_id(), destination_zone_id, get_caller_zone_id(), object_id, build_out_param_channel);
-        }
-#endif
         // Serialize back-channel
         std::vector<char> in_bc_buf, out_bc_buf(1024);
         {
@@ -443,6 +436,18 @@ namespace rpc
             yas::binary_iarchive<yas::mem_istream, yas::binary | yas::no_header> ia(is);
             ia & out_back_channel;
         }
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_service_proxy_add_ref(get_zone_id(),
+                destination_zone_id,
+                get_caller_zone_id(),
+                object_id,
+                known_direction_zone_id,
+                build_out_param_channel,
+                reference_count);
+        }
+#endif
         return err_code;
     }
 

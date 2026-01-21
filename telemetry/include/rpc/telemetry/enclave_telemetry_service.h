@@ -32,11 +32,15 @@ namespace rpc
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::add_ref_options options) const override;
+            rpc::known_direction_zone known_direction_zone_id,
+            rpc::add_ref_options options,
+            uint64_t reference_count) const override;
         void on_service_release(rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
-            rpc::caller_zone caller_zone_id) const override;
+            rpc::caller_zone caller_zone_id,
+            rpc::release_options options,
+            uint64_t reference_count) const override;
 
         void on_service_proxy_creation(const std::string& service_name,
             const std::string& service_proxy_name,
@@ -59,11 +63,15 @@ namespace rpc
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
             rpc::object object_id,
-            rpc::add_ref_options options) const override;
+            rpc::known_direction_zone known_direction_zone_id,
+            rpc::add_ref_options options,
+            uint64_t reference_count) const override;
         void on_service_proxy_release(rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id) const override;
+            rpc::object object_id,
+            rpc::release_options options,
+            uint64_t reference_count) const override;
         void on_service_proxy_add_external_ref(rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
@@ -137,6 +145,95 @@ namespace rpc
             rpc::zone adjacent_zone_id,
             rpc::destination_zone destination,
             rpc::caller_zone caller) const override;
+        void on_transport_outbound_send(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            interface_ordinal interface_id,
+            method method_id) const override;
+        void on_transport_outbound_post(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            interface_ordinal interface_id,
+            method method_id) const override;
+        void on_transport_outbound_try_cast(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            interface_ordinal interface_id) const override;
+        void on_transport_outbound_add_ref(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            known_direction_zone known_direction_zone_id,
+            add_ref_options options,
+            uint64_t reference_count) const override;
+        void on_transport_outbound_release(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            release_options options,
+            uint64_t reference_count) const override;
+        void on_transport_outbound_object_released(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id) const override;
+        void on_transport_outbound_transport_down(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id) const override;
+
+        void on_transport_inbound_send(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            interface_ordinal interface_id,
+            method method_id) const override;
+        void on_transport_inbound_post(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            interface_ordinal interface_id,
+            method method_id) const override;
+        void on_transport_inbound_try_cast(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            interface_ordinal interface_id) const override;
+        void on_transport_inbound_add_ref(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            known_direction_zone known_direction_zone_id,
+            add_ref_options options,
+            uint64_t reference_count) const override;
+        void on_transport_inbound_release(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id,
+            release_options options,
+            uint64_t reference_count) const override;
+        void on_transport_inbound_object_released(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            object object_id) const override;
+        void on_transport_inbound_transport_down(zone zone_id,
+            zone adjacent_zone_id,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id) const override;
 
         // Pass-through events
         void on_pass_through_creation(rpc::zone zone_id,

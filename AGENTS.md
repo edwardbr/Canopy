@@ -300,6 +300,14 @@ Tests multi-level zone hierarchies, cross-zone `rpc::shared_ptr` marshalling, `p
 - Enable `CANOPY_USE_TELEMETRY_RAII_LOGGING` only during investigations and scrub traces prior to upload
 - Canopy provides comprehensive telemetry services for debugging and visualization. They will harm performance.
 
+### Beads Issue Tracking
+Quick commands for `bd` (beads):
+- Create: `bd create "Title" -t task -d "Description" --acceptance "Criteria"`
+- Quick create (ID only): `bd q "Title"`
+- List/search: `bd list`, `bd search "text"`
+- Show/edit: `bd show <id>`, `bd edit <id>` or `bd update <id> --description "..."`
+- If `bd create` hangs, retry with `bd --no-daemon create ...`
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.

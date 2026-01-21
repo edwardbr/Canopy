@@ -209,14 +209,6 @@ namespace rpc
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_add_ref(
-                get_zone_id(), destination_zone_id_, zone_id_.as_caller(), object_id, build_out_param_channel);
-        }
-#endif
-
         auto original_version = version_.load();
         auto version = original_version;
         const auto min_version = rpc::LOWEST_SUPPORTED_VERSION ? rpc::LOWEST_SUPPORTED_VERSION : 1;
@@ -240,6 +232,18 @@ namespace rpc
                 transport);
             if (attempt != rpc::error::INVALID_VERSION() && attempt != rpc::error::INCOMPATIBLE_SERVICE())
             {
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                {
+                    telemetry_service->on_service_proxy_add_ref(get_zone_id(),
+                        destination_zone_id_,
+                        zone_id_.as_caller(),
+                        object_id,
+                        known_direction_zone_id,
+                        build_out_param_channel,
+                        ref_count);
+                }
+#endif
                 if (original_version != version)
                 {
                     version_.compare_exchange_strong(original_version, version);
@@ -265,14 +269,6 @@ namespace rpc
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_release(
-                get_zone_id(), destination_zone_id_, zone_id_.as_caller(), object_id);
-        }
-#endif
-
         auto original_version = version_.load();
         auto version = original_version;
         const auto min_version = rpc::LOWEST_SUPPORTED_VERSION ? rpc::LOWEST_SUPPORTED_VERSION : 1;
@@ -288,6 +284,13 @@ namespace rpc
                 version, destination_zone_id_, object_id, zone_id_.as_caller(), options, ref_count, empty_in, empty_out, transport);
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                {
+                    telemetry_service->on_service_proxy_release(
+                        get_zone_id(), destination_zone_id_, zone_id_.as_caller(), object_id, options, ref_count);
+                }
+#endif
                 if (original_version != version)
                 {
                     version_.compare_exchange_strong(original_version, version);
@@ -326,13 +329,6 @@ namespace rpc
 
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_release(
-                svc->get_zone_id(), destination_zone_id, svc->get_zone_id().as_caller(), object_id);
-        }
-#endif
         auto ret = CO_AWAIT svc->outbound_release(version,
             destination_zone_id,
             object_id,
@@ -342,6 +338,17 @@ namespace rpc
             empty_in,
             empty_out,
             transport);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_service_proxy_release(svc->get_zone_id(),
+                destination_zone_id,
+                svc->get_zone_id().as_caller(),
+                object_id,
+                is_optimistic ? release_options::optimistic : release_options::normal,
+                ref_count);
+        }
+#endif
 
         // Notify that object is gone after all cleanup is complete
         CO_AWAIT svc->notify_object_gone_event(object_id, destination_zone_id);
@@ -395,8 +402,12 @@ namespace rpc
         {
             auto transport = transport_.get_nullable();
             RPC_ASSERT(transport);
-            telemetry_service->on_service_proxy_release(
-                get_zone_id(), destination_zone_id_, zone_id_.as_caller(), object_id.get_val());
+            telemetry_service->on_service_proxy_release(get_zone_id(),
+                destination_zone_id_,
+                zone_id_.as_caller(),
+                object_id,
+                is_optimistic ? release_options::optimistic : release_options::normal,
+                0);
         }
 #endif
 

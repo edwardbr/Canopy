@@ -132,11 +132,15 @@ namespace rpc
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::add_ref_options options) const override;
+            rpc::known_direction_zone known_direction_zone_id,
+            rpc::add_ref_options options,
+            uint64_t reference_count) const override;
         void on_service_release(rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
-            rpc::caller_zone caller_zone_id) const override;
+            rpc::caller_zone caller_zone_id,
+            rpc::release_options options,
+            uint64_t reference_count) const override;
 
         void on_service_proxy_creation(const std::string& service_name,
             const std::string& service_proxy_name,
@@ -159,11 +163,15 @@ namespace rpc
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
             rpc::object object_id,
-            rpc::add_ref_options options) const override;
+            rpc::known_direction_zone known_direction_zone_id,
+            rpc::add_ref_options options,
+            uint64_t reference_count) const override;
         void on_service_proxy_release(rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id) const override;
+            rpc::object object_id,
+            rpc::release_options options,
+            uint64_t reference_count) const override;
         void on_service_proxy_add_external_ref(rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
@@ -326,13 +334,16 @@ namespace rpc
             destination_zone destination_zone_id,
             caller_zone caller_zone_id,
             object object_id,
-            add_ref_options options) const override;
+            known_direction_zone known_direction_zone_id,
+            add_ref_options options,
+            uint64_t reference_count) const override;
         void on_transport_outbound_release(zone zone_id,
             zone adjacent_zone_id,
             destination_zone destination_zone_id,
             caller_zone caller_zone_id,
             object object_id,
-            release_options options) const override;
+            release_options options,
+            uint64_t reference_count) const override;
         void on_transport_outbound_object_released(zone zone_id,
             zone adjacent_zone_id,
             destination_zone destination_zone_id,
@@ -369,13 +380,16 @@ namespace rpc
             destination_zone destination_zone_id,
             caller_zone caller_zone_id,
             object object_id,
-            add_ref_options options) const override;
+            known_direction_zone known_direction_zone_id,
+            add_ref_options options,
+            uint64_t reference_count) const override;
         void on_transport_inbound_release(zone zone_id,
             zone adjacent_zone_id,
             destination_zone destination_zone_id,
             caller_zone caller_zone_id,
             object object_id,
-            release_options options) const override;
+            release_options options,
+            uint64_t reference_count) const override;
         void on_transport_inbound_object_released(zone zone_id,
             zone adjacent_zone_id,
             destination_zone destination_zone_id,

@@ -589,13 +589,7 @@ namespace rpc
         const std::vector<back_channel_entry>& in_back_channel,
         std::vector<back_channel_entry>& out_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_inbound_add_ref(
-                zone_id_, adjacent_zone_id_, destination_zone_id, caller_zone_id, object_id, build_out_param_channel);
-        }
-#endif
+        reference_count = 0;
 
         // Check transport status before attempting to route
         if (get_status() == transport_status::DISCONNECTED)
@@ -644,6 +638,19 @@ namespace rpc
                     reference_count,
                     in_back_channel,
                     out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                {
+                    telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                        adjacent_zone_id_,
+                        destination_zone_id,
+                        caller_zone_id,
+                        object_id,
+                        known_direction_zone_id,
+                        build_out_param_channel,
+                        reference_count);
+                }
+#endif
 
                 if (error_code != error::OK())
                 {
@@ -703,7 +710,7 @@ namespace rpc
             if (dest_transport == caller_transport)
             {
                 // here we directly call the destination
-                CO_RETURN CO_AWAIT dest_transport->add_ref(protocol_version,
+                auto error_code = CO_AWAIT dest_transport->add_ref(protocol_version,
                     destination_zone_id,
                     object_id,
                     caller_zone_id,
@@ -712,12 +719,26 @@ namespace rpc
                     reference_count,
                     in_back_channel,
                     out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                {
+                    telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                        adjacent_zone_id_,
+                        destination_zone_id,
+                        caller_zone_id,
+                        object_id,
+                        known_direction_zone_id,
+                        build_out_param_channel,
+                        reference_count);
+                }
+#endif
+                CO_RETURN error_code;
             }
 
             passthrough = transport::create_pass_through(
                 dest_transport, caller_transport, svc, destination_zone_id, caller_zone_id.as_destination());
 
-            CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
+            auto error_code = CO_AWAIT passthrough->add_ref(protocol_version,
                 destination_zone_id,
                 object_id,
                 caller_zone_id,
@@ -726,11 +747,25 @@ namespace rpc
                 reference_count,
                 in_back_channel,
                 out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            {
+                telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                    adjacent_zone_id_,
+                    destination_zone_id,
+                    caller_zone_id,
+                    object_id,
+                    known_direction_zone_id,
+                    build_out_param_channel,
+                    reference_count);
+            }
+#endif
+            CO_RETURN error_code;
         }
 
         // else it is a special case that the service needs to deal with
 
-        CO_RETURN CO_AWAIT svc->add_ref(protocol_version,
+        auto error_code = CO_AWAIT svc->add_ref(protocol_version,
             destination_zone_id,
             object_id,
             caller_zone_id,
@@ -739,6 +774,20 @@ namespace rpc
             reference_count,
             in_back_channel,
             out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                adjacent_zone_id_,
+                destination_zone_id,
+                caller_zone_id,
+                object_id,
+                known_direction_zone_id,
+                build_out_param_channel,
+                reference_count);
+        }
+#endif
+        CO_RETURN error_code;
     }
 
     CORO_TASK(int)
@@ -751,13 +800,7 @@ namespace rpc
         const std::vector<back_channel_entry>& in_back_channel,
         std::vector<back_channel_entry>& out_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_inbound_release(
-                zone_id_, adjacent_zone_id_, destination_zone_id, caller_zone_id, object_id, options);
-        }
-#endif
+        reference_count = 0;
 
         // Try zone pair lookup
         auto dest = get_destination_handler(destination_zone_id, caller_zone_id);
@@ -766,7 +809,7 @@ namespace rpc
             CO_RETURN error::ZONE_NOT_FOUND();
         }
 
-        CO_RETURN CO_AWAIT dest->release(protocol_version,
+        auto error_code = CO_AWAIT dest->release(protocol_version,
             destination_zone_id,
             object_id,
             caller_zone_id,
@@ -774,6 +817,14 @@ namespace rpc
             reference_count,
             in_back_channel,
             out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_inbound_release(
+                zone_id_, adjacent_zone_id_, destination_zone_id, caller_zone_id, object_id, options, reference_count);
+        }
+#endif
+        CO_RETURN error_code;
     }
 
     CORO_TASK(void)

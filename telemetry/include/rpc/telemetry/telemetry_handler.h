@@ -10,10 +10,19 @@ extern "C"
     void on_service_deletion_host(uint64_t zone_id);
     void on_service_try_cast_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t interface_id);
-    void on_service_add_ref_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t object_id, uint64_t caller_zone_id, uint64_t options);
-    void on_service_release_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t object_id, uint64_t caller_zone_id);
+    void on_service_add_ref_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t known_direction_zone_id,
+        uint64_t options,
+        uint64_t reference_count);
+    void on_service_release_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t options,
+        uint64_t reference_count);
 
     void on_service_proxy_creation_host(const std::string& service_name,
         const std::string& service_proxy_name,
@@ -28,10 +37,19 @@ extern "C"
     void on_service_proxy_deletion_host(uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id);
     void on_service_proxy_try_cast_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t interface_id);
-    void on_service_proxy_add_ref_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t options);
-    void on_service_proxy_release_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id);
+    void on_service_proxy_add_ref_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id,
+        uint64_t object_id,
+        uint64_t known_direction_zone_id,
+        uint64_t options,
+        uint64_t reference_count);
+    void on_service_proxy_release_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id,
+        uint64_t object_id,
+        uint64_t options,
+        uint64_t reference_count);
     void on_service_proxy_add_external_ref_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, int ref_count);
     void on_service_proxy_release_external_ref_host(
@@ -136,10 +154,19 @@ extern "C"
     void on_service_deletion_host(uint64_t zone_id);
     void on_service_try_cast_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t interface_id);
-    void on_service_add_ref_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t object_id, uint64_t caller_zone_id, uint64_t options);
-    void on_service_release_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t object_id, uint64_t caller_zone_id);
+    void on_service_add_ref_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t known_direction_zone_id,
+        uint64_t options,
+        uint64_t reference_count);
+    void on_service_release_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t options,
+        uint64_t reference_count);
 
     // New service_proxy events
     void on_service_proxy_creation_host(const std::string& service_name,
@@ -155,10 +182,19 @@ extern "C"
     void on_service_proxy_deletion_host(uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id);
     void on_service_proxy_try_cast_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t interface_id);
-    void on_service_proxy_add_ref_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t options);
-    void on_service_proxy_release_host(
-        uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id);
+    void on_service_proxy_add_ref_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id,
+        uint64_t object_id,
+        uint64_t known_direction_zone_id,
+        uint64_t options,
+        uint64_t reference_count);
+    void on_service_proxy_release_host(uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id,
+        uint64_t object_id,
+        uint64_t options,
+        uint64_t reference_count);
     void on_service_proxy_add_external_ref_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, int ref_count);
     void on_service_proxy_release_external_ref_host(

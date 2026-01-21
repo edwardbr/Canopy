@@ -2691,26 +2691,34 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::add_ref_options options) const
+        rpc::known_direction_zone known_direction_zone_id,
+        rpc::add_ref_options options,
+        uint64_t reference_count) const
     {
         record_event("service_add_ref",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
-                make_number_field("options", static_cast<uint64_t>(options))});
+                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_service_release(rpc::zone zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
-        rpc::caller_zone caller_zone_id) const
+        rpc::caller_zone caller_zone_id,
+        rpc::release_options options,
+        uint64_t reference_count) const
     {
         record_event("service_release",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+                make_number_field("callerZone", caller_zone_id.get_val()),
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_service_proxy_creation(const std::string& service_name,
@@ -2768,26 +2776,34 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         rpc::object object_id,
-        rpc::add_ref_options options) const
+        rpc::known_direction_zone known_direction_zone_id,
+        rpc::add_ref_options options,
+        uint64_t reference_count) const
     {
         record_event("service_proxy_add_ref",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("options", static_cast<uint64_t>(options))});
+                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_service_proxy_release(rpc::zone zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id) const
+        rpc::object object_id,
+        rpc::release_options options,
+        uint64_t reference_count) const
     {
         record_event("service_proxy_release",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
-                make_number_field("object", object_id.get_val())});
+                make_number_field("object", object_id.get_val()),
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_service_proxy_add_external_ref(
@@ -3361,7 +3377,9 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         rpc::object object_id,
-        rpc::add_ref_options options) const
+        rpc::known_direction_zone known_direction_zone_id,
+        rpc::add_ref_options options,
+        uint64_t reference_count) const
     {
         record_event("transport_outbound_add_ref",
             {make_number_field("zone", zone_id.get_val()),
@@ -3369,7 +3387,9 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("options", static_cast<uint64_t>(options))});
+                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_transport_outbound_release(rpc::zone zone_id,
@@ -3377,7 +3397,8 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         rpc::object object_id,
-        rpc::release_options options) const
+        rpc::release_options options,
+        uint64_t reference_count) const
     {
         record_event("transport_outbound_release",
             {make_number_field("zone", zone_id.get_val()),
@@ -3385,7 +3406,8 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("options", static_cast<uint64_t>(options))});
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_transport_outbound_object_released(rpc::zone zone_id,
@@ -3472,7 +3494,9 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         rpc::object object_id,
-        rpc::add_ref_options options) const
+        rpc::known_direction_zone known_direction_zone_id,
+        rpc::add_ref_options options,
+        uint64_t reference_count) const
     {
         record_event("transport_inbound_add_ref",
             {make_number_field("zone", zone_id.get_val()),
@@ -3480,7 +3504,9 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("options", static_cast<uint64_t>(options))});
+                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_transport_inbound_release(rpc::zone zone_id,
@@ -3488,7 +3514,8 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         rpc::object object_id,
-        rpc::release_options options) const
+        rpc::release_options options,
+        uint64_t reference_count) const
     {
         record_event("transport_inbound_release",
             {make_number_field("zone", zone_id.get_val()),
@@ -3496,7 +3523,8 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("options", static_cast<uint64_t>(options))});
+                make_number_field("options", static_cast<uint64_t>(options)),
+                make_number_field("referenceCount", reference_count)});
     }
 
     void animation_telemetry_service::on_transport_inbound_object_released(rpc::zone zone_id,

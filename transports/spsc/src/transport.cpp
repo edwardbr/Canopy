@@ -242,13 +242,6 @@ namespace rpc::spsc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_add_ref(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, build_out_param_channel);
-        }
-#endif
         RPC_DEBUG("spsc_transport::add_ref zone={}", get_zone_id().get_val());
 
         // Check transport status
@@ -290,6 +283,19 @@ namespace rpc::spsc
             RPC_ASSERT(false);
             CO_RETURN response_data.err_code;
         }
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_outbound_add_ref(get_zone_id(),
+                get_adjacent_zone_id(),
+                destination_zone_id,
+                caller_zone_id,
+                object_id,
+                known_direction_zone_id,
+                build_out_param_channel,
+                reference_count);
+        }
+#endif
         RPC_DEBUG("spsc_transport::add_ref complete zone={}", get_zone_id().get_val());
 
         CO_RETURN rpc::error::OK();
@@ -305,13 +311,7 @@ namespace rpc::spsc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_release(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, options);
-        }
-#endif
+        reference_count = 0;
         RPC_DEBUG("spsc_transport::release zone={}", get_zone_id().get_val());
 
         // Check transport status
@@ -330,6 +330,13 @@ namespace rpc::spsc
                 .back_channel = in_back_channel},
             0);
 
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_outbound_release(
+                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, options, reference_count);
+        }
+#endif
         CO_RETURN rpc::error::OK();
     }
 

@@ -431,14 +431,6 @@ namespace rpc
             }
         }
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_add_ref(
-                zone_id_, destination_zone_id, caller_zone_id, object_id, rpc::add_ref_options::build_destination_route);
-        }
-#endif
-
         err_code = CO_AWAIT marshaller->add_ref(protocol_version,
             destination_zone_id,
             object_id,
@@ -453,6 +445,18 @@ namespace rpc
             RPC_ERROR("prepare_out_param add_ref failed with code {}", err_code);
             CO_RETURN err_code;
         }
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_service_proxy_add_ref(zone_id_,
+                destination_zone_id,
+                caller_zone_id,
+                object_id,
+                zone_id_.as_known_direction_zone(),
+                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route,
+                temp_ref_count);
+        }
+#endif
 
         descriptor = {object_id, destination_zone_id};
         CO_RETURN error::OK();
@@ -565,13 +569,6 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_add_ref(
-                zone_id_, destination_zone_id, object_id, caller_zone_id, build_out_param_channel);
-        }
-#endif
         bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
         bool build_dest_channel = !!(build_out_param_channel & add_ref_options::build_destination_route)
                                   || build_out_param_channel == add_ref_options::normal
@@ -668,6 +665,18 @@ namespace rpc
 
             reference_count = stub->add_ref(!!(build_out_param_channel & add_ref_options::optimistic), caller_zone_id);
         }
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_service_add_ref(zone_id_,
+                destination_zone_id,
+                object_id,
+                caller_zone_id,
+                known_direction_zone_id,
+                build_out_param_channel,
+                reference_count);
+        }
+#endif
         CO_RETURN rpc::error::OK();
     }
 
@@ -717,11 +726,6 @@ namespace rpc
         std::ignore = destination_zone_id;
         std::ignore = in_back_channel;
         std::ignore = out_back_channel;
-
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_release(zone_id_, destination_zone_id, object_id, caller_zone_id);
-#endif
 
         current_service_tracker tracker(this);
 
@@ -822,6 +826,13 @@ namespace rpc
         }
 
         reference_count = count;
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_service_release(
+                zone_id_, destination_zone_id, object_id, caller_zone_id, options, reference_count);
+        }
+#endif
         CO_RETURN rpc::error::OK();
     }
 
