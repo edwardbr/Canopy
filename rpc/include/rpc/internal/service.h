@@ -456,15 +456,23 @@ namespace rpc
             zone zone_id,
             destination_zone parent_zone_id,
             const std::shared_ptr<coro::io_scheduler>& io_scheduler)
-            : service(name, zone_id, io_scheduler)
+            : service(name, zone_id, io_scheduler, child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
+#ifdef CANOPY_USE_TELEMETRY
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
+#endif
         }
 #else
         explicit child_service(const char* name, zone zone_id, destination_zone parent_zone_id)
-            : service(name, zone_id)
+            : service(name, zone_id, child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
+#ifdef CANOPY_USE_TELEMETRY
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
+#endif
         }
 #endif
 

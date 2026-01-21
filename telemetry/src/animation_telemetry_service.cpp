@@ -146,7 +146,7 @@ body {
     flex: 1 1 auto;
     min-height: 480px;
     background-color: #0b1120;
-    overflow: hidden;
+    overflow: auto;
 }
 
 #viz-container .overlay-hint {
@@ -249,122 +249,64 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
-.node circle, .node rect {
-    stroke: rgba(226, 232, 240, 0.35);
-    stroke-width: 1.2px;
+svg {
+    display: block;
 }
 
-.node text {
-    fill: #f8fafc;
-    pointer-events: none;
-    font-size: 12px;
+/* Trunk lines connecting zones */
+.trunk-line {
+    stroke: #2c3e50;
+    stroke-width: 12px;
+    stroke-linecap: round;
+    opacity: 0.8;
+}
+
+.zone-bg {
+    fill: #111113;
+    stroke: #00d2ff;
+    stroke-width: 2;
+}
+
+.service-box {
+    fill: #0984e3;
+    stroke: #74b9ff;
+}
+
+.transport-box {
+    fill: #d35400;
+    stroke: #ff8c61;
+}
+
+.pass-circle {
+    fill: #6c5ce7;
+    stroke: #a29bfe;
+}
+
+.wire {
+    stroke: #ffffff;
+    stroke-width: 1.2;
+    stroke-dasharray: 4, 2;
+    fill: none;
+    opacity: 0.3;
+}
+
+.wire.routing {
+    stroke: #a29bfe;
+    stroke-width: 2;
+    stroke-dasharray: none;
+    opacity: 1;
+}
+
+.label {
+    font-size: 10px;
+    fill: white;
     text-anchor: middle;
-}
-
-.node.zone rect {
-    rx: 12px;
-    ry: 12px;
-}
-
-.node.zone .zone-background {
-    fill: rgba(56, 189, 248, 0.08);
-    stroke: rgba(56, 189, 248, 0.35);
-    stroke-width: 1.6px;
-}
-
-.node.zone .zone-label {
-    fill: #38bdf8;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.node.zone .zone-sublabel {
-    fill: #94a3b8;
-    font-size: 11px;
-}
-
-.zone-anchor-checkbox {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    width: 16px;
-    height: 16px;
-    accent-color: #2563eb;
-    background-color: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(148, 163, 184, 0.4);
-    border-radius: 3px;
-    cursor: pointer;
-    z-index: 20;
-}
-
-.link {
-    stroke: rgba(148, 163, 184, 0.25);
-    stroke-width: 1.4px;
-}
-
-.link.route {
-    stroke-dasharray: 4 2;
-    stroke: rgba(14, 165, 233, 0.6);
-}
-
-.link.contains {
-    stroke: rgba(226, 232, 240, 0.2);
-}
-
-.link.activity {
-    stroke: rgba(249, 115, 22, 0.95);
-    stroke-width: 3.5px;
-}
-
-.link.channel_route {
-    stroke: rgba(59, 130, 246, 0.7);
-    stroke-width: 1.6px;
-    stroke-dasharray: 6 3;
-}
-
-.link.impl_route {
-    stroke: rgba(244, 114, 182, 0.75);
-    stroke-width: 1.6px;
-    stroke-dasharray: 3 2;
-}
-
-.legend {
-    display: flex;
-    gap: 16px;
-    padding: 12px 24px;
-    background: rgba(15, 23, 42, 0.95);
-    border-top: 1px solid rgba(148, 163, 184, 0.08);
-    font-size: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.legend .item {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.legend .swatch {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    display: inline-block;
-}
-
-.legend .swatch.zone {
-    border-radius: 4px;
-}
-
-.info-banner {
-    font-size: 12px;
-    color: #94a3b8;
+    font-weight: bold;
+    pointer-events: none;
 }
 )CSS";
 
-    constexpr const char* kAnimationScript = R"JS(
+    constexpr const char* kAnimationScriptPart1 = R"JS(
 (function() {
     const width = 1280;
     const height = 720;
@@ -380,12 +322,16 @@ body {
         interface_proxy: '#fbbf24',
         impl: '#22d3ee',
         stub: '#4ade80',
-        activity: '#f97316'
+        activity: '#f97316',
+        passthrough: '#ec4899',
+        transport: '#10b981'
     };
 
     const levelByType = {
         zone: 0,
+        transport: 0.5,
         service_proxy: 1,
+        passthrough: 1,
         object_proxy: 2,
         stub: 2,
         impl: 3,
@@ -397,7 +343,9 @@ body {
 
     const nodeRadiusByType = {
         zone: 28,
+        transport: 12,
         service_proxy: 18,
+        passthrough: 16,
         object_proxy: 16,
         stub: 16,
         impl: 14,
@@ -410,7 +358,9 @@ body {
         route: 0.4,
         activity: 0.2,
         impl_route: 0.5,
-        channel_route: 0.5
+        channel_route: 0.5,
+        passthrough_link: 0.6,
+        transport_link: 1.0
     };
 
     const zoneBoxWidth = 260;
@@ -424,6 +374,12 @@ body {
     const nodes = new Map();
     const links = new Map();
     const zoneLayout = new Map();
+
+    // Tree layout structures for hierarchical visualization
+    const zones = {};  // zone_id -> { id, name, parentId, transports[], passthroughs[], children[], width, height }
+    const adjacencyList = {};  // zone_id -> Set of adjacent zone_ids (for BFS pathfinding)
+    const PortRegistry = {};  // "zoneId:adjId" -> { relX, relY, absX, absY }
+
     const implByAddress = new Map();
     const objectToImpl = new Map();
     const interfaceToImplLink = new Map();
@@ -439,12 +395,32 @@ body {
         { key: 'interface_proxy', label: 'Interface Proxies', defaultVisible: true },
         { key: 'stub', label: 'Stubs', defaultVisible: false },
         { key: 'impl', label: 'Implementations', defaultVisible: true },
-        { key: 'activity', label: 'Activity Pulses', defaultVisible: false }
+        { key: 'activity', label: 'Activity Pulses', defaultVisible: false },
+        { key: 'passthrough', label: 'Passthroughs', defaultVisible: false },
+        { key: 'transport', label: 'Transports', defaultVisible: true }
     ];
     const typeVisibility = new Map();
     nodeTypeFilters.forEach((filter) => typeVisibility.set(filter.key, filter.defaultVisible));
     const zoneAliases = new Map();
     let primaryZoneId = null;
+
+    // Build zoneMetadata from events
+    const zoneMetadata = {};
+    events.forEach(e => {
+        if (e.type === 'zone_creation' || e.type === 'service_creation') {
+            const zoneId = e.data.zone_id || e.data.zone;
+            const parentZone = e.data.parent_zone_id || e.data.parentZone;
+            const name = e.data.name || e.data.serviceName;
+            if (zoneId !== undefined) {
+                if (!zoneMetadata[zoneId]) {
+                    zoneMetadata[zoneId] = {};
+                }
+                if (name) zoneMetadata[zoneId].name = name;
+                if (parentZone !== undefined) zoneMetadata[zoneId].parent = parentZone;
+            }
+        }
+    });
+    console.log('Built zoneMetadata:', zoneMetadata);
 
     function normalizeZoneNumber(zoneNumber) {
         if (zoneNumber === undefined || zoneNumber === null || Number.isNaN(zoneNumber)) {
@@ -531,12 +507,14 @@ body {
                 return null;
             }
             const metadata = zoneMetadata[zoneNumber] || {};
-            const parentNumber = metadata.parent !== undefined ? normalizeZoneNumber(metadata.parent) : null;
+            // Don't normalize parent=0 (root zones), keep it as-is for hierarchy
+            const parentNumber = metadata.parent !== undefined ? metadata.parent : null;
             let parentZoneId = toZoneId(parentNumber);
             if (parentNumber === undefined || parentNumber === null || parentNumber === zoneNumber) {
                 parentZoneId = null;
             }
-            if (parentZoneId && !nodes.has(parentZoneId)) {
+            // Recursively ensure parent exists, but skip zone 0 (implicit root)
+            if (parentZoneId && !nodes.has(parentZoneId) && parentNumber !== 0) {
                 ensureZoneNode(parentNumber);
             }
             const initialLabel = formatZoneLabel(zoneNumber);
@@ -549,6 +527,69 @@ body {
                 refCount: 0
             };
             nodes.set(zoneId, node);
+
+            // Also populate zones{} for tree layout
+            if (!zones[zoneNumber]) {
+                zones[zoneNumber] = {
+                    id: zoneNumber,
+                    name: metadata.name || initialLabel,
+                    parentId: parentNumber || 0,
+                    transports: [],
+                    passthroughs: [],
+                    children: [],
+                    width: 260,
+                    height: 140
+                };
+
+                // Initialize adjacency list
+                if (!adjacencyList[zoneNumber]) {
+                    adjacencyList[zoneNumber] = new Set();
+                }
+            } else if (parentNumber !== undefined && parentNumber !== null) {
+                // Update parent if we're providing a more specific parent
+                const oldParentId = zones[zoneNumber].parentId;
+                if (oldParentId === 0 && parentNumber !== 0) {
+                    console.log(`Updating zone ${zoneNumber} parent from ${oldParentId} to ${parentNumber}`);
+                    // Ensure parent zone exists
+                    if (!zones[parentNumber]) {
+                        zones[parentNumber] = {
+                            id: parentNumber,
+                            name: `Zone ${parentNumber}`,
+                            parentId: 0,
+                            transports: [],
+                            passthroughs: [],
+                            children: [],
+                            width: 260,
+                            height: 140
+                        };
+                    }
+                    // Update parent
+                    zones[zoneNumber].parentId = parentNumber;
+                }
+            }
+
+            // Add this zone to its parent's children array
+            const currentParent = zones[zoneNumber].parentId;
+            if (currentParent && currentParent !== 0) {
+                // Ensure parent exists
+                if (!zones[currentParent]) {
+                    zones[currentParent] = {
+                        id: currentParent,
+                        name: `Zone ${currentParent}`,
+                        parentId: 0,
+                        transports: [],
+                        passthroughs: [],
+                        children: [],
+                        width: 260,
+                        height: 140
+                    };
+                }
+                if (!zones[currentParent].children.includes(zoneNumber)) {
+                    zones[currentParent].children.push(zoneNumber);
+                    console.log(`Added zone ${zoneNumber} to parent ${currentParent}'s children`);
+                }
+            }
+
             if (parentZoneId && nodes.has(parentZoneId)) {
                 const linkId = `zone-link-${parentZoneId}-${zoneId}`;
                 if (!links.has(linkId)) {
@@ -572,6 +613,34 @@ body {
             }
         }
         return zoneId;
+    }
+
+    // BFS pathfinding for passthrough routing
+    function findNextHop(startNode, targetNode) {
+        if (startNode === targetNode) return startNode;
+        let queue = [[startNode]];
+        let visited = new Set([startNode]);
+
+        while (queue.length > 0) {
+            let path = queue.shift();
+            let node = path[path.length - 1];
+
+            if (node === targetNode) {
+                return path[1];  // Return second node in path (next hop)
+            }
+
+            const neighbors = adjacencyList[node];
+            if (neighbors) {
+                for (let neighbor of neighbors) {
+                    if (!visited.has(neighbor)) {
+                        visited.add(neighbor);
+                        queue.push([...path, neighbor]);
+                    }
+                }
+            }
+        }
+
+        return null;  // No path found
     }
 
     function recomputeZoneLayout() {
@@ -704,65 +773,12 @@ body {
             .attr('height', canvasHeight);
     }
 
-    const zoomLayer = svgRoot.append('g');
+    const g = svgRoot.append('g');  // Main container for tree layout
 
     svgRoot.call(d3.zoom()
-        .scaleExtent([0.2, 2.5])
         .on('zoom', (event) => {
-            zoomLayer.attr('transform', event.transform);
+            g.attr('transform', event.transform);
         }));
-
-    const linkLayer = zoomLayer.append('g').attr('class', 'links');
-    const nodeLayer = zoomLayer.append('g').attr('class', 'nodes');
-
-    const hoverTooltip = vizContainer
-        .append('div')
-        .attr('class', 'overlay-hint')
-        .style('pointer-events', 'none')
-        .style('opacity', 0);
-
-    const simulation = d3.forceSimulation()
-        .alphaDecay(0.02)  // Much slower decay for smoother animation
-        .velocityDecay(0.8)  // Higher velocity decay to reduce oscillations
-        .force('link', d3.forceLink()
-            .id((d) => d.id)
-            .distance((d) => 100 + (levelByType[d.type] || 0) * 20)
-            .strength((d) => linkStrengthByType[d.type] || 0.2))
-        .force('charge', d3.forceManyBody().strength(-160))
-        .force('collide', d3.forceCollide().radius((d) => nodeRadiusByType[d.type] + 12))
-        .force('x', d3.forceX().x((d) => targetX(d)).strength(0.05))  // Reduced strength for gentler positioning
-        .force('y', d3.forceY().y((d) => targetY(d)).strength(0.25))  // Reduced strength for gentler positioning
-        .stop();
-
-    const anchoredZones = new Set();
-
-    // Zone hierarchy tracking
-    const zoneHierarchy = new Map(); // parentZone -> Set of childZones
-    const zoneChildren = new Set();  // Set of all child zones
-
-    const dragBehaviour = d3.drag()
-        .on('start', (event, d) => {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        })
-        .on('drag', (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-        })
-        .on('end', (event, d) => {
-            if (!event.active) simulation.alphaTarget(0);
-
-            // Check if this zone is anchored
-            if (d.type === 'zone' && anchoredZones.has(d.id)) {
-                // Keep the position fixed for anchored zones
-                d.fx = event.x;
-                d.fy = event.y;
-            } else {
-                d.fx = null;
-                d.fy = null;
-            }
-        });
 
     const timelineSlider = document.getElementById('timeline-slider');
     const timeLabel = document.getElementById('time-display');
@@ -793,8 +809,7 @@ body {
             typeFiltersContainer.appendChild(label);
             checkbox.addEventListener('change', () => {
                 typeVisibility.set(filter.key, checkbox.checked);
-                updateGraph();
-                simulation.alpha(0.3).restart();
+                rebuildVisualization();
             });
         });
     }
@@ -837,38 +852,33 @@ body {
                 eventPanel.classList.remove('event-panel-collapsed');
             }
             resizeSvg();
-            recomputeZoneLayout();
-            updateGraph();
-            simulation.alpha(0.3).restart();
+            rebuildVisualization();
         });
     }
 
-    svgRoot.on('mousemove', (event) => {
-        const [mx, my] = d3.pointer(event);
-        const zone = findClosestZone(mx, my);
-        if (zone) {
-            hoverTooltip
-                .style('opacity', 1)
-                .html(makeTooltip(zone))
-                .style('right', '16px')
-                .style('top', '12px');
-        } else {
-            hoverTooltip.style('opacity', 0);
-        }
-    });
+    // TODO: Re-enable hover tooltips
+    // svgRoot.on('mousemove', (event) => {
+    //     const [mx, my] = d3.pointer(event);
+    //     const zone = findClosestZone(mx, my);
+    //     if (zone) {
+    //         hoverTooltip
+    //             .style('opacity', 1)
+    //             .html(makeTooltip(zone))
+    //             .style('right', '16px')
+    //             .style('top', '12px');
+    //     } else {
+    //         hoverTooltip.style('opacity', 0);
+    //     }
+    // });
 
-    svgRoot.on('mouseleave', () => hoverTooltip.style('opacity', 0));
+    // svgRoot.on('mouseleave', () => hoverTooltip.style('opacity', 0));
 
     resizeSvg();
-    recomputeZoneLayout();
-    updateGraph();
-    simulation.alpha(0.6).restart();
+    rebuildVisualization();
 
     window.addEventListener('resize', () => {
         resizeSvg();
-        recomputeZoneLayout();
-        updateGraph();
-        simulation.alpha(0.3).restart();
+        rebuildVisualization();
     });
     renderLegend();
 
@@ -879,6 +889,27 @@ body {
                 return layout.y;
             }
             return canvasHeight - paddingBottom;
+        }
+        if (node.type === 'transport' && node.parent && node.adjacentZoneId) {
+            const parentZone = nodes.get(node.parent);
+            const adjacentZone = nodes.get(node.adjacentZoneId);
+            if (parentZone && adjacentZone) {
+                const x1 = parentZone.x ?? targetX(parentZone);
+                const x2 = adjacentZone.x ?? targetX(adjacentZone);
+                const y1 = parentZone.y ?? targetY(parentZone);
+                const y2 = adjacentZone.y ?? targetY(adjacentZone);
+                const dx = Math.abs(x2 - x1);
+                const dy = Math.abs(y2 - y1);
+                if (dx > dy) {
+                    return y1;
+                } else {
+                    if (y1 < y2) {
+                        return y1 + zoneBoxHeight / 2;
+                    } else {
+                        return y1 - zoneBoxHeight / 2;
+                    }
+                }
+            }
         }
         const level = levelByType[node.type] ?? 0;
         if (node.parent && nodes.has(node.parent)) {
@@ -899,6 +930,27 @@ body {
                 return layout.x;
             }
             return 160;
+        }
+        if (node.type === 'transport' && node.parent && node.adjacentZoneId) {
+            const parentZone = nodes.get(node.parent);
+            const adjacentZone = nodes.get(node.adjacentZoneId);
+            if (parentZone && adjacentZone) {
+                const x1 = parentZone.x ?? targetX(parentZone);
+                const x2 = adjacentZone.x ?? targetX(adjacentZone);
+                const y1 = parentZone.y ?? targetY(parentZone);
+                const y2 = adjacentZone.y ?? targetY(adjacentZone);
+                const dx = Math.abs(x2 - x1);
+                const dy = Math.abs(y2 - y1);
+                if (dx > dy) {
+                    if (x1 < x2) {
+                        return x1 + zoneBoxWidth / 2;
+                    } else {
+                        return x1 - zoneBoxWidth / 2;
+                    }
+                } else {
+                    return x1;
+                }
+            }
         }
         if (node.parent && nodes.has(node.parent)) {
             const parent = nodes.get(node.parent);
@@ -1063,6 +1115,22 @@ body {
         case 'stub_send':
             pulseActivity(evt);
             break;
+        case 'transport_creation':
+            createTransport(evt);
+            break;
+        case 'transport_deletion':
+            deleteTransport(evt);
+            break;
+        case 'pass_through_creation':
+            createPassthrough(evt);
+            break;
+        case 'pass_through_deletion':
+            deletePassthrough(evt);
+            break;
+        case 'pass_through_add_ref':
+        case 'pass_through_release':
+            updatePassthroughCounts(evt);
+            break;
         case 'message':
             appendLog(evt);
             break;
@@ -1097,6 +1165,10 @@ body {
         } else if (parentZoneId) {
             ensureZoneNode(parentZoneNumber);
         }
+
+        // IMPORTANT: Ensure this zone exists in zones{} for tree layout
+        ensureZoneNode(zoneNumber, parentZoneNumber);
+
         const displayName = formatZoneLabel(zoneNumber);
         const existing = nodes.get(zoneId);
         const refCount = existing?.refCount || 0;
@@ -1307,7 +1379,9 @@ body {
         }
         appendLog(evt);
     }
+)JS";
 
+    constexpr const char* kAnimationScriptPart2 = R"JS(
     function createStub(evt) {
         const zoneNumber = normalizeZoneNumber(evt.data.zone);
         const dataForId = { ...evt.data, zone: zoneNumber };
@@ -1546,6 +1620,196 @@ body {
         }
         interfaceProxyKeyById.delete(id);
         deleteNode(id);
+        appendLog(evt);
+    }
+
+    function makeTransportId(zoneNumber, adjacentZoneNumber) {
+        const zone = normalizeZoneNumber(zoneNumber);
+        const adjacent = normalizeZoneNumber(adjacentZoneNumber);
+        return `transport-${zone}-to-${adjacent}`;
+    }
+
+    function makePassthroughId(data) {
+        const zone = normalizeZoneNumber(data.zone_id);
+        const forward = normalizeZoneNumber(data.forward_destination);
+        const reverse = normalizeZoneNumber(data.reverse_destination);
+        return `passthrough-${zone}-${forward}-${reverse}`;
+    }
+
+    function createTransport(evt) {
+        const zone1Number = normalizeZoneNumber(evt.data.zone_id);
+        const zone2Number = normalizeZoneNumber(evt.data.adjacent_zone_id);
+        const zone1Id = ensureZoneNode(zone1Number);
+        const zone2Id = ensureZoneNode(zone2Number);
+
+        const transport1Id = makeTransportId(zone1Number, zone2Number);
+        const transport2Id = makeTransportId(zone2Number, zone1Number);
+
+        const transport1 = {
+            id: transport1Id,
+            type: 'transport',
+            label: evt.data.name || 'transport',
+            parent: zone1Id,
+            zone: zone1Number,
+            adjacentZone: zone2Number,
+            adjacentZoneId: zone2Id,
+            status: evt.data.status
+        };
+        nodes.set(transport1Id, transport1);
+
+        const transport2 = {
+            id: transport2Id,
+            type: 'transport',
+            label: evt.data.name || 'transport',
+            parent: zone2Id,
+            zone: zone2Number,
+            adjacentZone: zone1Number,
+            adjacentZoneId: zone1Id,
+            status: evt.data.status
+        };
+        nodes.set(transport2Id, transport2);
+
+        if (zone1Id && nodes.has(zone1Id)) {
+            links.set(`${transport1Id}-parent`, {
+                id: `${transport1Id}-parent`,
+                source: zone1Id,
+                target: transport1Id,
+                type: 'contains'
+            });
+        }
+
+        if (zone2Id && nodes.has(zone2Id)) {
+            links.set(`${transport2Id}-parent`, {
+                id: `${transport2Id}-parent`,
+                source: zone2Id,
+                target: transport2Id,
+                type: 'contains'
+            });
+        }
+
+        const crossZoneLinkId = `transport-link-${zone1Number}-${zone2Number}`;
+        links.set(crossZoneLinkId, {
+            id: crossZoneLinkId,
+            source: transport1Id,
+            target: transport2Id,
+            type: 'transport_link'
+        });
+
+        // Update zones{} structure for tree layout
+        if (zones[zone1Number]) {
+            zones[zone1Number].transports.push({ adjId: zone2Number });
+
+            // Update adjacency list
+            if (!adjacencyList[zone1Number]) adjacencyList[zone1Number] = new Set();
+            if (!adjacencyList[zone2Number]) adjacencyList[zone2Number] = new Set();
+            adjacencyList[zone1Number].add(zone2Number);
+            adjacencyList[zone2Number].add(zone1Number);
+        }
+
+        appendLog(evt);
+    }
+
+    function deleteTransport(evt) {
+        const zone1Number = normalizeZoneNumber(evt.data.zone_id);
+        const zone2Number = normalizeZoneNumber(evt.data.adjacent_zone_id);
+        const transport1Id = makeTransportId(zone1Number, zone2Number);
+        const transport2Id = makeTransportId(zone2Number, zone1Number);
+        const crossZoneLinkId = `transport-link-${zone1Number}-${zone2Number}`;
+
+        links.delete(`${transport1Id}-parent`);
+        links.delete(`${transport2Id}-parent`);
+        links.delete(crossZoneLinkId);
+        deleteNode(transport1Id);
+        deleteNode(transport2Id);
+        appendLog(evt);
+    }
+
+    function createPassthrough(evt) {
+        const zoneNumber = normalizeZoneNumber(evt.data.zone_id);
+        const forwardDestNumber = normalizeZoneNumber(evt.data.forward_destination);
+        const reverseDestNumber = normalizeZoneNumber(evt.data.reverse_destination);
+        const id = makePassthroughId(evt.data);
+        const parentZoneId = ensureZoneNode(zoneNumber);
+        ensureZoneNode(forwardDestNumber);
+        ensureZoneNode(reverseDestNumber);
+
+        const forwardTransportId = makeTransportId(zoneNumber, forwardDestNumber);
+        const reverseTransportId = makeTransportId(zoneNumber, reverseDestNumber);
+
+        const node = {
+            id: id,
+            type: 'passthrough',
+            label: 'passthrough',
+            parent: parentZoneId,
+            zone: zoneNumber,
+            forwardDest: forwardDestNumber,
+            reverseDest: reverseDestNumber,
+            sharedCount: evt.data.shared_count || 0,
+            optimisticCount: evt.data.optimistic_count || 0
+        };
+        nodes.set(id, node);
+
+        if (parentZoneId && nodes.has(parentZoneId)) {
+            links.set(`${id}-parent`, {
+                id: `${id}-parent`,
+                source: parentZoneId,
+                target: id,
+                type: 'contains'
+            });
+        }
+
+        if (nodes.has(forwardTransportId)) {
+            links.set(`${id}-forward`, {
+                id: `${id}-forward`,
+                source: id,
+                target: forwardTransportId,
+                type: 'passthrough_link'
+            });
+        }
+
+        if (nodes.has(reverseTransportId)) {
+            links.set(`${id}-reverse`, {
+                id: `${id}-reverse`,
+                source: id,
+                target: reverseTransportId,
+                type: 'passthrough_link'
+            });
+        }
+
+        // Update zones{} structure for tree layout
+        if (zones[zoneNumber]) {
+            zones[zoneNumber].passthroughs.push({
+                fwd: forwardDestNumber,
+                rev: reverseDestNumber
+            });
+            // Update height to accommodate passthroughs
+            zones[zoneNumber].height = 260;
+        }
+
+        appendLog(evt);
+    }
+
+    function deletePassthrough(evt) {
+        const id = makePassthroughId(evt.data);
+        links.delete(`${id}-forward`);
+        links.delete(`${id}-reverse`);
+        deleteNode(id);
+        appendLog(evt);
+    }
+
+    function updatePassthroughCounts(evt) {
+        const id = makePassthroughId(evt.data);
+        if (!nodes.has(id)) {
+            return;
+        }
+        const node = nodes.get(id);
+        if (evt.type === 'pass_through_add_ref') {
+            node.sharedCount = (node.sharedCount || 0) + (evt.data.shared_delta || 0);
+            node.optimisticCount = (node.optimisticCount || 0) + (evt.data.optimistic_delta || 0);
+        } else if (evt.type === 'pass_through_release') {
+            node.sharedCount = Math.max(0, (node.sharedCount || 0) + (evt.data.shared_delta || 0));
+            node.optimisticCount = Math.max(0, (node.optimisticCount || 0) + (evt.data.optimistic_delta || 0));
+        }
         appendLog(evt);
     }
 
@@ -1919,7 +2183,9 @@ body {
         const items = legend.append('div');
         const groups = [
             { key: 'zone', label: 'Zone (Service)' },
+            { key: 'transport', label: 'Transport' },
             { key: 'service_proxy', label: 'Service Proxy' },
+            { key: 'passthrough', label: 'Passthrough' },
             { key: 'object_proxy', label: 'Object Proxy' },
             { key: 'interface_proxy', label: 'Interface Proxy' },
             { key: 'impl', label: 'Implementation Object' },
@@ -1936,146 +2202,243 @@ body {
             });
     }
 
-    function updateGraph() {
-        const nodeArray = Array.from(nodes.values());
-        const visibleNodeArray = nodeArray.filter((node) => isNodeVisible(node));
-        const visibleNodeIds = new Set(visibleNodeArray.map((node) => node.id));
-        const linkArray = Array.from(links.values());
-        const visibleLinkArray = linkArray.filter((link) => {
-            const sourceId = resolveNodeId(link.source);
-            const targetId = resolveNodeId(link.target);
-            return visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId);
+    function rebuildVisualization() {
+        // Clear existing visualization
+        g.selectAll('*').remove();
+
+        // Find all root zones (zones with parentId === 0)
+        const rootZones = Object.values(zones).filter(z => z.parentId === 0);
+        if (rootZones.length === 0) {
+            return;
+        }
+
+        // Create virtual root zone (zone 0) to contain all root zones
+        const virtualRoot = {
+            id: 0,
+            name: 'Virtual Root',
+            parentId: -1,
+            transports: [],
+            passthroughs: [],
+            children: rootZones.map(z => z.id),
+            width: 260,
+            height: 140
+        };
+
+        // Build D3 hierarchy from zones{}
+        const buildHierarchy = (z) => {
+            return {
+                id: z.id,
+                data: z,
+                children: z.children
+                    .filter(cid => zones[cid] !== undefined)
+                    .map(cid => buildHierarchy(zones[cid]))
+            };
+        };
+
+        // DEBUG: Log zones structure
+        console.log('=== ZONES DEBUG ===');
+        console.log('Total zones:', Object.keys(zones).length);
+        console.log('Root zones (parent=0):', rootZones.map(z => z.id).join(', '));
+        Object.values(zones).forEach(z => {
+            console.log(`Zone ${z.id}: name="${z.name}", parent=${z.parentId}, children=[${z.children.join(',')}]`);
         });
 
-        simulation.nodes(visibleNodeArray);
-        simulation.force('link').links(visibleLinkArray);
+        const root = d3.hierarchy(buildHierarchy(virtualRoot));
 
-        const linkSelection = linkLayer.selectAll('line')
-            .data(visibleLinkArray, (d) => d.id);
+        // DEBUG: Log tree structure
+        console.log('Tree descendants:', root.descendants().length);
+        root.descendants().forEach(d => {
+            console.log(`  Node: zone ${d.data.id}, depth=${d.depth}, y=${d.y}, children=${d.children ? d.children.length : 0}`);
+        });
 
-        linkSelection
-            .enter()
-            .append('line')
-            .attr('stroke-width', 1.4)
-            .attr('stroke-linecap', 'round');
+        // Calculate zone dimensions
+        Object.values(zones).forEach(z => {
+            const colCount = Math.max(z.transports.length, z.passthroughs.length, 1);
+            z.width = Math.max(260, colCount * 90);
+            z.height = z.passthroughs.length > 0 ? 260 : 140;
+        });
 
-        linkSelection.exit().remove();
+        // Apply tree layout
+        const maxZWidth = d3.max(Object.values(zones), z => z.width) || 260;
+        d3.tree().nodeSize([maxZWidth + 150, 600])(root);
 
-        linkLayer.selectAll('line')
-            .attr('class', (d) => `link ${d.type || ''}`);
+        // Calculate bounding box of all nodes in tree coordinate space
+        const descendants = root.descendants();
+        const xExtent = d3.extent(descendants, d => d.x);
+        const yExtent = d3.extent(descendants, d => d.y);
+        const maxZoneHeight = d3.max(Object.values(zones), z => z.height) || 260;
 
-        const nodeSelection = nodeLayer.selectAll('g.node')
-            .data(visibleNodeArray, (d) => d.id);
+        // Calculate viewBox dimensions with padding for zone sizes
+        const padding = 200;
+        const viewBoxX = xExtent[0] - maxZWidth / 2 - padding;
+        const viewBoxY = yExtent[0] - maxZoneHeight - padding;
+        const viewBoxWidth = (xExtent[1] - xExtent[0]) + maxZWidth + 2 * padding;
+        const viewBoxHeight = (yExtent[1] - yExtent[0]) + maxZoneHeight * 2 + 2 * padding;
 
-        const nodeEnter = nodeSelection
-            .enter()
-            .append('g')
-            .attr('class', (d) => `node ${d.type}`)
-            .call(dragBehaviour);
+        // Set viewBox to encompass entire tree in logical coordinates
+        // Root is at y=0, children grow upward (positive y)
+        // We flip the y-axis by using negative viewBoxY and height
+        svgRoot
+            .attr('width', canvasWidth)
+            .attr('height', canvasHeight)
+            .attr('viewBox', `${viewBoxX} ${-viewBoxY - viewBoxHeight} ${viewBoxWidth} ${viewBoxHeight}`)
+            .attr('preserveAspectRatio', 'xMidYMid meet');
 
-        nodeEnter.each(function(d) {
-            const g = d3.select(this);
-            if (d.type === 'zone') {
-                g.append('rect')
-                    .attr('class', 'zone-background')
-                    .attr('x', -zoneBoxWidth / 2)
-                    .attr('y', -zoneBoxHeight / 2)
-                    .attr('width', zoneBoxWidth)
-                    .attr('height', zoneBoxHeight);
-                g.append('text')
-                    .attr('class', 'zone-label node-label')
-                    .attr('y', zoneLabelOffset)
-                    .text(() => d.label || d.id);
+        // Use tree coordinates directly (no transformation needed)
+        // Root at y=0 (bottom), children grow upward (positive y)
+        const getX = d => d.x;
+        const getY = d => -d.y;  // Flip y-axis so root is at bottom
 
-                // Add anchor checkbox as foreignObject
-                const foreignObject = g.append('foreignObject')
-                    .attr('x', zoneBoxWidth / 2 - 25)
-                    .attr('y', -zoneBoxHeight / 2 + 5)
-                    .attr('width', 20)
-                    .attr('height', 20);
+        // Build Port Registry with absolute coordinates (skip virtual root zone 0)
+        root.descendants().filter(d => d.data.id !== 0).forEach(d => {
+            const z = d.data.data;
+            const absX = getX(d);
+            const absY = getY(d);
 
-                const checkbox = foreignObject.append('xhtml:input')
-                    .attr('type', 'checkbox')
-                    .attr('class', 'zone-anchor-checkbox')
-                    .attr('id', `anchor-${d.id}`)
-                    .style('pointer-events', 'all')
-                    .on('click', function(event) {
-                        event.stopPropagation();
-                        const isChecked = this.checked;
-                        if (isChecked) {
-                            // Anchor this zone
-                            anchoredZones.add(d.id);
-                            d.fx = d.x;
-                            d.fy = d.y;
-                        } else {
-                            // Unanchor this zone
-                            anchoredZones.delete(d.id);
-                            d.fx = null;
-                            d.fy = null;
-                            simulation.alpha(0.3).restart();
-                        }
-                    });
-            } else {
-                g.append('circle')
-                    .attr('r', nodeRadiusByType[d.type] || 12)
-                    .attr('fill', palette[d.type] || '#94a3b8')
-                    .attr('opacity', 0.92);
-                g.append('text')
-                    .attr('class', 'node-label')
-                    .attr('dy', 4)
-                    .text(() => d.label || d.id);
+            // IN port (parent connection at top center)
+            if (d.parent && d.parent.data.id !== 0) {
+                PortRegistry[`${z.id}:${d.parent.data.id}`] = {
+                    relX: 0, relY: 0,
+                    absX: absX, absY: absY
+                };
             }
-        });
 
-        nodeSelection.exit().remove();
-
-        nodeLayer.selectAll('g.node text.node-label')
-            .text((d) => truncateLabel(d.label || d.id))
-            .attr('y', (d) => (d.type === 'zone' ? zoneLabelOffset : 0))
-            .attr('dy', (d) => (d.type === 'zone' ? 0 : 4));
-
-        nodeLayer.selectAll('g.node.zone').each(function(d) {
-            const g = d3.select(this);
-            let sublabel = g.select('text.zone-sublabel');
-            if (sublabel.empty()) {
-                sublabel = g.append('text')
-                    .attr('class', 'zone-sublabel')
-                    .attr('fill', '#94a3b8')
-                    .attr('font-size', 11);
-            }
-            sublabel
-                .attr('y', zoneLabelOffset + 22)
-                .attr('dy', 0)
-                .text(() => `zone ${d.zone}`);
-        });
-
-        simulation.alpha(0.9).restart();
-
-        simulation.on('tick', () => {
-            visibleNodeArray.forEach((node) => {
-                if (node.type !== 'zone' && node.parent && nodes.has(node.parent)) {
-                    const parent = nodes.get(node.parent);
-                    if (parent) {
-                        const parentX = parent.x ?? targetX(parent);
-                        const minX = parentX - zoneBoxWidth / 2 + 24;
-                        const maxX = parentX + zoneBoxWidth / 2 - 24;
-                        node.x = Math.min(Math.max(node.x, minX), maxX);
-                        const parentY = parent.y ?? targetY(parent);
-                        const minY = parentY - zoneBoxHeight / 2 + 70;
-                        const maxY = parentY + zoneBoxHeight / 2 - 50;
-                        node.y = Math.min(Math.max(node.y, minY), maxY);
-                    }
-                }
+            // OUT ports (child connections at bottom, distributed evenly)
+            z.transports.forEach((t, i) => {
+                const tx = (z.transports.length > 1)
+                    ? (i / (z.transports.length - 1) * (z.width - 140)) - (z.width / 2 - 70)
+                    : 0;
+                const ty = -z.height;
+                PortRegistry[`${z.id}:${t.adjId}`] = {
+                    relX: tx, relY: ty,
+                    absX: absX + tx, absY: absY + ty
+                };
             });
-            linkLayer.selectAll('line')
-                .attr('x1', (d) => d.source.x)
-                .attr('y1', (d) => d.source.y)
-                .attr('x2', (d) => d.target.x)
-                .attr('y2', (d) => d.target.y);
-
-            nodeLayer.selectAll('g.node')
-                .attr('transform', (d) => `translate(${d.x},${d.y})`);
         });
+
+        // Draw trunk lines (behind zones) - skip connections involving virtual root zone 0
+        g.selectAll('.trunk-line')
+            .data(root.descendants().filter(d => d.parent && d.data.id !== 0 && d.parent.data.id !== 0))
+            .enter().append('line')
+            .attr('class', 'trunk-line')
+            .attr('x1', d => PortRegistry[`${d.parent.data.id}:${d.data.id}`].absX)
+            .attr('y1', d => PortRegistry[`${d.parent.data.id}:${d.data.id}`].absY)
+            .attr('x2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absX)
+            .attr('y2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absY);
+
+        // Draw zones with internal circuitry (skip virtual root zone 0)
+        const nodeGroups = g.selectAll('.node')
+            .data(root.descendants().filter(d => d.data.id !== 0))
+            .enter().append('g')
+            .attr('transform', d => `translate(${getX(d)},${getY(d)})`);
+
+        nodeGroups.each(function(d) {
+            const zoneSel = d3.select(this);
+            const z = d.data.data;
+            const svcY = -z.height / 2;
+
+            // Zone background
+            zoneSel.append('rect')
+                .attr('class', 'zone-bg')
+                .attr('x', -z.width / 2)
+                .attr('y', -z.height)
+                .attr('width', z.width)
+                .attr('height', z.height)
+                .attr('rx', 10);
+
+            // Service box (center)
+            zoneSel.append('rect')
+                .attr('class', 'service-box')
+                .attr('x', -30)
+                .attr('y', svcY - 15)
+                .attr('width', 60)
+                .attr('height', 30);
+
+            zoneSel.append('text')
+                .attr('class', 'label')
+                .attr('y', svcY + 5)
+                .text(z.name.toUpperCase());
+
+            // Render ports and wires
+            Object.keys(PortRegistry).forEach(key => {
+                const [zId, adjId] = key.split(':').map(Number);
+                if (zId !== z.id) return;
+
+                const p = PortRegistry[key];
+                const pG = zoneSel.append('g').attr('transform', `translate(${p.relX},${p.relY})`);
+
+                pG.append('rect')
+                    .attr('class', 'transport-box')
+                    .attr('x', -25)
+                    .attr('y', -15)
+                    .attr('width', 50)
+                    .attr('height', 30)
+                    .attr('rx', 4);
+
+                pG.append('text')
+                    .attr('class', 'label')
+                    .attr('y', 5)
+                    .text(p.relY === 0 ? 'IN' : `TO:${adjId}`);
+
+                // Wire from service to port
+                zoneSel.append('line')
+                    .attr('class', 'wire')
+                    .attr('x1', p.relX)
+                    .attr('y1', p.relY + (p.relY === 0 ? -15 : 15))
+                    .attr('x2', 0)
+                    .attr('y2', svcY + (p.relY === 0 ? 15 : -15));
+            });
+
+            // Render passthroughs
+            z.passthroughs.forEach((p, i) => {
+                const px = (z.passthroughs.length > 1)
+                    ? (i / (z.passthroughs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
+                    : 0;
+                const py = svcY + 80;
+
+                zoneSel.append('circle')
+                    .attr('class', 'pass-circle')
+                    .attr('cx', px)
+                    .attr('cy', py)
+                    .attr('r', 15);
+
+                zoneSel.append('text')
+                    .attr('class', 'label')
+                    .attr('x', px)
+                    .attr('y', py + 5)
+                    .text('P');
+
+                // Route wires through passthrough
+                const nextHopRev = findNextHop(z.id, p.rev);
+                const nextHopFwd = findNextHop(z.id, p.fwd);
+                const rP = PortRegistry[`${z.id}:${nextHopRev}`];
+                const fP = PortRegistry[`${z.id}:${nextHopFwd}`];
+
+                if (rP && fP && (rP !== fP)) {
+                    // Wire from reverse port to passthrough
+                    zoneSel.append('line')
+                        .attr('class', 'wire routing')
+                        .attr('x1', rP.relX)
+                        .attr('y1', rP.relY + (rP.relY === 0 ? -15 : 15))
+                        .attr('x2', px)
+                        .attr('y2', py + 12);
+
+                    // Wire from passthrough to forward port
+                    zoneSel.append('line')
+                        .attr('class', 'wire routing')
+                        .attr('x1', px)
+                        .attr('y1', py - 12)
+                        .attr('x2', fP.relX)
+                        .attr('y2', fP.relY + (fP.relY === 0 ? -15 : 15));
+                }
+                // If routing fails, passthrough is rendered without wiring
+            });
+        });
+    }
+
+    function updateGraph() {
+        // Legacy function redirects to new tree layout implementation
+        rebuildVisualization();
     }
 
     function truncateLabel(label) {
@@ -2620,26 +2983,6 @@ namespace rpc
         output << "<script>\n";
         output << "const telemetryMeta = { suite: \"" << escape_json(suite_name_) << "\", test: \""
                << escape_json(test_name_) << "\" };\n";
-        output << "const zoneMetadata = {\n";
-        bool first_zone = true;
-        for (const auto& entry : zone_names_copy)
-        {
-            if (!first_zone)
-            {
-                output << ",\n";
-            }
-            first_zone = false;
-            const auto zone_id = entry.first;
-            const auto parent_it = zone_parents_copy.find(zone_id);
-            uint64_t parent_zone = parent_it != zone_parents_copy.end() ? parent_it->second : 0;
-            output << "  \"" << zone_id << "\": { name: \"" << escape_json(entry.second)
-                   << "\", parent: " << parent_zone << " }";
-        }
-        if (!first_zone)
-        {
-            output << "\n";
-        }
-        output << "};\n";
 
         output << "const events = [\n";
         for (size_t idx = 0; idx < events_copy.size(); ++idx)
@@ -2683,7 +3026,7 @@ namespace rpc
         output << "</script>\n";
 
         output << "<script src=\"https://d3js.org/d3.v7.min.js\"></script>\n";
-        output << "<script>\n" << kAnimationScript << "\n</script>\n";
+        output << "<script>\n" << kAnimationScriptPart1 << kAnimationScriptPart2 << "\n</script>\n";
         output << "</body>\n</html>\n";
     }
 

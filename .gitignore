@@ -16,3 +16,4 @@ demos/websocket/client/websocket_proto.js
 demos/websocket/server/www/websocket_proto.js
 .cache
 venv
+rpc_test_diagram
