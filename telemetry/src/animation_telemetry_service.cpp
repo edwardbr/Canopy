@@ -374,6 +374,21 @@ svg {
     const nodes = new Map();
     const links = new Map();
     const zoneLayout = new Map();
+    const zoneHierarchy = new Map();
+    const zoneChildren = new Set();
+
+    const simulation = d3.forceSimulation()
+        .alphaDecay(0.02)  // Much slower decay for smoother animation
+        .velocityDecay(0.8)  // Higher velocity decay to reduce oscillations
+        .force('link', d3.forceLink()
+            .id((d) => d.id)
+            .distance((d) => 100 + (levelByType[d.type] || 0) * 20)
+            .strength((d) => linkStrengthByType[d.type] || 0.2))
+        .force('charge', d3.forceManyBody().strength(-160))
+        .force('collide', d3.forceCollide().radius((d) => nodeRadiusByType[d.type] + 12))
+        .force('x', d3.forceX().x((d) => targetX(d)).strength(0.05))  // Reduced strength for gentler positioning
+        .force('y', d3.forceY().y((d) => targetY(d)).strength(0.25))  // Reduced strength for gentler positioning
+        .stop();
 
     // Tree layout structures for hierarchical visualization
     const zones = {};  // zone_id -> { id, name, parentId, transports[], passthroughs[], children[], width, height }
@@ -420,7 +435,6 @@ svg {
             }
         }
     });
-    console.log('Built zoneMetadata:', zoneMetadata);
 
     function normalizeZoneNumber(zoneNumber) {
         if (zoneNumber === undefined || zoneNumber === null || Number.isNaN(zoneNumber)) {
@@ -549,7 +563,6 @@ svg {
                 // Update parent if we're providing a more specific parent
                 const oldParentId = zones[zoneNumber].parentId;
                 if (oldParentId === 0 && parentNumber !== 0) {
-                    console.log(`Updating zone ${zoneNumber} parent from ${oldParentId} to ${parentNumber}`);
                     // Ensure parent zone exists
                     if (!zones[parentNumber]) {
                         zones[parentNumber] = {
@@ -586,7 +599,6 @@ svg {
                 }
                 if (!zones[currentParent].children.includes(zoneNumber)) {
                     zones[currentParent].children.push(zoneNumber);
-                    console.log(`Added zone ${zoneNumber} to parent ${currentParent}'s children`);
                 }
             }
 
@@ -1001,6 +1013,70 @@ svg {
         stopButton.disabled = !playing;
     }
 
+    function clearObject(obj) {
+        Object.keys(obj).forEach((key) => delete obj[key]);
+    }
+
+    function removeZoneFromLayout(zoneNumber) {
+        const zone = zones[zoneNumber];
+        if (!zone) {
+            return;
+        }
+        if (zone.parentId && zones[zone.parentId]) {
+            zones[zone.parentId].children = zones[zone.parentId].children.filter((id) => id !== zoneNumber);
+        }
+        Object.values(zones).forEach((entry) => {
+            entry.children = entry.children.filter((id) => id !== zoneNumber);
+            entry.transports = entry.transports.filter((t) => t.adjId !== zoneNumber);
+            entry.passthroughs = entry.passthroughs.filter((p) => p.fwd !== zoneNumber && p.rev !== zoneNumber);
+        });
+        if (adjacencyList[zoneNumber]) {
+            adjacencyList[zoneNumber].forEach((neighbor) => {
+                if (adjacencyList[neighbor]) {
+                    adjacencyList[neighbor].delete(zoneNumber);
+                    if (adjacencyList[neighbor].size === 0) {
+                        delete adjacencyList[neighbor];
+                    }
+                }
+            });
+            delete adjacencyList[zoneNumber];
+        }
+        delete zones[zoneNumber];
+        zoneAliases.delete(zoneNumber);
+    }
+
+    function removeTransportFromLayout(zoneNumber, adjacentZoneNumber) {
+        const zone = zones[zoneNumber];
+        if (zone) {
+            zone.transports = zone.transports.filter((t) => t.adjId !== adjacentZoneNumber);
+        }
+        if (adjacencyList[zoneNumber]) {
+            adjacencyList[zoneNumber].delete(adjacentZoneNumber);
+            if (adjacencyList[zoneNumber].size === 0) {
+                delete adjacencyList[zoneNumber];
+            }
+        }
+        if (adjacencyList[adjacentZoneNumber]) {
+            adjacencyList[adjacentZoneNumber].delete(zoneNumber);
+            if (adjacencyList[adjacentZoneNumber].size === 0) {
+                delete adjacencyList[adjacentZoneNumber];
+            }
+        }
+    }
+
+    function removePassthroughFromLayout(zoneNumber, forwardDestNumber, reverseDestNumber) {
+        const zone = zones[zoneNumber];
+        if (!zone) {
+            return;
+        }
+        zone.passthroughs = zone.passthroughs.filter((p) => {
+            return p.fwd !== forwardDestNumber || p.rev !== reverseDestNumber;
+        });
+        if (zone.passthroughs.length === 0) {
+            zone.height = 140;
+        }
+    }
+
     function resetState() {
         nodes.clear();
         links.clear();
@@ -1013,13 +1089,15 @@ svg {
         proxyLinkIndex.clear();
         linkUsage.clear();
         activeZones.clear();
-        activeZones.add(primaryZoneId || 1);
-        // Reset hierarchical layout state so scrubbing doesn't reuse future data.
-        Object.keys(zones).forEach((key) => delete zones[key]);
-        Object.keys(adjacencyList).forEach((key) => delete adjacencyList[key]);
-        Object.keys(PortRegistry).forEach((key) => delete PortRegistry[key]);
+        zoneLayout.clear();
+        zoneHierarchy.clear();
+        zoneChildren.clear();
         zoneAliases.clear();
         primaryZoneId = null;
+        clearObject(zones);
+        clearObject(adjacencyList);
+        clearObject(PortRegistry);
+        activeZones.add(primaryZoneId || 1);
         processedIndex = 0;
         processedDisplayTime = 0;
         clearLog();
@@ -1224,24 +1302,15 @@ svg {
                 }
             });
         }
-        Array.from(toRemove).forEach((id) => deleteNode(id));
-        if (zones[zoneNumber]) {
-            const parentId = zones[zoneNumber].parentId;
-            if (parentId !== undefined && zones[parentId]) {
-                zones[parentId].children = zones[parentId].children.filter(
-                    (childId) => childId !== zoneNumber);
+        Array.from(toRemove).forEach((id) => {
+            if (id.startsWith('zone-')) {
+                const candidate = Number(id.slice(5));
+                if (Number.isFinite(candidate)) {
+                    removeZoneFromLayout(candidate);
+                }
             }
-            const adjacent = adjacencyList[zoneNumber];
-            if (adjacent) {
-                adjacent.forEach((neighbor) => {
-                    if (adjacencyList[neighbor]) {
-                        adjacencyList[neighbor].delete(zoneNumber);
-                    }
-                });
-                delete adjacencyList[zoneNumber];
-            }
-            delete zones[zoneNumber];
-        }
+            deleteNode(id);
+        });
         appendLog(evt);
     }
 
@@ -1744,20 +1813,8 @@ svg {
         links.delete(crossZoneLinkId);
         deleteNode(transport1Id);
         deleteNode(transport2Id);
-        if (zones[zone1Number]) {
-            zones[zone1Number].transports = zones[zone1Number].transports.filter(
-                (transport) => transport.adjId !== zone2Number);
-        }
-        if (zones[zone2Number]) {
-            zones[zone2Number].transports = zones[zone2Number].transports.filter(
-                (transport) => transport.adjId !== zone1Number);
-        }
-        if (adjacencyList[zone1Number]) {
-            adjacencyList[zone1Number].delete(zone2Number);
-        }
-        if (adjacencyList[zone2Number]) {
-            adjacencyList[zone2Number].delete(zone1Number);
-        }
+        removeTransportFromLayout(zone1Number, zone2Number);
+        removeTransportFromLayout(zone2Number, zone1Number);
         appendLog(evt);
     }
 
@@ -1827,19 +1884,14 @@ svg {
     }
 
     function deletePassthrough(evt) {
+        const zoneNumber = normalizeZoneNumber(evt.data.zone_id);
+        const forwardDestNumber = normalizeZoneNumber(evt.data.forward_destination);
+        const reverseDestNumber = normalizeZoneNumber(evt.data.reverse_destination);
         const id = makePassthroughId(evt.data);
         links.delete(`${id}-forward`);
         links.delete(`${id}-reverse`);
         deleteNode(id);
-        const zoneNumber = normalizeZoneNumber(evt.data.zone_id);
-        const forwardDestNumber = normalizeZoneNumber(evt.data.forward_destination);
-        const reverseDestNumber = normalizeZoneNumber(evt.data.reverse_destination);
-        if (zones[zoneNumber]) {
-            zones[zoneNumber].passthroughs = zones[zoneNumber].passthroughs.filter((entry) => {
-                return !(entry.fwd === forwardDestNumber && entry.rev === reverseDestNumber);
-            });
-            zones[zoneNumber].height = zones[zoneNumber].passthroughs.length > 0 ? 260 : 140;
-        }
+        removePassthroughFromLayout(zoneNumber, forwardDestNumber, reverseDestNumber);
         appendLog(evt);
     }
 
@@ -2251,7 +2303,7 @@ svg {
     function rebuildVisualization() {
         // Clear existing visualization
         g.selectAll('*').remove();
-        Object.keys(PortRegistry).forEach((key) => delete PortRegistry[key]);
+        clearObject(PortRegistry);
 
         // Find all root zones (zones with parentId === 0)
         const rootZones = Object.values(zones).filter(z => z.parentId === 0);
@@ -2282,21 +2334,7 @@ svg {
             };
         };
 
-        // DEBUG: Log zones structure
-        console.log('=== ZONES DEBUG ===');
-        console.log('Total zones:', Object.keys(zones).length);
-        console.log('Root zones (parent=0):', rootZones.map(z => z.id).join(', '));
-        Object.values(zones).forEach(z => {
-            console.log(`Zone ${z.id}: name="${z.name}", parent=${z.parentId}, children=[${z.children.join(',')}]`);
-        });
-
         const root = d3.hierarchy(buildHierarchy(virtualRoot));
-
-        // DEBUG: Log tree structure
-        console.log('Tree descendants:', root.descendants().length);
-        root.descendants().forEach(d => {
-            console.log(`  Node: zone ${d.data.id}, depth=${d.depth}, y=${d.y}, children=${d.children ? d.children.length : 0}`);
-        });
 
         // Calculate zone dimensions
         Object.values(zones).forEach(z => {
@@ -2323,8 +2361,6 @@ svg {
         const viewBoxHeight = (yExtent[1] - yExtent[0]) + maxZoneHeight * 2 + 2 * padding;
 
         // Set viewBox to encompass entire tree in logical coordinates
-        // Root is at y=0, children grow upward (positive y)
-        // We flip the y-axis by using negative viewBoxY and height
         svgRoot
             .attr('width', canvasWidth)
             .attr('height', canvasHeight)
