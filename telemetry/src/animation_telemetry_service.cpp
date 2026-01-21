@@ -22,7 +22,7 @@ body {
     color: #e2e8f0;
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
     overflow: hidden;
 }
 
@@ -146,7 +146,7 @@ body {
     flex: 1 1 auto;
     min-height: 480px;
     background-color: #0b1120;
-    overflow: auto;
+    overflow: hidden;
 }
 
 #viz-container .overlay-hint {
@@ -172,6 +172,7 @@ body {
     overflow: hidden;
     position: relative;
     z-index: 10;
+    min-height: 0;
 }
 
 #event-panel h2 {
@@ -290,9 +291,23 @@ svg {
     pointer-events: none;
 }
 
-.pass-circle {
+.pass-box {
     fill: #6c5ce7;
     stroke: #a29bfe;
+    stroke-width: 2;
+}
+
+.pass-label {
+    font-size: 9px;
+    fill: #ffffff;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.pass-detail {
+    font-size: 9px;
+    fill: #e9d5ff;
+    pointer-events: none;
 }
 
 .wire {
@@ -333,6 +348,12 @@ svg {
     const transportMinWidth = 60;
     const transportMinHeight = 30;
     const transportMaxWidth = 320;
+    const passthroughLineHeight = 12;
+    const passthroughBoxPaddingX = 8;
+    const passthroughBoxPaddingY = 6;
+    const passthroughMinWidth = 80;
+    const passthroughMinHeight = 30;
+    const passthroughMaxWidth = 240;
 
     const palette = {
         zone: '#38bdf8',
@@ -2434,6 +2455,14 @@ svg {
             return `object proxy ${data.object} from zone ${data.zone} to ${data.destinationZone}`;
         case 'interface_proxy_creation':
             return `interface proxy ${data.name} on object ${data.object}`;
+        case 'pass_through_creation':
+            return `passthrough in zone ${data.zone_id}: fwd→${data.forward_destination} rev→${data.reverse_destination}`;
+        case 'pass_through_deletion':
+            return `passthrough deleted in zone ${data.zone_id}: fwd→${data.forward_destination} rev→${data.reverse_destination}`;
+        case 'pass_through_add_ref':
+            return `passthrough add_ref in zone ${data.zone_id}: S+${data.shared_delta || 0} O+${data.optimistic_delta || 0}`;
+        case 'pass_through_release':
+            return `passthrough release in zone ${data.zone_id}: S${data.shared_delta || 0} O${data.optimistic_delta || 0}`;
         case 'message':
             return data.message || 'telemetry message';
         default:
@@ -2512,6 +2541,26 @@ svg {
         return { lines, width, height };
     }
 
+    function buildPassthroughLines(forwardDest, reverseDest, sharedCount, optimisticCount) {
+        const lines = [
+            `FWD:${forwardDest} REV:${reverseDest}`,
+            `S${sharedCount || 0} O${optimisticCount || 0}`
+        ];
+        return lines;
+    }
+
+    function computePassthroughMetrics(forwardDest, reverseDest, sharedCount, optimisticCount) {
+        const lines = buildPassthroughLines(forwardDest, reverseDest, sharedCount, optimisticCount);
+        const maxLen = lines.reduce((max, line) => Math.max(max, line.length), 0);
+        const width = Math.min(
+            passthroughMaxWidth,
+            Math.max(passthroughMinWidth, passthroughBoxPaddingX * 2 + maxLen * 6));
+        const height = Math.max(
+            passthroughMinHeight,
+            passthroughBoxPaddingY * 2 + lines.length * passthroughLineHeight);
+        return { lines, width, height };
+    }
+
     function rebuildVisualization() {
         // Clear existing visualization
         g.selectAll('*').remove();
@@ -2566,10 +2615,30 @@ svg {
             });
             z.transportBoxWidth = maxTransportBoxWidth;
             z.transportBoxHeight = maxTransportBoxHeight;
+
+            // Calculate passthrough metrics
+            z.passthroughMetrics = [];
+            let maxPassthroughBoxWidth = passthroughMinWidth;
+            let maxPassthroughBoxHeight = passthroughMinHeight;
+            z.passthroughs.forEach((p) => {
+                const passthroughId = makePassthroughId({ zone_id: z.id, forward_destination: p.fwd, reverse_destination: p.rev });
+                const passthroughNode = nodes.get(passthroughId);
+                const sharedCount = passthroughNode ? passthroughNode.sharedCount : 0;
+                const optimisticCount = passthroughNode ? passthroughNode.optimisticCount : 0;
+                const metrics = computePassthroughMetrics(p.fwd, p.rev, sharedCount, optimisticCount);
+                z.passthroughMetrics.push(metrics);
+                maxPassthroughBoxWidth = Math.max(maxPassthroughBoxWidth, metrics.width);
+                maxPassthroughBoxHeight = Math.max(maxPassthroughBoxHeight, metrics.height);
+            });
+            z.passthroughBoxWidth = maxPassthroughBoxWidth;
+            z.passthroughBoxHeight = maxPassthroughBoxHeight;
+
             const colCount = Math.max(z.transports.length, z.passthroughs.length, 1);
-            z.width = Math.max(260, colCount * (maxTransportBoxWidth + 40));
+            const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth);
+            z.width = Math.max(260, colCount * (maxBoxWidth + 40));
             const baseHeight = z.passthroughs.length > 0 ? 260 : 140;
-            z.height = Math.max(baseHeight, 120 + maxTransportBoxHeight);
+            const totalHeight = 120 + maxTransportBoxHeight + (z.passthroughs.length > 0 ? maxPassthroughBoxHeight : 0);
+            z.height = Math.max(baseHeight, totalHeight);
         });
 
         // Apply tree layout
@@ -2731,17 +2800,31 @@ svg {
                     : 0;
                 const py = svcY + 80;
 
-                zoneSel.append('circle')
-                    .attr('class', 'pass-circle')
-                    .attr('cx', px)
-                    .attr('cy', py)
-                    .attr('r', 15);
+                const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
+                const boxWidth = metrics.width;
+                const boxHeight = metrics.height;
+                const lines = metrics.lines;
 
-                zoneSel.append('text')
-                    .attr('class', 'label')
-                    .attr('x', px)
-                    .attr('y', py + 5)
-                    .text('P');
+                const pG = zoneSel.append('g').attr('transform', `translate(${px},${py})`);
+
+                pG.append('rect')
+                    .attr('class', 'pass-box')
+                    .attr('x', -boxWidth / 2)
+                    .attr('y', -boxHeight / 2)
+                    .attr('width', boxWidth)
+                    .attr('height', boxHeight)
+                    .attr('rx', 4);
+
+                const textStartX = -boxWidth / 2 + passthroughBoxPaddingX;
+                const textStartY = -boxHeight / 2 + passthroughBoxPaddingY + 9;
+                lines.forEach((line, idx) => {
+                    pG.append('text')
+                        .attr('class', idx === 0 ? 'pass-label' : 'pass-detail')
+                        .attr('x', textStartX)
+                        .attr('y', textStartY + idx * passthroughLineHeight)
+                        .attr('text-anchor', 'start')
+                        .text(line);
+                });
 
                 // Route wires through passthrough
                 const nextHopRev = findNextHop(z.id, p.rev);
@@ -2750,19 +2833,20 @@ svg {
                 const fP = PortRegistry[`${z.id}:${nextHopFwd}`];
 
                 if (rP && fP && (rP !== fP)) {
+                    const halfBoxHeight = boxHeight / 2;
                     // Wire from reverse port to passthrough
                     zoneSel.append('line')
                         .attr('class', 'wire routing')
                         .attr('x1', rP.relX)
                         .attr('y1', rP.relY + (rP.relY === 0 ? -15 : 15))
                         .attr('x2', px)
-                        .attr('y2', py + 12);
+                        .attr('y2', py + halfBoxHeight);
 
                     // Wire from passthrough to forward port
                     zoneSel.append('line')
                         .attr('class', 'wire routing')
                         .attr('x1', px)
-                        .attr('y1', py - 12)
+                        .attr('y1', py - halfBoxHeight)
                         .attr('x2', fP.relX)
                         .attr('y2', fP.relY + (fP.relY === 0 ? -15 : 15));
                 }
