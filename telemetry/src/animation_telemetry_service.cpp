@@ -436,6 +436,7 @@ svg {
     const PortRegistry = {};  // "zoneId:adjId" -> { relX, relY, absX, absY }
     const transportRefState = new Map();  // transportId -> { alive, createdAt, deletedAt, pairs: Map }
     const transportAuditState = { completed: false, lastEventTimestamp: 0 };
+    const transportErrors = new Set();  // Set of transportIds with negative ref count errors
     const ADD_REF_OPTIMISTIC = 4;
     const RELEASE_OPTIMISTIC = 1;
 
@@ -1612,17 +1613,21 @@ svg {
         if (optimisticFlag) {
             bucket.optimistic += delta;
             if (bucket.optimistic < 0) {
+                const errorTransportId = makeTransportId(zoneNumber, adjacentNumber);
+                transportErrors.add(errorTransportId);
                 appendTransportAudit(
-                    `transport ${makeTransportId(zoneNumber, adjacentNumber)} optimistic count went negative`,
-                    { transportId: makeTransportId(zoneNumber, adjacentNumber), destination: destinationNumber, caller: callerNumber });
+                    `transport ${errorTransportId} optimistic count went negative`,
+                    { transportId: errorTransportId, destination: destinationNumber, caller: callerNumber });
                 bucket.optimistic = 0;
             }
         } else {
             bucket.shared += delta;
             if (bucket.shared < 0) {
+                const errorTransportId = makeTransportId(zoneNumber, adjacentNumber);
+                transportErrors.add(errorTransportId);
                 appendTransportAudit(
-                    `transport ${makeTransportId(zoneNumber, adjacentNumber)} shared count went negative`,
-                    { transportId: makeTransportId(zoneNumber, adjacentNumber), destination: destinationNumber, caller: callerNumber });
+                    `transport ${errorTransportId} shared count went negative`,
+                    { transportId: errorTransportId, destination: destinationNumber, caller: callerNumber });
                 bucket.shared = 0;
             }
         }
@@ -2764,13 +2769,19 @@ svg {
                 const boxHeight = p.boxHeight || transportMinHeight;
                 const lines = p.lines || [p.relY === 0 ? `IN:${adjId}` : `TO:${adjId}`];
 
+                // Check if this transport has errors
+                const transportId = makeTransportId(zId, adjId);
+                const hasError = transportErrors.has(transportId);
+
                 pG.append('rect')
                     .attr('class', 'transport-box')
                     .attr('x', -boxWidth / 2)
                     .attr('y', -boxHeight / 2)
                     .attr('width', boxWidth)
                     .attr('height', boxHeight)
-                    .attr('rx', 4);
+                    .attr('rx', 4)
+                    .attr('stroke', hasError ? '#ff0000' : null)
+                    .attr('stroke-width', hasError ? 3 : null);
 
                 const textStartX = -boxWidth / 2 + transportBoxPaddingX;
                 const textStartY = -boxHeight / 2 + transportBoxPaddingY + 9;
