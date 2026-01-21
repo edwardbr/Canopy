@@ -17,3 +17,4 @@ demos/websocket/server/www/websocket_proto.js
 .cache
 venv
 rpc_test_diagram
+.beads/bd.sock.startlock
