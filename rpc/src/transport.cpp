@@ -882,4 +882,218 @@ namespace rpc
 
         CO_AWAIT dest->transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
     }
+
+    CORO_TASK(int)
+    transport::send(uint64_t protocol_version,
+        encoding encoding,
+        uint64_t tag,
+        caller_zone caller_zone_id,
+        destination_zone destination_zone_id,
+        object object_id,
+        interface_ordinal interface_id,
+        method method_id,
+        const rpc::span& in_data,
+        std::vector<char>& out_buf_,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+        auto ret = CO_AWAIT outbound_send(protocol_version,
+            encoding,
+            tag,
+            caller_zone_id,
+            destination_zone_id,
+            object_id,
+            interface_id,
+            method_id,
+            in_data,
+            out_buf_,
+            in_back_channel,
+            out_back_channel);
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            if (ret == error::OK())
+            {
+                telemetry_service->on_transport_outbound_send(
+                    get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
+            }
+            else
+            {
+                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
+            }
+        }
+#endif
+        CO_RETURN ret;
+    }
+
+    CORO_TASK(void)
+    transport::post(uint64_t protocol_version,
+        encoding encoding,
+        uint64_t tag,
+        caller_zone caller_zone_id,
+        destination_zone destination_zone_id,
+        object object_id,
+        interface_ordinal interface_id,
+        method method_id,
+        const rpc::span& in_data,
+        const std::vector<back_channel_entry>& in_back_channel)
+    {
+        CO_AWAIT outbound_post(protocol_version,
+            encoding,
+            tag,
+            caller_zone_id,
+            destination_zone_id,
+            object_id,
+            interface_id,
+            method_id,
+            in_data,
+            in_back_channel);
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_outbound_post(
+                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
+        }
+#endif
+    }
+
+    CORO_TASK(int)
+    transport::try_cast(uint64_t protocol_version,
+        destination_zone destination_zone_id,
+        object object_id,
+        interface_ordinal interface_id,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+        auto ret = CO_AWAIT outbound_try_cast(
+            protocol_version, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            if (ret == error::OK())
+            {
+                telemetry_service->on_transport_outbound_try_cast(
+                    get_zone_id(), get_adjacent_zone_id(), destination_zone_id, get_zone_id().as_caller(), object_id, interface_id);
+            }
+            else
+            {
+                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
+            }
+        }
+#endif
+        CO_RETURN ret;
+    }
+
+    CORO_TASK(int)
+    transport::add_ref(uint64_t protocol_version,
+        destination_zone destination_zone_id,
+        object object_id,
+        caller_zone caller_zone_id,
+        known_direction_zone known_direction_zone_id,
+        add_ref_options build_out_param_channel,
+        uint64_t& reference_count,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+        auto ret = CO_AWAIT outbound_add_ref(protocol_version,
+            destination_zone_id,
+            object_id,
+            caller_zone_id,
+            known_direction_zone_id,
+            build_out_param_channel,
+            reference_count,
+            in_back_channel,
+            out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            if (ret == error::OK())
+            {
+                telemetry_service->on_transport_outbound_add_ref(get_zone_id(),
+                    get_adjacent_zone_id(),
+                    destination_zone_id,
+                    caller_zone_id,
+                    object_id,
+                    known_direction_zone_id,
+                    build_out_param_channel,
+                    reference_count);
+            }
+            else
+            {
+                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
+            }
+        }
+#endif
+        CO_RETURN ret;
+    }
+
+    CORO_TASK(int)
+    transport::release(uint64_t protocol_version,
+        destination_zone destination_zone_id,
+        object object_id,
+        caller_zone caller_zone_id,
+        release_options options,
+        uint64_t& reference_count,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+        auto ret = CO_AWAIT outbound_release(protocol_version,
+            destination_zone_id,
+            object_id,
+            caller_zone_id,
+            options,
+            reference_count,
+            in_back_channel,
+            out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            if (ret == error::OK())
+            {
+                telemetry_service->on_transport_outbound_release(
+                    get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, options, reference_count);
+            }
+            else
+            {
+                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
+            }
+        }
+#endif
+        CO_RETURN ret;
+    }
+
+    CORO_TASK(void)
+    transport::object_released(uint64_t protocol_version,
+        destination_zone destination_zone_id,
+        object object_id,
+        caller_zone caller_zone_id,
+        const std::vector<back_channel_entry>& in_back_channel)
+    {
+        CO_AWAIT outbound_object_released(
+            protocol_version, destination_zone_id, object_id, caller_zone_id, in_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_outbound_object_released(
+                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id);
+        }
+#endif
+    }
+
+    CORO_TASK(void)
+    transport::transport_down(uint64_t protocol_version,
+        destination_zone destination_zone_id,
+        caller_zone caller_zone_id,
+        const std::vector<back_channel_entry>& in_back_channel)
+    {
+        CO_AWAIT outbound_transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_outbound_transport_down(
+                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id);
+        }
+#endif
+    }
+
 } // namespace rpc

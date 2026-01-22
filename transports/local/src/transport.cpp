@@ -27,7 +27,7 @@ namespace rpc::local
 
     // Outbound i_marshaller interface - sends from child to parent
     CORO_TASK(int)
-    parent_transport::send(uint64_t protocol_version,
+    parent_transport::outbound_send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -40,13 +40,7 @@ namespace rpc::local
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_send(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
-        }
-#endif
+
         auto parent = parent_.get_nullable();
         if (!parent)
         {
@@ -69,7 +63,7 @@ namespace rpc::local
     }
 
     CORO_TASK(void)
-    parent_transport::post(uint64_t protocol_version,
+    parent_transport::outbound_post(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -80,13 +74,7 @@ namespace rpc::local
         const rpc::span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_post(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
-        }
-#endif
+
         auto parent = parent_.get_nullable();
         if (!parent)
         {
@@ -106,20 +94,13 @@ namespace rpc::local
     }
 
     CORO_TASK(int)
-    parent_transport::try_cast(uint64_t protocol_version,
+    parent_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_try_cast(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, get_zone_id().as_caller(), object_id, interface_id);
-        }
-#endif
         auto parent = parent_.get_nullable();
         if (!parent)
         {
@@ -131,7 +112,7 @@ namespace rpc::local
     }
 
     CORO_TASK(int)
-    parent_transport::add_ref(uint64_t protocol_version,
+    parent_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -141,7 +122,8 @@ namespace rpc::local
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("parent_transport::add_ref: my_zone={}, adjacent_zone={}, destination_zone={}, caller_zone={}",
+        RPC_DEBUG(
+            "parent_transport::outbound_add_ref: my_zone={}, adjacent_zone={}, destination_zone={}, caller_zone={}",
             get_zone_id().get_val(),
             get_adjacent_zone_id().get_val(),
             destination_zone_id.get_val(),
@@ -150,11 +132,12 @@ namespace rpc::local
         auto parent = parent_.get_nullable();
         if (!parent)
         {
-            RPC_ERROR("parent_transport::add_ref: parent is NULL!");
+            RPC_ERROR("parent_transport::outbound_add_ref: parent is NULL!");
             CO_RETURN rpc::error::ZONE_NOT_FOUND();
         }
 
-        RPC_DEBUG("parent_transport::add_ref: Calling parent->inbound_add_ref for zone {}", destination_zone_id.get_val());
+        RPC_DEBUG("parent_transport::outbound_add_ref: Calling parent->inbound_add_ref for zone {}",
+            destination_zone_id.get_val());
         auto error_code = CO_AWAIT parent->inbound_add_ref(protocol_version,
             destination_zone_id,
             object_id,
@@ -164,24 +147,12 @@ namespace rpc::local
             reference_count,
             in_back_channel,
             out_back_channel);
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_add_ref(get_zone_id(),
-                get_adjacent_zone_id(),
-                destination_zone_id,
-                caller_zone_id,
-                object_id,
-                known_direction_zone_id,
-                build_out_param_channel,
-                reference_count);
-        }
-#endif
+
         CO_RETURN error_code;
     }
 
     CORO_TASK(int)
-    parent_transport::release(uint64_t protocol_version,
+    parent_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -204,30 +175,18 @@ namespace rpc::local
             reference_count,
             in_back_channel,
             out_back_channel);
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_release(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, options, reference_count);
-        }
-#endif
+
         CO_RETURN error_code;
     }
 
     CORO_TASK(void)
-    parent_transport::object_released(uint64_t protocol_version,
+    parent_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_object_released(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id);
-        }
-#endif
+
         auto parent = parent_.get_nullable();
         if (!parent)
         {
@@ -239,18 +198,12 @@ namespace rpc::local
     }
 
     CORO_TASK(void)
-    parent_transport::transport_down(uint64_t protocol_version,
+    parent_transport::outbound_transport_down(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_transport_down(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id);
-        }
-#endif
+
         auto parent = parent_.get_nullable();
         if (!parent)
         {
@@ -265,7 +218,7 @@ namespace rpc::local
 
     // Outbound i_marshaller interface - sends from parent to child
     CORO_TASK(int)
-    child_transport::send(uint64_t protocol_version,
+    child_transport::outbound_send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -278,13 +231,7 @@ namespace rpc::local
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_send(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
-        }
-#endif
+
         auto child = child_.get_nullable();
         if (!child)
         {
@@ -308,7 +255,7 @@ namespace rpc::local
     }
 
     CORO_TASK(void)
-    child_transport::post(uint64_t protocol_version,
+    child_transport::outbound_post(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -338,7 +285,7 @@ namespace rpc::local
     }
 
     CORO_TASK(int)
-    child_transport::try_cast(uint64_t protocol_version,
+    child_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
@@ -356,7 +303,7 @@ namespace rpc::local
     }
 
     CORO_TASK(int)
-    child_transport::add_ref(uint64_t protocol_version,
+    child_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -385,7 +332,7 @@ namespace rpc::local
     }
 
     CORO_TASK(int)
-    child_transport::release(uint64_t protocol_version,
+    child_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -411,7 +358,7 @@ namespace rpc::local
     }
 
     CORO_TASK(void)
-    child_transport::object_released(uint64_t protocol_version,
+    child_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -428,7 +375,7 @@ namespace rpc::local
     }
 
     CORO_TASK(void)
-    child_transport::transport_down(uint64_t protocol_version,
+    child_transport::outbound_transport_down(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)

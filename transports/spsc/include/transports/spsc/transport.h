@@ -177,9 +177,9 @@ namespace rpc::spsc
         // rpc::transport override - connect handshake
         CORO_TASK(int) connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
 
-        // i_marshaller implementations (from rpc::transport)
+        // outbound i_marshaller implementations (from rpc::transport)
         CORO_TASK(int)
-        send(uint64_t protocol_version,
+        outbound_send(uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
@@ -193,7 +193,7 @@ namespace rpc::spsc
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         CORO_TASK(void)
-        post(uint64_t protocol_version,
+        outbound_post(uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
@@ -205,7 +205,7 @@ namespace rpc::spsc
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 
         CORO_TASK(int)
-        try_cast(uint64_t protocol_version,
+        outbound_try_cast(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
@@ -213,7 +213,7 @@ namespace rpc::spsc
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         CORO_TASK(int)
-        add_ref(uint64_t protocol_version,
+        outbound_add_ref(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
@@ -224,7 +224,7 @@ namespace rpc::spsc
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         CORO_TASK(int)
-        release(uint64_t protocol_version,
+        outbound_release(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
@@ -235,14 +235,14 @@ namespace rpc::spsc
 
         // New methods from i_marshaller interface
         CORO_TASK(void)
-        object_released(uint64_t protocol_version,
+        outbound_object_released(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 
         CORO_TASK(void)
-        transport_down(uint64_t protocol_version,
+        outbound_transport_down(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;

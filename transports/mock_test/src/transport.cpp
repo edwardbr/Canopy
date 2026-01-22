@@ -70,7 +70,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::send(uint64_t protocol_version,
+    mock_transport::outbound_send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -116,7 +116,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(void)
-    mock_transport::post(uint64_t protocol_version,
+    mock_transport::outbound_post(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -140,7 +140,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::try_cast(uint64_t protocol_version,
+    mock_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
@@ -164,7 +164,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::add_ref(uint64_t protocol_version,
+    mock_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -192,7 +192,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::release(uint64_t protocol_version,
+    mock_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -221,7 +221,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(void)
-    mock_transport::object_released(uint64_t protocol_version,
+    mock_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -236,7 +236,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(void)
-    mock_transport::transport_down(uint64_t protocol_version,
+    mock_transport::outbound_transport_down(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)

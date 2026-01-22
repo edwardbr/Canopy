@@ -35,7 +35,7 @@ namespace websocket_demo
 
     // Outbound i_marshaller interface - sends from child to parent
     CORO_TASK(int)
-    transport::send(uint64_t protocol_version,
+    transport::outbound_send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -76,7 +76,7 @@ namespace websocket_demo
     }
 
     CORO_TASK(void)
-    transport::post(uint64_t protocol_version,
+    transport::outbound_post(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -91,7 +91,7 @@ namespace websocket_demo
     }
 
     CORO_TASK(int)
-    transport::try_cast(uint64_t protocol_version,
+    transport::outbound_try_cast(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
@@ -103,7 +103,7 @@ namespace websocket_demo
     }
 
     CORO_TASK(int)
-    transport::add_ref(uint64_t protocol_version,
+    transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -117,7 +117,7 @@ namespace websocket_demo
     }
 
     CORO_TASK(int)
-    transport::release(uint64_t protocol_version,
+    transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -130,7 +130,7 @@ namespace websocket_demo
     }
 
     CORO_TASK(void)
-    transport::object_released(uint64_t protocol_version,
+    transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -141,7 +141,7 @@ namespace websocket_demo
     }
 
     CORO_TASK(void)
-    transport::transport_down(uint64_t protocol_version,
+    transport::outbound_transport_down(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& back_channel)

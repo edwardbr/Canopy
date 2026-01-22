@@ -41,7 +41,7 @@ namespace websocket_demo
 
         // Outbound i_marshaller interface - sends from child to parent
         CORO_TASK(int)
-        send(uint64_t protocol_version,
+        outbound_send(uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
@@ -55,7 +55,7 @@ namespace websocket_demo
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         CORO_TASK(void)
-        post(uint64_t protocol_version,
+        outbound_post(uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
@@ -67,7 +67,7 @@ namespace websocket_demo
             const std::vector<rpc::back_channel_entry>& back_channel) override;
 
         CORO_TASK(int)
-        try_cast(uint64_t protocol_version,
+        outbound_try_cast(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
@@ -75,7 +75,7 @@ namespace websocket_demo
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         CORO_TASK(int)
-        add_ref(uint64_t protocol_version,
+        outbound_add_ref(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
@@ -86,7 +86,7 @@ namespace websocket_demo
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         CORO_TASK(int)
-        release(uint64_t protocol_version,
+        outbound_release(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
@@ -97,14 +97,14 @@ namespace websocket_demo
 
         // New methods from i_marshaller interface
         CORO_TASK(void)
-        object_released(uint64_t protocol_version,
+        outbound_object_released(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::object object_id,
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& back_channel) override;
 
         CORO_TASK(void)
-        transport_down(uint64_t protocol_version,
+        outbound_transport_down(uint64_t protocol_version,
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& back_channel) override;

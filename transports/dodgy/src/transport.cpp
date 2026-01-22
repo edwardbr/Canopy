@@ -82,7 +82,7 @@ namespace rpc::dodgy
 
     // Client-side i_marshaller implementations
     CORO_TASK(int)
-    dodgy_transport::send(uint64_t protocol_version,
+    dodgy_transport::outbound_send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -95,12 +95,12 @@ namespace rpc::dodgy
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("dodgy_transport::send zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_send zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("failed dodgy_transport::send - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed dodgy_transport::outbound_send - not connected, status = {}", static_cast<int>(get_status()));
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -120,20 +120,20 @@ namespace rpc::dodgy
             response);
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("failed dodgy_transport::send call_send");
+            RPC_ERROR("failed dodgy_transport::outbound_send call_send");
             CO_RETURN ret;
         }
 
         out_buf_.swap(response.payload);
         out_back_channel.swap(response.back_channel);
 
-        RPC_DEBUG("dodgy_transport::send complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_send complete zone={}", get_zone_id().get_val());
 
         CO_RETURN response.err_code;
     }
 
     CORO_TASK(void)
-    dodgy_transport::post(uint64_t protocol_version,
+    dodgy_transport::outbound_post(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -144,12 +144,12 @@ namespace rpc::dodgy
         const rpc::span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("dodgy_transport::post zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_post zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("dodgy_transport::post: transport not connected");
+            RPC_ERROR("dodgy_transport::outbound_post: transport not connected");
             CO_RETURN;
         }
 
@@ -171,26 +171,27 @@ namespace rpc::dodgy
 
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("failed dodgy_transport::post send_payload");
+            RPC_ERROR("failed dodgy_transport::outbound_post send_payload");
         }
 
         CO_RETURN;
     }
 
     CORO_TASK(int)
-    dodgy_transport::try_cast(uint64_t protocol_version,
+    dodgy_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("dodgy_transport::try_cast zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_try_cast zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("failed dodgy_transport::try_cast - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed dodgy_transport::outbound_try_cast - not connected, status = {}",
+                static_cast<int>(get_status()));
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -209,14 +210,14 @@ namespace rpc::dodgy
             CO_RETURN ret;
         }
 
-        RPC_DEBUG("dodgy_transport::try_cast complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_try_cast complete zone={}", get_zone_id().get_val());
 
         out_back_channel.swap(response_data.back_channel);
         CO_RETURN response_data.err_code;
     }
 
     CORO_TASK(int)
-    dodgy_transport::add_ref(uint64_t protocol_version,
+    dodgy_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -226,12 +227,12 @@ namespace rpc::dodgy
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("dodgy_transport::add_ref zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_add_ref zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("dodgy_transport::add_ref: transport not connected");
+            RPC_ERROR("dodgy_transport::outbound_add_ref: transport not connected");
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -260,26 +261,14 @@ namespace rpc::dodgy
             RPC_ASSERT(false);
             CO_RETURN response_data.err_code;
         }
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_add_ref(get_zone_id(),
-                get_adjacent_zone_id(),
-                destination_zone_id,
-                caller_zone_id,
-                object_id,
-                known_direction_zone_id,
-                build_out_param_channel,
-                reference_count);
-        }
-#endif
-        RPC_DEBUG("dodgy_transport::add_ref complete zone={}", get_zone_id().get_val());
+
+        RPC_DEBUG("dodgy_transport::outbound_add_ref complete zone={}", get_zone_id().get_val());
 
         CO_RETURN rpc::error::OK();
     }
 
     CORO_TASK(int)
-    dodgy_transport::release(uint64_t protocol_version,
+    dodgy_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -288,12 +277,13 @@ namespace rpc::dodgy
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("dodgy_transport::release zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_release zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("failed dodgy_transport::release - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed dodgy_transport::outbound_release - not connected, status = {}",
+                static_cast<int>(get_status()));
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -309,7 +299,7 @@ namespace rpc::dodgy
             response);
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("failed dodgy_transport::release release_send");
+            RPC_ERROR("failed dodgy_transport::outbound_release release_send");
             CO_RETURN ret;
         }
 
@@ -320,41 +310,29 @@ namespace rpc::dodgy
             CO_RETURN response.err_code;
         }
 
-        RPC_DEBUG("dodgy_transport::release complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_release complete zone={}", get_zone_id().get_val());
 
         reference_count = response.ref_count;
         out_back_channel.swap(response.back_channel);
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_release(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, options, reference_count);
-        }
-#endif
+
         CO_RETURN rpc::error::OK();
     }
 
     CORO_TASK(void)
-    dodgy_transport::object_released(uint64_t protocol_version,
+    dodgy_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_object_released(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id);
-        }
-#endif
-        RPC_DEBUG("dodgy_transport::object_released zone={}", get_zone_id().get_val());
+
+        RPC_DEBUG("dodgy_transport::outbound_object_released zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR(
-                "failed dodgy_transport::object_released - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed dodgy_transport::outbound_object_released - not connected, status = {}",
+                static_cast<int>(get_status()));
             CO_RETURN;
         }
 
@@ -370,25 +348,25 @@ namespace rpc::dodgy
 
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("failed dodgy_transport::object_released send_payload");
+            RPC_ERROR("failed dodgy_transport::outbound_object_released send_payload");
         }
 
-        RPC_DEBUG("dodgy_transport::object_released complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_object_released complete zone={}", get_zone_id().get_val());
     }
 
     CORO_TASK(void)
-    dodgy_transport::transport_down(uint64_t protocol_version,
+    dodgy_transport::outbound_transport_down(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("dodgy_transport::transport_down zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_transport_down zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR(
-                "failed dodgy_transport::transport_down - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed dodgy_transport::outbound_transport_down - not connected, status = {}",
+                static_cast<int>(get_status()));
             CO_RETURN;
         }
 
@@ -403,10 +381,10 @@ namespace rpc::dodgy
 
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("failed dodgy_transport::transport_down send_payload");
+            RPC_ERROR("failed dodgy_transport::outbound_transport_down send_payload");
         }
 
-        RPC_DEBUG("dodgy_transport::transport_down complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("dodgy_transport::outbound_transport_down complete zone={}", get_zone_id().get_val());
     }
 
     // Producer/consumer tasks for message pumping

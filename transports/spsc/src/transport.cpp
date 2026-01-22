@@ -82,7 +82,7 @@ namespace rpc::spsc
 
     // Client-side i_marshaller implementations
     CORO_TASK(int)
-    spsc_transport::send(uint64_t protocol_version,
+    spsc_transport::outbound_send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -95,19 +95,13 @@ namespace rpc::spsc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_send(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
-        }
-#endif
-        RPC_DEBUG("spsc_transport::send zone={}", get_zone_id().get_val());
+
+        RPC_DEBUG("spsc_transport::outbound_send zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("failed spsc_transport::send - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed spsc_transport::outbound_send - not connected, status = {}", static_cast<int>(get_status()));
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -127,20 +121,20 @@ namespace rpc::spsc
             response);
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("failed spsc_transport::send call_send");
+            RPC_ERROR("failed spsc_transport::outbound_send call_send");
             CO_RETURN ret;
         }
 
         out_buf_.swap(response.payload);
         out_back_channel.swap(response.back_channel);
 
-        RPC_DEBUG("spsc_transport::send complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_send complete zone={}", get_zone_id().get_val());
 
         CO_RETURN response.err_code;
     }
 
     CORO_TASK(void)
-    spsc_transport::post(uint64_t protocol_version,
+    spsc_transport::outbound_post(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -151,19 +145,12 @@ namespace rpc::spsc
         const rpc::span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_post(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
-        }
-#endif
-        RPC_DEBUG("spsc_transport::post zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_post zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("spsc_transport::post: transport not connected");
+            RPC_ERROR("spsc_transport::outbound_post: transport not connected");
             CO_RETURN;
         }
 
@@ -187,26 +174,20 @@ namespace rpc::spsc
     }
 
     CORO_TASK(int)
-    spsc_transport::try_cast(uint64_t protocol_version,
+    spsc_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_try_cast(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, get_zone_id().as_caller(), object_id, interface_id);
-        }
-#endif
-        RPC_DEBUG("spsc_transport::try_cast zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_try_cast zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("failed spsc_transport::try_cast - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed spsc_transport::outbound_try_cast - not connected, status = {}",
+                static_cast<int>(get_status()));
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -225,14 +206,14 @@ namespace rpc::spsc
             CO_RETURN ret;
         }
 
-        RPC_DEBUG("spsc_transport::try_cast complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_try_cast complete zone={}", get_zone_id().get_val());
 
         out_back_channel.swap(response_data.back_channel);
         CO_RETURN response_data.err_code;
     }
 
     CORO_TASK(int)
-    spsc_transport::add_ref(uint64_t protocol_version,
+    spsc_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -242,12 +223,12 @@ namespace rpc::spsc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("spsc_transport::add_ref zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_add_ref zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("spsc_transport::add_ref: transport not connected");
+            RPC_ERROR("spsc_transport::outbound_add_ref: transport not connected");
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -283,26 +264,14 @@ namespace rpc::spsc
             RPC_ASSERT(false);
             CO_RETURN response_data.err_code;
         }
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_add_ref(get_zone_id(),
-                get_adjacent_zone_id(),
-                destination_zone_id,
-                caller_zone_id,
-                object_id,
-                known_direction_zone_id,
-                build_out_param_channel,
-                reference_count);
-        }
-#endif
-        RPC_DEBUG("spsc_transport::add_ref complete zone={}", get_zone_id().get_val());
+
+        RPC_DEBUG("spsc_transport::outbound_add_ref complete zone={}", get_zone_id().get_val());
 
         CO_RETURN rpc::error::OK();
     }
 
     CORO_TASK(int)
-    spsc_transport::release(uint64_t protocol_version,
+    spsc_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
@@ -312,12 +281,13 @@ namespace rpc::spsc
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
         reference_count = 0;
-        RPC_DEBUG("spsc_transport::release zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_release zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("failed spsc_transport::release - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR(
+                "failed spsc_transport::outbound_release - not connected, status = {}", static_cast<int>(get_status()));
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
@@ -330,37 +300,23 @@ namespace rpc::spsc
                 .back_channel = in_back_channel},
             0);
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_release(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, options, reference_count);
-        }
-#endif
         CO_RETURN rpc::error::OK();
     }
 
     CORO_TASK(void)
-    spsc_transport::object_released(uint64_t protocol_version,
+    spsc_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_object_released(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id);
-        }
-#endif
-        RPC_DEBUG("spsc_transport::object_released zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_object_released zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR(
-                "failed spsc_transport::object_released - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed spsc_transport::outbound_object_released - not connected, status = {}",
+                static_cast<int>(get_status()));
             CO_RETURN;
         }
 
@@ -374,28 +330,22 @@ namespace rpc::spsc
                 .back_channel = in_back_channel},
             0); // sequence number 0 for one-way messages
 
-        RPC_DEBUG("spsc_transport::object_released complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_object_released complete zone={}", get_zone_id().get_val());
     }
 
     CORO_TASK(void)
-    spsc_transport::transport_down(uint64_t protocol_version,
+    spsc_transport::outbound_transport_down(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_transport_outbound_transport_down(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id);
-        }
-#endif
-        RPC_DEBUG("spsc_transport::transport_down zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_transport_down zone={}", get_zone_id().get_val());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("failed spsc_transport::transport_down - not connected, status = {}", static_cast<int>(get_status()));
+            RPC_ERROR("failed spsc_transport::outbound_transport_down - not connected, status = {}",
+                static_cast<int>(get_status()));
             CO_RETURN;
         }
 
@@ -408,7 +358,7 @@ namespace rpc::spsc
                 .back_channel = in_back_channel},
             0); // sequence number 0 for one-way messages
 
-        RPC_DEBUG("spsc_transport::transport_down complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_transport_down complete zone={}", get_zone_id().get_val());
     }
 
     // Producer/consumer tasks for message pumping
