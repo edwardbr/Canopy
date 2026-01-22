@@ -245,6 +245,21 @@ svg {
     opacity: 0.8;
 }
 
+.activity-line {
+    stroke: #f97316;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 8, 6;
+    opacity: 0.9;
+    pointer-events: none;
+    animation: activity-pulse 1s linear infinite;
+}
+
+@keyframes activity-pulse {
+    0% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: -28; }
+}
+
 .zone-bg {
     fill: #111113;
     stroke: #00d2ff;

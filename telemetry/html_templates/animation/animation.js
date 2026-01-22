@@ -142,9 +142,9 @@ function initAnimationTelemetry() {
         { key: 'interface_proxy', label: 'Interface Proxies', defaultVisible: true },
         { key: 'stub', label: 'Stubs', defaultVisible: false },
         { key: 'impl', label: 'Implementations', defaultVisible: true },
-        { key: 'activity', label: 'Activity Pulses', defaultVisible: false },
         { key: 'passthrough', label: 'Passthroughs', defaultVisible: false },
-        { key: 'transport', label: 'Transports', defaultVisible: true }
+        { key: 'transport', label: 'Transports', defaultVisible: true },
+        { key: 'activity', label: 'Activity Pulses', defaultVisible: false }
     ];
     const typeVisibility = new Map();
     nodeTypeFilters.forEach((filter) => typeVisibility.set(filter.key, filter.defaultVisible));
@@ -554,6 +554,7 @@ function initAnimationTelemetry() {
             checkbox.addEventListener('change', () => {
                 typeVisibility.set(filter.key, checkbox.checked);
                 rebuildVisualization();
+                rebuildEventLog();
             });
         });
     }
@@ -597,6 +598,7 @@ function initAnimationTelemetry() {
             }
             resizeSvg();
             rebuildVisualization();
+            rebuildEventLog();
         });
     }
 
@@ -881,94 +883,94 @@ function initAnimationTelemetry() {
             transportAuditState.lastEventTimestamp = evt.timestamp;
         }
         switch (evt.type) {
-        case 'service_creation':
-            createZone(evt);
-            break;
-        case 'service_deletion':
-            deleteZone(evt);
-            break;
-        case 'service_proxy_creation':
-        case 'cloned_service_proxy_creation':
-            createServiceProxy(evt);
-            break;
-        case 'service_proxy_deletion':
-            deleteNode(makeServiceProxyId(evt.data));
-            break;
-        case 'service_proxy_add_ref':
-        case 'service_proxy_release':
-        case 'service_proxy_add_external_ref':
-        case 'service_proxy_release_external_ref':
-            updateProxyCounts(evt);
-            break;
-        case 'service_try_cast':
-        case 'service_add_ref':
-            detectZoneHierarchy(evt);
-            pulseActivity(evt);
-            break;
-        case 'service_release':
-        case 'service_proxy_try_cast':
-            pulseActivity(evt);
-            break;
-        case 'impl_creation':
-            createImpl(evt);
-            break;
-        case 'impl_deletion':
-            deleteImpl(evt);
-            break;
-        case 'stub_creation':
-            createStub(evt);
-            break;
-        case 'stub_deletion':
-            deleteStub(evt);
-            break;
-        case 'stub_add_ref':
-        case 'stub_release':
-            updateStubCounts(evt);
-            break;
-        case 'object_proxy_creation':
-            createObjectProxy(evt);
-            break;
-        case 'object_proxy_deletion':
-            deleteNode(makeObjectProxyId(evt.data));
-            break;
-        case 'interface_proxy_creation':
-            createInterfaceProxy(evt);
-            break;
-        case 'interface_proxy_deletion':
-            deleteInterfaceProxy(evt);
-            break;
-        case 'interface_proxy_send':
-        case 'stub_send':
-            pulseActivity(evt);
-            break;
-        case 'transport_creation':
-            createTransport(evt);
-            break;
-        case 'transport_deletion':
-            deleteTransport(evt);
-            break;
-        case 'transport_outbound_add_ref':
-        case 'transport_inbound_add_ref':
-        case 'transport_outbound_release':
-        case 'transport_inbound_release':
-            updateTransportRefCounts(evt);
-            break;
-        case 'pass_through_creation':
-            createPassthrough(evt);
-            break;
-        case 'pass_through_deletion':
-            deletePassthrough(evt);
-            break;
-        case 'pass_through_add_ref':
-        case 'pass_through_release':
-            updatePassthroughCounts(evt);
-            break;
-        case 'message':
-            appendLog(evt);
-            break;
-        default:
-            appendLog(evt);
-            break;
+            case 'service_creation':
+                createZone(evt);
+                break;
+            case 'service_deletion':
+                deleteZone(evt);
+                break;
+            case 'service_proxy_creation':
+            case 'cloned_service_proxy_creation':
+                createServiceProxy(evt);
+                break;
+            case 'service_proxy_deletion':
+                deleteNode(makeServiceProxyId(evt.data));
+                break;
+            case 'service_proxy_add_ref':
+            case 'service_proxy_release':
+            case 'service_proxy_add_external_ref':
+            case 'service_proxy_release_external_ref':
+                updateProxyCounts(evt);
+                break;
+            case 'service_try_cast':
+            case 'service_add_ref':
+                detectZoneHierarchy(evt);
+                pulseActivity(evt);
+                break;
+            case 'service_release':
+            case 'service_proxy_try_cast':
+                pulseActivity(evt);
+                break;
+            case 'impl_creation':
+                createImpl(evt);
+                break;
+            case 'impl_deletion':
+                deleteImpl(evt);
+                break;
+            case 'stub_creation':
+                createStub(evt);
+                break;
+            case 'stub_deletion':
+                deleteStub(evt);
+                break;
+            case 'stub_add_ref':
+            case 'stub_release':
+                updateStubCounts(evt);
+                break;
+            case 'object_proxy_creation':
+                createObjectProxy(evt);
+                break;
+            case 'object_proxy_deletion':
+                deleteNode(makeObjectProxyId(evt.data));
+                break;
+            case 'interface_proxy_creation':
+                createInterfaceProxy(evt);
+                break;
+            case 'interface_proxy_deletion':
+                deleteInterfaceProxy(evt);
+                break;
+            case 'interface_proxy_send':
+            case 'stub_send':
+                pulseActivity(evt);
+                break;
+            case 'transport_creation':
+                createTransport(evt);
+                break;
+            case 'transport_deletion':
+                deleteTransport(evt);
+                break;
+            case 'transport_outbound_add_ref':
+            case 'transport_inbound_add_ref':
+            case 'transport_outbound_release':
+            case 'transport_inbound_release':
+                updateTransportRefCounts(evt);
+                break;
+            case 'pass_through_creation':
+                createPassthrough(evt);
+                break;
+            case 'pass_through_deletion':
+                deletePassthrough(evt);
+                break;
+            case 'pass_through_add_ref':
+            case 'pass_through_release':
+                updatePassthroughCounts(evt);
+                break;
+            case 'message':
+                appendLog(evt);
+                break;
+            default:
+                appendLog(evt);
+                break;
         }
     }
 
@@ -2101,7 +2103,43 @@ function initAnimationTelemetry() {
         return `<strong>${formatZoneLabel(node.zone)}</strong><br/>${parentDesc}`;
     }
 
-    function appendLog(evt) {
+    function eventTypeToFilterKey(type) {
+        if (type === 'cloned_service_proxy_creation' || type.startsWith('service_proxy_')) {
+            return 'service_proxy';
+        }
+        if (type.startsWith('object_proxy_')) {
+            return 'object_proxy';
+        }
+        if (type.startsWith('interface_proxy_')) {
+            return 'interface_proxy';
+        }
+        if (type.startsWith('stub_')) {
+            return 'stub';
+        }
+        if (type.startsWith('impl_')) {
+            return 'impl';
+        }
+        if (type.startsWith('pass_through_')) {
+            return 'passthrough';
+        }
+        if (type.startsWith('transport_') || type === 'transport_ref_audit') {
+            return 'transport';
+        }
+        return null;
+    }
+
+    function shouldShowEvent(evt) {
+        const key = eventTypeToFilterKey(evt.type || '');
+        if (!key) {
+            return true;
+        }
+        return typeVisibility.get(key);
+    }
+
+    function appendLog(evt, options = {}) {
+        if (!shouldShowEvent(evt)) {
+            return;
+        }
         const li = document.createElement('li');
         const time = evt.timestamp.toFixed(3).padStart(7, ' ');
         li.innerHTML = `<div class="timestamp">${time}s · ${evt.type}</div><div>${formatEventSummary(evt)}</div>`;
@@ -2109,7 +2147,7 @@ function initAnimationTelemetry() {
         while (eventLog.childNodes.length > maxLogEntries) {
             eventLog.removeChild(eventLog.firstChild);
         }
-        if (eventLogBody && !logCollapsed) {
+        if (eventLogBody && !logCollapsed && !options.skipScroll) {
             eventLogBody.scrollTop = eventLogBody.scrollHeight;
         }
     }
@@ -2118,44 +2156,60 @@ function initAnimationTelemetry() {
         eventLog.textContent = '';
     }
 
+    function rebuildEventLog() {
+        if (!eventLog) {
+            return;
+        }
+        clearLog();
+        if (processedIndex <= 0) {
+            return;
+        }
+        for (let i = 0; i < processedIndex; i += 1) {
+            appendLog(events[i], { skipScroll: true });
+        }
+        if (eventLogBody && !logCollapsed) {
+            eventLogBody.scrollTop = eventLogBody.scrollHeight;
+        }
+    }
+
     function formatEventSummary(evt) {
         const data = evt.data;
         switch (evt.type) {
-        case 'transport_ref_audit':
-            return data.message || 'transport ref audit';
-        case 'service_creation':
-            return `zone ${data.zone} created (parent ${data.parentZone})`;
-        case 'service_deletion':
-            return `zone ${data.zone} deleted`;
-        case 'service_proxy_creation':
-        case 'cloned_service_proxy_creation':
-            return `service proxy ${data.serviceProxyName || ''} from zone ${data.zone} to ${data.destinationZone}`;
-        case 'service_proxy_deletion':
-            return `service proxy removed in zone ${data.zone}`;
-        case 'impl_creation':
-            return `impl ${data.name} created @${data.address} in zone ${data.zone}`;
-        case 'impl_deletion':
-            return `impl ${data.address} removed from zone ${data.zone}`;
-        case 'stub_creation':
-            return `stub ${data.object} created in zone ${data.zone}`;
-        case 'stub_deletion':
-            return `stub ${data.object} removed from zone ${data.zone}`;
-        case 'object_proxy_creation':
-            return `object proxy ${data.object} from zone ${data.zone} to ${data.destinationZone}`;
-        case 'interface_proxy_creation':
-            return `interface proxy ${data.name} on object ${data.object}`;
-        case 'pass_through_creation':
-            return `passthrough in zone ${data.zone_id}: fwd→${data.forward_destination} rev→${data.reverse_destination}`;
-        case 'pass_through_deletion':
-            return `passthrough deleted in zone ${data.zone_id}: fwd→${data.forward_destination} rev→${data.reverse_destination}`;
-        case 'pass_through_add_ref':
-            return `passthrough add_ref in zone ${data.zone_id}: S+${data.shared_delta || 0} O+${data.optimistic_delta || 0}`;
-        case 'pass_through_release':
-            return `passthrough release in zone ${data.zone_id}: S${data.shared_delta || 0} O${data.optimistic_delta || 0}`;
-        case 'message':
-            return data.message || 'telemetry message';
-        default:
-            return Object.keys(data || {}).map((key) => `${key}: ${data[key]}`).join(', ');
+            case 'transport_ref_audit':
+                return data.message || 'transport ref audit';
+            case 'service_creation':
+                return `zone ${data.zone} created (parent ${data.parentZone})`;
+            case 'service_deletion':
+                return `zone ${data.zone} deleted`;
+            case 'service_proxy_creation':
+            case 'cloned_service_proxy_creation':
+                return `service proxy ${data.serviceProxyName || ''} from zone ${data.zone} to ${data.destinationZone}`;
+            case 'service_proxy_deletion':
+                return `service proxy removed in zone ${data.zone}`;
+            case 'impl_creation':
+                return `impl ${data.name} created @${data.address} in zone ${data.zone}`;
+            case 'impl_deletion':
+                return `impl ${data.address} removed from zone ${data.zone}`;
+            case 'stub_creation':
+                return `stub ${data.object} created in zone ${data.zone}`;
+            case 'stub_deletion':
+                return `stub ${data.object} removed from zone ${data.zone}`;
+            case 'object_proxy_creation':
+                return `object proxy ${data.object} from zone ${data.zone} to ${data.destinationZone}`;
+            case 'interface_proxy_creation':
+                return `interface proxy ${data.name} on object ${data.object}`;
+            case 'pass_through_creation':
+                return `passthrough in zone ${data.zone_id}: fwd→${data.forward_destination} rev→${data.reverse_destination}`;
+            case 'pass_through_deletion':
+                return `passthrough deleted in zone ${data.zone_id}: fwd→${data.forward_destination} rev→${data.reverse_destination}`;
+            case 'pass_through_add_ref':
+                return `passthrough add_ref in zone ${data.zone_id}: S+${data.shared_delta || 0} O+${data.optimistic_delta || 0}`;
+            case 'pass_through_release':
+                return `passthrough release in zone ${data.zone_id}: S${data.shared_delta || 0} O${data.optimistic_delta || 0}`;
+            case 'message':
+                return data.message || 'telemetry message';
+            default:
+                return Object.keys(data || {}).map((key) => `${key}: ${data[key]}`).join(', ');
         }
     }
 
@@ -2163,26 +2217,6 @@ function initAnimationTelemetry() {
         const legend = d3.select('body').append('div').attr('class', 'legend');
         const info = legend.append('div').attr('class', 'info-banner');
         info.html('Zoom with mouse wheel · Pan by dragging the canvas · Drag nodes to pin positions');
-        const items = legend.append('div');
-        const groups = [
-            { key: 'zone', label: 'Zone (Service)' },
-            { key: 'transport', label: 'Transport' },
-            { key: 'service_proxy', label: 'Service Proxy' },
-            { key: 'passthrough', label: 'Passthrough' },
-            { key: 'object_proxy', label: 'Object Proxy' },
-            { key: 'interface_proxy', label: 'Interface Proxy' },
-            { key: 'impl', label: 'Implementation Object' },
-            { key: 'stub', label: 'Stub' }
-        ];
-        items.selectAll('span.item')
-            .data(groups)
-            .enter()
-            .append('span')
-            .attr('class', 'item')
-            .html((d) => {
-                const extraClass = d.key === 'zone' ? ' zone' : '';
-                return `<span class="swatch${extraClass}" style="background:${palette[d.key]}"></span>${d.label}`;
-            });
     }
 
     function getTransportPairLines(zoneNumber, adjacentNumber) {
@@ -2251,6 +2285,8 @@ function initAnimationTelemetry() {
     }
 
     function rebuildVisualization() {
+        const showTransports = typeVisibility.get('transport');
+        const showPassthroughs = typeVisibility.get('passthrough');
         // Clear existing visualization
         g.selectAll('*').remove();
         clearObject(PortRegistry);
@@ -2289,9 +2325,12 @@ function initAnimationTelemetry() {
         // Calculate zone dimensions
         Object.values(zones).forEach(z => {
             z.transportMetrics = {};
-            const adjacentIds = new Set(z.transports.map((t) => t.adjId));
-            if (z.parentId && z.parentId !== 0) {
-                adjacentIds.add(z.parentId);
+            const adjacentIds = new Set();
+            if (showTransports) {
+                z.transports.forEach((t) => adjacentIds.add(t.adjId));
+                if (z.parentId && z.parentId !== 0) {
+                    adjacentIds.add(z.parentId);
+                }
             }
             let maxTransportBoxWidth = transportMinWidth;
             let maxTransportBoxHeight = transportMinHeight;
@@ -2309,24 +2348,28 @@ function initAnimationTelemetry() {
             z.passthroughMetrics = [];
             let maxPassthroughBoxWidth = passthroughMinWidth;
             let maxPassthroughBoxHeight = passthroughMinHeight;
-            z.passthroughs.forEach((p) => {
-                const passthroughId = makePassthroughId({ zone_id: z.id, forward_destination: p.fwd, reverse_destination: p.rev });
-                const passthroughNode = nodes.get(passthroughId);
-                const sharedCount = passthroughNode ? passthroughNode.sharedCount : 0;
-                const optimisticCount = passthroughNode ? passthroughNode.optimisticCount : 0;
-                const metrics = computePassthroughMetrics(p.fwd, p.rev, sharedCount, optimisticCount);
-                z.passthroughMetrics.push(metrics);
-                maxPassthroughBoxWidth = Math.max(maxPassthroughBoxWidth, metrics.width);
-                maxPassthroughBoxHeight = Math.max(maxPassthroughBoxHeight, metrics.height);
-            });
+            if (showPassthroughs) {
+                z.passthroughs.forEach((p) => {
+                    const passthroughId = makePassthroughId({ zone_id: z.id, forward_destination: p.fwd, reverse_destination: p.rev });
+                    const passthroughNode = nodes.get(passthroughId);
+                    const sharedCount = passthroughNode ? passthroughNode.sharedCount : 0;
+                    const optimisticCount = passthroughNode ? passthroughNode.optimisticCount : 0;
+                    const metrics = computePassthroughMetrics(p.fwd, p.rev, sharedCount, optimisticCount);
+                    z.passthroughMetrics.push(metrics);
+                    maxPassthroughBoxWidth = Math.max(maxPassthroughBoxWidth, metrics.width);
+                    maxPassthroughBoxHeight = Math.max(maxPassthroughBoxHeight, metrics.height);
+                });
+            }
             z.passthroughBoxWidth = maxPassthroughBoxWidth;
             z.passthroughBoxHeight = maxPassthroughBoxHeight;
 
-            const colCount = Math.max(z.transports.length, z.passthroughs.length, 1);
+            const transportCount = showTransports ? z.transports.length : 0;
+            const passthroughCount = showPassthroughs ? z.passthroughs.length : 0;
+            const colCount = Math.max(transportCount, passthroughCount, 1);
             const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth);
             z.width = Math.max(260, colCount * (maxBoxWidth + 40));
-            const baseHeight = z.passthroughs.length > 0 ? 260 : 140;
-            const totalHeight = 120 + maxTransportBoxHeight + (z.passthroughs.length > 0 ? maxPassthroughBoxHeight : 0);
+            const baseHeight = passthroughCount > 0 ? 260 : 140;
+            const totalHeight = 120 + maxTransportBoxHeight + (passthroughCount > 0 ? maxPassthroughBoxHeight : 0);
             z.height = Math.max(baseHeight, totalHeight);
         });
 
@@ -2366,7 +2409,7 @@ function initAnimationTelemetry() {
             const absY = getY(d);
 
             // IN port (parent connection at top center)
-            if (d.parent && d.parent.data.id !== 0) {
+            if (showTransports && d.parent && d.parent.data.id !== 0) {
                 const parentMetrics = z.transportMetrics
                     ? z.transportMetrics[d.parent.data.id]
                     : null;
@@ -2380,33 +2423,90 @@ function initAnimationTelemetry() {
             }
 
             // OUT ports (child connections at bottom, distributed evenly)
-            z.transports.forEach((t, i) => {
-                const transportMetrics = z.transportMetrics
-                    ? z.transportMetrics[t.adjId]
-                    : null;
-                const tx = (z.transports.length > 1)
-                    ? (i / (z.transports.length - 1) * (z.width - 140)) - (z.width / 2 - 70)
-                    : 0;
-                const ty = -z.height;
-                PortRegistry[`${z.id}:${t.adjId}`] = {
-                    relX: tx, relY: ty,
-                    absX: absX + tx, absY: absY + ty,
-                    boxWidth: transportMetrics ? transportMetrics.width : transportMinWidth,
-                    boxHeight: transportMetrics ? transportMetrics.height : transportMinHeight,
-                    lines: transportMetrics ? transportMetrics.lines : [`TO:${t.adjId}`, 'no refs']
-                };
-            });
+            if (showTransports) {
+                z.transports.forEach((t, i) => {
+                    const transportMetrics = z.transportMetrics
+                        ? z.transportMetrics[t.adjId]
+                        : null;
+                    const tx = (z.transports.length > 1)
+                        ? (i / (z.transports.length - 1) * (z.width - 140)) - (z.width / 2 - 70)
+                        : 0;
+                    const ty = -z.height;
+                    PortRegistry[`${z.id}:${t.adjId}`] = {
+                        relX: tx, relY: ty,
+                        absX: absX + tx, absY: absY + ty,
+                        boxWidth: transportMetrics ? transportMetrics.width : transportMinWidth,
+                        boxHeight: transportMetrics ? transportMetrics.height : transportMinHeight,
+                        lines: transportMetrics ? transportMetrics.lines : [`TO:${t.adjId}`, 'no refs']
+                    };
+                });
+            }
         });
 
         // Draw trunk lines (behind zones) - skip connections involving virtual root zone 0
-        g.selectAll('.trunk-line')
-            .data(root.descendants().filter(d => d.parent && d.data.id !== 0 && d.parent.data.id !== 0))
-            .enter().append('line')
-            .attr('class', 'trunk-line')
-            .attr('x1', d => PortRegistry[`${d.parent.data.id}:${d.data.id}`].absX)
-            .attr('y1', d => PortRegistry[`${d.parent.data.id}:${d.data.id}`].absY)
-            .attr('x2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absX)
-            .attr('y2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absY);
+        if (showTransports) {
+            g.selectAll('.trunk-line')
+                .data(root.descendants().filter(d => d.parent && d.data.id !== 0 && d.parent.data.id !== 0))
+                .enter().append('line')
+                .attr('class', 'trunk-line')
+                .attr('x1', d => PortRegistry[`${d.parent.data.id}:${d.data.id}`].absX)
+                .attr('y1', d => PortRegistry[`${d.parent.data.id}:${d.data.id}`].absY)
+                .attr('x2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absX)
+                .attr('y2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absY);
+        }
+
+        const zonePositions = new Map();
+        root.descendants().filter(d => d.data.id !== 0).forEach(d => {
+            zonePositions.set(d.data.id, { x: getX(d), y: getY(d) });
+        });
+
+        const getZoneNumberFromEndpoint = (endpoint) => {
+            const id = resolveNodeId(endpoint);
+            if (typeof id === 'number') {
+                return id;
+            }
+            if (typeof id === 'string' && id.startsWith('zone-')) {
+                const number = Number(id.slice(5));
+                return Number.isFinite(number) ? number : null;
+            }
+            return null;
+        };
+
+        const showActivity = typeVisibility.get('activity');
+        if (showActivity) {
+            const activityLinks = Array.from(links.values())
+                .filter((link) => link.type === 'activity')
+                .map((link) => {
+                    const sourceZone = getZoneNumberFromEndpoint(link.source);
+                    const targetZone = getZoneNumberFromEndpoint(link.target);
+                    if (sourceZone === null || targetZone === null) {
+                        return null;
+                    }
+                    const sourcePos = zonePositions.get(sourceZone);
+                    const targetPos = zonePositions.get(targetZone);
+                    if (!sourcePos || !targetPos) {
+                        return null;
+                    }
+                    return {
+                        id: link.id,
+                        x1: sourcePos.x,
+                        y1: sourcePos.y,
+                        x2: targetPos.x,
+                        y2: targetPos.y
+                    };
+                })
+                .filter(Boolean);
+
+            g.selectAll('.activity-line')
+                .data(activityLinks, (d) => d.id)
+                .enter()
+                .append('line')
+                .attr('class', 'activity-line')
+                .attr('x1', (d) => d.x1)
+                .attr('y1', (d) => d.y1)
+                .attr('x2', (d) => d.x2)
+                .attr('y2', (d) => d.y2);
+        }
 
         // Draw zones with internal circuitry (skip virtual root zone 0)
         const nodeGroups = g.selectAll('.node')
@@ -2414,7 +2514,7 @@ function initAnimationTelemetry() {
             .enter().append('g')
             .attr('transform', d => `translate(${getX(d)},${getY(d)})`);
 
-        nodeGroups.each(function(d) {
+        nodeGroups.each(function (d) {
             const zoneSel = d3.select(this);
             const z = d.data.data;
             const svcY = -z.height / 2;
@@ -2442,111 +2542,115 @@ function initAnimationTelemetry() {
                 .text(z.name.toUpperCase());
 
             // Render ports and wires
-            Object.keys(PortRegistry).forEach(key => {
-                const [zId, adjId] = key.split(':').map(Number);
-                if (zId !== z.id) return;
+            if (showTransports) {
+                Object.keys(PortRegistry).forEach(key => {
+                    const [zId, adjId] = key.split(':').map(Number);
+                    if (zId !== z.id) return;
 
-                const p = PortRegistry[key];
-                const pG = zoneSel.append('g').attr('transform', `translate(${p.relX},${p.relY})`);
+                    const p = PortRegistry[key];
+                    const pG = zoneSel.append('g').attr('transform', `translate(${p.relX},${p.relY})`);
 
-                const boxWidth = p.boxWidth || transportMinWidth;
-                const boxHeight = p.boxHeight || transportMinHeight;
-                const lines = p.lines || [p.relY === 0 ? `IN:${adjId}` : `TO:${adjId}`];
+                    const boxWidth = p.boxWidth || transportMinWidth;
+                    const boxHeight = p.boxHeight || transportMinHeight;
+                    const lines = p.lines || [p.relY === 0 ? `IN:${adjId}` : `TO:${adjId}`];
 
-                // Check if this transport has errors
-                const transportId = makeTransportId(zId, adjId);
-                const hasError = transportErrors.has(transportId);
+                    // Check if this transport has errors
+                    const transportId = makeTransportId(zId, adjId);
+                    const hasError = transportErrors.has(transportId);
 
-                pG.append('rect')
-                    .attr('class', 'transport-box')
-                    .attr('x', -boxWidth / 2)
-                    .attr('y', -boxHeight / 2)
-                    .attr('width', boxWidth)
-                    .attr('height', boxHeight)
-                    .attr('rx', 4)
-                    .attr('stroke', hasError ? '#ff0000' : null)
-                    .attr('stroke-width', hasError ? 3 : null);
+                    pG.append('rect')
+                        .attr('class', 'transport-box')
+                        .attr('x', -boxWidth / 2)
+                        .attr('y', -boxHeight / 2)
+                        .attr('width', boxWidth)
+                        .attr('height', boxHeight)
+                        .attr('rx', 4)
+                        .attr('stroke', hasError ? '#ff0000' : null)
+                        .attr('stroke-width', hasError ? 3 : null);
 
-                const textStartX = -boxWidth / 2 + transportBoxPaddingX;
-                const textStartY = -boxHeight / 2 + transportBoxPaddingY + 9;
-                lines.forEach((line, idx) => {
-                    pG.append('text')
-                        .attr('class', idx === 0 ? 'transport-label' : 'transport-detail')
-                        .attr('x', textStartX)
-                        .attr('y', textStartY + idx * transportLineHeight)
-                        .attr('text-anchor', 'start')
-                        .text(line);
+                    const textStartX = -boxWidth / 2 + transportBoxPaddingX;
+                    const textStartY = -boxHeight / 2 + transportBoxPaddingY + 9;
+                    lines.forEach((line, idx) => {
+                        pG.append('text')
+                            .attr('class', idx === 0 ? 'transport-label' : 'transport-detail')
+                            .attr('x', textStartX)
+                            .attr('y', textStartY + idx * transportLineHeight)
+                            .attr('text-anchor', 'start')
+                            .text(line);
+                    });
+
+                    // Wire from service to port
+                    const halfBoxHeight = boxHeight / 2;
+                    zoneSel.append('line')
+                        .attr('class', 'wire')
+                        .attr('x1', p.relX)
+                        .attr('y1', p.relY + (p.relY === 0 ? -halfBoxHeight : halfBoxHeight))
+                        .attr('x2', 0)
+                        .attr('y2', svcY + (p.relY === 0 ? 15 : -15));
                 });
-
-                // Wire from service to port
-                const halfBoxHeight = boxHeight / 2;
-                zoneSel.append('line')
-                    .attr('class', 'wire')
-                    .attr('x1', p.relX)
-                    .attr('y1', p.relY + (p.relY === 0 ? -halfBoxHeight : halfBoxHeight))
-                    .attr('x2', 0)
-                    .attr('y2', svcY + (p.relY === 0 ? 15 : -15));
-            });
+            }
 
             // Render passthroughs
-            z.passthroughs.forEach((p, i) => {
-                const px = (z.passthroughs.length > 1)
-                    ? (i / (z.passthroughs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
-                    : 0;
-                const py = svcY + 80;
+            if (showPassthroughs) {
+                z.passthroughs.forEach((p, i) => {
+                    const px = (z.passthroughs.length > 1)
+                        ? (i / (z.passthroughs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
+                        : 0;
+                    const py = svcY + 80;
 
-                const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
-                const boxWidth = metrics.width;
-                const boxHeight = metrics.height;
-                const lines = metrics.lines;
+                    const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
+                    const boxWidth = metrics.width;
+                    const boxHeight = metrics.height;
+                    const lines = metrics.lines;
 
-                const pG = zoneSel.append('g').attr('transform', `translate(${px},${py})`);
+                    const pG = zoneSel.append('g').attr('transform', `translate(${px},${py})`);
 
-                pG.append('rect')
-                    .attr('class', 'pass-box')
-                    .attr('x', -boxWidth / 2)
-                    .attr('y', -boxHeight / 2)
-                    .attr('width', boxWidth)
-                    .attr('height', boxHeight)
-                    .attr('rx', 4);
+                    pG.append('rect')
+                        .attr('class', 'pass-box')
+                        .attr('x', -boxWidth / 2)
+                        .attr('y', -boxHeight / 2)
+                        .attr('width', boxWidth)
+                        .attr('height', boxHeight)
+                        .attr('rx', 4);
 
-                const textStartX = -boxWidth / 2 + passthroughBoxPaddingX;
-                const textStartY = -boxHeight / 2 + passthroughBoxPaddingY + 9;
-                lines.forEach((line, idx) => {
-                    pG.append('text')
-                        .attr('class', idx === 0 ? 'pass-label' : 'pass-detail')
-                        .attr('x', textStartX)
-                        .attr('y', textStartY + idx * passthroughLineHeight)
-                        .attr('text-anchor', 'start')
-                        .text(line);
+                    const textStartX = -boxWidth / 2 + passthroughBoxPaddingX;
+                    const textStartY = -boxHeight / 2 + passthroughBoxPaddingY + 9;
+                    lines.forEach((line, idx) => {
+                        pG.append('text')
+                            .attr('class', idx === 0 ? 'pass-label' : 'pass-detail')
+                            .attr('x', textStartX)
+                            .attr('y', textStartY + idx * passthroughLineHeight)
+                            .attr('text-anchor', 'start')
+                            .text(line);
+                    });
+
+                    // Route wires through passthrough
+                    const nextHopRev = findNextHop(z.id, p.rev);
+                    const nextHopFwd = findNextHop(z.id, p.fwd);
+                    const rP = PortRegistry[`${z.id}:${nextHopRev}`];
+                    const fP = PortRegistry[`${z.id}:${nextHopFwd}`];
+
+                    if (rP && fP && (rP !== fP)) {
+                        const halfBoxHeight = boxHeight / 2;
+                        // Wire from reverse port to passthrough
+                        zoneSel.append('line')
+                            .attr('class', 'wire routing')
+                            .attr('x1', rP.relX)
+                            .attr('y1', rP.relY + (rP.relY === 0 ? -15 : 15))
+                            .attr('x2', px)
+                            .attr('y2', py + halfBoxHeight);
+
+                        // Wire from passthrough to forward port
+                        zoneSel.append('line')
+                            .attr('class', 'wire routing')
+                            .attr('x1', px)
+                            .attr('y1', py - halfBoxHeight)
+                            .attr('x2', fP.relX)
+                            .attr('y2', fP.relY + (fP.relY === 0 ? -15 : 15));
+                    }
+                    // If routing fails, passthrough is rendered without wiring
                 });
-
-                // Route wires through passthrough
-                const nextHopRev = findNextHop(z.id, p.rev);
-                const nextHopFwd = findNextHop(z.id, p.fwd);
-                const rP = PortRegistry[`${z.id}:${nextHopRev}`];
-                const fP = PortRegistry[`${z.id}:${nextHopFwd}`];
-
-                if (rP && fP && (rP !== fP)) {
-                    const halfBoxHeight = boxHeight / 2;
-                    // Wire from reverse port to passthrough
-                    zoneSel.append('line')
-                        .attr('class', 'wire routing')
-                        .attr('x1', rP.relX)
-                        .attr('y1', rP.relY + (rP.relY === 0 ? -15 : 15))
-                        .attr('x2', px)
-                        .attr('y2', py + halfBoxHeight);
-
-                    // Wire from passthrough to forward port
-                    zoneSel.append('line')
-                        .attr('class', 'wire routing')
-                        .attr('x1', px)
-                        .attr('y1', py - halfBoxHeight)
-                        .attr('x2', fP.relX)
-                        .attr('y2', fP.relY + (fP.relY === 0 ? -15 : 15));
-                }
-                // If routing fails, passthrough is rendered without wiring
-            });
+            }
         });
     }
 
