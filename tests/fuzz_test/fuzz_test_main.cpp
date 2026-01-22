@@ -1615,7 +1615,7 @@ int main(int argc, char** argv)
                     // Add console telemetry for this test
                     std::shared_ptr<rpc::i_telemetry_service> console_service;
                     if (rpc::console_telemetry_service::create(
-                            console_service, "autonomous_test", "autonomous_test", "../../rpc_test_diagram/"))
+                            console_service, "autonomous_test", "autonomous_test", "../../telemetry/reports/"))
                     {
                         multiplexing_service->add_child(console_service);
                     }
@@ -1650,7 +1650,7 @@ int main(int argc, char** argv)
                     // Add console telemetry for this test
                     std::shared_ptr<rpc::i_telemetry_service> console_service;
                     if (rpc::console_telemetry_service::create(
-                            console_service, "autonomous_test", "autonomous_test", "../../rpc_test_diagram/"))
+                            console_service, "autonomous_test", "autonomous_test", "../../telemetry/reports/"))
                     {
                         multiplexing_service->add_child(console_service);
                     }

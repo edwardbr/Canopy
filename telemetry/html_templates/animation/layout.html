@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>RPC++ Telemetry Animation</title>
+  <link rel="stylesheet" href="animation.css" />
+</head>
+
+<body>
+  <div class="header">
+    <h1 id="page-title">RPC++ Telemetry Animation</h1>
+    <div class="subtitle" id="page-subtitle"></div>
+  </div>
+  <div class="controls">
+    <button id="start-button">Start</button>
+    <button id="stop-button" disabled>Stop</button>
+    <button id="reset-button">Reset</button>
+    <input type="range" id="timeline-slider" min="0" value="0" />
+    <span class="time-label" id="time-display">0.000s</span>
+    <label class="speed-control">Speed
+      <select id="speed-select">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1">1×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+        <option value="5" selected>5×</option>
+        <option value="10">10×</option>
+        <option value="20">20×</option>
+      </select>
+    </label>
+    <div class="type-filters" id="type-filters">
+      <span class="filter-title">Show</span>
+    </div>
+    <label class="filter-item">
+      <input type="checkbox" id="show-log-checkbox" checked>
+      <span>Show Log</span>
+    </label>
+  </div>
+  <div id="main-layout">
+    <div id="viz-container"></div>
+    <aside id="event-panel">
+      <div class="event-log-header">
+        <h2>Event Log</h2>
+      </div>
+      <div id="event-log-body">
+        <ul id="event-log"></ul>
+      </div>
+    </aside>
+  </div>
+  <script>
+    (function () {
+      let telemetryReady = false;
+
+      function applyTelemetryPayload(payload) {
+        const safePayload = payload && typeof payload === 'object' ? payload : {};
+        window.telemetryMeta = safePayload.telemetryMeta || {};
+        window.events = Array.isArray(safePayload.events) ? safePayload.events : [];
+        window.totalDuration = typeof safePayload.totalDuration === 'number' ? safePayload.totalDuration : 0;
+        telemetryReady = true;
+        if (window.initAnimationTelemetry) {
+          window.initAnimationTelemetry();
+        }
+      }
+
+      window.addEventListener('message', (event) => {
+        if (!event || !event.data) {
+          return;
+        }
+        if (event.data && event.data.telemetryMeta && event.data.events) {
+          applyTelemetryPayload(event.data);
+        }
+      });
+
+      if (window.name) {
+        try {
+          applyTelemetryPayload(JSON.parse(window.name));
+        } catch (err) {
+          console.error('Telemetry payload parse failed', err);
+        }
+        window.name = '';
+      }
+
+      window.__maybeInitTelemetry = function () {
+        if (telemetryReady && window.initAnimationTelemetry) {
+          window.initAnimationTelemetry();
+        }
+      };
+    })();
+  </script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="animation.js"></script>
+  <script>
+    if (window.__maybeInitTelemetry) {
+      window.__maybeInitTelemetry();
+    }
+  </script>
+</body>
+
+</html>

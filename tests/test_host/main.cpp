@@ -41,15 +41,15 @@ namespace
         args::Flag enable_console_telemetry(
             parser, "console", "Add console telemetry service", {"telemetry-console", "console"});
         args::ValueFlag<std::string> console_path(
-            parser, "console-path", "Console telemetry output path", {"console-path"}, "../../rpc_test_diagram/");
+            parser, "console-path", "Console telemetry output path", {"console-path"}, "../../telemetry/reports/");
         args::Flag enable_sequence_diagram_telemetry(
             parser, "sequence", "Add sequence diagram telemetry service", {"telemetry-sequence"});
         args::ValueFlag<std::string> sequence_path(
-            parser, "sequence-path", "Sequence diagram output path", {"sequence-path"}, "../../rpc_test_diagram/");
+            parser, "sequence-path", "Sequence diagram output path", {"sequence-path"}, "../../telemetry/reports/");
         args::Flag enable_animation_telemetry(
             parser, "animation", "Add animation telemetry service", {"telemetry-animation"});
         args::ValueFlag<std::string> animation_path(
-            parser, "animation-path", "Animation diagram output path", {"animation-path"}, "../../rpc_test_diagram/");
+            parser, "animation-path", "Animation diagram output path", {"animation-path"}, "../../telemetry/reports/");
 
         args::Flag help(parser, "help", "Display this help menu", {'h', "help"});
 
