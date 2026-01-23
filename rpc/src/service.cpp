@@ -1175,7 +1175,15 @@ namespace rpc
         CO_RETURN;
     }
 
-    child_service::~child_service() DEFAULT_DESTRUCTOR;
+    child_service::~child_service()
+    {
+        // Disconnect parent transport to break circular reference
+        auto parent = get_parent_transport();
+        if (parent)
+        {
+            parent->set_status(transport_status::DISCONNECTED);
+        }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////
     // Default implementations of outbound functions

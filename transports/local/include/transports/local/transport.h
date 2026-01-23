@@ -25,6 +25,9 @@ namespace rpc::local
 
         virtual ~parent_transport() DEFAULT_DESTRUCTOR;
 
+        // Override to propagate disconnect to parent zone
+        void set_status(rpc::transport_status status) override;
+
         CORO_TASK(int)
         inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override
         {
@@ -125,6 +128,9 @@ namespace rpc::local
         }
 
         virtual ~child_transport() DEFAULT_DESTRUCTOR;
+
+        // Called by parent_transport when child zone disconnects
+        void on_child_disconnected();
 
         CORO_TASK(int)
         inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override

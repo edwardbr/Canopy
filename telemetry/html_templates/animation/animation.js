@@ -2193,6 +2193,10 @@ function initAnimationTelemetry() {
         if (evt.type === 'interface_proxy_send') {
             li.classList.add('interface-proxy-send');
         }
+        // Check for deletion/destruction events
+        if (evt.type.includes('deletion') || evt.type.includes('destruction')) {
+            li.classList.add('deletion-event');
+        }
         // Check for error messages
         const eventSummary = formatEventSummary(evt);
         if (evt.type === 'transport_ref_audit' && evt.data && evt.data.message) {

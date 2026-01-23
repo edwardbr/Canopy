@@ -238,6 +238,11 @@ body {
     box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.5);
 }
 
+#event-log li.deletion-event {
+    background: rgba(34, 197, 94, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.4);
+}
+
 #event-log li .timestamp {
     color: #94a3b8;
     font-variant-numeric: tabular-nums;

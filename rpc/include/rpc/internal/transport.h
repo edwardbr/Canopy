@@ -78,7 +78,6 @@ namespace rpc
         void inner_increment_inbound_stub_count(caller_zone dest);
         void inner_decrement_inbound_stub_count(caller_zone dest);
 
-        void set_status(transport_status new_status);
         void set_adjacent_zone_id(zone new_adjacent_zone_id) { adjacent_zone_id_ = new_adjacent_zone_id; }
         void notify_all_destinations_of_disconnect();
 
@@ -115,6 +114,7 @@ namespace rpc
 
         // Status management
         transport_status get_status() const;
+        virtual void set_status(transport_status new_status);
 
         // Zone identity accessor
         zone get_zone_id() const { return zone_id_; }

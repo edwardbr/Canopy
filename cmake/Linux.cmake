@@ -136,7 +136,8 @@ set(CANOPY_WARN_PEDANTIC
     -DCANOPY_WARN_PEDANTIC
     ${CANOPY_WARN_BASELINE}
     -Wpedantic # be pedantic
-    # -Wsign-conversion # Warn on implicit sign conversions -Wconversion # Warn on implicit type conversions
+    # issue with fmt -Wsign-conversion # Warn on implicit sign conversions -Wconversion # Warn on implicit type
+    # conversions
     -Wfloat-conversion # Warn on float conversions
     -Wdouble-promotion # Warn when float promoted to double
 )

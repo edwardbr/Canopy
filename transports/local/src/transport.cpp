@@ -25,6 +25,25 @@ namespace rpc::local
         set_status(rpc::transport_status::CONNECTED);
     }
 
+    void parent_transport::set_status(rpc::transport_status status)
+    {
+        // Call base class to update status
+        rpc::transport::set_status(status);
+
+        // If disconnecting, notify parent zone to break circular reference
+        if (status == rpc::transport_status::DISCONNECTED)
+        {
+            auto parent = parent_.get_nullable();
+            if (parent)
+            {
+                // Notify parent zone's child_transport to break its child_ reference
+                parent->on_child_disconnected();
+            }
+            // Break our reference to parent
+            parent_.reset();
+        }
+    }
+
     // Outbound i_marshaller interface - sends from child to parent
     CORO_TASK(int)
     parent_transport::outbound_send(uint64_t protocol_version,
@@ -206,6 +225,13 @@ namespace rpc::local
 
     // Transport from parent zone to child zone
     // Used by parent to communicate with child
+
+    void child_transport::on_child_disconnected()
+    {
+        // Break circular reference when child zone disconnects
+        // Safe because stack-based shared_ptr in outbound_* methods keeps parent_transport alive
+        child_.reset();
+    }
 
     // Outbound i_marshaller interface - sends from parent to child
     CORO_TASK(int)
