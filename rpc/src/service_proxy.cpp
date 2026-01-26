@@ -178,7 +178,7 @@ namespace rpc
             // Call the outbound function on the service to allow derived classes to add extra functionality
             // such as processing back_channel data
             auto ret = CO_AWAIT service_->outbound_try_cast(
-                version, destination_zone_id, object_id, if_id, empty_in, empty_out, transport);
+                version, get_zone_id().as_caller(), destination_zone_id, object_id, if_id, empty_in, empty_out, transport);
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
                 if (original_version != version)

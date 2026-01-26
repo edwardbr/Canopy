@@ -22,7 +22,7 @@ The architecture documentation is organized by component, each building on previ
 
 ### 1. Zone-Based Isolation
 
-Every object in Canopy lives within a **zone**—an execution context with its own identity, object namespace, and service manager. Zones represent process boundaries, machine boundaries, or secure enclave boundaries.
+Every object in Canopy lives within a **zone**—an execution context with its own identity, object namespace, and service manager. Zones represent process any boundary, machine, logical, shared object, or secure enclave boundaries.
 
 ### 2. Service-Managed Lifecycles
 

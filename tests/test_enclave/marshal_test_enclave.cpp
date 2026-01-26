@@ -264,7 +264,7 @@ int try_cast_enclave(uint64_t protocol_version,
 
     std::vector<rpc::back_channel_entry> out_back_channel;
     int ret = rpc_server->try_cast(
-        protocol_version, {zone_id}, {object_id}, {interface_id}, in_back_channel, out_back_channel);
+        protocol_version, {0}, {zone_id}, {object_id}, {interface_id}, in_back_channel, out_back_channel);
 
     // Serialize output back-channel
     if (ret == rpc::error::OK() && !out_back_channel.empty())

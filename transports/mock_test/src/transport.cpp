@@ -141,6 +141,7 @@ namespace rpc::mock_test
 
     CORO_TASK(int)
     mock_transport::outbound_try_cast(uint64_t protocol_version,
+        rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
@@ -153,7 +154,7 @@ namespace rpc::mock_test
 
         try_cast_count_.fetch_add(1, std::memory_order_acq_rel);
         record_call(
-            call_record::call_type::TRY_CAST, protocol_version, destination_zone_id, rpc::caller_zone{0}, object_id);
+            call_record::call_type::TRY_CAST, protocol_version, destination_zone_id, caller_zone_id, object_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {

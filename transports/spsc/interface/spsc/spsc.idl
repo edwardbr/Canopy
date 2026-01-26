@@ -102,6 +102,7 @@ namespace rpc
         
         struct try_cast_send
         {
+            uint64_t caller_zone_id;
             uint64_t destination_zone_id;
             uint64_t object_id;
             uint64_t interface_id;

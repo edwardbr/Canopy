@@ -52,6 +52,7 @@ namespace rpc
 
         // query if an object implements an interface
         virtual CORO_TASK(int) try_cast(uint64_t protocol_version,
+            caller_zone caller_zone_id,
             destination_zone destination_zone_id,
             object object_id,
             interface_ordinal interface_id,

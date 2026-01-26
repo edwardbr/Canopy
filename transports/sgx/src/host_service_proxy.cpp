@@ -198,6 +198,7 @@ namespace rpc
     }
 
     int host_service_proxy::try_cast(uint64_t protocol_version,
+        caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         object object_id,
         interface_ordinal interface_id,
@@ -219,6 +220,7 @@ namespace rpc
         size_t out_bc_sz = 0;
         sgx_status_t status = ::try_cast_host(&err_code,
             protocol_version,
+            caller_zone_id.get_val(),
             destination_zone_id.get_val(),
             object_id.get_val(),
             interface_id.get_val(),

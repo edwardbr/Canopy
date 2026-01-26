@@ -116,6 +116,7 @@ enclave {
         // for casting interfaces
         int try_cast_host(
             uint64_t protocol_version,                          // version of the rpc call protocol
+            uint64_t caller_zone_id,                            // zone where the call is coming from
             uint64_t destination_zone_id,                       // zone where the call is going to
             uint64_t object_id,                                 // rpc object index
             uint64_t interface_id,                              // interface to be called

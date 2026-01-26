@@ -29,6 +29,32 @@ namespace rpc
         DISCONNECTED  // Terminal state, no further traffic allowed
     };
 
+    struct pass_through_key
+    {
+        destination_zone zone1;
+        destination_zone zone2;
+
+        bool operator==(const pass_through_key& other) const noexcept
+        {
+            return zone1 == other.zone1 && zone2 == other.zone2;
+        }
+    };
+}
+
+namespace std
+{
+    template<> struct hash<rpc::pass_through_key>
+    {
+        auto operator()(const rpc::pass_through_key& item) const noexcept
+        {
+            return (std::size_t)item.zone1.get_val() + (std::size_t)item.zone2.get_val();
+        }
+    };
+}
+
+namespace rpc
+{
+
     class transport : public i_marshaller, public std::enable_shared_from_this<transport>
     {
     private:
@@ -46,7 +72,7 @@ namespace rpc
         mutable std::shared_mutex destinations_mutex_;
 
         // passthrough map
-        std::unordered_map<destination_zone, std::unordered_map<caller_zone, std::weak_ptr<i_marshaller>>> pass_thoughs_;
+        std::unordered_map<pass_through_key, std::weak_ptr<pass_through>> pass_thoughs_;
 
         // the list of zone ids that the ajacent zone knows about
         std::unordered_map<destination_zone, std::atomic<uint64_t>> outbound_proxy_count_;
@@ -62,15 +88,11 @@ namespace rpc
         transport(std::string name, zone zone_id, zone adjacent_zone_id);
 
         // lock free version of same function - adds handler for zone pair
-        bool inner_add_destination(destination_zone dest, caller_zone caller, std::weak_ptr<i_marshaller> handler);
+        bool inner_add_passthrough(destination_zone zone1, destination_zone zone2, std::weak_ptr<pass_through> handler);
 
         // Helper to route incoming messages to registered handlers
         // Gets handler for specific zone pair
-        std::shared_ptr<i_marshaller> inner_get_destination_handler(destination_zone dest, caller_zone caller) const;
-
-        // Find any pass-through that has the specified destination, regardless of caller
-        // Returns nullptr if not found
-        std::shared_ptr<i_marshaller> inner_find_any_passthrough_for_destination(destination_zone dest) const;
+        std::shared_ptr<pass_through> inner_get_passthrough(destination_zone zone1, destination_zone zone2) const;
 
         void inner_increment_outbound_proxy_count(destination_zone dest);
         void inner_decrement_outbound_proxy_count(destination_zone dest);
@@ -82,8 +104,6 @@ namespace rpc
         void notify_all_destinations_of_disconnect();
 
     public:
-        // Public version of find_any_passthrough_for_destination for use by service::get_zone_proxy
-        std::shared_ptr<i_marshaller> find_any_passthrough_for_destination(destination_zone dest) const;
         virtual ~transport();
 
         std::string get_name() const { return name_; }
@@ -92,11 +112,10 @@ namespace rpc
         void set_service(std::shared_ptr<service> service);
 
         // Destination management for zone pairs
-        // For local service, use add_destination(local_zone, local_zone, service)
-        std::shared_ptr<i_marshaller> get_destination_handler(destination_zone dest, caller_zone caller) const;
+        // For local service, use add_passthrough(local_zone, local_zone, service)
+        std::shared_ptr<pass_through> get_passthrough(destination_zone zone1, destination_zone zone2) const;
 
-        bool add_destination(destination_zone dest, caller_zone caller, std::weak_ptr<i_marshaller> handler);
-        void remove_destination(destination_zone dest, caller_zone caller);
+        void remove_passthrough(destination_zone zone1, destination_zone zone2);
 
         void increment_outbound_proxy_count(destination_zone dest);
         void decrement_outbound_proxy_count(destination_zone dest);
@@ -106,7 +125,7 @@ namespace rpc
 
         int64_t get_destination_count() { return destination_count_.load(); }
 
-        static std::shared_ptr<i_marshaller> create_pass_through(std::shared_ptr<transport> forward,
+        static std::shared_ptr<pass_through> create_pass_through(std::shared_ptr<transport> forward,
             const std::shared_ptr<transport>& reverse,
             const std::shared_ptr<service>& service,
             destination_zone forward_dest,
@@ -152,6 +171,7 @@ namespace rpc
 
         CORO_TASK(int)
         inbound_try_cast(uint64_t protocol_version,
+            caller_zone caller_zone_id,
             destination_zone destination_zone_id,
             object object_id,
             interface_ordinal interface_id,
@@ -222,6 +242,7 @@ namespace rpc
 
         CORO_TASK(int)
         try_cast(uint64_t protocol_version,
+            caller_zone caller_zone_id,
             destination_zone destination_zone_id,
             object object_id,
             interface_ordinal interface_id,
@@ -292,6 +313,7 @@ namespace rpc
             = 0;
 
         virtual CORO_TASK(int) outbound_try_cast(uint64_t protocol_version,
+            caller_zone caller_zone_id,
             destination_zone destination_zone_id,
             object object_id,
             interface_ordinal interface_id,

@@ -191,6 +191,7 @@ namespace rpc
 
     CORO_TASK(int)
     pass_through::try_cast(uint64_t protocol_version,
+        caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         object object_id,
         interface_ordinal interface_id,
@@ -223,7 +224,7 @@ namespace rpc
 
         // Forward the call directly to the transport
         auto result = CO_AWAIT target_transport->try_cast(
-            protocol_version, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
 
         // Decrement function count after completing the call
         uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
@@ -597,11 +598,11 @@ namespace rpc
         // Remove destinations from transports in BOTH directions
         if (forward_transport_)
         {
-            forward_transport_->remove_destination(forward_destination_, reverse_destination_.as_caller());
+            forward_transport_->remove_passthrough(forward_destination_, reverse_destination_);
         }
         if (reverse_transport_)
         {
-            reverse_transport_->remove_destination(reverse_destination_, forward_destination_.as_caller());
+            reverse_transport_->remove_passthrough(reverse_destination_, forward_destination_);
         }
 
         // Release transport and service pointers

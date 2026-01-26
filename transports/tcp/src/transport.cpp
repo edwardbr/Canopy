@@ -182,6 +182,7 @@ namespace rpc::tcp
 
     CORO_TASK(int)
     tcp_transport::outbound_try_cast(uint64_t protocol_version,
+        rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
@@ -200,7 +201,8 @@ namespace rpc::tcp
 
         try_cast_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
-            try_cast_send{.destination_zone_id = destination_zone_id.get_val(),
+            try_cast_send{.caller_zone_id = caller_zone_id.get_val(),
+                .destination_zone_id = destination_zone_id.get_val(),
                 .object_id = object_id.get_val(),
                 .interface_id = interface_id.get_val(),
                 .back_channel = in_back_channel},
@@ -792,6 +794,7 @@ namespace rpc::tcp
         std::vector<rpc::back_channel_entry> out_back_channel;
         // Call inbound_try_cast for routing - transport will route to correct destination
         auto ret = CO_AWAIT inbound_try_cast(prefix.version,
+            {request.caller_zone_id},
             {request.destination_zone_id},
             {request.object_id},
             {request.interface_id},

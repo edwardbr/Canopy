@@ -114,6 +114,7 @@ namespace rpc::local
 
     CORO_TASK(int)
     parent_transport::outbound_try_cast(uint64_t protocol_version,
+        rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
@@ -127,7 +128,7 @@ namespace rpc::local
         }
 
         CO_RETURN CO_AWAIT parent->inbound_try_cast(
-            protocol_version, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(int)
@@ -303,6 +304,7 @@ namespace rpc::local
 
     CORO_TASK(int)
     child_transport::outbound_try_cast(uint64_t protocol_version,
+        rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
@@ -316,7 +318,7 @@ namespace rpc::local
         }
 
         CO_RETURN CO_AWAIT child->inbound_try_cast(
-            protocol_version, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(int)

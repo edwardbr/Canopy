@@ -159,9 +159,9 @@ extern "C"
     }
 
     CORO_TASK(int)
-    try_cast_host(uint64_t protocol_version // version of the rpc call protocol
-        ,
-        uint64_t zone_id,
+    try_cast_host(uint64_t protocol_version, // version of the rpc call protocol
+        uint64_t caller_zone_id,
+        uint64_t destination_zone_id,
         uint64_t object_id,
         uint64_t interface_id)
     {
@@ -174,7 +174,7 @@ extern "C"
         std::vector<rpc::back_channel_entry> in_back_channel;
         std::vector<rpc::back_channel_entry> out_back_channel;
         int ret = CO_AWAIT root_service->try_cast(
-            protocol_version, {zone_id}, {object_id}, {interface_id}, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, {object_id}, {interface_id}, in_back_channel, out_back_channel);
         CO_RETURN ret;
     }
 

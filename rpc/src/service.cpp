@@ -387,7 +387,7 @@ namespace rpc
         }
         else
         {
-            marshaller = object_transport->get_destination_handler(destination_zone_id, caller_zone_id);
+            marshaller = object_transport->get_passthrough(destination_zone_id, caller_zone_id.as_destination());
             if (!marshaller)
             {
                 std::shared_ptr<rpc::transport> caller_transport;
@@ -523,12 +523,14 @@ namespace rpc
     }
     CORO_TASK(int)
     service::try_cast(uint64_t protocol_version,
+        caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         object object_id,
         interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
+        std::ignore = caller_zone_id;
         std::ignore = in_back_channel;
         std::ignore = out_back_channel;
 
@@ -1247,6 +1249,7 @@ namespace rpc
 
     CORO_TASK(int)
     service::outbound_try_cast(uint64_t protocol_version,
+        caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         object object_id,
         interface_ordinal interface_id,
@@ -1256,7 +1259,7 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->try_cast(
-            protocol_version, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(int)

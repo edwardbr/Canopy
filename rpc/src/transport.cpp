@@ -13,27 +13,12 @@
 
 namespace rpc
 {
-    // NOTE: The local service MUST be registered in pass_thoughs_ map
-    // during transport initialization:
-    //   pass_thoughs_[local_zone][local_zone] = service
-    //
-    // Pass-throughs are registered in BOTH directions:
-    //   pass_thoughs_[A][B] = pass_through  (for A↔B communication)
-    //   pass_thoughs_[B][A] = pass_through  (same pass-through)
-    //
-    // This provides O(1) lookup for all routing scenarios.
-    // Destination management
-
     transport::transport(std::string name, std::shared_ptr<service> service, zone adjacent_zone_id)
         : name_(name)
         , zone_id_(service->get_zone_id())
         , adjacent_zone_id_(adjacent_zone_id)
         , service_(service)
     {
-        // Register local service: pass_thoughs_[local][local] = service
-        // auto local_zone = zone_id_.get_val();
-        // pass_thoughs_[local_zone][adjacent_zone_id.get_val()] = std::static_pointer_cast<i_marshaller>(service);
-
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_transport_creation(
@@ -101,40 +86,36 @@ namespace rpc
         CO_RETURN ret;
     }
 
-    bool transport::inner_add_destination(destination_zone dest, caller_zone caller, std::weak_ptr<i_marshaller> handler)
+    bool transport::inner_add_passthrough(destination_zone zone1, destination_zone zone2, std::weak_ptr<pass_through> pt)
     {
-        // note this is protected by a mutex in the caller
-        auto dest_val = dest.get_val();
-        auto caller_val = caller.get_val();
+        pass_through_key lookup_val;
+
+        if (zone1 < zone2)
+            lookup_val = {zone1, zone2};
+        else
+            lookup_val = {zone2, zone1};
 
         // Check if entry already exists
-        auto outer_it = pass_thoughs_.find(dest_val);
+        auto outer_it = pass_thoughs_.find(lookup_val);
         if (outer_it != pass_thoughs_.end())
         {
-            auto inner_it = outer_it->second.find(caller_val);
-            if (inner_it != outer_it->second.end())
-            {
-                RPC_ASSERT(false);
-                return false; // Already exists
-            }
+            RPC_ASSERT(false);
+            return false; // Already exists
         }
 
         // Add entry
-        pass_thoughs_[dest_val][caller_val] = handler;
-        inner_increment_outbound_proxy_count(caller.as_destination());
+        pass_thoughs_[lookup_val] = pt;
+
+        ++destination_count_;
+        // inner_increment_outbound_proxy_count(caller.as_destination());
 
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_transport_add_destination(zone_id_, adjacent_zone_id_, dest, caller);
+            telemetry_service->on_transport_add_destination(
+                zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2.as_caller());
 #endif
 
         return true;
-    }
-
-    bool transport::add_destination(destination_zone dest, caller_zone caller, std::weak_ptr<i_marshaller> handler)
-    {
-        std::unique_lock lock(destinations_mutex_);
-        return inner_add_destination(dest, caller, handler);
     }
 
     void transport::increment_outbound_proxy_count(destination_zone dest)
@@ -241,32 +222,36 @@ namespace rpc
         }
     }
 
-    void transport::remove_destination(destination_zone dest, caller_zone caller)
+    void transport::remove_passthrough(destination_zone zone1, destination_zone zone2)
     {
         std::unique_lock lock(destinations_mutex_);
-        auto dest_val = dest.get_val();
-        auto caller_val = caller.get_val();
+        pass_through_key lookup_val;
+        if (zone1 < zone2)
+            lookup_val = {zone1, zone2};
+        else
+            lookup_val = {zone2, zone1};
 
-        auto outer_it = pass_thoughs_.find(dest_val);
+        auto outer_it = pass_thoughs_.find(lookup_val);
         if (outer_it != pass_thoughs_.end())
         {
-            outer_it->second.erase(caller_val);
-            // Clean up outer map if inner map is empty
-            if (outer_it->second.empty())
-            {
-                pass_thoughs_.erase(outer_it);
-            }
+            pass_thoughs_.erase(outer_it);
+        }
+        else
+        {
+            RPC_ASSERT(false);
         }
 
-        inner_decrement_outbound_proxy_count(caller.as_destination());
+        --destination_count_;
+        // inner_decrement_outbound_proxy_count(caller.as_destination());
 
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_transport_remove_destination(zone_id_, adjacent_zone_id_, dest, caller);
+            telemetry_service->on_transport_remove_passthrough(
+                zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2.as_caller());
 #endif
     }
 
-    std::shared_ptr<i_marshaller> transport::create_pass_through(std::shared_ptr<transport> forward,
+    std::shared_ptr<pass_through> transport::create_pass_through(std::shared_ptr<transport> forward,
         const std::shared_ptr<transport>& reverse,
         const std::shared_ptr<service>& service,
         destination_zone forward_dest,
@@ -291,15 +276,6 @@ namespace rpc
             return nullptr;
         }
 
-        std::shared_ptr<pass_through> pt(
-            new rpc::pass_through(forward, // forward_transport: handles messages TO final destination
-                reverse,                   // reverse_transport: handles messages back to caller
-                service,                   // service
-                forward_dest,
-                reverse_dest // reverse_destination: where reverse messages go
-                ));
-        pt->self_ref_ = pt; // keep self alive based on reference counts
-
         // we need to lock both transports destination mutexes without deadlock when adding the destinations
         // we do this by locking them in zone id order
         std::unique_ptr<std::lock_guard<std::shared_mutex>> g1;
@@ -317,40 +293,46 @@ namespace rpc
         }
 
         // Check if pass-through already exists for this zone pair
-        auto forward_handler = forward->inner_get_destination_handler(reverse_dest, forward_dest.as_caller());
-        auto reverse_handler = reverse->inner_get_destination_handler(forward_dest, reverse_dest.as_caller());
+        auto forward_passthrough = forward->inner_get_passthrough(reverse_dest, forward_dest);
+        auto reverse_passthrough = reverse->inner_get_passthrough(forward_dest, reverse_dest);
 
         // check that they are the same
-        RPC_ASSERT(!forward_handler == !reverse_handler);
+        RPC_ASSERT(!forward_passthrough == !reverse_passthrough);
 
-        if (forward_handler)
+        if (forward_passthrough)
         {
             RPC_DEBUG("create_pass_through: Found existing pass-through for forward_dest={}, reverse_dest={}",
                 forward_dest.get_val(),
                 reverse_dest.get_val());
-            return forward_handler;
+            return forward_passthrough;
         }
         else
         {
+            std::shared_ptr<pass_through> pt(
+                new rpc::pass_through(forward, // forward_transport: handles messages TO final destination
+                    reverse,                   // reverse_transport: handles messages back to caller
+                    service,                   // service
+                    forward_dest,
+                    reverse_dest // reverse_destination: where reverse messages go
+                    ));
+            pt->self_ref_ = pt; // keep self alive based on reference counts
+
             RPC_DEBUG("create_pass_through: Creating NEW pass-through, forward_dest={}, reverse_dest={}, pt={}",
                 forward_dest.get_val(),
                 reverse_dest.get_val(),
                 (void*)pt.get());
             // Register pass-through on both transports
-            // inner_add_destination automatically registers both directions for pass-throughs
-            forward->inner_add_destination(
-                reverse_dest, forward_dest.as_caller(), std::static_pointer_cast<i_marshaller>(pt));
-            reverse->inner_add_destination(
-                forward_dest, reverse_dest.as_caller(), std::static_pointer_cast<i_marshaller>(pt));
+            // inner_add_passthrough automatically registers both directions for pass-throughs
+            forward->inner_add_passthrough(reverse_dest, forward_dest, pt);
+            reverse->inner_add_passthrough(forward_dest, reverse_dest, pt);
 
             // Note: We do NOT register forward_dest in service->transports here because:
             // 1. The pass-through might fail to reach the destination (zone doesn't exist downstream)
             // 2. Registering it would create routing loops
             // 3. The registration should happen after successful routing, by the caller
 
-            return std::static_pointer_cast<i_marshaller>(pt);
+            return pt;
         }
-        return pt;
     }
 
     // Status management
@@ -373,82 +355,47 @@ namespace rpc
 #endif
     }
 
-    std::shared_ptr<i_marshaller> transport::inner_get_destination_handler(destination_zone dest, caller_zone caller) const
+    std::shared_ptr<pass_through> transport::inner_get_passthrough(destination_zone zone1, destination_zone zone2) const
     {
-        auto dest_val = dest.get_val();
-        auto caller_val = caller.get_val();
+        pass_through_key lookup_val;
+        if (zone1 < zone2)
+            lookup_val = {zone1, zone2};
+        else
+            lookup_val = {zone2, zone1};
 
-        // O(1) nested map lookup
-        auto outer_it = pass_thoughs_.find(dest_val);
-        if (outer_it != pass_thoughs_.end())
+        auto it = pass_thoughs_.find(lookup_val);
+        if (it != pass_thoughs_.end())
         {
-            auto inner_it = outer_it->second.find(caller_val);
-            if (inner_it != outer_it->second.end())
+            auto pt = it->second.lock();
+            if (!pt)
             {
-                auto handler = inner_it->second.lock();
-                if (!handler)
-                {
-                    RPC_WARNING("inner_get_destination_handler: weak_ptr expired for dest={}, caller={} on transport "
-                                "zone={} adjacent_zone={}",
-                        dest_val,
-                        caller_val,
-                        zone_id_.get_val(),
-                        adjacent_zone_id_.get_val());
-                }
-                return handler;
+                RPC_WARNING("inner_get_passthrough: weak_ptr expired for zone1={}, zone2={} on transport "
+                            "zone={} adjacent_zone={}",
+                    zone1.get_val(),
+                    zone2.get_val(),
+                    zone_id_.get_val(),
+                    adjacent_zone_id_.get_val());
             }
+            return pt;
         }
         return nullptr;
     }
 
     // Helper to route incoming messages to registered handlers
-    std::shared_ptr<i_marshaller> transport::get_destination_handler(destination_zone dest, caller_zone caller) const
+    std::shared_ptr<pass_through> transport::get_passthrough(destination_zone zone1, destination_zone zone2) const
     {
-        if (dest == zone_id_.as_destination())
-        {
-            RPC_DEBUG("get_destination_handler: Requested destination is local zone {}, returning local service",
-                zone_id_.get_val());
-            return service_.lock();
-        }
+        RPC_ASSERT(zone1 != zone_id_.as_destination());
+        RPC_ASSERT(zone2 != zone_id_.as_destination());
+
         std::shared_lock lock(destinations_mutex_);
-        auto handler = inner_get_destination_handler(dest, caller);
-        RPC_DEBUG("get_destination_handler: dest={}, caller={}, transport zone={}, adjacent_zone={}, found={}",
-            dest.get_val(),
-            caller.get_val(),
+        auto handler = inner_get_passthrough(zone1, zone2);
+        RPC_DEBUG("get_passthrough: zone1={}, zone2={}, transport zone={}, adjacent_zone={}, found={}",
+            zone1.get_val(),
+            zone2.get_val(),
             zone_id_.get_val(),
             adjacent_zone_id_.get_val(),
             handler != nullptr);
         return handler;
-    }
-
-    // Find any pass-through that has the specified destination, regardless of caller
-    // O(1) lookup: just get pass_thoughs_[dest] and return first non-expired entry
-    std::shared_ptr<i_marshaller> transport::inner_find_any_passthrough_for_destination(destination_zone dest) const
-    {
-        auto outer_it = pass_thoughs_.find(dest);
-        if (outer_it != pass_thoughs_.end())
-        {
-            // Iterate through all callers for this destination
-            for (const auto& [caller_val, handler_weak] : outer_it->second)
-            {
-                auto handler = handler_weak.lock();
-                if (handler)
-                {
-                    RPC_DEBUG(
-                        "inner_find_any_passthrough_for_destination: Found pass-through for dest={} with caller={}",
-                        dest.get_val(),
-                        caller_val.get_val());
-                    return handler;
-                }
-            }
-        }
-        return nullptr;
-    }
-
-    std::shared_ptr<i_marshaller> transport::find_any_passthrough_for_destination(destination_zone dest) const
-    {
-        std::shared_lock lock(destinations_mutex_);
-        return inner_find_any_passthrough_for_destination(dest);
     }
 
     void transport::notify_all_destinations_of_disconnect()
@@ -466,32 +413,29 @@ namespace rpc
         }
 #endif
         // Iterate through nested map to notify all handlers
-        for (const auto& [dest_zone, inner_map] : pass_thoughs_)
+        for (const auto& [dest_zone, pt] : pass_thoughs_)
         {
-            for (const auto& [caller_zone_val, handler_weak] : inner_map)
+            if (auto handler = pt.lock())
             {
-                if (auto handler = handler_weak.lock())
-                {
-#ifdef CANOPY_BUILD_COROUTINE
-                    if (!service->spawn(
-#endif
-                            // Send zone_terminating post
-                            handler->transport_down(VERSION_3, rpc::destination_zone{dest_zone}, rpc::caller_zone{0}, {})
-#ifdef CANOPY_BUILD_COROUTINE
-                                ))
-                    {
-                        RPC_ERROR(
-                            "notify_all_destinations_of_disconnect: Failed to spawn coroutine to notify handler of "
-                            "zone termination for dest_zone={} caller_zone={} on transport zone={} adjacent_zone={}",
-                            dest_zone.get_val(),
-                            caller_zone_val.get_val(),
-                            zone_id_.get_val(),
-                            adjacent_zone_id_.get_val());
-                        RPC_ASSERT(false);
-                    }
-#endif
-                    ;
-                }
+                // #
+
+                //                 if (!service->spawn(
+                // #endif
+                //                         // Send zone_terminating post
+                //                         handler->transport_down(VERSION_3, rpc::destination_zone{dest_zone}, rpc::caller_zone{0}, {})
+                // #ifdef CANOPY_BUILD_COROUTINE
+                //                             ))
+                //                 {
+                //                     RPC_ERROR("notify_all_destinations_of_disconnect: Failed to spawn coroutine to notify handler of "
+                //                               "zone termination for dest_zone={} caller_zone={} on transport zone={} adjacent_zone={}",
+                //                         dest_zone.get_val(),
+                //                         caller_zone_val.get_val(),
+                //                         zone_id_.get_val(),
+                //                         adjacent_zone_id_.get_val());
+                //                     RPC_ASSERT(false);
+                //                 }
+                // #endif
+                //                 ;
             }
         }
     }
@@ -526,11 +470,19 @@ namespace rpc
             CO_RETURN error::TRANSPORT_ERROR();
         }
 
-        // Try zone pair lookup first
-        auto dest = get_destination_handler(destination_zone_id, caller_zone_id);
-        if (!dest)
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id == zone_id_.as_destination())
         {
-            CO_RETURN error::ZONE_NOT_FOUND();
+            dest = service_.lock();
+        }
+        else
+        {
+            // Try zone pair lookup first
+            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            if (!dest)
+            {
+                CO_RETURN error::ZONE_NOT_FOUND();
+            }
         }
 
         CO_RETURN CO_AWAIT dest->send(protocol_version,
@@ -567,11 +519,19 @@ namespace rpc
         }
 #endif
 
-        // Try zone pair lookup
-        auto dest = get_destination_handler(destination_zone_id, caller_zone_id);
-        if (!dest)
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id == zone_id_.as_destination())
         {
-            CO_RETURN;
+            dest = service_.lock();
+        }
+        else
+        {
+            // Try zone pair lookup first
+            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            if (!dest)
+            {
+                CO_RETURN;
+            }
         }
 
         CO_AWAIT dest->post(protocol_version,
@@ -588,6 +548,7 @@ namespace rpc
 
     CORO_TASK(int)
     transport::inbound_try_cast(uint64_t protocol_version,
+        caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         object object_id,
         interface_ordinal interface_id,
@@ -598,18 +559,27 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_try_cast(
-                zone_id_, adjacent_zone_id_, destination_zone_id, {0}, object_id, interface_id);
+                zone_id_, adjacent_zone_id_, destination_zone_id, caller_zone_id, object_id, interface_id);
         }
 #endif
 
-        auto dest = get_destination_handler(destination_zone_id, {0});
-        if (!dest)
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id == zone_id_.as_destination())
         {
-            CO_RETURN error::ZONE_NOT_FOUND();
+            dest = service_.lock();
+        }
+        else
+        {
+            // Try zone pair lookup first
+            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            if (!dest)
+            {
+                CO_RETURN error::ZONE_NOT_FOUND();
+            }
         }
 
         CO_RETURN CO_AWAIT dest->try_cast(
-            protocol_version, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(int)
@@ -704,18 +674,19 @@ namespace rpc
             }
 
             // otherwise we are going to use or create a pass-through
-            auto passthrough = dest_transport->get_destination_handler(
-                caller_zone_id.as_destination(), destination_zone_id.as_caller());
-            if (passthrough)
             {
-                CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
-                    destination_zone_id,
-                    object_id,
-                    caller_zone_id,
-                    known_direction_zone_id,
-                    build_out_param_channel,
-                    in_back_channel,
-                    out_back_channel);
+                auto passthrough = dest_transport->get_passthrough(caller_zone_id.as_destination(), destination_zone_id);
+                if (passthrough)
+                {
+                    CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
+                        destination_zone_id,
+                        object_id,
+                        caller_zone_id,
+                        known_direction_zone_id,
+                        build_out_param_channel,
+                        in_back_channel,
+                        out_back_channel);
+                }
             }
 
             auto caller_transport = svc->get_transport(caller_zone_id.as_destination());
@@ -762,7 +733,7 @@ namespace rpc
                 CO_RETURN error_code;
             }
 
-            passthrough = transport::create_pass_through(
+            auto passthrough = transport::create_pass_through(
                 dest_transport, caller_transport, svc, destination_zone_id, caller_zone_id.as_destination());
 
             auto error_code = CO_AWAIT passthrough->add_ref(protocol_version,
@@ -822,11 +793,19 @@ namespace rpc
         const std::vector<back_channel_entry>& in_back_channel,
         std::vector<back_channel_entry>& out_back_channel)
     {
-        // Try zone pair lookup
-        auto dest = get_destination_handler(destination_zone_id, caller_zone_id);
-        if (!dest)
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id == zone_id_.as_destination())
         {
-            CO_RETURN error::ZONE_NOT_FOUND();
+            dest = service_.lock();
+        }
+        else
+        {
+            // Try zone pair lookup first
+            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            if (!dest)
+            {
+                CO_RETURN error::ZONE_NOT_FOUND();
+            }
         }
 
         auto error_code = CO_AWAIT dest->release(
@@ -864,10 +843,20 @@ namespace rpc
         }
 
         // Try zone pair lookup
-        auto dest = get_destination_handler(caller_zone_id.as_destination(), destination_zone_id.as_caller());
-        if (!dest)
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id == zone_id_.as_destination())
         {
-            CO_RETURN;
+            dest = service_.lock();
+        }
+        else
+        {
+            // Try zone pair lookup first
+            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            if (!dest)
+            {
+                // Zone not found - just return without propagating error
+                CO_RETURN;
+            }
         }
 
         CO_AWAIT dest->object_released(protocol_version, destination_zone_id, object_id, caller_zone_id, in_back_channel);
@@ -887,11 +876,19 @@ namespace rpc
         }
 #endif
 
-        // Try zone pair lookup
-        auto dest = get_destination_handler(destination_zone_id, caller_zone_id);
-        if (!dest)
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id == zone_id_.as_destination())
         {
-            CO_RETURN;
+            dest = service_.lock();
+        }
+        else
+        {
+            // Try zone pair lookup first
+            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            if (!dest)
+            {
+                CO_RETURN;
+            }
         }
 
         CO_AWAIT dest->transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
@@ -973,6 +970,7 @@ namespace rpc
 
     CORO_TASK(int)
     transport::try_cast(uint64_t protocol_version,
+        caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         object object_id,
         interface_ordinal interface_id,
@@ -980,7 +978,7 @@ namespace rpc
         std::vector<back_channel_entry>& out_back_channel)
     {
         auto ret = CO_AWAIT outbound_try_cast(
-            protocol_version, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
