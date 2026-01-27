@@ -390,6 +390,12 @@ namespace rpc
             marshaller = object_transport->get_passthrough(destination_zone_id, caller_zone_id.as_destination());
             if (!marshaller)
             {
+                RPC_INFO(
+                    "prepare_out_param: passthrough missing, svc_zone={}, dest_zone={}, caller_zone={}, object_id={}",
+                    zone_id_.get_val(),
+                    destination_zone_id.get_val(),
+                    caller_zone_id.get_val(),
+                    object_id.get_val());
                 std::shared_ptr<rpc::transport> caller_transport;
                 {
                     std::lock_guard g(zone_control);
@@ -398,6 +404,12 @@ namespace rpc
                         = transports_.find(caller_zone_id.as_destination()); // we dont need to get caller id for this
                     if (found == transports_.end())
                     {
+                        RPC_ERROR("prepare_out_param: no caller transport entry, svc_zone={}, dest_zone={}, "
+                                  "caller_zone={}, object_id={}",
+                            zone_id_.get_val(),
+                            destination_zone_id.get_val(),
+                            caller_zone_id.get_val(),
+                            object_id.get_val());
                         RPC_ERROR("No service proxy found for caller zone {}", caller_zone_id.get_val());
                         CO_RETURN error::ZONE_NOT_FOUND();
                     }
@@ -407,6 +419,12 @@ namespace rpc
                         // Verify we have a valid caller
                         if (!caller_transport)
                         {
+                            RPC_ERROR("prepare_out_param: caller transport expired, svc_zone={}, dest_zone={}, "
+                                      "caller_zone={}, object_id={}",
+                                zone_id_.get_val(),
+                                destination_zone_id.get_val(),
+                                caller_zone_id.get_val(),
+                                object_id.get_val());
                             RPC_ERROR("Failed to obtain valid caller service_proxy");
                             CO_RETURN error::SERVICE_PROXY_LOST_CONNECTION();
                         }
@@ -1017,67 +1035,79 @@ namespace rpc
         bool& new_proxy_added)
     {
         new_proxy_added = false;
-        std::lock_guard g(zone_control);
-
-        RPC_DEBUG("get_zone_proxy: svc_zone={}, dest={}, caller_zone={}, num_transports={}",
-            zone_id_.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.is_set() ? caller_zone_id.get_val() : 0,
-            transports_.size());
+        std::shared_ptr<rpc::service_proxy> result;
 
         {
-            auto item = other_zones_.find(destination_zone_id);
-            if (item != other_zones_.end())
-            {
-                RPC_DEBUG("get_zone_proxy: Found existing proxy in other_zones_");
-                return item->second.lock();
-            }
-        }
+            std::lock_guard g(zone_control);
 
-        {
-            auto item = transports_.find(destination_zone_id);
-            if (item != transports_.end())
+            RPC_DEBUG("get_zone_proxy: svc_zone={}, dest={}, caller_zone={}, num_transports={}",
+                zone_id_.get_val(),
+                destination_zone_id.get_val(),
+                caller_zone_id.is_set() ? caller_zone_id.get_val() : 0,
+                transports_.size());
+
             {
-                auto transport = item->second.lock();
-                if (transport)
+                auto item = other_zones_.find(destination_zone_id);
+                if (item != other_zones_.end())
                 {
-                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_val()),
-                        shared_from_this(),
-                        transport,
-                        destination_zone_id);
-                    inner_add_zone_proxy(proxy);
-                    new_proxy_added = true;
-                    return proxy;
+                    RPC_DEBUG("get_zone_proxy: Found existing proxy in other_zones_");
+                    result = item->second.lock();
+                }
+            }
+
+            if (!result)
+            {
+                auto item = transports_.find(destination_zone_id);
+                if (item != transports_.end())
+                {
+                    auto transport = item->second.lock();
+                    if (transport)
+                    {
+                        result = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_val()),
+                            shared_from_this(),
+                            transport,
+                            destination_zone_id);
+                        inner_add_zone_proxy(result);
+                        new_proxy_added = true;
+                    }
+                }
+            }
+
+            if (!result && caller_zone_id.is_set())
+            {
+                auto item = transports_.find(caller_zone_id.as_destination());
+                if (item != transports_.end())
+                {
+                    auto transport = item->second.lock();
+                    if (transport)
+                    {
+                        result = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_val()),
+                            shared_from_this(),
+                            transport,
+                            destination_zone_id);
+                        inner_add_transport(destination_zone_id, transport);
+                        inner_add_zone_proxy(result);
+                        new_proxy_added = true;
+                    }
                 }
             }
         }
 
-        if (caller_zone_id.is_set())
+        if (!result)
         {
-            auto item = transports_.find(caller_zone_id.as_destination());
-            if (item != transports_.end())
-            {
-                auto transport = item->second.lock();
-                if (transport)
-                {
-                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_val()),
-                        shared_from_this(),
-                        transport,
-                        destination_zone_id);
-                    inner_add_transport(destination_zone_id, transport);
-                    inner_add_zone_proxy(proxy);
-                    new_proxy_added = true;
-                    return proxy;
-                }
-            }
+            RPC_ERROR("get_zone_proxy: Could not find route! svc_zone={}, dest={}, caller_zone={}",
+                zone_id_.get_val(),
+                destination_zone_id.get_val(),
+                caller_zone_id.is_set() ? caller_zone_id.get_val() : 0);
+            return nullptr;
         }
 
-        RPC_ERROR("get_zone_proxy: Could not find route! svc_zone={}, dest={}, caller_zone={}",
-            zone_id_.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.is_set() ? caller_zone_id.get_val() : 0);
+        if (new_proxy_added)
+        {
+            result->start_route_ref(caller_zone_id);
+        }
 
-        return nullptr;
+        return result;
     }
 
     void service::remove_zone_proxy(destination_zone destination_zone_id)

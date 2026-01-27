@@ -5,6 +5,7 @@
 #include <rpc/rpc.h>
 #include <rpc/internal/pass_through.h>
 #include <rpc/internal/transport.h>
+#include <limits>
 
 namespace rpc
 {
@@ -48,6 +49,66 @@ namespace rpc
                 ));
         pt->self_ref_ = pt; // keep self alive based on reference counts
         return pt;
+    }
+
+    void pass_through::queue_pending_release(
+        uint64_t protocol_version, destination_zone destination_zone_id, caller_zone caller_zone_id, release_options options)
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        for (auto& entry : pending_releases_)
+        {
+            if (entry.protocol_version == protocol_version && entry.destination_zone_id == destination_zone_id
+                && entry.caller_zone_id == caller_zone_id && entry.options == options)
+            {
+                entry.count++;
+                return;
+            }
+        }
+        pending_release_entry entry;
+        entry.protocol_version = protocol_version;
+        entry.destination_zone_id = destination_zone_id;
+        entry.caller_zone_id = caller_zone_id;
+        entry.options = options;
+        entry.count = 1;
+        pending_releases_.push_back(entry);
+    }
+
+    CORO_TASK(void) pass_through::drain_pending_releases(uint64_t protocol_version)
+    {
+        if (draining_pending_.exchange(true))
+        {
+            CO_RETURN;
+        }
+
+        if (function_count_.load(std::memory_order_acquire) != 0)
+        {
+            draining_pending_.store(false, std::memory_order_release);
+            CO_RETURN;
+        }
+
+        std::vector<pending_release_entry> pending;
+        {
+            std::lock_guard<std::mutex> lock(pending_mutex_);
+            pending.swap(pending_releases_);
+        }
+
+        for (const auto& entry : pending)
+        {
+            for (uint64_t i = 0; i < entry.count; ++i)
+            {
+                std::vector<rpc::back_channel_entry> empty_in;
+                std::vector<rpc::back_channel_entry> empty_out;
+                CO_AWAIT release(entry.protocol_version ? entry.protocol_version : protocol_version,
+                    entry.destination_zone_id,
+                    object{std::numeric_limits<uint64_t>::max()},
+                    entry.caller_zone_id,
+                    entry.options,
+                    empty_in,
+                    empty_out);
+            }
+        }
+
+        draining_pending_.store(false, std::memory_order_release);
     }
 
     pass_through::~pass_through()
@@ -136,6 +197,10 @@ namespace rpc
         {
             trigger_self_destruction();
         }
+        else if (remaining_count == 1 && !draining_pending_.load(std::memory_order_acquire))
+        {
+            CO_AWAIT drain_pending_releases(protocol_version);
+        }
 
         CO_RETURN result;
     }
@@ -186,6 +251,10 @@ namespace rpc
         if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
         {
             trigger_self_destruction();
+        }
+        else if (remaining_count == 1 && !draining_pending_.load(std::memory_order_acquire))
+        {
+            CO_AWAIT drain_pending_releases(protocol_version);
         }
     }
 
@@ -238,6 +307,10 @@ namespace rpc
         else if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
         {
             trigger_self_destruction();
+        }
+        else if (remaining_count == 1 && !draining_pending_.load(std::memory_order_acquire))
+        {
+            CO_AWAIT drain_pending_releases(protocol_version);
         }
 
         CO_RETURN result;
@@ -396,6 +469,10 @@ namespace rpc
         {
             trigger_self_destruction();
         }
+        else if (remaining_count == 1 && !draining_pending_.load(std::memory_order_acquire))
+        {
+            CO_AWAIT drain_pending_releases(protocol_version);
+        }
         CO_RETURN error::OK();
     }
 
@@ -493,6 +570,10 @@ namespace rpc
         {
             trigger_self_destruction();
         }
+        else if (remaining_count == 1 && !draining_pending_.load(std::memory_order_acquire))
+        {
+            CO_AWAIT drain_pending_releases(protocol_version);
+        }
 
         CO_RETURN result;
     }
@@ -554,6 +635,10 @@ namespace rpc
         {
             trigger_self_destruction();
         }
+        else if (remaining_count == 1 && !draining_pending_.load(std::memory_order_acquire))
+        {
+            CO_AWAIT drain_pending_releases(protocol_version);
+        }
     }
 
     CORO_TASK(void)
@@ -592,6 +677,14 @@ namespace rpc
             return;
         }
 
+        RPC_INFO(
+            "pass_through: deleting, zone={}, forward_dest={}, reverse_dest={}, shared={}, optimistic={}, active={}",
+            zone_id_.get_val(),
+            forward_destination_.get_val(),
+            reverse_destination_.get_val(),
+            shared_count_.load(),
+            optimistic_count_.load(),
+            function_count_.load());
         RPC_INFO(
             "pass_through: deleting, zone={}, forward_dest={}, reverse_dest={}, shared={}, optimistic={}, active={}",
             zone_id_.get_val(),

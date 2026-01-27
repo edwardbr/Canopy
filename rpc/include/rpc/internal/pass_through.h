@@ -9,6 +9,8 @@
 #include <rpc/internal/coroutine_support.h>
 #include <memory>
 #include <atomic>
+#include <mutex>
+#include <vector>
 
 namespace rpc
 {
@@ -45,11 +47,31 @@ namespace rpc
 
         rpc::zone zone_id_;
 
+        struct pending_release_entry
+        {
+            uint64_t protocol_version = 0;
+            destination_zone destination_zone_id = {0};
+            caller_zone caller_zone_id = {0};
+            release_options options = release_options::normal;
+            uint64_t count = 0;
+        };
+
+        std::mutex pending_mutex_;
+        std::vector<pending_release_entry> pending_releases_;
+        std::atomic<bool> draining_pending_{false};
+
         pass_through(std::shared_ptr<transport> forward,
             std::shared_ptr<transport> reverse,
             std::shared_ptr<service> service,
             destination_zone forward_dest,
             destination_zone reverse_dest);
+
+        void queue_pending_release(uint64_t protocol_version,
+            destination_zone destination_zone_id,
+            caller_zone caller_zone_id,
+            release_options options);
+
+        CORO_TASK(void) drain_pending_releases(uint64_t protocol_version);
 
     public:
         static std::shared_ptr<pass_through> create(std::shared_ptr<transport> forward,

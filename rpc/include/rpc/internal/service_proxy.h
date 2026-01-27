@@ -48,6 +48,7 @@ namespace rpc
 
         std::atomic<uint64_t> version_;
         encoding enc_;
+        bool route_ref_active_ = false;
 
         service_proxy(const std::string& name,
             const zone zone_id,
@@ -56,6 +57,9 @@ namespace rpc
             const std::shared_ptr<transport>& transport,
             uint64_t version,
             encoding enc);
+
+        void start_route_ref(caller_zone caller_zone_id);
+        void stop_route_ref();
 
     public:
         static std::shared_ptr<service_proxy> create(const std::string& name,

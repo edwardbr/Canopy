@@ -15,6 +15,74 @@
 
 namespace rpc
 {
+    namespace
+    {
+#ifdef CANOPY_BUILD_COROUTINE
+        CORO_TASK(void)
+        add_route_ref_task(std::shared_ptr<service> svc,
+            std::shared_ptr<transport> transport,
+            uint64_t version,
+            zone zone_id,
+            destination_zone destination_zone_id,
+            known_direction_zone known_direction_zone_id)
+        {
+            std::vector<rpc::back_channel_entry> empty_in;
+            std::vector<rpc::back_channel_entry> empty_out;
+            auto ret = CO_AWAIT svc->outbound_add_ref(version,
+                destination_zone_id,
+                dummy_object_id,
+                zone_id.as_caller(),
+                known_direction_zone_id,
+                add_ref_options::build_destination_route | add_ref_options::build_caller_route,
+                empty_in,
+                empty_out,
+                transport);
+            if (ret != rpc::error::OK())
+            {
+                RPC_WARNING("route_ref add_ref failed: svc_zone={}, dest_zone={}, caller_zone={}, err={}",
+                    zone_id.get_val(),
+                    destination_zone_id.get_val(),
+                    zone_id.get_val(),
+                    ret);
+            }
+            CO_RETURN;
+        }
+
+        CORO_TASK(void)
+        release_route_ref_task(std::shared_ptr<service> svc,
+            std::shared_ptr<transport> transport,
+            uint64_t version,
+            zone zone_id,
+            destination_zone destination_zone_id)
+        {
+            if (transport->get_status() != transport_status::CONNECTED)
+            {
+                CO_RETURN;
+            }
+
+            std::vector<rpc::back_channel_entry> empty_in;
+            std::vector<rpc::back_channel_entry> empty_out;
+            auto ret = CO_AWAIT svc->outbound_release(version,
+                destination_zone_id,
+                dummy_object_id,
+                zone_id.as_caller(),
+                release_options::normal,
+                empty_in,
+                empty_out,
+                transport);
+            if (ret != rpc::error::OK())
+            {
+                RPC_WARNING("route_ref release failed: svc_zone={}, dest_zone={}, caller_zone={}, err={}",
+                    zone_id.get_val(),
+                    destination_zone_id.get_val(),
+                    zone_id.get_val(),
+                    ret);
+            }
+            CO_RETURN;
+        }
+#endif
+    }
+
     service_proxy::service_proxy(const std::string& name,
         const zone zone_id,
         destination_zone destination_zone_id,
@@ -59,6 +127,8 @@ namespace rpc
         if (transport)
             transport->decrement_outbound_proxy_count(destination_zone_id_);
 
+        stop_route_ref();
+
         RPC_ASSERT(proxies_.empty());
         service->remove_zone_proxy(destination_zone_id_);
 
@@ -80,6 +150,134 @@ namespace rpc
         }
 
         RPC_ASSERT(proxies_.empty());
+    }
+
+    void service_proxy::start_route_ref(caller_zone caller_zone_id)
+    {
+        if (route_ref_active_)
+        {
+            return;
+        }
+
+        auto transport = transport_.get_nullable();
+        if (!transport)
+        {
+            return;
+        }
+
+        if (destination_zone_id_ == transport->get_adjacent_zone_id().as_destination())
+        {
+            return;
+        }
+
+        auto service = service_;
+        if (!service)
+        {
+            return;
+        }
+
+        auto version = version_.load();
+        auto known_direction_zone_id = caller_zone_id.as_known_direction_zone();
+
+#ifdef CANOPY_BUILD_COROUTINE
+        if (service->spawn(
+                add_route_ref_task(service, transport, version, zone_id_, destination_zone_id_, known_direction_zone_id)))
+        {
+            route_ref_active_ = true;
+        }
+        else
+        {
+            RPC_WARNING("route_ref add_ref spawn failed: svc_zone={}, dest_zone={}",
+                zone_id_.get_val(),
+                destination_zone_id_.get_val());
+        }
+#else
+        std::vector<rpc::back_channel_entry> empty_in;
+        std::vector<rpc::back_channel_entry> empty_out;
+        auto ret = service->outbound_add_ref(version,
+            destination_zone_id_,
+            dummy_object_id,
+            zone_id_.as_caller(),
+            known_direction_zone_id,
+            add_ref_options::build_destination_route | add_ref_options::build_caller_route,
+            empty_in,
+            empty_out,
+            transport);
+        if (ret == rpc::error::OK())
+        {
+            route_ref_active_ = true;
+        }
+        else
+        {
+            RPC_WARNING("route_ref add_ref failed: svc_zone={}, dest_zone={}, err={}",
+                zone_id_.get_val(),
+                destination_zone_id_.get_val(),
+                ret);
+        }
+#endif
+    }
+
+    void service_proxy::stop_route_ref()
+    {
+        if (!route_ref_active_)
+        {
+            return;
+        }
+
+        auto transport = transport_.get_nullable();
+        if (!transport)
+        {
+            route_ref_active_ = false;
+            return;
+        }
+        if (transport->get_status() != transport_status::CONNECTED)
+        {
+            route_ref_active_ = false;
+            return;
+        }
+
+        auto service = service_;
+        if (!service)
+        {
+            route_ref_active_ = false;
+            return;
+        }
+
+        auto version = version_.load();
+
+#ifdef CANOPY_BUILD_COROUTINE
+        if (!service->spawn(release_route_ref_task(service, transport, version, zone_id_, destination_zone_id_)))
+        {
+            RPC_WARNING("route_ref release spawn failed: svc_zone={}, dest_zone={}",
+                zone_id_.get_val(),
+                destination_zone_id_.get_val());
+        }
+#else
+        std::vector<rpc::back_channel_entry> empty_in;
+        std::vector<rpc::back_channel_entry> empty_out;
+        if (transport->get_status() != transport_status::CONNECTED)
+        {
+            route_ref_active_ = false;
+            return;
+        }
+        auto ret = service->outbound_release(version,
+            destination_zone_id_,
+            dummy_object_id,
+            zone_id_.as_caller(),
+            release_options::normal,
+            empty_in,
+            empty_out,
+            transport);
+        if (ret != rpc::error::OK())
+        {
+            RPC_WARNING("route_ref release failed: svc_zone={}, dest_zone={}, err={}",
+                zone_id_.get_val(),
+                destination_zone_id_.get_val(),
+                ret);
+        }
+#endif
+
+        route_ref_active_ = false;
     }
 
     void service_proxy::update_remote_rpc_version(uint64_t version)
