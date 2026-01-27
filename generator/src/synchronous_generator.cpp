@@ -1024,7 +1024,7 @@ namespace synchronous_generator
                     stub("}}");
                 }
 
-                stub("#ifdef USE_RPC_LOGGING");
+                stub("#ifdef CANOPY_USE_LOGGING");
                 stub("catch(const std::exception& ex)");
                 stub("{{");
                 stub("RPC_ERROR(\"Exception has occurred in an {} implementation in function {} {{}}\", ex.what());",

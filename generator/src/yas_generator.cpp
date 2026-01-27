@@ -590,7 +590,7 @@ namespace yas_generator
             proxy("return rpc::error::PROXY_DESERIALISATION_ERROR();");
             proxy("}}");
             proxy("}}");
-            proxy("#ifdef USE_RPC_LOGGING");
+            proxy("#ifdef CANOPY_USE_LOGGING");
             proxy("catch(std::exception& ex)");
             proxy("{{");
             proxy("RPC_ERROR(\"A proxy deserialisation error has occurred in an {} implementation in function {} "
@@ -681,7 +681,7 @@ namespace yas_generator
             stub("return rpc::error::STUB_DESERIALISATION_ERROR();");
             stub("}}");
             stub("}}");
-            stub("#ifdef USE_RPC_LOGGING");
+            stub("#ifdef CANOPY_USE_LOGGING");
             stub("catch(std::exception& ex)");
             stub("{{");
             stub("RPC_ERROR(\"A stub deserialisation error has occurred in an {} implementation in function {} {{}}\", "

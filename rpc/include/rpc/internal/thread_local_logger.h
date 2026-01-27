@@ -143,6 +143,4 @@ namespace rpc
 
 } // namespace rpc
 
-// Note: RPC_* macros are now defined in rpc/logger.h using the unified RPC_LOG_BACKEND approach
-
 #endif // defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)

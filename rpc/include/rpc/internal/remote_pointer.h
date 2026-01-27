@@ -2147,7 +2147,7 @@ namespace rpc
         else
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
-#ifdef USE_RPC_LOGGING
+#ifdef CANOPY_USE_LOGGING
             // TELEMETRY: Check reference counts BEFORE establishing optimistic reference
             long cb_shared_before = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_before = cb->optimistic_count_.load(std::memory_order_acquire);
@@ -2199,7 +2199,7 @@ namespace rpc
                 CO_RETURN err; // Failed to establish remote reference
             }
 
-#ifdef USE_RPC_LOGGING
+#ifdef CANOPY_USE_LOGGING
             // TELEMETRY: Check reference counts AFTER establishing optimistic reference
             long cb_shared_after = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);
@@ -2275,7 +2275,7 @@ namespace rpc
         else
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
-#ifdef USE_RPC_LOGGING
+#ifdef CANOPY_USE_LOGGING
             // TELEMETRY: Check reference counts BEFORE establishing optimistic reference
             long cb_shared_before = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_before = cb->optimistic_count_.load(std::memory_order_acquire);
@@ -2323,7 +2323,7 @@ namespace rpc
                 CO_RETURN err; // Failed (likely OBJECT_GONE)
             }
 
-#ifdef USE_RPC_LOGGING
+#ifdef CANOPY_USE_LOGGING
             // TELEMETRY: Check reference counts AFTER establishing optimistic reference
             long cb_shared_after = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);

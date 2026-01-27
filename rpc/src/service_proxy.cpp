@@ -352,7 +352,7 @@ namespace rpc
         // error handling here as the cleanup needs to happen anyway
         if (ret == rpc::error::OK())
         {
-            RPC_DEBUG("Remote {} count = {} for object {}", is_optimistic ? "optimistic" : "shared", object_id.get_val());
+            RPC_DEBUG("Remote {} for object {}", is_optimistic ? "optimistic" : "shared", object_id.get_val());
         }
         else if (is_optimistic && ret == rpc::error::OBJECT_NOT_FOUND())
         {
@@ -525,12 +525,7 @@ namespace rpc
             RPC_ASSERT(!new_proxy_added);
             auto ret = CO_AWAIT sp_release(
                 object_id, is_optimistic ? rpc::release_options::optimistic : rpc::release_options::normal);
-            if (ret == error::OK())
-            {
-                // // This is now safe because self_ref keeps us alive
-                // release_external_ref();
-            }
-            else
+            if (ret != error::OK())
             {
                 RPC_ERROR("sp_release failed");
                 CO_RETURN ret;

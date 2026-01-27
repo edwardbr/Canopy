@@ -253,6 +253,9 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
+        bool no_local_add_ref = !!(build_out_param_channel & add_ref_options::build_caller_route)
+                                && !!(build_out_param_channel & add_ref_options::build_destination_route);
+
         bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
         bool build_dest_channel = !!(build_out_param_channel & add_ref_options::build_destination_route)
                                   || build_out_param_channel == add_ref_options::normal
@@ -260,6 +263,18 @@ namespace rpc
 
         std::shared_ptr<rpc::transport> caller_transport;
         std::shared_ptr<rpc::transport> destination_transport;
+
+        RPC_INFO("pass_through::add_ref zone={}, fwd={}, rev={}, dest={}, caller={}, options={}, build_dest={}, "
+                 "build_caller={}, no_local={}",
+            zone_id_.get_val(),
+            forward_destination_.get_val(),
+            reverse_destination_.get_val(),
+            destination_zone_id.get_val(),
+            caller_zone_id.get_val(),
+            static_cast<uint64_t>(build_out_param_channel),
+            build_dest_channel,
+            build_caller_channel,
+            no_local_add_ref);
 
         // Determine target transport based on destination_zone
         if (build_dest_channel)
@@ -353,9 +368,7 @@ namespace rpc
 
         // Use bitwise AND to check flags, not exact equality
         // because build_out_param_channel may have additional build flags
-        if (!!(build_out_param_channel & add_ref_options::build_destination_route)
-            && !!(build_out_param_channel & add_ref_options::build_caller_route)
-            && destination_zone_id.as_caller() == caller_zone_id)
+        if (no_local_add_ref && destination_zone_id.as_caller() == caller_zone_id)
         {
             // this is a passthrough addref and should not be included in either count
         }
@@ -395,6 +408,14 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
+        RPC_INFO("pass_through::release zone={}, fwd={}, rev={}, dest={}, caller={}, options={}",
+            zone_id_.get_val(),
+            forward_destination_.get_val(),
+            reverse_destination_.get_val(),
+            destination_zone_id.get_val(),
+            caller_zone_id.get_val(),
+            static_cast<uint64_t>(options));
+
         // Check if we're in the process of disconnecting
         if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED)
         {
@@ -571,12 +592,11 @@ namespace rpc
             return;
         }
 
-        RPC_DEBUG(
-            "trigger_self_destruction: Initiating pass-through destruction, forward_dest={}, reverse_dest={}, pt={}, "
-            "shared={}, optimistic={}, function_count={}",
+        RPC_INFO(
+            "pass_through: deleting, zone={}, forward_dest={}, reverse_dest={}, shared={}, optimistic={}, active={}",
+            zone_id_.get_val(),
             forward_destination_.get_val(),
             reverse_destination_.get_val(),
-            (void*)this,
             shared_count_.load(),
             optimistic_count_.load(),
             function_count_.load());

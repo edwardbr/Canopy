@@ -19,7 +19,7 @@
 #if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
 // Use thread-local circular buffer logging
 #define RPC_LOG_BACKEND(level, message) rpc::thread_local_log(level, message, __FILE__, __LINE__, __FUNCTION__)
-#elif defined(USE_RPC_LOGGING)
+#elif defined(CANOPY_USE_LOGGING)
 // Use standard RPC logging
 #ifdef _IN_ENCLAVE
 #include <sgx_error.h>
@@ -45,7 +45,7 @@ extern "C"
 #endif
 
 // Unified logging macros with levels (0=DEBUG, 1=TRACE, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)
-#if defined(USE_RPC_LOGGING) || (defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE))
+#if defined(CANOPY_USE_LOGGING) || (defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE))
 
 #ifdef _IN_ENCLAVE
 #include <fmt/format-inl.h>

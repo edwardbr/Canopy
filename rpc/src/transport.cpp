@@ -246,7 +246,7 @@ namespace rpc
 
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_transport_remove_passthrough(
+            telemetry_service->on_transport_remove_destination(
                 zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2.as_caller());
 #endif
     }
