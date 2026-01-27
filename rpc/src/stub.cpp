@@ -92,9 +92,9 @@ namespace rpc
         return ret;
     }
 
-    uint64_t object_stub::add_ref(bool is_optimistic, caller_zone caller_zone_id)
+    uint64_t object_stub::add_ref(bool is_optimistic, bool outcall, caller_zone caller_zone_id)
     {
-        uint64_t ret = 0;
+        uint64_t count = 0;
         if (is_optimistic)
         {
             // Track optimistic reference for this caller zone
@@ -103,7 +103,7 @@ namespace rpc
                 auto& ref_count = optimistic_references_[caller_zone_id];
                 ref_count.fetch_add(1, std::memory_order_acq_rel);
             }
-            ret = ++optimistic_count_;
+            count = ++optimistic_count_;
         }
         else
         {
@@ -113,21 +113,38 @@ namespace rpc
                 auto& ref_count = shared_references_[caller_zone_id];
                 ref_count.fetch_add(1, std::memory_order_acq_rel);
             }
-            ret = ++shared_count_;
+            count = ++shared_count_;
         }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_stub_add_ref(zone_->get_zone_id(), id_, {}, ret, {});
+            telemetry_service->on_stub_add_ref(zone_->get_zone_id(), id_, {}, count, {});
 #endif
-        RPC_ASSERT(ret != std::numeric_limits<uint64_t>::max());
-        RPC_ASSERT(ret != 0);
+        RPC_ASSERT(count != std::numeric_limits<uint64_t>::max());
+        RPC_ASSERT(count != 0);
+
+        uint64_t ret = 0;
         auto transport = zone_->get_transport(caller_zone_id.as_destination());
         if (transport)
         {
             transport->increment_inbound_stub_count(caller_zone_id);
+
+            if (outcall)
+            {
+                std::vector<rpc::back_channel_entry> out_back_channel;
+                ret = transport->add_ref(rpc::get_version(),
+                    get_zone()->get_zone_id().as_destination(),
+                    id_,
+                    caller_zone_id,
+                    get_zone()->get_zone_id().as_known_direction_zone(),
+                    rpc::add_ref_options::build_caller_route,
+                    {},
+                    out_back_channel);
+            }
         }
         else
         {
+            ret = error::TRANSPORT_ERROR();
+            RPC_ASSERT(false);
             RPC_ERROR("Failed to find transport to increment inbound stub count");
         }
 

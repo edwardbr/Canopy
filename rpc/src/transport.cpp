@@ -923,13 +923,14 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK())
+            if (ret == error::OK() || ret == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_send(
                     get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
             }
             else
             {
+                // RPC_ASSERT(false);
                 telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
             }
         }
@@ -982,13 +983,14 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK())
+            if (ret == error::OK() || ret == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_try_cast(
                     get_zone_id(), get_adjacent_zone_id(), destination_zone_id, get_zone_id().as_caller(), object_id, interface_id);
             }
             else
             {
+                // RPC_ASSERT(false);
                 telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
             }
         }
@@ -1017,7 +1019,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK())
+            if (ret == error::OK() || ret == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_add_ref(get_zone_id(),
                     get_adjacent_zone_id(),
@@ -1029,6 +1031,7 @@ namespace rpc
             }
             else
             {
+                // RPC_ASSERT(false);
                 telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
             }
         }
@@ -1050,13 +1053,14 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK())
+            if (ret == error::OK() || ret == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_release(
                     get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, options);
             }
             else
             {
+                // RPC_ASSERT(false);
                 telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call transport_down");
             }
         }

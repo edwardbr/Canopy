@@ -71,7 +71,7 @@ namespace rpc
 
         std::shared_ptr<rpc::i_interface_stub> get_interface(interface_ordinal interface_id);
 
-        uint64_t add_ref(bool is_optimistic, caller_zone caller_zone_id);
+        uint64_t add_ref(bool is_optimistic, bool outcall, caller_zone caller_zone_id);
         uint64_t release(bool is_optimistic, caller_zone caller_zone_id);
         void release_from_service(caller_zone caller_zone_id);
 
