@@ -2662,15 +2662,15 @@ function initAnimationTelemetry() {
 
             // Calculate height: service positioned at fixed offset from top
             // Need space above service for transports, and space below for all layers
-            const serviceOffsetFromTop = 70; // Reduced from 100
-            const layerSpacing = 40;
+            const serviceOffsetFromTop = 60; // Distance from top to service
+            const layerSpacing = 30; // Spacing between layers (reduced from 40)
             const serviceBoxHeight = 30;
 
             // Space above service (for transports and padding)
-            const heightAboveService = Math.max(serviceOffsetFromTop, maxTransportBoxHeight + 50);
+            const heightAboveService = Math.max(serviceOffsetFromTop, maxTransportBoxHeight + 40);
 
             // Space below service for all layers
-            let heightBelowService = 50; // Reduced from 80 - initial offset from service to first layer
+            let heightBelowService = 35; // Initial offset from service to first layer
             if (passthroughCount > 0) {
                 heightBelowService += maxPassthroughBoxHeight + layerSpacing;
             }
@@ -2685,15 +2685,15 @@ function initAnimationTelemetry() {
             }
 
             // Add bottom padding
-            const bottomPadding = 30; // Reduced from 40
+            const bottomPadding = 20;
             const totalHeight = heightAboveService + serviceBoxHeight + heightBelowService + bottomPadding;
-            z.height = Math.max(180, totalHeight);
+            z.height = Math.max(160, totalHeight);
         });
 
         // Apply tree layout with dynamic vertical spacing based on zone heights
         const maxZWidth = d3.max(Object.values(zones), z => z.width) || 260;
         const maxZoneHeight = d3.max(Object.values(zones), z => z.height) || 200;
-        const verticalSpacing = maxZoneHeight + 100; // Zone height plus padding between zones
+        const verticalSpacing = maxZoneHeight + 80; // Zone height plus padding between zones (reduced from 100)
         d3.tree().nodeSize([maxZWidth + 150, verticalSpacing])(root);
 
         // Calculate bounding box of all nodes in tree coordinate space
@@ -2839,9 +2839,6 @@ function initAnimationTelemetry() {
         nodeGroups.each(function (d) {
             const zoneSel = d3.select(this);
             const z = d.data.data;
-            const serviceOffsetFromTop = 70; // Fixed distance from top of zone (matches height calculation)
-            const svcY = -z.height + serviceOffsetFromTop;
-            const layerSpacing = 40; // Spacing between each layer of boxes
 
             // Zone background
             zoneSel.append('rect')
@@ -2852,20 +2849,336 @@ function initAnimationTelemetry() {
                 .attr('height', z.height)
                 .attr('rx', 10);
 
-            // Service box (center)
+            // Calculate inner layout box dimensions (avoiding transport boxes and zone edges)
+            const zonePadding = 20; // Padding from zone edges
+            const transportTopHeight = showTransports && z.transports.length > 0 ? z.transportBoxHeight + 30 : 30;
+            const transportBottomHeight = showTransports && z.transports.length > 0 ? z.transportBoxHeight + 30 : 30;
+
+            const layoutBoxX = -z.width / 2 + zonePadding;
+            const layoutBoxY = -z.height + transportTopHeight;
+            const layoutBoxWidth = z.width - 2 * zonePadding;
+            const layoutBoxHeight = z.height - transportTopHeight - transportBottomHeight;
+
+            // Split layout box into left (60%) and right (40%) sections
+            const leftBoxWidth = layoutBoxWidth * 0.6;
+            const rightBoxWidth = layoutBoxWidth * 0.4;
+            const boxSpacing = 10;
+
+            // Left box area
+            const leftBoxX = layoutBoxX;
+            const leftBoxY = layoutBoxY;
+
+            // Right box area
+            const rightBoxX = layoutBoxX + leftBoxWidth + boxSpacing;
+            const rightBoxY = layoutBoxY;
+
+            // === LEFT BOX CONTENT ===
+            // Calculate total content height for vertical centering
+            const serviceBoxWidth = 80;  // Increased from 60 for more margin
+            const serviceBoxHeight = 40; // Increased from 30 for more margin
+            const contentSpacing = 15; // Spacing between service, stubs, and service proxies
+
+            let totalContentHeight = serviceBoxHeight;
+
+            // Calculate stubs height
+            let stubsHeight = 0;
+            const stubSpacing = 15; // Match passthrough spacing
+            if (showStubs && z.stubs && z.stubs.length > 0) {
+                const stubsPerRow = Math.ceil(Math.sqrt(z.stubs.length));
+                const stubRows = Math.ceil(z.stubs.length / stubsPerRow);
+                stubsHeight = stubRows * z.stubBoxHeight + (stubRows - 1) * stubSpacing;
+                totalContentHeight += contentSpacing + stubsHeight;
+            }
+
+            // Calculate service proxies height (including expanded boxes for object proxies)
+            let serviceProxiesHeight = 0;
+            const proxySpacing = 15; // Match passthrough spacing
+            if (showServiceProxies && z.serviceProxies && z.serviceProxies.length > 0) {
+                const proxiesPerRow = Math.ceil(Math.sqrt(z.serviceProxies.length));
+                const proxyRows = Math.ceil(z.serviceProxies.length / proxiesPerRow);
+
+                // Find max height in each row (accounting for object proxies)
+                let maxHeightPerRow = new Array(proxyRows).fill(0);
+                z.serviceProxies.forEach((sp, i) => {
+                    const row = Math.floor(i / proxiesPerRow);
+                    const metrics = z.serviceProxyMetrics[i] || computeServiceProxyMetrics(z.id, sp.destZone);
+                    let boxHeight = metrics.height;
+
+                    // Account for object proxies
+                    if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
+                        const objectProxiesForThisService = z.objectProxies.filter(op => op.destZone === sp.destZone);
+                        if (objectProxiesForThisService.length > 0) {
+                            const objectProxySpacing = 5;
+                            const totalObjectProxyHeight = objectProxiesForThisService.reduce((sum, op, idx) => {
+                                const opMetrics = computeObjectProxyMetrics(z.id, op.destZone, op.object);
+                                return sum + opMetrics.height + (idx > 0 ? objectProxySpacing : 0);
+                            }, 0);
+                            boxHeight = metrics.height + totalObjectProxyHeight + 20;
+                        }
+                    }
+                    maxHeightPerRow[row] = Math.max(maxHeightPerRow[row], boxHeight);
+                });
+
+                serviceProxiesHeight = maxHeightPerRow.reduce((sum, h) => sum + h, 0) + (proxyRows - 1) * proxySpacing;
+                totalContentHeight += contentSpacing + serviceProxiesHeight;
+            }
+
+            // Center all content in the left box
+            const contentStartY = leftBoxY + (layoutBoxHeight - totalContentHeight) / 2;
+
+            const serviceX = leftBoxX + leftBoxWidth / 2;
+            const serviceY = contentStartY + serviceBoxHeight / 2;
+
             zoneSel.append('rect')
                 .attr('class', 'service-box')
-                .attr('x', -30)
-                .attr('y', svcY - 15)
-                .attr('width', 60)
-                .attr('height', 30);
+                .attr('x', serviceX - serviceBoxWidth / 2)
+                .attr('y', serviceY - serviceBoxHeight / 2)
+                .attr('width', serviceBoxWidth)
+                .attr('height', serviceBoxHeight);
 
             zoneSel.append('text')
                 .attr('class', 'zone-label')
-                .attr('y', svcY + 5)
+                .attr('x', serviceX)
+                .attr('y', serviceY + 5)
+                .attr('text-anchor', 'middle')
                 .text(`${z.name.toUpperCase()} [${z.id}]`);
 
-            // Render ports and wires
+            let currentY = serviceY + serviceBoxHeight / 2 + contentSpacing;
+
+            // Stubs below service
+            if (showStubs && z.stubs && z.stubs.length > 0) {
+                const stubsPerRow = Math.ceil(Math.sqrt(z.stubs.length));
+                z.stubs.forEach((s, i) => {
+                    const row = Math.floor(i / stubsPerRow);
+                    const col = i % stubsPerRow;
+                    const totalRowWidth = stubsPerRow * (z.stubBoxWidth + stubSpacing) - stubSpacing;
+                    const sx = leftBoxX + (leftBoxWidth - totalRowWidth) / 2 + col * (z.stubBoxWidth + stubSpacing) + z.stubBoxWidth / 2;
+                    const sy = currentY + row * (z.stubBoxHeight + stubSpacing);
+
+                    const metrics = z.stubMetrics[i] || computeStubMetrics(s.object, s.address);
+                    const boxWidth = metrics.width;
+                    const boxHeight = metrics.height;
+                    const lines = metrics.lines;
+
+                    const sG = zoneSel.append('g').attr('transform', `translate(${sx},${sy})`);
+
+                    sG.append('rect')
+                        .attr('class', 'stub-box')
+                        .attr('x', -boxWidth / 2)
+                        .attr('y', -boxHeight / 2)
+                        .attr('width', boxWidth)
+                        .attr('height', boxHeight)
+                        .attr('rx', 4);
+
+                    const textStartX = -boxWidth / 2 + serviceProxyBoxPaddingX;
+                    const textStartY = -boxHeight / 2 + serviceProxyBoxPaddingY + 9;
+                    lines.forEach((line, idx) => {
+                        sG.append('text')
+                            .attr('class', idx === 0 ? 'stub-label' : 'stub-detail')
+                            .attr('x', textStartX)
+                            .attr('y', textStartY + idx * serviceProxyLineHeight)
+                            .attr('text-anchor', 'start')
+                            .text(line);
+                    });
+
+                    // Wire from service to stub
+                    zoneSel.append('line')
+                        .attr('class', 'wire')
+                        .attr('x1', sx)
+                        .attr('y1', sy - boxHeight / 2)
+                        .attr('x2', serviceX)
+                        .attr('y2', serviceY + serviceBoxHeight / 2);
+                });
+                const stubRows = Math.ceil(z.stubs.length / stubsPerRow);
+                currentY += stubRows * (z.stubBoxHeight + stubSpacing) + contentSpacing;
+            }
+
+            // Service proxies below stubs
+            if (showServiceProxies && z.serviceProxies && z.serviceProxies.length > 0) {
+                const proxiesPerRow = Math.ceil(Math.sqrt(z.serviceProxies.length));
+                z.serviceProxies.forEach((sp, i) => {
+                    const row = Math.floor(i / proxiesPerRow);
+                    const col = i % proxiesPerRow;
+                    const totalRowWidth = proxiesPerRow * (z.serviceProxyBoxWidth + proxySpacing) - proxySpacing;
+                    const spx = leftBoxX + (leftBoxWidth - totalRowWidth) / 2 + col * (z.serviceProxyBoxWidth + proxySpacing) + z.serviceProxyBoxWidth / 2;
+                    const spy = currentY + row * (z.serviceProxyBoxHeight + proxySpacing);
+
+                    const metrics = z.serviceProxyMetrics[i] || computeServiceProxyMetrics(z.id, sp.destZone);
+                    let boxWidth = metrics.width;
+                    let boxHeight = metrics.height;
+                    const lines = metrics.lines;
+
+                    // Count object proxies that belong to this service proxy and calculate expanded height and width
+                    let objectProxiesForThisService = [];
+                    if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
+                        objectProxiesForThisService = z.objectProxies.filter(op => op.destZone === sp.destZone);
+                        if (objectProxiesForThisService.length > 0) {
+                            // Calculate total height needed for object proxies inside
+                            const objectProxySpacing = 5;
+                            const horizontalPadding = 10; // Side padding to envelop object proxies
+
+                            let maxObjectProxyWidth = 0;
+                            const totalObjectProxyHeight = objectProxiesForThisService.reduce((sum, op, idx) => {
+                                const opMetrics = computeObjectProxyMetrics(z.id, op.destZone, op.object);
+                                maxObjectProxyWidth = Math.max(maxObjectProxyWidth, opMetrics.width);
+                                return sum + opMetrics.height + (idx > 0 ? objectProxySpacing : 0);
+                            }, 0);
+
+                            // Expand service proxy box to contain object proxies with padding
+                            boxHeight = metrics.height + totalObjectProxyHeight + 20; // 20px vertical padding
+                            boxWidth = Math.max(boxWidth, maxObjectProxyWidth + horizontalPadding * 2); // Ensure width accommodates object proxies with side margins
+                        }
+                    }
+
+                    const spG = zoneSel.append('g').attr('transform', `translate(${spx},${spy})`);
+
+                    spG.append('rect')
+                        .attr('class', 'service-proxy-box')
+                        .attr('x', -boxWidth / 2)
+                        .attr('y', -boxHeight / 2)
+                        .attr('width', boxWidth)
+                        .attr('height', boxHeight)
+                        .attr('rx', 4);
+
+                    const textStartX = -boxWidth / 2 + serviceProxyBoxPaddingX;
+                    const textStartY = -boxHeight / 2 + serviceProxyBoxPaddingY + 9;
+                    lines.forEach((line, idx) => {
+                        spG.append('text')
+                            .attr('class', idx === 0 ? 'service-proxy-label' : 'service-proxy-detail')
+                            .attr('x', textStartX)
+                            .attr('y', textStartY + idx * serviceProxyLineHeight)
+                            .attr('text-anchor', 'start')
+                            .text(line);
+                    });
+
+                    // Wire from service to service proxy
+                    zoneSel.append('line')
+                        .attr('class', 'wire')
+                        .attr('x1', spx)
+                        .attr('y1', spy - boxHeight / 2)
+                        .attr('x2', serviceX)
+                        .attr('y2', serviceY + serviceBoxHeight / 2);
+
+                    // Object proxies inside service proxies
+                    if (objectProxiesForThisService.length > 0) {
+                        let opCurrentY = spy - boxHeight / 2 + metrics.height + 10; // Start below service proxy content
+                        objectProxiesForThisService.forEach((op, opIdx) => {
+                            const opMetrics = computeObjectProxyMetrics(z.id, op.destZone, op.object);
+                            const opBoxWidth = opMetrics.width;
+                            const opBoxHeight = opMetrics.height;
+                            const opLines = opMetrics.lines;
+
+                            const opy = opCurrentY + opBoxHeight / 2;
+
+                            const opG = zoneSel.append('g').attr('transform', `translate(${spx},${opy})`);
+
+                            opG.append('rect')
+                                .attr('class', 'object-proxy-box')
+                                .attr('x', -opBoxWidth / 2)
+                                .attr('y', -opBoxHeight / 2)
+                                .attr('width', opBoxWidth)
+                                .attr('height', opBoxHeight)
+                                .attr('rx', 4);
+
+                            const opTextStartX = -opBoxWidth / 2 + serviceProxyBoxPaddingX;
+                            const opTextStartY = -opBoxHeight / 2 + serviceProxyBoxPaddingY + 9;
+                            opLines.forEach((line, idx) => {
+                                opG.append('text')
+                                    .attr('class', idx === 0 ? 'object-proxy-label' : 'object-proxy-detail')
+                                    .attr('x', opTextStartX)
+                                    .attr('y', opTextStartY + idx * serviceProxyLineHeight)
+                                    .attr('text-anchor', 'start')
+                                    .text(line);
+                            });
+
+                            // Wire from object proxy to service proxy (connect to top edge of service proxy box)
+                            zoneSel.append('line')
+                                .attr('class', 'wire object-to-service-proxy')
+                                .attr('x1', spx)
+                                .attr('y1', opy - opBoxHeight / 2)
+                                .attr('x2', spx)
+                                .attr('y2', spy - boxHeight / 2 + metrics.height);
+
+                            // Move Y position down for next object proxy
+                            opCurrentY += opBoxHeight + 5;
+                        });
+                    }
+                });
+            }
+
+            // === RIGHT BOX CONTENT ===
+            // Passthroughs in right box (vertically centered)
+            if (showPassthroughs && z.passthroughs && z.passthroughs.length > 0) {
+                // Calculate total height of all passthroughs
+                const passthroughSpacing = 15;
+                const totalPassthroughsHeight = z.passthroughs.reduce((sum, p, idx) => {
+                    const metrics = z.passthroughMetrics[idx] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
+                    return sum + metrics.height + (idx > 0 ? passthroughSpacing : 0);
+                }, 0);
+
+                // Center passthroughs in the right box
+                const passthroughStartY = rightBoxY + (layoutBoxHeight - totalPassthroughsHeight) / 2;
+
+                let currentPassthroughY = passthroughStartY;
+                z.passthroughs.forEach((p, i) => {
+                    const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
+                    const boxWidth = metrics.width;
+                    const boxHeight = metrics.height;
+                    const lines = metrics.lines;
+
+                    const px = rightBoxX + rightBoxWidth / 2;
+                    const py = currentPassthroughY + boxHeight / 2;
+
+                    const pG = zoneSel.append('g').attr('transform', `translate(${px},${py})`);
+
+                    pG.append('rect')
+                        .attr('class', 'pass-box')
+                        .attr('x', -boxWidth / 2)
+                        .attr('y', -boxHeight / 2)
+                        .attr('width', boxWidth)
+                        .attr('height', boxHeight)
+                        .attr('rx', 4);
+
+                    const textStartX = -boxWidth / 2 + passthroughBoxPaddingX;
+                    const textStartY = -boxHeight / 2 + passthroughBoxPaddingY + 9;
+                    lines.forEach((line, idx) => {
+                        pG.append('text')
+                            .attr('class', idx === 0 ? 'pass-label' : 'pass-detail')
+                            .attr('x', textStartX)
+                            .attr('y', textStartY + idx * passthroughLineHeight)
+                            .attr('text-anchor', 'start')
+                            .text(line);
+                    });
+
+                    // Route wires through passthrough
+                    const nextHopRev = findNextHop(z.id, p.rev);
+                    const nextHopFwd = findNextHop(z.id, p.fwd);
+                    const rP = PortRegistry[`${z.id}:${nextHopRev}`];
+                    const fP = PortRegistry[`${z.id}:${nextHopFwd}`];
+
+                    if (rP && fP && (rP !== fP)) {
+                        const halfBoxHeight = boxHeight / 2;
+                        zoneSel.append('line')
+                            .attr('class', 'wire routing')
+                            .attr('x1', rP.relX)
+                            .attr('y1', rP.relY + (rP.relY === 0 ? -15 : 15))
+                            .attr('x2', px)
+                            .attr('y2', py + halfBoxHeight);
+
+                        zoneSel.append('line')
+                            .attr('class', 'wire routing')
+                            .attr('x1', px)
+                            .attr('y1', py - halfBoxHeight)
+                            .attr('x2', fP.relX)
+                            .attr('y2', fP.relY + (fP.relY === 0 ? -15 : 15));
+                    }
+
+                    // Move Y position down for next passthrough
+                    currentPassthroughY += boxHeight + passthroughSpacing;
+                });
+            }
+
+            // Render ports and wires (transports)
             if (showTransports) {
                 Object.keys(PortRegistry).forEach(key => {
                     const [zId, adjId] = key.split(':').map(Number);
@@ -2909,241 +3222,8 @@ function initAnimationTelemetry() {
                         .attr('class', 'wire')
                         .attr('x1', p.relX)
                         .attr('y1', p.relY + (p.relY === 0 ? -halfBoxHeight : halfBoxHeight))
-                        .attr('x2', 0)
-                        .attr('y2', svcY + (p.relY === 0 ? 15 : -15));
-                });
-            }
-
-            // Render passthroughs
-            if (showPassthroughs) {
-                z.passthroughs.forEach((p, i) => {
-                    const px = (z.passthroughs.length > 1)
-                        ? (i / (z.passthroughs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
-                        : 0;
-                    const py = svcY + 50;
-
-                    const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
-                    const boxWidth = metrics.width;
-                    const boxHeight = metrics.height;
-                    const lines = metrics.lines;
-
-                    const pG = zoneSel.append('g').attr('transform', `translate(${px},${py})`);
-
-                    pG.append('rect')
-                        .attr('class', 'pass-box')
-                        .attr('x', -boxWidth / 2)
-                        .attr('y', -boxHeight / 2)
-                        .attr('width', boxWidth)
-                        .attr('height', boxHeight)
-                        .attr('rx', 4);
-
-                    const textStartX = -boxWidth / 2 + passthroughBoxPaddingX;
-                    const textStartY = -boxHeight / 2 + passthroughBoxPaddingY + 9;
-                    lines.forEach((line, idx) => {
-                        pG.append('text')
-                            .attr('class', idx === 0 ? 'pass-label' : 'pass-detail')
-                            .attr('x', textStartX)
-                            .attr('y', textStartY + idx * passthroughLineHeight)
-                            .attr('text-anchor', 'start')
-                            .text(line);
-                    });
-
-                    // Route wires through passthrough
-                    const nextHopRev = findNextHop(z.id, p.rev);
-                    const nextHopFwd = findNextHop(z.id, p.fwd);
-                    const rP = PortRegistry[`${z.id}:${nextHopRev}`];
-                    const fP = PortRegistry[`${z.id}:${nextHopFwd}`];
-
-                    if (rP && fP && (rP !== fP)) {
-                        const halfBoxHeight = boxHeight / 2;
-                        // Wire from reverse port to passthrough
-                        zoneSel.append('line')
-                            .attr('class', 'wire routing')
-                            .attr('x1', rP.relX)
-                            .attr('y1', rP.relY + (rP.relY === 0 ? -15 : 15))
-                            .attr('x2', px)
-                            .attr('y2', py + halfBoxHeight);
-
-                        // Wire from passthrough to forward port
-                        zoneSel.append('line')
-                            .attr('class', 'wire routing')
-                            .attr('x1', px)
-                            .attr('y1', py - halfBoxHeight)
-                            .attr('x2', fP.relX)
-                            .attr('y2', fP.relY + (fP.relY === 0 ? -15 : 15));
-                    }
-                    // If routing fails, passthrough is rendered without wiring
-                });
-            }
-
-            // Render service proxies
-            if (showServiceProxies && z.serviceProxies && z.serviceProxies.length > 0) {
-                z.serviceProxies.forEach((sp, i) => {
-                    const spx = (z.serviceProxies.length > 1)
-                        ? (i / (z.serviceProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
-                        : 0;
-                    const spy = svcY + 50 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
-
-                    const metrics = z.serviceProxyMetrics[i] || computeServiceProxyMetrics(z.id, sp.destZone);
-                    const boxWidth = metrics.width;
-                    const boxHeight = metrics.height;
-                    const lines = metrics.lines;
-
-                    const spG = zoneSel.append('g').attr('transform', `translate(${spx},${spy})`);
-
-                    spG.append('rect')
-                        .attr('class', 'service-proxy-box')
-                        .attr('x', -boxWidth / 2)
-                        .attr('y', -boxHeight / 2)
-                        .attr('width', boxWidth)
-                        .attr('height', boxHeight)
-                        .attr('rx', 4);
-
-                    const textStartX = -boxWidth / 2 + serviceProxyBoxPaddingX;
-                    const textStartY = -boxHeight / 2 + serviceProxyBoxPaddingY + 9;
-                    lines.forEach((line, idx) => {
-                        spG.append('text')
-                            .attr('class', idx === 0 ? 'service-proxy-label' : 'service-proxy-detail')
-                            .attr('x', textStartX)
-                            .attr('y', textStartY + idx * serviceProxyLineHeight)
-                            .attr('text-anchor', 'start')
-                            .text(line);
-                    });
-
-                    // Wire from service to service proxy
-                    const halfBoxHeight = boxHeight / 2;
-                    zoneSel.append('line')
-                        .attr('class', 'wire')
-                        .attr('x1', spx)
-                        .attr('y1', spy - halfBoxHeight)
-                        .attr('x2', 0)
-                        .attr('y2', svcY - 15);
-                });
-            }
-
-            // Render object proxies and link to service proxies
-            if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
-                z.objectProxies.forEach((op, i) => {
-                    const opx = (z.objectProxies.length > 1)
-                        ? (i / (z.objectProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
-                        : 0;
-                    const opy = svcY + 50 +
-                               (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0) +
-                               (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + layerSpacing : 0);
-
-                    const metrics = z.objectProxyMetrics[i] || computeObjectProxyMetrics(z.id, op.destZone, op.object);
-                    const boxWidth = metrics.width;
-                    const boxHeight = metrics.height;
-                    const lines = metrics.lines;
-
-                    const opG = zoneSel.append('g').attr('transform', `translate(${opx},${opy})`);
-
-                    opG.append('rect')
-                        .attr('class', 'object-proxy-box')
-                        .attr('x', -boxWidth / 2)
-                        .attr('y', -boxHeight / 2)
-                        .attr('width', boxWidth)
-                        .attr('height', boxHeight)
-                        .attr('rx', 4);
-
-                    const textStartX = -boxWidth / 2 + serviceProxyBoxPaddingX;
-                    const textStartY = -boxHeight / 2 + serviceProxyBoxPaddingY + 9;
-                    lines.forEach((line, idx) => {
-                        opG.append('text')
-                            .attr('class', idx === 0 ? 'object-proxy-label' : 'object-proxy-detail')
-                            .attr('x', textStartX)
-                            .attr('y', textStartY + idx * serviceProxyLineHeight)
-                            .attr('text-anchor', 'start')
-                            .text(line);
-                    });
-
-                    // Wire from object proxy to service proxy (or service if no matching service proxy)
-                    const halfBoxHeight = boxHeight / 2;
-                    if (showServiceProxies && z.serviceProxies && z.serviceProxies.length > 0) {
-                        // Find the service proxy with matching destination zone
-                        const spIndex = z.serviceProxies.findIndex(sp => sp.destZone === op.destZone);
-                        if (spIndex !== -1) {
-                            // Calculate service proxy position
-                            const spx = (z.serviceProxies.length > 1)
-                                ? (spIndex / (z.serviceProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
-                                : 0;
-                            const spy = svcY + 50 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
-                            const spMetrics = z.serviceProxyMetrics[spIndex];
-                            const spHalfHeight = spMetrics ? spMetrics.height / 2 : serviceProxyMinHeight / 2;
-
-                            // Wire from object proxy to service proxy
-                            zoneSel.append('line')
-                                .attr('class', 'wire object-to-service-proxy')
-                                .attr('x1', opx)
-                                .attr('y1', opy - halfBoxHeight)
-                                .attr('x2', spx)
-                                .attr('y2', spy + spHalfHeight);
-                        } else {
-                            // No matching service proxy, connect to service
-                            zoneSel.append('line')
-                                .attr('class', 'wire')
-                                .attr('x1', opx)
-                                .attr('y1', opy - halfBoxHeight)
-                                .attr('x2', 0)
-                                .attr('y2', svcY - 15);
-                        }
-                    } else {
-                        // No service proxies visible, connect to service
-                        zoneSel.append('line')
-                            .attr('class', 'wire')
-                            .attr('x1', opx)
-                            .attr('y1', opy - halfBoxHeight)
-                            .attr('x2', 0)
-                            .attr('y2', svcY - 15);
-                    }
-                });
-            }
-
-            // Render stubs
-            if (showStubs && z.stubs && z.stubs.length > 0) {
-                z.stubs.forEach((s, i) => {
-                    const sx = (z.stubs.length > 1)
-                        ? (i / (z.stubs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
-                        : 0;
-                    const sy = svcY + 50 +
-                              (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0) +
-                              (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + layerSpacing : 0) +
-                              (showObjectProxies && z.objectProxies.length > 0 ? z.objectProxyBoxHeight + layerSpacing : 0);
-
-                    const metrics = z.stubMetrics[i] || computeStubMetrics(s.object, s.address);
-                    const boxWidth = metrics.width;
-                    const boxHeight = metrics.height;
-                    const lines = metrics.lines;
-
-                    const sG = zoneSel.append('g').attr('transform', `translate(${sx},${sy})`);
-
-                    sG.append('rect')
-                        .attr('class', 'stub-box')
-                        .attr('x', -boxWidth / 2)
-                        .attr('y', -boxHeight / 2)
-                        .attr('width', boxWidth)
-                        .attr('height', boxHeight)
-                        .attr('rx', 4);
-
-                    const textStartX = -boxWidth / 2 + serviceProxyBoxPaddingX;
-                    const textStartY = -boxHeight / 2 + serviceProxyBoxPaddingY + 9;
-                    lines.forEach((line, idx) => {
-                        sG.append('text')
-                            .attr('class', idx === 0 ? 'stub-label' : 'stub-detail')
-                            .attr('x', textStartX)
-                            .attr('y', textStartY + idx * serviceProxyLineHeight)
-                            .attr('text-anchor', 'start')
-                            .text(line);
-                    });
-
-                    // Wire from service to stub
-                    const halfBoxHeight = boxHeight / 2;
-                    zoneSel.append('line')
-                        .attr('class', 'wire')
-                        .attr('x1', sx)
-                        .attr('y1', sy - halfBoxHeight)
-                        .attr('x2', 0)
-                        .attr('y2', svcY - 15);
+                        .attr('x2', serviceX)
+                        .attr('y2', serviceY + (p.relY === 0 ? 15 : -15));
                 });
             }
         });
