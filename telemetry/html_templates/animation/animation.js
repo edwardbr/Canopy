@@ -2660,8 +2660,16 @@ function initAnimationTelemetry() {
             const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth, maxServiceProxyBoxWidth, maxObjectProxyBoxWidth, maxStubBoxWidth);
             z.width = Math.max(260, colCount * (maxBoxWidth + 40));
 
-            // Calculate height: service area (120) + transport height + 80 for service offset + each layer height + spacing
-            const layerSpacing = 40; // Increased from 20 to prevent overlap
+            // Calculate height: service positioned at fixed offset from top (100px)
+            // Need space above service for transports, and space below for all layers
+            const serviceOffsetFromTop = 100;
+            const layerSpacing = 40;
+            const serviceBoxHeight = 30;
+
+            // Space above service (for transports and padding)
+            const heightAboveService = Math.max(serviceOffsetFromTop, maxTransportBoxHeight + 60);
+
+            // Space below service for all layers
             let heightBelowService = 80; // Initial offset from service to first layer (passthroughs)
             if (passthroughCount > 0) {
                 heightBelowService += maxPassthroughBoxHeight + layerSpacing;
@@ -2675,8 +2683,11 @@ function initAnimationTelemetry() {
             if (stubCount > 0) {
                 heightBelowService += maxStubBoxHeight + layerSpacing;
             }
-            const totalHeight = 120 + maxTransportBoxHeight + heightBelowService;
-            z.height = Math.max(140, totalHeight);
+
+            // Add bottom padding
+            const bottomPadding = 40;
+            const totalHeight = heightAboveService + serviceBoxHeight + heightBelowService + bottomPadding;
+            z.height = Math.max(200, totalHeight);
         });
 
         // Apply tree layout
@@ -2827,7 +2838,8 @@ function initAnimationTelemetry() {
         nodeGroups.each(function (d) {
             const zoneSel = d3.select(this);
             const z = d.data.data;
-            const svcY = -z.height / 2;
+            const serviceOffsetFromTop = 100; // Fixed distance from top of zone
+            const svcY = -z.height + serviceOffsetFromTop;
             const layerSpacing = 40; // Spacing between each layer of boxes
 
             // Zone background

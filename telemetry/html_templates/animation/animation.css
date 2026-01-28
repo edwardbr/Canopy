@@ -288,7 +288,7 @@ svg {
 }
 
 .zone-bg {
-    fill: #111113;
+    fill: rgba(255, 255, 255, 0.2);
     stroke: #00d2ff;
     stroke-width: 2;
 }
