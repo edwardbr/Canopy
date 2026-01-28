@@ -3440,6 +3440,9 @@ function initAnimationTelemetry() {
             }
         });
 
+        // Ensure wires render behind boxes within each zone group.
+        nodeGroups.selectAll('.wire').lower();
+
         bindFlashHandlers();
         refreshFlashHandlers();
     }
