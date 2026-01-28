@@ -2660,17 +2660,17 @@ function initAnimationTelemetry() {
             const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth, maxServiceProxyBoxWidth, maxObjectProxyBoxWidth, maxStubBoxWidth);
             z.width = Math.max(260, colCount * (maxBoxWidth + 40));
 
-            // Calculate height: service positioned at fixed offset from top (100px)
+            // Calculate height: service positioned at fixed offset from top
             // Need space above service for transports, and space below for all layers
-            const serviceOffsetFromTop = 100;
+            const serviceOffsetFromTop = 70; // Reduced from 100
             const layerSpacing = 40;
             const serviceBoxHeight = 30;
 
             // Space above service (for transports and padding)
-            const heightAboveService = Math.max(serviceOffsetFromTop, maxTransportBoxHeight + 60);
+            const heightAboveService = Math.max(serviceOffsetFromTop, maxTransportBoxHeight + 50);
 
             // Space below service for all layers
-            let heightBelowService = 80; // Initial offset from service to first layer (passthroughs)
+            let heightBelowService = 50; // Reduced from 80 - initial offset from service to first layer
             if (passthroughCount > 0) {
                 heightBelowService += maxPassthroughBoxHeight + layerSpacing;
             }
@@ -2685,20 +2685,21 @@ function initAnimationTelemetry() {
             }
 
             // Add bottom padding
-            const bottomPadding = 40;
+            const bottomPadding = 30; // Reduced from 40
             const totalHeight = heightAboveService + serviceBoxHeight + heightBelowService + bottomPadding;
-            z.height = Math.max(200, totalHeight);
+            z.height = Math.max(180, totalHeight);
         });
 
-        // Apply tree layout
+        // Apply tree layout with dynamic vertical spacing based on zone heights
         const maxZWidth = d3.max(Object.values(zones), z => z.width) || 260;
-        d3.tree().nodeSize([maxZWidth + 150, 600])(root);
+        const maxZoneHeight = d3.max(Object.values(zones), z => z.height) || 200;
+        const verticalSpacing = maxZoneHeight + 100; // Zone height plus padding between zones
+        d3.tree().nodeSize([maxZWidth + 150, verticalSpacing])(root);
 
         // Calculate bounding box of all nodes in tree coordinate space
         const descendants = root.descendants();
         const xExtent = d3.extent(descendants, d => d.x);
         const yExtent = d3.extent(descendants, d => d.y);
-        const maxZoneHeight = d3.max(Object.values(zones), z => z.height) || 260;
 
         // Calculate viewBox dimensions with padding for zone sizes
         const padding = 200;
@@ -2838,7 +2839,7 @@ function initAnimationTelemetry() {
         nodeGroups.each(function (d) {
             const zoneSel = d3.select(this);
             const z = d.data.data;
-            const serviceOffsetFromTop = 100; // Fixed distance from top of zone
+            const serviceOffsetFromTop = 70; // Fixed distance from top of zone (matches height calculation)
             const svcY = -z.height + serviceOffsetFromTop;
             const layerSpacing = 40; // Spacing between each layer of boxes
 
@@ -2919,7 +2920,7 @@ function initAnimationTelemetry() {
                     const px = (z.passthroughs.length > 1)
                         ? (i / (z.passthroughs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                         : 0;
-                    const py = svcY + 80;
+                    const py = svcY + 50;
 
                     const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
                     const boxWidth = metrics.width;
@@ -2981,7 +2982,7 @@ function initAnimationTelemetry() {
                     const spx = (z.serviceProxies.length > 1)
                         ? (i / (z.serviceProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                         : 0;
-                    const spy = svcY + 80 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
+                    const spy = svcY + 50 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
 
                     const metrics = z.serviceProxyMetrics[i] || computeServiceProxyMetrics(z.id, sp.destZone);
                     const boxWidth = metrics.width;
@@ -3026,7 +3027,7 @@ function initAnimationTelemetry() {
                     const opx = (z.objectProxies.length > 1)
                         ? (i / (z.objectProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                         : 0;
-                    const opy = svcY + 80 +
+                    const opy = svcY + 50 +
                                (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0) +
                                (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + layerSpacing : 0);
 
@@ -3066,7 +3067,7 @@ function initAnimationTelemetry() {
                             const spx = (z.serviceProxies.length > 1)
                                 ? (spIndex / (z.serviceProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                                 : 0;
-                            const spy = svcY + 80 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
+                            const spy = svcY + 50 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
                             const spMetrics = z.serviceProxyMetrics[spIndex];
                             const spHalfHeight = spMetrics ? spMetrics.height / 2 : serviceProxyMinHeight / 2;
 
@@ -3104,7 +3105,7 @@ function initAnimationTelemetry() {
                     const sx = (z.stubs.length > 1)
                         ? (i / (z.stubs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                         : 0;
-                    const sy = svcY + 80 +
+                    const sy = svcY + 50 +
                               (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0) +
                               (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + layerSpacing : 0) +
                               (showObjectProxies && z.objectProxies.length > 0 ? z.objectProxyBoxHeight + layerSpacing : 0);
