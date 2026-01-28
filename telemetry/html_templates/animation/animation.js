@@ -2659,13 +2659,24 @@ function initAnimationTelemetry() {
             const colCount = Math.max(transportCount, passthroughCount, serviceProxyCount, objectProxyCount, stubCount, 1);
             const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth, maxServiceProxyBoxWidth, maxObjectProxyBoxWidth, maxStubBoxWidth);
             z.width = Math.max(260, colCount * (maxBoxWidth + 40));
-            const baseHeight = (passthroughCount > 0 || serviceProxyCount > 0 || objectProxyCount > 0 || stubCount > 0) ? 260 : 140;
-            const additionalHeight = (passthroughCount > 0 ? maxPassthroughBoxHeight : 0) +
-                                    (serviceProxyCount > 0 ? maxServiceProxyBoxHeight : 0) +
-                                    (objectProxyCount > 0 ? maxObjectProxyBoxHeight : 0) +
-                                    (stubCount > 0 ? maxStubBoxHeight : 0);
-            const totalHeight = 120 + maxTransportBoxHeight + additionalHeight;
-            z.height = Math.max(baseHeight, totalHeight);
+
+            // Calculate height: service area (120) + transport height + 80 for service offset + each layer height + spacing
+            const layerSpacing = 40; // Increased from 20 to prevent overlap
+            let heightBelowService = 80; // Initial offset from service to first layer (passthroughs)
+            if (passthroughCount > 0) {
+                heightBelowService += maxPassthroughBoxHeight + layerSpacing;
+            }
+            if (serviceProxyCount > 0) {
+                heightBelowService += maxServiceProxyBoxHeight + layerSpacing;
+            }
+            if (objectProxyCount > 0) {
+                heightBelowService += maxObjectProxyBoxHeight + layerSpacing;
+            }
+            if (stubCount > 0) {
+                heightBelowService += maxStubBoxHeight + layerSpacing;
+            }
+            const totalHeight = 120 + maxTransportBoxHeight + heightBelowService;
+            z.height = Math.max(140, totalHeight);
         });
 
         // Apply tree layout
@@ -2817,6 +2828,7 @@ function initAnimationTelemetry() {
             const zoneSel = d3.select(this);
             const z = d.data.data;
             const svcY = -z.height / 2;
+            const layerSpacing = 40; // Spacing between each layer of boxes
 
             // Zone background
             zoneSel.append('rect')
@@ -2836,9 +2848,9 @@ function initAnimationTelemetry() {
                 .attr('height', 30);
 
             zoneSel.append('text')
-                .attr('class', 'label')
+                .attr('class', 'zone-label')
                 .attr('y', svcY + 5)
-                .text(z.name.toUpperCase());
+                .text(`${z.name.toUpperCase()} [${z.id}]`);
 
             // Render ports and wires
             if (showTransports) {
@@ -2957,7 +2969,7 @@ function initAnimationTelemetry() {
                     const spx = (z.serviceProxies.length > 1)
                         ? (i / (z.serviceProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                         : 0;
-                    const spy = svcY + 80 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + 20 : 0);
+                    const spy = svcY + 80 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
 
                     const metrics = z.serviceProxyMetrics[i] || computeServiceProxyMetrics(z.id, sp.destZone);
                     const boxWidth = metrics.width;
@@ -2996,15 +3008,15 @@ function initAnimationTelemetry() {
                 });
             }
 
-            // Render object proxies
+            // Render object proxies and link to service proxies
             if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
                 z.objectProxies.forEach((op, i) => {
                     const opx = (z.objectProxies.length > 1)
                         ? (i / (z.objectProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                         : 0;
                     const opy = svcY + 80 +
-                               (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + 20 : 0) +
-                               (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + 20 : 0);
+                               (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0) +
+                               (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + layerSpacing : 0);
 
                     const metrics = z.objectProxyMetrics[i] || computeObjectProxyMetrics(z.id, op.destZone, op.object);
                     const boxWidth = metrics.width;
@@ -3032,14 +3044,45 @@ function initAnimationTelemetry() {
                             .text(line);
                     });
 
-                    // Wire from service to object proxy
+                    // Wire from object proxy to service proxy (or service if no matching service proxy)
                     const halfBoxHeight = boxHeight / 2;
-                    zoneSel.append('line')
-                        .attr('class', 'wire')
-                        .attr('x1', opx)
-                        .attr('y1', opy - halfBoxHeight)
-                        .attr('x2', 0)
-                        .attr('y2', svcY - 15);
+                    if (showServiceProxies && z.serviceProxies && z.serviceProxies.length > 0) {
+                        // Find the service proxy with matching destination zone
+                        const spIndex = z.serviceProxies.findIndex(sp => sp.destZone === op.destZone);
+                        if (spIndex !== -1) {
+                            // Calculate service proxy position
+                            const spx = (z.serviceProxies.length > 1)
+                                ? (spIndex / (z.serviceProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
+                                : 0;
+                            const spy = svcY + 80 + (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0);
+                            const spMetrics = z.serviceProxyMetrics[spIndex];
+                            const spHalfHeight = spMetrics ? spMetrics.height / 2 : serviceProxyMinHeight / 2;
+
+                            // Wire from object proxy to service proxy
+                            zoneSel.append('line')
+                                .attr('class', 'wire object-to-service-proxy')
+                                .attr('x1', opx)
+                                .attr('y1', opy - halfBoxHeight)
+                                .attr('x2', spx)
+                                .attr('y2', spy + spHalfHeight);
+                        } else {
+                            // No matching service proxy, connect to service
+                            zoneSel.append('line')
+                                .attr('class', 'wire')
+                                .attr('x1', opx)
+                                .attr('y1', opy - halfBoxHeight)
+                                .attr('x2', 0)
+                                .attr('y2', svcY - 15);
+                        }
+                    } else {
+                        // No service proxies visible, connect to service
+                        zoneSel.append('line')
+                            .attr('class', 'wire')
+                            .attr('x1', opx)
+                            .attr('y1', opy - halfBoxHeight)
+                            .attr('x2', 0)
+                            .attr('y2', svcY - 15);
+                    }
                 });
             }
 
@@ -3050,9 +3093,9 @@ function initAnimationTelemetry() {
                         ? (i / (z.stubs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
                         : 0;
                     const sy = svcY + 80 +
-                              (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + 20 : 0) +
-                              (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + 20 : 0) +
-                              (showObjectProxies && z.objectProxies.length > 0 ? z.objectProxyBoxHeight + 20 : 0);
+                              (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + layerSpacing : 0) +
+                              (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + layerSpacing : 0) +
+                              (showObjectProxies && z.objectProxies.length > 0 ? z.objectProxyBoxHeight + layerSpacing : 0);
 
                     const metrics = z.stubMetrics[i] || computeStubMetrics(s.object, s.address);
                     const boxWidth = metrics.width;
