@@ -2403,14 +2403,8 @@ function initAnimationTelemetry() {
     }
 
     function buildTransportLines(zoneNumber, adjacentNumber, header) {
-        const detailLines = getTransportPairLines(zoneNumber, adjacentNumber);
-        const lines = [header];
-        if (detailLines.length === 0) {
-            lines.push('no refs');
-        } else {
-            lines.push(...detailLines);
-        }
-        return lines;
+        // Only show title row, no destination/source reference count rows
+        return [header];
     }
 
     function computeTransportMetrics(zoneNumber, adjacentNumber, header) {
@@ -2651,14 +2645,58 @@ function initAnimationTelemetry() {
             z.stubBoxWidth = maxStubBoxWidth;
             z.stubBoxHeight = maxStubBoxHeight;
 
+            // Calculate zone width based on actual layout sections
+            // Left box (60%): service proxies and stubs share space
+            // Right box (40%): passthroughs
+            // Transports are at top/bottom and use full width
+
             const transportCount = showTransports ? z.transports.length : 0;
             const passthroughCount = showPassthroughs ? z.passthroughs.length : 0;
             const serviceProxyCount = showServiceProxies && z.serviceProxies ? z.serviceProxies.length : 0;
             const objectProxyCount = showObjectProxies && z.objectProxies ? z.objectProxies.length : 0;
             const stubCount = showStubs && z.stubs ? z.stubs.length : 0;
-            const colCount = Math.max(transportCount, passthroughCount, serviceProxyCount, objectProxyCount, stubCount, 1);
-            const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth, maxServiceProxyBoxWidth, maxObjectProxyBoxWidth, maxStubBoxWidth);
-            z.width = Math.max(260, colCount * (maxBoxWidth + 40));
+
+            // Calculate columns needed for left section (service proxies and stubs)
+            // They use a sqrt-based grid layout
+            const leftSectionMaxWidth = Math.max(maxServiceProxyBoxWidth, maxStubBoxWidth);
+            const leftMaxCount = Math.max(serviceProxyCount, stubCount);
+            const leftCols = leftMaxCount > 0 ? Math.ceil(Math.sqrt(leftMaxCount)) : 0;
+            const leftSectionWidth = leftCols > 0
+                ? leftCols * (leftSectionMaxWidth + 15) - 15 + 40  // 40px padding
+                : 120;  // Minimum left section width
+
+            // Calculate width needed for right section (passthroughs)
+            // Allow passthroughs to grow horizontally to avoid vertical stacking
+            // Target: fit as many as possible in a row, up to a reasonable max
+            const rightMaxWidth = maxPassthroughBoxWidth;
+            const passthroughSpacing = 15;
+            const minRightWidth = 100;  // Minimum right section width
+            const maxPassthroughsPerRow = 4;  // Cap to prevent excessive width
+
+            let rightSectionWidth = minRightWidth;
+            if (passthroughCount > 0) {
+                // Calculate how many passthroughs we'd like per row (up to max)
+                const desiredPerRow = Math.min(passthroughCount, maxPassthroughsPerRow);
+                // Calculate width needed for that many passthroughs
+                rightSectionWidth = desiredPerRow * (rightMaxWidth + passthroughSpacing) - passthroughSpacing + 40;  // 40px padding
+            }
+
+            // Transports at top need width too
+            const transportSectionWidth = transportCount > 0
+                ? transportCount * (maxTransportBoxWidth + 20) - 20 + 80  // 80px padding
+                : 100;
+
+            // Total width is the max of: left+right+spacing, transport section, or minimum
+            const contentWidth = Math.max(
+                leftSectionWidth + 20 + rightSectionWidth,  // left + spacing + right
+                transportSectionWidth,
+                260  // absolute minimum
+            );
+
+            z.width = Math.max(260, contentWidth);
+
+            // Store the calculated right section width for use in rendering
+            z.calculatedRightWidth = rightSectionWidth;
 
             // Calculate height: service positioned at fixed offset from top
             // Need space above service for transports, and space below for all layers
@@ -2876,7 +2914,7 @@ function initAnimationTelemetry() {
             // Calculate total content height for vertical centering
             const serviceBoxWidth = 80;  // Increased from 60 for more margin
             const serviceBoxHeight = 40; // Increased from 30 for more margin
-            const contentSpacing = 15; // Spacing between service, stubs, and service proxies
+            const contentSpacing = 40; // Spacing between service, stubs, and service proxies
 
             let totalContentHeight = serviceBoxHeight;
 
@@ -2892,6 +2930,7 @@ function initAnimationTelemetry() {
 
             // Calculate service proxies height (including expanded boxes for object proxies)
             let serviceProxiesHeight = 0;
+            let serviceProxyRowHeights = []; // Store actual height for each row
             const proxySpacing = 15; // Match passthrough spacing
             if (showServiceProxies && z.serviceProxies && z.serviceProxies.length > 0) {
                 const proxiesPerRow = Math.ceil(Math.sqrt(z.serviceProxies.length));
@@ -2908,17 +2947,18 @@ function initAnimationTelemetry() {
                     if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
                         const objectProxiesForThisService = z.objectProxies.filter(op => op.destZone === sp.destZone);
                         if (objectProxiesForThisService.length > 0) {
-                            const objectProxySpacing = 5;
+                            const objectProxySpacing = 15; // Match passthrough spacing
                             const totalObjectProxyHeight = objectProxiesForThisService.reduce((sum, op, idx) => {
                                 const opMetrics = computeObjectProxyMetrics(z.id, op.destZone, op.object);
                                 return sum + opMetrics.height + (idx > 0 ? objectProxySpacing : 0);
                             }, 0);
-                            boxHeight = metrics.height + totalObjectProxyHeight + 20;
+                            boxHeight = metrics.height + totalObjectProxyHeight + 30; // Match passthrough spacing
                         }
                     }
                     maxHeightPerRow[row] = Math.max(maxHeightPerRow[row], boxHeight);
                 });
 
+                serviceProxyRowHeights = maxHeightPerRow;
                 serviceProxiesHeight = maxHeightPerRow.reduce((sum, h) => sum + h, 0) + (proxyRows - 1) * proxySpacing;
                 totalContentHeight += contentSpacing + serviceProxiesHeight;
             }
@@ -2993,15 +3033,74 @@ function initAnimationTelemetry() {
                 currentY += stubRows * (z.stubBoxHeight + stubSpacing) + contentSpacing;
             }
 
-            // Service proxies below stubs
+            // Service proxies below stubs - use left section width calculation for positioning
             if (showServiceProxies && z.serviceProxies && z.serviceProxies.length > 0) {
-                const proxiesPerRow = Math.ceil(Math.sqrt(z.serviceProxies.length));
+                // Calculate how many proxies can fit in the left section width (with padding)
+                const leftSectionPadding = 40; // Account for box padding
+                const availableWidth = leftBoxWidth - leftSectionPadding;
+                let proxiesPerRow = Math.ceil(Math.sqrt(z.serviceProxies.length));
+                const minBoxWidthWithSpacing = z.serviceProxyBoxWidth + proxySpacing;
+                const maxPossiblePerRow = Math.max(1, Math.floor(availableWidth / minBoxWidthWithSpacing));
+                proxiesPerRow = Math.min(proxiesPerRow, maxPossiblePerRow);
+
+                // Calculate actual rows
+                const proxyRows = Math.ceil(z.serviceProxies.length / proxiesPerRow);
+
+                // Calculate total height accounting for variable rows
+                serviceProxiesHeight = 0;
+                serviceProxyRowHeights = [];
+                for (let r = 0; r < proxyRows; r++) {
+                    // Items in this row (last row may have fewer)
+                    const startIdx = r * proxiesPerRow;
+                    const endIdx = Math.min(startIdx + proxiesPerRow, z.serviceProxies.length);
+                    const itemsInRow = endIdx - startIdx;
+
+                    // Find max height in this row
+                    let maxRowHeight = 0;
+                    for (let i = startIdx; i < endIdx; i++) {
+                        const sp = z.serviceProxies[i];
+                        const metrics = z.serviceProxyMetrics[i] || computeServiceProxyMetrics(z.id, sp.destZone);
+                        let boxHeight = metrics.height;
+
+                        // Account for object proxies
+                        if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
+                            const objectProxiesForThisService = z.objectProxies.filter(op => op.destZone === sp.destZone);
+                            if (objectProxiesForThisService.length > 0) {
+                                const totalObjectProxyHeight = objectProxiesForThisService.reduce((sum, op, idx) => {
+                                    const opMetrics = computeObjectProxyMetrics(z.id, op.destZone, op.object);
+                                    return sum + opMetrics.height + (idx > 0 ? 15 : 0); // Match passthrough spacing
+                                }, 0);
+                                boxHeight = metrics.height + totalObjectProxyHeight + 30;
+                            }
+                        }
+                        maxRowHeight = Math.max(maxRowHeight, boxHeight);
+                    }
+                    serviceProxyRowHeights.push(maxRowHeight);
+                    serviceProxiesHeight += maxRowHeight;
+                    if (r < proxyRows - 1) {
+                        serviceProxiesHeight += proxySpacing;
+                    }
+                }
+
+                let rowStartY = currentY;
                 z.serviceProxies.forEach((sp, i) => {
                     const row = Math.floor(i / proxiesPerRow);
                     const col = i % proxiesPerRow;
-                    const totalRowWidth = proxiesPerRow * (z.serviceProxyBoxWidth + proxySpacing) - proxySpacing;
-                    const spx = leftBoxX + (leftBoxWidth - totalRowWidth) / 2 + col * (z.serviceProxyBoxWidth + proxySpacing) + z.serviceProxyBoxWidth / 2;
-                    const spy = currentY + row * (z.serviceProxyBoxHeight + proxySpacing);
+
+                    // Calculate actual row width based on items in this row
+                    const startIdx = row * proxiesPerRow;
+                    const endIdx = Math.min(startIdx + proxiesPerRow, z.serviceProxies.length);
+                    const itemsInRow = endIdx - startIdx;
+                    const rowWidth = itemsInRow * (z.serviceProxyBoxWidth + proxySpacing) - proxySpacing;
+                    const rowUseWidth = Math.min(rowWidth, availableWidth);
+
+                    const spx = leftBoxX + (leftBoxWidth - rowUseWidth) / 2 + col * (z.serviceProxyBoxWidth + proxySpacing) + z.serviceProxyBoxWidth / 2;
+                    // Use actual row height for positioning, accumulating from previous rows
+                    let spy = rowStartY;
+                    for (let r = 0; r < row; r++) {
+                        spy += serviceProxyRowHeights[r] + proxySpacing;
+                    }
+                    spy += serviceProxyRowHeights[row] / 2; // Center in the row
 
                     const metrics = z.serviceProxyMetrics[i] || computeServiceProxyMetrics(z.id, sp.destZone);
                     let boxWidth = metrics.width;
@@ -3014,7 +3113,7 @@ function initAnimationTelemetry() {
                         objectProxiesForThisService = z.objectProxies.filter(op => op.destZone === sp.destZone);
                         if (objectProxiesForThisService.length > 0) {
                             // Calculate total height needed for object proxies inside
-                            const objectProxySpacing = 5;
+                            const objectProxySpacing = 15; // Match passthrough spacing
                             const horizontalPadding = 10; // Side padding to envelop object proxies
 
                             let maxObjectProxyWidth = 0;
@@ -3025,7 +3124,7 @@ function initAnimationTelemetry() {
                             }, 0);
 
                             // Expand service proxy box to contain object proxies with padding
-                            boxHeight = metrics.height + totalObjectProxyHeight + 20; // 20px vertical padding
+                            boxHeight = metrics.height + totalObjectProxyHeight + 30; // 30px vertical padding
                             boxWidth = Math.max(boxWidth, maxObjectProxyWidth + horizontalPadding * 2); // Ensure width accommodates object proxies with side margins
                         }
                     }
@@ -3061,7 +3160,7 @@ function initAnimationTelemetry() {
 
                     // Object proxies inside service proxies
                     if (objectProxiesForThisService.length > 0) {
-                        let opCurrentY = spy - boxHeight / 2 + metrics.height + 10; // Start below service proxy content
+                        let opCurrentY = spy - boxHeight / 2 + metrics.height + 15; // Match passthrough spacing
                         objectProxiesForThisService.forEach((op, opIdx) => {
                             const opMetrics = computeObjectProxyMetrics(z.id, op.destZone, op.object);
                             const opBoxWidth = opMetrics.width;
@@ -3100,34 +3199,64 @@ function initAnimationTelemetry() {
                                 .attr('y2', spy - boxHeight / 2 + metrics.height);
 
                             // Move Y position down for next object proxy
-                            opCurrentY += opBoxHeight + 5;
+                            opCurrentY += opBoxHeight + 15; // Match passthrough spacing
                         });
                     }
                 });
             }
 
             // === RIGHT BOX CONTENT ===
-            // Passthroughs in right box (vertically centered)
+            // Passthroughs in right box (flowing like text to fill width)
             if (showPassthroughs && z.passthroughs && z.passthroughs.length > 0) {
-                // Calculate total height of all passthroughs
                 const passthroughSpacing = 15;
-                const totalPassthroughsHeight = z.passthroughs.reduce((sum, p, idx) => {
-                    const metrics = z.passthroughMetrics[idx] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
-                    return sum + metrics.height + (idx > 0 ? passthroughSpacing : 0);
-                }, 0);
+                const passthroughHSpacing = 15; // Horizontal spacing between passthroughs
 
-                // Center passthroughs in the right box
+                // Calculate how many passthroughs can fit per row based on box widths
+                // Use a grid layout that wraps to fill available width
+                const maxPassthroughWidth = Math.max(...z.passthroughs.map((p, i) => {
+                    const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
+                    return metrics.width;
+                }), passthroughMinWidth);
+
+                // Calculate passthroughs per row to fill the width
+                const passthroughsPerRow = Math.max(1, Math.floor((rightBoxWidth + passthroughHSpacing) / (maxPassthroughWidth + passthroughHSpacing)));
+                const passthroughRows = Math.ceil(z.passthroughs.length / passthroughsPerRow);
+
+                // Calculate actual row heights (accounting for variable box heights)
+                let rowHeights = new Array(passthroughRows).fill(0);
+                z.passthroughs.forEach((p, i) => {
+                    const row = Math.floor(i / passthroughsPerRow);
+                    const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
+                    rowHeights[row] = Math.max(rowHeights[row], metrics.height);
+                });
+
+                // Calculate total height
+                const totalPassthroughsHeight = rowHeights.reduce((sum, h) => sum + h, 0) + (passthroughRows - 1) * passthroughSpacing;
+
+                // Center passthroughs vertically in the right box
                 const passthroughStartY = rightBoxY + (layoutBoxHeight - totalPassthroughsHeight) / 2;
 
-                let currentPassthroughY = passthroughStartY;
+                // Store cumulative row start positions
+                let rowStartYs = [passthroughStartY];
+                for (let r = 1; r < passthroughRows; r++) {
+                    rowStartYs[r] = rowStartYs[r - 1] + rowHeights[r - 1] + passthroughSpacing;
+                }
+
                 z.passthroughs.forEach((p, i) => {
+                    const row = Math.floor(i / passthroughsPerRow);
+                    const col = i % passthroughsPerRow;
                     const metrics = z.passthroughMetrics[i] || computePassthroughMetrics(p.fwd, p.rev, 0, 0);
                     const boxWidth = metrics.width;
                     const boxHeight = metrics.height;
                     const lines = metrics.lines;
 
-                    const px = rightBoxX + rightBoxWidth / 2;
-                    const py = currentPassthroughY + boxHeight / 2;
+                    // Calculate row width for this specific row (may have fewer items in last row)
+                    const itemsInRow = Math.min(passthroughsPerRow, z.passthroughs.length - row * passthroughsPerRow);
+                    const rowWidth = itemsInRow * (maxPassthroughWidth + passthroughHSpacing) - passthroughHSpacing;
+
+                    // Position: distribute evenly across the row
+                    const px = rightBoxX + (rightBoxWidth - rowWidth) / 2 + col * (maxPassthroughWidth + passthroughHSpacing) + maxPassthroughWidth / 2;
+                    const py = rowStartYs[row] + rowHeights[row] / 2;
 
                     const pG = zoneSel.append('g').attr('transform', `translate(${px},${py})`);
 
@@ -3173,8 +3302,6 @@ function initAnimationTelemetry() {
                             .attr('y2', fP.relY + (fP.relY === 0 ? -15 : 15));
                     }
 
-                    // Move Y position down for next passthrough
-                    currentPassthroughY += boxHeight + passthroughSpacing;
                 });
             }
 

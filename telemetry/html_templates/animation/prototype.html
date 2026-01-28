@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Zone Layout - Dynamic Wire Connections</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Roboto, sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+
+        .layout-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 80px;
+            padding: 40px;
+        }
+
+        .zone {
+            position: relative;
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 2px solid #00d2ff;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 350px;
+        }
+
+        .service-box {
+            background-color: #0984e3;
+            border: 2px solid #74b9ff;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-weight: bold;
+            text-align: center;
+            margin: 0 auto 25px auto;
+            width: fit-content;
+        }
+
+        .middle-section {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+        }
+
+        .area {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .stubs-grid {
+            background-color: rgba(74, 222, 128, 0.15);
+        }
+
+        .passthroughs-grid {
+            background-color: rgba(108, 92, 231, 0.15);
+            min-width: 140px;
+        }
+
+        .proxies-grid {
+            background-color: rgba(168, 85, 247, 0.15);
+        }
+
+        .stub-box,
+        .pass-box,
+        .proxy-box {
+            border: 2px solid;
+            border-radius: 4px;
+            padding: 8px 14px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .stub-box {
+            background-color: #4ade80;
+            border-color: #86efac;
+        }
+
+        .pass-box {
+            background-color: #6c5ce7;
+            border-color: #a29bfe;
+        }
+
+        .proxy-box {
+            background-color: rgba(168, 85, 247, 0.4);
+            border-color: #d8b4fe;
+        }
+
+        .object-proxy {
+            background-color: #fb7185;
+            border: 2px solid #fda4af;
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-size: 11px;
+            margin-top: 10px;
+        }
+
+        .proxies-section {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .transport-row {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .transport-box {
+            background-color: #d35400;
+            border: 2px solid #ff8c61;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 10px;
+        }
+
+        .area-label {
+            font-size: 10px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            text-align: center;
+        }
+
+        /* SVG for wires - full overlay */
+        .wires-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: visible;
+            z-index: 100;
+        }
+
+        .wire {
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+        }
+
+        .wire-service-stub {
+            stroke: #4ade80;
+            stroke-dasharray: 6, 4;
+        }
+
+        .wire-service-proxy {
+            stroke: #a855f7;
+            stroke-dasharray: 6, 4;
+        }
+
+        .wire-proxy-object {
+            stroke: #fb7185;
+            stroke-width: 1.5;
+            stroke-dasharray: 4, 3;
+        }
+
+        /* Tree layout */
+        .tree-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 60px;
+        }
+
+        .child-zones {
+            display: flex;
+            gap: 50px;
+        }
+
+        .child-zone {
+            position: relative;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 2px solid #00d2ff;
+            border-radius: 10px;
+            padding: 15px;
+            min-width: 160px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Zone Layout with Dynamic Wire Connections</h2>
+    <p>Wires now programmatically connect to box edges using JavaScript:</p>
+
+    <div class="layout-container">
+
+        <!-- Main Zone -->
+        <div class="zone" id="main-zone">
+            <svg class="wires-svg" id="main-wires"></svg>
+
+            <div class="transport-row">
+                <div class="transport-box">IN:0</div>
+                <div class="transport-box">TO:2</div>
+                <div class="transport-box">TO:3</div>
+            </div>
+
+            <div class="service-box" id="service-1">SERVICE [1]</div>
+
+            <div class="middle-section">
+                <div class="area">
+                    <div class="area-label">Stubs</div>
+                    <div class="grid stubs-grid" id="stubs-container">
+                        <div class="stub-box" id="stub-1">OBJ:1</div>
+                        <div class="stub-box" id="stub-2">OBJ:2</div>
+                        <div class="stub-box" id="stub-3">OBJ:3</div>
+                    </div>
+                </div>
+                <div class="area">
+                    <div class="area-label">Passthroughs</div>
+                    <div class="grid passthroughs-grid" id="passthroughs-container">
+                        <div class="pass-box" id="pass-1">FWD:2<br>REV:3</div>
+                        <div class="pass-box" id="pass-2">FWD:4<br>REV:5</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="proxies-section" id="proxies-container">
+                <div class="proxy-box" id="proxy-1">
+                    TO:2
+                    <div class="object-proxy" id="objproxy-1">OBJ:100</div>
+                </div>
+                <div class="proxy-box" id="proxy-2">
+                    TO:3
+                    <div class="object-proxy" id="objproxy-2">OBJ:200</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tree Layout -->
+        <h3>Tree Layout</h3>
+        <div class="tree-container">
+            <div class="child-zone" id="root-zone">
+                <svg class="wires-svg" id="root-wires"></svg>
+                <div class="service-box" id="service-0">ZONE [0]</div>
+            </div>
+
+            <div class="child-zones">
+                <div class="child-zone" id="child-1">
+                    <svg class="wires-svg" id="child1-wires"></svg>
+                    <div class="service-box" id="service-1-child">ZONE [1]</div>
+                    <div class="grid stubs-grid">
+                        <div class="stub-box">OBJ:1</div>
+                        <div class="stub-box">OBJ:2</div>
+                    </div>
+                </div>
+
+                <div class="child-zone" id="child-2">
+                    <svg class="wires-svg" id="child2-wires"></svg>
+                    <div class="service-box" id="service-2-child">ZONE [2]</div>
+                    <div class="grid passthroughs-grid">
+                        <div class="pass-box">FWD:3<br>REV:4</div>
+                    </div>
+                </div>
+
+                <div class="child-zone" id="child-3">
+                    <svg class="wires-svg" id="child3-wires"></svg>
+                    <div class="service-box" id="service-3-child">ZONE [3]</div>
+                    <div class="proxies-section" style="margin-top: 0; gap: 10px; padding: 10px;">
+                        <div class="proxy-box" style="padding: 6px 12px; font-size: 11px;">TO:1</div>
+                        <div class="proxy-box" style="padding: 6px 12px; font-size: 11px;">TO:2</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Function to draw wires between elements
+        function drawWires() {
+            // Main zone wires
+            drawWiresForZone('main-zone', 'main-wires');
+
+            // Root zone
+            drawWiresForZone('root-zone', 'root-wires');
+
+            // Child zones
+            drawWiresForZone('child-1', 'child1-wires');
+            drawWiresForZone('child-2', 'child2-wires');
+            drawWiresForZone('child-3', 'child3-wires');
+        }
+
+        function drawWiresForZone(zoneId, svgId) {
+            const zone = document.getElementById(zoneId);
+            const svg = document.getElementById(svgId);
+            if (!zone || !svg) return;
+
+            // Clear existing wires
+            svg.innerHTML = '';
+
+            const zoneRect = zone.getBoundingClientRect();
+
+            // Service box
+            const service = zone.querySelector('.service-box');
+            if (service) {
+                const serviceRect = service.getBoundingClientRect();
+                const serviceX = serviceRect.left + serviceRect.width / 2 - zoneRect.left;
+                const serviceBottom = serviceRect.bottom - zoneRect.top;
+
+                // Wires to stubs
+                const stubs = zone.querySelectorAll('.stub-box');
+                stubs.forEach(stub => {
+                    const stubRect = stub.getBoundingClientRect();
+                    const stubX = stubRect.left + stubRect.width / 2 - zoneRect.left;
+                    const stubTop = stubRect.top - zoneRect.top;
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('class', 'wire wire-service-stub');
+                    // Curved path from service bottom to stub top
+                    const midY = (serviceBottom + stubTop) / 2;
+                    path.setAttribute('d', `M ${serviceX},${serviceBottom} C ${serviceX},${midY} ${stubX},${midY} ${stubX},${stubTop}`);
+                    svg.appendChild(path);
+                });
+
+                // Wires to proxies
+                const proxies = zone.querySelectorAll('.proxy-box');
+                proxies.forEach(proxy => {
+                    const proxyRect = proxy.getBoundingClientRect();
+                    const proxyX = proxyRect.left + proxyRect.width / 2 - zoneRect.left;
+                    const proxyTop = proxyRect.top - zoneRect.top;
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('class', 'wire wire-service-proxy');
+                    const midY = (serviceBottom + proxyTop) / 2;
+                    path.setAttribute('d', `M ${serviceX},${serviceBottom} C ${serviceX},${midY} ${proxyX},${midY} ${proxyX},${proxyTop}`);
+                    svg.appendChild(path);
+
+                    // Wire to object proxy inside
+                    const objProxy = proxy.querySelector('.object-proxy');
+                    if (objProxy) {
+                        const objRect = objProxy.getBoundingClientRect();
+                        const objX = objRect.left + objRect.width / 2 - zoneRect.left;
+                        const objTop = objRect.top - zoneRect.top;
+
+                        const objPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        objPath.setAttribute('class', 'wire wire-proxy-object');
+                        objPath.setAttribute('d', `M ${proxyX},${proxyTop} L ${objX},${objTop}`);
+                        svg.appendChild(objPath);
+                    }
+                });
+            }
+        }
+
+        // Draw wires after layout is complete
+        window.addEventListener('load', () => {
+            setTimeout(drawWires, 100);
+        });
+
+        // Redraw on window resize
+        window.addEventListener('resize', () => {
+            setTimeout(drawWires, 100);
+        });
+    </script>
+</body>
+
+</html>
