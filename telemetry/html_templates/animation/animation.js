@@ -289,6 +289,8 @@ function initAnimationTelemetry() {
                     transports: [],
                     passthroughs: [],
                     serviceProxies: [],
+                    objectProxies: [],
+                    stubs: [],
                     children: [],
                     width: 260,
                     height: 140
@@ -311,6 +313,8 @@ function initAnimationTelemetry() {
                             transports: [],
                             passthroughs: [],
                             serviceProxies: [],
+                            objectProxies: [],
+                            stubs: [],
                             children: [],
                             width: 260,
                             height: 140
@@ -333,6 +337,8 @@ function initAnimationTelemetry() {
                         transports: [],
                         passthroughs: [],
                         serviceProxies: [],
+                        objectProxies: [],
+                        stubs: [],
                         children: [],
                         width: 260,
                         height: 140
@@ -775,6 +781,10 @@ function initAnimationTelemetry() {
             if (entry.serviceProxies) {
                 entry.serviceProxies = entry.serviceProxies.filter((sp) => sp.destZone !== zoneNumber);
             }
+            if (entry.objectProxies) {
+                entry.objectProxies = entry.objectProxies.filter((op) => op.destZone !== zoneNumber);
+            }
+            // stubs don't reference other zones, so no cleanup needed
         });
         if (adjacencyList[zoneNumber]) {
             adjacencyList[zoneNumber].forEach((neighbor) => {
@@ -943,7 +953,7 @@ function initAnimationTelemetry() {
                 createObjectProxy(evt);
                 break;
             case 'object_proxy_deletion':
-                deleteNode(makeObjectProxyId(evt.data));
+                deleteObjectProxy(evt);
                 break;
             case 'interface_proxy_creation':
                 createInterfaceProxy(evt);
@@ -1154,6 +1164,20 @@ function initAnimationTelemetry() {
         deleteNode(id);
     }
 
+    function deleteObjectProxy(evt) {
+        const zoneNumber = normalizeZoneNumber(evt.data.zone);
+        const destinationZoneNumber = normalizeZoneNumber(evt.data.destinationZone);
+        const objectId = Number(evt.data.object);
+        const id = makeObjectProxyId(evt.data);
+        // Remove from zones tracking
+        if (zones[zoneNumber] && zones[zoneNumber].objectProxies) {
+            zones[zoneNumber].objectProxies = zones[zoneNumber].objectProxies.filter(
+                op => !(op.destZone === destinationZoneNumber && op.object === objectId)
+            );
+        }
+        deleteNode(id);
+    }
+
     function updateProxyCounts(evt) {
         const zoneNumber = normalizeZoneNumber(evt.data.zone);
         const destinationZoneNumber = normalizeZoneNumber(evt.data.destinationZone);
@@ -1300,6 +1324,17 @@ function initAnimationTelemetry() {
                 refreshInterfaceLinksForObject(objectId);
             }
         }
+        // Track stub in zones structure for visualization
+        if (zones[zoneNumber]) {
+            if (!zones[zoneNumber].stubs) {
+                zones[zoneNumber].stubs = [];
+            }
+            // Check if this stub already exists (avoid duplicates)
+            const existingStub = zones[zoneNumber].stubs.find(s => s.object === objectId);
+            if (!existingStub) {
+                zones[zoneNumber].stubs.push({ object: objectId, address: evt.data.address });
+            }
+        }
         appendLog(evt);
     }
 
@@ -1408,6 +1443,17 @@ function initAnimationTelemetry() {
                 target: destinationZoneId,
                 type: 'route'
             });
+        }
+        // Track object proxy in zones structure for visualization
+        if (zones[zoneNumber]) {
+            if (!zones[zoneNumber].objectProxies) {
+                zones[zoneNumber].objectProxies = [];
+            }
+            // Check if this object proxy already exists (avoid duplicates)
+            const existingProxy = zones[zoneNumber].objectProxies.find(op => op.destZone === destinationZoneNumber && op.object === evt.data.object);
+            if (!existingProxy) {
+                zones[zoneNumber].objectProxies.push({ destZone: destinationZoneNumber, object: evt.data.object });
+            }
         }
         appendLog(evt);
     }
@@ -1552,7 +1598,15 @@ function initAnimationTelemetry() {
     }
 
     function deleteStub(evt) {
+        const zoneNumber = normalizeZoneNumber(evt.data.zone);
+        const objectId = Number(evt.data.object);
         const id = makeStubId(evt.data);
+        // Remove from zones tracking
+        if (zones[zoneNumber] && zones[zoneNumber].stubs) {
+            zones[zoneNumber].stubs = zones[zoneNumber].stubs.filter(
+                s => s.object !== objectId
+            );
+        }
         deleteNode(id);
         appendLog(evt);
     }
@@ -2430,10 +2484,49 @@ function initAnimationTelemetry() {
         return { lines, width, height };
     }
 
+    function buildObjectProxyLines(zoneNumber, destinationZoneNumber, objectId) {
+        const lines = [`OBJ:${objectId}`, `TO:${destinationZoneNumber}`];
+        return lines;
+    }
+
+    function computeObjectProxyMetrics(zoneNumber, destinationZoneNumber, objectId) {
+        const lines = buildObjectProxyLines(zoneNumber, destinationZoneNumber, objectId);
+        const maxLen = lines.reduce((max, line) => Math.max(max, line.length), 0);
+        const width = Math.min(
+            serviceProxyMaxWidth,
+            Math.max(serviceProxyMinWidth, serviceProxyBoxPaddingX * 2 + maxLen * 6));
+        const height = Math.max(
+            serviceProxyMinHeight,
+            serviceProxyBoxPaddingY * 2 + lines.length * serviceProxyLineHeight);
+        return { lines, width, height };
+    }
+
+    function buildStubLines(objectId, address) {
+        const lines = [`OBJ:${objectId}`];
+        if (address !== undefined && address !== null) {
+            lines.push(`@${address.toString(16)}`);
+        }
+        return lines;
+    }
+
+    function computeStubMetrics(objectId, address) {
+        const lines = buildStubLines(objectId, address);
+        const maxLen = lines.reduce((max, line) => Math.max(max, line.length), 0);
+        const width = Math.min(
+            serviceProxyMaxWidth,
+            Math.max(serviceProxyMinWidth, serviceProxyBoxPaddingX * 2 + maxLen * 6));
+        const height = Math.max(
+            serviceProxyMinHeight,
+            serviceProxyBoxPaddingY * 2 + lines.length * serviceProxyLineHeight);
+        return { lines, width, height };
+    }
+
     function rebuildVisualization() {
         const showTransports = typeVisibility.get('transport');
         const showPassthroughs = typeVisibility.get('passthrough');
         const showServiceProxies = typeVisibility.get('service_proxy');
+        const showObjectProxies = typeVisibility.get('object_proxy');
+        const showStubs = typeVisibility.get('stub');
         // Clear existing visualization
         g.selectAll('*').remove();
         clearObject(PortRegistry);
@@ -2452,6 +2545,8 @@ function initAnimationTelemetry() {
             transports: [],
             passthroughs: [],
             serviceProxies: [],
+            objectProxies: [],
+            stubs: [],
             children: rootZones.map(z => z.id),
             width: 260,
             height: 140
@@ -2526,15 +2621,49 @@ function initAnimationTelemetry() {
             z.serviceProxyBoxWidth = maxServiceProxyBoxWidth;
             z.serviceProxyBoxHeight = maxServiceProxyBoxHeight;
 
+            // Calculate object proxy metrics
+            z.objectProxyMetrics = [];
+            let maxObjectProxyBoxWidth = serviceProxyMinWidth;
+            let maxObjectProxyBoxHeight = serviceProxyMinHeight;
+            if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
+                z.objectProxies.forEach((op) => {
+                    const metrics = computeObjectProxyMetrics(z.id, op.destZone, op.object);
+                    z.objectProxyMetrics.push(metrics);
+                    maxObjectProxyBoxWidth = Math.max(maxObjectProxyBoxWidth, metrics.width);
+                    maxObjectProxyBoxHeight = Math.max(maxObjectProxyBoxHeight, metrics.height);
+                });
+            }
+            z.objectProxyBoxWidth = maxObjectProxyBoxWidth;
+            z.objectProxyBoxHeight = maxObjectProxyBoxHeight;
+
+            // Calculate stub metrics
+            z.stubMetrics = [];
+            let maxStubBoxWidth = serviceProxyMinWidth;
+            let maxStubBoxHeight = serviceProxyMinHeight;
+            if (showStubs && z.stubs && z.stubs.length > 0) {
+                z.stubs.forEach((s) => {
+                    const metrics = computeStubMetrics(s.object, s.address);
+                    z.stubMetrics.push(metrics);
+                    maxStubBoxWidth = Math.max(maxStubBoxWidth, metrics.width);
+                    maxStubBoxHeight = Math.max(maxStubBoxHeight, metrics.height);
+                });
+            }
+            z.stubBoxWidth = maxStubBoxWidth;
+            z.stubBoxHeight = maxStubBoxHeight;
+
             const transportCount = showTransports ? z.transports.length : 0;
             const passthroughCount = showPassthroughs ? z.passthroughs.length : 0;
             const serviceProxyCount = showServiceProxies && z.serviceProxies ? z.serviceProxies.length : 0;
-            const colCount = Math.max(transportCount, passthroughCount, serviceProxyCount, 1);
-            const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth, maxServiceProxyBoxWidth);
+            const objectProxyCount = showObjectProxies && z.objectProxies ? z.objectProxies.length : 0;
+            const stubCount = showStubs && z.stubs ? z.stubs.length : 0;
+            const colCount = Math.max(transportCount, passthroughCount, serviceProxyCount, objectProxyCount, stubCount, 1);
+            const maxBoxWidth = Math.max(maxTransportBoxWidth, maxPassthroughBoxWidth, maxServiceProxyBoxWidth, maxObjectProxyBoxWidth, maxStubBoxWidth);
             z.width = Math.max(260, colCount * (maxBoxWidth + 40));
-            const baseHeight = (passthroughCount > 0 || serviceProxyCount > 0) ? 260 : 140;
+            const baseHeight = (passthroughCount > 0 || serviceProxyCount > 0 || objectProxyCount > 0 || stubCount > 0) ? 260 : 140;
             const additionalHeight = (passthroughCount > 0 ? maxPassthroughBoxHeight : 0) +
-                                    (serviceProxyCount > 0 ? maxServiceProxyBoxHeight : 0);
+                                    (serviceProxyCount > 0 ? maxServiceProxyBoxHeight : 0) +
+                                    (objectProxyCount > 0 ? maxObjectProxyBoxHeight : 0) +
+                                    (stubCount > 0 ? maxStubBoxHeight : 0);
             const totalHeight = 120 + maxTransportBoxHeight + additionalHeight;
             z.height = Math.max(baseHeight, totalHeight);
         });
@@ -2862,6 +2991,101 @@ function initAnimationTelemetry() {
                         .attr('class', 'wire')
                         .attr('x1', spx)
                         .attr('y1', spy - halfBoxHeight)
+                        .attr('x2', 0)
+                        .attr('y2', svcY - 15);
+                });
+            }
+
+            // Render object proxies
+            if (showObjectProxies && z.objectProxies && z.objectProxies.length > 0) {
+                z.objectProxies.forEach((op, i) => {
+                    const opx = (z.objectProxies.length > 1)
+                        ? (i / (z.objectProxies.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
+                        : 0;
+                    const opy = svcY + 80 +
+                               (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + 20 : 0) +
+                               (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + 20 : 0);
+
+                    const metrics = z.objectProxyMetrics[i] || computeObjectProxyMetrics(z.id, op.destZone, op.object);
+                    const boxWidth = metrics.width;
+                    const boxHeight = metrics.height;
+                    const lines = metrics.lines;
+
+                    const opG = zoneSel.append('g').attr('transform', `translate(${opx},${opy})`);
+
+                    opG.append('rect')
+                        .attr('class', 'object-proxy-box')
+                        .attr('x', -boxWidth / 2)
+                        .attr('y', -boxHeight / 2)
+                        .attr('width', boxWidth)
+                        .attr('height', boxHeight)
+                        .attr('rx', 4);
+
+                    const textStartX = -boxWidth / 2 + serviceProxyBoxPaddingX;
+                    const textStartY = -boxHeight / 2 + serviceProxyBoxPaddingY + 9;
+                    lines.forEach((line, idx) => {
+                        opG.append('text')
+                            .attr('class', idx === 0 ? 'object-proxy-label' : 'object-proxy-detail')
+                            .attr('x', textStartX)
+                            .attr('y', textStartY + idx * serviceProxyLineHeight)
+                            .attr('text-anchor', 'start')
+                            .text(line);
+                    });
+
+                    // Wire from service to object proxy
+                    const halfBoxHeight = boxHeight / 2;
+                    zoneSel.append('line')
+                        .attr('class', 'wire')
+                        .attr('x1', opx)
+                        .attr('y1', opy - halfBoxHeight)
+                        .attr('x2', 0)
+                        .attr('y2', svcY - 15);
+                });
+            }
+
+            // Render stubs
+            if (showStubs && z.stubs && z.stubs.length > 0) {
+                z.stubs.forEach((s, i) => {
+                    const sx = (z.stubs.length > 1)
+                        ? (i / (z.stubs.length - 1) * (z.width - 160)) - (z.width / 2 - 80)
+                        : 0;
+                    const sy = svcY + 80 +
+                              (showPassthroughs && z.passthroughs.length > 0 ? z.passthroughBoxHeight + 20 : 0) +
+                              (showServiceProxies && z.serviceProxies.length > 0 ? z.serviceProxyBoxHeight + 20 : 0) +
+                              (showObjectProxies && z.objectProxies.length > 0 ? z.objectProxyBoxHeight + 20 : 0);
+
+                    const metrics = z.stubMetrics[i] || computeStubMetrics(s.object, s.address);
+                    const boxWidth = metrics.width;
+                    const boxHeight = metrics.height;
+                    const lines = metrics.lines;
+
+                    const sG = zoneSel.append('g').attr('transform', `translate(${sx},${sy})`);
+
+                    sG.append('rect')
+                        .attr('class', 'stub-box')
+                        .attr('x', -boxWidth / 2)
+                        .attr('y', -boxHeight / 2)
+                        .attr('width', boxWidth)
+                        .attr('height', boxHeight)
+                        .attr('rx', 4);
+
+                    const textStartX = -boxWidth / 2 + serviceProxyBoxPaddingX;
+                    const textStartY = -boxHeight / 2 + serviceProxyBoxPaddingY + 9;
+                    lines.forEach((line, idx) => {
+                        sG.append('text')
+                            .attr('class', idx === 0 ? 'stub-label' : 'stub-detail')
+                            .attr('x', textStartX)
+                            .attr('y', textStartY + idx * serviceProxyLineHeight)
+                            .attr('text-anchor', 'start')
+                            .text(line);
+                    });
+
+                    // Wire from service to stub
+                    const halfBoxHeight = boxHeight / 2;
+                    zoneSel.append('line')
+                        .attr('class', 'wire')
+                        .attr('x1', sx)
+                        .attr('y1', sy - halfBoxHeight)
                         .attr('x2', 0)
                         .attr('y2', svcY - 15);
                 });

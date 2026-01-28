@@ -354,6 +354,44 @@ svg {
     pointer-events: none;
 }
 
+.object-proxy-box {
+    fill: #fb7185;
+    stroke: #fda4af;
+    stroke-width: 2;
+}
+
+.object-proxy-label {
+    font-size: 9px;
+    fill: #ffffff;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.object-proxy-detail {
+    font-size: 9px;
+    fill: #ffe4e6;
+    pointer-events: none;
+}
+
+.stub-box {
+    fill: #4ade80;
+    stroke: #86efac;
+    stroke-width: 2;
+}
+
+.stub-label {
+    font-size: 9px;
+    fill: #ffffff;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.stub-detail {
+    font-size: 9px;
+    fill: #d1fae5;
+    pointer-events: none;
+}
+
 .wire {
     stroke: #ffffff;
     stroke-width: 1.2;
