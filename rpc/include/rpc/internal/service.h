@@ -102,7 +102,7 @@ namespace rpc
      * Thread Safety:
      * - All public methods are thread-safe unless documented otherwise
      * - Stub registration uses stub_control_ mutex
-     * - Transport registration uses zone_control mutex
+     * - Transport registration uses service_proxy_control_ mutex
      * - get_current_service() returns thread-local service pointer
      *
      * Ownership Model:
@@ -122,18 +122,23 @@ namespace rpc
     {
     protected:
         static std::atomic<uint64_t> zone_id_generator_;
+
         zone zone_id_ = {0};
+        std::string name_;
+
         mutable std::atomic<uint64_t> object_id_generator_ = 0;
 
         // map object_id's to stubs_
         mutable std::mutex stub_control_;
         std::unordered_map<object, std::weak_ptr<object_stub>> stubs_;
+
+        // factory
         std::unordered_map<rpc::interface_ordinal,
             std::shared_ptr<std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::i_interface_stub>&)>>>
             stub_factories_;
+
         // map wrapped objects pointers to stubs_
         std::unordered_map<void*, std::weak_ptr<object_stub>> wrapped_object_to_stub_;
-        std::string name_;
 
         mutable std::mutex service_events_control_;
         std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_;
@@ -142,15 +147,18 @@ namespace rpc
         std::shared_ptr<coro::io_scheduler> io_scheduler_;
 #endif
 
-        mutable std::mutex zone_control;
+        std::shared_ptr<rpc::event> on_shutdown_;
+
+        mutable std::mutex service_proxy_control_;
         // owned by service proxies
-        std::unordered_map<destination_zone, std::weak_ptr<service_proxy>> other_zones_;
+        std::unordered_map<destination_zone, std::weak_ptr<service_proxy>> service_proxies_;
 
         // transports owned by:
         // service proxies
         // pass through objects
         // child services to parent transports
         std::unordered_map<destination_zone, std::weak_ptr<transport>> transports_;
+        std::unordered_map<transport*, std::unordered_set<destination_zone>> transport_destinations_;
 
         void inner_add_transport(destination_zone adjacent_zone_id, const std::shared_ptr<transport>& transport_ptr);
         void inner_remove_transport(destination_zone destination_zone_id);
@@ -204,6 +212,8 @@ namespace rpc
             return io_scheduler_->spawn(std::forward<coro::task<void>>(callable));
         }
         auto get_scheduler() const { return io_scheduler_; }
+
+        void set_shutdown_event(const std::shared_ptr<rpc::event>& e) { on_shutdown_ = e; }
 #endif
 
         /**
@@ -380,7 +390,7 @@ namespace rpc
          *
          * Looks up transport via service_proxy and delegates to outbound_send().
          *
-         * Thread-Safety: Protected by zone_control mutex for transport lookup
+         * Thread-Safety: Protected by service_proxy_control_ mutex for transport lookup
          */
         CORO_TASK(int)
         send(uint64_t protocol_version,
@@ -410,7 +420,7 @@ namespace rpc
          *
          * Unlike send(), post() does not wait for a return value.
          *
-         * Thread-Safety: Protected by zone_control mutex for transport lookup
+         * Thread-Safety: Protected by service_proxy_control_ mutex for transport lookup
          */
         CORO_TASK(void)
         post(uint64_t protocol_version,
@@ -566,7 +576,7 @@ namespace rpc
          * Transports are owned by service_proxies and passthroughs. The service
          * maintains only weak references for lookup purposes.
          *
-         * Thread-Safety: Protected by zone_control mutex
+         * Thread-Safety: Protected by service_proxy_control_ mutex
          */
         void add_transport(destination_zone adjacent_zone_id, const std::shared_ptr<transport>& transport_ptr);
 
@@ -574,7 +584,7 @@ namespace rpc
          * @brief Unregister a transport to an adjacent zone
          * @param adjacent_zone_id The zone ID of the transport to remove
          *
-         * Thread-Safety: Protected by zone_control mutex
+         * Thread-Safety: Protected by service_proxy_control_ mutex
          */
         void remove_transport(destination_zone adjacent_zone_id);
 
@@ -585,9 +595,11 @@ namespace rpc
          *
          * Looks up transport in the registry. Passthroughs can route to non-adjacent zones.
          *
-         * Thread-Safety: Protected by zone_control mutex
+         * Thread-Safety: Protected by service_proxy_control_ mutex
          */
         std::shared_ptr<rpc::transport> get_transport(destination_zone destination_zone_id) const;
+
+        CORO_TASK(void) notify_transport_down(const std::shared_ptr<transport>& transport);
 
     protected:
         virtual void add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& zone);
@@ -889,9 +901,12 @@ namespace rpc
 
         int err_code = rpc::error::OK();
 
+        bool transport_added = false;
+
         if (input_interface)
         {
             add_transport(child_transport->get_adjacent_zone_id().as_destination(), child_transport);
+            transport_added = true;
             std::shared_ptr<object_stub> stub;
             auto factory = get_interface_stub_factory(input_interface);
             err_code = CO_AWAIT get_proxy_stub_descriptor(rpc::get_version(),
@@ -907,13 +922,21 @@ namespace rpc
                 remove_transport(child_transport->get_adjacent_zone_id().as_destination());
                 CO_RETURN err_code;
             }
+        }
+        err_code = CO_AWAIT child_transport->connect(input_descr, output_descr);
+        if (err_code != rpc::error::OK())
+        {
+            remove_transport(child_transport->get_adjacent_zone_id().as_destination());
+            // Clean up on failure
+            CO_RETURN err_code;
+        }
 
-            err_code = CO_AWAIT child_transport->connect(input_descr, output_descr);
-            if (err_code != rpc::error::OK())
+        // Demarshal output interface if provided
+        if (output_descr.object_id != 0 && output_descr.destination_zone_id != 0)
+        {
+            if (!transport_added)
             {
-                remove_transport(child_transport->get_adjacent_zone_id().as_destination());
-                // Clean up on failure
-                CO_RETURN err_code;
+                add_transport(child_transport->get_adjacent_zone_id().as_destination(), child_transport);
             }
 
             // Create service_proxy for this connection
@@ -923,12 +946,8 @@ namespace rpc
             // add the proxy to the service
             add_zone_proxy(new_service_proxy);
 
-            // Demarshal output interface if provided
-            if (output_descr.object_id != 0 && output_descr.destination_zone_id != 0)
-            {
-                err_code = CO_AWAIT rpc::demarshall_interface_proxy(
-                    rpc::get_version(), new_service_proxy, output_descr, output_interface);
-            }
+            err_code = CO_AWAIT rpc::demarshall_interface_proxy(
+                rpc::get_version(), new_service_proxy, output_descr, output_interface);
         }
 
         CO_RETURN err_code;

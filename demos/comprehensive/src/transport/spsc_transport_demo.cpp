@@ -59,7 +59,7 @@ namespace comprehensive
             scheduler->spawn(transport_1->pump_send_and_receive());
 
             rpc::shared_ptr<comprehensive::v1::i_calculator> remote_calculator;
-            RPC_INFO("Process 1: Connecting...");
+            std::cout << "Process 1: Connecting...\n";
             auto error
                 = CO_AWAIT service_1->connect_to_zone("process_2", transport_1, local_calculator, remote_calculator);
 
@@ -67,16 +67,16 @@ namespace comprehensive
 
             if (error == rpc::error::OK())
             {
-                RPC_INFO("Process 1: Connected!");
-                RPC_INFO("Process 1: testing...");
+                std::cout << "Process 1: Connected!\n";
+                std::cout << "Process 1: testing...\n";
 
                 int result;
                 auto error = CO_AWAIT remote_calculator->add(10, 20, result);
-                RPC_INFO("Process 2: add(10, 20) = {} (error: {})", result, static_cast<int>(error));
+                std::cout << "Process 2: add(10, 20) = " << result << " (error: " << static_cast<int>(error) << ")\n";
                 g_test_result = (error == rpc::error::OK()) ? result : -error;
 
                 error = CO_AWAIT remote_calculator->multiply(7, 8, result);
-                RPC_INFO("Process 2: multiply(7, 8) = {} (error: {})", result, static_cast<int>(error));
+                std::cout << "Process 2: multiply(7, 8) = " << result << " (error: " << static_cast<int>(error) << ")\n";
 
                 remote_calculator.reset();
                 if (error == rpc::error::OK())
@@ -86,7 +86,7 @@ namespace comprehensive
             }
             else
             {
-                RPC_ERROR("Process 1: Connect failed: {}", static_cast<int>(error));
+                std::cout << "Process 1: Connect failed: " << static_cast<int>(error) << "\n";
             }
 
             // int64_t count = transport_1->get_destination_count();
@@ -143,7 +143,7 @@ namespace comprehensive
 
         void run_spsc_demo()
         {
-            RPC_INFO("=== SPSC Transport Demo ===");
+            std::cout << "=== SPSC Transport Demo ===\n";
 
             rpc::zone zone_1{1};
             rpc::zone zone_2{2};
@@ -204,10 +204,10 @@ extern "C"
 
 int main()
 {
-    RPC_INFO("SPSC Transport Demo - Two Process Architecture");
+    std::cout << "SPSC Transport Demo - Two Process Architecture\n";
 
 #ifndef CANOPY_BUILD_COROUTINE
-    RPC_ERROR("Requires coroutines");
+    std::cout << "Requires coroutines\n";
     return 1;
 #else
     for (int i = 0; i < 100; ++i)

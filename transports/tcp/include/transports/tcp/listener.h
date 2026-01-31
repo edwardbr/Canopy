@@ -24,7 +24,7 @@ namespace rpc::tcp
      */
     class listener
     {
-        coro::event stop_confirmation_evt_;
+        rpc::event stop_confirmation_evt_;
         bool stop_ = false;
         std::chrono::milliseconds timeout_;
         std::chrono::milliseconds poll_timeout_ = std::chrono::milliseconds(10);
@@ -80,7 +80,7 @@ namespace rpc::tcp
         CORO_TASK(void) stop_listening()
         {
             stop_ = true;
-            CO_AWAIT stop_confirmation_evt_;
+            CO_AWAIT stop_confirmation_evt_.wait();
         }
 
     private:

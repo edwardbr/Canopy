@@ -398,10 +398,9 @@ namespace rpc
         return handler;
     }
 
-    void transport::notify_all_destinations_of_disconnect()
+    CORO_TASK(void) transport::notify_all_destinations_of_disconnect()
     {
         std::shared_lock lock(destinations_mutex_);
-#ifdef CANOPY_BUILD_COROUTINE
         auto service = service_.lock();
         if (!service)
         {
@@ -409,34 +408,23 @@ namespace rpc
                       "adjacent_zone={}",
                 zone_id_.get_val(),
                 adjacent_zone_id_.get_val());
-            return;
+            CO_RETURN;
         }
-#endif
+
         // Iterate through nested map to notify all handlers
         for (const auto& [dest_zone, pt] : pass_thoughs_)
         {
             if (auto handler = pt.lock())
             {
-                // #
-
-                //                 if (!service->spawn(
-                // #endif
-                //                         // Send zone_terminating post
-                //                         handler->transport_down(VERSION_3, rpc::destination_zone{dest_zone}, rpc::caller_zone{0}, {})
-                // #ifdef CANOPY_BUILD_COROUTINE
-                //                             ))
-                //                 {
-                //                     RPC_ERROR("notify_all_destinations_of_disconnect: Failed to spawn coroutine to notify handler of "
-                //                               "zone termination for dest_zone={} caller_zone={} on transport zone={} adjacent_zone={}",
-                //                         dest_zone.get_val(),
-                //                         caller_zone_val.get_val(),
-                //                         zone_id_.get_val(),
-                //                         adjacent_zone_id_.get_val());
-                //                     RPC_ASSERT(false);
-                //                 }
-                // #endif
-                //                 ;
+                // Send zone_terminating post
+                CO_AWAIT handler->local_transport_down(shared_from_this());
             }
+        }
+
+        if (get_destination_count())
+        {
+            // this is really inefficient
+            CO_AWAIT service->notify_transport_down(shared_from_this());
         }
     }
 

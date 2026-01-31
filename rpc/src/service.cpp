@@ -102,7 +102,12 @@ namespace rpc
             stubs_.clear();
             wrapped_object_to_stub_.clear();
         }
-        other_zones_.clear();
+        service_proxies_.clear();
+
+        if (on_shutdown_)
+        {
+            on_shutdown_->set();
+        }
     }
 
     object service::get_object_id(const rpc::shared_ptr<casting_interface>& ptr) const
@@ -170,7 +175,7 @@ namespace rpc
             success = false;
         }
 
-        for (auto item : other_zones_)
+        for (auto item : service_proxies_)
         {
             auto svcproxy = item.second.lock();
             if (!svcproxy)
@@ -208,7 +213,7 @@ namespace rpc
         // Check for live transports
         // Note: For child_service, the parent_transport is expected to still be alive during shutdown
         // as it's where the thread goes when shutting down this zone
-        std::lock_guard g(zone_control);
+        std::lock_guard g(service_proxy_control_);
         const child_service* child_svc = dynamic_cast<const child_service*>(this);
         std::shared_ptr<transport> expected_parent_transport;
         destination_zone expected_parent_zone_id;
@@ -438,7 +443,7 @@ namespace rpc
             {
                 std::shared_ptr<rpc::transport> caller_transport;
                 {
-                    std::lock_guard g(zone_control);
+                    std::lock_guard g(service_proxy_control_);
                     // get the caller with destination info
                     auto found
                         = transports_.find(caller_zone_id.as_destination()); // we dont need to get caller id for this
@@ -644,7 +649,7 @@ namespace rpc
             }
             else
             {
-                std::lock_guard g(zone_control);
+                std::lock_guard g(service_proxy_control_);
                 auto destination_transport = inner_get_transport(destination_zone_id);
                 if (destination_transport == nullptr)
                 {
@@ -695,7 +700,7 @@ namespace rpc
             }
 
             {
-                std::lock_guard g(zone_control);
+                std::lock_guard g(service_proxy_control_);
                 auto dest_transport = inner_get_transport(caller_zone_id.as_destination());
                 if (!dest_transport)
                 {
@@ -805,7 +810,7 @@ namespace rpc
                 // Get the optimistic reference map before releasing the stub
                 std::vector<caller_zone> optimistic_refs;
                 {
-                    std::lock_guard<std::mutex> lock(stub->references_mutex_);
+                    std::lock_guard lock(stub->references_mutex_);
                     optimistic_refs.reserve(stub->optimistic_references_.size());
                     for (const auto& [zone, count_atomic] : stub->optimistic_references_)
                     {
@@ -934,6 +939,7 @@ namespace rpc
 
         // Collect all stubs that have references from the failed zone
         std::vector<std::pair<object, std::shared_ptr<object_stub>>> stubs_to_cleanup;
+        std::vector<object> objects_to_notify;
         {
             std::lock_guard l(stub_control_);
             for (auto& [obj_id, weak_stub] : stubs_)
@@ -944,16 +950,12 @@ namespace rpc
                     stubs_to_cleanup.emplace_back(obj_id, stub);
                 }
             }
-        }
 
-        RPC_INFO("transport_down: Found {} stubs with references from zone {}",
-            stubs_to_cleanup.size(),
-            caller_zone_id.get_val());
+            RPC_INFO("transport_down: Found {} stubs with references from zone {}",
+                stubs_to_cleanup.size(),
+                caller_zone_id.get_val());
 
-        // Release all references from the failed zone and trigger object_released events
-        std::vector<object> objects_to_notify;
-        {
-            std::lock_guard l(stub_control_);
+            // Release all references from the failed zone and trigger object_released events
             for (auto& [obj_id, stub] : stubs_to_cleanup)
             {
                 bool should_delete = stub->release_all_from_zone(caller_zone_id);
@@ -992,8 +994,8 @@ namespace rpc
         auto destination_zone_id = service_proxy->get_destination_zone_id();
         // auto caller_zone_id = service_proxy->get_caller_zone_id();
         RPC_ASSERT(destination_zone_id != zone_id_.as_destination());
-        RPC_ASSERT(other_zones_.find(destination_zone_id) == other_zones_.end());
-        other_zones_[destination_zone_id] = service_proxy;
+        RPC_ASSERT(service_proxies_.find(destination_zone_id) == service_proxies_.end());
+        service_proxies_[destination_zone_id] = service_proxy;
 
         RPC_ASSERT(transports_.find(destination_zone_id) != transports_.end());
         // transports_[destination_zone_id] = service_proxy->get_transport();
@@ -1006,7 +1008,7 @@ namespace rpc
     void service::add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)
     {
         RPC_ASSERT(service_proxy->get_destination_zone_id() != zone_id_.as_destination());
-        std::lock_guard g(zone_control);
+        std::lock_guard g(service_proxy_control_);
         inner_add_zone_proxy(service_proxy);
     }
 
@@ -1014,6 +1016,17 @@ namespace rpc
     {
         RPC_ASSERT(transports_.find(destination_zone_id) == transports_.end());
         transports_[destination_zone_id] = transport_ptr;
+        auto transport_dest = transport_destinations_.find(transport_ptr.get());
+        if (transport_dest != transport_destinations_.end())
+        {
+            RPC_ASSERT(transport_dest->second.find(destination_zone_id) == transport_dest->second.end());
+            transport_dest->second.insert(destination_zone_id);
+        }
+        else
+        {
+            transport_destinations_.emplace(
+                transport_ptr.get(), std::unordered_set<destination_zone>({destination_zone_id}));
+        }
         RPC_DEBUG("inner_add_zone_proxy service zone: {} destination_zone={} adjacent_zone={}",
             std::to_string(zone_id_),
             std::to_string(destination_zone_id),
@@ -1025,6 +1038,20 @@ namespace rpc
         auto it = transports_.find(destination_zone_id);
         if (it != transports_.end())
         {
+            auto dest = it->second.lock();
+            RPC_ASSERT(dest);
+            if (dest)
+            {
+                auto td = transport_destinations_.find(dest.get());
+                if (td != transport_destinations_.end())
+                {
+                    td->second.erase(destination_zone_id);
+                    if (td->second.empty())
+                    {
+                        transport_destinations_.erase(td);
+                    }
+                }
+            }
             transports_.erase(it);
             RPC_DEBUG("remove_transport service zone: {} destination_zone_id={}",
                 std::to_string(zone_id_),
@@ -1049,19 +1076,19 @@ namespace rpc
 
     void service::add_transport(destination_zone destination_zone_id, const std::shared_ptr<transport>& transport_ptr)
     {
-        std::lock_guard g(zone_control);
+        std::lock_guard g(service_proxy_control_);
         inner_add_transport(destination_zone_id, transport_ptr);
     }
 
     void service::remove_transport(destination_zone adjacent_zone_id)
     {
-        std::lock_guard g(zone_control);
+        std::lock_guard g(service_proxy_control_);
         inner_remove_transport(adjacent_zone_id);
     }
 
     std::shared_ptr<rpc::transport> service::get_transport(destination_zone destination_zone_id) const
     {
-        std::lock_guard g(zone_control);
+        std::lock_guard g(service_proxy_control_);
         return inner_get_transport(destination_zone_id);
     }
 
@@ -1071,7 +1098,7 @@ namespace rpc
         bool& new_proxy_added)
     {
         new_proxy_added = false;
-        std::lock_guard g(zone_control);
+        std::lock_guard g(service_proxy_control_);
 
         RPC_DEBUG("get_zone_proxy: svc_zone={}, dest={}, caller_zone={}, num_transports={}",
             zone_id_.get_val(),
@@ -1080,10 +1107,10 @@ namespace rpc
             transports_.size());
 
         {
-            auto item = other_zones_.find(destination_zone_id);
-            if (item != other_zones_.end())
+            auto item = service_proxies_.find(destination_zone_id);
+            if (item != service_proxies_.end())
             {
-                RPC_DEBUG("get_zone_proxy: Found existing proxy in other_zones_");
+                RPC_DEBUG("get_zone_proxy: Found existing proxy in service_proxies_");
                 return item->second.lock();
             }
         }
@@ -1140,15 +1167,15 @@ namespace rpc
             std::to_string(zone_id_),
             std::to_string(destination_zone_id));
 
-        std::lock_guard g(zone_control);
-        auto item = other_zones_.find(destination_zone_id);
-        if (item == other_zones_.end())
+        std::lock_guard g(service_proxy_control_);
+        auto item = service_proxies_.find(destination_zone_id);
+        if (item == service_proxies_.end())
         {
             RPC_ASSERT(false);
         }
         else
         {
-            other_zones_.erase(item);
+            service_proxies_.erase(item);
         }
     }
 
@@ -1352,5 +1379,62 @@ namespace rpc
         CO_RETURN CO_AWAIT transport->release(
             protocol_version, destination_zone_id, object_id, caller_zone_id, options, in_back_channel, out_back_channel);
     }
+
+    // this is not efficient, certain datastructures need to be changed with proper tracking of reference counts
+    // perhaps done at the transport layer.  The problem is that adding the tracking at the transport requires
+    // more processing when things are working fine to deal with events when things are not
+    CORO_TASK(void)
+    service::notify_transport_down(const std::shared_ptr<transport>& transport)
+    {
+        std::lock_guard g(service_proxy_control_);
+        std::lock_guard l(stub_control_);
+
+        std::vector<interface_descriptor> objects_to_notify;
+
+        auto it = transport_destinations_.find(transport.get());
+
+        // go through and snip off all communications from service proxes
+        if (it != transport_destinations_.end())
+        {
+            for (auto dest : it->second)
+            {
+                auto zit = service_proxies_.find(dest);
+                if (zit != service_proxies_.end())
+                {
+                    auto sp = zit->second.lock();
+                    sp->set_transport(nullptr);
+                }
+                service_proxies_.erase(zit);
+
+                for (auto& [obj_id, weak_stub] : stubs_)
+                {
+                    auto stub = weak_stub.lock();
+                    bool should_delete = stub->release_all_from_zone(dest.as_caller());
+
+                    if (should_delete)
+                    {
+                        // Shared count reached zero - stub should be deleted
+                        RPC_INFO("transport_down: Object {} ref count dropped to zero, cleaning up", obj_id.get_val());
+
+                        // Remove from maps
+                        stubs_.erase(obj_id);
+                        auto* pointer = stub->get_castable_interface()->get_address();
+                        wrapped_object_to_stub_.erase(pointer);
+
+                        // Track for notification
+                        objects_to_notify.push_back({obj_id, dest});
+
+                        stub->reset();
+                    }
+                }
+            }
+        }
+
+        // Notify service events about deleted objects (outside the lock)
+        for (const auto& obj : objects_to_notify)
+        {
+            CO_AWAIT notify_object_gone_event(obj.object_id, obj.destination_zone_id);
+        }
+    };
 
 }

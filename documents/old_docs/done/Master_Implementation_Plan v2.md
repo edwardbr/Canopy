@@ -4120,7 +4120,7 @@ CORO_TYPED_TEST(zone_termination_test, "cascading termination") {
 ```cpp
 CORO_TASK(void) service::shutdown_and_broadcast() {
     // Broadcast zone_terminating to all connected zones
-    for (auto& [route, proxy_weak] : other_zones_) {
+    for (auto& [route, proxy_weak] : service_proxies_) {
         if (auto proxy = proxy_weak.lock()) {
             CO_AWAIT proxy->post(
                 VERSION_3, encoding::yas_binary, tag++,

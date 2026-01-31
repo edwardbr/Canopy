@@ -53,10 +53,10 @@ namespace comprehensive
 
         void print_separator(const std::string& title)
         {
-            RPC_INFO("");
-            RPC_INFO("{}", std::string(60, '='));
-            RPC_INFO("  {}", title);
-            RPC_INFO("{}", std::string(60, '='));
+            std::cout << "\n";
+            std::cout << std::string(60, '=') << "\n";
+            std::cout << "  " << title << "\n";
+            std::cout << std::string(60, '=') << "\n";
         }
 
         void print_result(const std::string& operation, int error)
@@ -212,6 +212,24 @@ namespace comprehensive
             CO_RETURN true;
         }
 
+        CORO_TASK(void)
+        demo_task(
+#ifdef CANOPY_BUILD_COROUTINE
+            std::shared_ptr<coro::io_scheduler> scheduler,
+#endif
+            bool* result_flag,
+            bool* completed_flag)
+        {
+            bool res = CO_AWAIT run_shared_ptr_demo(
+#ifdef CANOPY_BUILD_COROUTINE
+                scheduler
+#endif
+            );
+            *result_flag = res;
+            *completed_flag = true;
+            CO_RETURN;
+        }
+
     }
 }
 
@@ -264,13 +282,7 @@ int main()
     bool result = false;
     bool completed = false;
 
-    scheduler->spawn(
-        [&]() -> CORO_TASK(void)
-        {
-            result = CO_AWAIT comprehensive::v1::run_shared_ptr_demo(scheduler);
-            completed = true;
-            CO_RETURN;
-        }());
+    scheduler->spawn(comprehensive::v1::demo_task(scheduler, &result, &completed));
 
     while (!completed)
     {

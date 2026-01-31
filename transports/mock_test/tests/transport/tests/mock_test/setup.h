@@ -104,8 +104,13 @@ public:
         RPC_INFO("passthrough_setup::set_up - Spawning CoroSetUp");
         RPC_ASSERT(io_scheduler_->spawn(check_for_error(CoroSetUp())));
         RPC_INFO("passthrough_setup::set_up - Processing events until startup complete");
-        while (startup_complete_ == false || io_scheduler_->process_events())
+        while (startup_complete_ == false)
         {
+            io_scheduler_->process_events(std::chrono::milliseconds(1));
+        }
+        while (io_scheduler_->process_events(std::chrono::milliseconds(1)) > 0)
+        {
+            // Keep processing while there are scheduled tasks
         }
         RPC_INFO("passthrough_setup::set_up - Event processing complete");
 #else

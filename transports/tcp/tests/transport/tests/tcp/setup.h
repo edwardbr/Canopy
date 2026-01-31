@@ -147,10 +147,10 @@ public:
                 .port = 8080,
             });
 
-        auto connection_status = CO_AWAIT client.connect();
+        auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
         if (connection_status != coro::net::connect_status::connected)
         {
-            RPC_ERROR("Failed to connect TCP client to server");
+            RPC_ERROR("Failed to connect TCP client to server (status: {})", static_cast<int>(connection_status));
             CO_RETURN false;
         }
 

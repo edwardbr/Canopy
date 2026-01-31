@@ -40,14 +40,19 @@ namespace rpc::tcp
         return transport;
     }
 
-    void tcp_transport::kill_connection()
+    void tcp_transport::set_status(transport_status new_status)
     {
-        RPC_DEBUG("kill_connection() closing socket");
-        // Set the connection as disconnected
-        set_status(rpc::transport_status::DISCONNECTED);
-        // Close the socket to wake up any blocking poll operations
-        client_.socket().shutdown();
-        client_.socket().close();
+        // Call base class implementation
+        transport::set_status(new_status);
+
+        // When disconnecting, ensure socket is closed to wake up any blocking operations
+        // This ensures cleanup happens regardless of how DISCONNECTED status is reached
+        if (new_status == transport_status::DISCONNECTED)
+        {
+            RPC_DEBUG("Transport disconnected, closing socket for zone {}", get_service()->get_zone_id().get_val());
+            client_.socket().shutdown();
+            client_.socket().close();
+        }
     }
 
     // Connection handshake
@@ -403,6 +408,10 @@ namespace rpc::tcp
     CORO_TASK(void)
     tcp_transport::pump_send_and_receive()
     {
+
+        // CRITICAL: Keep transport alive for entire duration of pump
+        auto self = shared_from_this();
+
         RPC_DEBUG("pump_send_and_receive zone={}", get_service()->get_zone_id().get_val());
         assert(client_.socket().is_valid());
 
@@ -491,27 +500,6 @@ namespace rpc::tcp
                     result->event.set();
                 }
             });
-    }
-
-    CORO_TASK(void)
-    tcp_transport::shutdown()
-    {
-        if (get_status() != rpc::transport_status::CONNECTED)
-        {
-            // Already shutting down
-            RPC_DEBUG("shutdown() already in progress for zone {}", get_service()->get_zone_id().get_val());
-            CO_RETURN;
-        }
-
-        RPC_DEBUG("shutdown() initiating for zone {}", get_service()->get_zone_id().get_val());
-
-        // Wait for both tasks to complete
-        CO_AWAIT shutdown_event_;
-
-        // Set transport status to DISCONNECTED
-        set_status(rpc::transport_status::DISCONNECTED);
-        RPC_DEBUG("shutdown() completed for zone {}", get_service()->get_zone_id().get_val());
-        CO_RETURN;
     }
 
     // Receive consumer task
@@ -667,9 +655,14 @@ namespace rpc::tcp
                         }
                     }
                 }
+                else if (recv_status == coro::net::recv_status::closed)
+                {
+                    RPC_INFO("tcp transport connection closed");
+                    break;
+                }
                 else
                 {
-                    RPC_ERROR("failed invalid received message");
+                    RPC_ERROR("failed invalid received message {}", coro::net::to_string(recv_status));
                     break;
                 }
             }
@@ -678,7 +671,7 @@ namespace rpc::tcp
         RPC_DEBUG("pump_messages exiting for zone {}", service->get_zone_id().get_val());
 
         // Close the socket now that we're done
-        kill_connection();
+        set_status(transport_status::DISCONNECTED);
 
         {
             std::scoped_lock lock(pending_transmits_mtx_);
@@ -689,7 +682,8 @@ namespace rpc::tcp
             }
         }
 
-        shutdown_event_.set();
+        // reserve the service pointer as we are snipping cords including ourselves
+        CO_AWAIT notify_all_destinations_of_disconnect();
 
         CO_RETURN;
     }
@@ -706,7 +700,7 @@ namespace rpc::tcp
         if (!str_err.empty())
         {
             RPC_ERROR("failed from_yas_compressed_binary call_send");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -741,7 +735,7 @@ namespace rpc::tcp
         if (err != rpc::error::OK())
         {
             RPC_ERROR("failed send_payload");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
         RPC_DEBUG("send request complete");
@@ -757,7 +751,7 @@ namespace rpc::tcp
         if (!str_err.empty())
         {
             RPC_ERROR("failed post_send from_yas_compressed_binary");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -787,7 +781,7 @@ namespace rpc::tcp
         if (!str_err.empty())
         {
             RPC_ERROR("failed try_cast_send from_yas_compressed_binary");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -812,7 +806,7 @@ namespace rpc::tcp
         if (err != rpc::error::OK())
         {
             RPC_ERROR("failed try_cast_send send_payload");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
         RPC_DEBUG("stub_handle_try_cast complete");
@@ -828,7 +822,7 @@ namespace rpc::tcp
         if (!str_err.empty())
         {
             RPC_ERROR("failed addref_send from_yas_compressed_binary");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -855,7 +849,7 @@ namespace rpc::tcp
         if (err != rpc::error::OK())
         {
             RPC_ERROR("failed addref_send send_payload");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
         RPC_DEBUG("add_ref request complete");
@@ -871,7 +865,7 @@ namespace rpc::tcp
         if (!str_err.empty())
         {
             RPC_ERROR("failed release_send from_yas_compressed_binary");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -897,7 +891,7 @@ namespace rpc::tcp
         if (err != rpc::error::OK())
         {
             RPC_ERROR("failed release_send send_payload");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -920,7 +914,7 @@ namespace rpc::tcp
         if (!str_err.empty())
         {
             RPC_ERROR("failed object_released_send from_yas_compressed_binary");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -942,7 +936,7 @@ namespace rpc::tcp
         if (!str_err.empty())
         {
             RPC_ERROR("failed transport_down_send from_yas_compressed_binary");
-            kill_connection();
+            set_status(transport_status::DISCONNECTED);
             CO_RETURN;
         }
 
@@ -974,10 +968,14 @@ namespace rpc::tcp
         // Use adjacent_zone_id (the zone of the transport) not caller_zone_id (which may be different in pass-through)
         set_adjacent_zone_id(rpc::zone{request.adjacent_zone_id});
 
+        // Set transport to CONNECTED after successful server-side handshake
+        set_status(rpc::transport_status::CONNECTING);
+
         int ret = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
         connection_handler_ = nullptr;
         if (ret != rpc::error::OK())
         {
+            set_status(rpc::transport_status::DISCONNECTED);
             RPC_ERROR("failed to connect to zone {}", ret);
             CO_RETURN;
         }

@@ -47,9 +47,6 @@ extern "C"
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 #endif
 
 // Unified logging macros with levels (0=DEBUG, 1=TRACE, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)
@@ -115,8 +112,6 @@ extern "C"
 
 #ifdef __clang__
 #pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
 #endif
 
 #define RPC_LOGGING_DEFINED

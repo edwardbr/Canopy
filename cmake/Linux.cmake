@@ -46,8 +46,6 @@ list(APPEND CANOPY_SHARED_DEFINES TEMP_DIR="${TEMP_DIR}" RUNTIME_DIR="${RUNTIME_
 # Build Type Configuration
 # ######################################################################################################################
 if(${BUILD_TYPE} STREQUAL "release")
-  set(CMAKE_CXX_FLAGS_DEBUG "")
-  set(CMAKE_C_FLAGS_DEBUG "")
   set(CANOPY_OPTIMIZER_FLAGS -O3)
   set(CANOPY_DEFINES ${CANOPY_SHARED_DEFINES} NDEBUG)
 else()
@@ -63,6 +61,14 @@ message("CMAKE_CXX_FLAGS_DEBUG [${CMAKE_CXX_FLAGS_DEBUG}]")
 message("CANOPY_OPTIMIZER_FLAGS [${CANOPY_OPTIMIZER_FLAGS}]")
 
 # ######################################################################################################################
+# Debug Information Configuration
+# ######################################################################################################################
+set(CANOPY_DEBUG_INFO_FLAGS)
+if(CANOPY_FORCE_DEBUG_INFORMATION)
+  set(CANOPY_DEBUG_INFO_FLAGS -g -fno-omit-frame-pointer)
+endif()
+
+# ######################################################################################################################
 # Shared Compile Options
 # ######################################################################################################################
 set(CANOPY_SHARED_COMPILE_OPTIONS
@@ -70,6 +76,7 @@ set(CANOPY_SHARED_COMPILE_OPTIONS
     -Wno-deprecated-declarations
     -Wno-gnu-zero-variadic-macro-arguments
     ${EXTRA_COMPILE_OPTIONS}
+    ${CANOPY_DEBUG_INFO_FLAGS}
     ${CANOPY_OPTIMIZER_FLAGS})
 
 if(CANOPY_BUILD_COROUTINE)

@@ -27,7 +27,7 @@ namespace rpc::tcp
     private:
         struct result_listener
         {
-            coro::event event;
+            rpc::event event;
             envelope_prefix prefix;
             envelope_payload payload;
             int error_code = rpc::error::OK();
@@ -50,7 +50,6 @@ namespace rpc::tcp
         std::atomic<size_t> pending_transmits_count_{0};
 
         connection_handler connection_handler_;
-        coro::event shutdown_event_;
         stdex::member_ptr<tcp_transport> keep_alive_;
 
         // Reference counting for shutdown sequence completion
@@ -76,8 +75,6 @@ namespace rpc::tcp
         CORO_TASK(void) stub_handle_object_released(envelope_prefix prefix, envelope_payload payload);
         CORO_TASK(void) stub_handle_transport_down(envelope_prefix prefix, envelope_payload payload);
         CORO_TASK(void) create_stub(envelope_prefix prefix, envelope_payload payload);
-
-        void kill_connection();
 
         template<class SendPayload>
         CORO_TASK(int)
@@ -154,7 +151,7 @@ namespace rpc::tcp
                 CO_RETURN err;
             }
 
-            CO_AWAIT res_payload.event; // now wait for the reply
+            CO_AWAIT res_payload.event.wait(); // now wait for the reply
 
             RPC_DEBUG("call_peer succeeded zone: {} sequence_number: {} id: {}",
                 get_service()->get_zone_id().get_val(),
@@ -190,10 +187,12 @@ namespace rpc::tcp
             coro::net::tcp::client client,
             connection_handler handler);
 
-        virtual ~tcp_transport() = default;
+        virtual ~tcp_transport() { };
+
+        // Override set_status to trigger service shutdown event when disconnecting
+        void set_status(transport_status new_status) override;
 
         CORO_TASK(void) pump_send_and_receive();
-        CORO_TASK(void) shutdown();
 
         // Internal send payload helper
         // rpc::transport override - connect handshake

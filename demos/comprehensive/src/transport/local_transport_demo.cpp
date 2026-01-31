@@ -34,10 +34,10 @@ namespace comprehensive
 
         void print_separator(const std::string& title)
         {
-            RPC_INFO("");
-            RPC_INFO("{}", std::string(60, '='));
-            RPC_INFO("  {}", title);
-            RPC_INFO("{}", std::string(60, '='));
+            std::cout << "\n";
+            std::cout << std::string(60, '=') << "\n";
+            std::cout << "  " << title << "\n";
+            std::cout << std::string(60, '=') << "\n";
         }
 
         CORO_TASK(bool)
@@ -60,19 +60,19 @@ namespace comprehensive
 #endif
             );
 
-            RPC_INFO("Created root service in Zone {}", root_service->get_zone_id().get_val());
+            std::cout << "Created root service in Zone " << root_service->get_zone_id().get_val() << "\n";
 
             // Create calculator in same zone (direct access)
             auto calculator = create_calculator();
-            RPC_INFO("Created calculator in same zone");
+            std::cout << "Created calculator in same zone\n";
 
             // Create data processor
             auto data_processor = create_data_processor();
-            RPC_INFO("Created data processor");
+            std::cout << "Created data processor\n";
 
             // Create child zone (Zone 2)
             rpc::zone child_zone_id{++zone_gen};
-            RPC_INFO("Creating child service in Zone {}", child_zone_id.get_val());
+            std::cout << "Creating child service in Zone " << child_zone_id.get_val() << "\n";
 
             // Create child transport connecting to parent
             auto child_transport
@@ -95,30 +95,33 @@ namespace comprehensive
 
             if (error != rpc::error::OK())
             {
-                RPC_ERROR("Failed to connect to child zone: {}", static_cast<int>(error));
+                std::cout << "Failed to connect to child zone: " << static_cast<int>(error) << "\n";
                 CO_RETURN false;
             }
 
-            RPC_INFO("Connected Zone {} -> Zone {}", root_service->get_zone_id().get_val(), child_zone_id.get_val());
+            std::cout << "Connected Zone " << root_service->get_zone_id().get_val() << " -> Zone "
+                      << child_zone_id.get_val() << "\n";
 
-            RPC_INFO("--- Making RPC calls through local transport ---");
+            std::cout << "--- Making RPC calls through local transport ---\n";
 
             // Call calculator in same zone (direct)
             int result;
             error = CO_AWAIT calculator->add(10, 20, result);
-            RPC_INFO("Local call: 10 + 20 = {} (error: {})", result, static_cast<int>(error));
+            std::cout << "Local call: 10 + 20 = " << result << " (error: " << static_cast<int>(error) << ")\n";
 
             error = CO_AWAIT calculator->multiply(7, 8, result);
-            RPC_INFO("Local call: 7 * 8 = {} (error: {})", result, static_cast<int>(error));
+            std::cout << "Local call: 7 * 8 = " << result << " (error: " << static_cast<int>(error) << ")\n";
 
             // Call through child service
             uint64_t child_zone_id_result;
             error = CO_AWAIT child_service->get_zone_id(child_zone_id_result);
-            RPC_INFO("Remote call: Child zone ID = {} (error: {})", child_zone_id_result, static_cast<int>(error));
+            std::cout << "Remote call: Child zone ID = " << child_zone_id_result
+                      << " (error: " << static_cast<int>(error) << ")\n";
 
             std::string service_name;
             error = CO_AWAIT child_service->get_name(service_name);
-            RPC_INFO("Remote call: Child service name = {} (error: {})", service_name, static_cast<int>(error));
+            std::cout << "Remote call: Child service name = " << service_name << " (error: " << static_cast<int>(error)
+                      << ")\n";
 
             // Test data processor
             std::vector<int> input{1, 2, 3, 4, 5};
@@ -131,18 +134,36 @@ namespace comprehensive
                 if (i < output.size() - 1)
                     output_str += ",";
             }
-            RPC_INFO(
-                "Data processor: process_vector {{1,2,3,4,5}} -> {{{}}} (error: {})", output_str, static_cast<int>(error));
+            std::cout << "Data processor: process_vector {1,2,3,4,5} -> {" << output_str
+                      << "} (error: " << static_cast<int>(error) << ")\n";
 
             // Test child service
             std::string child_response;
             error = CO_AWAIT child_service->echo_through_child("Hello from parent", child_response);
-            RPC_INFO("Child echo: {} (error: {})", child_response, static_cast<int>(error));
+            std::cout << "Child echo: " << child_response << " (error: " << static_cast<int>(error) << ")\n";
 
-            RPC_INFO("========================================");
-            RPC_INFO("  LOCAL TRANSPORT DEMO COMPLETED");
-            RPC_INFO("========================================");
+            std::cout << "========================================\n";
+            std::cout << "  LOCAL TRANSPORT DEMO COMPLETED\n";
+            std::cout << "========================================\n";
             CO_RETURN true;
+        }
+
+        CORO_TASK(void)
+        demo_task(
+#ifdef CANOPY_BUILD_COROUTINE
+            std::shared_ptr<coro::io_scheduler> scheduler,
+#endif
+            bool* result_flag,
+            bool* completed_flag)
+        {
+            bool res = CO_AWAIT run_local_transport_demo(
+#ifdef CANOPY_BUILD_COROUTINE
+                scheduler
+#endif
+            );
+            *result_flag = res;
+            *completed_flag = true;
+            CO_RETURN;
         }
     }
 }
@@ -178,10 +199,10 @@ void rpc_log(int level, const char* str, size_t sz)
 
 int main()
 {
-    RPC_INFO("RPC++ Comprehensive Demo - Local Transport");
-    RPC_INFO("========================================");
-    RPC_INFO("Demonstrates in-process communication using local transport");
-    RPC_INFO("");
+    std::cout << "RPC++ Comprehensive Demo - Local Transport\n";
+    std::cout << "========================================\n";
+    std::cout << "Demonstrates in-process communication using local transport\n";
+    std::cout << "\n";
 
 #ifdef CANOPY_BUILD_COROUTINE
     auto scheduler = coro::io_scheduler::make_shared(
@@ -196,13 +217,7 @@ int main()
     bool result = false;
     bool completed = false;
 
-    scheduler->spawn(
-        [&]() -> CORO_TASK(void)
-        {
-            result = CO_AWAIT comprehensive::v1::run_local_transport_demo(scheduler);
-            completed = true;
-            CO_RETURN;
-        }());
+    scheduler->spawn(comprehensive::v1::demo_task(scheduler, &result, &completed));
 
     while (!completed)
     {

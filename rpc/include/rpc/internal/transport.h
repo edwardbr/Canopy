@@ -185,7 +185,7 @@ namespace rpc
         void inner_decrement_inbound_stub_count(caller_zone dest);
 
         void set_adjacent_zone_id(zone new_adjacent_zone_id) { adjacent_zone_id_ = new_adjacent_zone_id; }
-        void notify_all_destinations_of_disconnect();
+        CORO_TASK(void) notify_all_destinations_of_disconnect();
 
     public:
         virtual ~transport();

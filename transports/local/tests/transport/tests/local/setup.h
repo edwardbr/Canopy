@@ -127,6 +127,7 @@ public:
 
     virtual void set_up()
     {
+
 #ifdef CANOPY_BUILD_COROUTINE
         io_scheduler_ = coro::io_scheduler::make_shared(
             coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::manual,
@@ -135,8 +136,13 @@ public:
                 }});
 
         RPC_ASSERT(io_scheduler_->spawn(check_for_error(CoroSetUp())));
-        while (startup_complete_ == false || io_scheduler_->process_events())
+        while (startup_complete_ == false)
         {
+            io_scheduler_->process_events(std::chrono::milliseconds(1));
+        }
+        while (io_scheduler_->process_events(std::chrono::milliseconds(1)) > 0)
+        {
+            // Keep processing while there are scheduled tasks
         }
 #else
         check_for_error(CoroSetUp());

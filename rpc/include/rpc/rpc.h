@@ -23,6 +23,7 @@
 #include <rpc/internal/member_ptr.h>
 #include <rpc/internal/remote_pointer.h>
 #include <rpc/internal/coroutine_support.h>
+#include <rpc/internal/event.h>
 
 // synchronous/coroutine sensitive headers
 

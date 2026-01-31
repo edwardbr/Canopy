@@ -208,6 +208,9 @@ namespace rpc
             caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 
+        CORO_TASK(void)
+        local_transport_down(const std::shared_ptr<transport>& local_transport);
+
         // Status monitoring
         uint64_t get_shared_count() const { return shared_count_.load(std::memory_order_acquire); }
         uint64_t get_optimistic_count() const { return optimistic_count_.load(std::memory_order_acquire); }

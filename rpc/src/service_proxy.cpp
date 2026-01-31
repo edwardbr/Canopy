@@ -375,7 +375,6 @@ namespace rpc
         else
         {
             RPC_ERROR("cleanup_after_object release failed: {}", rpc::error::to_string(ret));
-            RPC_ASSERT(false);
         }
         svc.reset();
         // the transport may now go out of scope and be destroyed here

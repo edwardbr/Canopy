@@ -252,14 +252,14 @@ close_ack_queued_.load(std::memory_order_acquire);  // Line 728
 
 **Concurrent Transport Access**
 - **Location**: `/rpc/src/service.cpp`
-- **Issue**: `transports_` map protected by `zone_control` mutex with complex operations
+- **Issue**: `transports_` map protected by `service_proxy_control_` mutex with complex operations
 - **Problem**: Race between transport creation, access, and removal
 - **Fix**: Audit all access patterns, consider `std::shared_ptr` in map values
 - **Status**: NEEDS VERIFICATION
 
 **Service Proxy Management**
 - **Location**: `/rpc/src/service.cpp`
-- **Issue**: `other_zones_` map protected by `zone_control` mutex
+- **Issue**: `service_proxies_` map protected by `service_proxy_control_` mutex
 - **Problem**: Similar to transport management - race between creation, access, removal
 - **Fix**: Ensure consistent locking and reference counting
 - **Status**: NEEDS VERIFICATION

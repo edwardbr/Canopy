@@ -581,6 +581,22 @@ namespace rpc
         }
     }
 
+    CORO_TASK(void)
+    pass_through::local_transport_down(const std::shared_ptr<transport>& local_transport)
+    {
+        if (forward_transport_ != local_transport)
+        {
+            CO_AWAIT forward_transport_->transport_down(
+                rpc::get_version(), forward_destination_, reverse_destination_.as_caller(), {});
+        }
+        if (reverse_transport_)
+        {
+            CO_AWAIT reverse_transport_->transport_down(
+                rpc::get_version(), reverse_destination_, forward_destination_.as_caller(), {});
+        }
+        trigger_self_destruction();
+    }
+
     void pass_through::trigger_self_destruction()
     {
         // Change status to DISCONNECTED to prevent new calls from starting
