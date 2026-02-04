@@ -181,47 +181,63 @@ namespace rpc
             zone_id_.get_val(),
             dest.get_val(),
             get_destination_count());
-        auto found = outbound_proxy_count_.find(dest);
-        if (found == outbound_proxy_count_.end())
-        {
-            outbound_proxy_count_[dest] = 1;
-        }
-        else
-        {
-            found->second++;
-        }
+
+        zone dest_zone = dest.as_zone();
+        auto& counts = zone_counts_[dest_zone];
+        counts.proxy_count++;
     }
     void transport::inner_decrement_outbound_proxy_count(destination_zone dest)
     {
-        auto found = outbound_proxy_count_.find(dest);
-        if (found == outbound_proxy_count_.end())
+        zone dest_zone = dest.as_zone();
+        auto found = zone_counts_.find(dest_zone);
+        if (found == zone_counts_.end())
         {
-            RPC_WARNING("inner_decrement_outbound_proxy_count: No outbound proxy count found for dest={} in zone={}",
+            RPC_WARNING("inner_decrement_outbound_proxy_count: No zone count found for dest={} in zone={}",
                 dest.get_val(),
                 zone_id_.get_val());
+            return;
         }
-        else
+
+        auto& counts = found->second;
+        if (counts.proxy_count == 0)
         {
-            --destination_count_;
-
-            RPC_DEBUG("decrement_outbound_proxy_count {} -> {} count = {}",
-                zone_id_.get_val(),
+            RPC_WARNING("inner_decrement_outbound_proxy_count: Proxy count already zero for dest={} in zone={}",
                 dest.get_val(),
-                get_destination_count());
-            auto count = --found->second;
-            if (count == 0)
+                zone_id_.get_val());
+            return;
+        }
+
+        --destination_count_;
+
+        RPC_DEBUG("decrement_outbound_proxy_count {} -> {} count = {}",
+            zone_id_.get_val(),
+            dest.get_val(),
+            get_destination_count());
+
+        auto proxy_count = --counts.proxy_count;
+        auto stub_count = counts.stub_count.load();
+
+        // If both counts are zero, remove the zone entry and trigger cleanup
+        if (proxy_count == 0 && stub_count == 0)
+        {
+            zone_counts_.erase(found);
+
+            // Trigger transport removal for this zone
+            if (auto svc = service_.lock())
             {
-                outbound_proxy_count_.erase(found);
+                svc->remove_transport(dest_zone.as_destination());
             }
 
-            // Automatic disconnection when no zones need this transport
-            if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
-            {
-                RPC_DEBUG(
-                    "transport::inner_decrement_outbound_proxy_count: destination_count reached 0, setting status to "
-                    "DISCONNECTED for zone={}",
-                    zone_id_.get_val());
-            }
+            RPC_DEBUG("inner_decrement_outbound_proxy_count: Both counts reached 0 for zone={}, removed transport",
+                dest.get_val());
+        }
+
+        // Automatic disconnection when no zones need this transport
+        if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+        {
+            RPC_DEBUG("transport::inner_decrement_outbound_proxy_count: destination_count reached 0, setting status to "
+                      "DISCONNECTED for zone={}",
+                zone_id_.get_val());
         }
     }
 
@@ -231,47 +247,59 @@ namespace rpc
         RPC_DEBUG(
             "increment_inbound_stub_count {} -> {} count = {}", zone_id_.get_val(), dest.get_val(), get_destination_count());
 
-        auto found = inbound_stub_count_.find(dest);
-        if (found == inbound_stub_count_.end())
-        {
-            inbound_stub_count_[dest] = 1;
-        }
-        else
-        {
-            found->second++;
-        }
+        zone dest_zone = dest.as_destination().as_zone();
+        auto& counts = zone_counts_[dest_zone];
+        counts.stub_count++;
     }
     void transport::inner_decrement_inbound_stub_count(caller_zone dest)
     {
-        auto found = inbound_stub_count_.find(dest);
-        if (found == inbound_stub_count_.end())
+        zone dest_zone = dest.as_destination().as_zone();
+        auto found = zone_counts_.find(dest_zone);
+        if (found == zone_counts_.end())
         {
-            RPC_WARNING("inner_decrement_outbound_proxy_count: No outbound proxy count found for dest={}", dest.get_val());
+            RPC_WARNING("inner_decrement_inbound_stub_count: No zone count found for dest={}", dest.get_val());
+            return;
         }
-        else
+
+        auto& counts = found->second;
+        if (counts.stub_count == 0)
         {
-            --destination_count_;
-
-            RPC_DEBUG("decrement_inbound_stub_count {} -> {} count = {}",
-                zone_id_.get_val(),
+            RPC_WARNING("inner_decrement_inbound_stub_count: Stub count already zero for dest={} in zone={}",
                 dest.get_val(),
-                get_destination_count());
+                zone_id_.get_val());
+            return;
+        }
 
-            auto count = --found->second;
-            if (count == 0)
+        --destination_count_;
+
+        RPC_DEBUG(
+            "decrement_inbound_stub_count {} -> {} count = {}", zone_id_.get_val(), dest.get_val(), get_destination_count());
+
+        auto stub_count = --counts.stub_count;
+        auto proxy_count = counts.proxy_count.load();
+
+        // If both counts are zero, remove the zone entry and trigger cleanup
+        if (stub_count == 0 && proxy_count == 0)
+        {
+            zone_counts_.erase(found);
+
+            // Trigger transport removal for this zone
+            if (auto svc = service_.lock())
             {
-                inbound_stub_count_.erase(found);
+                svc->remove_transport(dest_zone.as_destination());
             }
 
-            // Automatic disconnection when no zones need this transport
-            if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
-            {
-                RPC_DEBUG(
-                    "transport::inner_decrement_inbound_stub_count: destination_count reached 0, setting status to "
-                    "DISCONNECTED for zone={}",
-                    zone_id_.get_val());
-                // set_status(transport_status::DISCONNECTED);
-            }
+            RPC_DEBUG("inner_decrement_inbound_stub_count: Both counts reached 0 for zone={}, removed transport",
+                dest.get_val());
+        }
+
+        // Automatic disconnection when no zones need this transport
+        if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+        {
+            RPC_DEBUG("transport::inner_decrement_inbound_stub_count: destination_count reached 0, setting status to "
+                      "DISCONNECTED for zone={}",
+                zone_id_.get_val());
+            // set_status(transport_status::DISCONNECTED);
         }
     }
 
@@ -477,7 +505,7 @@ namespace rpc
             CO_RETURN;
         }
 
-        // Iterate through nested map to notify all handlers
+        // Iterate through passthrough handlers and notify them
         for (const auto& [dest_zone, pt] : pass_thoughs_)
         {
             if (auto handler = pt.lock())
@@ -487,10 +515,14 @@ namespace rpc
             }
         }
 
-        if (get_destination_count())
+        // Notify service about transport down for each connected remote zone
+        // Using zone_counts_ provides direct knowledge of which zones were connected,
+        // enabling efficient forward cleanup
+        for (const auto& [remote_zone, counts] : zone_counts_)
         {
-            // this is really inefficient
-            CO_AWAIT service->notify_transport_down(shared_from_this());
+            RPC_DEBUG("notify_all_destinations_of_disconnect: Notifying service about zone={} going down",
+                remote_zone.get_val());
+            CO_AWAIT service->notify_transport_down(shared_from_this(), remote_zone.as_destination());
         }
     }
 
@@ -946,6 +978,9 @@ namespace rpc
         }
 
         CO_AWAIT dest->transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
+
+        std::shared_lock lock(destinations_mutex_);
+        zone_counts_.erase(caller_zone_id.get_val());
     }
 
     CORO_TASK(int)

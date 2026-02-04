@@ -147,8 +147,6 @@ namespace comprehensive
             auto transport_2 = rpc::spsc::spsc_transport::create(
                 "transport_2", service_2, zone_1, &queues->to_process_2, &queues->to_process_1, handler);
 
-            service_2->add_transport(zone_1.as_destination(), transport_2);
-
             co_await transport_2->accept();
 
             std::cout << "Process 2: Ready for connections\n";

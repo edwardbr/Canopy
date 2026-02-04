@@ -111,8 +111,7 @@ namespace rpc
      * - outbound_*: Send calls to remote zone (implemented by derived classes)
      *
      * Reference Counting:
-     * - outbound_proxy_count_: Tracks proxies in local zone pointing to remote objects
-     * - inbound_stub_count_: Tracks stubs in local zone referenced by remote proxies
+     * - zone_counts_: Tracks proxies in local zone pointing to remote objects and stubs in local zone referenced by remote proxies
      * - Used to determine when transport can safely disconnect
      *
      * Back-Channel Data Flow:
@@ -136,6 +135,21 @@ namespace rpc
      *
      * See documents/architecture/06-transports-and-passthroughs.md for details.
      */
+    /**
+     * @brief Combined reference count tracking for a remote zone
+     *
+     * Tracks both directions of references between this transport's zone and a remote zone:
+     * - proxy_count: Proxies in local zone referencing objects in the remote zone
+     * - stub_count: Stubs in local zone referenced by proxies in the remote zone
+     *
+     * When both counts drop to zero, the transport to that zone can be removed.
+     */
+    struct remote_service_count
+    {
+        std::atomic<uint64_t> proxy_count{0};
+        std::atomic<uint64_t> stub_count{0};
+    };
+
     class transport : public i_marshaller, public std::enable_shared_from_this<transport>
     {
     private:
@@ -155,11 +169,9 @@ namespace rpc
         // Passthrough routing map for non-adjacent zones
         std::unordered_map<pass_through_key, std::weak_ptr<pass_through>> pass_thoughs_;
 
-        // Reference count tracking: maps zone IDs to counts of proxies/stubs
-        // Tracks proxies in local zone that reference objects in remote zones
-        std::unordered_map<destination_zone, std::atomic<uint64_t>> outbound_proxy_count_;
-        // Tracks stubs in local zone that are referenced by remote proxies
-        std::unordered_map<caller_zone, std::atomic<uint64_t>> inbound_stub_count_;
+        // Combined reference count tracking per zone
+        // Maps zone IDs to counts of both outbound proxies and inbound stubs
+        std::unordered_map<zone, remote_service_count> zone_counts_;
 
         std::atomic<int64_t> destination_count_ = 0;
 

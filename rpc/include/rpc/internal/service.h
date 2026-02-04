@@ -158,7 +158,6 @@ namespace rpc
         // pass through objects
         // child services to parent transports
         std::unordered_map<destination_zone, std::weak_ptr<transport>> transports_;
-        std::unordered_map<transport*, std::unordered_set<destination_zone>> transport_destinations_;
 
         void inner_add_transport(destination_zone adjacent_zone_id, const std::shared_ptr<transport>& transport_ptr);
         void inner_remove_transport(destination_zone destination_zone_id);
@@ -617,7 +616,8 @@ namespace rpc
          */
         std::shared_ptr<rpc::transport> get_transport(destination_zone destination_zone_id) const;
 
-        CORO_TASK(void) notify_transport_down(const std::shared_ptr<transport>& transport);
+        CORO_TASK(void)
+        notify_transport_down(const std::shared_ptr<transport>& transport, destination_zone remote_zone);
 
     protected:
         virtual void add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& zone);
@@ -984,7 +984,7 @@ namespace rpc
     {
         // Demarshal parent interface if provided
         rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
-        if (input_descr != interface_descriptor())
+        if (input_descr.object_id != 0)
         {
             // Create service_proxy for peer connection
             auto peer_service_proxy

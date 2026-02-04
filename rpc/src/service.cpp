@@ -1016,17 +1016,6 @@ namespace rpc
     {
         RPC_ASSERT(transports_.find(destination_zone_id) == transports_.end());
         transports_[destination_zone_id] = transport_ptr;
-        auto transport_dest = transport_destinations_.find(transport_ptr.get());
-        if (transport_dest != transport_destinations_.end())
-        {
-            RPC_ASSERT(transport_dest->second.find(destination_zone_id) == transport_dest->second.end());
-            transport_dest->second.insert(destination_zone_id);
-        }
-        else
-        {
-            transport_destinations_.emplace(
-                transport_ptr.get(), std::unordered_set<destination_zone>({destination_zone_id}));
-        }
         RPC_DEBUG("inner_add_zone_proxy service zone: {} destination_zone={} adjacent_zone={}",
             std::to_string(zone_id_),
             std::to_string(destination_zone_id),
@@ -1040,18 +1029,6 @@ namespace rpc
         {
             auto dest = it->second.lock();
             RPC_ASSERT(dest);
-            if (dest)
-            {
-                auto td = transport_destinations_.find(dest.get());
-                if (td != transport_destinations_.end())
-                {
-                    td->second.erase(destination_zone_id);
-                    if (td->second.empty())
-                    {
-                        transport_destinations_.erase(td);
-                    }
-                }
-            }
             transports_.erase(it);
             RPC_DEBUG("remove_transport service zone: {} destination_zone_id={}",
                 std::to_string(zone_id_),
@@ -1380,55 +1357,55 @@ namespace rpc
             protocol_version, destination_zone_id, object_id, caller_zone_id, options, in_back_channel, out_back_channel);
     }
 
-    // this is not efficient, certain datastructures need to be changed with proper tracking of reference counts
-    // perhaps done at the transport layer.  The problem is that adding the tracking at the transport requires
-    // more processing when things are working fine to deal with events when things are not
+    // Efficient targeted cleanup for a specific remote zone
+    // This version is called when the transport knows exactly which zone connection failed
     CORO_TASK(void)
-    service::notify_transport_down(const std::shared_ptr<transport>& transport)
+    service::notify_transport_down([[maybe_unused]] const std::shared_ptr<transport>& transport, destination_zone remote_zone)
     {
         std::lock_guard l(stub_control_);
 
         std::vector<interface_descriptor> objects_to_notify;
 
-        auto it = transport_destinations_.find(transport.get());
-
-        // go through and snip off all communications from service proxes
-        if (it != transport_destinations_.end())
+        // Clean up service proxy for this specific zone
         {
-            for (auto dest : it->second)
+            std::lock_guard g(service_proxy_control_);
+            auto zit = service_proxies_.find(remote_zone);
+            if (zit != service_proxies_.end())
             {
+                auto sp = zit->second.lock();
+                if (sp)
                 {
-                    std::lock_guard g(service_proxy_control_);
-                    auto zit = service_proxies_.find(dest);
-                    if (zit != service_proxies_.end())
-                    {
-                        auto sp = zit->second.lock();
-                        sp->set_transport(nullptr);
-                        service_proxies_.erase(zit);
-                    }
+                    sp->set_transport(nullptr);
                 }
+                service_proxies_.erase(zit);
+            }
+        }
 
-                for (auto& [obj_id, weak_stub] : stubs_)
-                {
-                    auto stub = weak_stub.lock();
-                    bool should_delete = stub->release_all_from_zone(dest.as_caller());
+        // Clean up stubs referenced by this specific zone
+        for (auto& [obj_id, weak_stub] : stubs_)
+        {
+            auto stub = weak_stub.lock();
+            if (!stub)
+                continue;
 
-                    if (should_delete)
-                    {
-                        // Shared count reached zero - stub should be deleted
-                        RPC_INFO("transport_down: Object {} ref count dropped to zero, cleaning up", obj_id.get_val());
+            bool should_delete = stub->release_all_from_zone(remote_zone.as_caller());
 
-                        // Remove from maps
-                        stubs_.erase(obj_id);
-                        auto* pointer = stub->get_castable_interface()->get_address();
-                        wrapped_object_to_stub_.erase(pointer);
+            if (should_delete)
+            {
+                // Shared count reached zero - stub should be deleted
+                RPC_INFO("transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
+                    obj_id.get_val(),
+                    remote_zone.get_val());
 
-                        // Track for notification
-                        objects_to_notify.push_back({obj_id, dest});
+                // Remove from maps
+                stubs_.erase(obj_id);
+                auto* pointer = stub->get_castable_interface()->get_address();
+                wrapped_object_to_stub_.erase(pointer);
 
-                        stub->reset();
-                    }
-                }
+                // Track for notification
+                objects_to_notify.push_back({obj_id, remote_zone});
+
+                stub->reset();
             }
         }
 
@@ -1437,6 +1414,6 @@ namespace rpc
         {
             CO_AWAIT notify_object_gone_event(obj.object_id, obj.destination_zone_id);
         }
-    };
+    }
 
 }
