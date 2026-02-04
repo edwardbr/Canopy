@@ -212,22 +212,19 @@ namespace comprehensive
             CO_RETURN true;
         }
 
-        CORO_TASK(void)
+        CORO_TASK(bool)
         demo_task(
 #ifdef CANOPY_BUILD_COROUTINE
-            std::shared_ptr<coro::io_scheduler> scheduler,
+            std::shared_ptr<coro::io_scheduler> scheduler
 #endif
-            bool* result_flag,
-            bool* completed_flag)
+        )
         {
             bool res = CO_AWAIT run_shared_ptr_demo(
 #ifdef CANOPY_BUILD_COROUTINE
                 scheduler
 #endif
             );
-            *result_flag = res;
-            *completed_flag = true;
-            CO_RETURN;
+            CO_RETURN res;
         }
 
     }
@@ -279,15 +276,9 @@ int main()
             .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool
         });
 
-    bool result = false;
-    bool completed = false;
+    bool result = coro::sync_wait(comprehensive::v1::demo_task(scheduler));
 
-    scheduler->spawn(comprehensive::v1::demo_task(scheduler, &result, &completed));
-
-    while (!completed)
-    {
-        scheduler->process_events(std::chrono::milliseconds(1));
-    }
+    scheduler->shutdown();
 
     return result ? 0 : 1;
 #else

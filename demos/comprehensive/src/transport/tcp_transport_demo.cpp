@@ -277,14 +277,15 @@ int main()
     return 1;
 #else
 
-    auto scheduler = coro::io_scheduler::make_shared(
-        coro::io_scheduler::options{
-            .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
-            .pool = coro::thread_pool::options{
-                .thread_count = std::thread::hardware_concurrency(),
-            },
-            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool
-        });
+    auto scheduler_1 = coro::io_scheduler::make_shared(
+        coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            .pool = coro::thread_pool::options{.thread_count = 4},
+            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+
+    auto scheduler_2 = coro::io_scheduler::make_shared(
+        coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            .pool = coro::thread_pool::options{.thread_count = 4},
+            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
 
     for (int i = 0; i < 100; i++)
     {
@@ -295,11 +296,13 @@ int main()
         // this tells that the client has finished so the server can shutdown
         rpc::event client_finished;
 
-        coro::sync_wait(coro::when_all(comprehensive::v1::run_tcp_server(scheduler, server_ready, client_finished),
-            comprehensive::v1::run_tcp_client(scheduler, server_ready, client_finished)));
+        coro::sync_wait(coro::when_all(comprehensive::v1::run_tcp_server(scheduler_1, server_ready, client_finished),
+            comprehensive::v1::run_tcp_client(scheduler_2, server_ready, client_finished)));
     }
 
     print_separator("TCP TRANSPORT DEMO COMPLETED");
+    scheduler_1->shutdown();
+    scheduler_2->shutdown();
     return 0;
 #endif
 }
