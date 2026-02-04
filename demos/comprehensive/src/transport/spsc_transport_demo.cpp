@@ -199,6 +199,11 @@ namespace comprehensive
             coro::sync_wait(
                 coro::when_all(process_1_task(scheduler_1, zone_1, zone_2, queues.get(), is_loaded, client_finished),
                     process_2_task(scheduler_2, zone_2, zone_1, queues.get(), is_loaded, server_ready, client_finished)));
+
+            // Explicitly shutdown schedulers to terminate and join their spawned threads
+            // This prevents thread accumulation across multiple iterations
+            scheduler_1->shutdown();
+            scheduler_2->shutdown();
         }
 #endif
     }
