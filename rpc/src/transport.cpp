@@ -86,6 +86,40 @@ namespace rpc
         CO_RETURN ret;
     }
 
+    CORO_TASK(int) transport::accept()
+    {
+        // #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        //         if (input_descr.object_id.is_set())
+        //         {
+        //             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        //                 telemetry_service->on_transport_outbound_add_ref(zone_id_,
+        //                     adjacent_zone_id_,
+        //                     adjacent_zone_id_.as_destination(),
+        //                     zone_id_.as_caller(),
+        //                     input_descr.object_id,
+        //                     zone_id_,
+        //                     rpc::add_ref_options::normal);
+        //         }
+        // #endif
+        int ret = CO_AWAIT inner_accept();
+
+        // #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        //         if (output_descr.object_id.is_set())
+        //         {
+        //             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        //                 telemetry_service->on_transport_inbound_add_ref(zone_id_,
+        //                     adjacent_zone_id_,
+        //                     zone_id_.as_destination(),
+        //                     adjacent_zone_id_.as_caller(),
+        //                     output_descr.object_id,
+        //                     adjacent_zone_id_,
+        //                     rpc::add_ref_options::normal);
+        //         }
+        // #endif
+
+        CO_RETURN ret;
+    }
+
     bool transport::inner_add_passthrough(destination_zone zone1, destination_zone zone2, std::weak_ptr<pass_through> pt)
     {
         pass_through_key lookup_val;
@@ -179,6 +213,15 @@ namespace rpc
             {
                 outbound_proxy_count_.erase(found);
             }
+
+            // Automatic disconnection when no zones need this transport
+            if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+            {
+                RPC_DEBUG(
+                    "transport::inner_decrement_outbound_proxy_count: destination_count reached 0, setting status to "
+                    "DISCONNECTED for zone={}",
+                    zone_id_.get_val());
+            }
         }
     }
 
@@ -209,7 +252,7 @@ namespace rpc
         {
             --destination_count_;
 
-            RPC_DEBUG("decrement_outbound_proxy_count {} -> {} count = {}",
+            RPC_DEBUG("decrement_inbound_stub_count {} -> {} count = {}",
                 zone_id_.get_val(),
                 dest.get_val(),
                 get_destination_count());
@@ -218,6 +261,16 @@ namespace rpc
             if (count == 0)
             {
                 inbound_stub_count_.erase(found);
+            }
+
+            // Automatic disconnection when no zones need this transport
+            if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+            {
+                RPC_DEBUG(
+                    "transport::inner_decrement_inbound_stub_count: destination_count reached 0, setting status to "
+                    "DISCONNECTED for zone={}",
+                    zone_id_.get_val());
+                // set_status(transport_status::DISCONNECTED);
             }
         }
     }
@@ -249,6 +302,15 @@ namespace rpc
             telemetry_service->on_transport_remove_destination(
                 zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2.as_caller());
 #endif
+
+        // Automatic disconnection when no zones need this transport
+        if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+        {
+            RPC_DEBUG("transport::remove_passthrough: destination_count reached 0, setting status to DISCONNECTED for "
+                      "zone={}",
+                zone_id_.get_val());
+            // set_status(transport_status::DISCONNECTED);
+        }
     }
 
     std::shared_ptr<pass_through> transport::create_pass_through(std::shared_ptr<transport> forward,
@@ -344,6 +406,10 @@ namespace rpc
     void transport::set_status(transport_status new_status)
     {
         [[maybe_unused]] auto old_status = status_.load(std::memory_order_acquire);
+        if (old_status >= new_status)
+        {
+            RPC_ASSERT(false); // invalid transition
+        }
         status_.store(new_status, std::memory_order_release);
 
 #ifdef CANOPY_USE_TELEMETRY

@@ -31,6 +31,7 @@ namespace websocket_demo
             // Parent transport is connected immediately - no handshake needed
             CO_RETURN rpc::error::OK();
         }
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         template<class in_param_type, class out_param_type>
         static std::function<CORO_TASK(int)(

@@ -52,11 +52,16 @@ namespace rpc::spsc
         std::mutex send_queue_mtx_;
 
         connection_handler connection_handler_;
-        coro::event shutdown_event_;
         stdex::member_ptr<spsc_transport> keep_alive_;
 
-        // Reference counting for shutdown sequence completion
-        std::atomic<int> shutdown_sequence_completed_{0};
+        std::atomic<bool> peer_requested_disconnection_ = false;
+
+        struct activity_tracker
+        {
+            std::shared_ptr<spsc_transport> transport;
+            std::shared_ptr<rpc::service> svc; // kept here to keep the service alive
+            ~activity_tracker() { svc->get_scheduler()->spawn(transport->cleanup(transport, svc)); }
+        };
 
         spsc_transport(std::string name,
             std::shared_ptr<rpc::service> service,
@@ -66,21 +71,36 @@ namespace rpc::spsc
             connection_handler handler);
 
         // Producer/consumer coroutines
-        CORO_TASK(void)
-        receive_consumer_loop(std::function<void(envelope_prefix, envelope_payload)> incoming_message_handler);
-        CORO_TASK(void) send_producer_loop();
+        CORO_TASK(void) receive_consumer_loop(std::shared_ptr<activity_tracker> tracker);
+        CORO_TASK(void) send_producer_loop(std::shared_ptr<activity_tracker> tracker);
+
+        enum send_queue_status
+        {
+            SEND_QUEUE_EMPTY,
+            SEND_QUEUE_NOT_EMPTY,
+            SPSC_QUEUE_FULL
+        };
+        send_queue_status push_message(std::span<uint8_t>& send_data);
 
         // Stub handlers (called when receiving messages)
-        CORO_TASK(void) stub_handle_send(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_try_cast(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_add_ref(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_release(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_post(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_object_released(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_transport_down(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) create_stub(envelope_prefix prefix, envelope_payload payload);
-
-        void kill_connection() { }
+        CORO_TASK(void)
+        stub_handle_send(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_try_cast(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_add_ref(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_release(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_post(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_object_released(
+            std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_transport_down(
+            std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        create_stub(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
 
         template<class SendPayload>
         void send_payload(
@@ -112,6 +132,12 @@ namespace rpc::spsc
         CORO_TASK(int)
         call_peer(std::uint64_t protocol_version, SendPayload&& sendPayload, ReceivePayload& receivePayload)
         {
+            if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::CONNECTING)
+            {
+                RPC_ERROR("call_peer: transport is not connected");
+                CO_RETURN rpc::error::CALL_CANCELLED();
+            }
+
             // If peer has initiated shutdown, we're disconnected
             auto sequence_number = ++sequence_number_;
 
@@ -160,6 +186,8 @@ namespace rpc::spsc
             CO_RETURN rpc::error::OK();
         }
 
+        CORO_TASK(void) cleanup(std::shared_ptr<spsc_transport> transport, std::shared_ptr<rpc::service> svc);
+
     public:
         static std::shared_ptr<spsc_transport> create(std::string name,
             std::shared_ptr<rpc::service> service,
@@ -168,15 +196,16 @@ namespace rpc::spsc
             queue_type* receive_spsc_queue,
             connection_handler handler);
 
-        virtual ~spsc_transport() = default;
+        virtual ~spsc_transport() { };
 
-        CORO_TASK(void) pump_send_and_receive();
-        CORO_TASK(void) shutdown();
+        void pump_send_and_receive();
 
         // Internal send payload helper
         // rpc::transport override - connect handshake
         CORO_TASK(int)
         inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+
+        CORO_TASK(int) inner_accept() override;
 
         // outbound i_marshaller implementations (from rpc::transport)
         CORO_TASK(int)

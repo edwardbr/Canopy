@@ -36,6 +36,8 @@ namespace rpc::local
             // Parent transport is connected immediately - no handshake needed
             CO_RETURN rpc::error::OK();
         }
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
+
         // Outbound i_marshaller interface - sends from child to parent
         CORO_TASK(int)
         outbound_send(uint64_t protocol_version,
@@ -157,6 +159,7 @@ namespace rpc::local
 
             CO_RETURN ret;
         }
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         // Outbound i_marshaller interface - sends from parent to child
         CORO_TASK(int)

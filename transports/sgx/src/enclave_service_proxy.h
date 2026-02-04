@@ -39,6 +39,7 @@ namespace rpc
 
         CORO_TASK(int)
         inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         int send(uint64_t protocol_version,
             encoding encoding,

@@ -85,7 +85,7 @@ The base `transport` class manages:
 1. **Zone identity** - Each transport connects two zones and knows its local zone ID and the adjacent zone ID
 2. **Destination routing** - Maintains handlers for zone pairs to route incoming messages to the correct service
 3. **Pass-through routing** - For multi-hop zone hierarchies, tracks which transports can reach which destinations
-5. **Connection status** - Enum values: `CONNECTING`, `CONNECTED`, `RECONNECTING`, `DISCONNECTED`
+5. **Connection status** - Enum values: `CONNECTING`, `CONNECTED`, `DISCONNECTING`, `DISCONNECTED`
 
 ### Transport Status
 
@@ -94,8 +94,8 @@ enum class transport_status
 {
     CONNECTING,   // Initial state, establishing connection
     CONNECTED,    // Fully operational
-    RECONNECTING, // Attempting to recover connection
-    DISCONNECTED  // Terminal state, no further traffic allowed
+    DISCONNECTING, // Beginning to shut down a close signal is being sent or recieved, all active outgoing calls are canceled only incoming releases are processed, all out parameters of incoming calls are not marshalled
+    DISCONNECTED  // Terminal state close signal has been acknowleged, or there is a terminal failure, no further traffic allowed
 };
 ```
 
@@ -215,6 +215,31 @@ class pass_through
 - Passthroughs keep intermediary zones alive as routing hubs
 - Ensures parent-side references remain valid during child zone shutdown
 - Maintains zone hierarchy integrity during teardown
+
+#### Transport Cleanup Requirements
+
+**Critical Rule: Transport Disconnection Before Service Destruction**
+
+By the time `service::~service()` is called, all transports must be:
+1. **Disconnected** - Status set to `transport_status::DISCONNECTED`
+2. **Unregistered** - Removed from service's `transports_` registry via `remove_transport()`
+
+This ensures clean shutdown and prevents:
+- Active calls through dead transports
+- Circular reference leaks
+- Use-after-free in routing logic
+
+**Exception for child_service:**
+- The parent_transport is intentionally kept alive DURING `child_service::~child_service()`
+- The destructor triggers disconnection by calling `parent_transport->set_status(DISCONNECTED)`
+- This propagates to the parent zone's child_transport
+- The circular reference is broken safely via the disconnection protocol
+- Stack-based shared_ptr protection prevents use-after-free during active calls
+
+**Enforcement:**
+- Service proxies must release transport references before service destructs
+- Passthroughs must release transport references when ref counts reach zero
+- For child_service, parent_transport cleanup is automatic via disconnection protocol
 
 See `03-services.md` for service lifecycle details and `04-memory-management.md` for reference counting patterns.
 

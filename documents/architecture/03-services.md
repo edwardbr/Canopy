@@ -281,27 +281,41 @@ Service stays alive as long as:
 - Passthroughs route through this zone
 - Strong references exist (for child_service: parent_transport_)
 
-### Service Death 
+### Service Death
 
 ```
-1. Triple-count reaches zero:
+1. Reference counts reach zero:
    - No local stubs
    - No remote proxies to local objects
-   - No passthroughs
+   - No passthroughs routing through this zone
 
-2. service destructor called:
-   - Notifies transport
-   - Begins cleanup
+2. Transport cleanup (MUST complete before destructor):
+   - All transports disconnected (status set to DISCONNECTED)
+   - All transports unregistered from transports_ map
+   - Service proxies release their transport references
 
-3. Transport cleanup:
-   - Disconnects from remote zones
-   - Releases references
-
-4. Service destructor:
-   - Deregisters all stubs
-   - Clears transport map
-   - Releases service proxies
+3. service destructor called:
+   - Verifies all stubs released (check_is_empty())
+   - Clears service_proxies_ map
+   - Notifies telemetry of service deletion
 ```
+
+**Critical Requirement: Transport Cleanup Before Service Destruction**
+
+By the time `service::~service()` is called:
+- All transports MUST be **disconnected** (status = `DISCONNECTED`)
+- All transports MUST be **unregistered** from the `transports_` registry
+- All service proxies must be released (enforced at destructor line 104)
+
+**Exception for child_service:**
+- The parent_transport is intentionally kept alive DURING `child_service::~child_service()`
+- The destructor calls `parent_transport->set_status(DISCONNECTED)`
+- This triggers the safe disconnection protocol
+- The parent transport propagates the status to the parent zone
+- The child_transport in parent zone breaks its circular reference
+- Stack-based protection ensures safety during active calls
+
+See `documents/transports/hierarchical.md` for complete hierarchical transport lifecycle details.
 
 ## Hidden Service Principle
 

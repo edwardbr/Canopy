@@ -218,18 +218,6 @@ public:
             listener_.reset();
         }
 
-        // // Shutdown any active transports
-        // if (client_transport_)
-        // {
-        //     CO_AWAIT client_transport_->shutdown();
-        //     client_transport_.reset();
-        // }
-        // if (server_transport_)
-        // {
-        //     CO_AWAIT server_transport_->shutdown();
-        //     server_transport_.reset();
-        // }
-
         CO_RETURN;
     }
 

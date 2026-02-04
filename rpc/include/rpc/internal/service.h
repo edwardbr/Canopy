@@ -189,6 +189,24 @@ namespace rpc
         explicit service(const char* name, zone zone_id);
         explicit service(const char* name, zone zone_id, child_service_tag);
 #endif
+        /**
+         * @brief Service destructor - ensures clean zone shutdown
+         *
+         * By the time the service destructor is called:
+         * - All transports MUST be disconnected (status set to DISCONNECTED)
+         * - All transports MUST be unregistered from the transports_ map
+         * - All service proxies must be released (enforced in destructor)
+         * - All stubs should be released (checked via check_is_empty())
+         *
+         * Exception for child_service:
+         * The parent_transport is intentionally kept alive DURING the child_service
+         * destructor to execute the safe disconnection protocol. The child_service
+         * destructor calls parent_transport->set_status(DISCONNECTED), which triggers
+         * the circular reference cleanup between parent and child transports.
+         *
+         * See documents/architecture/03-services.md for service lifecycle details.
+         * See documents/transports/hierarchical.md for hierarchical transport pattern.
+         */
         virtual ~service();
 
         /**
@@ -985,9 +1003,20 @@ namespace rpc
             add_transport(peer_transport->get_adjacent_zone_id().as_destination(), peer_transport);
         }
 
+        auto err_code = CO_AWAIT peer_transport->accept();
+        if (err_code != rpc::error::OK())
+        {
+            if (input_descr != interface_descriptor())
+            {
+                // perhaps we should stop the transport first?
+                remove_transport(peer_transport->get_adjacent_zone_id().as_destination());
+            }
+            CO_RETURN err_code;
+        }
+
         // Call local entry point to create child interface
         rpc::shared_ptr<CHILD_INTERFACE> child_ptr;
-        auto err_code = CO_AWAIT fn(parent_ptr, child_ptr, shared_from_this());
+        err_code = CO_AWAIT fn(parent_ptr, child_ptr, shared_from_this());
         if (err_code != rpc::error::OK())
         {
             if (input_descr != interface_descriptor())

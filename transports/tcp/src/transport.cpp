@@ -21,7 +21,6 @@ namespace rpc::tcp
         , timeout_(timeout)
         , connection_handler_(std::move(handler))
     {
-        set_status(rpc::transport_status::CONNECTING);
     }
 
     std::shared_ptr<tcp_transport> tcp_transport::create(std::string name,
@@ -967,9 +966,6 @@ namespace rpc::tcp
         // The server transport is initially created with zone{0}, but now we know the real client zone
         // Use adjacent_zone_id (the zone of the transport) not caller_zone_id (which may be different in pass-through)
         set_adjacent_zone_id(rpc::zone{request.adjacent_zone_id});
-
-        // Set transport to CONNECTED after successful server-side handshake
-        set_status(rpc::transport_status::CONNECTING);
 
         int ret = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
         connection_handler_ = nullptr;

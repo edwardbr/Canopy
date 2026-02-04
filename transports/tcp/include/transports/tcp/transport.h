@@ -109,24 +109,26 @@ namespace rpc::tcp
         CORO_TASK(int)
         call_peer(std::uint64_t protocol_version, SendPayload&& sendPayload, ReceivePayload& receivePayload)
         {
-            // If peer has initiated shutdown, we're disconnected
-            if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::CONNECTING)
-            {
-                RPC_DEBUG("call_peer: shutting_down_=true, returning CALL_CANCELLED for zone {}",
-                    get_service()->get_zone_id().get_val());
-                CO_RETURN rpc::error::CALL_CANCELLED();
-            }
-
-            auto sequence_number = ++sequence_number_;
-
             // Register the receive listener before we do the send
             result_listener res_payload;
+            unsigned long sequence_number = 0;
             {
+                std::scoped_lock lock(pending_transmits_mtx_);
+
+                sequence_number = ++sequence_number_;
                 RPC_DEBUG("call_peer started zone: {} sequence_number: {} id: {}",
                     get_service()->get_zone_id().get_val(),
                     sequence_number,
                     rpc::id<SendPayload>::get(rpc::get_version()));
-                std::scoped_lock lock(pending_transmits_mtx_);
+
+                // If peer has initiated shutdown, we're disconnected
+                if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::CONNECTING)
+                {
+                    RPC_DEBUG("call_peer: shutting_down_=true, returning CALL_CANCELLED for zone {}",
+                        get_service()->get_zone_id().get_val());
+                    CO_RETURN rpc::error::CALL_CANCELLED();
+                }
+
                 auto [it, success] = pending_transmits_.try_emplace(sequence_number, &res_payload);
                 if (!success)
                 {
@@ -198,6 +200,8 @@ namespace rpc::tcp
         // rpc::transport override - connect handshake
         CORO_TASK(int)
         inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         // outbound i_marshaller implementations (from rpc::transport)
         CORO_TASK(int)

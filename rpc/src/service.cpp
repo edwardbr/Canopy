@@ -1386,7 +1386,6 @@ namespace rpc
     CORO_TASK(void)
     service::notify_transport_down(const std::shared_ptr<transport>& transport)
     {
-        std::lock_guard g(service_proxy_control_);
         std::lock_guard l(stub_control_);
 
         std::vector<interface_descriptor> objects_to_notify;
@@ -1398,13 +1397,16 @@ namespace rpc
         {
             for (auto dest : it->second)
             {
-                auto zit = service_proxies_.find(dest);
-                if (zit != service_proxies_.end())
                 {
-                    auto sp = zit->second.lock();
-                    sp->set_transport(nullptr);
+                    std::lock_guard g(service_proxy_control_);
+                    auto zit = service_proxies_.find(dest);
+                    if (zit != service_proxies_.end())
+                    {
+                        auto sp = zit->second.lock();
+                        sp->set_transport(nullptr);
+                        service_proxies_.erase(zit);
+                    }
                 }
-                service_proxies_.erase(zit);
 
                 for (auto& [obj_id, weak_stub] : stubs_)
                 {

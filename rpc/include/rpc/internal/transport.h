@@ -47,18 +47,17 @@ namespace rpc
      * @brief Transport connection status lifecycle
      *
      * Status Progression:
-     * CONNECTING → CONNECTED → DISCONNECTED (normal flow)
-     * CONNECTED → RECONNECTING → CONNECTED (recovery flow)
+     * CONNECTING → CONNECTED → DISCONNECTING (optional) → DISCONNECTED (normal flow)
      * Any state → DISCONNECTED (error/shutdown)
      *
      * DISCONNECTED is a terminal state - no further traffic allowed.
      */
     enum class transport_status
     {
-        CONNECTING,   // Initial state, establishing connection
-        CONNECTED,    // Fully operational
-        RECONNECTING, // Attempting to recover connection
-        DISCONNECTED  // Terminal state, no further traffic allowed
+        CONNECTING,    // Initial state, establishing connection
+        CONNECTED,     // Fully operational
+        DISCONNECTING, // Beginning to shut down a close signal is being sent or recieved
+        DISCONNECTED // Terminal state close signal has been acknowleged, or there is a terminal failure, no further traffic allowed
     };
 
     /**
@@ -256,7 +255,7 @@ namespace rpc
 
         /**
          * @brief Get current transport status
-         * @return Current status (CONNECTING, CONNECTED, RECONNECTING, or DISCONNECTED)
+         * @return Current status (CONNECTING, CONNECTED, DISCONNECTING, or DISCONNECTED)
          *
          * Thread-Safety: Uses atomic load
          */
@@ -297,6 +296,16 @@ namespace rpc
          * Thread-Safety: Implementation-specific (varies by derived class)
          */
         CORO_TASK(int) connect(interface_descriptor input_descr, interface_descriptor& output_descr);
+
+        /**
+         * @brief Initiate a transport about to receive a connection request
+         * @return error::OK() on success, error code on failure
+         *
+         * Delegates to inner_accept() which derived classes implement.
+         *
+         * Thread-Safety: Implementation-specific (varies by derived class)
+         */
+        CORO_TASK(int) accept();
 
         /////////////////////////////////
         // INBOUND METHODS - Process calls arriving from remote zone
@@ -501,6 +510,8 @@ namespace rpc
          * Thread-Safety: Implementation-specific
          */
         virtual CORO_TASK(int) inner_connect(interface_descriptor input_descr, interface_descriptor& output_descr) = 0;
+
+        virtual CORO_TASK(int) inner_accept() = 0;
 
         /**
          * @brief Send RPC call to remote zone (transport-specific implementation)

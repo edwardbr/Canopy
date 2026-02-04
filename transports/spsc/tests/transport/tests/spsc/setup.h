@@ -126,7 +126,7 @@ public:
         peer_service_->add_transport(root_zone_id.as_destination(), peer_transport);
 
         // Schedule the pump coroutine
-        RPC_ASSERT(peer_service_->get_scheduler()->spawn(peer_transport->pump_send_and_receive()));
+        peer_transport->pump_send_and_receive();
 
         // Create client-side transport (initiates connection)
         rpc::shared_ptr<yyy::i_host> hst(new host());
@@ -140,7 +140,7 @@ public:
             nullptr); // client doesn't need handler
 
         // Schedule the pump coroutine for client
-        RPC_ASSERT(root_service_->get_scheduler()->spawn(client_transport->pump_send_and_receive()));
+        client_transport->pump_send_and_receive();
 
         auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport, hst, i_example_ptr_);
 
@@ -170,7 +170,7 @@ public:
         RPC_ASSERT(io_scheduler_->spawn(setup_task()));
 
         // Process events until setup completes
-        // Note: pump_send_and_receive tasks keep running, so scheduler never empties
+        // Note: pump_send_and_receive tsks keep running, so scheduler never empties
         while (!setup_complete_)
         {
             io_scheduler_->process_events(std::chrono::milliseconds(1));
