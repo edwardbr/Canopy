@@ -93,10 +93,13 @@ template<class T> class hierachical_transport_tests : public type_test<T>
 {
 };
 
-using hierachical_transport_tests_implementations = ::testing::Types<inproc_setup<true, false, false>,
-    inproc_setup<true, false, true>,
-    inproc_setup<true, true, false>,
-    inproc_setup<true, true, true>
+using hierachical_transport_tests_implementations = ::testing::Types<
+
+    // in process marshalled tests
+    inproc_setup<true, true>,
+    inproc_setup<true, false>,
+    inproc_setup<false, true>,
+    inproc_setup<false, false>
 
 #ifdef CANOPY_BUILD_ENCLAVE
     ,

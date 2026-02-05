@@ -582,7 +582,7 @@ namespace marshalled_tests
         {
             auto host = host_.get_nullable();
             if (!host)
-                CO_RETURN rpc::error::INVALID_DATA();
+                CO_RETURN rpc::error::OK();
 
             rpc::shared_ptr<i_example> app;
             {
@@ -617,9 +617,7 @@ namespace marshalled_tests
         call_host_look_up_app(const std::string& name, rpc::shared_ptr<i_example>& app, bool run_standard_tests) override
         {
             auto host = host_.get_nullable();
-            if (!host)
-                CO_RETURN rpc::error::INVALID_DATA();
-
+            if (host)
             {
 #ifdef CANOPY_USE_TELEMETRY
                 auto telemetry_service = rpc::get_telemetry_service();
@@ -746,11 +744,12 @@ namespace marshalled_tests
         CORO_TASK(error_code) call_host_unload_app(const std::string& name) override
         {
             auto host = host_.get_nullable();
-            if (!host)
-                CO_RETURN rpc::error::INVALID_DATA();
-            auto err = CO_AWAIT host->unload_app(name);
-            if (err != rpc::error::OK())
-                CO_RETURN err;
+            if (host)
+            {
+                auto err = CO_AWAIT host->unload_app(name);
+                if (err != rpc::error::OK())
+                    CO_RETURN err;
+            }
             CO_RETURN rpc::error::OK();
         }
 

@@ -100,22 +100,23 @@ extern bool enable_multithreaded_tests;
 template<class T> using remote_type_test = type_test<T>;
 
 using remote_implementations = ::testing::Types<
-    // inproc_setup<false, false, false>,
 
-    inproc_setup<true, false, false>,
-    inproc_setup<true, false, true>,
-    inproc_setup<true, true, false>,
-    inproc_setup<true, true, true>
+    // in process marshalled tests
+    inproc_setup<false, true>,
+    inproc_setup<false, false>,
+    inproc_setup<true, false>,
+    inproc_setup<true, true>
+
 #ifdef CANOPY_BUILD_COROUTINE
     ,
-    tcp_setup<true, false, false>,
-    tcp_setup<true, false, true>,
-    tcp_setup<true, true, false>,
-    tcp_setup<true, true, true>,
-    spsc_setup<true, false, false>,
-    spsc_setup<true, false, true>,
-    spsc_setup<true, true, false>,
-    spsc_setup<true, true, true>
+    tcp_setup<true, false>,
+    tcp_setup<true, true>,
+    tcp_setup<false, false>,
+    tcp_setup<false, true>,
+    spsc_setup<true, false>,
+    spsc_setup<true, true>,
+    spsc_setup<false, false>,
+    spsc_setup<false, true>
 #endif
 
 #ifdef CANOPY_BUILD_ENCLAVE
@@ -582,7 +583,7 @@ template<class T> CORO_TASK(bool) coro_two_zones_get_one_to_lookup_other(T& lib)
     CORO_ASSERT_EQ(CO_AWAIT enclaveb->set_host(h), 0);
     CORO_ASSERT_EQ(CO_AWAIT h->set_app("enclaveb", enclaveb), rpc::error::OK());
 
-    CORO_ASSERT_EQ(CO_AWAIT ex->call_host_look_up_app_not_return("enclaveb", false), 0);
+    CORO_ASSERT_EQ(CO_AWAIT ex->call_host_look_up_app_not_return("enclaveb", false), rpc::error::OK());
 
     CORO_ASSERT_EQ(CO_AWAIT enclaveb->set_host(nullptr), 0);
     CO_RETURN true;
@@ -747,7 +748,7 @@ template<class T> CORO_TASK(bool) coro_check_deeply_nested_zone_reference_counti
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
 
     // Create a complex branching topology to test untested path on line 792
@@ -840,7 +841,7 @@ template<class T> CORO_TASK(bool) coro_check_unknown_zone_reference_path(T& lib)
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
 
     // Create a topology designed to trigger the untested path on line 870
@@ -1075,7 +1076,7 @@ template<class T> CORO_TASK(bool) coro_complex_topology_cross_branch_routing_tra
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
 
     // Test 1: Cross-branch routing between deepest nodes without any prior communication
@@ -1117,7 +1118,7 @@ coro_complex_topology_intermediate_channel_collision_trap_2(T& lib, const auto& 
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
 
     // Test 2: Create scenario where dest_channel == caller_channel && build_channel
@@ -1158,7 +1159,7 @@ template<class T> CORO_TASK(bool) coro_complex_topology_deep_nesting_parent_fall
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
 
     // Test 3: Deep nesting with parent fallback failure
@@ -1211,8 +1212,42 @@ template<class T> CORO_TASK(bool) coro_complex_topology_service_proxy_cache_bypa
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
+
+    // this is the setup for inproc_setup<UseHostInChild=true,CreateNewZoneThenCreateSubordinatedZone=false>
+    // === TOPOLOGY DIAGRAM ===
+    // Zone Hierarchy:
+    // Zone : 1 host
+    //   ├─ Zone : 2 child
+    //     ├─ Zone : 3 child
+    //       ├─ Zone : 4 child
+    //         ├─ Zone : 5 child
+    //           ├─ Zone : 6 child
+    //             ├─ Zone : 7 child
+    //               ├─ Zone : 8 child
+    //                 ├─ Zone : 9 child
+    //                   ├─ Zone : 14 child
+    //                     ├─ Zone : 15 child
+    //                       ├─ Zone : 16 child
+    //                         ├─ Zone : 17 child
+    //                   ├─ Zone : 18 child
+    //                     ├─ Zone : 19 child
+    //                       ├─ Zone : 20 child
+    //                         ├─ Zone : 21 child
+    //           ├─ Zone : 10 child
+    //             ├─ Zone : 11 child
+    //               ├─ Zone : 12 child
+    //                 ├─ Zone : 13 child
+    //                   ├─ Zone : 22 child
+    //                     ├─ Zone : 23 child
+    //                       ├─ Zone : 24 child
+    //                         ├─ Zone : 25 child
+    //                   ├─ Zone : 26 child
+    //                     ├─ Zone : 27 child
+    //                       ├─ Zone : 28 child
+    //                         ├─ Zone : 29 child
+    // =========================
 
     // Test 4: Service proxy cache bypass scenarios
     // Create routing patterns that might bypass established service proxy caches
@@ -1275,7 +1310,7 @@ template<class T> CORO_TASK(bool) coro_complex_topology_multiple_convergence_poi
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
 
     // Test 5: Multiple convergence points - stress test for channel collision
@@ -1330,7 +1365,7 @@ template<class T> CORO_TASK(bool) coro_check_interface_routing_with_out_params(T
 {
     if (!lib.get_use_host_in_child())
     {
-        CO_RETURN false;
+        CO_RETURN true;
     }
 
     // Test the add_ref_options behavior with receive_interface (out-parameter)

@@ -18,7 +18,7 @@
 #include <rpc/telemetry/multiplexing_telemetry_service.h>
 #endif
 
-template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class inproc_setup
+template<bool UseHostInChild, bool CreateNewZoneThenCreateSubordinatedZone> class inproc_setup
 {
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::io_scheduler> io_scheduler_;
@@ -32,7 +32,6 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
     const bool has_enclave_ = true;
     bool use_host_in_child_ = UseHostInChild;
-    bool run_standard_tests_ = RunStandardTests;
 
     std::atomic<uint64_t> zone_gen_ = 0;
 
@@ -233,12 +232,16 @@ public:
         if (CreateNewZoneThenCreateSubordinatedZone)
         {
             rpc::shared_ptr<yyy::i_example> new_ptr;
-            if (CO_AWAIT example_relay_ptr->create_example_in_subordinate_zone(
-                    new_ptr, use_host_in_child_ ? hst : nullptr, ++zone_gen_)
-                == rpc::error::OK())
+            auto err = CO_AWAIT example_relay_ptr->create_example_in_subordinate_zone(
+                new_ptr, use_host_in_child_ ? hst : nullptr, ++zone_gen_);
+            if (err == rpc::error::OK())
             {
                 CO_AWAIT example_relay_ptr->set_host(nullptr);
                 example_relay_ptr = new_ptr;
+            }
+            else
+            {
+                RPC_ASSERT(false);
             }
         }
         CO_RETURN example_relay_ptr;

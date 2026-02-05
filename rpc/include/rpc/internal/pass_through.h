@@ -228,8 +228,9 @@ namespace rpc
             return reverse_destination_;
         } // Zone reached via reverse_transport
 
-    private:
         std::shared_ptr<transport> get_directional_transport(destination_zone dest);
+
+    private:
         void trigger_self_destruction();
 
         friend transport;

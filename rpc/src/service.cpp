@@ -1014,6 +1014,7 @@ namespace rpc
 
     void service::inner_add_transport(destination_zone destination_zone_id, const std::shared_ptr<transport>& transport_ptr)
     {
+        RPC_ASSERT(destination_zone_id.get_val());
         RPC_ASSERT(transports_.find(destination_zone_id) == transports_.end());
         transports_[destination_zone_id] = transport_ptr;
         RPC_DEBUG("inner_add_zone_proxy service zone: {} destination_zone={} adjacent_zone={}",
@@ -1024,6 +1025,7 @@ namespace rpc
 
     void service::inner_remove_transport(destination_zone destination_zone_id)
     {
+        RPC_ASSERT(destination_zone_id.get_val());
         auto it = transports_.find(destination_zone_id);
         if (it != transports_.end())
         {
@@ -1037,7 +1039,7 @@ namespace rpc
     }
     std::shared_ptr<rpc::transport> service::inner_get_transport(destination_zone destination_zone_id) const
     {
-
+        RPC_ASSERT(destination_zone_id.get_val());
         // Try to find a direct transport to the destination zone
         auto item = transports_.find(destination_zone_id);
         if (item != transports_.end())

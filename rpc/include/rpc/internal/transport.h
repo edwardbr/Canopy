@@ -189,6 +189,8 @@ namespace rpc
         // Gets handler for specific zone pair
         std::shared_ptr<pass_through> inner_get_passthrough(destination_zone zone1, destination_zone zone2) const;
 
+        std::shared_ptr<transport> inner_get_transport_from_passthroughs(destination_zone destination_zone_id) const;
+
         void inner_increment_outbound_proxy_count(destination_zone dest);
         void inner_decrement_outbound_proxy_count(destination_zone dest);
 

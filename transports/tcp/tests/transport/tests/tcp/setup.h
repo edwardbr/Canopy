@@ -13,7 +13,7 @@
 #include <transports/tcp/transport.h>
 #include <transports/tcp/listener.h>
 
-template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class tcp_setup
+template<bool UseHostInChild, bool CreateNewZoneThenCreateSubordinatedZone> class tcp_setup
 {
     std::shared_ptr<rpc::service> root_service_;
     std::shared_ptr<rpc::service> peer_service_;
@@ -27,7 +27,6 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
     const bool has_enclave_ = true;
     bool use_host_in_child_ = UseHostInChild;
-    bool run_standard_tests_ = RunStandardTests;
 
     std::atomic<uint64_t> zone_gen_ = 0;
 

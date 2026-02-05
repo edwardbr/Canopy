@@ -68,34 +68,29 @@ extern bool enable_multithreaded_tests;
 template<typename SetupType> using post_functionality_test = type_test<SetupType>;
 
 // Define the test types for different transport mechanisms
-using post_test_implementations = ::testing::Types<in_memory_setup<false>,
+using post_test_implementations = ::testing::Types<
+
+    // in memory tests
+    in_memory_setup<false>,
     in_memory_setup<true>,
-    inproc_setup<false, false, false>,
-    inproc_setup<false, false, true>,
-    inproc_setup<false, true, false>,
-    inproc_setup<false, true, true>,
-    inproc_setup<true, false, false>,
-    inproc_setup<true, false, true>,
-    inproc_setup<true, true, false>,
-    inproc_setup<true, true, true>
+
+    // in process marshalled tests
+    inproc_setup<false, false>,
+    inproc_setup<false, true>,
+    inproc_setup<true, false>,
+    inproc_setup<true, true>,
+
 #ifdef CANOPY_BUILD_COROUTINE
     ,
-    tcp_setup<false, false, false>,
-    tcp_setup<false, false, true>,
-    tcp_setup<false, true, false>,
-    tcp_setup<false, true, true>,
-    tcp_setup<true, false, false>,
-    tcp_setup<true, false, true>,
-    tcp_setup<true, true, false>,
-    tcp_setup<true, true, true>,
-    spsc_setup<false, false, false>,
-    spsc_setup<false, false, true>,
-    spsc_setup<false, true, false>,
-    spsc_setup<false, true, true>,
-    spsc_setup<true, false, false>,
-    spsc_setup<true, false, true>,
-    spsc_setup<true, true, false>,
-    spsc_setup<true, true, true>
+    tcp_setup<true, false>,
+    tcp_setup<true, true>,
+    tcp_setup<false, false>,
+    tcp_setup<false, true>,
+    spsc_setup<true, false>,
+    spsc_setup<true, true>,
+    spsc_setup<false, false>,
+    spsc_setup<false, true>,
+
 #endif
 #ifdef CANOPY_BUILD_ENCLAVE
     ,

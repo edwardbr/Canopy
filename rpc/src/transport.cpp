@@ -475,6 +475,19 @@ namespace rpc
         return nullptr;
     }
 
+    std::shared_ptr<transport> transport::inner_get_transport_from_passthroughs(destination_zone destination_zone_id) const
+    {
+        std::shared_lock lock(destinations_mutex_);
+        for (auto& [key, pt] : pass_thoughs_)
+        {
+            if (key.zone1 == destination_zone_id || key.zone2 == destination_zone_id)
+            {
+                return pt.lock()->get_directional_transport(destination_zone_id);
+            }
+        }
+        return nullptr;
+    }
+
     // Helper to route incoming messages to registered handlers
     std::shared_ptr<pass_through> transport::get_passthrough(destination_zone zone1, destination_zone zone2) const
     {
@@ -632,6 +645,247 @@ namespace rpc
             in_back_channel);
     }
 
+    /*    CORO_TASK(int)
+    transport::inbound_try_cast(uint64_t protocol_version,
+        caller_zone caller_zone_id,
+        destination_zone destination_zone_id,
+        object object_id,
+        interface_ordinal interface_id,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_inbound_try_cast(
+                zone_id_, adjacent_zone_id_, destination_zone_id, caller_zone_id, object_id, interface_id);
+        }
+#endif
+
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id == zone_id_.as_destination())
+        {
+            dest = service_.lock();
+        }
+        else
+        {
+            // Try zone pair lookup first
+            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            if (!dest)
+            {
+                CO_RETURN error::ZONE_NOT_FOUND();
+            }
+        }
+
+        CO_RETURN CO_AWAIT dest->try_cast(
+            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel,
+out_back_channel);
+    }
+
+    CORO_TASK(int)
+    transport::inbound_add_ref(uint64_t protocol_version,
+        destination_zone destination_zone_id,
+        object object_id,
+        caller_zone caller_zone_id,
+        known_direction_zone known_direction_zone_id,
+        add_ref_options build_out_param_channel,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+        // Check transport status before attempting to route
+        if (get_status() == transport_status::DISCONNECTED)
+        {
+            CO_RETURN error::TRANSPORT_ERROR();
+        }
+
+        auto svc = service_.lock();
+        if (!svc)
+        {
+            CO_RETURN error::TRANSPORT_ERROR();
+        }
+
+        bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
+        bool build_dest_channel = !!(build_out_param_channel & add_ref_options::build_destination_route)
+                                  || build_out_param_channel == add_ref_options::normal
+                                  || build_out_param_channel == add_ref_options::optimistic;
+
+        RPC_DEBUG("inbound_add_ref: svc_zone={}, dest_zone={}, caller_zone={}, build_caller_channel={}, "
+                  "build_dest_channel={}, known_direction_zone_id={}",
+            svc->get_zone_id().get_val(),
+            destination_zone_id.get_val(),
+            caller_zone_id.get_val(),
+            build_caller_channel,
+            build_dest_channel,
+            known_direction_zone_id.get_val());
+
+        // If the caller and destination are in the same zone as this zone we can do some quick routing
+        if (caller_zone_id != get_zone_id().as_caller() && destination_zone_id != get_zone_id().as_destination())
+        {
+            // if the destination is the same as the caller we can just route it to the destination zone
+            if (destination_zone_id == caller_zone_id.as_destination())
+            {
+                auto dest_transport = svc->get_transport(destination_zone_id);
+                // caller and destination are the same zone, so we just call the transport to pass the call along and
+not involve a pass through if (!dest_transport)
+                {
+                    CO_RETURN error::ZONE_NOT_FOUND();
+                }
+
+                // here we
+                auto error_code = CO_AWAIT dest_transport->add_ref(protocol_version,
+                    destination_zone_id,
+                    object_id,
+                    caller_zone_id,
+                    known_direction_zone_id,
+                    build_out_param_channel,
+                    in_back_channel,
+                    out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                {
+                    telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                        adjacent_zone_id_,
+                        destination_zone_id,
+                        caller_zone_id,
+                        object_id,
+                        known_direction_zone_id,
+                        build_out_param_channel);
+                }
+#endif
+
+                CO_RETURN error_code;
+            }
+            else
+            {
+                // we are going to use a pass-through
+                auto passthrough = get_passthrough(caller_zone_id.as_destination(), destination_zone_id);
+                if (passthrough)
+                {
+                    CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
+                        destination_zone_id,
+                        object_id,
+                        caller_zone_id,
+                        known_direction_zone_id,
+                        build_out_param_channel,
+                        in_back_channel,
+                        out_back_channel);
+                }
+            }
+
+            // those options did not work we need to create a pass through
+            auto dest_transport = svc->get_transport(destination_zone_id);
+            if (!dest_transport)
+            {
+                if (build_dest_channel)
+                {
+                    dest_transport = svc->get_transport(known_direction_zone_id.as_destination());
+                    if (!dest_transport)
+                    {
+                        CO_RETURN error::ZONE_NOT_FOUND();
+                    }
+                }
+                else
+                {
+                    dest_transport = shared_from_this();
+                }
+                svc->add_transport(destination_zone_id, dest_transport);
+            }
+
+            auto caller_transport = svc->get_transport(caller_zone_id.as_destination());
+            if (!caller_transport)
+            {
+                if (!build_dest_channel && build_caller_channel)
+                {
+                    caller_transport = svc->get_transport(known_direction_zone_id.as_destination());
+                    if (!dest_transport)
+                    {
+                        CO_RETURN error::ZONE_NOT_FOUND();
+                    }
+                }
+                else
+                {
+                    caller_transport = shared_from_this();
+                }
+                svc->add_transport(caller_zone_id.as_destination(), caller_transport);
+            }
+
+            //             if (dest_transport == caller_transport)
+            //             {
+            //                 // here we directly call the destination
+            //                 auto error_code = CO_AWAIT dest_transport->add_ref(protocol_version,
+            //                     destination_zone_id,
+            //                     object_id,
+            //                     caller_zone_id,
+            //                     known_direction_zone_id,
+            //                     build_out_param_channel,
+            //                     in_back_channel,
+            //                     out_back_channel);
+            // #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+            //                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            //                 {
+            //                     telemetry_service->on_transport_inbound_add_ref(zone_id_,
+            //                         adjacent_zone_id_,
+            //                         destination_zone_id,
+            //                         caller_zone_id,
+            //                         object_id,
+            //                         known_direction_zone_id,
+            //                         build_out_param_channel);
+            //                 }
+            // #endif
+            //                 CO_RETURN error_code;
+            //             }
+
+            auto passthrough = transport::create_pass_through(
+                dest_transport, caller_transport, svc, destination_zone_id, caller_zone_id.as_destination());
+
+            auto error_code = CO_AWAIT passthrough->add_ref(protocol_version,
+                destination_zone_id,
+                object_id,
+                caller_zone_id,
+                known_direction_zone_id,
+                build_out_param_channel,
+                in_back_channel,
+                out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            {
+                telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                    adjacent_zone_id_,
+                    destination_zone_id,
+                    caller_zone_id,
+                    object_id,
+                    known_direction_zone_id,
+                    build_out_param_channel);
+            }
+#endif
+            CO_RETURN error_code;
+        }
+
+        // else it is a special case that the service needs to deal with
+
+        auto error_code = CO_AWAIT svc->add_ref(protocol_version,
+            destination_zone_id,
+            object_id,
+            caller_zone_id,
+            known_direction_zone_id,
+            build_out_param_channel,
+            in_back_channel,
+            out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                adjacent_zone_id_,
+                destination_zone_id,
+                caller_zone_id,
+                object_id,
+                known_direction_zone_id,
+                build_out_param_channel);
+        }
+#endif
+        CO_RETURN error_code;
+    }*/
+
     CORO_TASK(int)
     transport::inbound_try_cast(uint64_t protocol_version,
         caller_zone caller_zone_id,
@@ -749,6 +1003,14 @@ namespace rpc
                     dest_transport = svc->get_transport(known_direction_zone_id.as_destination());
                     if (!dest_transport)
                     {
+                        dest_transport = inner_get_transport_from_passthroughs(destination_zone_id);
+                    }
+                    if (!dest_transport && destination_zone_id != known_direction_zone_id.as_destination())
+                    {
+                        dest_transport = inner_get_transport_from_passthroughs(known_direction_zone_id.as_destination());
+                    }
+                    if (!dest_transport)
+                    {
                         CO_RETURN error::ZONE_NOT_FOUND();
                     }
                 }
@@ -781,6 +1043,14 @@ namespace rpc
                 if (!build_dest_channel && build_caller_channel)
                 {
                     caller_transport = svc->get_transport(known_direction_zone_id.as_destination());
+                    if (!caller_transport)
+                    {
+                        caller_transport = inner_get_transport_from_passthroughs(caller_zone_id.as_destination());
+                    }
+                    if (!dest_transport && caller_zone_id.as_destination() != known_direction_zone_id.as_destination())
+                    {
+                        caller_transport = inner_get_transport_from_passthroughs(known_direction_zone_id.as_destination());
+                    }
                     if (!dest_transport)
                     {
                         CO_RETURN error::ZONE_NOT_FOUND();

@@ -18,7 +18,7 @@
 #include <rpc/telemetry/i_telemetry_service.h>
 #endif
 
-template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class sgx_setup
+template<bool UseHostInChild, bool CreateNewZoneThenCreateSubordinatedZone> class sgx_setup
 {
     std::shared_ptr<rpc::service> root_service_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
@@ -27,7 +27,6 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
     const bool has_enclave_ = true;
     bool use_host_in_child_ = UseHostInChild;
-    bool run_standard_tests_ = RunStandardTests;
 
     std::atomic<uint64_t> zone_gen_ = 0;
     bool error_has_occured_ = false;

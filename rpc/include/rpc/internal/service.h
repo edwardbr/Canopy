@@ -941,11 +941,18 @@ namespace rpc
                 CO_RETURN err_code;
             }
         }
+        else
+        {
+            input_descr.destination_zone_id = child_transport->get_zone_id().get_val();
+        }
         err_code = CO_AWAIT child_transport->connect(input_descr, output_descr);
         if (err_code != rpc::error::OK())
         {
-            remove_transport(child_transport->get_adjacent_zone_id().as_destination());
-            // Clean up on failure
+            if (transport_added)
+            {
+                // Clean up on failure
+                remove_transport(child_transport->get_adjacent_zone_id().as_destination());
+            }
             CO_RETURN err_code;
         }
 
