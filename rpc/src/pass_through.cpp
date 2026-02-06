@@ -321,11 +321,12 @@ namespace rpc
         if (build_dest_channel)
         {
             // Forward the add_ref call to the target transport
+            // Keep original known_direction for forward routing (pointing toward destination)
             auto result = CO_AWAIT destination_transport->add_ref(protocol_version,
                 destination_zone_id,
                 object_id,
                 caller_zone_id,
-                known_direction_zone_id,
+                known_direction_zone_id, // Keep original: indicates direction toward destination
                 build_out_param_channel & ~add_ref_options::build_caller_route,
                 in_back_channel,
                 out_back_channel);
@@ -344,6 +345,7 @@ namespace rpc
         if (build_caller_channel)
         {
             // Forward the add_ref call to the target transport
+            // Update known_direction to point to THIS zone, so the next zone knows to route back through us
             auto result = CO_AWAIT caller_transport->add_ref(protocol_version,
                 destination_zone_id,
                 object_id,
