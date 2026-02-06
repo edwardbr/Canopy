@@ -21,7 +21,8 @@ comprehensive/
     ├── transport/
     │   ├── local_transport_demo.cpp   # Local (in-process) transport
     │   ├── tcp_transport_demo.cpp     # TCP network transport
-    │   └── spsc_transport_demo.cpp    # SPSC queue-based IPC
+    │   ├── spsc_transport_demo.cpp    # SPSC queue-based IPC
+    │   └── benchmark.cpp              # Transport/encoding/blob benchmark
     ├── serialisation/
     │   └── serialisation_demo.cpp     # All serialization formats
     └── pointers/
@@ -122,6 +123,19 @@ child_transport->set_child_entry_point<InterfaceType, InterfaceType>(
 - SPSC is for different processes, not same-process (use local transport)
 - Single-producer/single-consumer constraint is enforced
 - Message pump requires coroutines even for same-process use
+
+---
+
+#### Benchmark (`benchmark.cpp`)
+
+**Concept**: Performance matrix for transfer between two zones across multiple transports, encodings, and blob sizes.
+
+**Features Demonstrated**:
+- Local, SPSC, and TCP transports
+- Per-service default encoding via `service::set_default_encoding`
+- Middle 80% statistics over 1000 RPC calls
+
+**Requirements**: `CANOPY_BUILD_COROUTINE=ON` (uses coroutine-based transports)
 
 ---
 

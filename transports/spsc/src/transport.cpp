@@ -429,7 +429,8 @@ namespace rpc::spsc
                                 stop_loop = true;
                                 break;
                             }
-                            CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                            CO_AWAIT svc->get_scheduler()->schedule();
                         }
                         break;
                     }
@@ -485,7 +486,8 @@ namespace rpc::spsc
                     {
                         if (!received_any)
                         {
-                            CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                            CO_AWAIT svc->get_scheduler()->schedule();
                         }
                         break;
                     }
@@ -679,7 +681,10 @@ namespace rpc::spsc
         {
             auto status = push_message(send_data);
             if (status == send_queue_status::SEND_QUEUE_EMPTY || status == send_queue_status::SPSC_QUEUE_FULL)
-                CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+            {
+                // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                CO_AWAIT svc->get_scheduler()->schedule();
+            }
         }
 
         // if peer has requested disconnection, don't send cancellation message just terminate this function

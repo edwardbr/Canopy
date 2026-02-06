@@ -73,6 +73,26 @@ if(CANOPY_BUILD_COROUTINE)
   set_property(TARGET spsc_transport_demo PROPERTY COMPILE_PDB_NAME spsc_transport_demo)
 endif()
 
+if(CANOPY_BUILD_COROUTINE)
+  add_executable(benchmark src/transport/benchmark.cpp)
+  target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
+  target_include_directories(
+    benchmark
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    PRIVATE ${CANOPY_INCLUDES} transport_tcp transport_spsc)
+  target_link_libraries(
+    benchmark
+    PUBLIC comprehensive_idl
+           transport_local
+           transport_tcp
+           transport_spsc
+           rpc
+           ${CANOPY_LIBRARIES})
+  target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_link_options(benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+  set_property(TARGET benchmark PROPERTY COMPILE_PDB_NAME benchmark)
+endif()
+
 # Serialization demo
 add_executable(serialisation_demo src/serialisation/serialisation_demo.cpp)
 target_compile_definitions(serialisation_demo PRIVATE ${CANOPY_DEFINES})
@@ -112,6 +132,7 @@ if(CANOPY_ENABLE_CLANG_TIDY)
     local_transport_demo
     tcp_transport_demo
     spsc_transport_demo
+    benchmark
     serialisation_demo
     shared_ptr_demo
     optimistic_ptr_demo
@@ -130,6 +151,7 @@ message(STATUS "Available demos:")
 message(STATUS "  - local_transport_demo (in-process communication)")
 message(STATUS "  - tcp_transport_demo (network transport, requires coroutines)")
 message(STATUS "  - spsc_transport_demo (IPC, requires coroutines)")
+message(STATUS "  - benchmark (transport/encoding/blob matrix, requires coroutines)")
 message(STATUS "  - serialisation_demo (serialization formats)")
 message(STATUS "  - shared_ptr_demo (rpc::shared_ptr reference counting)")
 message(STATUS "  - optimistic_ptr_demo (rpc::optimistic_ptr lifecycle)")
