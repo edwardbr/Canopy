@@ -224,6 +224,11 @@ extern "C"
         if (auto telemetry_service = rpc::get_telemetry_service())
             telemetry_service->on_transport_remove_destination({zone_id}, {adjacent_zone_id}, {destination}, {caller});
     }
+    void on_transport_accept_host(uint64_t zone_id, uint64_t adjacent_zone_id, int result)
+    {
+        if (auto telemetry_service = rpc::get_telemetry_service())
+            telemetry_service->on_transport_accept({zone_id}, {adjacent_zone_id}, result);
+    }
 
     // New pass-through events
     void on_pass_through_creation_host(uint64_t zone_id,

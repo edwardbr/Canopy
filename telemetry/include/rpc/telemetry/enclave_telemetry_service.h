@@ -137,6 +137,7 @@ namespace rpc
             rpc::zone adjacent_zone_id,
             rpc::destination_zone destination,
             rpc::caller_zone caller) const override;
+        void on_transport_accept(rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const override;
         void on_transport_outbound_send(zone zone_id,
             zone adjacent_zone_id,
             destination_zone destination_zone_id,

@@ -88,34 +88,12 @@ namespace rpc
 
     CORO_TASK(int) transport::accept()
     {
-        // #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        //         if (input_descr.object_id.is_set())
-        //         {
-        //             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        //                 telemetry_service->on_transport_outbound_add_ref(zone_id_,
-        //                     adjacent_zone_id_,
-        //                     adjacent_zone_id_.as_destination(),
-        //                     zone_id_.as_caller(),
-        //                     input_descr.object_id,
-        //                     zone_id_,
-        //                     rpc::add_ref_options::normal);
-        //         }
-        // #endif
         int ret = CO_AWAIT inner_accept();
 
-        // #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        //         if (output_descr.object_id.is_set())
-        //         {
-        //             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        //                 telemetry_service->on_transport_inbound_add_ref(zone_id_,
-        //                     adjacent_zone_id_,
-        //                     zone_id_.as_destination(),
-        //                     adjacent_zone_id_.as_caller(),
-        //                     output_descr.object_id,
-        //                     adjacent_zone_id_,
-        //                     rpc::add_ref_options::normal);
-        //         }
-        // #endif
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_transport_accept(zone_id_, adjacent_zone_id_, ret);
+#endif
 
         CO_RETURN ret;
     }

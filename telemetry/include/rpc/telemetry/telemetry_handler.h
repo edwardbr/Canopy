@@ -79,6 +79,7 @@ extern "C"
         uint64_t zone_id, uint64_t adjacent_zone_id, uint64_t destination, uint64_t caller);
     void on_transport_remove_destination_host(
         uint64_t zone_id, uint64_t adjacent_zone_id, uint64_t destination, uint64_t caller);
+    void on_transport_accept_host(uint64_t zone_id, uint64_t adjacent_zone_id, int result);
 
     // New pass-through events
     void on_pass_through_creation_host(uint64_t zone_id,
@@ -113,6 +114,7 @@ extern "C"
         uint64_t zone_id, uint64_t adjacent_zone_id, uint64_t destination, uint64_t caller);
     void on_transport_remove_destination_host(
         uint64_t zone_id, uint64_t adjacent_zone_id, uint64_t destination, uint64_t caller);
+    void on_transport_accept_host(uint64_t zone_id, uint64_t adjacent_zone_id, int result);
 
     // New pass-through events
     void on_pass_through_creation_host(uint64_t zone_id,

@@ -267,6 +267,11 @@ namespace rpc
             zone_id.get_val(), adjacent_zone_id.get_val(), destination.get_val(), caller.get_val());
     }
 
+    void enclave_telemetry_service::on_transport_accept(rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const
+    {
+        on_transport_accept_host(zone_id.get_val(), adjacent_zone_id.get_val(), result);
+    }
+
     void enclave_telemetry_service::on_transport_outbound_send(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
         rpc::destination_zone destination_zone_id,

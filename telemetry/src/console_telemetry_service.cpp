@@ -909,6 +909,20 @@ namespace rpc
             reset_color());
     }
 
+    void console_telemetry_service::on_transport_accept(rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const
+    {
+        init_logger();
+        logger_->info("{}{}{} transport_accept: adjacent_zone={}{}{} result={}{}",
+            get_zone_color(zone_id.get_val()),
+            get_zone_name(zone_id.get_val()),
+            reset_color(),
+            get_zone_color(adjacent_zone_id.get_val()),
+            get_zone_name(adjacent_zone_id.get_val()),
+            reset_color(),
+            result,
+            reset_color());
+    }
+
     void console_telemetry_service::on_pass_through_creation(rpc::zone zone_id,
         rpc::destination_zone forward_destination,
         rpc::destination_zone reverse_destination,
@@ -916,12 +930,18 @@ namespace rpc
         uint64_t optimistic_count) const
     {
         init_logger();
-        logger_->info("{}{} pass_through_creation: forward_destination={} reverse_destination={} shared_count={} "
-                      "optimistic_count={}{}",
+        logger_->info(
+            "{}{}{} pass_through_creation: forward_destination={}{}{} reverse_destination={}{}{} shared_count={} "
+            "optimistic_count={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
+            reset_color(),
+            get_zone_color(forward_destination.get_val()),
             get_zone_name(forward_destination.get_val()),
+            reset_color(),
+            get_zone_color(reverse_destination.get_val()),
             get_zone_name(reverse_destination.get_val()),
+            reset_color(),
             shared_count,
             optimistic_count,
             reset_color());
@@ -931,11 +951,16 @@ namespace rpc
         rpc::zone zone_id, rpc::destination_zone forward_destination, rpc::destination_zone reverse_destination) const
     {
         init_logger();
-        logger_->info("{}{} pass_through_deletion: forward_destination={} reverse_destination={}{}",
+        logger_->info("{}{}{} pass_through_deletion: forward_destination={}{}{} reverse_destination={}{}{}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
+            reset_color(),
+            get_zone_color(forward_destination.get_val()),
             get_zone_name(forward_destination.get_val()),
+            reset_color(),
+            get_zone_color(reverse_destination.get_val()),
             get_zone_name(reverse_destination.get_val()),
+            reset_color(),
             reset_color());
     }
 
@@ -947,12 +972,17 @@ namespace rpc
         int64_t optimistic_delta) const
     {
         init_logger();
-        logger_->info("{}{} pass_through_add_ref: forward_destination={} reverse_destination={} options={} "
+        logger_->info("{}{}{} pass_through_add_ref: forward_destination={}{}{} reverse_destination={}{}{} options={} "
                       "shared_delta={} optimistic_delta={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
+            reset_color(),
+            get_zone_color(forward_destination.get_val()),
             get_zone_name(forward_destination.get_val()),
+            reset_color(),
+            get_zone_color(reverse_destination.get_val()),
             get_zone_name(reverse_destination.get_val()),
+            reset_color(),
             static_cast<int>(options),
             shared_delta,
             optimistic_delta,
@@ -966,12 +996,18 @@ namespace rpc
         int64_t optimistic_delta) const
     {
         init_logger();
-        logger_->info("{}{} pass_through_release: forward_destination={} reverse_destination={} shared_delta={} "
-                      "optimistic_delta={}{}",
+        logger_->info(
+            "{}{}{} pass_through_release: forward_destination={}{}{} reverse_destination={}{}{} shared_delta={} "
+            "optimistic_delta={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
+            reset_color(),
+            get_zone_color(forward_destination.get_val()),
             get_zone_name(forward_destination.get_val()),
+            reset_color(),
+            get_zone_color(reverse_destination.get_val()),
             get_zone_name(reverse_destination.get_val()),
+            reset_color(),
             shared_delta,
             optimistic_delta,
             reset_color());
@@ -984,13 +1020,18 @@ namespace rpc
         rpc::transport_status reverse_status) const
     {
         init_logger();
-        logger_->info(
-            "{}{} pass_through_status_change: forward_destination={} reverse_destination={} forward_status={} "
-            "reverse_status={}{}",
+        logger_->info("{}{}{} pass_through_status_change: forward_destination={}{}{} reverse_destination={}{}{} "
+                      "forward_status={} "
+                      "reverse_status={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
+            reset_color(),
+            get_zone_color(forward_destination.get_val()),
             get_zone_name(forward_destination.get_val()),
+            reset_color(),
+            get_zone_color(reverse_destination.get_val()),
             get_zone_name(reverse_destination.get_val()),
+            reset_color(),
             static_cast<int>(forward_status),
             static_cast<int>(reverse_status),
             reset_color());

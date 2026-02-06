@@ -1247,6 +1247,17 @@ namespace rpc
         fflush(output_);
     }
 
+    void sequence_diagram_telemetry_service::on_transport_accept(
+        rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const
+    {
+        fmt::println(output_,
+            "note over zone_{}: transport_accept: adjacent_zone={} result={}",
+            zone_id.get_val(),
+            adjacent_zone_id.get_val(),
+            result);
+        fflush(output_);
+    }
+
     void sequence_diagram_telemetry_service::on_pass_through_creation(rpc::zone zone_id,
         rpc::destination_zone forward_destination,
         rpc::destination_zone reverse_destination,

@@ -237,6 +237,7 @@ namespace rpc
             rpc::zone adjacent_zone_id,
             rpc::destination_zone destination,
             rpc::caller_zone caller) const override;
+        void on_transport_accept(rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const override;
 
         // Pass-through events
         void on_pass_through_creation(rpc::zone zone_id,

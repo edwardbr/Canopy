@@ -566,6 +566,17 @@ namespace rpc
         }
     }
 
+    void multiplexing_telemetry_service::on_transport_accept(rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const
+    {
+        for (const auto& child : children_)
+        {
+            if (child)
+            {
+                child->on_transport_accept(zone_id, adjacent_zone_id, result);
+            }
+        }
+    }
+
     void multiplexing_telemetry_service::on_pass_through_creation(rpc::zone zone_id,
         rpc::destination_zone forward_destination,
         rpc::destination_zone reverse_destination,

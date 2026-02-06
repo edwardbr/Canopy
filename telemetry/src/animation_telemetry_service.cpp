@@ -648,6 +648,14 @@ namespace rpc
                 make_number_field("caller", caller.get_val())});
     }
 
+    void animation_telemetry_service::on_transport_accept(rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const
+    {
+        record_event("transport_accept",
+            {make_number_field("zone_id", zone_id.get_val()),
+                make_number_field("adjacent_zone_id", adjacent_zone_id.get_val()),
+                make_signed_field("result", result)});
+    }
+
     void animation_telemetry_service::on_pass_through_creation(rpc::zone zone_id,
         rpc::destination_zone forward_destination,
         rpc::destination_zone reverse_destination,
