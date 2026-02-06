@@ -58,7 +58,7 @@ namespace rpc
         auto factory = zone->get_interface_stub_factory(iface);
 
         std::shared_ptr<rpc::object_stub> stub;
-        CO_RETURN CO_AWAIT zone->get_proxy_stub_descriptor_for_out_param(
+        CO_RETURN CO_AWAIT zone->get_descriptor_from_interface_stub_for_out_param(
             protocol_version, caller_zone_id, iface.get(), factory, stub, descriptor);
     }
 
@@ -289,7 +289,6 @@ namespace rpc
         }
         std::shared_ptr<object_stub> stub;
         auto factory = serv.get_interface_stub_factory(iface);
-        CO_RETURN CO_AWAIT serv.get_proxy_stub_descriptor_for_interface_stub(
-            caller_zone_id, iface.get(), factory, stub, descriptor);
+        CO_RETURN CO_AWAIT serv.get_descriptor_from_interface_stub(caller_zone_id, iface.get(), factory, stub, descriptor);
     }
 }

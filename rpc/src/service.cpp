@@ -412,7 +412,7 @@ namespace rpc
     // for wrapping an implementation to a local object inside a stub where needed
     // or if the interface is a proxy to add ref it
     CORO_TASK(int)
-    service::get_proxy_stub_descriptor(caller_zone caller_zone_id,
+    service::get_descriptor_from_interface_stub(caller_zone caller_zone_id,
         rpc::casting_interface* iface,
         std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
         std::shared_ptr<rpc::object_stub>& stub,
@@ -452,7 +452,7 @@ namespace rpc
     }
 
     CORO_TASK(int)
-    service::get_proxy_stub_descriptor_for_out_param(uint64_t protocol_version,
+    service::get_descriptor_from_interface_stub_for_out_param(uint64_t protocol_version,
         caller_zone caller_zone_id,
         rpc::casting_interface* iface,
         std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
@@ -533,7 +533,7 @@ namespace rpc
             // Current workaround uses zone_id_ but causes loop
             auto known_direction = zone_id_.as_known_direction_zone();
 
-            RPC_DEBUG("get_proxy_stub_descriptor_for_out_param: zone={}, dest_zone={}, caller_zone={}, "
+            RPC_DEBUG("get_descriptor_from_interface_stub_for_out_param: zone={}, dest_zone={}, caller_zone={}, "
                       "known_direction={}, object_transport={}, obj_adj_zone={}",
                 zone_id_.get_val(),
                 destination_zone_id.get_val(),
@@ -552,7 +552,7 @@ namespace rpc
                 empty_out);
             if (err_code != rpc::error::OK())
             {
-                RPC_ERROR("get_proxy_stub_descriptor_for_out_param add_ref failed with code {}", err_code);
+                RPC_ERROR("get_descriptor_from_interface_stub_for_out_param add_ref failed with code {}", err_code);
                 CO_RETURN err_code;
             }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -594,78 +594,6 @@ namespace rpc
                 }
             }
             auto ret = CO_AWAIT stub->add_ref(false, true, caller_zone_id); // outcall=true
-            if (ret != rpc::error::OK())
-            {
-                CO_RETURN ret;
-            }
-        }
-        descriptor = {stub->get_id(), zone_id_.as_destination()};
-        CO_RETURN error::OK();
-    }
-
-    CORO_TASK(int)
-    service::get_proxy_stub_descriptor_for_interface_stub(caller_zone caller_zone_id,
-        rpc::casting_interface* iface,
-        std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
-        std::shared_ptr<rpc::object_stub>& stub,
-        interface_descriptor& descriptor)
-    {
-        auto* pointer = iface->get_address();
-        {
-            std::lock_guard g(stub_control_);
-            auto item = wrapped_object_to_stub_.find(pointer);
-            if (item != wrapped_object_to_stub_.end())
-            {
-                stub = item->second.lock();
-                RPC_ASSERT(stub != nullptr);
-            }
-            else
-            {
-                auto id = generate_new_object_id();
-                stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
-                std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
-                stub->add_interface(interface_stub);
-                wrapped_object_to_stub_[pointer] = stub;
-                stubs_[id] = stub;
-                stub->on_added_to_zone(stub);
-            }
-            auto ret = CO_AWAIT stub->add_ref(false, false, caller_zone_id); // outcall=false
-            if (ret != rpc::error::OK())
-            {
-                CO_RETURN ret;
-            }
-        }
-        descriptor = {stub->get_id(), zone_id_.as_destination()};
-        CO_RETURN error::OK();
-    }
-
-    CORO_TASK(int)
-    service::get_proxy_stub_descriptor_for_zone_connection(caller_zone caller_zone_id,
-        rpc::casting_interface* iface,
-        std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
-        std::shared_ptr<rpc::object_stub>& stub,
-        interface_descriptor& descriptor)
-    {
-        auto* pointer = iface->get_address();
-        {
-            std::lock_guard g(stub_control_);
-            auto item = wrapped_object_to_stub_.find(pointer);
-            if (item != wrapped_object_to_stub_.end())
-            {
-                stub = item->second.lock();
-                RPC_ASSERT(stub != nullptr);
-            }
-            else
-            {
-                auto id = generate_new_object_id();
-                stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
-                std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
-                stub->add_interface(interface_stub);
-                wrapped_object_to_stub_[pointer] = stub;
-                stubs_[id] = stub;
-                stub->on_added_to_zone(stub);
-            }
-            auto ret = CO_AWAIT stub->add_ref(false, false, caller_zone_id); // outcall=false
             if (ret != rpc::error::OK())
             {
                 CO_RETURN ret;

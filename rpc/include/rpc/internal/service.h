@@ -644,7 +644,7 @@ namespace rpc
             interface_descriptor& descriptor);
 
         CORO_TASK(int)
-        get_proxy_stub_descriptor(caller_zone caller_zone_id,
+        get_descriptor_from_interface_stub(caller_zone caller_zone_id,
             rpc::casting_interface* pointer,
             std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
             std::shared_ptr<object_stub>& stub,
@@ -652,24 +652,8 @@ namespace rpc
 
         // Specialized version for binding out parameters (used by stub_bind_out_param)
         CORO_TASK(int)
-        get_proxy_stub_descriptor_for_out_param(uint64_t protocol_version,
+        get_descriptor_from_interface_stub_for_out_param(uint64_t protocol_version,
             caller_zone caller_zone_id,
-            rpc::casting_interface* pointer,
-            std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
-            std::shared_ptr<object_stub>& stub,
-            interface_descriptor& descriptor);
-
-        // Specialized version for creating interface stubs (used by create_interface_stub)
-        CORO_TASK(int)
-        get_proxy_stub_descriptor_for_interface_stub(caller_zone caller_zone_id,
-            rpc::casting_interface* pointer,
-            std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
-            std::shared_ptr<object_stub>& stub,
-            interface_descriptor& descriptor);
-
-        // Specialized version for zone connections (used by connect_to_zone)
-        CORO_TASK(int)
-        get_proxy_stub_descriptor_for_zone_connection(caller_zone caller_zone_id,
             rpc::casting_interface* pointer,
             std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
             std::shared_ptr<object_stub>& stub,
@@ -944,7 +928,7 @@ namespace rpc
             transport_added = true;
             std::shared_ptr<object_stub> stub;
             auto factory = get_interface_stub_factory(input_interface);
-            err_code = CO_AWAIT get_proxy_stub_descriptor_for_zone_connection(
+            err_code = CO_AWAIT get_descriptor_from_interface_stub(
                 child_transport->get_adjacent_zone_id().as_caller(), input_interface.get(), factory, stub, input_descr);
 
             if (err_code != error::OK())
