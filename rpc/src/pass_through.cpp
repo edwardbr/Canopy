@@ -608,11 +608,11 @@ namespace rpc
             return;
         }
 
-        RPC_INFO(
-            "pass_through: deleting, zone={}, forward_dest={}, reverse_dest={}, shared={}, optimistic={}, active={}",
-            zone_id_.get_val(),
-            forward_destination_.get_val(),
+        RPC_WARNING("pass_through: trigger_self_destruction for passthrough {}->{}, zone={}, shared={}, optimistic={}, "
+                    "active={}",
             reverse_destination_.get_val(),
+            forward_destination_.get_val(),
+            zone_id_.get_val(),
             shared_count_.load(),
             optimistic_count_.load(),
             function_count_.load());
@@ -632,6 +632,9 @@ namespace rpc
 
         // No active functions, perform cleanup now
         // Remove destinations from transports in BOTH directions
+        RPC_INFO("pass_through: Removing passthrough {}->{} from transports",
+            reverse_destination_.get_val(),
+            forward_destination_.get_val());
         if (forward_transport_)
         {
             forward_transport_->remove_passthrough(forward_destination_, reverse_destination_);

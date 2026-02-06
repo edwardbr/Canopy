@@ -148,6 +148,8 @@ namespace rpc
     {
         std::atomic<uint64_t> proxy_count{0};
         std::atomic<uint64_t> stub_count{0};
+        std::atomic<uint64_t> outbound_passthrough_count{0}; // Passthroughs using this transport to reach dest
+        std::atomic<uint64_t> inbound_passthrough_count{0};  // Passthroughs using this transport from dest
     };
 
     class transport : public i_marshaller, public std::enable_shared_from_this<transport>
@@ -182,12 +184,18 @@ namespace rpc
         transport(std::string name, std::shared_ptr<service> service, zone adjacent_zone_id);
         transport(std::string name, zone zone_id, zone adjacent_zone_id);
 
-        // lock free version of same function - adds handler for zone pair
-        bool inner_add_passthrough(destination_zone zone1, destination_zone zone2, std::weak_ptr<pass_through> handler);
+        // lock free version - adds handler for zone pair and increments passthrough counts
+        // Caller must hold destinations_mutex_
+        // outbound_dest: zone reachable via this transport (increments outbound_passthrough_count)
+        // inbound_source: zone routing through this transport (increments inbound_passthrough_count)
+        bool inner_add_passthrough(
+            std::weak_ptr<pass_through> handler, destination_zone outbound_dest, destination_zone inbound_source);
 
         // Helper to route incoming messages to registered handlers
         // Gets handler for specific zone pair
         std::shared_ptr<pass_through> inner_get_passthrough(destination_zone zone1, destination_zone zone2) const;
+
+        std::shared_ptr<transport> inner_get_transport_from_passthroughs(destination_zone destination_zone_id) const;
 
         void inner_increment_outbound_proxy_count(destination_zone dest);
         void inner_decrement_outbound_proxy_count(destination_zone dest);
@@ -210,7 +218,7 @@ namespace rpc
         // For local service, use add_passthrough(local_zone, local_zone, service)
         std::shared_ptr<pass_through> get_passthrough(destination_zone zone1, destination_zone zone2) const;
 
-        void remove_passthrough(destination_zone zone1, destination_zone zone2);
+        void remove_passthrough(destination_zone outbound_dest, destination_zone inbound_source);
 
         /**
          * @brief Increment reference count for proxies pointing to destination zone

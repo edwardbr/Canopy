@@ -644,11 +644,18 @@ namespace rpc
             interface_descriptor& descriptor);
 
         CORO_TASK(int)
-        get_proxy_stub_descriptor(uint64_t protocol_version,
+        get_descriptor_from_interface_stub(caller_zone caller_zone_id,
+            rpc::casting_interface* pointer,
+            std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
+            std::shared_ptr<object_stub>& stub,
+            interface_descriptor& descriptor);
+
+        // Specialized version for binding out parameters (used by stub_bind_out_param)
+        CORO_TASK(int)
+        add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
             caller_zone caller_zone_id,
             rpc::casting_interface* pointer,
             std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
-            bool outcall,
             std::shared_ptr<object_stub>& stub,
             interface_descriptor& descriptor);
 
@@ -660,12 +667,6 @@ namespace rpc
 
         void inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy);
         void cleanup_service_proxy(const std::shared_ptr<rpc::service_proxy>& other_zone);
-
-        CORO_TASK(int)
-        prepare_out_param(uint64_t protocol_version,
-            caller_zone caller_zone_id,
-            rpc::casting_interface* base,
-            interface_descriptor& descriptor);
 
         CORO_TASK(void)
         clean_up_on_failed_connection(const std::shared_ptr<rpc::service_proxy>& destination_zone,
@@ -927,13 +928,8 @@ namespace rpc
             transport_added = true;
             std::shared_ptr<object_stub> stub;
             auto factory = get_interface_stub_factory(input_interface);
-            err_code = CO_AWAIT get_proxy_stub_descriptor(rpc::get_version(),
-                child_transport->get_adjacent_zone_id().as_caller(),
-                input_interface.get(),
-                factory,
-                false,
-                stub,
-                input_descr);
+            err_code = CO_AWAIT get_descriptor_from_interface_stub(
+                child_transport->get_adjacent_zone_id().as_caller(), input_interface.get(), factory, stub, input_descr);
 
             if (err_code != error::OK())
             {
@@ -941,11 +937,18 @@ namespace rpc
                 CO_RETURN err_code;
             }
         }
+        else
+        {
+            input_descr.destination_zone_id = child_transport->get_zone_id().get_val();
+        }
         err_code = CO_AWAIT child_transport->connect(input_descr, output_descr);
         if (err_code != rpc::error::OK())
         {
-            remove_transport(child_transport->get_adjacent_zone_id().as_destination());
-            // Clean up on failure
+            if (transport_added)
+            {
+                // Clean up on failure
+                remove_transport(child_transport->get_adjacent_zone_id().as_destination());
+            }
             CO_RETURN err_code;
         }
 

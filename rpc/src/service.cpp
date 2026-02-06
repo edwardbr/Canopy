@@ -95,7 +95,7 @@ namespace rpc
         // Verify all object stubs have been properly released before service destruction
         bool is_empty = check_is_empty();
         (void)is_empty;
-        // RPC_ASSERT(is_empty);
+        RPC_ASSERT(is_empty);
 
         {
             std::lock_guard l(stub_control_);
@@ -408,142 +408,182 @@ namespace rpc
         }
     }
 
-    CORO_TASK(int)
-    service::prepare_out_param(
-        uint64_t protocol_version, caller_zone caller_zone_id, rpc::casting_interface* base, interface_descriptor& descriptor)
-    {
-        auto object_proxy = base->get_object_proxy();
-        RPC_ASSERT(object_proxy != nullptr);
-        auto object_service_proxy = object_proxy->get_service_proxy();
-        RPC_ASSERT(object_service_proxy->zone_id_ == zone_id_);
-        auto destination_zone_id = object_service_proxy->get_destination_zone_id();
-        auto object_transport = object_service_proxy->get_transport();
-        auto object_id = object_proxy->get_object_id();
-
-        RPC_ASSERT(caller_zone_id.is_set());
-        RPC_ASSERT(destination_zone_id.is_set());
-
-        std::vector<rpc::back_channel_entry> empty_in;
-        std::vector<rpc::back_channel_entry> empty_out;
-        int err_code = 0;
-        std::shared_ptr<rpc::i_marshaller> marshaller;
-
-        if (caller_zone_id == destination_zone_id.as_caller())
-        {
-            marshaller = object_transport;
-            if (!marshaller)
-            {
-                CO_RETURN error::TRANSPORT_ERROR();
-            }
-        }
-        else
-        {
-            marshaller = object_transport->get_passthrough(destination_zone_id, caller_zone_id.as_destination());
-            if (!marshaller)
-            {
-                std::shared_ptr<rpc::transport> caller_transport;
-                {
-                    std::lock_guard g(service_proxy_control_);
-                    // get the caller with destination info
-                    auto found
-                        = transports_.find(caller_zone_id.as_destination()); // we dont need to get caller id for this
-                    if (found == transports_.end())
-                    {
-                        RPC_ERROR("No service proxy found for caller zone {}", caller_zone_id.get_val());
-                        CO_RETURN error::ZONE_NOT_FOUND();
-                    }
-                    else
-                    {
-                        caller_transport = found->second.lock();
-                        // Verify we have a valid caller
-                        if (!caller_transport)
-                        {
-                            RPC_ERROR("Failed to obtain valid caller service_proxy");
-                            CO_RETURN error::SERVICE_PROXY_LOST_CONNECTION();
-                        }
-                    }
-                }
-
-                // the fork is here so we need to add ref the destination normally with caller info
-                if (object_transport == caller_transport)
-                {
-                    marshaller = object_transport;
-                }
-                else
-                {
-                    marshaller = transport::create_pass_through(object_service_proxy->get_transport(),
-                        caller_transport,
-                        shared_from_this(),
-                        destination_zone_id,
-                        caller_zone_id.as_destination());
-                }
-            }
-        }
-
-        err_code = CO_AWAIT marshaller->add_ref(protocol_version,
-            destination_zone_id,
-            object_id,
-            caller_zone_id,
-            zone_id_.as_known_direction_zone(),
-            rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route,
-            empty_in,
-            empty_out);
-        if (err_code != rpc::error::OK())
-        {
-            RPC_ERROR("prepare_out_param add_ref failed with code {}", err_code);
-            CO_RETURN err_code;
-        }
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_add_ref(zone_id_,
-                destination_zone_id,
-                caller_zone_id,
-                object_id,
-                zone_id_.as_known_direction_zone(),
-                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route);
-        }
-#endif
-
-        descriptor = {object_id, destination_zone_id};
-        CO_RETURN error::OK();
-    }
-
     // this is a key function that returns an interface descriptor
     // for wrapping an implementation to a local object inside a stub where needed
     // or if the interface is a proxy to add ref it
     CORO_TASK(int)
-    service::get_proxy_stub_descriptor(uint64_t protocol_version,
-        caller_zone caller_zone_id,
+    service::get_descriptor_from_interface_stub(caller_zone caller_zone_id,
         rpc::casting_interface* iface,
         std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
-        bool outcall,
         std::shared_ptr<rpc::object_stub>& stub,
         interface_descriptor& descriptor)
     {
-        if (outcall)
+
+        auto* pointer = iface->get_address();
+        // find the stub by its address
         {
-            if (caller_zone_id.is_set() && !iface->is_local())
+            std::lock_guard g(stub_control_);
+            auto item = wrapped_object_to_stub_.find(pointer);
+            if (item != wrapped_object_to_stub_.end())
             {
-                CO_RETURN CO_AWAIT prepare_out_param(protocol_version, caller_zone_id, iface, descriptor);
+                stub = item->second.lock();
+                // Don't mask the race condition - if stub is null here, we have a serious problem
+                RPC_ASSERT(stub != nullptr);
+            }
+            else
+            {
+                // else create a stub
+                auto id = generate_new_object_id();
+                stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
+                std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
+                stub->add_interface(interface_stub);
+                wrapped_object_to_stub_[pointer] = stub;
+                stubs_[id] = stub;
+                stub->on_added_to_zone(stub);
             }
         }
-
+        auto ret = CO_AWAIT stub->add_ref(false, false, caller_zone_id);
+        if (ret != rpc::error::OK())
         {
-            auto* pointer = iface->get_address();
-            // find the stub by its address
+            CO_RETURN ret;
+        }
+        descriptor = {stub->get_id(), zone_id_.as_destination()};
+        CO_RETURN error::OK();
+    }
+
+    CORO_TASK(int)
+    service::add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
+        caller_zone caller_zone_id,
+        rpc::casting_interface* iface,
+        std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
+        std::shared_ptr<rpc::object_stub>& stub,
+        interface_descriptor& descriptor)
+    {
+        // This is ALWAYS an out parameter case
+        if (caller_zone_id.is_set() && !iface->is_local())
+        {
+            // Inline prepare_out_param logic here for out parameter binding
+            auto object_proxy = iface->get_object_proxy();
+            RPC_ASSERT(object_proxy != nullptr);
+            auto object_service_proxy = object_proxy->get_service_proxy();
+            RPC_ASSERT(object_service_proxy->zone_id_ == zone_id_);
+            auto destination_zone_id = object_service_proxy->get_destination_zone_id();
+            auto object_transport = object_service_proxy->get_transport();
+            auto object_id = object_proxy->get_object_id();
+
+            RPC_ASSERT(caller_zone_id.is_set());
+            RPC_ASSERT(destination_zone_id.is_set());
+
+            std::vector<rpc::back_channel_entry> empty_in;
+            std::vector<rpc::back_channel_entry> empty_out;
+            int err_code = 0;
+            std::shared_ptr<rpc::i_marshaller> marshaller;
+
+            if (caller_zone_id == destination_zone_id.as_caller())
+            {
+                marshaller = object_transport;
+                if (!marshaller)
+                {
+                    CO_RETURN error::TRANSPORT_ERROR();
+                }
+            }
+            else
+            {
+                marshaller = object_transport->get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+                if (!marshaller)
+                {
+                    std::shared_ptr<rpc::transport> caller_transport;
+                    {
+                        std::lock_guard g(service_proxy_control_);
+                        auto found = transports_.find(caller_zone_id.as_destination());
+                        if (found == transports_.end())
+                        {
+                            RPC_ERROR("No service proxy found for caller zone {}", caller_zone_id.get_val());
+                            CO_RETURN error::ZONE_NOT_FOUND();
+                        }
+                        else
+                        {
+                            caller_transport = found->second.lock();
+                            if (!caller_transport)
+                            {
+                                RPC_ERROR("Failed to obtain valid caller service_proxy");
+                                CO_RETURN error::SERVICE_PROXY_LOST_CONNECTION();
+                            }
+                        }
+                    }
+
+                    if (object_transport == caller_transport)
+                    {
+                        marshaller = object_transport;
+                    }
+                    else
+                    {
+                        marshaller = transport::create_pass_through(object_service_proxy->get_transport(),
+                            caller_transport,
+                            shared_from_this(),
+                            destination_zone_id,
+                            caller_zone_id.as_destination());
+                    }
+                }
+            }
+
+            // PROBLEM: Single known_direction used for BOTH build_destination_route AND build_caller_route
+            // - For destination: should point toward object (e.g., zone 6)
+            // - For caller: should point toward caller (e.g., zone 10)
+            // Current workaround uses zone_id_ but causes loop
+            auto known_direction = zone_id_.as_known_direction_zone();
+
+            RPC_DEBUG("add_ref_local_or_remote_return_descriptor: zone={}, dest_zone={}, caller_zone={}, "
+                      "known_direction={}, object_transport={}, obj_adj_zone={}",
+                zone_id_.get_val(),
+                destination_zone_id.get_val(),
+                caller_zone_id.get_val(),
+                known_direction.get_val(),
+                object_transport != nullptr,
+                object_transport ? object_transport->get_adjacent_zone_id().get_val() : 0);
+
+            err_code = CO_AWAIT marshaller->add_ref(protocol_version,
+                destination_zone_id,
+                object_id,
+                caller_zone_id,
+                known_direction,
+                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route,
+                empty_in,
+                empty_out);
+            if (err_code != rpc::error::OK())
+            {
+                RPC_ERROR("add_ref_local_or_remote_return_descriptor add_ref failed with code {}", err_code);
+                CO_RETURN err_code;
+            }
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            {
+                telemetry_service->on_service_proxy_add_ref(zone_id_,
+                    destination_zone_id,
+                    caller_zone_id,
+                    object_id,
+                    known_direction,
+                    rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route);
+            }
+#endif
+
+            descriptor = {object_id, destination_zone_id};
+            CO_RETURN error::OK();
+        }
+
+        // For local interfaces or when caller_zone_id is not set, create a local stub
+        auto* pointer = iface->get_address();
+        {
             {
                 std::lock_guard g(stub_control_);
                 auto item = wrapped_object_to_stub_.find(pointer);
                 if (item != wrapped_object_to_stub_.end())
                 {
                     stub = item->second.lock();
-                    // Don't mask the race condition - if stub is null here, we have a serious problem
                     RPC_ASSERT(stub != nullptr);
                 }
                 else
                 {
-                    // else create a stub
                     auto id = generate_new_object_id();
                     stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
                     std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
@@ -552,11 +592,11 @@ namespace rpc
                     stubs_[id] = stub;
                     stub->on_added_to_zone(stub);
                 }
-                auto ret = CO_AWAIT stub->add_ref(false, outcall, caller_zone_id);
-                if (ret != rpc::error::OK())
-                {
-                    CO_RETURN ret;
-                }
+            }
+            auto ret = CO_AWAIT stub->add_ref(false, true, caller_zone_id); // outcall=true
+            if (ret != rpc::error::OK())
+            {
+                CO_RETURN ret;
             }
         }
         descriptor = {stub->get_id(), zone_id_.as_destination()};
@@ -1014,9 +1054,10 @@ namespace rpc
 
     void service::inner_add_transport(destination_zone destination_zone_id, const std::shared_ptr<transport>& transport_ptr)
     {
+        RPC_ASSERT(destination_zone_id.get_val());
         RPC_ASSERT(transports_.find(destination_zone_id) == transports_.end());
         transports_[destination_zone_id] = transport_ptr;
-        RPC_DEBUG("inner_add_zone_proxy service zone: {} destination_zone={} adjacent_zone={}",
+        RPC_DEBUG("inner_add_transport service zone: {} destination_zone={} adjacent_zone={}",
             std::to_string(zone_id_),
             std::to_string(destination_zone_id),
             std::to_string(transport_ptr->get_adjacent_zone_id()));
@@ -1024,6 +1065,7 @@ namespace rpc
 
     void service::inner_remove_transport(destination_zone destination_zone_id)
     {
+        RPC_ASSERT(destination_zone_id.get_val());
         auto it = transports_.find(destination_zone_id);
         if (it != transports_.end())
         {
@@ -1037,7 +1079,7 @@ namespace rpc
     }
     std::shared_ptr<rpc::transport> service::inner_get_transport(destination_zone destination_zone_id) const
     {
-
+        RPC_ASSERT(destination_zone_id.get_val());
         // Try to find a direct transport to the destination zone
         auto item = transports_.find(destination_zone_id);
         if (item != transports_.end())

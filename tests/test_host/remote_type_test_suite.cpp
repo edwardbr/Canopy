@@ -582,7 +582,7 @@ template<class T> CORO_TASK(bool) coro_two_zones_get_one_to_lookup_other(T& lib)
     CORO_ASSERT_EQ(CO_AWAIT enclaveb->set_host(h), 0);
     CORO_ASSERT_EQ(CO_AWAIT h->set_app("enclaveb", enclaveb), rpc::error::OK());
 
-    CORO_ASSERT_EQ(CO_AWAIT ex->call_host_look_up_app_not_return("enclaveb", false), 0);
+    CORO_ASSERT_EQ(CO_AWAIT ex->call_host_look_up_app_not_return("enclaveb", false), rpc::error::OK());
 
     CORO_ASSERT_EQ(CO_AWAIT enclaveb->set_host(nullptr), 0);
     CO_RETURN true;
@@ -1213,6 +1213,40 @@ template<class T> CORO_TASK(bool) coro_complex_topology_service_proxy_cache_bypa
     {
         CO_RETURN false;
     }
+
+    // this is the setup for inproc_setup<UseHostInChild=true,CreateNewZoneThenCreateSubordinatedZone=false>
+    // === TOPOLOGY DIAGRAM ===
+    // Zone Hierarchy:
+    // Zone : 1 host
+    //   ├─ Zone : 2 child
+    //     ├─ Zone : 3 child
+    //       ├─ Zone : 4 child
+    //         ├─ Zone : 5 child
+    //           ├─ Zone : 6 child
+    //             ├─ Zone : 7 child
+    //               ├─ Zone : 8 child
+    //                 ├─ Zone : 9 child
+    //                   ├─ Zone : 14 child
+    //                     ├─ Zone : 15 child
+    //                       ├─ Zone : 16 child
+    //                         ├─ Zone : 17 child
+    //                   ├─ Zone : 18 child
+    //                     ├─ Zone : 19 child
+    //                       ├─ Zone : 20 child
+    //                         ├─ Zone : 21 child
+    //           ├─ Zone : 10 child
+    //             ├─ Zone : 11 child
+    //               ├─ Zone : 12 child
+    //                 ├─ Zone : 13 child
+    //                   ├─ Zone : 22 child
+    //                     ├─ Zone : 23 child
+    //                       ├─ Zone : 24 child
+    //                         ├─ Zone : 25 child
+    //                   ├─ Zone : 26 child
+    //                     ├─ Zone : 27 child
+    //                       ├─ Zone : 28 child
+    //                         ├─ Zone : 29 child
+    // =========================
 
     // Test 4: Service proxy cache bypass scenarios
     // Create routing patterns that might bypass established service proxy caches

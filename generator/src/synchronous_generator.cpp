@@ -2204,9 +2204,9 @@ namespace synchronous_generator
         stub("}}");
 
         stub("auto factory = get_interface_stub_factory(iface);");
-        stub("CO_RETURN CO_AWAIT get_proxy_stub_descriptor(protocol_version, caller_zone_id, iface.get(), "
+        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface.get(), "
              "factory, "
-             "false, stub, descriptor);");
+             "stub, descriptor);");
         stub("}}");
     }
 
