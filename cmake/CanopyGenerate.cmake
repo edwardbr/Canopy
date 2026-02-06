@@ -424,6 +424,9 @@ function(
 
     add_library(${name}_protobuf_generated STATIC ${full_protobuf_cpp_path} ${proto_proxy_src} ${PROTO_PB_SOURCES})
 
+    # Add CANOPY compile definitions to ensure CANOPY_DEFAULT_ENCODING is available
+    target_compile_definitions(${name}_protobuf_generated PRIVATE ${CANOPY_SHARED_DEFINES})
+
     # Make sure the generated protobuf C++ file waits for protobuf compilation
     if(EXISTS ${full_protobuf_cpp_path})
       add_dependencies(${name}_protobuf_generated ${name}_proto_compile)

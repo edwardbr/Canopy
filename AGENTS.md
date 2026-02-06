@@ -44,40 +44,7 @@ Canopy is a Remote Procedure Call library for modern C++ that enables type-safe 
   - `build/generated` - IDL outputs and proxies
 
 ## Documentation Structure
-
-Canopy documentation is organized into two main categories:
-
-### Developer Guide (Main Documents 01-12)
-Tutorial and practical usage documentation for developing with Canopy:
-- **01-introduction.md** - Project overview and features
-- **02-getting-started.md** - Step-by-step tutorials
-- **03-idl-guide.md** - Interface definition language
-- **04-building.md** - Build system and configuration
-- **05-bi-modal-execution.md** - Blocking and coroutine modes
-- **06-error-handling.md** - Error patterns and recovery
-- **07-telemetry.md** - Debugging and visualization
-- **08-coroutine-libraries.md** - Async library integration
-- **09-api-reference.md** - API documentation
-- **10-examples.md** - Working code examples
-- **11-best-practices.md** - Design patterns and recommendations
-- **12-migration-guide.md** - Upgrading between versions
-
-### Architecture (Deep-Dive Documentation)
-Internal architecture and design documentation for understanding how Canopy works:
-- **architecture/01-overview.md** - Complete architecture overview
-- **architecture/02-zones.md** - Execution context boundaries
-- **architecture/03-services.md** - Object lifecycle management
-- **architecture/04-memory-management.md** - Smart pointers and reference counting
-- **architecture/05-proxies-and-stubs.md** - RPC marshalling machinery
-- **architecture/06-transports-and-passthroughs.md** - Communication plumbing
-- **architecture/07-zone-hierarchies.md** - Multi-level zone topologies
-- **architecture/08-core-concepts.md** - Core concepts (zones, services, smart pointers, proxies/stubs)
-
-### Implementation-Specific Documentation
-Detailed documentation for specific implementations:
-- **transports/** - Transport implementations (local, TCP, SPSC, SGX, hierarchical, custom)
-- **serializers/** - Serialization formats (YAS, Protocol Buffers)
-- **coroutine-libraries/** - Coroutine library integrations (libcoro, asio, cppcoro, libunifex)
+There is detailed documentation in the documents folder if you need more information
 
 ### Key Files
 - **`CMakeLists.txt`** - Main build configuration (version 2.2.0)
@@ -412,7 +379,7 @@ Quick commands for `bd` (beads):
 **MANDATORY WORKFLOW:**
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
+2. **Run quality gates** (if code changed) - Tests, linters, builds.  Be sure that the code compiles in coroutine and non coroutine modes
 3. **Update issue status** - Close finished work, update in-progress items
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash

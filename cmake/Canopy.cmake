@@ -65,6 +65,43 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_USE_TELEMETRY_RAII_LOGGING "Turn on RAII telemetry logging" OFF)
 
   # ####################################################################################################################
+  # Serialization Encoding Options
+  # ####################################################################################################################
+  set(CANOPY_DEFAULT_ENCODING
+      "PROTOCOL_BUFFERS"
+      CACHE STRING "Default encoding format for RPC serialization")
+  set_property(
+    CACHE CANOPY_DEFAULT_ENCODING
+    PROPERTY STRINGS
+             "PROTOCOL_BUFFERS"
+             "YAS_BINARY"
+             "YAS_JSON"
+             "YAS_COMPRESSED_BINARY")
+
+  # Validate encoding selection
+  if(NOT CANOPY_DEFAULT_ENCODING MATCHES "^(PROTOCOL_BUFFERS|YAS_BINARY|YAS_JSON|YAS_COMPRESSED_BINARY)$")
+    message(WARNING "Invalid CANOPY_DEFAULT_ENCODING '${CANOPY_DEFAULT_ENCODING}', defaulting to 'PROTOCOL_BUFFERS'")
+    set(CANOPY_DEFAULT_ENCODING
+        "PROTOCOL_BUFFERS"
+        CACHE STRING "Default encoding format for RPC serialization" FORCE)
+  endif()
+
+  # Convert uppercase CMake variable to C++ enum value
+  if(CANOPY_DEFAULT_ENCODING STREQUAL "PROTOCOL_BUFFERS")
+    set(CANOPY_DEFAULT_ENCODING_VALUE "rpc::encoding::protocol_buffers")
+  elseif(CANOPY_DEFAULT_ENCODING STREQUAL "YAS_BINARY")
+    set(CANOPY_DEFAULT_ENCODING_VALUE "rpc::encoding::yas_binary")
+  elseif(CANOPY_DEFAULT_ENCODING STREQUAL "YAS_JSON")
+    set(CANOPY_DEFAULT_ENCODING_VALUE "rpc::encoding::yas_json")
+  elseif(CANOPY_DEFAULT_ENCODING STREQUAL "YAS_COMPRESSED_BINARY")
+    set(CANOPY_DEFAULT_ENCODING_VALUE "rpc::encoding::yas_compressed_binary")
+  else()
+    set(CANOPY_DEFAULT_ENCODING_VALUE "rpc::encoding::protocol_buffers")
+  endif()
+
+  message("CANOPY_DEFAULT_ENCODING ${CANOPY_DEFAULT_ENCODING} -> ${CANOPY_DEFAULT_ENCODING_VALUE}")
+
+  # ####################################################################################################################
   # Buffer Size Configuration
   # ####################################################################################################################
   if(NOT DEFINED CANOPY_OUT_BUFFER_SIZE)
@@ -224,7 +261,8 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_USE_CONSOLE_TELEMETRY_FLAG}
       ${CANOPY_USE_TELEMETRY_RAII_LOGGING_FLAG}
       ${CANOPY_BUILD_TEST_FLAG}
-      CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE})
+      CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE}
+      CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE})
 
   # ####################################################################################################################
   # Include Platform-Specific Configuration

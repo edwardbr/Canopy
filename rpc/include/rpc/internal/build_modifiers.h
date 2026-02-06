@@ -8,7 +8,7 @@
     {                                                                                                                  \
     }
 #else
-#define DEFAULT_DESTRUCTOR = default
+#define DEFAULT_DESTRUCTOR = default;
 #endif
 
 // Macros to disable/enable warnings around YAS usage

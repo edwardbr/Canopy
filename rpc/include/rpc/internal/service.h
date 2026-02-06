@@ -127,6 +127,7 @@ namespace rpc
         std::string name_;
 
         mutable std::atomic<uint64_t> object_id_generator_ = 0;
+        std::atomic<encoding> default_encoding_ = CANOPY_DEFAULT_ENCODING;
 
         // map object_id's to stubs_
         mutable std::mutex stub_control_;
@@ -269,6 +270,25 @@ namespace rpc
 
         std::string get_name() const { return name_; }
         zone get_zone_id() const { return zone_id_; }
+
+        /**
+         * @brief Get the default encoding format for this service
+         * @return The encoding format used for new service proxies
+         *
+         * This encoding is used when creating new service_proxy instances.
+         * Thread-Safety: Safe to call from multiple threads (atomic access)
+         */
+        encoding get_default_encoding() const { return default_encoding_.load(); }
+
+        /**
+         * @brief Set the default encoding format for this service
+         * @param enc The encoding format to use for new service proxies
+         *
+         * Changes the default encoding for future service_proxy creations.
+         * Does not affect existing proxies.
+         * Thread-Safety: Safe to call from multiple threads (atomic access)
+         */
+        void set_default_encoding(encoding enc) { default_encoding_.store(enc); }
 
         /**
          * @brief Check if the zone has no active objects

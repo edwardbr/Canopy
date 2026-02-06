@@ -9,9 +9,6 @@
 #include <unordered_map>
 #include <mutex>
 
-// #define RPC_DEFAULT_ENCODING rpc::encoding::yas_binary
-#define RPC_DEFAULT_ENCODING rpc::encoding::protocol_buffers
-
 // types.h, error_codes.h, and serialiser.h are included by rpc.h
 
 namespace rpc

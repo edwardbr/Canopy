@@ -143,7 +143,7 @@ TYPED_TEST(post_functionality_test, basic_post_normal)
             // Perform a post operation - fire-and-forget call using the service directly
             // This should not block or return anything
             CO_AWAIT service->post(rpc::get_version(),
-                RPC_DEFAULT_ENCODING,
+                sp->get_encoding(),
                 0, // tag
                 sp->get_zone_id().as_caller(),
                 sp->get_destination_zone_id(),
@@ -200,7 +200,7 @@ TYPED_TEST(post_functionality_test, concurrent_post_operations)
 
                 // Each post operation is fire-and-forget using the service directly
                 CO_AWAIT service->post(rpc::get_version(),
-                    RPC_DEFAULT_ENCODING,
+                    sp->get_encoding(),
                     0, // tag
                     sp->get_zone_id().as_caller(),
                     sp->get_destination_zone_id(),
@@ -256,7 +256,7 @@ TYPED_TEST(post_functionality_test, post_with_different_data_sizes)
                 // Perform post operation with different data sizes - fire-and-forget
                 // Using the service directly with the string data as payload
                 CO_AWAIT service->post(rpc::get_version(),
-                    RPC_DEFAULT_ENCODING,
+                    sp->get_encoding(),
                     0, // tag
                     sp->get_zone_id().as_caller(),
                     sp->get_destination_zone_id(),
@@ -305,7 +305,7 @@ TYPED_TEST(post_functionality_test, post_does_not_interfere_with_regular_calls)
 
                 // Perform post operation - fire-and-forget using the service directly
                 CO_AWAIT service->post(rpc::get_version(),
-                    RPC_DEFAULT_ENCODING,
+                    sp->get_encoding(),
                     0, // tag
                     sp->get_zone_id().as_caller(),
                     sp->get_destination_zone_id(),
@@ -364,7 +364,7 @@ TYPED_TEST(post_functionality_test, post_with_optimistic_ptr)
 
             // Perform post operation through service directly (not through optimistic pointer)
             CO_AWAIT service->post(rpc::get_version(),
-                RPC_DEFAULT_ENCODING,
+                sp->get_encoding(),
                 0, // tag
                 sp->get_zone_id().as_caller(),
                 sp->get_destination_zone_id(),
