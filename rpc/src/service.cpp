@@ -95,7 +95,7 @@ namespace rpc
         // Verify all object stubs have been properly released before service destruction
         bool is_empty = check_is_empty();
         (void)is_empty;
-        // RPC_ASSERT(is_empty);
+        RPC_ASSERT(is_empty);
 
         {
             std::lock_guard l(stub_control_);
@@ -574,22 +574,24 @@ namespace rpc
         // For local interfaces or when caller_zone_id is not set, create a local stub
         auto* pointer = iface->get_address();
         {
-            std::lock_guard g(stub_control_);
-            auto item = wrapped_object_to_stub_.find(pointer);
-            if (item != wrapped_object_to_stub_.end())
             {
-                stub = item->second.lock();
-                RPC_ASSERT(stub != nullptr);
-            }
-            else
-            {
-                auto id = generate_new_object_id();
-                stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
-                std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
-                stub->add_interface(interface_stub);
-                wrapped_object_to_stub_[pointer] = stub;
-                stubs_[id] = stub;
-                stub->on_added_to_zone(stub);
+                std::lock_guard g(stub_control_);
+                auto item = wrapped_object_to_stub_.find(pointer);
+                if (item != wrapped_object_to_stub_.end())
+                {
+                    stub = item->second.lock();
+                    RPC_ASSERT(stub != nullptr);
+                }
+                else
+                {
+                    auto id = generate_new_object_id();
+                    stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
+                    std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
+                    stub->add_interface(interface_stub);
+                    wrapped_object_to_stub_[pointer] = stub;
+                    stubs_[id] = stub;
+                    stub->on_added_to_zone(stub);
+                }
             }
             auto ret = CO_AWAIT stub->add_ref(false, true, caller_zone_id); // outcall=true
             if (ret != rpc::error::OK())

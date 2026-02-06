@@ -155,10 +155,14 @@ namespace rpc
         auto& inbound_counts = zone_counts_[inbound_zone];
         inbound_counts.inbound_passthrough_count++;
 
-        RPC_DEBUG("inner_add_passthrough: zone={}, outbound_dest={}, inbound_source={}, count={}",
+        RPC_INFO("inner_add_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
+                 "outbound_pt_count={}, inbound_pt_count={}, total_dest_count={}",
             zone_id_.get_val(),
+            adjacent_zone_id_.get_val(),
             outbound_dest.get_val(),
             inbound_source.get_val(),
+            outbound_counts.outbound_passthrough_count.load(),
+            inbound_counts.inbound_passthrough_count.load(),
             get_destination_count());
 
 #ifdef CANOPY_USE_TELEMETRY
@@ -242,14 +246,29 @@ namespace rpc
         {
             zone_counts_.erase(found);
 
-            // Trigger transport removal for this zone
+            // Only remove transport from service if WE are the registered transport for this zone
+            // Multiple transports can have the same zone in zone_counts_ (for passthrough routing),
+            // but only the transport actually registered in service::transports_[zone] should remove it
             if (auto svc = service_.lock())
             {
-                svc->remove_transport(dest_zone.as_destination());
+                auto registered_transport = svc->get_transport(dest_zone.as_destination());
+                if (registered_transport && registered_transport.get() == this)
+                {
+                    svc->remove_transport(dest_zone.as_destination());
+                    RPC_DEBUG(
+                        "inner_decrement_outbound_proxy_count: All counts reached 0 for zone={}, removed transport",
+                        dest.get_val());
+                }
+                else
+                {
+                    RPC_DEBUG("inner_decrement_outbound_proxy_count: All counts reached 0 for zone={}, but not "
+                              "registered transport, "
+                              "not removing from service (zone={}, adjacent={})",
+                        dest.get_val(),
+                        zone_id_.get_val(),
+                        adjacent_zone_id_.get_val());
+                }
             }
-
-            RPC_DEBUG("inner_decrement_outbound_proxy_count: All counts reached 0 for zone={}, removed transport",
-                dest.get_val());
         }
 
         // Automatic disconnection when no zones need this transport
@@ -305,14 +324,28 @@ namespace rpc
         {
             zone_counts_.erase(found);
 
-            // Trigger transport removal for this zone
+            // Only remove transport from service if WE are the registered transport for this zone
+            // Multiple transports can have the same zone in zone_counts_ (for passthrough routing),
+            // but only the transport actually registered in service::transports_[zone] should remove it
             if (auto svc = service_.lock())
             {
-                svc->remove_transport(dest_zone.as_destination());
+                auto registered_transport = svc->get_transport(dest_zone.as_destination());
+                if (registered_transport && registered_transport.get() == this)
+                {
+                    svc->remove_transport(dest_zone.as_destination());
+                    RPC_DEBUG("inner_decrement_inbound_stub_count: All counts reached 0 for zone={}, removed transport",
+                        dest.get_val());
+                }
+                else
+                {
+                    RPC_DEBUG("inner_decrement_inbound_stub_count: All counts reached 0 for zone={}, but not "
+                              "registered transport, "
+                              "not removing from service (zone={}, adjacent={})",
+                        dest.get_val(),
+                        zone_id_.get_val(),
+                        adjacent_zone_id_.get_val());
+                }
             }
-
-            RPC_DEBUG("inner_decrement_inbound_stub_count: All counts reached 0 for zone={}, removed transport",
-                dest.get_val());
         }
 
         // Automatic disconnection when no zones need this transport
@@ -376,14 +409,36 @@ namespace rpc
                 {
                     zone_counts_.erase(outbound_found);
 
-                    // Trigger transport removal for this zone
+                    // Only remove transport from service if WE are the registered transport for this zone
+                    // Multiple transports can have the same zone in zone_counts_ (for passthrough routing),
+                    // but only the transport actually registered in service::transports_[zone] should remove it
                     if (auto svc = service_.lock())
                     {
-                        svc->remove_transport(outbound_zone.as_destination());
+                        auto registered_transport = svc->get_transport(outbound_zone.as_destination());
+                        if (registered_transport && registered_transport.get() == this)
+                        {
+                            RPC_WARNING("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
+                                        "passthrough={}->{}, reason=outbound_counts_zero",
+                                zone_id_.get_val(),
+                                adjacent_zone_id_.get_val(),
+                                outbound_dest.get_val(),
+                                outbound_dest.get_val(),
+                                inbound_source.get_val());
+                            svc->remove_transport(outbound_zone.as_destination());
+                            RPC_DEBUG(
+                                "remove_passthrough: All counts reached 0 for outbound zone={}, removed transport",
+                                outbound_dest.get_val());
+                        }
+                        else
+                        {
+                            RPC_DEBUG("remove_passthrough: All counts reached 0 for outbound zone={}, but not "
+                                      "registered transport, "
+                                      "not removing from service (zone={}, adjacent={})",
+                                outbound_dest.get_val(),
+                                zone_id_.get_val(),
+                                adjacent_zone_id_.get_val());
+                        }
                     }
-
-                    RPC_DEBUG("remove_passthrough: All counts reached 0 for outbound zone={}, removed transport",
-                        outbound_dest.get_val());
                 }
             }
         }
@@ -416,20 +471,43 @@ namespace rpc
                 {
                     zone_counts_.erase(inbound_found);
 
-                    // Trigger transport removal for this zone
+                    // Only remove transport from service if WE are the registered transport for this zone
+                    // Multiple transports can have the same zone in zone_counts_ (for passthrough routing),
+                    // but only the transport actually registered in service::transports_[zone] should remove it
                     if (auto svc = service_.lock())
                     {
-                        svc->remove_transport(inbound_zone.as_destination());
+                        auto registered_transport = svc->get_transport(inbound_zone.as_destination());
+                        if (registered_transport && registered_transport.get() == this)
+                        {
+                            RPC_WARNING("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
+                                        "passthrough={}->{}, reason=inbound_counts_zero",
+                                zone_id_.get_val(),
+                                adjacent_zone_id_.get_val(),
+                                inbound_source.get_val(),
+                                outbound_dest.get_val(),
+                                inbound_source.get_val());
+                            svc->remove_transport(inbound_zone.as_destination());
+                            RPC_DEBUG("remove_passthrough: All counts reached 0 for inbound zone={}, removed transport",
+                                inbound_source.get_val());
+                        }
+                        else
+                        {
+                            RPC_DEBUG("remove_passthrough: All counts reached 0 for inbound zone={}, but not "
+                                      "registered transport, "
+                                      "not removing from service (zone={}, adjacent={})",
+                                inbound_source.get_val(),
+                                zone_id_.get_val(),
+                                adjacent_zone_id_.get_val());
+                        }
                     }
-
-                    RPC_DEBUG("remove_passthrough: All counts reached 0 for inbound zone={}, removed transport",
-                        inbound_source.get_val());
                 }
             }
         }
 
-        RPC_DEBUG("remove_passthrough: zone={}, outbound_dest={}, inbound_source={}, count={}",
+        RPC_INFO("remove_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
+                 "remaining_dest_count={}",
             zone_id_.get_val(),
+            adjacent_zone_id_.get_val(),
             outbound_dest.get_val(),
             inbound_source.get_val(),
             get_destination_count());
@@ -516,9 +594,15 @@ namespace rpc
                     ));
             pt->self_ref_ = pt; // keep self alive based on reference counts
 
-            RPC_DEBUG("create_pass_through: Creating NEW pass-through, forward_dest={}, reverse_dest={}, pt={}",
-                forward_dest.get_val(),
+            RPC_INFO("create_pass_through: Creating NEW passthrough {}->{}, "
+                     "forward_transport=(zone={}, adjacent={}), "
+                     "reverse_transport=(zone={}, adjacent={}), pt={}",
                 reverse_dest.get_val(),
+                forward_dest.get_val(),
+                forward->zone_id_.get_val(),
+                forward->adjacent_zone_id_.get_val(),
+                reverse->zone_id_.get_val(),
+                reverse->adjacent_zone_id_.get_val(),
                 (void*)pt.get());
             // Register pass-through on both transports and increment passthrough counts
             // Forward transport: routes TO forward_dest (outbound), FROM reverse_dest (inbound)
@@ -869,16 +953,44 @@ not involve a pass through if (!dest_transport)
             {
                 // we are going to use a pass-through
                 auto passthrough = get_passthrough(caller_zone_id.as_destination(), destination_zone_id);
+                RPC_DEBUG("inbound_add_ref: Retrieved passthrough, validating for loops: zone={}, passthrough={}",
+                    zone_id_.get_val(),
+                    (void*)passthrough.get());
                 if (passthrough)
                 {
-                    CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
-                        destination_zone_id,
-                        object_id,
-                        caller_zone_id,
-                        known_direction_zone_id,
-                        build_out_param_channel,
-                        in_back_channel,
-                        out_back_channel);
+                    // Validate passthrough doesn't create a routing loop
+                    auto forward_transport = passthrough->get_directional_transport(destination_zone_id);
+                    RPC_DEBUG("inbound_add_ref: forward_transport={}, zone={}, forward_adj={}",
+                        (void*)forward_transport.get(),
+                        zone_id_.get_val(),
+                        forward_transport ? forward_transport->get_adjacent_zone_id().get_val() : 0);
+                    if (forward_transport)
+                    {
+                        auto forward_adjacent = forward_transport->get_adjacent_zone_id();
+                        // If forward transport routes back to our zone, skip this passthrough
+                        if (forward_adjacent == zone_id_)
+                        {
+                            RPC_DEBUG("inbound_add_ref: Skipping passthrough with routing loop: "
+                                      "zone={}, dest={}, caller={}, forward_adj={}",
+                                zone_id_.get_val(),
+                                destination_zone_id.get_val(),
+                                caller_zone_id.get_val(),
+                                forward_adjacent.get_val());
+                            passthrough = nullptr; // Skip this passthrough
+                        }
+                    }
+
+                    if (passthrough)
+                    {
+                        CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
+                            destination_zone_id,
+                            object_id,
+                            caller_zone_id,
+                            known_direction_zone_id,
+                            build_out_param_channel,
+                            in_back_channel,
+                            out_back_channel);
+                    }
                 }
             }
 
