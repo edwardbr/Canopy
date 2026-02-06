@@ -452,7 +452,7 @@ namespace rpc
     }
 
     CORO_TASK(int)
-    service::get_descriptor_from_interface_stub_for_out_param(uint64_t protocol_version,
+    service::add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
         caller_zone caller_zone_id,
         rpc::casting_interface* iface,
         std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
@@ -533,7 +533,7 @@ namespace rpc
             // Current workaround uses zone_id_ but causes loop
             auto known_direction = zone_id_.as_known_direction_zone();
 
-            RPC_DEBUG("get_descriptor_from_interface_stub_for_out_param: zone={}, dest_zone={}, caller_zone={}, "
+            RPC_DEBUG("add_ref_local_or_remote_return_descriptor: zone={}, dest_zone={}, caller_zone={}, "
                       "known_direction={}, object_transport={}, obj_adj_zone={}",
                 zone_id_.get_val(),
                 destination_zone_id.get_val(),
@@ -552,7 +552,7 @@ namespace rpc
                 empty_out);
             if (err_code != rpc::error::OK())
             {
-                RPC_ERROR("get_descriptor_from_interface_stub_for_out_param add_ref failed with code {}", err_code);
+                RPC_ERROR("add_ref_local_or_remote_return_descriptor add_ref failed with code {}", err_code);
                 CO_RETURN err_code;
             }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)

@@ -652,7 +652,7 @@ namespace rpc
 
         // Specialized version for binding out parameters (used by stub_bind_out_param)
         CORO_TASK(int)
-        get_descriptor_from_interface_stub_for_out_param(uint64_t protocol_version,
+        add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
             caller_zone caller_zone_id,
             rpc::casting_interface* pointer,
             std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
