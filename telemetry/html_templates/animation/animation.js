@@ -2904,12 +2904,189 @@ function initAnimationTelemetry() {
             }
         });
 
-        // Draw trunk lines (behind zones) - skip connections involving virtual root zone 0
+        const zonePositions = new Map();
+        root.descendants().filter(d => d.data.id !== 0).forEach(d => {
+            zonePositions.set(d.data.id, { x: getX(d), y: getY(d) });
+        });
+
+        // Build a map of hierarchical parent-child relationships
+        const hierarchicalPairs = new Set();
+        root.descendants().filter(d => d.parent && d.data.id !== 0 && d.parent.data.id !== 0).forEach(d => {
+            hierarchicalPairs.add(`${d.parent.data.id}-${d.data.id}`);
+            hierarchicalPairs.add(`${d.data.id}-${d.parent.data.id}`);
+        });
+
+        // Draw peer-to-peer transport links (for zones without hierarchical parent-child relationship)
         if (showTransports) {
-            g.selectAll('.trunk-line')
+            const peerTransportLinks = Array.from(links.values())
+                .filter((link) => link.type === 'transport_link')
+                .map((link) => {
+                    // Extract zone numbers from transport node IDs
+                    const sourceNode = nodes.get(link.source);
+                    const targetNode = nodes.get(link.target);
+                    if (!sourceNode || !targetNode) {
+                        return null;
+                    }
+                    const sourceZone = sourceNode.zone;
+                    const targetZone = targetNode.zone;
+                    const sourceAdj = sourceNode.adjacentZone;
+                    const targetAdj = targetNode.adjacentZone;
+
+                    // Skip if this is a hierarchical connection
+                    if (hierarchicalPairs.has(`${sourceZone}-${targetZone}`)) {
+                        return null;
+                    }
+
+                    // Get zone center positions and zone data
+                    const sourcePos = zonePositions.get(sourceZone);
+                    const targetPos = zonePositions.get(targetZone);
+                    const sourceZoneData = zones[sourceZone];
+                    const targetZoneData = zones[targetZone];
+
+                    if (!sourcePos || !targetPos || !sourceZoneData || !targetZoneData) {
+                        return null;
+                    }
+
+                    // Calculate which sides of the zones face each other
+                    const dx = targetPos.x - sourcePos.x;
+                    const dy = targetPos.y - sourcePos.y;
+
+                    // Determine if zones are more horizontally or vertically separated
+                    const absX = Math.abs(dx);
+                    const absY = Math.abs(dy);
+
+                    // Zone coordinate system: center (0,0) is at bottom-center of zone box
+                    // Zone box extends from x: -width/2 to +width/2, y: -height to 0
+                    let sourceRelX, sourceRelY, targetRelX, targetRelY;
+
+                    if (absX > absY) {
+                        // Horizontally separated - use left/right sides at vertical middle
+                        const sourceMiddleY = -sourceZoneData.height / 2;
+                        const targetMiddleY = -targetZoneData.height / 2;
+
+                        if (dx > 0) {
+                            // Target is to the right of source
+                            sourceRelX = sourceZoneData.width / 2;
+                            sourceRelY = sourceMiddleY;
+                            targetRelX = -targetZoneData.width / 2;
+                            targetRelY = targetMiddleY;
+                        } else {
+                            // Target is to the left of source
+                            sourceRelX = -sourceZoneData.width / 2;
+                            sourceRelY = sourceMiddleY;
+                            targetRelX = targetZoneData.width / 2;
+                            targetRelY = targetMiddleY;
+                        }
+                    } else {
+                        // Vertically separated - use top/bottom sides at horizontal center
+                        if (dy > 0) {
+                            // Target is below source (higher Y in SVG)
+                            sourceRelX = 0;
+                            sourceRelY = 0; // Bottom edge
+                            targetRelX = 0;
+                            targetRelY = -targetZoneData.height; // Top edge
+                        } else {
+                            // Target is above source (lower Y in SVG)
+                            sourceRelX = 0;
+                            sourceRelY = -sourceZoneData.height; // Top edge
+                            targetRelX = 0;
+                            targetRelY = 0; // Bottom edge
+                        }
+                    }
+
+                    // Calculate absolute positions
+                    const sourceAbsX = sourcePos.x + sourceRelX;
+                    const sourceAbsY = sourcePos.y + sourceRelY;
+                    const targetAbsX = targetPos.x + targetRelX;
+                    const targetAbsY = targetPos.y + targetRelY;
+
+                    // Update PortRegistry with peer-facing positions
+                    const sourcePort = PortRegistry[`${sourceZone}:${sourceAdj}`];
+                    const targetPort = PortRegistry[`${targetZone}:${targetAdj}`];
+
+                    if (sourcePort && targetPort) {
+                        sourcePort.relX = sourceRelX;
+                        sourcePort.relY = sourceRelY;
+                        sourcePort.absX = sourceAbsX;
+                        sourcePort.absY = sourceAbsY;
+
+                        targetPort.relX = targetRelX;
+                        targetPort.relY = targetRelY;
+                        targetPort.absX = targetAbsX;
+                        targetPort.absY = targetAbsY;
+                    }
+
+                    return {
+                        id: link.id,
+                        sourceZone: sourceZone,
+                        targetZone: targetZone,
+                        x1: sourceAbsX,
+                        y1: sourceAbsY,
+                        x2: targetAbsX,
+                        y2: targetAbsY
+                    };
+                })
+                .filter(Boolean);
+
+            g.selectAll('.peer-trunk-line')
+                .data(peerTransportLinks, (d) => d.id)
+                .enter()
+                .append('line')
+                .attr('class', 'peer-trunk-line trunk-line')
+                .attr('data-source-zone', d => d.sourceZone)
+                .attr('data-target-zone', d => d.targetZone)
+                .attr('x1', d => d.x1)
+                .attr('y1', d => d.y1)
+                .attr('x2', d => d.x2)
+                .attr('y2', d => d.y2);
+
+            // Fix hierarchical transport positions in zones that also have peer transports
+            // These may have been distributed horizontally, but should be centered
+            const affectedZones = new Set();
+            peerTransportLinks.forEach(link => {
+                affectedZones.add(link.sourceZone);
+                affectedZones.add(link.targetZone);
+            });
+
+            affectedZones.forEach(zoneNum => {
+                const zoneData = zones[zoneNum];
+                const zonePos = zonePositions.get(zoneNum);
+                if (!zoneData || !zonePos) return;
+
+                // Find hierarchical OUT ports for this zone (child connections going down/out)
+                const hierarchicalOutPorts = [];
+                zoneData.transports.forEach((t) => {
+                    const pairKey = `${zoneNum}-${t.adjId}`;
+                    // Only include hierarchical connections, not peer-to-peer
+                    if (hierarchicalPairs.has(pairKey)) {
+                        const portKey = `${zoneNum}:${t.adjId}`;
+                        const port = PortRegistry[portKey];
+                        if (port && port.relY === -zoneData.height) { // OUT ports have relY at top edge
+                            hierarchicalOutPorts.push({ port, adjId: t.adjId });
+                        }
+                    }
+                });
+
+                // Recalculate horizontal distribution for hierarchical OUT ports only
+                if (hierarchicalOutPorts.length > 0) {
+                    hierarchicalOutPorts.forEach((item, i) => {
+                        const tx = (hierarchicalOutPorts.length > 1)
+                            ? (i / (hierarchicalOutPorts.length - 1) * (zoneData.width - 140)) - (zoneData.width / 2 - 70)
+                            : 0; // Single port: centered
+
+                        item.port.relX = tx;
+                        item.port.absX = zonePos.x + tx;
+                        // relY and absY remain unchanged
+                    });
+                }
+            });
+
+            // Now draw all trunk lines after PortRegistry has been fully updated
+            // Draw hierarchical trunk lines
+            g.selectAll('.hierarchical-trunk-line')
                 .data(root.descendants().filter(d => d.parent && d.data.id !== 0 && d.parent.data.id !== 0))
                 .enter().append('line')
-                .attr('class', 'trunk-line')
+                .attr('class', 'hierarchical-trunk-line trunk-line')
                 .attr('data-source-zone', d => d.parent.data.id)
                 .attr('data-target-zone', d => d.data.id)
                 .attr('x1', d => PortRegistry[`${d.parent.data.id}:${d.data.id}`].absX)
@@ -2917,11 +3094,6 @@ function initAnimationTelemetry() {
                 .attr('x2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absX)
                 .attr('y2', d => PortRegistry[`${d.data.id}:${d.parent.data.id}`].absY);
         }
-
-        const zonePositions = new Map();
-        root.descendants().filter(d => d.data.id !== 0).forEach(d => {
-            zonePositions.set(d.data.id, { x: getX(d), y: getY(d) });
-        });
 
         const getZoneNumberFromEndpoint = (endpoint) => {
             const id = resolveNodeId(endpoint);
