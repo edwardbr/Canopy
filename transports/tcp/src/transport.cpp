@@ -414,6 +414,15 @@ namespace rpc::tcp
         RPC_DEBUG("pump_send_and_receive zone={}", get_service()->get_zone_id().get_val());
         assert(client_.socket().is_valid());
 
+        // Guard against multiple calls
+        bool expected = false;
+        if (!pumps_started_.compare_exchange_strong(expected, true))
+        {
+            RPC_ERROR("pump_send_and_receive called MULTIPLE TIMES on zone {} - BUG!",
+                get_service()->get_zone_id().get_val());
+            CO_RETURN;
+        }
+
         // Cache service pointer to avoid accessing weak_ptr during shutdown
         auto service = get_service();
         if (!service)
@@ -422,52 +431,59 @@ namespace rpc::tcp
             CO_RETURN;
         }
 
+        // Create activity tracker to keep transport and service alive during spawned tasks
+        auto tracker = std::shared_ptr<activity_tracker>(
+            new activity_tracker{.transport = std::static_pointer_cast<tcp_transport>(self), .svc = service});
+
         // Message handler lambda that processes incoming messages
 
         CO_AWAIT pump_messages(
-            [this, service](envelope_prefix prefix, envelope_payload payload) -> void
+            [this, service, tracker](envelope_prefix prefix, envelope_payload payload) -> void
             {
                 // Handle different message types
                 if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
                 {
                     assert(get_status() == rpc::transport_status::CONNECTING);
-                    get_service()->get_scheduler()->spawn(create_stub(std::move(prefix), std::move(payload)));
+                    get_service()->get_scheduler()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
                 {
                     assert(get_status() == rpc::transport_status::CONNECTED);
-                    get_service()->get_scheduler()->spawn(stub_handle_send(std::move(prefix), std::move(payload)));
+                    get_service()->get_scheduler()->spawn(stub_handle_send(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
                 {
                     assert(get_status() == rpc::transport_status::CONNECTED);
-                    get_service()->get_scheduler()->spawn(stub_handle_try_cast(std::move(prefix), std::move(payload)));
+                    get_service()->get_scheduler()->spawn(
+                        stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
                 {
                     assert(get_status() == rpc::transport_status::CONNECTED);
-                    get_service()->get_scheduler()->spawn(stub_handle_add_ref(std::move(prefix), std::move(payload)));
+                    get_service()->get_scheduler()->spawn(
+                        stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
                 {
-                    get_service()->get_scheduler()->spawn(stub_handle_release(std::move(prefix), std::move(payload)));
+                    get_service()->get_scheduler()->spawn(
+                        stub_handle_release(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
                 {
                     assert(get_status() == rpc::transport_status::CONNECTED);
-                    get_service()->get_scheduler()->spawn(stub_handle_post(std::move(prefix), std::move(payload)));
+                    get_service()->get_scheduler()->spawn(stub_handle_post(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
                 {
                     assert(get_status() == rpc::transport_status::CONNECTED);
                     get_service()->get_scheduler()->spawn(
-                        stub_handle_object_released(std::move(prefix), std::move(payload)));
+                        stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
                 {
                     assert(get_status() == rpc::transport_status::CONNECTED);
                     get_service()->get_scheduler()->spawn(
-                        stub_handle_transport_down(std::move(prefix), std::move(payload)));
+                        stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
                 }
                 else
                 {
@@ -688,7 +704,8 @@ namespace rpc::tcp
     }
 
     // Stub handlers (server-side message processing)
-    CORO_TASK(void) tcp_transport::stub_handle_send(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::stub_handle_send(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_send");
 
@@ -741,7 +758,8 @@ namespace rpc::tcp
         CO_RETURN;
     }
 
-    CORO_TASK(void) tcp_transport::stub_handle_post(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::stub_handle_post(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_post");
 
@@ -771,7 +789,8 @@ namespace rpc::tcp
         CO_RETURN;
     }
 
-    CORO_TASK(void) tcp_transport::stub_handle_try_cast(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::stub_handle_try_cast(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_try_cast");
 
@@ -812,7 +831,8 @@ namespace rpc::tcp
         CO_RETURN;
     }
 
-    CORO_TASK(void) tcp_transport::stub_handle_add_ref(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::stub_handle_add_ref(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_add_ref");
 
@@ -855,7 +875,8 @@ namespace rpc::tcp
         CO_RETURN;
     }
 
-    CORO_TASK(void) tcp_transport::stub_handle_release(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::stub_handle_release(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_release");
 
@@ -904,7 +925,9 @@ namespace rpc::tcp
         CO_RETURN;
     }
 
-    CORO_TASK(void) tcp_transport::stub_handle_object_released(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::stub_handle_object_released(
+        std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_object_released");
 
@@ -926,7 +949,9 @@ namespace rpc::tcp
         CO_RETURN;
     }
 
-    CORO_TASK(void) tcp_transport::stub_handle_transport_down(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::stub_handle_transport_down(
+        std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_transport_down");
 
@@ -948,7 +973,8 @@ namespace rpc::tcp
         CO_RETURN;
     }
 
-    CORO_TASK(void) tcp_transport::create_stub(envelope_prefix prefix, envelope_payload payload)
+    CORO_TASK(void)
+    tcp_transport::create_stub(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("create_stub zone: {}", get_service()->get_zone_id().get_val());
 

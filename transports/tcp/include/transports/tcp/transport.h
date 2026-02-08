@@ -52,8 +52,13 @@ namespace rpc::tcp
         connection_handler connection_handler_;
         stdex::member_ptr<tcp_transport> keep_alive_;
 
-        // Reference counting for shutdown sequence completion
-        // std::atomic<int> shutdown_sequence_completed_{0};
+        std::atomic<bool> pumps_started_ = false;
+
+        struct activity_tracker
+        {
+            std::shared_ptr<tcp_transport> transport;
+            std::shared_ptr<rpc::service> svc; // kept here to keep the service alive
+        };
 
         tcp_transport(std::string name,
             std::shared_ptr<rpc::service> service,
@@ -67,14 +72,24 @@ namespace rpc::tcp
         pump_messages(std::function<void(envelope_prefix, envelope_payload)> incoming_message_handler);
 
         // Stub handlers (called when receiving messages)
-        CORO_TASK(void) stub_handle_send(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_try_cast(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_add_ref(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_release(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_post(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_object_released(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) stub_handle_transport_down(envelope_prefix prefix, envelope_payload payload);
-        CORO_TASK(void) create_stub(envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_send(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_try_cast(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_add_ref(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_release(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_post(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_object_released(
+            std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_transport_down(
+            std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(void)
+        create_stub(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
 
         template<class SendPayload>
         CORO_TASK(int)

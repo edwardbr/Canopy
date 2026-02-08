@@ -577,21 +577,21 @@ int main()
         }
     }
 
-    // fmt::print("run_tcp_benchmark\n");
-    // uint16_t tcp_port = 18900;
-    // for (const auto& enc : encodings)
-    // {
-    //     for (size_t blob_size : blob_sizes)
-    //     {
-    //         auto result = run_tcp_benchmark(enc.enc, blob_size, tcp_port++);
-    //         if (result.error != rpc::error::OK())
-    //         {
-    //             fmt::print("tcp    | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-    //             continue;
-    //         }
-    //         print_stats("tcp", enc.name, blob_size, result.stats);
-    //     }
-    // }
+    fmt::print("run_tcp_benchmark\n");
+    uint16_t tcp_port = 18900;
+    for (const auto& enc : encodings)
+    {
+        for (size_t blob_size : blob_sizes)
+        {
+            auto result = run_tcp_benchmark(enc.enc, blob_size, tcp_port++);
+            if (result.error != rpc::error::OK())
+            {
+                fmt::print("tcp    | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+                continue;
+            }
+            print_stats("tcp", enc.name, blob_size, result.stats);
+        }
+    }
 
     print_footer();
     return 0;
