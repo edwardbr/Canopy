@@ -562,21 +562,21 @@ int main()
 
     local_scheduler->shutdown();
 
-    // fmt::print("run_spsc_benchmark\n");
-    // for (const auto& enc : encodings)
-    // {
-    //     for (size_t blob_size : blob_sizes)
-    //     {
-    //         fmt::print("blob_size {}", blob_size);
-    //         auto result = run_spsc_benchmark(enc.enc, blob_size);
-    //         if (result.error != rpc::error::OK())
-    //         {
-    //             fmt::print("spsc   | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-    //             continue;
-    //         }
-    //         print_stats("spsc", enc.name, blob_size, result.stats);
-    //     }
-    // }
+    fmt::print("run_spsc_benchmark\n");
+    for (const auto& enc : encodings)
+    {
+        for (size_t blob_size : blob_sizes)
+        {
+            fmt::print("blob_size {}", blob_size);
+            auto result = run_spsc_benchmark(enc.enc, blob_size);
+            if (result.error != rpc::error::OK())
+            {
+                fmt::print("spsc   | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+                continue;
+            }
+            print_stats("spsc", enc.name, blob_size, result.stats);
+        }
+    }
 
     fmt::print("run_tcp_benchmark\n");
     uint16_t tcp_port = 18900;

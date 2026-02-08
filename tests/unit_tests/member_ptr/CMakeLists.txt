@@ -6,8 +6,7 @@ cmake_minimum_required(VERSION 3.24)
 # Include necessary directories
 include_directories(${PROJECT_SOURCE_DIR}/rpc/include)
 
-# Only build member_ptr_test for non-coroutine builds
-# This test is not compatible with coroutine mode
+# Only build member_ptr_test for non-coroutine builds This test is not compatible with coroutine mode
 if(NOT CANOPY_BUILD_COROUTINE)
   # idl
   canopygenerate(

@@ -153,8 +153,7 @@ namespace rpc::mock_test
         std::ignore = out_back_channel;
 
         try_cast_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(
-            call_record::call_type::TRY_CAST, protocol_version, destination_zone_id, caller_zone_id, object_id);
+        record_call(call_record::call_type::TRY_CAST, protocol_version, destination_zone_id, caller_zone_id, object_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
