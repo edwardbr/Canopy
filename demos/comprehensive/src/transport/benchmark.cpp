@@ -114,35 +114,81 @@ namespace comprehensive
         void print_stats(const char* transport, const char* encoding, size_t blob_size, const benchmark_stats& stats)
         {
             const double size_mb = static_cast<double>(blob_size) / (1024.0 * 1024.0);
-            const double payload_mb_per_sec = (stats.avg_us > 0.0) ? (size_mb / (stats.avg_us / 1e6)) : 0.0;
-            const double round_trip_mb_per_sec = (stats.avg_us > 0.0) ? ((size_mb * 2.0) / (stats.avg_us / 1e6)) : 0.0;
 
-            fmt::print("{:>6} | {:>18} | {:>9} | avg {:>8.2f} us | p50 {:>8.2f} | p90 {:>8.2f} | p95 {:>8.2f} | min "
-                       "{:>8.2f} | max {:>8.2f} | "
-                       "payload {:>7.2f} MB/s | round-trip {:>7.2f} MB/s\n",
-                transport,
-                encoding,
-                blob_size,
-                stats.avg_us,
-                stats.p50_us,
-                stats.p90_us,
-                stats.p95_us,
-                stats.min_us,
-                stats.max_us,
-                payload_mb_per_sec,
-                round_trip_mb_per_sec);
+            // Only calculate throughput if avg time is meaningful (>= 0.5 microseconds)
+            // Below this threshold, timing precision is insufficient for accurate throughput
+            constexpr double min_time_us = 0.5;
+            double payload_mb_per_sec = 0.0;
+            double round_trip_mb_per_sec = 0.0;
+            bool throughput_valid = (stats.avg_us >= min_time_us);
+
+            if (throughput_valid)
+            {
+                payload_mb_per_sec = size_mb / (stats.avg_us / 1e6);
+                round_trip_mb_per_sec = (size_mb * 2.0) / (stats.avg_us / 1e6);
+            }
+
+            if (throughput_valid)
+            {
+                fmt::print(
+                    "{:>6} | {:>18} | {:>9} | avg {:>8.2f} us | p50 {:>8.2f} | p90 {:>8.2f} | p95 {:>8.2f} | min "
+                    "{:>8.2f} | max {:>8.2f} | "
+                    "payload {:>7.2f} MB/s | round-trip {:>7.2f} MB/s\n",
+                    transport,
+                    encoding,
+                    blob_size,
+                    stats.avg_us,
+                    stats.p50_us,
+                    stats.p90_us,
+                    stats.p95_us,
+                    stats.min_us,
+                    stats.max_us,
+                    payload_mb_per_sec,
+                    round_trip_mb_per_sec);
+            }
+            else
+            {
+                fmt::print(
+                    "{:>6} | {:>18} | {:>9} | avg {:>8.2f} us | p50 {:>8.2f} | p90 {:>8.2f} | p95 {:>8.2f} | min "
+                    "{:>8.2f} | max {:>8.2f} | "
+                    "payload {:>7} MB/s | round-trip {:>7} MB/s\n",
+                    transport,
+                    encoding,
+                    blob_size,
+                    stats.avg_us,
+                    stats.p50_us,
+                    stats.p90_us,
+                    stats.p95_us,
+                    stats.min_us,
+                    stats.max_us,
+                    "N/A",
+                    "N/A");
+            }
         }
 
 #ifdef CANOPY_BUILD_COROUTINE
         CORO_TASK(int)
         run_benchmark_calls(rpc::shared_ptr<i_data_processor> remote,
             const std::vector<uint8_t>& payload,
-            std::vector<int64_t>& durations_us)
+            std::vector<int64_t>& durations_us,
+            size_t warmup_count = 0)
         {
             durations_us.clear();
             durations_us.reserve(call_count);
 
             std::vector<uint8_t> response;
+
+            // Warmup calls to eliminate initialization overhead
+            for (size_t i = 0; i < warmup_count; ++i)
+            {
+                const auto error = CO_AWAIT remote->echo_binary(payload, response);
+                if (error != rpc::error::OK())
+                {
+                    CO_RETURN error;
+                }
+            }
+
+            // Actual benchmark calls
             for (size_t i = 0; i < call_count; ++i)
             {
                 const auto start = clock_type::now();
@@ -205,7 +251,9 @@ namespace comprehensive
 
             const auto payload = make_blob(blob_size);
             std::vector<int64_t> durations_us;
-            result.error = CO_AWAIT run_benchmark_calls(remote_service, payload, durations_us);
+            // Local transport needs minimal warmup
+            constexpr size_t local_warmup_calls = 10;
+            result.error = CO_AWAIT run_benchmark_calls(remote_service, payload, durations_us, local_warmup_calls);
             if (result.error == rpc::error::OK())
             {
                 result.stats = compute_stats(durations_us);
@@ -253,7 +301,9 @@ namespace comprehensive
             {
                 const auto payload = make_blob(blob_size);
                 std::vector<int64_t> durations_us;
-                result.error = CO_AWAIT run_benchmark_calls(remote_service, payload, durations_us);
+                // SPSC transport needs modest warmup
+                constexpr size_t spsc_warmup_calls = 20;
+                result.error = CO_AWAIT run_benchmark_calls(remote_service, payload, durations_us, spsc_warmup_calls);
                 if (result.error == rpc::error::OK())
                 {
                     result.stats = compute_stats(durations_us);
@@ -460,7 +510,9 @@ namespace comprehensive
 
             const auto payload = make_blob(blob_size);
             std::vector<int64_t> durations_us;
-            result.error = CO_AWAIT run_benchmark_calls(remote_service, payload, durations_us);
+            // TCP needs extra warmup calls to eliminate connection establishment overhead
+            constexpr size_t tcp_warmup_calls = 100;
+            result.error = CO_AWAIT run_benchmark_calls(remote_service, payload, durations_us, tcp_warmup_calls);
             if (result.error == rpc::error::OK())
             {
                 result.stats = compute_stats(durations_us);
@@ -500,7 +552,10 @@ namespace comprehensive
 
         void print_header()
         {
-            fmt::print("Benchmark: 1000 RPC calls, middle 80% (drop first/last 10%)\n");
+            fmt::print("Benchmark: 1000 RPC calls per test, middle 80% (drop first/last 10%)\n");
+            fmt::print("Warmup: local=10 calls, spsc=20 calls, tcp=100 calls (not included in timing)\n");
+            fmt::print("Note: Throughput shown as 'N/A' when avg time < 0.5us (insufficient timing precision)\n");
+            fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");
             fmt::print("-----------------------------------------------------------------------------------------------"
                        "---------------------------------------------\n");
             fmt::print("transport | serialization       | blob bytes | avg (us)     | p50       | p90       | p95      "
@@ -537,7 +592,24 @@ int main()
         // {rpc::encoding::yas_json, "yas_json"},
     };
 
-    const std::vector<size_t> blob_sizes = {64, 256, 1024, 4096, 16384, 65536};
+    // Test sizes from 64 bytes to 1 MB to investigate throughput scaling
+    // Throughput drop at larger sizes may indicate:
+    // - Cache effects (L1/L2/L3 cache sizes)
+    // - Memory copy overhead becoming dominant
+    // - Queue/buffer saturation
+    // - Serialization overhead
+    const std::vector<size_t> blob_sizes = {
+        64,     // 64 B
+        256,    // 256 B
+        1024,   // 1 KB
+        4096,   // 4 KB
+        16384,  // 16 KB
+        65536,  // 64 KB
+        131072, // 128 KB
+        262144, // 256 KB
+        524288, // 512 KB
+        1048576 // 1 MB
+    };
 
     print_header();
 
