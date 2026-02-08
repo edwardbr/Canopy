@@ -55,6 +55,7 @@ namespace rpc::spsc
         stdex::member_ptr<spsc_transport> keep_alive_;
 
         std::atomic<bool> peer_requested_disconnection_ = false;
+        std::atomic<bool> pumps_started_ = false;
 
         struct activity_tracker
         {
@@ -170,7 +171,7 @@ namespace rpc::spsc
             // Check if the operation was cancelled during shutdown
             if (res_payload.error_code != rpc::error::OK())
             {
-                RPC_DEBUG("call_peer returning cancelled error for zone: {} sequence_number: {}",
+                RPC_ERROR("call_peer returning cancelled error for zone: {} sequence_number: {}",
                     get_service()->get_zone_id().get_val(),
                     sequence_number);
                 CO_RETURN res_payload.error_code;

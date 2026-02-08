@@ -74,7 +74,7 @@ namespace rpc
         explicit multiplexing_telemetry_service(std::vector<std::shared_ptr<i_telemetry_service>>&& child_services);
 
         virtual ~multiplexing_telemetry_service() DEFAULT_DESTRUCTOR;
-        ;
+
         multiplexing_telemetry_service(const multiplexing_telemetry_service&) = delete;
         multiplexing_telemetry_service& operator=(const multiplexing_telemetry_service&) = delete;
 

@@ -359,6 +359,14 @@ namespace rpc::spsc
         auto self = shared_from_this();
         RPC_DEBUG("pump_send_and_receive zone={}", get_zone_id().get_val());
 
+        // Guard against multiple calls
+        bool expected = false;
+        if (!pumps_started_.compare_exchange_strong(expected, true))
+        {
+            RPC_ERROR("pump_send_and_receive called MULTIPLE TIMES on zone {} - BUG!", get_zone_id().get_val());
+            return;
+        }
+
         // Schedule both producer and consumer tasks
         auto svc = get_service();
         auto scheduler = svc->get_scheduler();
@@ -429,7 +437,7 @@ namespace rpc::spsc
                                 stop_loop = true;
                                 break;
                             }
-                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(1));
                             CO_AWAIT svc->get_scheduler()->schedule();
                         }
                         break;
@@ -457,7 +465,7 @@ namespace rpc::spsc
                     auto str_err = rpc::from_yas_binary(rpc::span(prefix_buf), prefix);
                     if (!str_err.empty())
                     {
-                        RPC_ERROR("failed invalid prefix");
+                        RPC_ERROR("Instance #{} deserialization FAILED: {}", my_instance, str_err);
                         break;
                     }
                     assert(prefix.direction);
@@ -484,9 +492,14 @@ namespace rpc::spsc
                     message_blob blob;
                     if (!receive_spsc_queue_->pop(blob))
                     {
+                        // if (get_status() == rpc::transport_status::DISCONNECTING)
+                        // {
+                        //     stop_loop = true;
+                        //     break;
+                        // }
                         if (!received_any)
                         {
-                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(1));
                             CO_AWAIT svc->get_scheduler()->schedule();
                         }
                         break;
@@ -505,6 +518,9 @@ namespace rpc::spsc
                         receive_data = receive_data.subspan(blob.size(), receive_data.size() - blob.size());
                     }
                 }
+
+                if (stop_loop)
+                    break;
 
                 if (receive_data.empty())
                 {
@@ -682,7 +698,7 @@ namespace rpc::spsc
             auto status = push_message(send_data);
             if (status == send_queue_status::SEND_QUEUE_EMPTY || status == send_queue_status::SPSC_QUEUE_FULL)
             {
-                // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(100));
+                // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(1));
                 CO_AWAIT svc->get_scheduler()->schedule();
             }
         }

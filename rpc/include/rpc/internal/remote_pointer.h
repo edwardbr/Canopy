@@ -752,7 +752,7 @@ namespace rpc
                     std::allocator_traits<decltype(actual_cb_allocator)>::deallocate(actual_cb_allocator, this, 1);
                 }
                 void* get_deleter_ptr(const std::type_info&) noexcept override { return nullptr; }
-                ~control_block_make_shared() DEFAULT_DESTRUCTOR
+                ~control_block_make_shared() { }
             };
         } // namespace __shared_ptr_control_block
 
