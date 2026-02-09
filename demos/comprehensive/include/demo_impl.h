@@ -30,7 +30,7 @@ namespace comprehensive
         // Calculator Implementation (Basic RPC)
         // ============================================================================
         class calculator_impl : public rpc::base<calculator_impl, i_calculator>,
-                                rpc::enable_shared_from_this<calculator_impl>
+                                public rpc::enable_shared_from_this<calculator_impl>
         {
             std::weak_ptr<rpc::service> this_service_;
 
