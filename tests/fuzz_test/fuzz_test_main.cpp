@@ -110,7 +110,8 @@ void cleanup_successful_test(const test_scenario_config& config);
 std::vector<instruction> generate_instruction_set(int max_instructions, bool has_parent, bool has_children);
 
 // Shared object implementation
-class shared_object_impl : public i_shared_object, public i_cleanup, public rpc::enable_shared_from_this<shared_object_impl>
+class shared_object_impl : public rpc::base<shared_object_impl, i_shared_object, i_cleanup>,
+                           public rpc::enable_shared_from_this<shared_object_impl>
 {
 private:
     int id_;
@@ -118,16 +119,6 @@ private:
     int value_;
     int test_count_;
     bool cleanup_called_;
-
-    void* get_address() const override { return (void*)this; }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_shared_object>(interface_id))
-            return static_cast<const i_shared_object*>(this);
-        if (rpc::match<i_cleanup>(interface_id))
-            return static_cast<const i_cleanup*>(this);
-        return nullptr;
-    }
 
 public:
     shared_object_impl(int id, const std::string& name, int initial_value)
@@ -184,21 +175,12 @@ public:
 };
 
 // Factory implementation
-class factory_impl : public i_fuzz_factory, public i_cleanup, public rpc::enable_shared_from_this<factory_impl>
+class factory_impl : public rpc::base<factory_impl, i_fuzz_factory, i_cleanup>,
+                     public rpc::enable_shared_from_this<factory_impl>
 {
 private:
     int objects_created_;
     bool cleanup_called_;
-
-    void* get_address() const override { return (void*)this; }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_fuzz_factory>(interface_id))
-            return static_cast<const i_fuzz_factory*>(this);
-        if (rpc::match<i_cleanup>(interface_id))
-            return static_cast<const i_cleanup*>(this);
-        return nullptr;
-    }
 
 public:
     factory_impl()
@@ -270,21 +252,11 @@ public:
 };
 
 // Cache implementation
-class cache_impl : public i_fuzz_cache, public i_cleanup, public rpc::enable_shared_from_this<cache_impl>
+class cache_impl : public rpc::base<cache_impl, i_fuzz_cache, i_cleanup>, public rpc::enable_shared_from_this<cache_impl>
 {
 private:
     std::map<int, rpc::shared_ptr<i_shared_object>> cache_storage_;
     bool cleanup_called_;
-
-    void* get_address() const override { return (void*)this; }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_fuzz_cache>(interface_id))
-            return static_cast<const i_fuzz_cache*>(this);
-        if (rpc::match<i_cleanup>(interface_id))
-            return static_cast<const i_cleanup*>(this);
-        return nullptr;
-    }
 
 public:
     cache_impl()
@@ -367,22 +339,13 @@ public:
 };
 
 // Worker implementation
-class worker_impl : public i_fuzz_worker, public i_cleanup, public rpc::enable_shared_from_this<worker_impl>
+class worker_impl : public rpc::base<worker_impl, i_fuzz_worker, i_cleanup>,
+                    public rpc::enable_shared_from_this<worker_impl>
 {
 private:
     int objects_processed_;
     int total_increments_;
     bool cleanup_called_;
-
-    void* get_address() const override { return (void*)this; }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_fuzz_worker>(interface_id))
-            return static_cast<const i_fuzz_worker*>(this);
-        if (rpc::match<i_cleanup>(interface_id))
-            return static_cast<const i_cleanup*>(this);
-        return nullptr;
-    }
 
 public:
     worker_impl()
@@ -449,8 +412,7 @@ public:
 };
 
 // Fully autonomous node implementation
-class autonomous_node_impl : public i_autonomous_node,
-                             public i_cleanup,
+class autonomous_node_impl : public rpc::base<autonomous_node_impl, i_autonomous_node, i_cleanup>,
                              public rpc::enable_shared_from_this<autonomous_node_impl>
 {
 private:
@@ -469,17 +431,6 @@ private:
     rpc::shared_ptr<i_fuzz_factory> local_factory_;
     rpc::shared_ptr<i_fuzz_cache> local_cache_;
     rpc::shared_ptr<i_fuzz_worker> local_worker_;
-
-    // Required casting_interface methods
-    void* get_address() const override { return (void*)this; }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_autonomous_node>(interface_id))
-            return static_cast<const i_autonomous_node*>(this);
-        if (rpc::match<i_cleanup>(interface_id))
-            return static_cast<const i_cleanup*>(this);
-        return nullptr;
-    }
 
     CORO_TASK(void) create_local_factory()
     {
@@ -1052,18 +1003,11 @@ public:
 };
 
 // Garbage collector implementation
-class garbage_collector_impl : public i_garbage_collector, public rpc::enable_shared_from_this<garbage_collector_impl>
+class garbage_collector_impl : public rpc::base<garbage_collector_impl, i_garbage_collector>,
+                               public rpc::enable_shared_from_this<garbage_collector_impl>
 {
 private:
     std::set<rpc::shared_ptr<i_cleanup>> collected_objects_;
-
-    void* get_address() const override { return (void*)this; }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_garbage_collector>(interface_id))
-            return static_cast<const i_garbage_collector*>(this);
-        return nullptr;
-    }
 
 public:
     garbage_collector_impl() = default;

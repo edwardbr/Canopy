@@ -18,18 +18,8 @@
 
 namespace marshalled_tests
 {
-    class baz : public xxx::i_baz, public xxx::i_bar
+    class baz : public rpc::base<baz, xxx::i_baz, xxx::i_bar>
     {
-        void* get_address() const override { return (void*)this; }
-        const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-        {
-            if (rpc::match<xxx::i_baz>(interface_id))
-                return static_cast<const xxx::i_baz*>(this);
-            if (rpc::match<xxx::i_bar>(interface_id))
-                return static_cast<const xxx::i_bar*>(this);
-            return nullptr;
-        }
-
     public:
         baz()
         {
@@ -71,16 +61,8 @@ namespace marshalled_tests
         }
     };
 
-    class foo : public xxx::i_foo
+    class foo : public rpc::base<foo, xxx::i_foo>
     {
-        void* get_address() const override { return (void*)this; }
-        const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-        {
-            if (rpc::match<xxx::i_foo>(interface_id))
-                return static_cast<const xxx::i_foo*>(this);
-            return nullptr;
-        }
-
         rpc::member_ptr<xxx::i_baz> cached_;
 
     public:
@@ -339,18 +321,8 @@ namespace marshalled_tests
         }
     };
 
-    class multiple_inheritance : public xxx::i_bar, public xxx::i_baz
+    class multiple_inheritance : public rpc::base<multiple_inheritance, xxx::i_bar, xxx::i_baz>
     {
-        void* get_address() const override { return (void*)this; }
-        const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-        {
-            if (rpc::match<xxx::i_bar>(interface_id))
-                return static_cast<const xxx::i_bar*>(this);
-            if (rpc::match<xxx::i_baz>(interface_id))
-                return static_cast<const xxx::i_baz*>(this);
-            return nullptr;
-        }
-
     public:
         multiple_inheritance()
         {
@@ -390,18 +362,10 @@ namespace marshalled_tests
         }
     };
 
-    class example : public yyy::i_example, public rpc::enable_shared_from_this<example>
+    class example : public rpc::base<example, yyy::i_example>, public rpc::enable_shared_from_this<example>
     {
         rpc::member_ptr<yyy::i_host> host_;
         std::weak_ptr<rpc::service> this_service_;
-
-        void* get_address() const override { return (void*)this; }
-        const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-        {
-            if (rpc::match<yyy::i_example>(interface_id))
-                return static_cast<const yyy::i_example*>(this);
-            return nullptr;
-        }
 
     public:
         example(std::shared_ptr<rpc::service> this_service, rpc::shared_ptr<yyy::i_host> host)

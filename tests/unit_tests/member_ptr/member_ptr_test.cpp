@@ -69,17 +69,9 @@ protected:
     }
 };
 
-class test_impl : public member_ptr_test::i_test
+class test_impl : public rpc::base<test_impl, member_ptr_test::i_test>
 {
     int val_;
-
-    void* get_address() const override { return (void*)this; }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<member_ptr_test::i_test>(interface_id))
-            return static_cast<const member_ptr_test::i_test*>(this);
-        return nullptr;
-    }
 
 public:
     test_impl(int val)

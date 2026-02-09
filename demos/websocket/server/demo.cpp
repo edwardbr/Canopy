@@ -7,19 +7,10 @@
 
 namespace websocket_demo
 {
-    class demo : public v1::i_calculator
+    class demo : public rpc::base<demo, v1::i_calculator>
     {
     public:
         ~demo() override = default;
-        void* get_address() const override { return (void*)this; }
-        const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-        {
-            if (v1::i_calculator::get_id(rpc::VERSION_3) == interface_id)
-            {
-                return static_cast<const v1::i_calculator*>(this);
-            }
-            return nullptr;
-        }
 
         CORO_TASK(int) add(double first_val, double second_val, double& response) override
         {

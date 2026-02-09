@@ -29,7 +29,8 @@ namespace comprehensive
         // ============================================================================
         // Calculator Implementation (Basic RPC)
         // ============================================================================
-        class calculator_impl : public i_calculator, public rpc::enable_shared_from_this<calculator_impl>
+        class calculator_impl : public rpc::base<calculator_impl, i_calculator>,
+                                rpc::enable_shared_from_this<calculator_impl>
         {
             std::weak_ptr<rpc::service> this_service_;
 
@@ -42,15 +43,6 @@ namespace comprehensive
             calculator_impl(std::shared_ptr<rpc::service> service)
                 : this_service_(service)
             {
-            }
-
-            void* get_address() const override { return const_cast<calculator_impl*>(this); }
-
-            const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-            {
-                if (rpc::match<i_calculator>(interface_id))
-                    return static_cast<const i_calculator*>(this);
-                return nullptr;
             }
 
             CORO_TASK(int) add(int a, int b, int& sum) override
@@ -83,18 +75,9 @@ namespace comprehensive
         // ============================================================================
         // Data Processor Implementation (Serialization Demo)
         // ============================================================================
-        class data_processor_impl : public i_data_processor
+        class data_processor_impl : public rpc::base<data_processor_impl, i_data_processor>
         {
         public:
-            void* get_address() const override { return const_cast<data_processor_impl*>(this); }
-
-            const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-            {
-                if (rpc::match<i_data_processor>(interface_id))
-                    return static_cast<const i_data_processor*>(this);
-                return nullptr;
-            }
-
             CORO_TASK(int) process_vector(const std::vector<int>& input, std::vector<int>& output) override
             {
                 output.clear();

@@ -55,11 +55,8 @@ namespace
         int value = 7;
     };
 
-    struct foo_derived : public Foo
+    struct foo_derived : public rpc::base<foo_derived, xxx::i_foo>
     {
-        using Foo::Foo;
-
-        void* get_address() const override { return const_cast<foo_derived*>(this); }
     };
 } // namespace
 

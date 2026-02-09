@@ -59,3 +59,6 @@
 
 // internal plumbing
 #include <rpc/internal/bindings.h>
+
+// the base class that all remoteable objects should inherit from
+#include <rpc/internal/base.h>
