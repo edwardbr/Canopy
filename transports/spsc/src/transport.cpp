@@ -465,7 +465,7 @@ namespace rpc::spsc
                     auto str_err = rpc::from_yas_binary(rpc::span(prefix_buf), prefix);
                     if (!str_err.empty())
                     {
-                        RPC_ERROR("Instance #{} deserialization FAILED: {}", my_instance, str_err);
+                        RPC_ERROR("Deserialization FAILED: {}", str_err);
                         break;
                     }
                     assert(prefix.direction);
