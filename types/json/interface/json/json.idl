@@ -1,0 +1,18 @@
+// Copyright 2024 Secretarium Ltd <contact@secretarium.org>
+
+// a fowarding idl to json_dom.h
+
+namespace json
+{
+#cpp_quote(R^multiline(
+    // a dummy placeholder so that this idl does not get elided out by the rpc generator
+    // the reason for this is that the cpp_quote/#include below is not parsed it is copied verbatum
+    // and so cannot see inside to realise that there is actually something there
+)multiline^)
+}
+
+#cpp_quote(R^multiline(
+
+#include <json/json_dom.h>
+
+)multiline^)

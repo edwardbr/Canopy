@@ -62,6 +62,7 @@ add_subdirectory(generator)
 add_subdirectory(telemetry)
 add_subdirectory(rpc)
 add_subdirectory(transports)
+add_subdirectory(types)
 
 if(CANOPY_BUILD_TEST)
   add_subdirectory(tests)

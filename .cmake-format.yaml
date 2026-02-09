@@ -5,13 +5,13 @@ format:
 _help_parse: Options affecting listfile parsing
 parse:
   _help_additional_commands:
-  - Specify structure for custom cmake functions
+    - Specify structure for custom cmake functions
   additional_commands:
-    rpcgenerate:
+    CanopyGenerate:
       pargs:
         nargs: 6+
         flags:
-        - SUPPRESS_CATCH_STUB_EXCEPTIONS
+          - SUPPRESS_CATCH_STUB_EXCEPTIONS
       spelling: CanopyGenerate
       kwargs:
         INSTALL_DIR: 1
@@ -25,7 +25,7 @@ parse:
       pargs:
         nargs: 1+
         flags:
-        - USE_PREFIX
+          - USE_PREFIX
       kwargs:
         EDL: 1
         LDSCRIPT: 1
@@ -36,7 +36,7 @@ parse:
       pargs:
         nargs: 1+
         flags:
-        - USE_PREFIX
+          - USE_PREFIX
       kwargs:
         EDL: 1
         LDSCRIPT: 1
@@ -47,7 +47,7 @@ parse:
       pargs:
         nargs: 1+
         flags:
-        - USE_PREFIX
+          - USE_PREFIX
       kwargs:
         EDL: 1
         LDSCRIPT: 1
@@ -67,8 +67,8 @@ parse:
       pargs:
         nargs: 1+
         flags:
-        - USE_PREFIX
-        - REMOVE_INIT_SECTION
+          - USE_PREFIX
+          - REMOVE_INIT_SECTION
       kwargs:
         EDL_IMPL: 1
         LDSCRIPT: 1
@@ -90,7 +90,7 @@ parse:
       pargs:
         nargs: 2+
         flags:
-        - USE_PREFIX
+          - USE_PREFIX
       kwargs:
         EDL: 1
         LDSCRIPT: 1
@@ -103,7 +103,7 @@ parse:
       pargs:
         nargs: 1+
         flags:
-        - USE_PREFIX
+          - USE_PREFIX
       kwargs:
         SRCS: +
         HEADER_ONLY_LIBS: +
@@ -115,7 +115,7 @@ parse:
       pargs:
         nargs: 1+
         flags:
-        - USE_PREFIX
+          - USE_PREFIX
       kwargs:
         SRCS: +
         EDL: +
