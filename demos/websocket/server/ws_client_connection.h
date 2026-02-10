@@ -61,11 +61,10 @@ namespace websocket_demo
             std::mutex wslay_mutex_; // Protect wslay_ctx_ from concurrent access
             std::string buffer_;
             std::shared_ptr<websocket_demo::v1::transport> transport_;
-            std::atomic<uint64_t> message_counter_{0};
 
             // Separate queue for async messages (avoids deadlock with wslay_mutex_)
-            std::queue<std::vector<uint8_t>> pending_messages_;
-            std::mutex pending_messages_mutex_;
+            std::shared_ptr<std::queue<std::vector<uint8_t>>> pending_messages_;
+            std::shared_ptr<std::mutex> pending_messages_mutex_;
         };
     }
 }

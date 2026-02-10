@@ -30,14 +30,12 @@ namespace websocket_demo
         transport::transport(wslay_event_context_ptr wslay_ctx,
             std::shared_ptr<rpc::service> service,
             rpc::zone adjacent_zone_id,
-            std::queue<std::vector<uint8_t>>& pending_messages,
-            std::mutex& pending_messages_mutex,
-            std::atomic<uint64_t>& message_counter)
+            const std::shared_ptr<std::queue<std::vector<uint8_t>>>& pending_messages,
+            const std::shared_ptr<std::mutex>& pending_messages_mutex)
             : rpc::transport("websocket", service, adjacent_zone_id)
             , wslay_ctx_(wslay_ctx)
-            , pending_messages_(&pending_messages)
-            , pending_messages_mutex_(&pending_messages_mutex)
-            , message_counter_(&message_counter)
+            , pending_messages_(pending_messages)
+            , pending_messages_mutex_(pending_messages_mutex)
         {
             // WebSocket transports are immediately available once connection is established
             set_status(rpc::transport_status::CONNECTED);
@@ -82,6 +80,11 @@ namespace websocket_demo
             auto complete_payload = rpc::to_protobuf(envelope);
             // send to parent
 
+            // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
+            std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
+            pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
+            std::cout << "[Transport] Response queued to pending queue, queue size=" << pending_messages_->size()
+                      << std::endl;
             CO_RETURN rpc::error::INCOMPATIBLE_SERVICE();
         }
 
@@ -217,13 +220,11 @@ namespace websocket_demo
             auto complete_payload = rpc::to_protobuf(response_envelope);
 
             // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
-            if (pending_messages_ && pending_messages_mutex_)
-            {
-                std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
-                pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
-                std::cout << "[Transport] Response queued to pending queue, queue size=" << pending_messages_->size()
-                          << std::endl;
-            }
+
+            std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
+            pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
+            std::cout << "[Transport] Response queued to pending queue, queue size=" << pending_messages_->size()
+                      << std::endl;
 
             RPC_DEBUG("send request complete");
             CO_RETURN;

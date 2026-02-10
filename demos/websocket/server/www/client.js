@@ -420,8 +420,8 @@ function calculate() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_UNSPECIFIED,
             tag: 0,
-            callerZoneId: 0,
-            destinationZoneId: 0,
+            callerZoneId: 2,
+            destinationZoneId: 1,
             objectId: 0,
             interfaceId: Long.fromString("9466040255200586654", true), //i_calculator
             methodId: methodId,
@@ -509,8 +509,8 @@ function sendChatMessage() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_protocol_buffers,
             tag: 0,
-            callerZoneId: 0,
-            destinationZoneId: 0,
+            callerZoneId: 2,
+            destinationZoneId: 1,
             objectId: 0,
             interfaceId: Long.fromString("9466040255200586654", true), // i_context
             methodId: 5, // add_prompt

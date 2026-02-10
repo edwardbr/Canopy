@@ -29,9 +29,8 @@ namespace websocket_demo
             transport(wslay_event_context_ptr wslay_ctx,
                 std::shared_ptr<rpc::service> service,
                 rpc::zone adjacent_zone_id,
-                std::queue<std::vector<uint8_t>>& pending_messages,
-                std::mutex& pending_messages_mutex,
-                std::atomic<uint64_t>& message_counter);
+                const std::shared_ptr<std::queue<std::vector<uint8_t>>>& pending_messages,
+                const std::shared_ptr<std::mutex>& pending_messages_mutex);
 
             virtual ~transport() DEFAULT_DESTRUCTOR;
 
@@ -126,9 +125,8 @@ namespace websocket_demo
 
         private:
             wslay_event_context_ptr wslay_ctx_{nullptr};
-            std::queue<std::vector<uint8_t>>* pending_messages_{nullptr};
-            std::mutex* pending_messages_mutex_{nullptr};
-            std::atomic<uint64_t>* message_counter_{nullptr};
+            std::shared_ptr<std::queue<std::vector<uint8_t>>> pending_messages_;
+            std::shared_ptr<std::mutex> pending_messages_mutex_;
         };
     }
 }

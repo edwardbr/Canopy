@@ -22,6 +22,8 @@ namespace websocket_demo
             : stream_(std::move(stream))
             , service_(std::move(service))
             , buffer_(4096, '\0')
+            , pending_messages_(std::make_shared<std::queue<std::vector<uint8_t>>>())
+            , pending_messages_mutex_(std::make_shared<std::mutex>())
         {
             // Set up wslay callbacks
             wslay_event_callbacks callbacks;
@@ -47,96 +49,27 @@ namespace websocket_demo
             }
         }
 
-        class event_sink : public rpc::base<event_sink, websocket_demo::v1::i_context_event>
-        {
-            std::atomic<uint64_t>& message_counter_;
-            std::queue<std::vector<uint8_t>>& pending_messages_;
-            std::mutex& pending_messages_mutex_;
-
-        public:
-            event_sink(std::atomic<uint64_t>& counter, std::queue<std::vector<uint8_t>>& queue, std::mutex& mutex)
-                : message_counter_(counter)
-                , pending_messages_(queue)
-                , pending_messages_mutex_(mutex)
-            {
-            }
-
-            CORO_TASK(int) piece(const std::string& piece) override
-            {
-                try
-                {
-                    std::cout << "event_sink::piece called with: " << piece << std::endl;
-
-                    std::vector<char> piece_data;
-                    websocket_demo::v1::i_context_event::proxy_serialiser<rpc::serialiser::protocol_buffers>::piece(
-                        piece, piece_data);
-
-                    // Create a websocket::request to wrap the event
-                    websocket_demo::v1::request ws_request;
-                    ws_request.encoding = rpc::encoding::protocol_buffers;
-                    ws_request.tag = 0;
-                    ws_request.caller_zone_id = 0;
-                    ws_request.destination_zone_id = 0;
-                    ws_request.object_id = 0;
-                    ws_request.interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version()).get_val();
-                    ws_request.method_id = 1; // piece method
-                    ws_request.data.assign(piece_data.begin(), piece_data.end());
-
-                    // Serialize the request
-                    auto request_data = rpc::to_protobuf<std::vector<char>>(ws_request);
-
-                    // Create the envelope
-                    websocket_demo::v1::envelope envelope;
-                    envelope.message_id = ++message_counter_;
-                    envelope.message_type = rpc::id<websocket_demo::v1::request>::get(rpc::get_version());
-                    envelope.data.assign(request_data.begin(), request_data.end());
-
-                    // Serialize the envelope
-                    auto envelope_data = rpc::to_protobuf<std::vector<char>>(envelope);
-
-                    // Push to pending queue instead of calling wslay directly
-                    // This avoids deadlock when piece() is called from within wslay callbacks
-                    {
-                        std::lock_guard<std::mutex> lock(pending_messages_mutex_);
-                        pending_messages_.push(std::vector<uint8_t>(envelope_data.begin(), envelope_data.end()));
-                        std::cout << "Message queued to pending queue, queue size=" << pending_messages_.size()
-                                  << std::endl;
-                    }
-
-                    CO_RETURN rpc::error::OK();
-                }
-                catch (const std::exception& e)
-                {
-                    std::cerr << "Exception in event_sink::piece: " << e.what() << std::endl;
-                    CO_RETURN rpc::error::EXCEPTION();
-                }
-            }
-        };
-
         coro::task<void> ws_client_connection::run()
         {
             try
             {
                 std::cout << "[WS] Creating transport" << std::endl;
-                transport_ = std::make_shared<transport>(wslay_ctx_,
-                    service_,
-                    service_->generate_new_zone_id(),
-                    pending_messages_,
-                    pending_messages_mutex_,
-                    message_counter_);
+                transport_ = std::make_shared<transport>(
+                    wslay_ctx_, service_, service_->generate_new_zone_id(), pending_messages_, pending_messages_mutex_);
+
+                // this should occur in attach_remote_zone... later
+                service_->add_transport({2}, transport_);
 
                 rpc::interface_descriptor output_descr;
 
-                auto sink = rpc::make_shared<event_sink>(message_counter_, pending_messages_, pending_messages_mutex_);
-
                 std::cout << "[WS] Calling attach_remote_zone" << std::endl;
                 auto ret
-                    = CO_AWAIT service_->attach_remote_zone<websocket_demo::v1::i_calculator, websocket_demo::v1::i_calculator>(
+                    = CO_AWAIT service_->attach_remote_zone<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                         "websocket",
                         transport_,
-                        rpc::interface_descriptor{0, 0},
+                        rpc::interface_descriptor{1, 2}, // this magically makes sink
                         output_descr,
-                        [sink](const rpc::shared_ptr<websocket_demo::v1::i_calculator>& remote,
+                        [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
                             rpc::shared_ptr<websocket_demo::v1::i_calculator>& local,
                             const std::shared_ptr<rpc::service>& svc) -> coro::task<int>
                         {
@@ -159,13 +92,13 @@ namespace websocket_demo
                 {
                     // Drain pending messages queue into wslay
                     {
-                        std::lock_guard<std::mutex> pending_lock(pending_messages_mutex_);
-                        if (!pending_messages_.empty())
+                        std::lock_guard<std::mutex> pending_lock(*pending_messages_mutex_);
+                        if (!pending_messages_->empty())
                         {
                             std::lock_guard<std::mutex> wslay_lock(wslay_mutex_);
-                            while (!pending_messages_.empty())
+                            while (!pending_messages_->empty())
                             {
-                                auto& msg_data = pending_messages_.front();
+                                auto& msg_data = pending_messages_->front();
 
                                 wslay_event_msg msg;
                                 msg.opcode = WSLAY_BINARY_FRAME;
@@ -183,7 +116,7 @@ namespace websocket_demo
                                     std::cout << "Drained message from pending queue to wslay" << std::endl;
                                 }
 
-                                pending_messages_.pop();
+                                pending_messages_->pop();
                             }
                         }
                     }
