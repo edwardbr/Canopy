@@ -169,11 +169,15 @@ namespace websocket_demo
                     // 3. Parse the HTTP request
                     // Debug: print first 100 bytes of received data
                     std::cout << "Received " << rspan.size() << " bytes, first bytes: ";
-                    for (size_t i = 0; i < std::min(size_t(100), rspan.size()); i++) {
+                    for (size_t i = 0; i < std::min(size_t(100), rspan.size()); i++)
+                    {
                         unsigned char c = static_cast<unsigned char>(rspan.data()[i]);
-                        if (c >= 32 && c < 127) {
+                        if (c >= 32 && c < 127)
+                        {
                             std::cout << c;
-                        } else {
+                        }
+                        else
+                        {
                             std::cout << "\\x" << std::hex << (int)c << std::dec;
                         }
                     }

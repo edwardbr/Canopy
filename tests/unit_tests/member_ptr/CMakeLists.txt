@@ -9,7 +9,7 @@ include_directories(${PROJECT_SOURCE_DIR}/rpc/include)
 # Only build member_ptr_test for non-coroutine builds This test is not compatible with coroutine mode
 if(NOT CANOPY_BUILD_COROUTINE)
   # idl
-  canopygenerate(
+  CanopyGenerate(
     member_ptr_test
     member_ptr_test/member_ptr_test.idl
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -18,12 +18,9 @@ if(NOT CANOPY_BUILD_COROUTINE)
     yas_binary
     yas_compressed_binary
     yas_json
-    include_paths
-    ${CMAKE_CURRENT_SOURCE_DIR}/.
-    dependencies
-    rpc_types_idl
-    install_dir
-    ${GENERATED_INSTALL_DIR})
+    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+    dependencies rpc_types_idl
+    install_dir ${GENERATED_INSTALL_DIR})
 
   # Define the test executable for rpc::member_ptr
   add_executable(member_ptr_test member_ptr_test.cpp)

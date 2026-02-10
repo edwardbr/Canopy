@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-canopygenerate(
+CanopyGenerate(
   websocket_demo
   websocket_demo/websocket_demo.idl
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -15,12 +15,9 @@ canopygenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
-  dependencies
-  rpc_types_idl
-  install_dir
-  ${GENERATED_INSTALL_DIR}
-  include_paths
-  ${CMAKE_CURRENT_SOURCE_DIR}/.)
+  dependencies rpc_types_idl
+  install_dir ${GENERATED_INSTALL_DIR}
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
 
 # Generate JavaScript protobuf files for WebSocket demo
 find_program(NPM_EXECUTABLE npm)

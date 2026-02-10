@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.24)
 if(CANOPY_BUILD_COROUTINE)
 
   # idl
-  canopygenerate(
+  CanopyGenerate(
     dodgy
     dodgy/dodgy.idl
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -18,11 +18,8 @@ if(CANOPY_BUILD_COROUTINE)
     yas_binary
     yas_compressed_binary
     yas_json
-    include_paths
-    ${CMAKE_CURRENT_SOURCE_DIR}/.
-    dependencies
-    rpc_types_idl
-    install_dir
-    ${GENERATED_INSTALL_DIR})
+    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+    dependencies rpc_types_idl
+    install_dir ${GENERATED_INSTALL_DIR})
 
 endif()
