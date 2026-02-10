@@ -55,6 +55,7 @@ namespace websocket_demo
                 void* data = nullptr;
                 uint64_t size = 0;
 
+                // https://huggingface.co/unsloth/Qwen3-0.6B-GGUF?show_file_info=Qwen3-0.6B-BF16.gguf
                 auto err
                     = parse_model(secret_llama::v1_0::llm_model{.name = "Qwen3-0.6B-BF16",
                                       .local_path = "/var/home/edward/Models/Qwen3-0.6B.gguf/BF16/Qwen3-0.6B-BF16.gguf",
