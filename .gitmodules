@@ -38,3 +38,6 @@
 	path = submodules/llhttp
 	url = https://github.com/nodejs/llhttp.git
 
+[submodule "submodules/llama.cpp"]
+	path = submodules/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
