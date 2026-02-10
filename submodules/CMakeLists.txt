@@ -124,5 +124,11 @@ if(CANOPY_STANDALONE)
     add_dependencies(llhttp_static llhttp_generate)
     target_include_directories(llhttp_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build
                                                     ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native)
+
+    if(CANOPY_BUILD_DEMOS)
+      if(CANOPY_BUILD_COROUTINE)
+        add_subdirectory(llama.cpp)
+      endif()
+    endif()
   endif()
 endif()

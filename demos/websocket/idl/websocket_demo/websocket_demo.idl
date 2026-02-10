@@ -36,6 +36,11 @@ namespace websocket_demo
             std::vector<rpc::back_channel_entry> back_channel;
         };
 
+        interface i_context_event
+        {
+            int piece(const std::string& piece);
+        };
+
         [status=demo]
         interface i_calculator
         {
@@ -43,6 +48,10 @@ namespace websocket_demo
             [description="subtract"] int subtract(double first_val, double second_val, [out] double& response);
             [description="multiply"] int multiply(double first_val, double second_val, [out] double& response);
             [description="divide"] int divide(double first_val, double second_val, [out] double& response);
+
+            int add_prompt(const std::string& prompt);
+            // int get_piece([out] std::string& piece, [out] bool& complete);
+            int set_callback(const rpc::shared_ptr<i_context_event>& event);
         };
     }
 }

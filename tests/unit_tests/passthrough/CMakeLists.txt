@@ -15,7 +15,7 @@ target_link_libraries(
   yas_common
   rpc::rpc
   rpc::mock_test_transport
-  common
+  common_tests
   transport_mock_test_test)
 
 # Add include directories for RPC headers

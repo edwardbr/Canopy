@@ -16,21 +16,21 @@
 #include "demo.h"
 
 // Handle a plain TCP client connection
-auto handle_client(coro::net::tcp::client client, std::shared_ptr<websocket_demo::websocket_service> service)
+auto handle_client(coro::net::tcp::client client, std::shared_ptr<websocket_demo::v1::websocket_service> service)
     -> coro::task<void>
 {
-    auto stream = std::make_shared<websocket_demo::tcp_stream>(std::move(client));
-    websocket_demo::http_client_connection connection(stream, service);
+    auto stream = std::make_shared<websocket_demo::v1::tcp_stream>(std::move(client));
+    websocket_demo::v1::http_client_connection connection(stream, service);
     co_await connection.handle();
     co_return;
 }
 
 // Handle a TLS client connection
 auto handle_tls_client(coro::net::tcp::client client,
-    std::shared_ptr<websocket_demo::tls_context> tls_ctx,
-    std::shared_ptr<websocket_demo::websocket_service> service) -> coro::task<void>
+    std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx,
+    std::shared_ptr<websocket_demo::v1::websocket_service> service) -> coro::task<void>
 {
-    auto stream = std::make_shared<websocket_demo::tls_stream>(std::move(client), tls_ctx);
+    auto stream = std::make_shared<websocket_demo::v1::tls_stream>(std::move(client), tls_ctx);
 
     // Perform TLS handshake
     bool handshake_ok = co_await stream->handshake();
@@ -40,7 +40,7 @@ auto handle_tls_client(coro::net::tcp::client client,
         co_return;
     }
 
-    websocket_demo::http_client_connection connection(stream, service);
+    websocket_demo::v1::http_client_connection connection(stream, service);
     co_await connection.handle();
     co_return;
 }
@@ -135,11 +135,11 @@ auto main(int argc, char* argv[]) -> int
     }
 
     // Create TLS context if certificates are provided
-    std::shared_ptr<websocket_demo::tls_context> tls_ctx;
+    std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx;
 
     if (!cert_file.empty() && !key_file.empty())
     {
-        tls_ctx = std::make_shared<websocket_demo::tls_context>(cert_file, key_file);
+        tls_ctx = std::make_shared<websocket_demo::v1::tls_context>(cert_file, key_file);
         if (!tls_ctx->is_valid())
         {
             std::cerr << "Failed to initialize TLS context, exiting" << std::endl;
@@ -183,13 +183,13 @@ auto main(int argc, char* argv[]) -> int
             .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
 
     std::atomic<uint64_t> zone_gen = 0;
-    auto root_service = std::make_shared<websocket_demo::websocket_service>("demo", rpc::zone{++zone_gen}, scheduler);
+    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", rpc::zone{++zone_gen}, scheduler);
     root_service->generate_new_zone_id();
-    auto demo = websocket_demo::create_websocket_demo_instance();
+    // auto demo = websocket_demo::v1::create_websocket_demo_instance();
 
     auto make_websocket_server = [](std::shared_ptr<coro::io_scheduler> scheduler,
-                                     std::shared_ptr<websocket_demo::websocket_service> service,
-                                     std::shared_ptr<websocket_demo::tls_context> tls_ctx,
+                                     std::shared_ptr<websocket_demo::v1::websocket_service> service,
+                                     std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx,
                                      uint16_t port) -> coro::task<void>
     {
         co_await scheduler->schedule();

@@ -42,16 +42,16 @@ if(CANOPY_BUILD_ENCLAVE)
   set(ADDITIONAL_TARGET marshal_test_edl rpc_telemetry_edl_header)
 endif()
 
-add_library(common STATIC ${SOURCES})
+add_library(common_tests STATIC ${SOURCES})
 
-target_compile_definitions(common PRIVATE ${CANOPY_DEFINES})
+target_compile_definitions(common_tests PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
-  common
+  common_tests
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include/marshalled_tests>"
   PRIVATE ${CANOPY_INCLUDES})
 
-target_compile_options(common PRIVATE ${CANOPY_COMPILE_OPTIONS})
-target_link_options(common PRIVATE ${CANOPY_LINK_OPTIONS})
+target_compile_options(common_tests PRIVATE ${CANOPY_COMPILE_OPTIONS})
+target_link_options(common_tests PRIVATE ${CANOPY_LINK_OPTIONS})
 
 if(${CANOPY_BUILD_COROUTINE})
   set(CORO_IDL tcp_idl spsc_idl)
@@ -60,7 +60,7 @@ else()
 endif()
 
 target_link_libraries(
-  common
+  common_tests
   PRIVATE rpc::rpc
           ${ADDITIONAL_TARGET}
           example_idl
@@ -73,4 +73,4 @@ target_link_libraries(
           GTest::gmock_main
           yas_common)
 
-set_property(TARGET common PROPERTY COMPILE_PDB_NAME common)
+set_property(TARGET common_tests PROPERTY COMPILE_PDB_NAME common_tests)

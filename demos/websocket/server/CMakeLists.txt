@@ -5,6 +5,8 @@ project(websocket_server)
 
 find_package(OpenSSL)
 
+add_subdirectory(llama.cpp)
+
 add_executable(
   websocket_server
   server.cpp
@@ -12,6 +14,8 @@ add_executable(
   http_client_connection.cpp
   ws_client_connection.cpp
   websocket_handshake.cpp
+  websocket_service.cpp
+  llama_server_engine.cpp
   transport.cpp
   tcp_stream.cpp
   tls_stream.cpp)
@@ -30,6 +34,10 @@ target_link_libraries(
          wslay
          llhttp_static
          websocket_demo_idl
+         secret_llama_idl
+         # secret_llama
+         llama
+         common
          rpc
          ${CANOPY_LIBRARIES})
 target_compile_options(websocket_server PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

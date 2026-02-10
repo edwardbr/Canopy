@@ -8,5 +8,8 @@
 
 namespace websocket_demo
 {
-    std::string calculate_ws_accept(std::string_view client_key);
+    namespace v1
+    {
+        std::string calculate_ws_accept(std::string_view client_key);
+    }
 }

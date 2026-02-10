@@ -16,7 +16,7 @@ target_include_directories(
 
 target_link_libraries(
   serialiser_test
-  PUBLIC common
+  PUBLIC common_tests
          example_idl
          example_import_idl
          example_shared_idl

@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package protobuf.rpc;
+
+enum encoding {
+	encoding_UNSPECIFIED = 0;
+	encoding_yas_binary = 1;
+	encoding_yas_compressed_binary = 2;
+	encoding_yas_json = 8;
+	encoding_protocol_buffers = 16;
+}
+
+enum add_ref_options {
+	add_ref_options_normal = 0;
+	add_ref_options_build_destination_route = 1;
+	add_ref_options_build_caller_route = 2;
+	add_ref_options_optimistic = 4;
+}
+
+enum release_options {
+	release_options_normal = 0;
+	release_options_optimistic = 1;
+}
+
+message back_channel_entry {
+	uint64 type_id = 1;
+	bytes payload = 2;
+}
+
+message zone {
+	uint64 id = 1;
+}
+
+message destination_zone {
+	uint64 id = 1;
+}
+
+message caller_zone {
+	uint64 id = 1;
+}
+
+message known_direction_zone {
+	uint64 id = 1;
+}
+
+message object {
+	uint64 id = 1;
+}
+
+message interface_ordinal {
+	uint64 id = 1;
+}
+
+message method {
+	uint64 id = 1;
+}
+
+message interface_descriptor {
+	object object_id = 1;
+	destination_zone destination_zone_id = 2;
+}
+
+message function_info {
+	string full_name = 1;
+	string name = 2;
+	method id = 3;
+	uint64 tag = 4;
+	bool marshalls_interfaces = 5;
+	string description = 6;
+	string in_json_schema = 7;
+	string out_json_schema = 8;
+}
+

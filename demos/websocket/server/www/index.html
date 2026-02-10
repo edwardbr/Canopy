@@ -295,6 +295,83 @@
             justify-content: center;
         }
 
+        .chat-panel {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chat-history {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .chat-message.user {
+            background: #dbeafe;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .chat-message.assistant {
+            background: #d1fae5;
+            margin-right: auto;
+        }
+
+        .chat-message.assistant.streaming {
+            border-left: 4px solid #10b981;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                border-color: #10b981;
+            }
+            50% {
+                border-color: #34d399;
+            }
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input-container textarea {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 50px;
+        }
+
+        .chat-input-container textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .chat-input-container textarea:disabled {
+            background: #f3f4f6;
+            cursor: not-allowed;
+        }
+
         .hidden {
             display: none;
         }
@@ -319,6 +396,10 @@
                 <div class="mode-option">
                     <input type="radio" name="mode" id="calculatorMode" value="calculator">
                     <label for="calculatorMode">Calculator</label>
+                </div>
+                <div class="mode-option">
+                    <input type="radio" name="mode" id="chatMode" value="chat">
+                    <label for="chatMode">Chat</label>
                 </div>
             </div>
 
@@ -345,6 +426,15 @@
                 <button class="btn btn-primary" id="calculateBtn" disabled
                     style="width: 100%; margin-bottom: 15px;">Calculate</button>
                 <div class="result-display" id="resultDisplay">Result will appear here</div>
+            </div>
+
+            <!-- Chat Mode Controls -->
+            <div id="chatPanel" class="chat-panel hidden">
+                <div class="chat-history" id="chatHistory"></div>
+                <div class="chat-input-container">
+                    <textarea id="chatInput" placeholder="Type your message..." disabled rows="2"></textarea>
+                    <button class="btn btn-primary" id="sendChatBtn" disabled>Send</button>
+                </div>
             </div>
 
             <div class="action-buttons">
@@ -410,6 +500,30 @@
     </script>
     <script src="websocket_proto.js"></script>
     <script>__loadProtoNext();</script>
+    <script>
+        // Load secret_llama proto dynamically
+        let SecretLlamaProto = null;
+        protobuf.load("secret_llama_v1_0.proto", function(err, root) {
+            if (err) {
+                console.error("Failed to load secret_llama proto:", err);
+                alert("Failed to load secret_llama protobuf: " + err.message);
+                return;
+            }
+            try {
+                // Get the namespace, not a specific type
+                // The proto package is "protobuf.secret_llama_v1_0"
+                if (root.nested && root.nested.protobuf && root.nested.protobuf.nested.secret_llama_v1_0) {
+                    SecretLlamaProto = root.nested.protobuf.nested.secret_llama_v1_0;
+                    console.log("Secret Llama protobuf namespace loaded successfully");
+                } else {
+                    console.error("Could not find secret_llama_v1_0 namespace in proto root");
+                    console.log("Available root structure:", Object.keys(root.nested || {}));
+                }
+            } catch (lookupErr) {
+                console.error("Failed to access secret_llama protobuf namespace:", lookupErr);
+            }
+        });
+    </script>
     <script src="client.js"></script>
 </body>
 

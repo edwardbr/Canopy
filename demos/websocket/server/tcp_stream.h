@@ -8,29 +8,32 @@
 
 namespace websocket_demo
 {
-    // Plain TCP stream wrapper
-    class tcp_stream : public stream
+    namespace v1
     {
-    public:
-        explicit tcp_stream(coro::net::tcp::client&& client);
+        // Plain TCP stream wrapper
+        class tcp_stream : public stream
+        {
+        public:
+            explicit tcp_stream(coro::net::tcp::client&& client);
 
-        auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<coro::poll_status> override;
+            auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+                -> coro::task<coro::poll_status> override;
 
-        auto recv(std::span<char> buffer) -> std::pair<coro::net::recv_status, std::span<char>> override;
+            auto recv(std::span<char> buffer) -> std::pair<coro::net::recv_status, std::span<char>> override;
 
-        auto send(std::span<const char> buffer) -> std::pair<coro::net::send_status, std::span<const char>> override;
+            auto send(std::span<const char> buffer) -> std::pair<coro::net::send_status, std::span<const char>> override;
 
-        bool is_closed() const override;
+            bool is_closed() const override;
 
-        void set_closed() override;
+            void set_closed() override;
 
-        // Access to underlying client for operations that need it
-        coro::net::tcp::client& client();
+            // Access to underlying client for operations that need it
+            coro::net::tcp::client& client();
 
-    private:
-        coro::net::tcp::client client_;
-        bool closed_{false};
-    };
+        private:
+            coro::net::tcp::client client_;
+            bool closed_{false};
+        };
 
-} // namespace websocket_demo
+    } // namespace websocket_demo
+}

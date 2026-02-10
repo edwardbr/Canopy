@@ -6,245 +6,363 @@
 #include <coro/coro.hpp>
 #include <iostream>
 #include <cstring>
+#include <atomic>
 
 #include <fmt/format.h>
+#include <secret_llama/secret_llama.h>
+#include <secret_llama/secret_llama_stub.h>
 #include <websocket_demo/websocket_demo.h>
 #include "transport.h"
 
 namespace websocket_demo
 {
-    ws_client_connection::ws_client_connection(std::shared_ptr<stream> stream, std::shared_ptr<websocket_service> service)
-        : stream_(std::move(stream))
-        , service_(std::move(service))
-        , buffer_(4096, '\0')
+    namespace v1
     {
-        // Set up wslay callbacks
-        wslay_event_callbacks callbacks;
-        std::memset(&callbacks, 0, sizeof(callbacks));
-        callbacks.recv_callback = recv_callback;
-        callbacks.send_callback = send_callback;
-        callbacks.on_msg_recv_callback = on_msg_recv_callback;
-
-        // Initialize wslay context with 'this' pointer
-        int result = wslay_event_context_server_init(&wslay_ctx_, &callbacks, this);
-        if (result != 0)
+        ws_client_connection::ws_client_connection(std::shared_ptr<stream> stream, std::shared_ptr<websocket_service> service)
+            : stream_(std::move(stream))
+            , service_(std::move(service))
+            , buffer_(4096, '\0')
         {
-            throw std::runtime_error("Failed to initialize wslay context");
-        }
-    }
+            // Set up wslay callbacks
+            wslay_event_callbacks callbacks;
+            std::memset(&callbacks, 0, sizeof(callbacks));
+            callbacks.recv_callback = recv_callback;
+            callbacks.send_callback = send_callback;
+            callbacks.on_msg_recv_callback = on_msg_recv_callback;
 
-    ws_client_connection::~ws_client_connection()
-    {
-        if (wslay_ctx_ != nullptr)
-        {
-            wslay_event_context_free(wslay_ctx_);
-            wslay_ctx_ = nullptr;
-        }
-    }
-
-    auto ws_client_connection::run() -> coro::task<void>
-    {
-        try
-        {
-            transport_ = std::make_shared<transport>(wslay_ctx_, service_, service_->generate_new_zone_id());
-
-            rpc::interface_descriptor output_descr;
-
-            auto ret
-                = CO_AWAIT service_->attach_remote_zone<websocket_demo::v1::i_calculator, websocket_demo::v1::i_calculator>(
-                    "websocket",
-                    transport_,
-                    rpc::interface_descriptor{0, 0},
-                    output_descr,
-                    [](const rpc::shared_ptr<websocket_demo::v1::i_calculator>& remote,
-                        rpc::shared_ptr<websocket_demo::v1::i_calculator>& local,
-                        const std::shared_ptr<rpc::service>& svc) -> coro::task<int>
-                    {
-                        auto wsrvc = std::static_pointer_cast<websocket_service>(svc);
-                        local = wsrvc->get_demo_instance();
-                        co_return 0;
-                    });
-
-            std::cout << "Entering WebSocket message loop" << std::endl;
-
-            while (true)
+            // Initialize wslay context with 'this' pointer
+            int result = wslay_event_context_server_init(&wslay_ctx_, &callbacks, this);
+            if (result != 0)
             {
-                // Check if wslay wants to read or write
-                bool want_read = wslay_event_want_read(wslay_ctx_) != 0;
-                bool want_write = wslay_event_want_write(wslay_ctx_) != 0;
+                throw std::runtime_error("Failed to initialize wslay context");
+            }
+        }
 
-                if (!want_read && !want_write)
-                {
-                    std::cout << "WebSocket connection closing normally" << std::endl;
-                    break;
-                }
+        ws_client_connection::~ws_client_connection()
+        {
+            if (wslay_ctx_ != nullptr)
+            {
+                wslay_event_context_free(wslay_ctx_);
+                wslay_ctx_ = nullptr;
+            }
+        }
 
-                // Handle reading
-                if (want_read)
-                {
-                    co_await stream_->poll(coro::poll_op::read);
-                    auto [recv_status, recv_span] = stream_->recv(buffer_);
+        class event_sink : public rpc::base<event_sink, websocket_demo::v1::i_context_event>
+        {
+            std::atomic<uint64_t>& message_counter_;
+            std::queue<std::vector<uint8_t>>& pending_messages_;
+            std::mutex& pending_messages_mutex_;
 
-                    if (recv_status == coro::net::recv_status::closed)
-                    {
-                        std::cout << "Client disconnected" << std::endl;
-                        stream_->set_closed();
-                        break;
-                    }
-                    else if (recv_status == coro::net::recv_status::ok && !recv_span.empty())
-                    {
-                        // Store the received data in our read buffer
-                        read_buffer_.assign(recv_span.begin(), recv_span.end());
-                        read_buffer_pos_ = 0;
-
-                        // Let wslay process the received data
-                        int r = wslay_event_recv(wslay_ctx_);
-                        if (r != 0)
-                        {
-                            std::cerr << "wslay_event_recv error: " << r << std::endl;
-                            break;
-                        }
-
-                        // After receiving, immediately send any queued messages (e.g., echo responses)
-                        // This ensures low-latency responses without waiting for the next loop iteration
-                        if (!want_write && wslay_event_want_write(wslay_ctx_))
-                        {
-                            want_write = true;
-                        }
-                    }
-                }
-
-                // Handle writing
-                if (want_write)
-                {
-                    co_await stream_->poll(coro::poll_op::write);
-                    int r = wslay_event_send(wslay_ctx_);
-                    if (r != 0)
-                    {
-                        std::cerr << "wslay_event_send error: " << r << std::endl;
-                        break;
-                    }
-                }
+        public:
+            event_sink(std::atomic<uint64_t>& counter, std::queue<std::vector<uint8_t>>& queue, std::mutex& mutex)
+                : message_counter_(counter)
+                , pending_messages_(queue)
+                , pending_messages_mutex_(mutex)
+            {
             }
 
-            std::cout << "WebSocket connection closed" << std::endl;
-        }
-        catch (const std::exception& e)
-        {
-            std::cerr << "Exception in ws_client_connection::run: " << e.what() << std::endl;
-        }
-
-        co_return;
-    }
-
-    // Callback: wslay wants to send data to the peer
-    ssize_t ws_client_connection::send_callback(
-        wslay_event_context_ptr ctx, const uint8_t* data, size_t len, int flags, void* user_data)
-    {
-        auto* self = static_cast<ws_client_connection*>(user_data);
-
-        // Check if connection is already closed to prevent sending on a dead socket
-        if (self->stream_->is_closed())
-        {
-            wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
-            return -1;
-        }
-
-        // Send data through stream
-        auto [status, remaining] = self->stream_->send(std::span<const char>(reinterpret_cast<const char*>(data), len));
-
-        if (status == coro::net::send_status::ok)
-        {
-            // Calculate bytes sent: original length - remaining unsent bytes
-            size_t bytes_sent = len - remaining.size();
-            return static_cast<ssize_t>(bytes_sent);
-        }
-        else if (status == coro::net::send_status::would_block)
-        {
-            wslay_event_set_error(ctx, WSLAY_ERR_WOULDBLOCK);
-            return -1;
-        }
-        else
-        {
-            // Mark connection as closed to prevent further send attempts
-            self->stream_->set_closed();
-            wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
-            return -1;
-        }
-    }
-
-    // Callback: wslay wants to receive data from the peer
-    ssize_t ws_client_connection::recv_callback(
-        wslay_event_context_ptr ctx, uint8_t* buf, size_t len, int flags, void* user_data)
-    {
-        auto* self = static_cast<ws_client_connection*>(user_data);
-
-        // If we have data in our buffer, return it
-        if (self->read_buffer_pos_ < self->read_buffer_.size())
-        {
-            size_t available = self->read_buffer_.size() - self->read_buffer_pos_;
-            size_t to_copy = std::min(len, available);
-            std::memcpy(buf, self->read_buffer_.data() + self->read_buffer_pos_, to_copy);
-            self->read_buffer_pos_ += to_copy;
-            return static_cast<ssize_t>(to_copy);
-        }
-
-        // No more data available, signal would block
-        wslay_event_set_error(ctx, WSLAY_ERR_WOULDBLOCK);
-        return -1;
-    }
-
-    // Callback: wslay received a complete message
-    void ws_client_connection::on_msg_recv_callback(
-        wslay_event_context_ptr ctx, const wslay_event_on_msg_recv_arg* arg, void* user_data)
-    {
-        auto* self = static_cast<ws_client_connection*>(user_data);
-
-        if (!wslay_is_ctrl_frame(arg->opcode))
-        {
-            // Log the message
-            std::cout << "Received message (" << arg->msg_length << " bytes): ";
-            if (arg->opcode == WSLAY_TEXT_FRAME)
+            CORO_TASK(int) piece(const std::string& piece) override
             {
-                std::cout << std::string(reinterpret_cast<const char*>(arg->msg), arg->msg_length);
+                try
+                {
+                    std::cout << "event_sink::piece called with: " << piece << std::endl;
 
-                // Echo back the received message
-                wslay_event_msg msg;
-                msg.opcode = arg->opcode; // TEXT or BINARY
-                msg.msg = arg->msg;
-                msg.msg_length = arg->msg_length;
+                    std::vector<char> piece_data;
+                    websocket_demo::v1::i_context_event::proxy_serialiser<rpc::serialiser::protocol_buffers>::piece(
+                        piece, piece_data);
 
-                // Queue the message for sending
-                wslay_event_queue_msg(ctx, &msg);
+                    // Create a websocket::request to wrap the event
+                    websocket_demo::v1::request ws_request;
+                    ws_request.encoding = rpc::encoding::protocol_buffers;
+                    ws_request.tag = 0;
+                    ws_request.caller_zone_id = 0;
+                    ws_request.destination_zone_id = 0;
+                    ws_request.object_id = 0;
+                    ws_request.interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version()).get_val();
+                    ws_request.method_id = 1; // piece method
+                    ws_request.data.assign(piece_data.begin(), piece_data.end());
+
+                    // Serialize the request
+                    auto request_data = rpc::to_protobuf<std::vector<char>>(ws_request);
+
+                    // Create the envelope
+                    websocket_demo::v1::envelope envelope;
+                    envelope.message_id = ++message_counter_;
+                    envelope.message_type = rpc::id<websocket_demo::v1::request>::get(rpc::get_version());
+                    envelope.data.assign(request_data.begin(), request_data.end());
+
+                    // Serialize the envelope
+                    auto envelope_data = rpc::to_protobuf<std::vector<char>>(envelope);
+
+                    // Push to pending queue instead of calling wslay directly
+                    // This avoids deadlock when piece() is called from within wslay callbacks
+                    {
+                        std::lock_guard<std::mutex> lock(pending_messages_mutex_);
+                        pending_messages_.push(std::vector<uint8_t>(envelope_data.begin(), envelope_data.end()));
+                        std::cout << "Message queued to pending queue, queue size=" << pending_messages_.size()
+                                  << std::endl;
+                    }
+
+                    CO_RETURN rpc::error::OK();
+                }
+                catch (const std::exception& e)
+                {
+                    std::cerr << "Exception in event_sink::piece: " << e.what() << std::endl;
+                    CO_RETURN rpc::error::EXCEPTION();
+                }
+            }
+        };
+
+        coro::task<void> ws_client_connection::run()
+        {
+            try
+            {
+                std::cout << "[WS] Creating transport" << std::endl;
+                transport_ = std::make_shared<transport>(wslay_ctx_,
+                    service_,
+                    service_->generate_new_zone_id(),
+                    pending_messages_,
+                    pending_messages_mutex_,
+                    message_counter_);
+
+                rpc::interface_descriptor output_descr;
+
+                auto sink = rpc::make_shared<event_sink>(message_counter_, pending_messages_, pending_messages_mutex_);
+
+                std::cout << "[WS] Calling attach_remote_zone" << std::endl;
+                auto ret
+                    = CO_AWAIT service_->attach_remote_zone<websocket_demo::v1::i_calculator, websocket_demo::v1::i_calculator>(
+                        "websocket",
+                        transport_,
+                        rpc::interface_descriptor{0, 0},
+                        output_descr,
+                        [sink](const rpc::shared_ptr<websocket_demo::v1::i_calculator>& remote,
+                            rpc::shared_ptr<websocket_demo::v1::i_calculator>& local,
+                            const std::shared_ptr<rpc::service>& svc) -> coro::task<int>
+                        {
+                            std::cout << "[WS] Inside attach_remote_zone lambda" << std::endl;
+                            secret_llama_idl_register_stubs(svc);
+
+                            auto wsrvc = std::static_pointer_cast<websocket_service>(svc);
+
+                            local = wsrvc->get_demo_instance();
+                            std::cout << "[WS] Calling set_callback" << std::endl;
+                            CO_AWAIT local->set_callback(sink);
+                            std::cout << "[WS] set_callback completed" << std::endl;
+                            co_return 0;
+                        });
+
+                std::cout << "[WS] attach_remote_zone returned: " << ret << std::endl;
+                std::cout << "[WS] Entering WebSocket message loop" << std::endl;
+
+                while (true)
+                {
+                    // Drain pending messages queue into wslay
+                    {
+                        std::lock_guard<std::mutex> pending_lock(pending_messages_mutex_);
+                        if (!pending_messages_.empty())
+                        {
+                            std::lock_guard<std::mutex> wslay_lock(wslay_mutex_);
+                            while (!pending_messages_.empty())
+                            {
+                                auto& msg_data = pending_messages_.front();
+
+                                wslay_event_msg msg;
+                                msg.opcode = WSLAY_BINARY_FRAME;
+                                msg.msg = msg_data.data();
+                                msg.msg_length = msg_data.size();
+
+                                int result = wslay_event_queue_msg(wslay_ctx_, &msg);
+                                if (result != 0)
+                                {
+                                    std::cerr << "Failed to queue WebSocket message from pending queue: " << result
+                                              << std::endl;
+                                }
+                                else
+                                {
+                                    std::cout << "Drained message from pending queue to wslay" << std::endl;
+                                }
+
+                                pending_messages_.pop();
+                            }
+                        }
+                    }
+
+                    // Check if wslay wants to read or write (with mutex protection)
+                    bool want_read, want_write;
+                    {
+                        std::lock_guard<std::mutex> lock(wslay_mutex_);
+                        want_read = wslay_event_want_read(wslay_ctx_) != 0;
+                        want_write = wslay_event_want_write(wslay_ctx_) != 0;
+                    }
+
+                    std::cout << "Loop: want_read=" << want_read << ", want_write=" << want_write << std::endl;
+
+                    if (!want_read && !want_write)
+                    {
+                        std::cout << "WebSocket connection closing normally" << std::endl;
+                        break;
+                    }
+
+                    // Handle writing first (prioritize outgoing streaming data)
+                    if (want_write)
+                    {
+                        std::cout << "Polling for write..." << std::endl;
+                        co_await stream_->poll(coro::poll_op::write);
+                        std::cout << "Sending data..." << std::endl;
+                        {
+                            std::lock_guard<std::mutex> lock(wslay_mutex_);
+                            int r = wslay_event_send(wslay_ctx_);
+                            if (r != 0)
+                            {
+                                std::cerr << "wslay_event_send error: " << r << std::endl;
+                                break;
+                            }
+                            std::cout << "Send complete" << std::endl;
+                            // Re-check want_write after sending
+                            want_write = wslay_event_want_write(wslay_ctx_) != 0;
+                        }
+                    }
+
+                    // Handle reading (with timeout to check for queued writes)
+                    if (want_read)
+                    {
+                        // Use a short timeout to avoid blocking when async writes are queued
+                        // Poll for both read and write to catch any activity
+                        auto poll_status
+                            = co_await stream_->poll(coro::poll_op::read_write, std::chrono::milliseconds{50});
+
+                        // Only try to receive if the poll succeeded or data is available
+                        if (poll_status == coro::poll_status::event)
+                        {
+                            auto [recv_status, recv_span] = stream_->recv(buffer_);
+
+                            if (recv_status == coro::net::recv_status::closed)
+                            {
+                                std::cout << "Client disconnected" << std::endl;
+                                stream_->set_closed();
+                                break;
+                            }
+                            else if (recv_status == coro::net::recv_status::ok && !recv_span.empty())
+                            {
+                                // Store the received data in our read buffer
+                                read_buffer_.assign(recv_span.begin(), recv_span.end());
+                                read_buffer_pos_ = 0;
+
+                                // Let wslay process the received data (with mutex protection)
+                                {
+                                    std::lock_guard<std::mutex> lock(wslay_mutex_);
+                                    int r = wslay_event_recv(wslay_ctx_);
+                                    if (r != 0)
+                                    {
+                                        std::cerr << "wslay_event_recv error: " << r << std::endl;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        // If timeout occurred (poll_status == timeout), loop will continue and check want_write
+                    }
+                }
+
+                std::cout << "WebSocket connection closed" << std::endl;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "Exception in ws_client_connection::run: " << e.what() << std::endl;
+            }
+
+            co_return;
+        }
+
+        // Callback: wslay wants to send data to the peer
+        ssize_t ws_client_connection::send_callback(
+            wslay_event_context_ptr ctx, const uint8_t* data, size_t len, int flags, void* user_data)
+        {
+            auto* self = static_cast<ws_client_connection*>(user_data);
+
+            // Check if connection is already closed to prevent sending on a dead socket
+            if (self->stream_->is_closed())
+            {
+                wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
+                return -1;
+            }
+
+            // Send data through stream
+            auto [status, remaining]
+                = self->stream_->send(std::span<const char>(reinterpret_cast<const char*>(data), len));
+
+            if (status == coro::net::send_status::ok)
+            {
+                // Calculate bytes sent: original length - remaining unsent bytes
+                size_t bytes_sent = len - remaining.size();
+                return static_cast<ssize_t>(bytes_sent);
+            }
+            else if (status == coro::net::send_status::would_block)
+            {
+                wslay_event_set_error(ctx, WSLAY_ERR_WOULDBLOCK);
+                return -1;
             }
             else
             {
-                std::cout << "[binary data]";
+                // Mark connection as closed to prevent further send attempts
+                self->stream_->set_closed();
+                wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
+                return -1;
+            }
+        }
 
-                websocket_demo::v1::envelope envelope;
-                auto error
-                    = rpc::from_protobuf<websocket_demo::v1::envelope>({arg->msg, arg->msg + arg->msg_length}, envelope);
-                if (error.length())
+        // Callback: wslay wants to receive data from the peer
+        ssize_t ws_client_connection::recv_callback(
+            wslay_event_context_ptr ctx, uint8_t* buf, size_t len, int flags, void* user_data)
+        {
+            auto* self = static_cast<ws_client_connection*>(user_data);
+
+            // If we have data in our buffer, return it
+            if (self->read_buffer_pos_ < self->read_buffer_.size())
+            {
+                size_t available = self->read_buffer_.size() - self->read_buffer_pos_;
+                size_t to_copy = std::min(len, available);
+                std::memcpy(buf, self->read_buffer_.data() + self->read_buffer_pos_, to_copy);
+                self->read_buffer_pos_ += to_copy;
+                return static_cast<ssize_t>(to_copy);
+            }
+
+            // No more data available, signal would block
+            wslay_event_set_error(ctx, WSLAY_ERR_WOULDBLOCK);
+            return -1;
+        }
+
+        // Callback: wslay received a complete message
+        void ws_client_connection::on_msg_recv_callback(
+            wslay_event_context_ptr ctx, const wslay_event_on_msg_recv_arg* arg, void* user_data)
+        {
+            auto* self = static_cast<ws_client_connection*>(user_data);
+
+            if (!wslay_is_ctrl_frame(arg->opcode))
+            {
+                // Log the message
+                std::cout << "Received message (" << arg->msg_length << " bytes): ";
+                if (arg->opcode == WSLAY_TEXT_FRAME)
                 {
-                    auto reason = fmt::format("invalid message format {}", error);
-                    std::cout << "Received message (" << arg->msg_length << " bytes) parsing error: " << error;
+                    std::cout << std::string(reinterpret_cast<const char*>(arg->msg), arg->msg_length);
 
-                    wslay_event_queue_close(ctx,
-                        WSLAY_CODE_INVALID_FRAME_PAYLOAD_DATA, // 1007
-                        reinterpret_cast<const uint8_t*>(reason.data()),
-                        reason.size());
-                    return; // no reply.
+                    // Echo back the received message
+                    wslay_event_msg msg;
+                    msg.opcode = arg->opcode; // TEXT or BINARY
+                    msg.msg = arg->msg;
+                    msg.msg_length = arg->msg_length;
+
+                    // Queue the message for sending
+                    wslay_event_queue_msg(ctx, &msg);
                 }
+                else
+                {
+                    std::cout << "[binary data]";
 
-                if (envelope.message_type == rpc::id<websocket_demo::v1::request>::get(rpc::get_version()))
-                {
-                    self->service_->get_scheduler()->spawn(self->transport_->stub_handle_send(std::move(envelope)));
-                }
-                else if (envelope.message_type == rpc::id<websocket_demo::v1::response>::get(rpc::get_version()))
-                {
-                    // process response from client
-                    websocket_demo::v1::response response;
-                    auto error = rpc::from_protobuf<websocket_demo::v1::response>(envelope.data, response);
+                    websocket_demo::v1::envelope envelope;
+                    auto error = rpc::from_protobuf<websocket_demo::v1::envelope>(
+                        {arg->msg, arg->msg + arg->msg_length}, envelope);
                     if (error.length())
                     {
                         auto reason = fmt::format("invalid message format {}", error);
@@ -256,25 +374,47 @@ namespace websocket_demo
                             reason.size());
                         return; // no reply.
                     }
-                }
-                else
-                {
-                    auto reason = fmt::format("invalid message format {}", error);
-                    std::cout << "Received message (" << arg->msg_length << " bytes) parsing error: " << error;
 
-                    wslay_event_queue_close(ctx,
-                        WSLAY_CODE_INVALID_FRAME_PAYLOAD_DATA, // 1007
-                        reinterpret_cast<const uint8_t*>(reason.data()),
-                        reason.size());
-                    return; // no reply.
+                    if (envelope.message_type == rpc::id<websocket_demo::v1::request>::get(rpc::get_version()))
+                    {
+                        self->service_->get_scheduler()->spawn(self->transport_->stub_handle_send(std::move(envelope)));
+                    }
+                    else if (envelope.message_type == rpc::id<websocket_demo::v1::response>::get(rpc::get_version()))
+                    {
+                        // process response from client
+                        websocket_demo::v1::response response;
+                        auto error = rpc::from_protobuf<websocket_demo::v1::response>(envelope.data, response);
+                        if (error.length())
+                        {
+                            auto reason = fmt::format("invalid message format {}", error);
+                            std::cout << "Received message (" << arg->msg_length << " bytes) parsing error: " << error;
+
+                            wslay_event_queue_close(ctx,
+                                WSLAY_CODE_INVALID_FRAME_PAYLOAD_DATA, // 1007
+                                reinterpret_cast<const uint8_t*>(reason.data()),
+                                reason.size());
+                            return; // no reply.
+                        }
+                    }
+                    else
+                    {
+                        auto reason = fmt::format("invalid message format {}", error);
+                        std::cout << "Received message (" << arg->msg_length << " bytes) parsing error: " << error;
+
+                        wslay_event_queue_close(ctx,
+                            WSLAY_CODE_INVALID_FRAME_PAYLOAD_DATA, // 1007
+                            reinterpret_cast<const uint8_t*>(reason.data()),
+                            reason.size());
+                        return; // no reply.
+                    }
                 }
+
+                std::cout << std::endl;
             }
-
-            std::cout << std::endl;
-        }
-        else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
-        {
-            std::cout << "Connection close received, status code: " << arg->status_code << std::endl;
+            else if (arg->opcode == WSLAY_CONNECTION_CLOSE)
+            {
+                std::cout << "Connection close received, status code: " << arg->status_code << std::endl;
+            }
         }
     }
 }

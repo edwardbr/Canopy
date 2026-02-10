@@ -9,19 +9,18 @@
 
 namespace websocket_demo
 {
-    class websocket_service : public rpc::service
+    namespace v1
     {
-        rpc::shared_ptr<websocket_demo::v1::i_calculator> demo_;
-
-    public:
-        websocket_service(std::string name, rpc::zone zone_id, std::shared_ptr<coro::io_scheduler> scheduler)
-            : rpc::service(name.data(), zone_id, std::move(scheduler))
+        class websocket_service : public rpc::service
         {
-            demo_ = create_websocket_demo_instance();
-        }
+            rpc::shared_ptr<i_calculator> demo_;
 
-        virtual ~websocket_service() DEFAULT_DESTRUCTOR;
+        public:
+            websocket_service(std::string name, rpc::zone zone_id, std::shared_ptr<coro::io_scheduler> scheduler);
 
-        rpc::shared_ptr<websocket_demo::v1::i_calculator> get_demo_instance() { return demo_; }
-    };
+            virtual ~websocket_service() DEFAULT_DESTRUCTOR;
+
+            rpc::shared_ptr<i_calculator> get_demo_instance();
+        };
+    }
 }

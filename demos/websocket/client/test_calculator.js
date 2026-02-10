@@ -77,7 +77,7 @@ function runCalculatorTest(operation, methodId, first, second, expected) {
                     callerZoneId: 0,
                     destinationZoneId: 0,
                     objectId: 0,
-                    interfaceId: 0,
+                    interfaceId: 6162774132854230330, //i_calculator
                     methodId: methodId,
                     data: requestBytes,
                     backChannel: []

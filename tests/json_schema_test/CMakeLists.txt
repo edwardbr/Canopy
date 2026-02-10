@@ -26,7 +26,7 @@ endif()
 # Link with libraries similar to test
 target_link_libraries(
   json_schema_metadata_test
-  PUBLIC common
+  PUBLIC common_tests
          example_idl
          example_import_idl
          example_shared_idl
