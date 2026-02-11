@@ -10,8 +10,7 @@ add_executable(
   type_test_local_suite.cpp
   remote_type_test_suite.cpp
   hierachical_transport_tests.cpp
-  # uncomment this
-  # post_functionality_test_suite.cpp
+  post_functionality_test_suite.cpp
   ${COROUTINE_TESTS})
 
 target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES})
