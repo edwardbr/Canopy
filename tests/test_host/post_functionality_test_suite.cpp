@@ -115,7 +115,7 @@ using post_test_implementations = ::testing::Types<in_memory_setup<false>,
 TYPED_TEST_SUITE(post_functionality_test, post_test_implementations);
 
 // Test for [post] attribute - fire-and-forget one-way messaging with ordering guarantee
-template<class T> CORO_TASK(bool) coro_test_post_attribute(T& lib)
+template<class T> CORO_TASK(bool) coro_test_post_with_shared_ptr(T& lib)
 {
     // Create a foo instance to test with
     rpc::shared_ptr<xxx::i_foo> i_foo_ptr;
@@ -203,7 +203,106 @@ template<class T> CORO_TASK(bool) coro_test_post_attribute(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(post_functionality_test, test_post_attribute)
+TYPED_TEST(post_functionality_test, post_with_shared_ptr)
 {
-    run_coro_test(*this, [](auto& lib) { return coro_test_post_attribute<TypeParam>(lib); });
+    run_coro_test(*this, [](auto& lib) { return coro_test_post_with_shared_ptr<TypeParam>(lib); });
+}
+
+// Test for [post] attribute with optimistic_ptr - fire-and-forget through optimistic pointer
+template<class T> CORO_TASK(bool) coro_post_with_optimistic_ptr(T& lib)
+{
+    // Create a foo instance to test with
+    rpc::shared_ptr<xxx::i_foo> i_foo_ptr;
+    auto ret = CO_AWAIT lib.get_example()->create_foo(i_foo_ptr);
+    CORO_ASSERT_EQ(ret, rpc::error::OK());
+    CORO_ASSERT_NE(i_foo_ptr, nullptr);
+
+    // Convert to optimistic_ptr
+    rpc::optimistic_ptr<xxx::i_foo> opt_foo;
+    auto opt_ret = CO_AWAIT rpc::make_optimistic(i_foo_ptr, opt_foo);
+    CORO_ASSERT_EQ(opt_ret, rpc::error::OK());
+
+    // Clear any existing messages first (through optimistic pointer)
+    auto clear_ret = CO_AWAIT opt_foo->clear_recorded_messages();
+    CORO_ASSERT_EQ(clear_ret, rpc::error::OK());
+
+    // Test 1: Send multiple [post] messages through optimistic_ptr and verify ordering
+    const int num_messages = 10;
+    for (int i = 0; i < num_messages; ++i)
+    {
+        // [post] methods through optimistic_ptr - fire-and-forget
+        auto post_ret = CO_AWAIT opt_foo->record_message(i);
+        CORO_ASSERT_EQ(post_ret, rpc::error::OK());
+    }
+
+    // Give some time for all messages to be processed
+#ifdef CANOPY_BUILD_COROUTINE
+    for (int i = 0; i < num_messages; ++i)
+    {
+        lib.get_scheduler()->process_events(std::chrono::milliseconds(1));
+    }
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#endif
+
+    // Retrieve recorded messages and verify ordering (through optimistic pointer)
+    std::vector<int> recorded_messages;
+    auto get_ret = CO_AWAIT opt_foo->get_recorded_messages(recorded_messages);
+    CORO_ASSERT_EQ(get_ret, rpc::error::OK());
+
+    // Verify all messages were received
+    CORO_ASSERT_EQ(recorded_messages.size(), num_messages);
+
+    // Verify messages were received in the order they were sent
+    for (int i = 0; i < num_messages; ++i)
+    {
+        CORO_ASSERT_EQ(recorded_messages[i], i);
+    }
+
+    // Test 2: Clear and verify
+    clear_ret = CO_AWAIT opt_foo->clear_recorded_messages();
+    CORO_ASSERT_EQ(clear_ret, rpc::error::OK());
+
+    recorded_messages.clear();
+    get_ret = CO_AWAIT opt_foo->get_recorded_messages(recorded_messages);
+    CORO_ASSERT_EQ(get_ret, rpc::error::OK());
+    CORO_ASSERT_EQ(recorded_messages.size(), 0);
+
+    // Test 3: Larger batch through optimistic_ptr
+    const int large_batch = 50;
+    for (int i = 0; i < large_batch; ++i)
+    {
+        auto post_ret = CO_AWAIT opt_foo->record_message(i * 3); // Send multiples of 3
+        CORO_ASSERT_EQ(post_ret, rpc::error::OK());
+    }
+
+#ifdef CANOPY_BUILD_COROUTINE
+    for (int i = 0; i < large_batch; ++i)
+    {
+        lib.get_scheduler()->process_events(std::chrono::milliseconds(1));
+    }
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+#endif
+
+    recorded_messages.clear();
+    get_ret = CO_AWAIT opt_foo->get_recorded_messages(recorded_messages);
+    CORO_ASSERT_EQ(get_ret, rpc::error::OK());
+    CORO_ASSERT_EQ(recorded_messages.size(), large_batch);
+
+    // Verify ordering for large batch
+    for (int i = 0; i < large_batch; ++i)
+    {
+        CORO_ASSERT_EQ(recorded_messages[i], i * 3);
+    }
+
+    RPC_INFO("Post with optimistic_ptr test completed - all {} messages received in order through optimistic pointer",
+        large_batch);
+
+    CO_RETURN true;
+}
+
+TYPED_TEST(post_functionality_test, post_with_optimistic_ptr)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_post_with_optimistic_ptr<TypeParam>(lib); });
 }
