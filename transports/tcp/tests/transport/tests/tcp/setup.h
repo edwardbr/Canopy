@@ -242,10 +242,34 @@ public:
             io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
 
-        // Continue processing to allow shutdown to finish
-        for (int i = 0; i < 100; ++i)
+        // Wait for transports to fully disconnect before destroying services
+        // The pump_send_and_receive coroutines must complete before scheduler destruction
+        const int max_iterations = 1000;
+        int iteration = 0;
+        int disconnected_iterations = 0;
+        while (iteration < max_iterations)
         {
+            bool all_disconnected = true;
+
+            // Check if both transports are disconnected
+            if (client_transport_ && client_transport_->get_status() != rpc::transport_status::DISCONNECTED)
+                all_disconnected = false;
+            if (server_transport_ && server_transport_->get_status() != rpc::transport_status::DISCONNECTED)
+                all_disconnected = false;
+
+            if (all_disconnected)
+            {
+                // Once disconnected, continue processing for additional iterations
+                // to ensure pump coroutines have fully exited (not just set DISCONNECTED status)
+                ++disconnected_iterations;
+                if (disconnected_iterations > 50)
+                {
+                    break;
+                }
+            }
+
             io_scheduler_->process_events(std::chrono::milliseconds(1));
+            ++iteration;
         }
 
         peer_service_.reset();
