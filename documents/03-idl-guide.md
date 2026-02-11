@@ -353,6 +353,134 @@ auto& info = i_demo_service::function_info<create_object>();
 auto tag = info.tag;  // comprehensive::v1::tags::include_certificate
 ```
 
+### Fire-and-Forget Methods with [post]
+
+The `[post]` attribute creates fire-and-forget methods that send data without waiting for a response. These one-way methods return immediately after queuing the message, making them ideal for notifications, logging, and event streaming where response synchronization is not needed.
+
+**Key Characteristics**:
+- **No Response Wait**: Method returns immediately after sending
+- **Ordering Guarantee**: Messages are received in the order they were sent
+- **One-Way Communication**: No return values or output parameters allowed
+- **Performance**: Lower latency for operations that don't need confirmation
+
+```idl
+namespace websocket_demo::v1
+{
+    interface i_context_event
+    {
+        // Fire-and-forget notification - returns immediately
+        [post] int piece(const std::string& data);
+    };
+
+    interface i_logger
+    {
+        // Fire-and-forget log message
+        [post] int log_event(const std::string& message, int severity);
+
+        // Fire-and-forget metrics update
+        [post] int record_metric(const std::string& metric_name, double value);
+    };
+}
+```
+
+**Implementation Example**:
+```cpp
+class context_event : public rpc::base<context_event, i_context_event>
+{
+    std::vector<std::string> received_pieces_;
+    std::mutex mutex_;
+
+public:
+    // [post] methods still return error_code but caller doesn't wait for it
+    CORO_TASK(int) piece(const std::string& data) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        received_pieces_.push_back(data);
+        RPC_INFO("Received piece: {}", data);
+        CO_RETURN rpc::error::OK();
+    }
+};
+```
+
+**Usage Example**:
+```cpp
+// Caller sends multiple messages without waiting
+for (int i = 0; i < 100; ++i)
+{
+    // Returns immediately - doesn't wait for remote processing
+    CO_AWAIT event->piece("Message " + std::to_string(i));
+}
+
+// All messages guaranteed to arrive in order sent
+```
+
+**Restrictions**:
+- Cannot have `[out]` or `[in, out]` parameters - all parameters must be `[in]` only
+- Cannot pass interface parameters (`rpc::shared_ptr` or `rpc::optimistic_ptr`) - posting interfaces is not currently supported
+- Return type must be `int` or `error_code`
+- No response data can be returned to caller
+- Errors may not be immediately visible to caller
+
+**Invalid Examples**:
+```idl
+interface i_invalid_post
+{
+    // ERROR: [post] cannot have [out] parameters
+    [post] int send_data(const std::string& data, [out] int& status);
+
+    // ERROR: [post] cannot pass interface parameters
+    [post] int notify_observer(const rpc::shared_ptr<i_observer>& observer);
+
+    // ERROR: [post] cannot have [in, out] parameters
+    [post] int modify([in, out] std::string& value);
+}
+```
+
+**Valid Examples**:
+```idl
+interface i_valid_post
+{
+    // OK: Only [in] parameters (primitive types and structs)
+    [post] int log_message(const std::string& message, int severity);
+
+    // OK: Multiple [in] parameters
+    [post] int record_metric(const std::string& name, double value, uint64_t timestamp);
+
+    // OK: Complex struct as [in] parameter
+    [post] int send_event(const event_data& event);
+}
+```
+
+**Use Cases**:
+- **Event Streaming**: Send continuous stream of events or sensor data
+- **Logging**: Send log messages without blocking the main thread
+- **Notifications**: Push notifications where acknowledgment isn't critical
+- **Metrics Collection**: Send performance metrics asynchronously
+- **UI Updates**: Send incremental UI update commands
+
+**Performance Considerations**:
+- Reduces latency by eliminating wait for response
+- May increase throughput for notification-heavy workloads
+- Still subject to transport buffering and flow control
+- Message ordering guaranteed but delivery timing is asynchronous
+
+**Error Handling**:
+Since the caller doesn't wait for a response, error handling is limited:
+- Transport-level errors (connection lost) may be reported
+- Application-level errors in the implementation are not visible to caller
+- Consider complementing with status query methods if error visibility is needed
+
+```idl
+interface i_async_logger
+{
+    // Fire-and-forget log write
+    [post] int write_log(const std::string& message);
+
+    // Query method to check logger health (normal bidirectional call)
+    error_code get_status([out] std::string& status);
+}
+```
+
 ## 5. Parameter Direction and Passing
 
 Parameters in Canopy have direction attributes that control data marshalling across the transport.
@@ -760,6 +888,7 @@ public:
 9. **Understand marshalling**: `[in]` sends to object, `[out]` receives back
 10. **No [in,out] with pointers**: `rpc::shared_ptr` and `rpc::optimistic_ptr` cannot be `[in, out]`
 11. **Avoid raw pointers**: Use references, value types, or smart pointers instead
+12. **Use [post] for one-way operations**: Fire-and-forget methods with `[post]` reduce latency for notifications and events where responses aren't needed
 
 ## 14. IDL Generator Quirks and Known Issues
 

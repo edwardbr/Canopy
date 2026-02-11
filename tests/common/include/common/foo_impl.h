@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <mutex>
 #include <example/example.h>
 
 #include <rpc/rpc.h>
@@ -64,6 +65,8 @@ namespace marshalled_tests
     class foo : public rpc::base<foo, xxx::i_foo>
     {
         rpc::member_ptr<xxx::i_baz> cached_;
+        std::vector<int> recorded_messages_;
+        std::mutex messages_mutex_;
 
     public:
         foo()
@@ -317,6 +320,29 @@ namespace marshalled_tests
                 telemetry_service->message(rpc::i_telemetry_service::info, "exception_test");
 #endif
             throw std::runtime_error("oops");
+            CO_RETURN rpc::error::OK();
+        }
+
+        // [post] method - fire-and-forget, no response expected
+        CORO_TASK(error_code) record_message(int message_id) override
+        {
+            std::lock_guard<std::mutex> lock(messages_mutex_);
+            recorded_messages_.push_back(message_id);
+            RPC_INFO("Recorded message: {}", message_id);
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code) get_recorded_messages(std::vector<int>& messages) override
+        {
+            std::lock_guard<std::mutex> lock(messages_mutex_);
+            messages = recorded_messages_;
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code) clear_recorded_messages() override
+        {
+            std::lock_guard<std::mutex> lock(messages_mutex_);
+            recorded_messages_.clear();
             CO_RETURN rpc::error::OK();
         }
     };

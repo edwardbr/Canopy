@@ -159,6 +159,63 @@ namespace rpc
             transport);
     }
 
+    [[nodiscard]] CORO_TASK(int) service_proxy::post_from_this_zone(uint64_t protocol_version,
+        rpc::encoding encoding,
+        uint64_t tag,
+        rpc::object object_id,
+        rpc::interface_ordinal interface_id,
+        rpc::method method_id,
+        const rpc::span& in_data)
+    {
+        const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
+        const auto max_version = rpc::HIGHEST_SUPPORTED_VERSION;
+        if (protocol_version < min_version || protocol_version > max_version)
+        {
+            CO_RETURN rpc::error::INVALID_VERSION();
+        }
+
+        auto current_version = version_.load();
+        if (protocol_version > current_version)
+        {
+            CO_RETURN rpc::error::INVALID_VERSION();
+        }
+        if (protocol_version < current_version)
+        {
+            version_.store(protocol_version);
+        }
+
+        auto transport = transport_.get_nullable();
+        if (!transport)
+        {
+            CO_RETURN rpc::error::TRANSPORT_ERROR();
+        }
+
+        std::vector<rpc::back_channel_entry> empty_in;
+        std::vector<rpc::back_channel_entry> empty_out;
+        // Call the outbound function on the service to allow derived classes to add extra functionality
+        // such as processing back_channel data
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_service_proxy_send(
+                get_zone_id(), destination_zone_id_, get_zone_id().as_caller(), object_id, interface_id, method_id);
+        }
+#endif
+        CO_AWAIT service_->outbound_post(protocol_version,
+            encoding,
+            tag,
+            get_zone_id().as_caller(),
+            destination_zone_id_,
+            object_id,
+            interface_id,
+            method_id,
+            in_data,
+            empty_in,
+            transport);
+
+        CO_RETURN rpc::error::OK();
+    }
+
     [[nodiscard]] CORO_TASK(int) service_proxy::sp_try_cast(
         destination_zone destination_zone_id, object object_id, std::function<interface_ordinal(uint64_t)> id_getter)
     {

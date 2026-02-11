@@ -423,7 +423,7 @@ function calculate() {
             callerZoneId: 2,
             destinationZoneId: 1,
             objectId: 0,
-            interfaceId: Long.fromString("9466040255200586654", true), //i_calculator
+            interfaceId: Long.fromString("2180915978302953945", true), //i_calculator
             methodId: methodId,
             data: requestBytes,
             backChannel: []
@@ -512,7 +512,7 @@ function sendChatMessage() {
             callerZoneId: 2,
             destinationZoneId: 1,
             objectId: 0,
-            interfaceId: Long.fromString("9466040255200586654", true), // i_context
+            interfaceId: Long.fromString("2180915978302953945", true), // i_context
             methodId: 5, // add_prompt
             data: requestBytes,
             backChannel: []

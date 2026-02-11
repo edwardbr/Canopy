@@ -79,6 +79,14 @@ namespace rpc
             const rpc::span& in_data,
             std::vector<char>& out_buf_);
 
+        CORO_TASK(int)
+        post(uint64_t protocol_version,
+            rpc::encoding encoding,
+            uint64_t tag,
+            rpc::interface_ordinal interface_id,
+            rpc::method method_id,
+            const rpc::span& in_data);
+
         size_t get_proxy_count()
         {
             std::lock_guard guard(insert_control_);

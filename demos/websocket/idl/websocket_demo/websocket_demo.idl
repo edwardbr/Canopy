@@ -38,7 +38,7 @@ namespace websocket_demo
 
         interface i_context_event
         {
-            int piece(const std::string& piece);
+            [post] int piece(const std::string& piece);
         };
 
         [status=demo]

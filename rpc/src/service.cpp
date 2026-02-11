@@ -373,14 +373,8 @@ namespace rpc
 
         // For local post, we just call the stub without waiting for a response
         // Note: back-channel is not applicable for post operations (fire-and-forget)
-        // std::vector<char> out_buf_dummy;
-        // CO_AWAIT stub->call(protocol_version,
-        //     encoding,
-        //     caller_zone_id,
-        //     interface_id,
-        //     method_id,
-        //     in_data,
-        //     out_buf_dummy);
+        std::vector<char> out_buf_dummy;
+        CO_AWAIT stub->call(protocol_version, encoding, caller_zone_id, interface_id, method_id, in_data, out_buf_dummy);
 
         // Log that post was delivered to local stub
         RPC_INFO(

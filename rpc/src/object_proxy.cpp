@@ -170,6 +170,22 @@ namespace rpc
             protocol_version, encoding, tag, object_id_, interface_id, method_id, in_data, out_buf_);
     }
 
+    CORO_TASK(int)
+    object_proxy::post(uint64_t protocol_version,
+        rpc::encoding encoding,
+        uint64_t tag,
+        rpc::interface_ordinal interface_id,
+        rpc::method method_id,
+        const rpc::span& in_data)
+    {
+        auto service_proxy = service_proxy_.get_nullable();
+        RPC_ASSERT(service_proxy);
+        if (!service_proxy)
+            CO_RETURN rpc::error::ZONE_NOT_INITIALISED();
+        CO_RETURN CO_AWAIT service_proxy->post_from_this_zone(
+            protocol_version, encoding, tag, object_id_, interface_id, method_id, in_data);
+    }
+
     CORO_TASK(int) object_proxy::try_cast(std::function<interface_ordinal(uint64_t)> id_getter)
     {
         auto service_proxy = service_proxy_.get_nullable();

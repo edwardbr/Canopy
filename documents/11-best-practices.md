@@ -679,3 +679,4 @@ If you encounter conflicts with duplicate parameter names, this indicates a bug 
 4. **Keep coroutines efficient** - don't block
 5. **Use optimistic_ptr** for objects with independent lifetimes
 6. **Batch operations** when possible
+7. **Use [post] for one-way operations** - Fire-and-forget methods with `[post]` eliminate round-trip latency for notifications, events, and logging where responses aren't needed

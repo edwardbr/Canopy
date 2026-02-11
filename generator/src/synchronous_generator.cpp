@@ -607,6 +607,36 @@ namespace synchronous_generator
     {
         if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
         {
+            // Validate [post] attribute restrictions
+            if (function->has_value("post"))
+            {
+                const auto& library = get_root(m_ob);
+                for (auto& parameter : function->get_parameters())
+                {
+                    // Check for [out] or [in,out] parameters
+                    bool has_out = parameter.has_value("out");
+
+                    if (has_out)
+                    {
+                        throw std::runtime_error(std::string("Error in ") + m_ob.get_name() + "::" + function->get_name()
+                            + ": [post] methods cannot have [out] or [in,out] parameters. Parameter '"
+                            + parameter.get_name() + "' has [out] attribute.");
+                    }
+
+                    // Check for interface parameters (rpc::shared_ptr or rpc::optimistic_ptr)
+                    bool optimistic = false;
+                    std::shared_ptr<class_entity> obj;
+                    bool is_interface = is_interface_param(library, parameter.get_type(), optimistic, obj);
+                    if (is_interface)
+                    {
+                        throw std::runtime_error(std::string("Error in ") + m_ob.get_name() + "::" + function->get_name()
+                            + ": [post] methods cannot have interface parameters (rpc::shared_ptr or rpc::optimistic_ptr). "
+                            + "Parameter '" + parameter.get_name() + "' of type '" + parameter.get_type()
+                            + "' is not supported. Posting interfaces is not currently supported.");
+                    }
+                }
+            }
+
             std::string scoped_namespace;
             interface_declaration_generator::build_scoped_name(&m_ob, scoped_namespace);
 
@@ -705,8 +735,11 @@ namespace synchronous_generator
                 }
             }
 
-            proxy(
-                "std::vector<char> __rpc_out_buf(CANOPY_OUT_BUFFER_SIZE); //max size using short string optimisation");
+            if (!function->has_value("post"))
+            {
+                proxy("std::vector<char> __rpc_out_buf(CANOPY_OUT_BUFFER_SIZE); //max size using short string "
+                      "optimisation");
+            }
             proxy("auto __rpc_ret = rpc::error::OK();");
 
             proxy("//PROXY_PREPARE_IN");
@@ -905,23 +938,41 @@ namespace synchronous_generator
             if (tag.empty())
                 tag = "0";
 
-            proxy("__rpc_ret = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, (uint64_t){}, "
-                  "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}}, "
-                  "__rpc_out_buf);",
-                tag,
-                interface_name,
-                function_count);
+            if (function->has_value("post"))
+            {
+                proxy("__rpc_ret = CO_AWAIT __rpc_op->post(__rpc_version, __rpc_encoding, (uint64_t){}, "
+                      "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
+                    tag,
+                    interface_name,
+                    function_count);
+            }
+            else
+            {
+                proxy("__rpc_ret = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, (uint64_t){}, "
+                      "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}}, "
+                      "__rpc_out_buf);",
+                    tag,
+                    interface_name,
+                    function_count);
+            }
 
             proxy("if(__rpc_ret == rpc::error::INVALID_VERSION())");
             proxy("{{");
             proxy("if(__rpc_version == __rpc_min_version)");
             proxy("{{");
-            proxy("__rpc_out_buf.clear();");
-            proxy("CO_RETURN __rpc_ret;");
+            if (!function->has_value("post"))
+            {
+                proxy("__rpc_out_buf.clear();");
+            }
+            if (!function->has_value("post"))
+                proxy("CO_RETURN __rpc_ret;");
             proxy("}}");
             proxy("--__rpc_version;");
             proxy("__rpc_sp->update_remote_rpc_version(__rpc_version);");
-            proxy("__rpc_out_buf = std::vector<char>(CANOPY_OUT_BUFFER_SIZE);");
+            if (!function->has_value("post"))
+            {
+                proxy("__rpc_out_buf = std::vector<char>(CANOPY_OUT_BUFFER_SIZE);");
+            }
             proxy("continue;");
             proxy("}}");
 
@@ -934,7 +985,10 @@ namespace synchronous_generator
                 proxy("{{");
                 proxy("__rpc_sp->set_encoding(rpc::encoding::yas_json);");
                 proxy("__rpc_encoding = rpc::encoding::yas_json;");
-                proxy("__rpc_out_buf = std::vector<char>(CANOPY_OUT_BUFFER_SIZE);");
+                if (!function->has_value("post"))
+                {
+                    proxy("__rpc_out_buf = std::vector<char>(CANOPY_OUT_BUFFER_SIZE);");
+                }
                 proxy("continue;");
                 proxy("}}");
                 proxy("else");
@@ -957,7 +1011,10 @@ namespace synchronous_generator
             proxy("//this is only here to handle rpc generated errors and not application errors");
             proxy("//clean up any input stubs, this code has to assume that the destination is behaving correctly");
             proxy("RPC_ERROR(\"failed in {}\");", function->get_name());
-            proxy("__rpc_out_buf.clear();");
+            if (!function->has_value("post"))
+            {
+                proxy("__rpc_out_buf.clear();");
+            }
             proxy("CO_RETURN __rpc_ret;");
             proxy("}}");
 
@@ -1114,6 +1171,7 @@ namespace synchronous_generator
                     stub("}}");
                 }
             }
+            if (!function->has_value("post"))
             {
                 uint64_t count = 1;
 
@@ -1195,7 +1253,9 @@ namespace synchronous_generator
                 proxy("break;");
                 proxy("}}");
                 proxy("}}");
+            }
 
+            {
                 // Generate stub serializer
                 stub("switch(enc)");
                 stub("{{");

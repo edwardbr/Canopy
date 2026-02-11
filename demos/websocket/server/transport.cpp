@@ -100,6 +100,36 @@ namespace websocket_demo
             const rpc::span& in_data,
             const std::vector<rpc::back_channel_entry>& back_channel)
         {
+
+#ifdef CANOPY_USE_TELEMETRY
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            {
+                telemetry_service->on_transport_outbound_send(
+                    get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
+            }
+#endif
+            websocket_demo::v1::request request;
+            request.encoding = encoding;
+            request.tag = tag;
+            request.caller_zone_id = caller_zone_id.get_val();
+            request.destination_zone_id = destination_zone_id.get_val();
+            request.object_id = object_id.get_val();
+            request.method_id = method_id.get_val();
+            request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
+            request.back_channel = {};
+
+            auto payload = rpc::to_protobuf<std::vector<char>>(request);
+            websocket_demo::v1::envelope envelope;
+            envelope.message_type = rpc::id<websocket_demo::v1::request>::get(rpc::get_version());
+            envelope.data = std::move(payload);
+            auto complete_payload = rpc::to_protobuf(envelope);
+            // send to parent
+
+            // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
+            std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
+            pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
+            std::cout << "[Transport] Response queued to pending queue, queue size=" << pending_messages_->size()
+                      << std::endl;
             CO_RETURN;
         }
 

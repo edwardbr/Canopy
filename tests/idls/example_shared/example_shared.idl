@@ -80,6 +80,11 @@ namespace xxx
         error_code get_interface([out]rpc::shared_ptr<i_baz>& val);//can be null
 
         error_code exception_test();
+
+        // Test for [post] attribute - one-way fire-and-forget messaging
+        [post] int record_message(int message_id);
+        error_code get_recorded_messages([out] std::vector<int>& messages);
+        error_code clear_recorded_messages();
     };
 
     [status=production]
