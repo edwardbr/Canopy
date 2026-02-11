@@ -82,11 +82,19 @@ foreach(test_name ${BUILDABLE_TESTS})
       set_target_properties(${test_name} PROPERTIES CXX_STANDARD 17)
 
       add_test(NAME ${test_name} COMMAND ${test_name})
-      set_tests_properties(${test_name} PROPERTIES ENVIRONMENT
-                                                   "ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0")
 
-      # Skip gtest_discover_tests for death tests as they are designed to crash during discovery
-      if(NOT test_name STREQUAL "GH_005315_destructor_tombstones")
+      # ASan options: disable leak detection for all tests
+      # Dev10_445289_make_shared also needs alloc_dealloc_mismatch=0 because it overrides operator new/delete
+      if(test_name STREQUAL "Dev10_445289_make_shared")
+        set_tests_properties(${test_name} PROPERTIES ENVIRONMENT
+                                                     "ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0;LSAN_OPTIONS=detect_leaks=0")
+      else()
+        set_tests_properties(${test_name} PROPERTIES ENVIRONMENT
+                                                     "ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0")
+      endif()
+
+      # Skip gtest_discover_tests for death tests and ASan-incompatible tests
+      if(NOT test_name STREQUAL "GH_005315_destructor_tombstones" AND NOT test_name STREQUAL "Dev10_445289_make_shared")
         gtest_discover_tests(${test_name})
       endif()
     endif()

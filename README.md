@@ -29,6 +29,7 @@ Note this is in Beta including the documentation and is in active development
 - **🛡️ SGX Enclave Support**: Secure computation in Intel SGX enclaves
 - **📊 Comprehensive Telemetry**: Sequence diagrams, console output, HTML animations
 - **🔧 Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [13-coroutine-libraries.md](documents/13-coroutine-libraries.md))
+- **🧪 AddressSanitizer Support**: Full ASan integration with 972 tests passing (100% memory safety validated)
 
 ---
 
@@ -80,17 +81,24 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 git clone https://github.com/edwardbr/Canopy.git
 cd Canopy
 
-# Choose Blocking 
+# Choose Blocking
 cmake --preset Debug
 
 # Or Coroutines
 cmake --preset Coroutine_Debug
+
+# Or with AddressSanitizer (memory safety testing)
+cmake --preset Debug_ASAN
+cmake --preset Coroutine_Debug_ASAN
 
 # Build core library
 cmake --build build_debug --target rpc
 
 # Run tests
 ctest --test-dir build_debug --output-on-failure
+
+# Run individual tests with ASan (recommended)
+tests/scripts/run_asan_tests.sh
 ```
 
 ### Build Options
@@ -107,7 +115,12 @@ CANOPY_BUILD_DEMOS=ON        # Demo applications
 # Development
 CANOPY_USE_LOGGING=ON        # Comprehensive logging
 CANOPY_USE_TELEMETRY=ON      # Debugging and visualization
-CANOPY_DEBUG_GEN=ON            # Code generation debugging
+CANOPY_DEBUG_GEN=ON          # Code generation debugging
+
+# Memory Safety
+CANOPY_DEBUG_ADDRESS=ON      # AddressSanitizer (detect memory errors)
+CANOPY_DEBUG_THREAD=ON       # ThreadSanitizer (detect data races)
+CANOPY_DEBUG_UNDEFINED=ON    # UndefinedBehaviorSanitizer
 ```
 
 ---

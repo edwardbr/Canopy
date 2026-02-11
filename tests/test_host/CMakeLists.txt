@@ -74,4 +74,7 @@ if(CANOPY_ENABLE_CLANG_TIDY)
 endif()
 
 include(CTest)
-gtest_discover_tests(rpc_test)
+# Skip gtest_discover_tests when using AddressSanitizer due to protobuf container-overflow false positives
+if(NOT CANOPY_DEBUG_ADDRESS)
+  gtest_discover_tests(rpc_test)
+endif()

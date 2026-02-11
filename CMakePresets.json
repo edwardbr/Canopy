@@ -52,6 +52,21 @@
       }
     },
     {
+      "name": "Debug_ASAN",
+      "binaryDir": "build_debug",
+      "inherits": "Base",
+      "cacheVariables": {
+        "CANOPY_BUILD_COROUTINE": "OFF",
+        "BUILD_TYPE": "debug",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CANOPY_USE_LOGGING": "OFF",
+        "CANOPY_USE_TELEMETRY": "OFF",
+        "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
+        "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
+        "CANOPY_DEBUG_ADDRESS": "ON"
+      }
+    },
+    {
       "name": "Debug-clang-18",
       "binaryDir": "build_debug",
       "inherits": "Base",
@@ -96,6 +111,22 @@
         "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
         "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
         "CANOPY_BUILD_DEMOS": "ON"
+      }
+    },
+    {
+      "name": "Coroutine_Debug_ASAN",
+      "inherits": "Base",
+      "binaryDir": "build_coroutine_debug",
+      "cacheVariables": {
+        "CANOPY_BUILD_COROUTINE": "ON",
+        "BUILD_TYPE": "debug",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CANOPY_USE_LOGGING": "OFF",
+        "CANOPY_USE_TELEMETRY": "OFF",
+        "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
+        "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
+        "CANOPY_BUILD_DEMOS": "OFF",
+        "CANOPY_DEBUG_ADDRESS": "ON"
       }
     },
     {
