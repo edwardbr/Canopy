@@ -842,9 +842,22 @@ namespace marshalled_tests
             CO_RETURN rpc::error::OK();
         }
 
+        CORO_TASK(error_code) set_optimistic_ptr(const rpc::optimistic_ptr<xxx::i_foo>& val) override
+        {
+            cached_optimistic_foo_ = val;
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code) get_optimistic_ptr(rpc::optimistic_ptr<xxx::i_foo>& val) override
+        {
+            val = cached_optimistic_foo_;
+            CO_RETURN rpc::error::OK();
+        }
+
     private:
         // Cache for storing objects from autonomous zones
         rpc::shared_ptr<yyy::i_example> cached_autonomous_object_;
+        rpc::optimistic_ptr<xxx::i_foo> cached_optimistic_foo_;
 
     public:
         CORO_TASK(error_code) cache_object_from_autonomous_zone(const std::vector<uint64_t>& zone_ids) override

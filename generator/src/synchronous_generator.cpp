@@ -426,18 +426,33 @@ namespace synchronous_generator
             throw std::runtime_error("INTERFACE does not support out vals");
         }
 
+        bool is_optimistic = object_type.find("rpc::optimistic_ptr") != std::string::npos;
+
         print_type pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_PREPARE_IN:
             return fmt::format("std::shared_ptr<rpc::object_stub> {}_stub_;", name);
         case PROXY_PREPARE_IN_INTERFACE_ID:
+            if (is_optimistic)
+            {
+                return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
+                                   "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                                   "\t\t\t{{{{\n"
+                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
+                                   "__rpc_sp->get_remote_rpc_version(), "
+                                   "{0}, {0}_stub_, {0}_stub_id_);\n"
+                                   "\t\t\t}}}}",
+                    name);
+            }
             return fmt::format("RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
                                "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
                                "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                               "\t\t\t{{{{\n"
                                "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
                                "__rpc_sp->get_remote_rpc_version(), "
-                               "{0}, {0}_stub_, {0}_stub_id_);",
+                               "{0}, {0}_stub_, {0}_stub_id_);\n"
+                               "\t\t\t}}}}",
                 name);
         case PROXY_MARSHALL_IN:
         {
@@ -512,17 +527,32 @@ namespace synchronous_generator
         std::ignore = is_const;
         std::ignore = count;
 
+        bool is_optimistic = object_type.find("rpc::optimistic_ptr") != std::string::npos;
+
         switch (option)
         {
         case PROXY_PREPARE_IN:
             return fmt::format("std::shared_ptr<rpc::object_stub> {}_stub_;", name);
         case PROXY_PREPARE_IN_INTERFACE_ID:
+            if (is_optimistic)
+            {
+                return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
+                                   "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                                   "\t\t\t{{{{\n"
+                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
+                                   "__rpc_sp->get_remote_rpc_version(), "
+                                   "{0}, {0}_stub_, {0}_stub_id_);\n"
+                                   "\t\t\t}}}}",
+                    name);
+            }
             return fmt::format("RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
                                "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
                                "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                               "\t\t\t{{{{\n"
                                "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
                                "__rpc_sp->get_remote_rpc_version(), "
-                               "{0}, {0}_stub_);",
+                               "{0}, {0}_stub_, {0}_stub_id_);\n"
+                               "\t\t\t}}}}",
                 name);
         case PROXY_MARSHALL_IN:
         {
@@ -618,7 +648,8 @@ namespace synchronous_generator
 
                     if (has_out)
                     {
-                        throw std::runtime_error(std::string("Error in ") + m_ob.get_name() + "::" + function->get_name()
+                        throw std::runtime_error(
+                            std::string("Error in ") + m_ob.get_name() + "::" + function->get_name()
                             + ": [post] methods cannot have [out] or [in,out] parameters. Parameter '"
                             + parameter.get_name() + "' has [out] attribute.");
                     }
@@ -629,8 +660,9 @@ namespace synchronous_generator
                     bool is_interface = is_interface_param(library, parameter.get_type(), optimistic, obj);
                     if (is_interface)
                     {
-                        throw std::runtime_error(std::string("Error in ") + m_ob.get_name() + "::" + function->get_name()
-                            + ": [post] methods cannot have interface parameters (rpc::shared_ptr or rpc::optimistic_ptr). "
+                        throw std::runtime_error(
+                            std::string("Error in ") + m_ob.get_name() + "::"
+                            + function->get_name() + ": [post] methods cannot have interface parameters (rpc::shared_ptr or rpc::optimistic_ptr). "
                             + "Parameter '" + parameter.get_name() + "' of type '" + parameter.get_type()
                             + "' is not supported. Posting interfaces is not currently supported.");
                     }
@@ -1436,7 +1468,7 @@ namespace synchronous_generator
 
                     bool optimistic = false;
                     std::shared_ptr<class_entity> obj;
-                    marshalls_interfaces = is_interface_param(library, parameter.get_type(), optimistic, obj);
+                    marshalls_interfaces |= is_interface_param(library, parameter.get_type(), optimistic, obj);
                 }
 
                 // Get description attribute
@@ -2211,6 +2243,12 @@ namespace synchronous_generator
                "descriptor);",
             ns,
             interface_name);
+        header("template<> CORO_TASK(int) "
+               "rpc::service::bind_in_proxy(uint64_t protocol_version, const rpc::optimistic_ptr<::{}{}>& "
+               "iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, rpc::interface_descriptor& "
+               "descriptor);",
+            ns,
+            interface_name);
     }
 
     void write_library_proxy_factory(
@@ -2266,7 +2304,26 @@ namespace synchronous_generator
         stub("auto factory = get_interface_stub_factory(iface);");
         stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface.get(), "
              "factory, "
-             "stub, descriptor);");
+             "stub, descriptor, false);");
+        stub("}}");
+
+        stub("template<> CORO_TASK(int) service::bind_in_proxy(uint64_t protocol_version, "
+             "const "
+             "rpc::optimistic_ptr<::{}{}>& iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, "
+             "rpc::interface_descriptor& "
+             "descriptor)",
+            ns,
+            interface_name);
+        stub("{{");
+        stub("if(!iface)");
+        stub("{{");
+        stub("CO_RETURN rpc::error::INVALID_DATA();");
+        stub("}}");
+
+        stub("auto factory = get_interface_stub_factory(iface);");
+        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface.get(), "
+             "factory, "
+             "stub, descriptor, false);");
         stub("}}");
     }
 

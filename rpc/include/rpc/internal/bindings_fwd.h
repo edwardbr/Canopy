@@ -36,7 +36,8 @@ namespace rpc
         uint64_t protocol_version,
         caller_zone caller_zone_id,
         const shared_ptr<T>& iface,
-        interface_descriptor& descriptor);
+        interface_descriptor& descriptor,
+        bool optimistic);
 
     template<class T>
     CORO_TASK(int)
@@ -61,10 +62,42 @@ namespace rpc
     proxy_bind_out_param(
         const std::shared_ptr<rpc::service_proxy>& sp, const rpc::interface_descriptor& encap, rpc::shared_ptr<T>& val);
 
+    // optimistic_ptr overloads for marshalling
+    template<class T>
+    CORO_TASK(int)
+    proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
+        uint64_t protocol_version,
+        const rpc::optimistic_ptr<T>& iface,
+        std::shared_ptr<rpc::object_stub>& stub,
+        rpc::interface_descriptor& descriptor);
+
+    template<class T>
+    CORO_TASK(int)
+    proxy_bind_out_param(const std::shared_ptr<rpc::service_proxy>& sp,
+        const rpc::interface_descriptor& encap,
+        rpc::optimistic_ptr<T>& val);
+
+    template<class T>
+    CORO_TASK(int)
+    stub_bind_in_param(uint64_t protocol_version,
+        const std::shared_ptr<rpc::service>& serv,
+        caller_zone caller_zone_id,
+        const rpc::interface_descriptor& encap,
+        rpc::optimistic_ptr<T>& iface);
+
+    template<class T>
+    CORO_TASK(int)
+    stub_bind_out_param(const std::shared_ptr<rpc::service>& zone,
+        uint64_t protocol_version,
+        caller_zone caller_zone_id,
+        const optimistic_ptr<T>& iface,
+        interface_descriptor& descriptor,
+        bool optimistic);
+
     template<class T>
     CORO_TASK(int)
     demarshall_interface_proxy(uint64_t protocol_version,
         const std::shared_ptr<rpc::service_proxy>& sp,
         const rpc::interface_descriptor& encap,
-        rpc::shared_ptr<T>& val);
+        rpc::optimistic_ptr<T>& val);
 }

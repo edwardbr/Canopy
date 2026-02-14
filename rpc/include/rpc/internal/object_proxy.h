@@ -158,6 +158,74 @@ namespace rpc
                 CO_RETURN rpc::error::OK();
             }
         }
+
+        template<class T> CORO_TASK(int) query_interface(rpc::optimistic_ptr<T>& iface, bool do_remote_check = true)
+        {
+            auto create
+                = [&](std::unordered_map<interface_ordinal, rpc::weak_ptr<casting_interface>>::iterator item) -> CORO_TASK(
+                                                                                                                  int)
+            {
+                rpc::shared_ptr<casting_interface> proxy = item->second.lock();
+                if (!proxy)
+                {
+                    // weak pointer needs refreshing
+                    rpc::shared_ptr<T> tmp;
+                    create_interface_proxy<T>(tmp);
+                    item->second = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+                    CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
+                }
+                CO_RETURN CO_AWAIT rpc::make_optimistic(rpc::reinterpret_pointer_cast<T>(proxy), iface);
+            };
+
+            { // scope for the lock
+                std::lock_guard guard(insert_control_);
+                if (T::get_id(rpc::VERSION_2) == 0)
+                {
+                    CO_RETURN rpc::error::OK();
+                }
+                {
+                    auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
+                    if (item != proxy_map.end())
+                    {
+                        CO_RETURN CO_AWAIT create(item);
+                    }
+                }
+                if (!do_remote_check)
+                {
+                    rpc::shared_ptr<T> tmp;
+                    create_interface_proxy<T>(tmp);
+                    proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+                    CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
+                }
+            }
+
+            // release the lock and then check for casting
+            if (do_remote_check)
+            {
+                // see if object_id can implement interface
+                int ret = CO_AWAIT try_cast(T::get_id);
+                if (ret != rpc::error::OK())
+                {
+                    CO_RETURN ret;
+                }
+            }
+            { // another scope for the lock
+                std::lock_guard guard(insert_control_);
+
+                // check again...
+                {
+                    auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
+                    if (item != proxy_map.end())
+                    {
+                        CO_RETURN CO_AWAIT create(item);
+                    }
+                }
+                rpc::shared_ptr<T> tmp;
+                create_interface_proxy<T>(tmp);
+                proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+                CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
+            }
+        }
     };
 
 }
