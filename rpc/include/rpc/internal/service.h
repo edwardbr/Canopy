@@ -175,6 +175,9 @@ namespace rpc
         template<class T>
         friend CORO_TASK(int) stub_bind_out_param(
             const std::shared_ptr<rpc::service>&, uint64_t, caller_zone, const shared_ptr<T>&, interface_descriptor&);
+        template<class T>
+        friend CORO_TASK(int) stub_bind_out_param(
+            const std::shared_ptr<rpc::service>&, uint64_t, caller_zone, const optimistic_ptr<T>&, interface_descriptor&);
 
         template<class T>
         friend CORO_TASK(int) stub_bind_in_param(
@@ -597,6 +600,10 @@ namespace rpc
         std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
         get_interface_stub_factory(const shared_ptr<T>& iface);
 
+        template<class T>
+        std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
+        get_interface_stub_factory(const optimistic_ptr<T>& iface);
+
         int create_interface_stub(rpc::interface_ordinal interface_id,
             std::function<interface_ordinal(uint8_t)> original_interface_id,
             const std::shared_ptr<rpc::i_interface_stub>& original,
@@ -663,12 +670,21 @@ namespace rpc
             caller_zone caller_zone_id,
             interface_descriptor& descriptor);
 
+        template<class T>
+        CORO_TASK(int)
+        bind_in_proxy(uint64_t protocol_version,
+            const optimistic_ptr<T>& iface,
+            std::shared_ptr<rpc::object_stub>& stub,
+            caller_zone caller_zone_id,
+            interface_descriptor& descriptor);
+
         CORO_TASK(int)
         get_descriptor_from_interface_stub(caller_zone caller_zone_id,
             rpc::casting_interface* pointer,
             std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
             std::shared_ptr<object_stub>& stub,
-            interface_descriptor& descriptor);
+            interface_descriptor& descriptor,
+            bool optimistic);
 
         // Specialized version for binding out parameters (used by stub_bind_out_param)
         CORO_TASK(int)
@@ -677,7 +693,8 @@ namespace rpc
             rpc::casting_interface* pointer,
             std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
             std::shared_ptr<object_stub>& stub,
-            interface_descriptor& descriptor);
+            interface_descriptor& descriptor,
+            bool optimistic);
 
         /////////////////////////////////
         // PRIVATE FUNCTIONS
@@ -704,6 +721,11 @@ namespace rpc
             rpc::shared_ptr<T>& val);
 
         template<class T>
+        friend CORO_TASK(int) rpc::proxy_bind_out_param(const std::shared_ptr<rpc::service_proxy>& sp,
+            const rpc::interface_descriptor& encap,
+            rpc::optimistic_ptr<T>& val);
+
+        template<class T>
         friend CORO_TASK(int) rpc::stub_bind_in_param(uint64_t protocol_version,
             const std::shared_ptr<rpc::service>& serv,
             rpc::caller_zone caller_zone_id,
@@ -722,11 +744,24 @@ namespace rpc
             rpc::caller_zone caller_zone_id,
             const rpc::shared_ptr<T>& iface,
             rpc::interface_descriptor& descriptor);
+        template<class T>
+        friend CORO_TASK(int) rpc::stub_bind_out_param(const std::shared_ptr<rpc::service>& zone,
+            uint64_t protocol_version,
+            rpc::caller_zone caller_zone_id,
+            const rpc::optimistic_ptr<T>& iface,
+            rpc::interface_descriptor& descriptor);
 
         template<class T>
         friend CORO_TASK(int) rpc::proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
             uint64_t protocol_version,
             const rpc::shared_ptr<T>& iface,
+            std::shared_ptr<rpc::object_stub>& stub,
+            rpc::interface_descriptor& descriptor);
+
+        template<class T>
+        friend CORO_TASK(int) rpc::proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
+            uint64_t protocol_version,
+            const rpc::optimistic_ptr<T>& iface,
             std::shared_ptr<rpc::object_stub>& stub,
             rpc::interface_descriptor& descriptor);
     };
@@ -949,7 +984,7 @@ namespace rpc
             std::shared_ptr<object_stub> stub;
             auto factory = get_interface_stub_factory(input_interface);
             err_code = CO_AWAIT get_descriptor_from_interface_stub(
-                child_transport->get_adjacent_zone_id().as_caller(), input_interface.get(), factory, stub, input_descr);
+                child_transport->get_adjacent_zone_id().as_caller(), input_interface.get(), factory, stub, input_descr, false);
 
             if (err_code != error::OK())
             {

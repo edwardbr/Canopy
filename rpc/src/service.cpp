@@ -410,7 +410,8 @@ namespace rpc
         rpc::casting_interface* iface,
         std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
         std::shared_ptr<rpc::object_stub>& stub,
-        interface_descriptor& descriptor)
+        interface_descriptor& descriptor,
+        bool optimistic)
     {
 
         auto* pointer = iface->get_address();
@@ -436,7 +437,7 @@ namespace rpc
                 stub->on_added_to_zone(stub);
             }
         }
-        auto ret = CO_AWAIT stub->add_ref(false, false, caller_zone_id);
+        auto ret = CO_AWAIT stub->add_ref(optimistic, false, caller_zone_id);
         if (ret != rpc::error::OK())
         {
             CO_RETURN ret;
@@ -451,7 +452,8 @@ namespace rpc
         rpc::casting_interface* iface,
         std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
         std::shared_ptr<rpc::object_stub>& stub,
-        interface_descriptor& descriptor)
+        interface_descriptor& descriptor,
+        bool optimistic)
     {
         // This is ALWAYS an out parameter case
         if (caller_zone_id.is_set() && !iface->is_local())
@@ -541,7 +543,8 @@ namespace rpc
                 object_id,
                 caller_zone_id,
                 known_direction,
-                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route,
+                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
+                    | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
                 empty_in,
                 empty_out);
             if (err_code != rpc::error::OK())
@@ -557,7 +560,8 @@ namespace rpc
                     caller_zone_id,
                     object_id,
                     known_direction,
-                    rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route);
+                    rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
+                        | (optimistic ? add_ref_options::optimistic : add_ref_options::normal));
             }
 #endif
 
@@ -587,7 +591,7 @@ namespace rpc
                     stub->on_added_to_zone(stub);
                 }
             }
-            auto ret = CO_AWAIT stub->add_ref(false, true, caller_zone_id); // outcall=true
+            auto ret = CO_AWAIT stub->add_ref(optimistic, true, caller_zone_id); // outcall=true
             if (ret != rpc::error::OK())
             {
                 CO_RETURN ret;
@@ -654,6 +658,7 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
+        bool optimistic = !!(build_out_param_channel & add_ref_options::optimistic);
         bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
         bool build_dest_channel = !!(build_out_param_channel & add_ref_options::build_destination_route)
                                   || build_out_param_channel == add_ref_options::normal
@@ -672,7 +677,8 @@ namespace rpc
                     object_id,
                     caller_zone_id,
                     zone_id_.as_known_direction_zone(),
-                    add_ref_options::build_caller_route,
+                    add_ref_options::build_caller_route
+                        | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
                     in_back_channel,
                     out_back_channel);
                 if (error != rpc::error::OK())
@@ -1450,6 +1456,32 @@ namespace rpc
         {
             CO_AWAIT notify_object_gone_event(obj.object_id, obj.destination_zone_id);
         }
+    }
+
+    template<class T>
+    std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>&)>
+    service::get_interface_stub_factory(const shared_ptr<T>&)
+    {
+        auto interface_id = T::get_id(rpc::VERSION_2);
+        return [interface_id](const std::shared_ptr<object_stub>& stub) -> std::shared_ptr<rpc::i_interface_stub>
+        {
+            if (!stub)
+                return nullptr;
+            return stub->get_interface(interface_id);
+        };
+    }
+
+    template<class T>
+    std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>&)>
+    service::get_interface_stub_factory(const optimistic_ptr<T>&)
+    {
+        auto interface_id = T::get_id(rpc::VERSION_2);
+        return [interface_id](const std::shared_ptr<object_stub>& stub) -> std::shared_ptr<rpc::i_interface_stub>
+        {
+            if (!stub)
+                return nullptr;
+            return stub->get_interface(interface_id);
+        };
     }
 
 }

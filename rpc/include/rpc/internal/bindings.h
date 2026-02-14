@@ -59,7 +59,7 @@ namespace rpc
 
         std::shared_ptr<rpc::object_stub> stub;
         CO_RETURN CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
-            protocol_version, caller_zone_id, iface.get(), factory, stub, descriptor);
+            protocol_version, caller_zone_id, iface.get(), factory, stub, descriptor, false);
     }
 
     // do not use directly it is for the interface generator use rpc::create_interface_proxy if you want to get a proxied pointer to a remote implementation
@@ -289,6 +289,158 @@ namespace rpc
         }
         std::shared_ptr<object_stub> stub;
         auto factory = serv.get_interface_stub_factory(iface);
-        CO_RETURN CO_AWAIT serv.get_descriptor_from_interface_stub(caller_zone_id, iface.get(), factory, stub, descriptor);
+        CO_RETURN CO_AWAIT serv.get_descriptor_from_interface_stub(
+            caller_zone_id, iface.get(), factory, stub, descriptor, false);
+    }
+
+    // optimistic_ptr overload: convert to shared_ptr and delegate
+    template<class T>
+    CORO_TASK(int)
+    proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
+        uint64_t protocol_version,
+        const rpc::optimistic_ptr<T>& iface,
+        std::shared_ptr<rpc::object_stub>& stub,
+        interface_descriptor& descriptor)
+    {
+        if (!iface)
+        {
+            descriptor = {0, 0};
+            CO_RETURN error::OK();
+        }
+
+        RPC_ASSERT(object_p);
+        if (!object_p)
+            CO_RETURN error::INVALID_DATA();
+        auto sp = object_p->get_service_proxy();
+        auto operating_service = sp->get_operating_zone_service();
+
+        // this is to check that an interface is belonging to another zone and not the operating zone
+        if (!iface->is_local()
+            && casting_interface::get_destination_zone(*iface) != operating_service->get_zone_id().as_destination())
+        {
+            descriptor = {casting_interface::get_object_id(*iface), casting_interface::get_destination_zone(*iface)};
+            CO_RETURN error::OK();
+        }
+
+        // else encapsulate away
+        CO_RETURN CO_AWAIT operating_service->bind_in_proxy(
+            protocol_version, iface, stub, sp->get_destination_zone_id().as_caller(), descriptor);
+    }
+
+    // optimistic_ptr overload: get shared_ptr result then convert to optimistic_ptr
+    template<class T>
+    CORO_TASK(int)
+    proxy_bind_out_param(
+        const std::shared_ptr<rpc::service_proxy>& sp, const rpc::interface_descriptor& encap, rpc::optimistic_ptr<T>& val)
+    {
+        // if we have a null object id then return a null ptr
+        if (!encap.object_id.is_set() || !encap.destination_zone_id.is_set())
+            CO_RETURN rpc::error::OK();
+
+        auto serv = sp->get_operating_zone_service();
+
+        // if it is local to this service then just get the relevant stub
+        if (encap.destination_zone_id == serv->get_zone_id().as_destination())
+        {
+            auto ob = serv->get_object(encap.object_id).lock();
+            if (!ob)
+            {
+                RPC_ERROR("Object not found - object is null in release");
+                CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+            }
+
+            auto count = serv->release_local_stub(ob, false, encap.destination_zone_id.as_caller());
+            RPC_ASSERT(count);
+            if (!count || count == std::numeric_limits<uint64_t>::max())
+            {
+                RPC_ERROR("Reference count error in release");
+                CO_RETURN rpc::error::REFERENCE_COUNT_ERROR();
+            }
+
+            auto interface_stub = ob->get_interface(T::get_id(rpc::VERSION_2));
+            if (!interface_stub)
+            {
+                if (!interface_stub)
+                {
+                    RPC_ERROR("Invalid interface ID in proxy release");
+                    CO_RETURN rpc::error::INVALID_INTERFACE_ID();
+                }
+            }
+
+            CO_RETURN CO_AWAIT rpc::make_optimistic(
+                rpc::static_pointer_cast<T>(interface_stub->get_castable_interface()), val);
+        }
+
+        // get the right  service proxy
+        bool new_proxy_added = false;
+        auto service_proxy = sp;
+
+        if (sp->get_destination_zone_id() != encap.destination_zone_id)
+        {
+            // if the zone is different lookup or clone the right proxy
+            // the service proxy is where the object came from so it should be used as the new caller channel for this returned object
+            service_proxy = serv->get_zone_proxy({0}, {encap.destination_zone_id}, new_proxy_added);
+            if (!service_proxy)
+            {
+                RPC_ERROR("Object not found - service proxy is null in proxy_bind_out_param");
+                CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            }
+        }
+
+        std::shared_ptr<rpc::object_proxy> op;
+        auto err = CO_AWAIT service_proxy->get_or_create_object_proxy(
+            encap.object_id, service_proxy::object_proxy_creation_rule::RELEASE_IF_NOT_NEW, new_proxy_added, {}, true, op);
+        if (err != error::OK())
+        {
+            RPC_ERROR("get_or_create_object_proxy failed");
+            CO_RETURN err;
+        }
+        if (!op)
+        {
+            RPC_ERROR("Object not found in proxy_bind_out_param");
+            CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+        }
+        RPC_ASSERT(op != nullptr);
+        CO_RETURN CO_AWAIT op->query_interface(val, false);
+    }
+
+    // optimistic_ptr overload: get shared_ptr result then convert to optimistic_ptr
+    template<class T>
+    CORO_TASK(int)
+    stub_bind_in_param(uint64_t protocol_version,
+        const std::shared_ptr<rpc::service>& serv,
+        caller_zone caller_zone_id,
+        const rpc::interface_descriptor& encap,
+        rpc::optimistic_ptr<T>& iface)
+    {
+        rpc::shared_ptr<T> shared_iface;
+        auto err = CO_AWAIT stub_bind_in_param(protocol_version, serv, caller_zone_id, encap, shared_iface);
+        if (err != error::OK())
+            CO_RETURN err;
+        if (!shared_iface)
+            CO_RETURN error::OK();
+
+        CO_RETURN CO_AWAIT rpc::make_optimistic(shared_iface, iface);
+    }
+
+    // optimistic_ptr overload: convert to shared_ptr and delegate
+    template<class T>
+    CORO_TASK(int)
+    stub_bind_out_param(const std::shared_ptr<rpc::service>& zone,
+        uint64_t protocol_version,
+        caller_zone caller_zone_id,
+        const optimistic_ptr<T>& iface,
+        interface_descriptor& descriptor)
+    {
+        if (!iface)
+        {
+            descriptor = {0, 0};
+            CO_RETURN rpc::error::OK();
+        }
+        auto factory = zone->get_interface_stub_factory(iface);
+
+        std::shared_ptr<rpc::object_stub> stub;
+        CO_RETURN CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
+            protocol_version, caller_zone_id, iface.get(), factory, stub, descriptor, true);
     }
 }

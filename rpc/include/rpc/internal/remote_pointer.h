@@ -2142,6 +2142,8 @@ namespace rpc
             // local_proxy_holder_ destructor runs automatically
         }
 
+        element_type_impl* get() const noexcept { return ptr_; }
+
         // Copy assignment
         optimistic_ptr& operator=(const optimistic_ptr& r) noexcept
         {
@@ -2176,6 +2178,13 @@ namespace rpc
         {
             reset();
             return *this;
+        }
+
+        template<typename U = T>
+        std::enable_if_t<!std::is_void_v<U> && !std::is_array_v<U>, std::remove_extent_t<U>&> operator*() const noexcept
+        {
+            using result_type = std::remove_extent_t<U>;
+            return *static_cast<result_type*>(ptr_);
         }
 
         // Access operators - operator-> is safe for making calls through the proxy
@@ -2559,11 +2568,7 @@ namespace rpc
         {
             // Remote object: create shared_ptr from interface_proxy
             // The control block already exists, just increment shared count
-            auto err = CO_AWAIT in.cb_->increment_shared();
-            if (err)
-            {
-                CO_RETURN err;
-            }
+            in.cb_->increment_shared();
             out.cb_ = in.cb_;
             out.ptr_ = in.ptr_;
             CO_RETURN error::OK();

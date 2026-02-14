@@ -22,10 +22,10 @@ bool is_pointer(std::string type_name);
 bool is_pointer_reference(std::string type_name);
 bool is_pointer_to_pointer(std::string type_name);
 
-std::string get_smart_ptr_type(const std::string& type_name);
+std::string get_smart_ptr_type(const std::string& type_name, bool& is_optimistic);
 
 bool is_interface_param(
-    const class_entity& lib, const std::string& type, bool is_optimistic, std::shared_ptr<class_entity>& obj);
+    const class_entity& lib, const std::string& type, bool& is_optimistic, std::shared_ptr<class_entity>& obj);
 
 bool is_type_and_parameter_the_same(std::string type, std::string name);
 
