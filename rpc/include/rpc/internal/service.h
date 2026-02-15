@@ -71,7 +71,7 @@ namespace rpc
      * Services can register event listeners to receive notifications when
      * objects are released or zone events occur.
      */
-    class service_event
+    class service_event : public std::enable_shared_from_this<service_event>
     {
     public:
         virtual ~service_event() = default;
