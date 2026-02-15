@@ -36,8 +36,7 @@ namespace rpc
         uint64_t protocol_version,
         caller_zone caller_zone_id,
         const shared_ptr<T>& iface,
-        interface_descriptor& descriptor,
-        bool optimistic);
+        interface_descriptor& descriptor);
 
     template<class T>
     CORO_TASK(int)
@@ -91,8 +90,7 @@ namespace rpc
         uint64_t protocol_version,
         caller_zone caller_zone_id,
         const optimistic_ptr<T>& iface,
-        interface_descriptor& descriptor,
-        bool optimistic);
+        interface_descriptor& descriptor);
 
     template<class T>
     CORO_TASK(int)
