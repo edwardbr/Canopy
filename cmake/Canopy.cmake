@@ -30,6 +30,7 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_BUILD_DEMOS "Build demo code" OFF)
   option(CANOPY_BUILD_COROUTINE "Include coroutine support" OFF)
   option(CANOPY_STANDALONE "Build Canopy stand alone" OFF)
+  option(CANOPY_DEBUG_GEN "Get the generator produce verbose messages" OFF)
 
   # SGX Enclave support (disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)

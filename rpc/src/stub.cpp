@@ -225,7 +225,7 @@ namespace rpc
 
     void object_stub::release_from_service(caller_zone caller_zone_id)
     {
-        zone_->release_local_stub(p_this_, false, caller_zone_id);
+        zone_->release_local_stub(shared_from_this(), false, caller_zone_id);
     }
 
     bool object_stub::has_references_from_zone(caller_zone caller_zone_id) const

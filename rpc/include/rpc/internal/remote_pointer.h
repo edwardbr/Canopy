@@ -2142,7 +2142,14 @@ namespace rpc
             // local_proxy_holder_ destructor runs automatically
         }
 
-        element_type_impl* get() const noexcept { return ptr_; }
+        element_type_impl* get() const noexcept
+        {
+            // For local objects: ptr_ points to __i_xxx_local_proxy (safe - returns OBJECT_GONE)
+            // For remote objects: ptr_ points to interface_proxy (safe - RPC handles errors)
+            if (local_proxy_holder_)
+                return local_proxy_holder_.get();
+            return ptr_;
+        }
 
         // Copy assignment
         optimistic_ptr& operator=(const optimistic_ptr& r) noexcept
@@ -2184,6 +2191,8 @@ namespace rpc
         std::enable_if_t<!std::is_void_v<U> && !std::is_array_v<U>, std::remove_extent_t<U>&> operator*() const noexcept
         {
             using result_type = std::remove_extent_t<U>;
+            if (local_proxy_holder_)
+                return *static_cast<result_type*>(local_proxy_holder_.get());
             return *static_cast<result_type*>(ptr_);
         }
 

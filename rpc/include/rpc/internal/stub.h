@@ -90,11 +90,11 @@ namespace rpc
      * Lifetime Management:
      * - Holds strong reference to service (zone_) to keep service alive
      * - Service holds strong references to stubs (in stubs_ map)
-     * - Self-reference (p_this_) enables shared_from_this pattern
+     * - Self-reference (p_keep_self_alive_) enables shared_from_this pattern
      *
      * See documents/architecture/04-memory-management.md for reference counting details.
      */
-    class object_stub
+    class object_stub : public std::enable_shared_from_this<object_stub>
     {
         // Unique object ID within the zone
         object id_ = {0};
@@ -104,7 +104,7 @@ namespace rpc
         std::unordered_map<interface_ordinal, std::shared_ptr<rpc::i_interface_stub>> stub_map_;
 
         // Self-reference for shared_from_this pattern
-        std::shared_ptr<object_stub> p_this_;
+        std::shared_ptr<object_stub> p_keep_self_alive_;
 
         // Global reference counts (sum across all zones)
         std::atomic<uint64_t> shared_count_ = 0;     // RAII references (rpc::shared_ptr)
@@ -127,7 +127,7 @@ namespace rpc
 
         object get_id() const { return id_; }
         rpc::shared_ptr<rpc::casting_interface> get_castable_interface() const;
-        void reset() { p_this_.reset(); }
+        void reset() { p_keep_self_alive_.reset(); }
 
         /**
          * @brief Activate lifetime management for this stub
@@ -136,7 +136,7 @@ namespace rpc
          * Called after stub is added to service's stubs_ map. Enables the
          * shared_from_this pattern by storing self-reference.
          */
-        void on_added_to_zone(std::shared_ptr<object_stub> stub) { p_this_ = stub; }
+        void keep_self_alive() { p_keep_self_alive_ = shared_from_this(); }
 
         std::shared_ptr<service> get_zone() const { return zone_; }
 

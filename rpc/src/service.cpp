@@ -434,7 +434,7 @@ namespace rpc
                 stub->add_interface(interface_stub);
                 wrapped_object_to_stub_[pointer] = stub;
                 stubs_[id] = stub;
-                stub->on_added_to_zone(stub);
+                stub->keep_self_alive();
             }
         }
         auto ret = CO_AWAIT stub->add_ref(optimistic, false, caller_zone_id);
@@ -588,7 +588,7 @@ namespace rpc
                     stub->add_interface(interface_stub);
                     wrapped_object_to_stub_[pointer] = stub;
                     stubs_[id] = stub;
-                    stub->on_added_to_zone(stub);
+                    stub->keep_self_alive();
                 }
             }
             auto ret = CO_AWAIT stub->add_ref(optimistic, true, caller_zone_id); // outcall=true

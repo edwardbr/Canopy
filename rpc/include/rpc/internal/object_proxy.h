@@ -161,33 +161,25 @@ namespace rpc
 
         template<class T> CORO_TASK(int) query_interface(rpc::optimistic_ptr<T>& iface, bool do_remote_check = true)
         {
-            auto create
-                = [&](std::unordered_map<interface_ordinal, rpc::weak_ptr<casting_interface>>::iterator item) -> CORO_TASK(
-                                                                                                                  int)
-            {
-                rpc::shared_ptr<casting_interface> proxy = item->second.lock();
-                if (!proxy)
-                {
-                    // weak pointer needs refreshing
-                    rpc::shared_ptr<T> tmp;
-                    create_interface_proxy<T>(tmp);
-                    item->second = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
-                    CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
-                }
-                CO_RETURN CO_AWAIT rpc::make_optimistic(rpc::reinterpret_pointer_cast<T>(proxy), iface);
-            };
-
             { // scope for the lock
-                std::lock_guard guard(insert_control_);
                 if (T::get_id(rpc::VERSION_2) == 0)
                 {
                     CO_RETURN rpc::error::OK();
                 }
+                auto guard = std::make_unique<std::lock_guard<std::mutex>>(insert_control_);
                 {
                     auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
                     if (item != proxy_map.end())
                     {
-                        CO_RETURN CO_AWAIT create(item);
+                        guard.reset();
+                        auto proxy = rpc::reinterpret_pointer_cast<T>(item->second.lock());
+                        if (!proxy)
+                        {
+                            // weak pointer needs refreshing
+                            create_interface_proxy<T>(proxy);
+                            item->second = rpc::reinterpret_pointer_cast<casting_interface>(proxy);
+                        }
+                        CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
                     }
                 }
                 if (!do_remote_check)
@@ -195,6 +187,8 @@ namespace rpc
                     rpc::shared_ptr<T> tmp;
                     create_interface_proxy<T>(tmp);
                     proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+
+                    guard.reset();
                     CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
                 }
             }
@@ -210,19 +204,29 @@ namespace rpc
                 }
             }
             { // another scope for the lock
-                std::lock_guard guard(insert_control_);
+                auto guard = std::make_unique<std::lock_guard<std::mutex>>(insert_control_);
 
                 // check again...
                 {
                     auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
                     if (item != proxy_map.end())
                     {
-                        CO_RETURN CO_AWAIT create(item);
+                        auto proxy = rpc::reinterpret_pointer_cast<T>(item->second.lock());
+                        if (!proxy)
+                        {
+                            // weak pointer needs refreshing
+                            create_interface_proxy<T>(proxy);
+                            item->second = rpc::reinterpret_pointer_cast<casting_interface>(proxy);
+                        }
+                        guard.reset();
+                        CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
                     }
                 }
                 rpc::shared_ptr<T> tmp;
                 create_interface_proxy<T>(tmp);
                 proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+
+                guard.reset();
                 CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
             }
         }

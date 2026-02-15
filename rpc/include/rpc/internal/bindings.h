@@ -349,7 +349,7 @@ namespace rpc
                 CO_RETURN rpc::error::OBJECT_NOT_FOUND();
             }
 
-            auto count = serv->release_local_stub(ob, false, encap.destination_zone_id.as_caller());
+            auto count = serv->release_local_stub(ob, true, encap.destination_zone_id.as_caller());
             RPC_ASSERT(count);
             if (!count || count == std::numeric_limits<uint64_t>::max())
             {
