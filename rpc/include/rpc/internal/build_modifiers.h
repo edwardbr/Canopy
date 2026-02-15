@@ -3,12 +3,12 @@
  *   All rights reserved.
  */
 
-#ifdef DEBUG_DEFAULT_DESTRUCTOR
-#define DEFAULT_DESTRUCTOR                                                                                             \
+#ifdef CANOPY_DEBUG_DEFAULT_DESTRUCTOR
+#define CANOPY_DEFAULT_DESTRUCTOR                                                                                      \
     {                                                                                                                  \
     }
 #else
-#define DEFAULT_DESTRUCTOR = default;
+#define CANOPY_DEFAULT_DESTRUCTOR = default;
 #endif
 
 // Macros to disable/enable warnings around YAS usage

@@ -1395,6 +1395,7 @@ namespace rpc
                 get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id);
         }
 #endif
+        decrement_inbound_stub_count(caller_zone_id);
     }
 
     CORO_TASK(void)

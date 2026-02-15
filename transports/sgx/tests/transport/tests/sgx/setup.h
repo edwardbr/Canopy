@@ -30,7 +30,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     bool run_standard_tests_ = RunStandardTests;
 
     std::atomic<uint64_t> zone_gen_ = 0;
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
 
 public:
     virtual ~sgx_setup() = default;
@@ -45,14 +45,14 @@ public:
     void set_host(const rpc::shared_ptr<yyy::i_host>& host) { i_host_ptr_ = host; }
     bool get_use_host_in_child() const { return use_host_in_child_; }
 
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
     {
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occured_ = true;
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }

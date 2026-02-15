@@ -23,7 +23,7 @@ namespace rpc::local
         parent_transport(std::string name, std::shared_ptr<rpc::service> service, std::shared_ptr<child_transport> parent);
         parent_transport(std::string name, std::shared_ptr<child_transport> parent);
 
-        virtual ~parent_transport() DEFAULT_DESTRUCTOR;
+        virtual ~parent_transport() CANOPY_DEFAULT_DESTRUCTOR;
 
         // Override to propagate disconnect to parent zone
         void set_status(rpc::transport_status status) override;
@@ -130,7 +130,7 @@ namespace rpc::local
             set_status(rpc::transport_status::CONNECTED);
         }
 
-        virtual ~child_transport() DEFAULT_DESTRUCTOR;
+        virtual ~child_transport() CANOPY_DEFAULT_DESTRUCTOR;
 
         // Called by parent_transport when child zone disconnects
         void on_child_disconnected();

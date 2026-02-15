@@ -116,7 +116,7 @@ namespace marshalled_tests
         foo f;
 
         CO_AWAIT standard_tests(f, lib.get_has_enclave());
-        CO_RETURN !lib.error_has_occured();
+        CO_RETURN !lib.error_has_occurred();
     }
 
     CORO_TASK(bool) remote_tests(bool use_host_in_child, rpc::shared_ptr<yyy::i_example> example_ptr);

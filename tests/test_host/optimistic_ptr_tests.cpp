@@ -806,6 +806,11 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
 
     // Release the shared_ptr - the underlying object should be destroyed
     f.reset();
+
+    // Calling through it should return OBJECT_GONE since the shared_ptr is released
+    err = CO_AWAIT opt_f->do_something_in_val(42);
+    CORO_ASSERT_EQ(err, rpc::error::OBJECT_GONE());
+
     opt_f.reset();
 
     // Retrieve via get_optimistic_ptr
@@ -813,17 +818,18 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
     err = CO_AWAIT example->get_optimistic_ptr(opt_f_out);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
-    // Calling through it should return OBJECT_GONE since the shared_ptr is released
-    err = CO_AWAIT opt_f_out->do_something_in_val(42);
-    CORO_ASSERT_EQ(err, rpc::error::OBJECT_GONE());
+    CORO_ASSERT_EQ(nullptr, opt_f_out.get());
+
+    // clean up example so that it does not trigger an unclean service error
+    err = CO_AWAIT example->set_optimistic_ptr(nullptr);
+    CORO_ASSERT_EQ(err, rpc::error::OK());
 
     CO_RETURN true;
 }
 
 TYPED_TEST(optimistic_ptr_test, optimistic_ptr_get_returns_object_gone_when_shared_released)
 {
-    run_coro_test(*this,
-        [](auto& lib) { return optimistic_ptr_get_returns_object_gone_when_shared_released_test(lib); });
+    run_coro_test(*this, [](auto& lib) { return optimistic_ptr_get_returns_object_gone_when_shared_released_test(lib); });
 }
 
 // Test: null optimistic_ptr roundtrip

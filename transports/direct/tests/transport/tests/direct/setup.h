@@ -30,7 +30,7 @@ template<bool UseHostInChild> class in_memory_setup
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::io_scheduler> io_scheduler_;
 #endif
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
 
 public:
     virtual ~in_memory_setup() = default;
@@ -47,14 +47,14 @@ public:
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
     {
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occured_ = true;
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }

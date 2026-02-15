@@ -102,7 +102,7 @@ void run_passthrough_test(TestFixture& test_fixture, CoroFunc&& coro_function)
 #else
     coro_function(lib);
 #endif
-    ASSERT_EQ(lib.error_has_occured(), false);
+    ASSERT_EQ(lib.error_has_occurred(), false);
 }
 
 // ============================================================================

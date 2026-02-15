@@ -32,12 +32,12 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     std::atomic<uint64_t> zone_gen_ = 0;
 
     std::shared_ptr<coro::io_scheduler> io_scheduler_;
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
     bool setup_complete_ = false;
 
 public:
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
 
     virtual ~tcp_setup() = default;
 
@@ -58,7 +58,7 @@ public:
         if (!ret)
         {
             RPC_ASSERT(false);
-            error_has_occured_ = true;
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }
@@ -203,7 +203,7 @@ public:
             io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
 
-        ASSERT_EQ(error_has_occured_, false);
+        ASSERT_EQ(error_has_occurred_, false);
     }
 
     CORO_TASK(void) CoroTearDown()

@@ -175,5 +175,5 @@ void run_coro_test(TestFixture& test_fixture, CoroFunc&& coro_function, Args&&..
 #else
     coro_function(lib, std::forward<Args>(args)...);
 #endif
-    ASSERT_EQ(lib.error_has_occured(), false);
+    ASSERT_EQ(lib.error_has_occurred(), false);
 }
