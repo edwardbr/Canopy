@@ -1,0 +1,28 @@
+# LeakSanitizer suppressions file for Canopy RPC tests
+# Suppresses known false positives in test infrastructure
+
+# Google Protobuf static initialization
+leak:google::protobuf::internal::AddDescriptors
+leak:google::protobuf::DescriptorPool::InternalAddGeneratedFile
+leak:google::protobuf::MessageLite::MessageLite
+leak:google::protobuf::Message::Message
+
+# Google Test infrastructure
+leak:testing::internal::UnitTestImpl
+leak:testing::internal::SetUpTestSuite
+leak:testing::internal::TearDownTestSuite
+leak:testing::TestInfo::Run
+leak:testing::UnitTest::Run
+
+# Static initialization and global objects
+leak:__static_initialization_and_destruction
+leak:_GLOBAL__sub
+leak:__cxx_global_var_init
+
+# libcoro scheduler infrastructure (if any static state)
+leak:coro::io_scheduler::make_shared
+leak:coro::thread_pool
+
+# C++ standard library static objects
+leak:std::__once_callable
+leak:std::call_once
