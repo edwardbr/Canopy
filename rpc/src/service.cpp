@@ -1264,15 +1264,19 @@ namespace rpc
     }
     CORO_TASK(void) service::notify_object_gone_event(object object_id, destination_zone destination)
     {
-        if (!service_events_.empty())
+        std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_copy;
         {
-            auto service_events_copy = service_events_;
-            for (auto se : service_events_copy)
+            std::lock_guard g(service_events_control_);
+            if (!service_events_.empty())
             {
-                auto se_handler = se.lock();
-                if (se_handler)
-                    CO_AWAIT se_handler->on_object_released(object_id, destination);
+                service_events_copy = service_events_;
             }
+        }
+        for (auto se : service_events_copy)
+        {
+            auto se_handler = se.lock();
+            if (se_handler)
+                CO_AWAIT se_handler->on_object_released(object_id, destination);
         }
         CO_RETURN;
     }

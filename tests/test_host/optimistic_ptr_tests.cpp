@@ -573,6 +573,50 @@ TYPED_TEST(optimistic_ptr_test, optimistic_ptr_multiple_refs_test)
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_multiple_refs_test(lib); });
 }
 
+struct object_gone_event : public rpc::service_event
+{
+    std::weak_ptr<rpc::service> svc_;
+    std::function<CORO_TASK(void)()> callback_;
+    rpc::object object_id_;
+    rpc::destination_zone destination_;
+    virtual ~object_gone_event()
+    {
+        auto svc = svc_.lock();
+        if (svc)
+        {
+            // svc->remove_service_event(rpc::service_event::shared_from_this());
+        }
+    }
+
+    static std::shared_ptr<object_gone_event> create(std::shared_ptr<rpc::service> svc,
+        std::function<CORO_TASK(void)()> callback,
+        rpc::object object_id,
+        rpc::destination_zone destination)
+    {
+        auto ret = std::make_shared<object_gone_event>();
+        ret->object_id_ = object_id;
+        ret->destination_ = destination;
+        ret->callback_ = callback;
+        svc->add_service_event(ret);
+        ret->svc_ = svc; // do it after addin service
+        return ret;
+    }
+
+    /**
+     * @brief Called when an object is released in a remote zone
+     * @param object_id The ID of the released object
+     * @param destination The zone where the object was released
+     */
+    virtual CORO_TASK(void) on_object_released(rpc::object object_id, rpc::destination_zone destination) override
+    {
+        if (object_id_ == object_id && destination_ == destination)
+        {
+            CO_AWAIT callback_();
+        }
+        CO_RETURN;
+    }
+};
+
 // Test 11: optimistic_ptr OBJECT_GONE behavior when remote stub is deleted
 template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
 {
@@ -804,8 +848,27 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
     err = CO_AWAIT example->set_optimistic_ptr(opt_f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
+#ifdef CANOPY_BUILD_COROUTINE
+    rpc::event ev;
+    auto cb = object_gone_event::create(
+        lib.get_root_service(),
+        [&]() -> CORO_TASK(void)
+        {
+            ev.set();
+            CO_RETURN;
+        },
+        rpc::casting_interface::get_object_id(*f),
+        rpc::casting_interface::get_destination_zone(*f));
+
+#endif
     // Release the shared_ptr - the underlying object should be destroyed
     f.reset();
+
+#ifdef CANOPY_BUILD_COROUTINE
+    CO_AWAIT ev.wait();
+    lib.get_root_service()->remove_service_event(cb);
+    cb.reset();
+#endif
 
     // Calling through it should return OBJECT_GONE since the shared_ptr is released
     err = CO_AWAIT opt_f->do_something_in_val(42);

@@ -24,7 +24,7 @@ public:
 };
 
 // Helper class to wait for object deletion notification and run continuation
-class object_deletion_waiter : public rpc::service_event, public std::enable_shared_from_this<object_deletion_waiter>
+class object_deletion_waiter : public rpc::service_event
 {
     rpc::object expected_object_id_;
     std::function<CORO_TASK(void)()> continuation_;
@@ -102,7 +102,7 @@ public:
                 = [service, self, verification_lambda, ... captured = std::forward<Args>(args)]() -> CORO_TASK(void)
             {
                 CO_AWAIT verification_lambda(captured...);
-                self->continuation_completed_ = true;
+                ((object_deletion_waiter*)self.get())->continuation_completed_ = true;
                 // Remove event listener after verification
                 service->remove_service_event(self);
                 CO_RETURN;
