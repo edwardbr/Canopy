@@ -28,7 +28,7 @@ class passthrough_setup
     rpc::destination_zone forward_dest_;
     rpc::destination_zone reverse_dest_;
 
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
     bool startup_complete_ = false;
     bool shutdown_complete_ = false;
 
@@ -36,7 +36,7 @@ public:
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
     std::shared_ptr<rpc::service> get_service() const { return service_; }
     std::shared_ptr<rpc::mock_test::mock_transport> get_forward_transport() const { return forward_transport_; }
     std::shared_ptr<rpc::mock_test::mock_transport> get_reverse_transport() const { return reverse_transport_; }
@@ -49,7 +49,7 @@ public:
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occured_ = true;
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }
@@ -119,7 +119,7 @@ public:
         ASSERT_EQ(startup_complete_, true);
 #endif
         RPC_INFO("passthrough_setup::set_up - Checking for errors");
-        ASSERT_EQ(error_has_occured_, false);
+        ASSERT_EQ(error_has_occurred_, false);
         RPC_INFO("passthrough_setup::set_up - Complete");
     }
 

@@ -412,9 +412,6 @@ namespace rpc
         }
 #endif
 
-        // Notify that object is gone after all cleanup is complete
-        CO_AWAIT svc->notify_object_gone_event(object_id, destination_zone_id);
-
         RPC_DEBUG(
             "send_object_release: release returned {} for object {}", rpc::error::to_string(ret), object_id.get_val());
 

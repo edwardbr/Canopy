@@ -1512,7 +1512,7 @@ namespace synchronous_generator
             proxy("__{0}_local_proxy(const rpc::weak_ptr<{0}>& ptr)", interface_name);
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
-            proxy("virtual ~__{0}_local_proxy() = default;", interface_name);
+            proxy("virtual ~__{0}_local_proxy() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
 
             proxy("void* get_address() const override");
             proxy("{{");

@@ -31,6 +31,7 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_BUILD_COROUTINE "Include coroutine support" OFF)
   option(CANOPY_STANDALONE "Build Canopy stand alone" OFF)
   option(CANOPY_DEBUG_GEN "Get the generator produce verbose messages" OFF)
+  option(CANOPY_DEBUG_DEFAULT_DESTRUCTOR "Get the generator produce verbose messages" OFF)
 
   # SGX Enclave support (disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
@@ -245,6 +246,12 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_BUILD_COROUTINE_FLAG)
   endif()
 
+  if(${CANOPY_DEBUG_DEFAULT_DESTRUCTOR})
+    set(CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG CANOPY_DEBUG_DEFAULT_DESTRUCTOR)
+  else()
+    set(CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG)
+  endif()
+
   set(CANOPY_FMT_LIB fmt::fmt-header-only)
 
   # ####################################################################################################################
@@ -262,6 +269,7 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_USE_CONSOLE_TELEMETRY_FLAG}
       ${CANOPY_USE_TELEMETRY_RAII_LOGGING_FLAG}
       ${CANOPY_BUILD_TEST_FLAG}
+      ${CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG}
       CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE}
       CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE})
 

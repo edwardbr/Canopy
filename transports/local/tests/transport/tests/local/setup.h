@@ -36,7 +36,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
     std::atomic<uint64_t> zone_gen_ = 0;
 
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
 
     bool startup_complete_ = false;
     bool shutdown_complete_ = false;
@@ -45,7 +45,7 @@ public:
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
 
     virtual ~inproc_setup() = default;
 
@@ -64,7 +64,7 @@ public:
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occured_ = true;
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }
@@ -151,7 +151,7 @@ public:
 
         // auto err_code = SYNC_WAIT();
 
-        ASSERT_EQ(error_has_occured_, false);
+        ASSERT_EQ(error_has_occurred_, false);
     }
 
     CORO_TASK(void) CoroTearDown()

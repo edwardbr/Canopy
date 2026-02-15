@@ -67,7 +67,7 @@
 
 #ifdef TEST_STL_COMPLIANCE
 
-#define DEFAULT_DESTRUCTOR = default;
+#define CANOPY_DEFAULT_DESTRUCTOR = default;
 
 #define RPC_MEMORY std
 
@@ -2147,7 +2147,7 @@ namespace rpc
             // For local objects: ptr_ points to __i_xxx_local_proxy (safe - returns OBJECT_GONE)
             // For remote objects: ptr_ points to interface_proxy (safe - RPC handles errors)
             if (local_proxy_holder_)
-                return local_proxy_holder_.get();
+                return local_proxy_holder_->__get_weak().lock().get();
             return ptr_;
         }
 
@@ -2226,7 +2226,7 @@ namespace rpc
             return ptr_;
         }
 
-        explicit operator bool() const noexcept { return local_proxy_holder_ != nullptr || ptr_ != nullptr; }
+        explicit operator bool() const noexcept { return get() != nullptr; }
 
         void reset() noexcept { optimistic_ptr().swap(*this); }
 
@@ -2331,8 +2331,7 @@ namespace rpc
         if (cb->is_local_)
         {
             // Local object: create local_proxy using generated static method
-            weak_ptr<T> wp(in);
-            out.local_proxy_holder_ = T::create_local_proxy(wp);
+            out.local_proxy_holder_ = T::create_local_proxy(in);
             // out.ptr_ and out.cb_ remain nullptr for local objects
             CO_RETURN error::OK();
         }
