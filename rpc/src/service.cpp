@@ -1458,30 +1458,4 @@ namespace rpc
         }
     }
 
-    template<class T>
-    std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>&)>
-    service::get_interface_stub_factory(const shared_ptr<T>&)
-    {
-        auto interface_id = T::get_id(rpc::VERSION_2);
-        return [interface_id](const std::shared_ptr<object_stub>& stub) -> std::shared_ptr<rpc::i_interface_stub>
-        {
-            if (!stub)
-                return nullptr;
-            return stub->get_interface(interface_id);
-        };
-    }
-
-    template<class T>
-    std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>&)>
-    service::get_interface_stub_factory(const optimistic_ptr<T>&)
-    {
-        auto interface_id = T::get_id(rpc::VERSION_2);
-        return [interface_id](const std::shared_ptr<object_stub>& stub) -> std::shared_ptr<rpc::i_interface_stub>
-        {
-            if (!stub)
-                return nullptr;
-            return stub->get_interface(interface_id);
-        };
-    }
-
 }

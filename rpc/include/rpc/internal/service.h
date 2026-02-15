@@ -42,6 +42,7 @@
 #include <rpc/internal/remote_pointer.h>
 #include <rpc/internal/coroutine_support.h>
 #include <rpc/internal/service_proxy.h>
+#include <rpc/internal/stub.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
@@ -597,12 +598,26 @@ namespace rpc
                 factory);
 
         template<class T>
-        std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
-        get_interface_stub_factory(const shared_ptr<T>& iface);
+        static std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
+        get_interface_stub_factory(const shared_ptr<T>&)
+        {
+            return &get_interfaceStub<T>;
+        }
 
         template<class T>
-        std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
-        get_interface_stub_factory(const optimistic_ptr<T>& iface);
+        static std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
+        get_interface_stub_factory(const optimistic_ptr<T>&)
+        {
+            return &get_interfaceStub<T>;
+        }
+
+        template<class T>
+        static std::shared_ptr<rpc::i_interface_stub> get_interfaceStub(const std::shared_ptr<object_stub>& stub)
+        {
+            if (!stub)
+                return nullptr;
+            return stub->get_interface(T::get_id(rpc::VERSION_2));
+        }
 
         int create_interface_stub(rpc::interface_ordinal interface_id,
             std::function<interface_ordinal(uint8_t)> original_interface_id,
