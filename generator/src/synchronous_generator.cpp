@@ -2323,7 +2323,7 @@ namespace synchronous_generator
         stub("auto factory = get_interface_stub_factory(iface);");
         stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface.get(), "
              "factory, "
-             "stub, descriptor, false);");
+             "stub, descriptor, true);");
         stub("}}");
     }
 

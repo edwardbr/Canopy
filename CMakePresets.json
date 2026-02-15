@@ -16,9 +16,7 @@
         "CMAKE_INSTALL_PREFIX": "/home/edward/projects/rpc2/submodules/c-ares",
         "CMAKE_RULE_MESSAGES": "OFF",
         "CMAKE_VERBOSE_MAKEFILE": "OFF",
-        "CANOPY_DEBUG_THREAD": "OFF",
         "CANOPY_DEBUG_GEN": "OFF",
-        "CANOPY_ENABLE_CLANG_TIDY": "OFF",
         "LIBCORO_BUILD_EXAMPLES": "OFF",
         "LIBCORO_BUILD_TESTS": "OFF",
         "LIBCORO_EXTERNAL_DEPENDENCIES": "OFF",
@@ -34,7 +32,15 @@
         "LIBCORO_FEATURE_NETWORKING": "OFF",
         "CANOPY_HANG_ON_FAILED_ASSERT": "OFF",
         "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
-        "CANOPY_BUILD_DEMOS": "OFF"
+        "CANOPY_BUILD_DEMOS": "OFF",
+        "CANOPY_DEBUG_LEAK": "OFF",
+        "CANOPY_DEBUG_ADDRESS": "OFF",
+        "CANOPY_DEBUG_THREAD": "OFF",
+        "CANOPY_DEBUG_UNDEFINED": "OFF",
+        "CANOPY_DEBUG_ALL": "OFF",
+        "CANOPY_ENABLE_COVERAGE": "OFF",
+        "CANOPY_ENABLE_CLANG_TIDY": "OFF",
+        "CANOPY_ENABLE_CLANG_TIDY_FIX": "OFF"
       }
     },
     {

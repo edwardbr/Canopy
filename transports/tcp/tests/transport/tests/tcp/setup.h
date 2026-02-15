@@ -57,6 +57,7 @@ public:
         auto ret = CO_AWAIT task;
         if (!ret)
         {
+            RPC_ASSERT(false);
             error_has_occured_ = true;
         }
         CO_RETURN;
