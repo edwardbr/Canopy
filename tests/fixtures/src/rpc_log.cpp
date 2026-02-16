@@ -82,7 +82,7 @@ extern "C"
                 out_data,
                 in_back_channel,
                 out_back_channel);
-            if (retry_buf.return_value >= rpc::error::MIN() && retry_buf.return_value <= rpc::error::MAX())
+            if (rpc::error::is_error(retry_buf.return_value))
             {
                 CO_RETURN retry_buf.return_value;
             }

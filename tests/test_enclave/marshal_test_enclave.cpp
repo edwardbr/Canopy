@@ -157,7 +157,7 @@ int call_enclave(uint64_t protocol_version, // version of the rpc call protocol
         tmp,
         in_back_channel,
         out_back_channel);
-    if (ret >= rpc::error::MIN() && ret <= rpc::error::MAX())
+    if (rpc::error::is_error(ret))
         return ret;
 
     // Combine output payload + back-channel into single buffer

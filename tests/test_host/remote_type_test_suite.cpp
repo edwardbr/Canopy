@@ -1694,7 +1694,7 @@ do_something_in_val(
                 CO_RETURN __rpc_ret;
             }
         }
-        if (__rpc_ret >= rpc::error::MIN() && __rpc_ret <= rpc::error::MAX())
+        if (rpc::error::is_error(__rpc_ret))
         {
             // if you fall into this rabbit hole ensure that you have added any error offsets compatible with your error
             // code system to the rpc library this is only here to handle rpc generated errors and not application

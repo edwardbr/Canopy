@@ -1060,8 +1060,7 @@ namespace synchronous_generator
             }
             proxy("}}");
 
-            proxy("if(__rpc_ret >= rpc::error::MIN() && __rpc_ret <= rpc::error::MAX() && __rpc_ret != "
-                  "rpc::error::OBJECT_GONE())");
+            proxy("if(rpc::error::is_critical(__rpc_ret))");
             proxy("{{");
             proxy("//if you fall into this rabbit hole ensure that you have added any error offsets compatible with "
                   "your error code system to the rpc library");
@@ -1095,7 +1094,7 @@ namespace synchronous_generator
             }
 
             stub("//STUB_PARAM_CAST");
-            stub("if(rpc::error::is_error(__rpc_ret))");
+            stub("if(!rpc::error::is_error(__rpc_ret))");
             stub("{{");
             if (catch_stub_exceptions)
             {
@@ -1209,7 +1208,7 @@ namespace synchronous_generator
                     if (!has_preamble && !output.empty())
                     {
                         stub("//STUB_ADD_REF_OUT");
-                        stub("if(__rpc_ret < rpc::error::MIN() || __rpc_ret > rpc::error::MAX())");
+                        stub("if(!rpc::error::is_error(__rpc_ret))");
                         stub("{{");
                         stub("auto target_stub_strong = target_stub_.lock();");
                         stub("if (target_stub_strong)");
