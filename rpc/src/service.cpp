@@ -846,21 +846,9 @@ namespace rpc
             count = stub->release(!!(release_options::optimistic & options), caller_zone_id);
             if (!count && !(release_options::optimistic & options))
             {
-                // When shared count drops to zero, notify all transports that have optimistic references
-                // Get the optimistic reference map before releasing the stub
-                std::vector<caller_zone> optimistic_refs;
-                {
-                    std::lock_guard lock(stub->references_mutex_);
-                    optimistic_refs.reserve(stub->optimistic_references_.size());
-                    for (const auto& [zone, count_atomic] : stub->optimistic_references_)
-                    {
-                        uint64_t count_val = count_atomic.load(std::memory_order_acquire);
-                        if (count_val > 0)
-                        {
-                            optimistic_refs.push_back(zone);
-                        }
-                    }
-                }
+                // When shared count drops to zero, notify all transports that have optimistic references.
+                // Snapshot is taken before erasing from service maps so no zone is missed.
+                auto optimistic_refs = stub->get_zones_with_optimistic_refs();
 
                 {
                     // a scoped lock - erase stub from maps

@@ -623,6 +623,24 @@ namespace synchronous_generator
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
+    // Lambda to emit PROXY_CLEAN_IN cleanup code - used at early return points and at end of function
+    void emit_proxy_clean_in(
+        bool from_host, const class_entity& m_ob, writer& proxy, const std::shared_ptr<function_entity>& function)
+    {
+        proxy("//PROXY_CLEAN_IN");
+        uint64_t clean_count = 1;
+        for (auto& clean_param : function->get_parameters())
+        {
+            std::string clean_output;
+            if (do_in_param(
+                    PROXY_CLEAN_IN, from_host, m_ob, clean_param.get_name(), clean_param.get_type(), clean_param, clean_count, clean_output))
+            {
+                proxy(clean_output);
+            }
+            clean_count++;
+        }
+    };
+
     void write_method(bool from_host,
         const class_entity& m_ob,
         writer& proxy,
@@ -885,7 +903,10 @@ namespace synchronous_generator
             proxy("break;");
             proxy("}}");
             proxy("if(__rpc_ret != rpc::error::OK())");
-            proxy("  CO_RETURN __rpc_ret;");
+            proxy("{{");
+            emit_proxy_clean_in(from_host, m_ob, proxy, function);
+            proxy("CO_RETURN __rpc_ret;");
+            proxy("}}");
 
             // Generate stub deserializer
             stub("int __rpc_ret = rpc::error::OK();");
@@ -995,9 +1016,9 @@ namespace synchronous_generator
             if (!function->has_value("post"))
             {
                 proxy("__rpc_out_buf.clear();");
-            }
-            if (!function->has_value("post"))
+                emit_proxy_clean_in(from_host, m_ob, proxy, function);
                 proxy("CO_RETURN __rpc_ret;");
+            }
             proxy("}}");
             proxy("--__rpc_version;");
             proxy("__rpc_sp->update_remote_rpc_version(__rpc_version);");
@@ -1026,11 +1047,13 @@ namespace synchronous_generator
                 proxy("else");
                 proxy("{{");
                 proxy("// Already using yas_json, no more fallback options");
+                emit_proxy_clean_in(from_host, m_ob, proxy, function);
                 proxy("CO_RETURN __rpc_ret;");
                 proxy("}}");
             }
             else
             {
+                emit_proxy_clean_in(from_host, m_ob, proxy, function);
                 proxy("CO_RETURN __rpc_ret;");
             }
             proxy("}}");
@@ -1047,6 +1070,7 @@ namespace synchronous_generator
             {
                 proxy("__rpc_out_buf.clear();");
             }
+            emit_proxy_clean_in(from_host, m_ob, proxy, function);
             proxy("CO_RETURN __rpc_ret;");
             proxy("}}");
 
@@ -1381,22 +1405,7 @@ namespace synchronous_generator
                     proxy(output);
                 }
             }
-            proxy("//PROXY_CLEAN_IN");
-            {
-                uint64_t count = 1;
-                for (auto& parameter : function->get_parameters())
-                {
-                    std::string output;
-                    {
-                        if (!do_in_param(
-                                PROXY_CLEAN_IN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
-                            continue;
-
-                        proxy(output);
-                    }
-                    count++;
-                }
-            }
+            emit_proxy_clean_in(from_host, m_ob, proxy, function);
 
             proxy("CO_RETURN __rpc_ret;");
             proxy("}}");

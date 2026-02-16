@@ -251,6 +251,21 @@ namespace rpc
         return false;
     }
 
+    std::vector<caller_zone> object_stub::get_zones_with_optimistic_refs() const
+    {
+        std::lock_guard<std::mutex> lock(references_mutex_);
+        std::vector<caller_zone> result;
+        result.reserve(optimistic_references_.size());
+        for (const auto& [zone, count_atomic] : optimistic_references_)
+        {
+            if (count_atomic.load(std::memory_order_acquire) > 0)
+            {
+                result.push_back(zone);
+            }
+        }
+        return result;
+    }
+
     bool object_stub::release_all_from_zone(caller_zone caller_zone_id)
     {
         uint64_t shared_refs_to_release = 0;

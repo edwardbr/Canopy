@@ -118,9 +118,6 @@ namespace rpc
         // CRITICAL: Strong reference to service keeps service alive while stub exists
         std::shared_ptr<service> zone_;
 
-        void add_interface(const std::shared_ptr<rpc::i_interface_stub>& iface);
-        friend service; // Allows service to call add_interface
-
     public:
         object_stub(object id, const std::shared_ptr<service>& zone, void* target);
         ~object_stub();
@@ -128,6 +125,8 @@ namespace rpc
         object get_id() const { return id_; }
         rpc::shared_ptr<rpc::casting_interface> get_castable_interface() const;
         void reset() { p_keep_self_alive_.reset(); }
+
+        void add_interface(const std::shared_ptr<rpc::i_interface_stub>& iface);
 
         /**
          * @brief Activate lifetime management for this stub
@@ -234,6 +233,18 @@ namespace rpc
          * Thread-Safety: Uses atomic operations for counts, mutex for per-zone maps
          */
         bool release_all_from_zone(caller_zone caller_zone_id);
+
+        /**
+         * @brief Snapshot of all zones with at least one active optimistic reference
+         * @return Vector of caller_zone values whose optimistic reference count is > 0
+         *
+         * Used by the service when the shared count reaches zero to discover which zones
+         * still hold optimistic references so that object_released notifications can be
+         * dispatched to them.
+         *
+         * Thread-Safety: Protected internally by references_mutex_
+         */
+        std::vector<caller_zone> get_zones_with_optimistic_refs() const;
     };
 
     /**
