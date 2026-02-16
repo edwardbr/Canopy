@@ -169,7 +169,11 @@ namespace rpc::spsc
                 rpc::id<SendPayload>::get(rpc::get_version()));
 
             // Check if the operation was cancelled during shutdown
-            if (res_payload.error_code != rpc::error::OK())
+            if (res_payload.error_code == rpc::error::OBJECT_GONE())
+            {
+                CO_RETURN res_payload.error_code;
+            }
+            if (rpc::error::is_critical(res_payload.error_code))
             {
                 RPC_ERROR("call_peer returning cancelled error for zone: {} sequence_number: {}",
                     get_service()->get_zone_id().get_val(),

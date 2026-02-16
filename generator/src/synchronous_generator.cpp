@@ -437,7 +437,7 @@ namespace synchronous_generator
             if (is_optimistic)
             {
                 return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
-                                   "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                                   "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                    "\t\t\t{{{{\n"
                                    "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
                                    "__rpc_sp->get_remote_rpc_version(), "
@@ -447,7 +447,7 @@ namespace synchronous_generator
             }
             return fmt::format("RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
                                "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
-                               "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                               "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                "\t\t\t{{{{\n"
                                "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
                                "__rpc_sp->get_remote_rpc_version(), "
@@ -478,7 +478,7 @@ namespace synchronous_generator
         case STUB_PARAM_WRAP:
             return fmt::format(R"__(
                 {0} {1};
-                if(__rpc_ret == rpc::error::OK() && {1}_object_.destination_zone_id.is_set() && {1}_object_.object_id.is_set())
+                if(!rpc::error::is_error(__rpc_ret) && {1}_object_.destination_zone_id.is_set() && {1}_object_.object_id.is_set())
                 {{
                     auto target_stub_strong = target_stub_.lock();
                     if (target_stub_strong)
@@ -537,7 +537,7 @@ namespace synchronous_generator
             if (is_optimistic)
             {
                 return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
-                                   "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                                   "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                    "\t\t\t{{{{\n"
                                    "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
                                    "__rpc_sp->get_remote_rpc_version(), "
@@ -547,7 +547,7 @@ namespace synchronous_generator
             }
             return fmt::format("RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
                                "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
-                               "\t\t\tif(__rpc_ret == rpc::error::OK())\n"
+                               "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                "\t\t\t{{{{\n"
                                "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
                                "__rpc_sp->get_remote_rpc_version(), "
@@ -823,7 +823,7 @@ namespace synchronous_generator
                 count++;
             }
 
-            proxy("while (__rpc_ret == rpc::error::OK() && __rpc_version >= __rpc_min_version)");
+            proxy("while (!rpc::error::is_error(__rpc_ret) && __rpc_version >= __rpc_min_version)");
             proxy("{{");
             proxy("std::vector<char> __rpc_in_buf;");
 
@@ -902,7 +902,7 @@ namespace synchronous_generator
             proxy("__rpc_ret = rpc::error::INCOMPATIBLE_SERIALISATION();");
             proxy("break;");
             proxy("}}");
-            proxy("if(__rpc_ret != rpc::error::OK())");
+            proxy("if(rpc::error::is_error(__rpc_ret))");
             proxy("{{");
             emit_proxy_clean_in(from_host, m_ob, proxy, function);
             proxy("CO_RETURN __rpc_ret;");
@@ -984,8 +984,10 @@ namespace synchronous_generator
             stub("CO_RETURN rpc::error::INCOMPATIBLE_SERIALISATION();");
             stub("}}");
 
-            stub("if(__rpc_ret != rpc::error::OK())");
-            stub("  CO_RETURN __rpc_ret;");
+            stub("if(rpc::error::is_error(__rpc_ret))");
+            stub("{{");
+            stub("CO_RETURN __rpc_ret;");
+            stub("}}");
 
             std::string tag = function->get_value("tag");
             if (tag.empty())
@@ -1093,7 +1095,7 @@ namespace synchronous_generator
             }
 
             stub("//STUB_PARAM_CAST");
-            stub("if(__rpc_ret == rpc::error::OK())");
+            stub("if(rpc::error::is_error(__rpc_ret))");
             stub("{{");
             if (catch_stub_exceptions)
             {
@@ -1244,8 +1246,7 @@ namespace synchronous_generator
                     proxy("{{");
                     {
                         proxy.print_tabs();
-                        proxy.raw(
-                            "auto __receiver_result = {}proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
+                        proxy.raw("__rpc_ret = {}proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
                             scoped_namespace,
                             function->get_name());
 
@@ -1265,8 +1266,6 @@ namespace synchronous_generator
                             proxy.raw(output);
                         }
                         proxy.raw("__rpc_out_buf, __rpc_sp->get_encoding());\n");
-                        proxy("if(__receiver_result != rpc::error::OK())");
-                        proxy("  __rpc_ret = __receiver_result;");
                     }
                     proxy("break;");
                     proxy("}}");
@@ -1277,8 +1276,7 @@ namespace synchronous_generator
                     proxy("{{");
                     {
                         proxy.print_tabs();
-                        proxy.raw(
-                            "auto __receiver_result = {}proxy_deserialiser<rpc::serialiser::protocol_buffers>::{}(",
+                        proxy.raw("__rpc_ret = {}proxy_deserialiser<rpc::serialiser::protocol_buffers>::{}(",
                             scoped_namespace,
                             function->get_name());
                         count = 1;
@@ -1298,8 +1296,6 @@ namespace synchronous_generator
                             proxy.raw(output);
                         }
                         proxy.raw("__rpc_out_buf);\n");
-                        proxy("if(__receiver_result != rpc::error::OK())");
-                        proxy("  __rpc_ret = __receiver_result;");
                     }
                     proxy("break;");
                     proxy("}}");

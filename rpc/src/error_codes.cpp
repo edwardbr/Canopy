@@ -92,10 +92,10 @@ namespace rpc
         {
             return offset_val + (offset_val_is_negative ? -19 : 19);
         }
-        [[nodiscard]] int UNABLE_TO_CREATE_SERVICE_PROXY()
-        {
-            return offset_val + (offset_val_is_negative ? -20 : 20);
-        }
+        // [[nodiscard]] int UNABLE_TO_CREATE_SERVICE_PROXY()
+        // {
+        //     return offset_val + (offset_val_is_negative ? -20 : 20);
+        // }
         [[nodiscard]] int SERVICE_PROXY_LOST_CONNECTION()
         {
             return offset_val + (offset_val_is_negative ? -21 : 21);
@@ -118,6 +118,24 @@ namespace rpc
         [[nodiscard]] int MAX()
         {
             return offset_val + (offset_val_is_negative ? -1 : 23);
+        }
+
+        bool is_error(int err)
+        {
+            if (err >= MIN() && err <= MAX())
+            {
+                return true;
+            }
+            return false;
+        }
+
+        bool is_critical(int err)
+        {
+            if (is_error(err) && err != OBJECT_GONE())
+            {
+                return true;
+            }
+            return false;
         }
 
         void set_OK_val(int val)
@@ -215,10 +233,10 @@ namespace rpc
             {
                 return "reference count error";
             }
-            if (err == UNABLE_TO_CREATE_SERVICE_PROXY())
-            {
-                return "unable to create service proxy";
-            }
+            // if (err == UNABLE_TO_CREATE_SERVICE_PROXY())
+            // {
+            //     return "unable to create service proxy";
+            // }
             if (err == SERVICE_PROXY_LOST_CONNECTION())
             {
                 return "Service proxy has lost connection to the remote service";

@@ -120,9 +120,10 @@ namespace rpc::spsc
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
                 .back_channel = in_back_channel},
             response);
-        if (ret != rpc::error::OK())
+
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed spsc_transport::outbound_send call_send");
+            RPC_DEBUG("failed spsc_transport::outbound_send call_send");
             CO_RETURN ret;
         }
 
