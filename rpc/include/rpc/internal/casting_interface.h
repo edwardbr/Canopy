@@ -37,6 +37,14 @@ namespace rpc
         virtual bool is_local() const { return true; }
         virtual std::shared_ptr<rpc::object_proxy> get_object_proxy() const { return nullptr; }
 
+        // only for local objects
+        virtual std::shared_ptr<rpc::object_stub> get_stub() const
+        {
+            RPC_ASSERT(false);
+            return nullptr;
+        }
+        virtual void set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
+
         static object get_object_id(const casting_interface& iface);
         static std::shared_ptr<rpc::service_proxy> get_service_proxy(const casting_interface& iface);
         static std::shared_ptr<rpc::service> get_service(const casting_interface& iface);

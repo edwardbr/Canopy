@@ -209,7 +209,7 @@ namespace rpc::dodgy
         // Internal send payload helper
         // rpc::transport override - connect handshake
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         // outbound i_marshaller implementations (from rpc::transport)

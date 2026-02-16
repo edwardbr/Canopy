@@ -114,7 +114,7 @@ namespace rpc::mock_test
 
         // outbound i_marshaller implementations
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         CORO_TASK(int)

@@ -24,7 +24,7 @@ namespace rpc::spsc
     class spsc_transport : public rpc::transport
     {
     public:
-        using connection_handler = std::function<CORO_TASK(int)(const rpc::interface_descriptor& input_descr,
+        using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
             rpc::interface_descriptor& output_interface,
             std::shared_ptr<rpc::service> child_service_ptr,
             std::shared_ptr<spsc_transport>)>;
@@ -208,7 +208,7 @@ namespace rpc::spsc
         // Internal send payload helper
         // rpc::transport override - connect handshake
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
 
         CORO_TASK(int) inner_accept() override;
 

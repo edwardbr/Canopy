@@ -52,8 +52,16 @@ namespace rpc
             uint64_t caller_zone_id;
             // the object id of the callback object from the caller
             uint64_t caller_object_id;
+            // the expected interface id of the caller object
+            uint64_t caller_interface_id;
+
             // the zone id of the destination derived from the caller
             uint64_t destination_zone_id;
+            // the expected interface id of the destination object
+            uint64_t destination_interface_id;
+
+            // the zone id of the zone immediately adjacent to the new zone
+            uint64_t adjacent_zone_id;
         };
         
         struct init_client_channel_response

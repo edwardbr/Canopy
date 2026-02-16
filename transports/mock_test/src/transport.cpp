@@ -62,7 +62,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr)
+    mock_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
     {
         std::ignore = input_descr;
         std::ignore = output_descr;

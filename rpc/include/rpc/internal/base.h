@@ -11,6 +11,8 @@ namespace rpc
     // derive your class from this class and you will get more features for free when they arrive
     template<typename Implementation, typename... Interfaces> class base : public Interfaces...
     {
+        std::weak_ptr<rpc::object_stub> stub_;
+
     public:
         virtual ~base() = default;
 
@@ -32,5 +34,8 @@ namespace rpc
         // Get the address of the implementation, needed to do reverse lookups in the stub table and for
         // proper dynamic casting in clang and gcc, msvc is much more forgiving
         void* get_address() const override { return (void*)static_cast<const Implementation*>(this); }
+
+        std::shared_ptr<rpc::object_stub> get_stub() const override { return stub_.lock(); }
+        void set_stub(const std::shared_ptr<rpc::object_stub>& stub) override { stub_ = stub; }
     };
 }

@@ -35,7 +35,7 @@ namespace websocket_demo
             virtual ~transport() CANOPY_DEFAULT_DESTRUCTOR;
 
             CORO_TASK(int)
-            inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override
+            inner_connect(rpc::connection_settings& input_descr, rpc::interface_descriptor& output_descr) override
             {
                 std::ignore = input_descr;
                 std::ignore = output_descr;

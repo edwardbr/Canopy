@@ -52,7 +52,7 @@ namespace rpc
         service_ = service;
     }
 
-    CORO_TASK(int) transport::connect(interface_descriptor input_descr, interface_descriptor& output_descr)
+    CORO_TASK(int) transport::connect(connection_settings input_descr, interface_descriptor& output_descr)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (input_descr.object_id.is_set())

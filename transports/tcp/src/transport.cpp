@@ -56,17 +56,19 @@ namespace rpc::tcp
 
     // Connection handshake
     CORO_TASK(int)
-    tcp_transport::inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr)
+    tcp_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
     {
         RPC_DEBUG("tcp_transport::connect zone={}", get_zone_id().get_val());
 
         // Create the init client channel request
         init_client_channel_response init_receive;
         int ret = CO_AWAIT call_peer(rpc::get_version(),
-            init_client_channel_send{.caller_zone_id = input_descr.destination_zone_id.get_val(),
+            init_client_channel_send{.caller_zone_id = get_zone_id().get_val(),
                 .caller_object_id = input_descr.object_id.get_val(),
+                .caller_interface_id = input_descr.caller_interface_id.get_val(),
                 .destination_zone_id = get_adjacent_zone_id().get_val(),
-                .adjacent_zone_id = get_service()->get_zone_id().get_val()},
+                .destination_interface_id = output_descr.destination_zone_id.get_val(),
+                .adjacent_zone_id = get_adjacent_zone_id().get_val()},
             init_receive);
         if (ret != rpc::error::OK())
         {
@@ -985,7 +987,10 @@ namespace rpc::tcp
             RPC_ERROR("failed create_stub init_client_channel_send deserialization");
             CO_RETURN;
         }
-        rpc::interface_descriptor input_descr{{request.caller_object_id}, {request.caller_zone_id}};
+        rpc::connection_settings input_descr{.caller_interface_id = request.caller_object_id,
+            .destination_interface_id = request.destination_interface_id,
+            .object_id = request.caller_object_id,
+            .input_zone_id = request.caller_zone_id};
         rpc::interface_descriptor output_interface;
 
         // Update the adjacent zone ID from the handshake message
@@ -1010,7 +1015,7 @@ namespace rpc::tcp
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .destination_zone_id = output_interface.destination_zone_id.get_val(),
                 .destination_object_id = output_interface.object_id.get_val(),
-                .caller_zone_id = input_descr.destination_zone_id.get_val()},
+                .caller_zone_id = input_descr.input_zone_id.get_val()},
             prefix.sequence_number);
         if (send_err != rpc::error::OK())
         {

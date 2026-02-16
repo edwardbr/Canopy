@@ -57,9 +57,9 @@ namespace rpc
         }
         auto factory = zone->get_interface_stub_factory(iface);
 
-        std::shared_ptr<rpc::object_stub> stub;
-        CO_RETURN CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
-            protocol_version, caller_zone_id, iface.get(), factory, stub, descriptor, false);
+        auto ret = CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
+            protocol_version, caller_zone_id, iface.get(), factory, descriptor, false);
+        CO_RETURN ret;
     }
 
     // do not use directly it is for the interface generator use rpc::create_interface_proxy if you want to get a proxied pointer to a remote implementation
@@ -440,11 +440,10 @@ namespace rpc
 
         auto factory = zone->get_interface_stub_factory(iface);
 
-        std::shared_ptr<rpc::object_stub> stub;
-
         auto* local = iface.get();
 
-        CO_RETURN CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
-            protocol_version, caller_zone_id, local, factory, stub, descriptor, true);
+        auto ret = CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
+            protocol_version, caller_zone_id, local, factory, descriptor, true);
+        CO_RETURN ret;
     }
 }

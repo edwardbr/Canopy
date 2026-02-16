@@ -115,22 +115,13 @@ namespace comprehensive
         // ============================================================================
         // Callback Receiver Implementation
         // ============================================================================
-        class callback_receiver_impl : public i_callback_receiver
+        class callback_receiver_impl : public rpc::base<callback_receiver_impl, i_callback_receiver>
         {
             std::vector<int> received_progress_;
             std::vector<std::string> received_data_;
             mutable std::mutex mutex_;
 
         public:
-            void* get_address() const override { return const_cast<callback_receiver_impl*>(this); }
-
-            const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-            {
-                if (rpc::match<i_callback_receiver>(interface_id))
-                    return static_cast<const i_callback_receiver*>(this);
-                return nullptr;
-            }
-
             CORO_TASK(int) on_progress(int percentage) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -149,22 +140,13 @@ namespace comprehensive
         // ============================================================================
         // Worker Implementation (Callbacks)
         // ============================================================================
-        class worker_impl : public i_worker
+        class worker_impl : public rpc::base<worker_impl, i_worker>
         {
             rpc::shared_ptr<i_callback_receiver> parent_callback_;
             mutable std::mutex mutex_;
             bool running_{false};
 
         public:
-            void* get_address() const override { return const_cast<worker_impl*>(this); }
-
-            const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-            {
-                if (rpc::match<i_worker>(interface_id))
-                    return static_cast<const i_worker*>(this);
-                return nullptr;
-            }
-
             CORO_TASK(int) set_callback_receiver(rpc::shared_ptr<i_callback_receiver> receiver) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -216,7 +198,7 @@ namespace comprehensive
         // ============================================================================
         // Managed Object Implementation (Shared Pointer Demo)
         // ============================================================================
-        class managed_object_impl : public i_managed_object
+        class managed_object_impl : public rpc::base<managed_object_impl, i_managed_object>
         {
             uint64_t object_id_;
             int ref_count_{1};
@@ -233,15 +215,6 @@ namespace comprehensive
             }
 
             ~managed_object_impl() { --live_count_; }
-
-            void* get_address() const override { return const_cast<managed_object_impl*>(this); }
-
-            const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-            {
-                if (rpc::match<i_managed_object>(interface_id))
-                    return static_cast<const i_managed_object*>(this);
-                return nullptr;
-            }
 
             CORO_TASK(int) get_object_id(uint64_t& id) override
             {
@@ -270,21 +243,12 @@ namespace comprehensive
         // ============================================================================
         // Object Factory Implementation
         // ============================================================================
-        class object_factory_impl : public i_object_factory
+        class object_factory_impl : public rpc::base<object_factory_impl, i_object_factory>
         {
             std::map<uint64_t, rpc::shared_ptr<i_managed_object>> objects_;
             mutable std::mutex mutex_;
 
         public:
-            void* get_address() const override { return const_cast<object_factory_impl*>(this); }
-
-            const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-            {
-                if (rpc::match<i_object_factory>(interface_id))
-                    return static_cast<const i_object_factory*>(this);
-                return nullptr;
-            }
-
             CORO_TASK(int) create_object(rpc::shared_ptr<i_managed_object>& obj) override
             {
                 auto new_obj = rpc::shared_ptr<i_managed_object>(new managed_object_impl());
@@ -328,7 +292,8 @@ namespace comprehensive
         // ============================================================================
         // Demo Service Implementation (For transport demos)
         // ============================================================================
-        class demo_service_impl : public i_demo_service, public rpc::enable_shared_from_this<demo_service_impl>
+        class demo_service_impl : public rpc::base<demo_service_impl, i_demo_service>,
+                                  public rpc::enable_shared_from_this<demo_service_impl>
         {
             std::string name_;
             rpc::shared_ptr<i_demo_service> child_service_;
@@ -345,15 +310,6 @@ namespace comprehensive
                 : name_(name)
                 , this_service_(service)
             {
-            }
-
-            void* get_address() const override { return const_cast<demo_service_impl*>(this); }
-
-            const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-            {
-                if (rpc::match<i_demo_service>(interface_id))
-                    return static_cast<const i_demo_service*>(this);
-                return nullptr;
             }
 
             CORO_TASK(int) get_zone_id(uint64_t& zone_id) override
