@@ -36,6 +36,9 @@ namespace rpc::tcp
         // Set up the keep alive using member_ptr assignment
         transport->keep_alive_ = transport;
 
+        // Set the transport status to connected
+        transport->set_status(rpc::transport_status::CONNECTED);
+
         return transport;
     }
 
@@ -60,6 +63,11 @@ namespace rpc::tcp
     {
         RPC_DEBUG("tcp_transport::connect zone={}", get_zone_id().get_val());
 
+        auto service = get_service();
+        assert(connection_handler_ || !connection_handler_); // Can be null for client side
+
+        service->get_scheduler()->spawn(pump_send_and_receive());
+
         // Create the init client channel request
         init_client_channel_response init_receive;
         int ret = CO_AWAIT call_peer(rpc::get_version(),
@@ -67,8 +75,8 @@ namespace rpc::tcp
                 .caller_object_id = input_descr.object_id.get_val(),
                 .caller_interface_id = input_descr.caller_interface_id.get_val(),
                 .destination_zone_id = get_adjacent_zone_id().get_val(),
-                .destination_interface_id = output_descr.destination_zone_id.get_val(),
-                .adjacent_zone_id = get_adjacent_zone_id().get_val()},
+                .destination_interface_id = input_descr.destination_interface_id.get_val(),
+                .adjacent_zone_id = get_zone_id().get_val()},
             init_receive);
         if (ret != rpc::error::OK())
         {
@@ -85,9 +93,6 @@ namespace rpc::tcp
         // Update the adjacent zone ID based on the response
         rpc::object output_object_id = {init_receive.destination_object_id};
         output_descr = rpc::interface_descriptor(output_object_id, get_adjacent_zone_id().as_destination());
-
-        // Set the transport status to connected
-        set_status(rpc::transport_status::CONNECTED);
 
         CO_RETURN rpc::error::OK();
     }
@@ -445,7 +450,7 @@ namespace rpc::tcp
                 // Handle different message types
                 if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
                 {
-                    assert(get_status() == rpc::transport_status::CONNECTING);
+                    assert(get_status() == rpc::transport_status::CONNECTED);
                     get_service()->get_scheduler()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
                 }
                 else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
@@ -987,7 +992,7 @@ namespace rpc::tcp
             RPC_ERROR("failed create_stub init_client_channel_send deserialization");
             CO_RETURN;
         }
-        rpc::connection_settings input_descr{.caller_interface_id = request.caller_object_id,
+        rpc::connection_settings input_descr{.caller_interface_id = request.caller_interface_id,
             .destination_interface_id = request.destination_interface_id,
             .object_id = request.caller_object_id,
             .input_zone_id = request.caller_zone_id};
@@ -1006,9 +1011,6 @@ namespace rpc::tcp
             RPC_ERROR("failed to connect to zone {}", ret);
             CO_RETURN;
         }
-
-        // Set transport to CONNECTED after successful server-side handshake
-        set_status(rpc::transport_status::CONNECTED);
 
         auto send_err = CO_AWAIT send_payload(prefix.version,
             message_direction::receive,

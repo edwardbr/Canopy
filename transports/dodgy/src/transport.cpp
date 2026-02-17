@@ -57,8 +57,8 @@ namespace rpc::dodgy
                     .caller_object_id = input_descr.object_id.get_val(),
                     .caller_interface_id = input_descr.caller_interface_id.get_val(),
                     .destination_zone_id = get_adjacent_zone_id().get_val(),
-                    .destination_interface_id = output_descr.destination_zone_id.get_val(),
-                    .adjacent_zone_id = get_adjacent_zone_id().get_val()},
+                    .destination_interface_id = input_descr.destination_interface_id.get_val(),
+                    .adjacent_zone_id = get_zone_id().get_val()},
                 init_receive);
             if (ret != rpc::error::OK())
             {

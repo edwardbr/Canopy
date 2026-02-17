@@ -98,7 +98,7 @@ public:
         // Create the listener for the server side
         // The connection handler will be called when a client connects
         listener_ = std::make_unique<rpc::tcp::listener>(
-            [this, use_host_in_child = use_host_in_child_](const rpc::interface_descriptor& input_descr,
+            [this, use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_descr,
                 rpc::interface_descriptor& output_interface,
                 std::shared_ptr<rpc::service> child_service_ptr,
                 std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
@@ -106,10 +106,6 @@ public:
                 // Server-side connection handler
                 // Store the transport for later use
                 server_transport_ = transport;
-
-                // Add the transport to the service first, BEFORE calling attach_remote_zone
-                // attach_remote_zone expects the transport to already be registered
-                child_service_ptr->add_transport(input_descr.destination_zone_id, transport);
 
                 // Use attach_remote_zone to properly manage object lifetime, like SPSC does
                 auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
@@ -162,9 +158,6 @@ public:
             std::chrono::milliseconds(100000),
             std::move(client),
             nullptr); // client doesn't need handler
-
-        // Start the client pump - this must run before we call connect
-        root_service_->spawn(client_transport_->pump_send_and_receive());
 
         // Connect using the client transport
         auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport_, hst, i_example_ptr_);

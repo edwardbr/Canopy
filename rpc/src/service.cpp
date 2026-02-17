@@ -1377,19 +1377,17 @@ namespace rpc
                     obj_id.get_val(),
                     remote_zone.get_val());
 
-                // Remove from maps
-                stubs_.erase(obj_id);
-
                 // Track for notification
                 objects_to_notify.push_back({obj_id, remote_zone});
-
-                stub->reset();
             }
         }
 
         // Notify service events about deleted objects (outside the lock)
         for (const auto& obj : objects_to_notify)
         {
+            // Remove from maps
+            stubs_.erase(obj.object_id);
+
             CO_AWAIT notify_object_gone_event(obj.object_id, obj.destination_zone_id);
         }
     }

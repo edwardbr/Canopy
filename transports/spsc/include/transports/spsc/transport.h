@@ -133,7 +133,7 @@ namespace rpc::spsc
         CORO_TASK(int)
         call_peer(std::uint64_t protocol_version, SendPayload&& sendPayload, ReceivePayload& receivePayload)
         {
-            if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::CONNECTING)
+            if (get_status() != rpc::transport_status::CONNECTED)
             {
                 RPC_ERROR("call_peer: transport is not connected");
                 CO_RETURN rpc::error::CALL_CANCELLED();

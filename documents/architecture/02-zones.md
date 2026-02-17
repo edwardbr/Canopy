@@ -144,9 +144,6 @@ auto listener = std::make_unique<rpc::tcp::listener>(
         std::shared_ptr<rpc::service> child_service_ptr,
         std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
     {
-        // Add the transport to the service first, BEFORE calling attach_remote_zone
-        // attach_remote_zone expects the transport to already be registered
-        child_service_ptr->add_transport(input_descr.destination_zone_id, transport);
 
         // Use attach_remote_zone to properly manage object lifetime, like SPSC does
         auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_client, yyy::i_example>("service_proxy",

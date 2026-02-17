@@ -29,7 +29,7 @@ namespace rpc::tcp
         std::chrono::milliseconds timeout_;
         std::chrono::milliseconds poll_timeout_ = std::chrono::milliseconds(10);
 
-        using connection_handler = std::function<CORO_TASK(int)(const rpc::interface_descriptor& input_descr,
+        using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
             rpc::interface_descriptor& output_interface,
             std::shared_ptr<rpc::service> child_service_ptr,
             std::shared_ptr<tcp_transport> transport)>;

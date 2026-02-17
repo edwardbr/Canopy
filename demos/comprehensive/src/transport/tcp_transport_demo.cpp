@@ -72,13 +72,12 @@ namespace comprehensive
 
             // Create TCP listener with connection handler
             auto listener = std::make_shared<rpc::tcp::listener>(
-                [](const rpc::interface_descriptor& input_descr,
+                [](const rpc::connection_settings& input_descr,
                     rpc::interface_descriptor& output_interface,
                     std::shared_ptr<rpc::service> child_service_ptr,
                     std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
                 {
-                    std::cout << "Server: Accepting connection from zone " << input_descr.destination_zone_id.get_val()
-                              << "\n";
+                    std::cout << "Server: Accepting connection from zone " << input_descr.input_zone_id.get_val() << "\n";
 
                     // Use attach_remote_zone to handle the connection
                     auto ret

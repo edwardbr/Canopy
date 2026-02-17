@@ -137,7 +137,7 @@ namespace rpc::tcp
                     rpc::id<SendPayload>::get(rpc::get_version()));
 
                 // If peer has initiated shutdown, we're disconnected
-                if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::CONNECTING)
+                if (get_status() != rpc::transport_status::CONNECTED)
                 {
                     RPC_DEBUG("call_peer: shutting_down_=true, returning CALL_CANCELLED for zone {}",
                         get_service()->get_zone_id().get_val());

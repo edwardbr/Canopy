@@ -94,7 +94,7 @@ public:
 
         // Create server-side transport (receives connections)
         rpc::spsc::spsc_transport::connection_handler handler
-            = [use_host_in_child = use_host_in_child_](const rpc::interface_descriptor& input_interface,
+            = [use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_interface,
                   rpc::interface_descriptor& output_interface,
                   std::shared_ptr<rpc::service> service,
                   std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)
@@ -123,10 +123,7 @@ public:
             &send_spsc_queue_,    // reversed for receiver
             handler);
 
-        peer_service_->add_transport(root_zone_id.as_destination(), peer_transport);
-
-        // Schedule the pump coroutine
-        peer_transport->pump_send_and_receive();
+        CO_AWAIT peer_transport->accept();
 
         // Create client-side transport (initiates connection)
         rpc::shared_ptr<yyy::i_host> hst(new host());
@@ -138,9 +135,6 @@ public:
             &send_spsc_queue_,
             &receive_spsc_queue_,
             nullptr); // client doesn't need handler
-
-        // Schedule the pump coroutine for client
-        client_transport->pump_send_and_receive();
 
         auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport, hst, i_example_ptr_);
 

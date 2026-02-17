@@ -335,7 +335,7 @@ namespace comprehensive
             comprehensive_idl_register_stubs(service_2);
 
             rpc::event on_connected;
-            auto handler = [&, enc](const rpc::interface_descriptor& input_interface,
+            auto handler = [&, enc](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
                                std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)
@@ -417,7 +417,7 @@ namespace comprehensive
             comprehensive_idl_register_stubs(service);
 
             auto listener = std::make_shared<rpc::tcp::listener>(
-                [enc](const rpc::interface_descriptor& input_descr,
+                [enc](const rpc::connection_settings& input_descr,
                     rpc::interface_descriptor& output_interface,
                     std::shared_ptr<rpc::service> child_service_ptr,
                     std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
