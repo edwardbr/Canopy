@@ -66,10 +66,6 @@ namespace rpc
             CO_RETURN ret;
         }
 
-        // Get the address of the implementation, needed to do reverse lookups in the stub table and for
-        // proper dynamic casting in clang and gcc, msvc is much more forgiving
-        void* get_address() const override { return (void*)static_cast<const Implementation*>(this); }
-
         std::shared_ptr<rpc::object_stub> get_stub() const override { return stub_.lock(); }
         void set_stub(const std::shared_ptr<rpc::object_stub>& stub) override { stub_ = stub; }
     };

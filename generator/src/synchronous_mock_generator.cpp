@@ -52,7 +52,6 @@ namespace synchronous_mock_generator
         }
         header("class {0}_mock : public {0}", interface_name);
         header("{{");
-        header("void* get_address() const override {{ return (void*)this; }}");
         header("public:");
         header("const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override ");
         header("{{");

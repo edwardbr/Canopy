@@ -249,13 +249,8 @@ auto service = std::make_shared<rpc::service>("name", rpc::zone{id}, scheduler);
 
 ### Interface Implementation
 ```cpp
-class my_impl : public i_my_interface
+class my_impl : public rpc::base<my_impl, i_my_interface>
 {
-    void* get_address() const override { return const_cast<my_impl*>(this); }
-    const rpc::casting_interface* query_interface(rpc::interface_ordinal id) const override
-    {
-        return match<i_my_interface>(id) ? this : nullptr;
-    }
     CORO_TASK(error_code) my_method(...) override { ... }
 };
 ```

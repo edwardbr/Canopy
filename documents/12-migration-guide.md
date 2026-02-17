@@ -243,18 +243,8 @@ class Calculator : public ICalculator
 
 ```cpp
 // Canopy
-class calculator : public i_calculator
+class calculator : public rpc::base<calculator, i_calculator>
 {
-    void* get_address() const override { return this; }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (match<i_calculator>(interface_id))
-            return this;
-        return nullptr;
-    }
-
     CORO_TASK(error_code) add(int a, int b, [out] int& result) override
     {
         result = a + b;

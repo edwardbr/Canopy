@@ -1517,17 +1517,6 @@ namespace synchronous_generator
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
             proxy("virtual ~__{0}_local_proxy() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
-
-            proxy("void* get_address() const override");
-            proxy("{{");
-            proxy("auto ptr = ptr_.lock();");
-            proxy("if(!ptr)");
-            proxy("{{");
-            proxy("return (void*)this;");
-            proxy("}}");
-            proxy("return ptr->get_address();");
-            proxy("}}");
-
             proxy("const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override");
             proxy("{{");
             proxy("std::ignore = interface_id;");

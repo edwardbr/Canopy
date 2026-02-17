@@ -487,24 +487,11 @@ All IDL interfaces must inherit from `casting_interface` and implement required 
 ### Base Interface Requirements
 
 ```cpp
-class my_interface : public rpc::interface<my_interface>
+class app : public rpc::base<app, i_app>
 {
 public:
     virtual error_code do_something(int value) = 0;
 
-    // Required overrides
-    void* get_address() const override
-    {
-        return const_cast<my_interface*>(this);
-    }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<my_interface>(interface_id))
-            return static_cast<const my_interface*>(this);
-        return nullptr;
-    }
 };
 ```
 
@@ -521,19 +508,6 @@ public:
     {
         // SHA3-based fingerprint
     }
-
-    void* get_address() const override
-    {
-        return const_cast<Derived*>(static_cast<const Derived*>(this));
-    }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (get_id(rpc::CURRENT_VERSION) == interface_id)
-            return static_cast<const Derived*>(this);
-        return nullptr;
-    }
 };
 ```
 
@@ -541,14 +515,6 @@ public:
 
 Each interface has a version-independent ID based on its definition:
 
-```cpp
-// Get interface ID for current version
-auto interface_id = xxx::i_foo::get_id(rpc::CURRENT_VERSION);
-
-// Check interface support
-if (proxy->query_interface(interface_id)) {
-    // Interface is supported
-}
 ```
 
 ## 6. Lifecycle Management

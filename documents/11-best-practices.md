@@ -397,30 +397,6 @@ class node
 
 ## 13. Common Implementation Mistakes
 
-### Mistake: query_interface Using Incorrect API
-
-**Problem**: Using `Interface::get_id(rpc::CURRENT_VERSION)` fails because `CURRENT_VERSION` doesn't exist.
-
-**Incorrect**:
-```cpp
-const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-{
-    if (v1::i_calculator::get_id(rpc::CURRENT_VERSION) == interface_id)
-        return static_cast<const v1::i_calculator*>(this);
-    return nullptr;
-}
-```
-
-**Correct**:
-```cpp
-const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
-{
-    if (rpc::match<v1::i_calculator>(interface_id))
-        return static_cast<const v1::i_calculator*>(this);
-    return nullptr;
-}
-```
-
 ### Mistake: Missing [in]/[out] Attributes Understanding
 
 **Problem**: Not understanding what parameter attributes mean.

@@ -371,18 +371,13 @@ namespace comprehensive
     template<typename Derived>
     class interface : public rpc::casting_interface { ... };
 
-    class i_calculator : public interface<i_calculator>
+    class calculator : public rpc::base<calculator, i_calculator>
     {
     public:
         static constexpr uint64_t get_id(uint64_t rpc_version);
 
         virtual CORO_TASK(int) add(int a, int b, int& sum) = 0;
         virtual CORO_TASK(int) subtract(int a, int b, int& difference) = 0;
-
-        // Required interface methods
-        void* get_address() const override;
-        const rpc::casting_interface* query_interface(
-            rpc::interface_ordinal interface_id) const override;
     };
 }
 ```
@@ -405,17 +400,7 @@ static constexpr uint64_t get_id(uint64_t rpc_version)
 }
 ```
 
-**Version Negotiation**:
-```cpp
-// Client checks if server supports interface
-rpc::shared_ptr<i_calculator> calc;
-int error = CO_AWAIT proxy->query_interface(calc);
 
-if (error == rpc::error::INTERFACE_NOT_SUPPORTED())
-{
-    // Server doesn't support this interface version
-}
-```
 
 ## Working Together: Proxies, Stubs, and Memory Management
 

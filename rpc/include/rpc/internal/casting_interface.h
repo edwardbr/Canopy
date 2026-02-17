@@ -31,7 +31,6 @@ namespace rpc
     {
     public:
         virtual ~casting_interface() = default;
-        virtual void* get_address() const = 0;
         virtual const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const = 0;
 
         virtual bool is_local() const { return true; }
@@ -84,7 +83,6 @@ namespace rpc
         }
         virtual ~interface_proxy() = default;
 
-        void* get_address() const override { return (void*)this; }
         const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
         {
             if (rpc::match<T>(interface_id))
