@@ -167,19 +167,6 @@ class i_calculator_proxy : public comprehensive::i_calculator
 - Each method marshals parameters, sends RPC, unmarshals result
 - Returns same error codes as defined in IDL
 
-### Interface Stub (e.g., i_calculator_stub)
-
-Type-safe server-side stub generated from IDL interface definition. Responsible for:
-- **Parameter deserialization** - Converts wire format to C++ types
-- **Method dispatch** - Routes to correct implementation method
-- **Result serialization** - Converts C++ return values to wire format
-
-
-**Key Characteristics**:
-- Inherits from `rpc::i_interface_stub`
-- Holds `rpc::shared_ptr<i_calculator>` to actual implementation
-- `call()` method dispatches based on method ID
-- Each case unmarshals parameters, calls implementation, marshals result
 
 ## Serialization Formats
 

@@ -113,12 +113,12 @@ namespace rpc
 
             { // scope for the lock
                 std::lock_guard guard(insert_control_);
-                if (T::get_id(rpc::VERSION_2) == 0)
+                if (T::get_id(rpc::get_version()) == 0)
                 {
                     CO_RETURN rpc::error::OK();
                 }
                 {
-                    auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
+                    auto item = proxy_map.find(T::get_id(rpc::get_version()));
                     if (item != proxy_map.end())
                     {
                         CO_RETURN create(item);
@@ -127,7 +127,7 @@ namespace rpc
                 if (!do_remote_check)
                 {
                     create_interface_proxy<T>(iface);
-                    proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(iface);
+                    proxy_map[T::get_id(rpc::get_version())] = rpc::reinterpret_pointer_cast<casting_interface>(iface);
                     CO_RETURN rpc::error::OK();
                 }
             }
@@ -147,14 +147,14 @@ namespace rpc
 
                 // check again...
                 {
-                    auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
+                    auto item = proxy_map.find(T::get_id(rpc::get_version()));
                     if (item != proxy_map.end())
                     {
                         CO_RETURN create(item);
                     }
                 }
                 create_interface_proxy<T>(iface);
-                proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(iface);
+                proxy_map[T::get_id(rpc::get_version())] = rpc::reinterpret_pointer_cast<casting_interface>(iface);
                 CO_RETURN rpc::error::OK();
             }
         }
@@ -162,13 +162,13 @@ namespace rpc
         template<class T> CORO_TASK(int) query_interface(rpc::optimistic_ptr<T>& iface, bool do_remote_check = true)
         {
             { // scope for the lock
-                if (T::get_id(rpc::VERSION_2) == 0)
+                if (T::get_id(rpc::get_version()) == 0)
                 {
                     CO_RETURN rpc::error::OK();
                 }
                 auto guard = std::make_unique<std::lock_guard<std::mutex>>(insert_control_);
                 {
-                    auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
+                    auto item = proxy_map.find(T::get_id(rpc::get_version()));
                     if (item != proxy_map.end())
                     {
                         guard.reset();
@@ -186,7 +186,7 @@ namespace rpc
                 {
                     rpc::shared_ptr<T> tmp;
                     create_interface_proxy<T>(tmp);
-                    proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+                    proxy_map[T::get_id(rpc::get_version())] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
 
                     guard.reset();
                     CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
@@ -208,7 +208,7 @@ namespace rpc
 
                 // check again...
                 {
-                    auto item = proxy_map.find(T::get_id(rpc::VERSION_2));
+                    auto item = proxy_map.find(T::get_id(rpc::get_version()));
                     if (item != proxy_map.end())
                     {
                         auto proxy = rpc::reinterpret_pointer_cast<T>(item->second.lock());
@@ -224,7 +224,7 @@ namespace rpc
                 }
                 rpc::shared_ptr<T> tmp;
                 create_interface_proxy<T>(tmp);
-                proxy_map[T::get_id(rpc::VERSION_2)] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+                proxy_map[T::get_id(rpc::get_version())] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
 
                 guard.reset();
                 CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);

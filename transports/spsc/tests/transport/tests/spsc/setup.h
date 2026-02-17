@@ -83,14 +83,8 @@ public:
         auto root_zone_id = rpc::zone{++zone_gen_};
         auto peer_zone_id = rpc::zone{++zone_gen_};
         root_service_ = std::make_shared<rpc::service>("host", root_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(root_service_);
-        example_shared_idl_register_stubs(root_service_);
-        example_idl_register_stubs(root_service_);
 
         peer_service_ = std::make_shared<rpc::service>("peer", peer_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(peer_service_);
-        example_shared_idl_register_stubs(peer_service_);
-        example_idl_register_stubs(peer_service_);
 
         // Create server-side transport (receives connections)
         rpc::spsc::spsc_transport::connection_handler handler

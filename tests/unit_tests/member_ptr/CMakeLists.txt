@@ -30,7 +30,8 @@ if(NOT CANOPY_BUILD_COROUTINE)
     GTest::gtest_main
     yas_common
     rpc::rpc
-    rpc_types_idl)
+    rpc_types_idl
+    member_ptr_test_idl)
 
   # Add include directories for RPC headers
   target_include_directories(

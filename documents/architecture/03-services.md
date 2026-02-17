@@ -244,16 +244,6 @@ CORO_TASK(error_code) attach_remote_zone(
 
 Attaches to a remote zone with interface negotiation.
 
-### Stub Registration
-
-```cpp
-void add_interface_stub_factory(
-    rpc::interface_ordinal interface_id,
-    i_interface_stub_factory* factory);
-```
-
-Registers factory for creating interface stubs (called during code generation).
-
 ## Service Lifecycle
 
 ### Service Birth

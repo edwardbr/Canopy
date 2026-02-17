@@ -387,12 +387,15 @@ namespace rpc
     // or if the interface is a proxy to add ref it
     CORO_TASK(int)
     service::get_descriptor_from_interface_stub(caller_zone caller_zone_id,
-        rpc::casting_interface* iface,
-        std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
+        const rpc::shared_ptr<rpc::casting_interface>& iface,
         std::shared_ptr<rpc::object_stub>& stub,
         interface_descriptor& descriptor,
         bool optimistic)
     {
+        if (!iface)
+        {
+            CO_RETURN error::INVALID_DATA();
+        }
         if (!iface->is_local())
         {
             // we should not be getting the interface from remote objects
@@ -404,10 +407,7 @@ namespace rpc
             if (!stub)
             {
                 auto id = generate_new_object_id();
-                auto* pointer = iface->get_address();
-                stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
-                std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
-                stub->add_interface(interface_stub);
+                stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
                 stubs_[id] = stub;
                 stub->keep_self_alive();
                 iface->set_stub(stub);
@@ -425,11 +425,14 @@ namespace rpc
     CORO_TASK(int)
     service::add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
         caller_zone caller_zone_id,
-        rpc::casting_interface* iface,
-        std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
+        const rpc::shared_ptr<rpc::casting_interface>& iface,
         interface_descriptor& descriptor,
         bool optimistic)
     {
+        if (!iface)
+        {
+            CO_RETURN error::INVALID_DATA();
+        }
         // This is ALWAYS an out parameter case
         if (caller_zone_id.is_set() && !iface->is_local())
         {
@@ -559,10 +562,7 @@ namespace rpc
                 if (!stub)
                 {
                     auto id = generate_new_object_id();
-                    auto* pointer = iface->get_address();
-                    stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
-                    std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
-                    stub->add_interface(interface_stub);
+                    stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
                     stubs_[id] = stub;
                     stub->keep_self_alive();
                     iface->set_stub(stub);
@@ -1130,60 +1130,6 @@ namespace rpc
         {
             service_proxies_.erase(item);
         }
-    }
-
-    int service::create_interface_stub(rpc::interface_ordinal interface_id,
-        std::function<interface_ordinal(uint8_t)> interface_getter,
-        const std::shared_ptr<rpc::i_interface_stub>& original,
-        std::shared_ptr<rpc::i_interface_stub>& new_stub)
-    {
-        // an identity check, send back the same pointer
-        if (interface_getter(rpc::VERSION_2) == interface_id)
-        {
-            new_stub = std::static_pointer_cast<rpc::i_interface_stub>(original);
-            return rpc::error::OK();
-        }
-
-        auto it = stub_factories_.find(interface_id);
-        if (it == stub_factories_.end())
-        {
-            RPC_INFO("stub factory does not have a record of this interface this not an error in the rpc stack");
-            return rpc::error::INVALID_CAST();
-        }
-
-        new_stub = (*it->second)(original);
-        if (!new_stub)
-        {
-            RPC_INFO("Object does not support the interface this not an error in the rpc stack");
-            return rpc::error::INVALID_CAST();
-        }
-        // note a nullptr return value is a valid value, it indicates that this object does not implement that interface
-        return rpc::error::OK();
-    }
-
-    // note this function is not thread safe!  Use it before using the service class for normal operation
-    void service::add_interface_stub_factory(std::function<interface_ordinal(uint8_t)> id_getter,
-        std::shared_ptr<std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::i_interface_stub>&)>> factory)
-    {
-        auto interface_id = id_getter(rpc::VERSION_2);
-        auto it = stub_factories_.find({interface_id});
-        if (it != stub_factories_.end())
-        {
-            RPC_ERROR("Invalid data - add_interface_stub_factory failed");
-            rpc::error::INVALID_DATA();
-        }
-        stub_factories_[{interface_id}] = factory;
-    }
-
-    rpc::shared_ptr<casting_interface> service::get_castable_interface(object object_id, interface_ordinal interface_id)
-    {
-        auto ob = get_object(object_id).lock();
-        if (!ob)
-            return nullptr;
-        auto interface_stub = ob->get_interface(interface_id);
-        if (!interface_stub)
-            return nullptr;
-        return interface_stub->get_castable_interface();
     }
 
     void service::add_service_event(const std::weak_ptr<service_event>& event)

@@ -51,18 +51,6 @@ error_code attach_remote_zone(
     SetupCallback<InterfaceType, Args...> setup);
 ```
 
-### Stub Registration
-
-```cpp
-void add_interface_stub_factory(
-    rpc::interface_ordinal interface_id,
-    i_interface_stub_factory* factory);
-
-void register_stub(
-    rpc::object object_id,
-    const rpc::shared_ptr<i_interface_stub>& stub);
-```
-
 ## 2. rpc::shared_ptr
 
 ### Creation

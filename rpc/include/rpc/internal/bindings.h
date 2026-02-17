@@ -55,10 +55,10 @@ namespace rpc
             descriptor = {0, 0};
             CO_RETURN rpc::error::OK();
         }
-        auto factory = zone->get_interface_stub_factory(iface);
+        auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface);
 
         auto ret = CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
-            protocol_version, caller_zone_id, iface.get(), factory, descriptor, false);
+            protocol_version, caller_zone_id, iface_cast, descriptor, false);
         CO_RETURN ret;
     }
 
@@ -79,11 +79,18 @@ namespace rpc
         // if it is local to this service then just get the relevant stub
         else if (serv->get_zone_id().as_destination() == encap.destination_zone_id)
         {
-            iface = rpc::static_pointer_cast<T>(serv->get_castable_interface(encap.object_id, T::get_id(protocol_version)));
+            auto os = serv->get_object(encap.object_id).lock();
+            if (!os)
+            {
+                RPC_ERROR("Object not found in zone {}", serv->get_zone_id().get_val());
+                CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+            }
+
+            iface = rpc::static_pointer_cast<T>(os->get_castable_interface(T::get_id(protocol_version)));
             if (!iface)
             {
-                RPC_ERROR("Object not found in local interface lookup");
-                CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                RPC_ERROR("interface not implemented by this object");
+                CO_RETURN rpc::error::INVALID_INTERFACE_ID();
             }
             CO_RETURN rpc::error::OK();
         }
@@ -152,17 +159,14 @@ namespace rpc
                 CO_RETURN rpc::error::REFERENCE_COUNT_ERROR();
             }
 
-            auto interface_stub = ob->get_interface(T::get_id(rpc::VERSION_2));
-            if (!interface_stub)
+            auto castable = ob->get_castable_interface(T::get_id(rpc::get_version()));
+            if (!castable)
             {
-                if (!interface_stub)
-                {
-                    RPC_ERROR("Invalid interface ID in proxy release");
-                    CO_RETURN rpc::error::INVALID_INTERFACE_ID();
-                }
+                RPC_ERROR("Invalid interface ID in proxy release");
+                CO_RETURN rpc::error::INVALID_INTERFACE_ID();
             }
 
-            val = rpc::static_pointer_cast<T>(interface_stub->get_castable_interface());
+            val = rpc::static_pointer_cast<T>(castable);
             CO_RETURN rpc::error::OK();
         }
 
@@ -288,9 +292,8 @@ namespace rpc
             CO_RETURN error::INVALID_DATA();
         }
         std::shared_ptr<object_stub> stub;
-        auto factory = serv.get_interface_stub_factory(iface);
-        CO_RETURN CO_AWAIT serv.get_descriptor_from_interface_stub(
-            caller_zone_id, iface.get(), factory, stub, descriptor, false);
+        auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface);
+        CO_RETURN CO_AWAIT serv.get_descriptor_from_interface_stub(caller_zone_id, iface_cast, stub, descriptor, false);
     }
 
     // optimistic_ptr overload: convert to shared_ptr and delegate
@@ -357,18 +360,14 @@ namespace rpc
                 CO_RETURN rpc::error::REFERENCE_COUNT_ERROR();
             }
 
-            auto interface_stub = ob->get_interface(T::get_id(rpc::VERSION_2));
-            if (!interface_stub)
+            auto castable = ob->get_castable_interface(T::get_id(rpc::get_version()));
+            if (!castable)
             {
-                if (!interface_stub)
-                {
-                    RPC_ERROR("Invalid interface ID in proxy release");
-                    CO_RETURN rpc::error::INVALID_INTERFACE_ID();
-                }
+                RPC_ERROR("Invalid interface ID in proxy release");
+                CO_RETURN rpc::error::INVALID_INTERFACE_ID();
             }
 
-            CO_RETURN CO_AWAIT rpc::make_optimistic(
-                rpc::static_pointer_cast<T>(interface_stub->get_castable_interface()), val);
+            CO_RETURN CO_AWAIT rpc::make_optimistic(rpc::static_pointer_cast<T>(castable), val);
         }
 
         // get the right  service proxy
@@ -438,12 +437,14 @@ namespace rpc
             CO_RETURN rpc::error::OK();
         }
 
-        auto factory = zone->get_interface_stub_factory(iface);
-
-        auto* local = iface.get();
+        rpc::shared_ptr<T> shared_iface;
+        auto to_shared = CO_AWAIT rpc::make_shared(iface, shared_iface);
+        if (rpc::error::is_error(to_shared))
+            CO_RETURN to_shared;
+        auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(shared_iface);
 
         auto ret = CO_AWAIT zone->add_ref_local_or_remote_return_descriptor(
-            protocol_version, caller_zone_id, local, factory, descriptor, true);
+            protocol_version, caller_zone_id, iface_cast, descriptor, true);
         CO_RETURN ret;
     }
 }

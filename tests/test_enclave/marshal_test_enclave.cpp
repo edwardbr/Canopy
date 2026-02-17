@@ -53,9 +53,6 @@ int marshal_test_init_enclave(uint64_t host_zone_id, uint64_t host_id, uint64_t 
             rpc::shared_ptr<yyy::i_example>& new_example,
             const std::shared_ptr<rpc::child_service>& child_service_ptr) -> int
         {
-            example_import_idl_register_stubs(child_service_ptr);
-            example_shared_idl_register_stubs(child_service_ptr);
-            example_idl_register_stubs(child_service_ptr);
             new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host));
             return rpc::error::OK();
         },

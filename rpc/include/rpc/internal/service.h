@@ -54,7 +54,6 @@
 
 namespace rpc
 {
-    class i_interface_stub;
     class object_stub;
     class service;
     class child_service;
@@ -133,11 +132,6 @@ namespace rpc
         // map object_id's to stubs_
         mutable std::mutex stub_control_;
         std::unordered_map<object, std::weak_ptr<object_stub>> stubs_;
-
-        // factory
-        std::unordered_map<rpc::interface_ordinal,
-            std::shared_ptr<std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::i_interface_stub>&)>>>
-            stub_factories_;
 
         mutable std::mutex service_events_control_;
         std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_;
@@ -575,52 +569,6 @@ namespace rpc
             const std::shared_ptr<transport>& transport);
 
     public:
-        /////////////////////////////////
-        // STUB REGISTRATION AND FACTORY LOGIC
-        /////////////////////////////////
-
-        /**
-         * @brief Register a factory for creating interface stubs
-         * @param id_getter Function to get interface ordinal for a protocol version
-         * @param factory Function to create stub from another stub (for casting)
-         *
-         * This registers a factory that can create stubs for a specific interface type.
-         * Used during stub creation and interface casting operations.
-         *
-         * IMPORTANT: This function is NOT thread-safe. Call it during service initialization
-         * before the service is used for normal RPC operations.
-         */
-        void add_interface_stub_factory(std::function<interface_ordinal(uint8_t)> id_getter,
-            std::shared_ptr<std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::i_interface_stub>&)>>
-                factory);
-
-        template<class T>
-        static std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
-        get_interface_stub_factory(const shared_ptr<T>&)
-        {
-            return &get_interfaceStub<T>;
-        }
-
-        template<class T>
-        static std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
-        get_interface_stub_factory(const optimistic_ptr<T>&)
-        {
-            return &get_interfaceStub<T>;
-        }
-
-        template<class T>
-        static std::shared_ptr<rpc::i_interface_stub> get_interfaceStub(const std::shared_ptr<object_stub>& stub)
-        {
-            if (!stub)
-                return nullptr;
-            return stub->get_interface(T::get_id(rpc::VERSION_2));
-        }
-
-        int create_interface_stub(rpc::interface_ordinal interface_id,
-            std::function<interface_ordinal(uint8_t)> original_interface_id,
-            const std::shared_ptr<rpc::i_interface_stub>& original,
-            std::shared_ptr<rpc::i_interface_stub>& new_stub);
-
         uint64_t release_local_stub(
             const std::shared_ptr<object_stub>& stub, bool is_optimistic, caller_zone caller_zone_id);
 
@@ -692,8 +640,7 @@ namespace rpc
 
         CORO_TASK(int)
         get_descriptor_from_interface_stub(caller_zone caller_zone_id,
-            rpc::casting_interface* pointer,
-            std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
+            const rpc::shared_ptr<rpc::casting_interface>& iface,
             std::shared_ptr<object_stub>& stub,
             interface_descriptor& descriptor,
             bool optimistic);
@@ -702,17 +649,13 @@ namespace rpc
         CORO_TASK(int)
         add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
             caller_zone caller_zone_id,
-            rpc::casting_interface* pointer,
-            std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
+            const rpc::shared_ptr<rpc::casting_interface>& iface,
             interface_descriptor& descriptor,
             bool optimistic);
 
         /////////////////////////////////
         // PRIVATE FUNCTIONS
         /////////////////////////////////
-
-        rpc::shared_ptr<casting_interface> get_castable_interface(object object_id, interface_ordinal interface_id);
-
         void inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy);
         void cleanup_service_proxy(const std::shared_ptr<rpc::service_proxy>& other_zone);
 

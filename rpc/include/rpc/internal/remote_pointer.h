@@ -1882,7 +1882,7 @@ namespace rpc
         T* ptr = nullptr;
 
         // First try local interface casting
-        ptr = const_cast<T*>(static_cast<const T*>(from->query_interface(T::get_id(VERSION_2))));
+        ptr = const_cast<T*>(static_cast<const T*>(from->query_interface(T::get_id(get_version()))));
         if (ptr)
             CO_RETURN shared_ptr<T>(from, ptr);
 
@@ -2280,7 +2280,7 @@ namespace rpc
                 CO_RETURN error::OK();
             }
 
-            auto ptr = const_cast<T*>(static_cast<const T*>(local_shared->query_interface(T::get_id(VERSION_2))));
+            auto ptr = const_cast<T*>(static_cast<const T*>(local_shared->query_interface(T::get_id(get_version()))));
             if (ptr)
             {
                 to = optimistic_ptr<T>(from, ptr);

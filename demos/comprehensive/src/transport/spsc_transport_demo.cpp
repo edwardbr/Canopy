@@ -51,7 +51,6 @@ namespace comprehensive
             rpc::event& client_finished)
         {
             auto service_1 = std::make_shared<rpc::service>("process_1", zone_1, scheduler);
-            comprehensive_idl_register_stubs(service_1);
 
             auto on_shutdown_event = std::make_shared<rpc::event>();
             service_1->set_shutdown_event(on_shutdown_event);
@@ -120,7 +119,6 @@ namespace comprehensive
             auto on_shutdown_event = std::make_shared<rpc::event>();
             auto service_2 = std::make_shared<rpc::service>("process_2", zone_2, scheduler);
             service_2->set_shutdown_event(on_shutdown_event);
-            comprehensive_idl_register_stubs(service_2);
 
             rpc::event on_connected;
             auto handler = [&, zone_1](const rpc::connection_settings& input_interface,

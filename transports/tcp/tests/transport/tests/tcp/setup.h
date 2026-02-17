@@ -80,15 +80,9 @@ public:
 
         // Create the peer service (server side)
         peer_service_ = std::make_shared<rpc::service>("peer", peer_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(peer_service_);
-        example_shared_idl_register_stubs(peer_service_);
-        example_idl_register_stubs(peer_service_);
 
         // Create the root service (client side)
         root_service_ = std::make_shared<rpc::service>("host", root_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(root_service_);
-        example_shared_idl_register_stubs(root_service_);
-        example_idl_register_stubs(root_service_);
 
         current_host_service = root_service_;
 

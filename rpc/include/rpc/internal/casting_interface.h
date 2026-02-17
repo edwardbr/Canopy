@@ -23,7 +23,7 @@ namespace rpc
     // this is a nice helper function to match an interface id to a interface in a version independent way
     template<class T> bool match(rpc::interface_ordinal interface_id)
     {
-        return T::get_id(rpc::VERSION_2) == interface_id;
+        return T::get_id(rpc::get_version()) == interface_id;
     }
 
     // this is the base class to all interfaces
@@ -44,6 +44,23 @@ namespace rpc
             return nullptr;
         }
         virtual void set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
+
+        virtual CORO_TASK(int) call([[maybe_unused]] uint64_t protocol_version,
+            [[maybe_unused]] encoding encoding,
+            [[maybe_unused]] uint64_t tag,
+            [[maybe_unused]] caller_zone caller_zone_id,
+            [[maybe_unused]] destination_zone destination_zone_id,
+            [[maybe_unused]] object object_id,
+            [[maybe_unused]] interface_ordinal interface_id,
+            [[maybe_unused]] method method_id,
+            [[maybe_unused]] const rpc::span& in_data,
+            [[maybe_unused]] std::vector<char>& out_buf_,
+            [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
+            [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)
+        {
+            RPC_ASSERT(false);
+            CO_RETURN rpc::error::INVALID_CAST();
+        }
 
         static object get_object_id(const casting_interface& iface);
         static std::shared_ptr<rpc::service_proxy> get_service_proxy(const casting_interface& iface);
@@ -165,5 +182,4 @@ namespace rpc
     public:
         static constexpr uint64_t get(uint64_t) { return FLOAT_64_ID; }
     };
-
 }

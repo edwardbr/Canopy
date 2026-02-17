@@ -480,10 +480,10 @@ namespace synchronous_generator
                 {0} {1};
                 if(!rpc::error::is_error(__rpc_ret) && {1}_object_.destination_zone_id.is_set() && {1}_object_.object_id.is_set())
                 {{
-                    auto target_stub_strong = target_stub_.lock();
-                    if (target_stub_strong)
+                    auto stub = __rpc_target_->get_stub();
+                    auto zone_ = stub ? stub->get_zone() : nullptr;
+                    if (zone_)
                     {{
-                        auto zone_ = target_stub_strong->get_zone();
                         __rpc_ret = CO_AWAIT rpc::stub_bind_in_param(protocol_version, zone_, caller_zone_id, {1}_object_, {1});
                     }}
                     else
@@ -1210,10 +1210,10 @@ namespace synchronous_generator
                         stub("//STUB_ADD_REF_OUT");
                         stub("if(!rpc::error::is_error(__rpc_ret))");
                         stub("{{");
-                        stub("auto target_stub_strong = target_stub_.lock();");
-                        stub("if (target_stub_strong)");
+                        stub("auto stub = __rpc_target_->get_stub();");
+                        stub("auto zone_ = stub ? stub->get_zone() : nullptr;");
+                        stub("if (zone_)");
                         stub("{{");
-                        stub("auto zone_ = target_stub_strong->get_zone();");
                         has_preamble = true;
                     }
                     stub(output);
@@ -1625,6 +1625,8 @@ namespace synchronous_generator
 
         proxy("class {0}_proxy : public rpc::interface_proxy<{0}>", interface_name);
         proxy("{{");
+        proxy("mutable rpc::weak_ptr<{}_proxy> weak_this_;", interface_name);
+        proxy("");
         proxy("{}_proxy(std::shared_ptr<rpc::object_proxy>&& object_proxy) : ", interface_name);
         proxy("  rpc::interface_proxy<{}>(std::move(object_proxy))", interface_name);
         proxy("{{");
@@ -1641,7 +1643,7 @@ namespace synchronous_generator
         proxy("}}");
         proxy("#endif");
         proxy("}}");
-        proxy("mutable rpc::weak_ptr<{}_proxy> weak_this_;", interface_name);
+        proxy("");
         proxy("public:");
         proxy("");
         proxy("virtual ~{}_proxy()", interface_name);
@@ -1672,12 +1674,18 @@ namespace synchronous_generator
             interface_name);
         proxy("");
 
-        stub("CORO_TASK(int) {0}_stub::call([[maybe_unused]] uint64_t protocol_version, rpc::encoding enc, "
-             "[[maybe_unused]] rpc::caller_zone caller_zone_id, rpc::method method_id, const rpc::span& in_data, "
-             "std::vector<char>& "
-             "__rpc_out_buf)",
+        stub("CORO_TASK(int) {0}::stub_caller::call({0}* __rpc_target_, [[maybe_unused]] uint64_t protocol_version, "
+             "rpc::encoding enc, [[maybe_unused]] uint64_t tag, [[maybe_unused]] rpc::caller_zone caller_zone_id, "
+             "[[maybe_unused]] rpc::destination_zone destination_zone_id, [[maybe_unused]] rpc::object object_id, "
+             "rpc::method method_id, const rpc::span& in_data, std::vector<char>& __rpc_out_buf, "
+             "[[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel, "
+             "[[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)",
             interface_name);
         stub("{{");
+        stub("if(!__rpc_target_)");
+        stub("{{");
+        stub("CO_RETURN rpc::error::OBJECT_NOT_FOUND();");
+        stub("}}");
 
         bool has_methods = false;
         for (auto& function : m_ob.get_functions())
@@ -1723,108 +1731,10 @@ namespace synchronous_generator
         stub("");
     };
 
-    void write_stub_factory(const class_entity& m_ob, writer& stub, std::set<std::string>& done)
-    {
-        auto interface_name = m_ob.get_name();
-        auto owner = m_ob.get_owner();
-        std::string ns = interface_name;
-        while (!owner->get_name().empty())
-        {
-            ns = owner->get_name() + "::" + ns;
-            owner = owner->get_owner();
-        }
-        if (done.find(ns) != done.end())
-            return;
-        done.insert(ns);
-
-        stub("srv->add_interface_stub_factory(::{0}::get_id, "
-             "std::make_shared<std::function<std::shared_ptr<rpc::i_interface_stub>(const "
-             "std::shared_ptr<rpc::i_interface_stub>&)>>([](const std::shared_ptr<rpc::i_interface_stub>& "
-             "original) -> std::shared_ptr<rpc::i_interface_stub>",
-            ns);
-        stub("{{");
-        stub("auto ci = original->get_castable_interface();");
-        stub("{{");
-        stub("auto* tmp = const_cast<::{0}*>(static_cast<const "
-             "::{0}*>(ci->query_interface(::{0}::get_id(rpc::get_version()))));",
-            ns);
-        stub("if(tmp != nullptr)");
-        stub("{{");
-        stub("rpc::shared_ptr<::{0}> tmp_ptr(ci, tmp);", ns);
-        stub("return std::static_pointer_cast<rpc::i_interface_stub>(::{}_stub::create(tmp_ptr, "
-             "original->get_object_stub()));",
-            ns);
-        stub("}}");
-        stub("}}");
-        stub("return nullptr;");
-        stub("}}));");
-    }
-
-    void write_stub_cast_factory(const class_entity& m_ob, writer& stub)
-    {
-        auto interface_name = m_ob.get_name();
-        stub("int {}_stub::cast(rpc::interface_ordinal interface_id, std::shared_ptr<rpc::i_interface_stub>& "
-             "new_stub)",
-            interface_name);
-        stub("{{");
-        stub("auto service = get_object_stub().lock()->get_zone();");
-        stub("int __rpc_ret = service->create_interface_stub(interface_id, {}::get_id, shared_from_this(), "
-             "new_stub);",
-            interface_name);
-        stub("return __rpc_ret;");
-        stub("}}");
-    }
-
-    void write_interface_forward_declaration(const class_entity& m_ob, writer& header, writer& proxy, writer& stub)
+    void write_interface_forward_declaration(const class_entity& m_ob, writer& header, writer& proxy)
     {
         header("class {};", m_ob.get_name());
         proxy("class {}_proxy;", m_ob.get_name());
-
-        auto interface_name = m_ob.get_name();
-
-        stub("class {0}_stub : public rpc::i_interface_stub", interface_name);
-        stub("{{");
-        stub("rpc::shared_ptr<{}> __rpc_target_;", interface_name);
-        stub("std::weak_ptr<rpc::object_stub> target_stub_;", interface_name);
-        stub("");
-        stub("{0}_stub(const rpc::shared_ptr<{0}>& __rpc_target, std::weak_ptr<rpc::object_stub> "
-             "__rpc_target_stub) : ",
-            interface_name);
-        stub("  __rpc_target_(__rpc_target),", interface_name);
-        stub("  target_stub_(__rpc_target_stub)");
-        stub("  {{}}");
-        stub("mutable std::weak_ptr<{}_stub> weak_this_;", interface_name);
-        stub("");
-        stub("public:");
-        stub("virtual ~{0}_stub() = default;", interface_name);
-        stub("static std::shared_ptr<{0}_stub> create(const rpc::shared_ptr<{0}>& __rpc_target, "
-             "std::weak_ptr<rpc::object_stub> __rpc_target_stub)",
-            interface_name);
-        stub("{{");
-        stub("auto __rpc_ret = std::shared_ptr<{0}_stub>(new {0}_stub(__rpc_target, __rpc_target_stub));", interface_name);
-        stub("__rpc_ret->weak_this_ = __rpc_ret;", interface_name);
-        stub("return __rpc_ret;", interface_name);
-        stub("}}");
-        stub("std::shared_ptr<{0}_stub> shared_from_this(){{return weak_this_.lock();}}", interface_name);
-        stub("");
-        stub("rpc::interface_ordinal get_interface_id(uint64_t rpc_version) const override");
-        stub("{{");
-        stub("return {{{}::get_id(rpc_version)}};", interface_name);
-        stub("}}");
-        stub("virtual rpc::shared_ptr<rpc::casting_interface> get_castable_interface() const override {{ return "
-             "rpc::static_pointer_cast<rpc::casting_interface>(__rpc_target_); }}",
-            interface_name);
-
-        stub("std::weak_ptr<rpc::object_stub> get_object_stub() const override {{ return target_stub_;}}");
-        stub("void* get_pointer() const override {{ return __rpc_target_.get();}}");
-        stub("CORO_TASK(int) call(uint64_t protocol_version, rpc::encoding enc, "
-             "rpc::caller_zone caller_zone_id, rpc::method method_id, const rpc::span& in_data, "
-             "std::vector<char>& "
-             "__rpc_out_buf) override;");
-        stub("int cast(rpc::interface_ordinal interface_id, std::shared_ptr<rpc::i_interface_stub>& new_stub) "
-             "override;");
-        stub("}};");
-        stub("");
     }
 
     void write_enum_forward_declaration(const entity& ent, writer& header)
@@ -2280,18 +2190,6 @@ namespace synchronous_generator
         proxy("}}");
         proxy("");
 
-        stub("template<> std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::object_stub>& "
-             "stub)> "
-             "service::get_interface_stub_factory(const rpc::shared_ptr<::{}{}>& iface)",
-            ns,
-            interface_name);
-        stub("{{");
-        stub("return [&](const std::shared_ptr<rpc::object_stub>& stub) -> "
-             "std::shared_ptr<rpc::i_interface_stub>{{");
-        stub("return std::static_pointer_cast<rpc::i_interface_stub>(::{}{}_stub::create(iface, stub));", ns, interface_name);
-        stub("}};");
-        stub("}}");
-
         stub("template<> CORO_TASK(int) service::bind_in_proxy(uint64_t protocol_version, "
              "const "
              "rpc::shared_ptr<::{}{}>& iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, "
@@ -2304,14 +2202,9 @@ namespace synchronous_generator
         stub("{{");
         stub("CO_RETURN rpc::error::INVALID_DATA();");
         stub("}}");
-
-        stub("auto factory = get_interface_stub_factory(iface);");
-        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, "
-             "iface.get(), "
-             "factory, "
-             "stub, descriptor, false);",
-            ns,
-            interface_name);
+        stub("auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface);");
+        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, stub, descriptor, "
+             "false);");
         stub("}}");
 
         stub("template<> CORO_TASK(int) service::bind_in_proxy(uint64_t protocol_version, "
@@ -2326,34 +2219,16 @@ namespace synchronous_generator
         stub("{{");
         stub("CO_RETURN rpc::error::INVALID_DATA();");
         stub("}}");
-
-        stub("auto factory = get_interface_stub_factory(iface);");
-        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, "
-             "iface.get(), "
-             "factory, "
-             "stub, descriptor, true);",
-            ns,
-            interface_name);
+        stub("rpc::shared_ptr<::{}{}> iface_shared;", ns, interface_name);
+        stub("auto __rpc_ret = CO_AWAIT rpc::make_shared(iface, iface_shared);");
+        stub("if(rpc::error::is_error(__rpc_ret))");
+        stub("{{");
+        stub("CO_RETURN __rpc_ret;");
         stub("}}");
-    }
-
-    void write_marshalling_logic(const class_entity& lib, writer& stub)
-    {
-        {
-            for (auto& cls : lib.get_classes())
-            {
-                if (!cls->get_import_lib().empty())
-                    continue;
-                if (cls->get_entity_type() == entity_type::INTERFACE)
-                    write_stub_cast_factory(*cls, stub);
-            }
-
-            for (auto& cls : lib.get_classes())
-            {
-                if (!cls->get_import_lib().empty())
-                    continue;
-            }
-        }
+        stub("auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface_shared);");
+        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, stub, descriptor, "
+             "true);");
+        stub("}}");
     }
 
     // entry point
@@ -2364,7 +2239,7 @@ namespace synchronous_generator
             if (!cls->get_import_lib().empty())
                 continue;
             if (cls->get_entity_type() == entity_type::INTERFACE)
-                write_interface_forward_declaration(*cls, header, proxy, stub);
+                write_interface_forward_declaration(*cls, header, proxy);
         }
 
         for (auto cls : lib.get_classes())
@@ -2480,7 +2355,6 @@ namespace synchronous_generator
                 }
             }
         }
-        write_marshalling_logic(lib, stub);
     }
 
     void write_epilog(bool from_host,
@@ -2515,53 +2389,8 @@ namespace synchronous_generator
         }
     }
 
-    void write_stub_factory_lookup_items(
-        const class_entity& lib, std::string prefix, writer& stub, std::set<std::string>& done)
-    {
-        for (auto cls : lib.get_classes())
-        {
-            if (!cls->get_import_lib().empty())
-                continue;
-            if (cls->get_entity_type() == entity_type::NAMESPACE)
-            {
-                write_stub_factory_lookup_items(*cls, prefix + cls->get_name() + "::", stub, done);
-            }
-            else
-            {
-                for (auto& cls : lib.get_classes())
-                {
-                    if (!cls->get_import_lib().empty())
-                        continue;
-                    if (cls->get_entity_type() == entity_type::INTERFACE)
-                        write_stub_factory(*cls, stub, done);
-                }
-
-                for (auto& cls : lib.get_classes())
-                {
-                    if (!cls->get_import_lib().empty())
-                        continue;
-                }
-            }
-        }
-    }
-
-    void write_stub_factory_lookup(
-        const std::string module_name, const class_entity& lib, std::string prefix, writer& stub_header, writer& stub)
-    {
-        stub_header("void {}_register_stubs(const std::shared_ptr<rpc::service>& srv);", module_name);
-        stub("void {}_register_stubs([[maybe_unused]]const std::shared_ptr<rpc::service>& srv)", module_name);
-        stub("{{");
-
-        std::set<std::string> done;
-
-        write_stub_factory_lookup_items(lib, prefix, stub, done);
-
-        stub("}}");
-    }
-
     // entry point
-    void write_files(std::string module_name,
-        bool from_host,
+    void write_files(bool from_host,
         const class_entity& lib,
         std::ostream& hos,
         std::ostream& pos,
@@ -2691,7 +2520,5 @@ namespace synchronous_generator
         header("}}");
         proxy("}}");
         stub("}}");
-
-        write_stub_factory_lookup(module_name, lib, prefix, stub_header, stub);
     }
 }

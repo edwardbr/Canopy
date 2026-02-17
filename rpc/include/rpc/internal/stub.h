@@ -50,8 +50,6 @@
 
 namespace rpc
 {
-
-    class i_interface_stub;
     class object_stub;
     class service;
     class service_proxy;
@@ -99,9 +97,8 @@ namespace rpc
         // Unique object ID within the zone
         object id_ = {0};
 
-        // Interface stub map (stubs have strong pointers to interface implementations)
-        mutable std::mutex map_control_;
-        std::unordered_map<interface_ordinal, std::shared_ptr<rpc::i_interface_stub>> stub_map_;
+        // Root interface target for this local object
+        rpc::shared_ptr<rpc::casting_interface> target_;
 
         // Self-reference for shared_from_this pattern
         std::shared_ptr<object_stub> p_keep_self_alive_;
@@ -119,14 +116,12 @@ namespace rpc
         std::shared_ptr<service> zone_;
 
     public:
-        object_stub(object id, const std::shared_ptr<service>& zone, void* target);
+        object_stub(object id, const std::shared_ptr<service>& zone, const rpc::shared_ptr<rpc::casting_interface>& target);
         ~object_stub();
 
         object get_id() const { return id_; }
-        rpc::shared_ptr<rpc::casting_interface> get_castable_interface() const;
+        rpc::shared_ptr<rpc::casting_interface> get_castable_interface(interface_ordinal interface_id = {0}) const;
         void reset() { p_keep_self_alive_.reset(); }
-
-        void add_interface(const std::shared_ptr<rpc::i_interface_stub>& iface);
 
         /**
          * @brief Activate lifetime management for this stub
@@ -167,13 +162,6 @@ namespace rpc
          * @return error::OK() if supported, error code otherwise
          */
         int try_cast(interface_ordinal interface_id);
-
-        /**
-         * @brief Get interface stub for a specific interface
-         * @param interface_id Interface ordinal
-         * @return Shared pointer to interface stub, or nullptr if not found
-         */
-        std::shared_ptr<rpc::i_interface_stub> get_interface(interface_ordinal interface_id);
 
         /**
          * @brief Add reference to this stub
@@ -245,87 +233,5 @@ namespace rpc
          * Thread-Safety: Protected internally by references_mutex_
          */
         std::vector<caller_zone> get_zones_with_optimistic_refs() const;
-    };
-
-    /**
-     * @brief Interface stub base class for type-specific RPC dispatch
-     *
-     * Generated stub classes (from IDL) inherit from i_interface_stub and
-     * implement RPC call dispatching for a specific interface type.
-     *
-     * Each i_interface_stub wraps a specific C++ interface implementation
-     * and handles:
-     * - Unmarshalling parameters for incoming RPC calls
-     * - Dispatching to the actual C++ method
-     * - Marshalling return values
-     * - Interface casting to related interfaces
-     *
-     * Generated stubs are named <InterfaceName>_stub and are created by
-     * the IDL compiler from .idl interface definitions.
-     *
-     * Multiple i_interface_stub instances can exist for a single object_stub,
-     * one for each interface the object implements. The object_stub's stub_map_
-     * holds all interface stubs for an object.
-     */
-    class i_interface_stub
-    {
-    public:
-        virtual ~i_interface_stub() = default;
-
-        /**
-         * @brief Get the interface ordinal for this stub
-         * @param rpc_version RPC protocol version
-         * @return Interface ordinal identifying this interface type
-         */
-        virtual interface_ordinal get_interface_id(uint64_t rpc_version) const = 0;
-
-        /**
-         * @brief Dispatch RPC call to the wrapped C++ object
-         * @param protocol_version RPC protocol version
-         * @param enc Encoding format for parameters
-         * @param caller_zone_id Zone making the call
-         * @param method_id Method to invoke
-         * @param in_data Serialized input parameters
-         * @param out_buf_[out] Buffer for serialized return value
-         * @return error::OK() on success, error code on failure
-         *
-         * Generated stub classes unmarshal parameters, call the C++ method,
-         * and marshal the return value.
-         */
-        virtual CORO_TASK(int) call(uint64_t protocol_version,
-            rpc::encoding enc,
-            caller_zone caller_zone_id,
-            method method_id,
-            const rpc::span& in_data,
-            std::vector<char>& out_buf_)
-            = 0;
-
-        /**
-         * @brief Cast to a different interface stub
-         * @param interface_id Target interface ordinal
-         * @param new_stub[out] New interface stub if cast succeeds
-         * @return error::OK() if cast supported, error code otherwise
-         *
-         * Allows QueryInterface-style casting between related interfaces.
-         */
-        virtual int cast(interface_ordinal interface_id, std::shared_ptr<rpc::i_interface_stub>& new_stub) = 0;
-
-        /**
-         * @brief Get the owning object_stub
-         * @return Weak pointer to the object_stub that contains this interface stub
-         */
-        virtual std::weak_ptr<rpc::object_stub> get_object_stub() const = 0;
-
-        /**
-         * @brief Get raw pointer to the wrapped C++ object
-         * @return Pointer to the local C++ object implementation
-         */
-        virtual void* get_pointer() const = 0;
-
-        /**
-         * @brief Get castable interface pointer
-         * @return rpc::shared_ptr to the casting_interface
-         */
-        virtual rpc::shared_ptr<rpc::casting_interface> get_castable_interface() const = 0;
     };
 }

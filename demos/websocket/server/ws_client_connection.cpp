@@ -76,7 +76,6 @@ namespace websocket_demo
                             const std::shared_ptr<rpc::service>& svc) -> coro::task<int>
                         {
                             std::cout << "[WS] Inside attach_remote_zone lambda" << std::endl;
-                            secret_llama_idl_register_stubs(svc);
 
                             auto wsrvc = std::static_pointer_cast<websocket_service>(svc);
 

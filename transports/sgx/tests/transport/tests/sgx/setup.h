@@ -69,9 +69,6 @@ public:
         }
 #endif
         root_service_ = std::make_shared<rpc::service>("host", rpc::zone{++zone_gen_});
-        example_import_idl_register_stubs(root_service_);
-        example_shared_idl_register_stubs(root_service_);
-        example_idl_register_stubs(root_service_);
         current_host_service = root_service_;
 
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());

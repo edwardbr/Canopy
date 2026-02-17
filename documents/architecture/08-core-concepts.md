@@ -183,9 +183,6 @@ error_code attach_remote_zone(const char* name,
                               const rpc::interface_descriptor& output_descr,
                               SetupCallback<InterfaceType, Args...> setup);
 
-// Stub Registration
-void add_interface_stub_factory(rpc::interface_ordinal interface_id,
-                                i_interface_stub_factory* factory);
 ```
 
 ## 3. Smart Pointers
@@ -482,26 +479,6 @@ class object_stub
 };
 ```
 
-### Interface Stub (`i_interface_stub`)
-
-Abstract interface for interface-specific stub behavior.
-
-```cpp
-class i_interface_stub
-{
-public:
-    virtual CORO_TASK(int) call(
-        uint64_t protocol_version,
-        rpc::encoding enc,
-        rpc::caller_zone caller_zone_id,
-        rpc::method method_id,
-        const rpc::span& in_data,
-        std::vector<char>& out_data) = 0;
-
-    virtual void* cast(rpc::interface_ordinal interface_id) = 0;
-    virtual rpc::casting_interface* get_pointer() = 0;
-};
-```
 
 ## 5. Interface Pattern
 

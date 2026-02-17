@@ -66,7 +66,6 @@ namespace comprehensive
             // Create server service
             auto service = std::make_shared<rpc::service>("tcp_server", rpc::zone{++zone_gen}, scheduler);
             service->set_shutdown_event(on_shutdown_event);
-            comprehensive_idl_register_stubs(service);
 
             std::cout << "Server zone ID: " << service->get_zone_id().get_val() << "\n";
 
@@ -158,7 +157,6 @@ namespace comprehensive
 
                 // Create client service
                 auto client_service = std::make_shared<rpc::service>("tcp_client", rpc::zone{++zone_gen}, scheduler);
-                comprehensive_idl_register_stubs(client_service);
 
                 std::cout << "Client zone ID: " << client_service->get_zone_id().get_val() << "\n";
                 std::cout << "Client: Connecting to " << host << ":" << port << "...\n";
