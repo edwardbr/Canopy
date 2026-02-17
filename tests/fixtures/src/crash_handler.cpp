@@ -501,61 +501,93 @@ namespace crash_handler
         // Get the base address of the executable to calculate relative address
         // For PIE executables, we need to subtract the base address
         Dl_info info;
-        if (dladdr(address, &info) == 0 || info.dli_fbase == nullptr)
-        {
-            return "";
-        }
+        uintptr_t addr_to_resolve = (uintptr_t)address;
 
-        // Calculate relative address
-        uintptr_t relative_addr = (uintptr_t)address - (uintptr_t)info.dli_fbase;
+        if (dladdr(address, &info) != 0 && info.dli_fbase != nullptr)
+        {
+            // For shared libraries or PIE executables, calculate relative address
+            addr_to_resolve = (uintptr_t)address - (uintptr_t)info.dli_fbase;
+        }
+        // If dladdr fails, try the absolute address directly
 
         // Use addr2line to get function name, source file and line number
-        std::stringstream cmd;
-        cmd << "addr2line -f -C -e " << exe_path << " 0x" << std::hex << relative_addr << " 2>/dev/null";
+        // Try multiple strategies: relative address, absolute address, and with -p flag
+        std::vector<std::string> commands;
 
-        FILE* pipe = popen(cmd.str().c_str(), "r");
-        if (!pipe)
-            return "";
+        // Strategy 1: Relative address (for PIE/shared libs)
+        std::stringstream cmd1;
+        cmd1 << "addr2line -f -C -p -i -e " << exe_path << " 0x" << std::hex << addr_to_resolve << " 2>/dev/null";
+        commands.push_back(cmd1.str());
 
-        char function_buffer[512];
-        char location_buffer[512];
-        std::string result;
-
-        // First line: function name
-        if (fgets(function_buffer, sizeof(function_buffer), pipe) != nullptr)
+        // Strategy 2: Absolute address (for non-PIE)
+        if (addr_to_resolve != (uintptr_t)address)
         {
-            std::string function = function_buffer;
-            if (!function.empty() && function.back() == '\n')
-            {
-                function.pop_back();
-            }
-
-            // Second line: file:line
-            if (fgets(location_buffer, sizeof(location_buffer), pipe) != nullptr)
-            {
-                std::string location = location_buffer;
-                if (!location.empty() && location.back() == '\n')
-                {
-                    location.pop_back();
-                }
-
-                // Skip if we get default "??" responses
-                if (function != "??" && location != "??:0" && location != "??:?")
-                {
-                    // Extract just the filename from full path
-                    size_t last_slash = location.find_last_of('/');
-                    if (last_slash != std::string::npos && last_slash + 1 < location.length())
-                    {
-                        location = location.substr(last_slash + 1);
-                    }
-
-                    result = function + " at " + location;
-                }
-            }
+            std::stringstream cmd2;
+            cmd2 << "addr2line -f -C -p -i -e " << exe_path << " 0x" << std::hex << (uintptr_t)address << " 2>/dev/null";
+            commands.push_back(cmd2.str());
         }
 
-        pclose(pipe);
-        return result;
+        // Try each strategy until one succeeds
+        for (const auto& cmd : commands)
+        {
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (!pipe)
+                continue;
+
+            char buffer[1024];
+            std::string result;
+
+            // With -p flag, addr2line outputs everything on one line: "function at file:line"
+            if (fgets(buffer, sizeof(buffer), pipe) != nullptr)
+            {
+                std::string line = buffer;
+                if (!line.empty() && line.back() == '\n')
+                {
+                    line.pop_back();
+                }
+
+                // Skip if we get default "??" responses or "?? ??:0"
+                if (line != "?? ??:0" && line != "?? ??:?" && line.find("??") != 0)
+                {
+                    // Extract just the filename from full path
+                    size_t at_pos = line.find(" at ");
+                    if (at_pos != std::string::npos)
+                    {
+                        std::string function = line.substr(0, at_pos);
+                        std::string location = line.substr(at_pos + 4);
+
+                        size_t last_slash = location.find_last_of('/');
+                        if (last_slash != std::string::npos && last_slash + 1 < location.length())
+                        {
+                            location = location.substr(last_slash + 1);
+                        }
+
+                        // Check for discriminator info and preserve it
+                        size_t disc_pos = location.find(" (discriminator ");
+                        std::string discriminator;
+                        if (disc_pos != std::string::npos)
+                        {
+                            discriminator = location.substr(disc_pos);
+                            location = location.substr(0, disc_pos);
+                        }
+
+                        result = function + " at " + location + discriminator;
+                    }
+                    else
+                    {
+                        result = line;
+                    }
+
+                    pclose(pipe);
+                    if (!result.empty())
+                        return result;
+                }
+            }
+
+            pclose(pipe);
+        }
+
+        return "";
     }
 
     std::vector<std::string> crash_handler::detect_crash_patterns(const crash_report& report)

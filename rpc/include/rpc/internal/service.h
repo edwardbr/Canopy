@@ -921,7 +921,7 @@ namespace rpc
             }
             if (input_descr.destination_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
             {
-                RPC_ERROR("caller_interface_id does not match");
+                RPC_ERROR("destination_interface_id does not match");
                 CO_RETURN rpc::error::INVALID_INTERFACE_ID();
             }
             auto zone_id = parent_transport->get_zone_id();
@@ -1126,7 +1126,7 @@ namespace rpc
         }
         if (input_descr.destination_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
         {
-            RPC_ERROR("caller_interface_id does not match");
+            RPC_ERROR("destination_interface_id does not match");
             CO_RETURN rpc::error::INVALID_INTERFACE_ID();
         }
 
@@ -1136,11 +1136,11 @@ namespace rpc
         add_transport(input_descr.input_zone_id, peer_transport);
         transport_keep_alive ka(peer_transport, input_descr.input_zone_id);
         transport_keep_alive adjacent_ka;
-        if (input_descr.input_zone_id != peer_transport->get_adjacent_zone_id().as_destination())
+        if (input_descr.input_zone_id != adjacent_zone_id.as_destination())
         {
-            add_transport(peer_transport->get_adjacent_zone_id().as_destination(), peer_transport);
+            add_transport(adjacent_zone_id.as_destination(), peer_transport);
             adjacent_ka.transport_ = peer_transport;
-            adjacent_ka.zone_id_ = peer_transport->get_adjacent_zone_id().as_destination();
+            adjacent_ka.zone_id_ = adjacent_zone_id.as_destination();
         }
 
         if (input_descr.object_id != 0)
@@ -1156,7 +1156,7 @@ namespace rpc
             auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.object_id,
                 service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                 new_proxy_added,
-                {peer_transport->get_adjacent_zone_id().get_val()},
+                {adjacent_zone_id.get_val()},
                 false,
                 op);
             if (err_code != error::OK())
@@ -1200,11 +1200,8 @@ namespace rpc
 
         if (child_ptr)
         {
-            auto err_code = CO_AWAIT rpc::stub_bind_out_param(shared_from_this(),
-                rpc::get_version(),
-                peer_transport->get_adjacent_zone_id().as_caller(),
-                child_ptr,
-                output_descr);
+            auto err_code = CO_AWAIT rpc::stub_bind_out_param(
+                shared_from_this(), rpc::get_version(), adjacent_zone_id.as_caller(), child_ptr, output_descr);
 
             if (err_code == rpc::error::OK())
             {
