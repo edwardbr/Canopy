@@ -439,7 +439,7 @@ namespace synchronous_generator
                 return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
                                    "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                    "\t\t\t{{{{\n"
-                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
+                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
                                    "__rpc_sp->get_remote_rpc_version(), "
                                    "{0}, {0}_stub_, {0}_stub_id_);\n"
                                    "\t\t\t}}}}",
@@ -449,7 +449,7 @@ namespace synchronous_generator
                                "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
                                "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                "\t\t\t{{{{\n"
-                               "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
+                               "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
                                "__rpc_sp->get_remote_rpc_version(), "
                                "{0}, {0}_stub_, {0}_stub_id_);\n"
                                "\t\t\t}}}}",
@@ -480,7 +480,7 @@ namespace synchronous_generator
                 {0} {1};
                 if(!rpc::error::is_error(__rpc_ret) && {1}_object_.destination_zone_id.is_set() && {1}_object_.object_id.is_set())
                 {{
-                    auto stub = __rpc_target_->get_stub();
+                    auto stub = __rpc_target_->__rpc_get_stub();
                     auto zone_ = stub ? stub->get_zone() : nullptr;
                     if (zone_)
                     {{
@@ -539,7 +539,7 @@ namespace synchronous_generator
                 return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
                                    "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                    "\t\t\t{{{{\n"
-                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
+                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
                                    "__rpc_sp->get_remote_rpc_version(), "
                                    "{0}, {0}_stub_, {0}_stub_id_);\n"
                                    "\t\t\t}}}}",
@@ -549,7 +549,7 @@ namespace synchronous_generator
                                "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
                                "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
                                "\t\t\t{{{{\n"
-                               "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(get_object_proxy(), "
+                               "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
                                "__rpc_sp->get_remote_rpc_version(), "
                                "{0}, {0}_stub_, {0}_stub_id_);\n"
                                "\t\t\t}}}}",
@@ -1210,7 +1210,7 @@ namespace synchronous_generator
                         stub("//STUB_ADD_REF_OUT");
                         stub("if(!rpc::error::is_error(__rpc_ret))");
                         stub("{{");
-                        stub("auto stub = __rpc_target_->get_stub();");
+                        stub("auto stub = __rpc_target_->__rpc_get_stub();");
                         stub("auto zone_ = stub ? stub->get_zone() : nullptr;");
                         stub("if (zone_)");
                         stub("{{");
@@ -1517,7 +1517,8 @@ namespace synchronous_generator
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
             proxy("virtual ~__{0}_local_proxy() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
-            proxy("const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override");
+            proxy("const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const "
+                  "override");
             proxy("{{");
             proxy("std::ignore = interface_id;");
             proxy("return nullptr;");

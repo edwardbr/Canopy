@@ -17,7 +17,7 @@ namespace rpc
         virtual ~base() = default;
 
         // Query to see if this class supports an an interface
-        const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
+        const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
         {
             const rpc::casting_interface* out = nullptr;
             (
@@ -32,7 +32,7 @@ namespace rpc
         }
 
         CORO_TASK(int)
-        call(uint64_t protocol_version,
+        __rpc_call(uint64_t protocol_version,
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
@@ -66,7 +66,7 @@ namespace rpc
             CO_RETURN ret;
         }
 
-        std::shared_ptr<rpc::object_stub> get_stub() const override { return stub_.lock(); }
-        void set_stub(const std::shared_ptr<rpc::object_stub>& stub) override { stub_ = stub; }
+        std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override { return stub_.lock(); }
+        void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>& stub) override { stub_ = stub; }
     };
 }

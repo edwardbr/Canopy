@@ -998,7 +998,7 @@ namespace rpc
         if (input_interface)
         {
             // this is to check that an interface is belonging to another zone and not the operating zone
-            if (!input_interface->is_local()
+            if (!input_interface->__rpc_is_local()
                 && casting_interface::get_destination_zone(*input_interface) != get_zone_id().as_destination())
             {
                 input_descr.input_zone_id = casting_interface::get_destination_zone(*input_interface);

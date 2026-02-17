@@ -31,20 +31,20 @@ namespace rpc
     {
     public:
         virtual ~casting_interface() = default;
-        virtual const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const = 0;
+        virtual const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const = 0;
 
-        virtual bool is_local() const { return true; }
-        virtual std::shared_ptr<rpc::object_proxy> get_object_proxy() const { return nullptr; }
+        virtual bool __rpc_is_local() const { return true; }
+        virtual std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const { return nullptr; }
 
         // only for local objects
-        virtual std::shared_ptr<rpc::object_stub> get_stub() const
+        virtual std::shared_ptr<rpc::object_stub> __rpc_get_stub() const
         {
             RPC_ASSERT(false);
             return nullptr;
         }
-        virtual void set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
+        virtual void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
 
-        virtual CORO_TASK(int) call([[maybe_unused]] uint64_t protocol_version,
+        virtual CORO_TASK(int) __rpc_call([[maybe_unused]] uint64_t protocol_version,
             [[maybe_unused]] encoding encoding,
             [[maybe_unused]] uint64_t tag,
             [[maybe_unused]] caller_zone caller_zone_id,
@@ -83,15 +83,18 @@ namespace rpc
         }
         virtual ~interface_proxy() = default;
 
-        const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override
+        const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
         {
             if (rpc::match<T>(interface_id))
                 return static_cast<const T*>(this);
             return nullptr;
         }
 
-        bool is_local() const override { return false; }
-        std::shared_ptr<rpc::object_proxy> get_object_proxy() const override { return object_proxy_.get_nullable(); }
+        bool __rpc_is_local() const override { return false; }
+        std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override
+        {
+            return object_proxy_.get_nullable();
+        }
     };
 
     constexpr uint64_t STD_VECTOR_UINT_8_ID = 0x71FC1FAC5CD5E6FA;

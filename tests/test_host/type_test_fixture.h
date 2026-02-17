@@ -79,7 +79,7 @@ public:
         Lambda&& verification_lambda,
         Args&&... args)
     {
-        is_local_ = obj.get()->is_local();
+        is_local_ = obj.get()->__rpc_is_local();
         continuation_scheduled_ = true;
 
         if (is_local_)

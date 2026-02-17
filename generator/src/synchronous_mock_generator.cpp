@@ -53,7 +53,8 @@ namespace synchronous_mock_generator
         header("class {0}_mock : public {0}", interface_name);
         header("{{");
         header("public:");
-        header("const rpc::casting_interface* query_interface(rpc::interface_ordinal interface_id) const override ");
+        header(
+            "const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override ");
         header("{{");
         for (const auto& version : protocol_versions)
         {

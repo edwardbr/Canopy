@@ -30,7 +30,7 @@ namespace rpc
         auto operating_service = sp->get_operating_zone_service();
 
         // this is to check that an interface is belonging to another zone and not the operating zone
-        if (!iface->is_local()
+        if (!iface->__rpc_is_local()
             && casting_interface::get_destination_zone(*iface) != operating_service->get_zone_id().as_destination())
         {
             descriptor = {casting_interface::get_object_id(*iface), casting_interface::get_destination_zone(*iface)};
@@ -318,7 +318,7 @@ namespace rpc
         auto operating_service = sp->get_operating_zone_service();
 
         // this is to check that an interface is belonging to another zone and not the operating zone
-        if (!iface->is_local()
+        if (!iface->__rpc_is_local()
             && casting_interface::get_destination_zone(*iface) != operating_service->get_zone_id().as_destination())
         {
             descriptor = {casting_interface::get_object_id(*iface), casting_interface::get_destination_zone(*iface)};

@@ -12,7 +12,7 @@ namespace rpc
         // Consolidated null and locality checks
         if (!first || !second)
             return true;
-        if (first->is_local() || second->is_local())
+        if (first->__rpc_is_local() || second->__rpc_is_local())
             return true;
 
         // Compare zones directly
@@ -23,7 +23,7 @@ namespace rpc
 
     object casting_interface::get_object_id(const casting_interface& iface)
     {
-        auto obj = iface.get_object_proxy();
+        auto obj = iface.__rpc_get_object_proxy();
         if (!obj)
             return {0};
         return obj->get_object_id();
@@ -31,7 +31,7 @@ namespace rpc
 
     std::shared_ptr<rpc::service_proxy> casting_interface::get_service_proxy(const casting_interface& iface)
     {
-        auto obj = iface.get_object_proxy();
+        auto obj = iface.__rpc_get_object_proxy();
         if (!obj)
             return nullptr;
         return obj->get_service_proxy();

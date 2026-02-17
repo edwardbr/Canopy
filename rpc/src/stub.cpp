@@ -33,7 +33,7 @@ namespace rpc
         if (!interface_id.is_set())
             return target_;
 
-        auto* iface = const_cast<rpc::casting_interface*>(target_->query_interface(interface_id));
+        auto* iface = const_cast<rpc::casting_interface*>(target_->__rpc_query_interface(interface_id));
         if (!iface)
             return nullptr;
         return rpc::shared_ptr<rpc::casting_interface>(target_, iface);
@@ -52,7 +52,7 @@ namespace rpc
         {
             std::vector<rpc::back_channel_entry> empty_in_back_channel;
             std::vector<rpc::back_channel_entry> empty_out_back_channel;
-            CO_RETURN CO_AWAIT target_->call(protocol_version,
+            CO_RETURN CO_AWAIT target_->__rpc_call(protocol_version,
                 enc,
                 0,
                 caller_zone_id,
@@ -74,7 +74,7 @@ namespace rpc
         if (!target_)
             return rpc::error::OBJECT_NOT_FOUND();
 
-        auto* iface = const_cast<rpc::casting_interface*>(target_->query_interface(interface_id));
+        auto* iface = const_cast<rpc::casting_interface*>(target_->__rpc_query_interface(interface_id));
         if (!iface)
             return rpc::error::INVALID_CAST();
 

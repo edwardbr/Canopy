@@ -113,9 +113,9 @@ namespace rpc
     {
         if (ptr == nullptr)
             return {};
-        if (ptr->is_local())
+        if (ptr->__rpc_is_local())
         {
-            auto stub = ptr->get_stub();
+            auto stub = ptr->__rpc_get_stub();
             if (stub)
             {
                 return stub->get_id();
@@ -396,21 +396,21 @@ namespace rpc
         {
             CO_RETURN error::INVALID_DATA();
         }
-        if (!iface->is_local())
+        if (!iface->__rpc_is_local())
         {
             // we should not be getting the interface from remote objects
             CO_RETURN error::OBJECT_NOT_FOUND();
         }
         {
             std::lock_guard g(stub_control_);
-            stub = iface->get_stub();
+            stub = iface->__rpc_get_stub();
             if (!stub)
             {
                 auto id = generate_new_object_id();
                 stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
                 stubs_[id] = stub;
                 stub->keep_self_alive();
-                iface->set_stub(stub);
+                iface->__rpc_set_stub(stub);
             }
         }
         auto ret = CO_AWAIT stub->add_ref(optimistic, false, caller_zone_id);
@@ -434,10 +434,10 @@ namespace rpc
             CO_RETURN error::INVALID_DATA();
         }
         // This is ALWAYS an out parameter case
-        if (caller_zone_id.is_set() && !iface->is_local())
+        if (caller_zone_id.is_set() && !iface->__rpc_is_local())
         {
             // Inline prepare_out_param logic here for out parameter binding
-            auto object_proxy = iface->get_object_proxy();
+            auto object_proxy = iface->__rpc_get_object_proxy();
             RPC_ASSERT(object_proxy != nullptr);
             auto object_service_proxy = object_proxy->get_service_proxy();
             RPC_ASSERT(object_service_proxy->zone_id_ == zone_id_);
@@ -548,7 +548,7 @@ namespace rpc
         }
 
         // For local interfaces or when caller_zone_id is not set, create a local stub
-        auto stub = iface->get_stub();
+        auto stub = iface->__rpc_get_stub();
         if (!stub)
         {
             if (optimistic)
@@ -558,14 +558,14 @@ namespace rpc
             else
             {
                 std::lock_guard g(stub_control_);
-                stub = iface->get_stub();
+                stub = iface->__rpc_get_stub();
                 if (!stub)
                 {
                     auto id = generate_new_object_id();
                     stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
                     stubs_[id] = stub;
                     stub->keep_self_alive();
-                    iface->set_stub(stub);
+                    iface->__rpc_set_stub(stub);
                 }
             }
         }
