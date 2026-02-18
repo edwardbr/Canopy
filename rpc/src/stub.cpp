@@ -161,6 +161,10 @@ namespace rpc
                             optimistic_references_.erase(it);
                         }
                     }
+                    else
+                    {
+                        RPC_ERROR("negative optimistic reference count");
+                    }
                 }
                 else
                 {
@@ -186,6 +190,10 @@ namespace rpc
                         {
                             shared_references_.erase(it);
                         }
+                    }
+                    else
+                    {
+                        RPC_ERROR("negative shared reference count");
                     }
                 }
                 else

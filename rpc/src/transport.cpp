@@ -942,11 +942,7 @@ namespace rpc
                         build_out_param_channel);
                 }
 #endif
-
-                if (error_code != error::OK())
-                {
-                    CO_RETURN error_code;
-                }
+                CO_RETURN error_code;
             }
             if (!dest_transport)
             {
