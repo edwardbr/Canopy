@@ -752,7 +752,7 @@ namespace rpc
         if (!is_optimistic && !count)
         {
             stubs_.erase(stub->get_id());
-            stub->reset();
+            stub->dont_keep_alive();
         }
         return count;
     }
@@ -819,7 +819,8 @@ namespace rpc
                     stubs_.erase(object_id);
                 } // Release stub_control_ lock before calling object_released
 
-                stub->reset();
+                stub->dont_keep_alive();
+                stub.reset();
 
                 // Now notify all transports that had optimistic references
                 // IMPORTANT: This must be done AFTER releasing stub_control_ mutex to avoid deadlock
@@ -947,7 +948,7 @@ namespace rpc
                     // Track for notification
                     objects_to_notify.push_back(obj_id);
 
-                    stub->reset();
+                    stub->dont_keep_alive();
                 }
             }
         } // Release stub_control_ before calling notify

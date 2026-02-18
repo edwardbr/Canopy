@@ -1048,6 +1048,11 @@ namespace rpc
             err_code = CO_AWAIT rpc::proxy_bind_out_param(new_service_proxy, output_descr, output_interface);
         }
 
+        if (input_stub)
+        {
+            input_stub->release_from_service(child_transport->get_adjacent_zone_id().as_caller());
+        }
+
         CO_RETURN err_code;
     }
 

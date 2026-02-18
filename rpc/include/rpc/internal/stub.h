@@ -121,7 +121,6 @@ namespace rpc
 
         object get_id() const { return id_; }
         rpc::shared_ptr<rpc::casting_interface> get_castable_interface(interface_ordinal interface_id = {0}) const;
-        void reset() { p_keep_self_alive_.reset(); }
 
         /**
          * @brief Activate lifetime management for this stub
@@ -131,6 +130,7 @@ namespace rpc
          * shared_from_this pattern by storing self-reference.
          */
         void keep_self_alive() { p_keep_self_alive_ = shared_from_this(); }
+        void dont_keep_alive() { p_keep_self_alive_.reset(); }
 
         std::shared_ptr<service> get_zone() const { return zone_; }
 
