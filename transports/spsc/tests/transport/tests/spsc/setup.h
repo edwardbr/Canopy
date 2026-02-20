@@ -219,7 +219,7 @@ public:
     {
         // SPSC setup creates remote zones via transport, not local child zones
         // For now, this is not supported - would need to create new queues and transports
-        RPC_ERROR("create_new_zone is not implemented for spsc_setup - use inproc_setup for local child zones");
+        RPC_INFO("create_new_zone is not implemented for spsc_setup - use inproc_setup for local child zones");
         CO_RETURN nullptr;
     }
 };

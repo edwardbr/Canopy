@@ -131,7 +131,7 @@ namespace rpc
 
         bool is_critical(int err)
         {
-            if (is_error(err) && err != OBJECT_GONE())
+            if (is_error(err) && err != OBJECT_GONE() && err != INVALID_CAST())
             {
                 return true;
             }

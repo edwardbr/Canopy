@@ -859,9 +859,9 @@ namespace rpc::dodgy
             {request.interface_id},
             request.back_channel,
             out_back_channel);
-        if (ret != rpc::error::OK())
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed try_cast");
+            RPC_DEBUG("inbound_send error {}", ret);
         }
 
         auto err = CO_AWAIT send_payload(prefix.version,

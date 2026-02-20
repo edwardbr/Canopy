@@ -277,7 +277,7 @@ public:
         // TCP setup doesn't support creating local child zones via connect_to_zone
         // Instead, TCP is for connecting to remote services over network
         // For local child zones, use inproc_setup instead
-        RPC_ERROR("create_new_zone is not implemented for tcp_setup - use inproc_setup for local child zones");
+        RPC_INFO("create_new_zone is not implemented for tcp_setup - use inproc_setup for local child zones");
         CO_RETURN nullptr;
     }
 };
