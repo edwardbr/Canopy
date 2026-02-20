@@ -127,11 +127,8 @@ if(CANOPY_STANDALONE)
 
     if(CANOPY_BUILD_DEMOS)
       set(LLAMA_BUILD_COMMON ON)
-      # set(GGML_CUDA ON)
-      # set(CMAKE_CUDA_ARCHITECTURES 61)
-      # set(GGML_CUDA_F16 OFF)
-      # set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
-      # set(CMAKE_CUDA_FLAGS "-allow-unsupported-compiler")
+      # set(GGML_CUDA ON) set(CMAKE_CUDA_ARCHITECTURES 61) set(GGML_CUDA_F16 OFF) set(CMAKE_CUDA_COMPILER
+      # /usr/local/cuda/bin/nvcc) set(CMAKE_CUDA_FLAGS "-allow-unsupported-compiler")
       add_subdirectory(llama.cpp)
     endif()
   endif()
