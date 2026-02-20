@@ -2339,49 +2339,35 @@ namespace rpc
         else
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
-#ifdef CANOPY_USE_LOGGING
-            // TELEMETRY: Check reference counts BEFORE establishing optimistic reference
-            long cb_shared_before = cb->shared_count_.load(std::memory_order_acquire);
+#ifdef CANOPY_ADD_REF_COUNT_CHECKS
+            // TELEMETRY: shared_count is not touched by make_optimistic, so only check optimistic.
+            // optimistic_count fires a remote add_ref only on the 0→1 transition, so cb_optimistic
+            // can exceed inherited_optimistic when multiple local copies exist.  The invariant is
+            // that they agree on whether a remote reference exists (both zero or both non-zero).
             long cb_optimistic_before = cb->optimistic_count_.load(std::memory_order_acquire);
 
-            // Get object_proxy to check inherited counts (service-level stub counts)
             auto casting_iface = reinterpret_cast<rpc::casting_interface*>(in.internal_get_ptr());
             auto obj_proxy = casting_iface->__rpc_get_object_proxy();
-            int inherited_shared_before = 0;
             int inherited_optimistic_before = 0;
             if (obj_proxy)
             {
+                int unused_shared = 0;
                 __rpc_internal::__shared_ptr_control_block::get_object_proxy_reference_counts(
-                    obj_proxy, inherited_shared_before, inherited_optimistic_before);
+                    obj_proxy, unused_shared, inherited_optimistic_before);
             }
 
-            RPC_DEBUG("make_optimistic(shared_ptr→optimistic_ptr): BEFORE - control_block(shared={}, optimistic={}), "
-                      "object_proxy(inherited_shared={}, inherited_optimistic={})",
-                cb_shared_before,
+            RPC_DEBUG("make_optimistic(shared_ptr→optimistic_ptr): BEFORE - control_block(optimistic={}), "
+                      "object_proxy(inherited_optimistic={})",
                 cb_optimistic_before,
-                inherited_shared_before,
                 inherited_optimistic_before);
 
-            // NOTE: It's EXPECTED that before make_optimistic, we have shared=1, optimistic=0
-            // This is the normal state when converting a shared_ptr to optimistic_ptr
-            // The validation below checks this expected state
-
-            // Verify control block shared count matches object proxy shared count
-            if (obj_proxy && cb_shared_before != inherited_shared_before)
+            if (obj_proxy && (cb_optimistic_before == 0) != (inherited_optimistic_before == 0))
             {
-                RPC_ERROR(
-                    "make_optimistic: Control block shared count ({}) doesn't match object_proxy shared count ({})",
-                    cb_shared_before,
-                    inherited_shared_before);
-            }
-
-            // Verify control block optimistic count matches object proxy optimistic count
-            if (obj_proxy && cb_optimistic_before != inherited_optimistic_before)
-            {
-                RPC_ERROR("make_optimistic: Control block optimistic count ({}) doesn't match object_proxy optimistic "
-                          "count ({})",
+                RPC_ERROR("make_optimistic: Control block optimistic count ({}) and object_proxy optimistic "
+                          "count ({}) disagree on whether a remote reference exists",
                     cb_optimistic_before,
                     inherited_optimistic_before);
+                RPC_ASSERT(false);
             }
 #endif
 
@@ -2391,50 +2377,34 @@ namespace rpc
                 CO_RETURN err; // Failed to establish remote reference
             }
 
-#ifdef CANOPY_USE_LOGGING
-            // TELEMETRY: Check reference counts AFTER establishing optimistic reference
-            long cb_shared_after = cb->shared_count_.load(std::memory_order_acquire);
+#ifdef CANOPY_ADD_REF_COUNT_CHECKS
             long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);
-            int inherited_shared_after = 0;
             int inherited_optimistic_after = 0;
             if (obj_proxy)
             {
+                int unused_shared = 0;
                 __rpc_internal::__shared_ptr_control_block::get_object_proxy_reference_counts(
-                    obj_proxy, inherited_shared_after, inherited_optimistic_after);
+                    obj_proxy, unused_shared, inherited_optimistic_after);
             }
 
-            RPC_DEBUG("make_optimistic(shared_ptr→optimistic_ptr): AFTER - control_block(shared={}, optimistic={}), "
-                      "object_proxy(inherited_shared={}, inherited_optimistic={})",
-                cb_shared_after,
+            RPC_DEBUG("make_optimistic(shared_ptr→optimistic_ptr): AFTER - control_block(optimistic={}), "
+                      "object_proxy(inherited_optimistic={})",
                 cb_optimistic_after,
-                inherited_shared_after,
                 inherited_optimistic_after);
 
-            // After make_optimistic, we expect shared=1, optimistic=1 (both counts should be positive)
-            if (cb_shared_after == 0 || cb_optimistic_after == 0)
+            if (cb_optimistic_after == 0)
             {
-                RPC_ERROR("make_optimistic: Control block count zero AFTER increment - shared={} optimistic={} (both "
-                          "should be > 0)",
-                    cb_shared_after,
-                    cb_optimistic_after);
+                RPC_ERROR("make_optimistic: Control block optimistic count is zero AFTER increment");
+                RPC_ASSERT(false);
             }
 
-            // Verify control block shared count matches object proxy shared count
-            if (obj_proxy && cb_shared_after != inherited_shared_after)
+            if (obj_proxy && (cb_optimistic_after == 0) != (inherited_optimistic_after == 0))
             {
-                RPC_ERROR("make_optimistic: Control block shared count ({}) doesn't match object_proxy shared count "
-                          "({}) AFTER",
-                    cb_shared_after,
-                    inherited_shared_after);
-            }
-
-            // Verify control block optimistic count matches object proxy optimistic count
-            if (obj_proxy && cb_optimistic_after != inherited_optimistic_after)
-            {
-                RPC_ERROR("make_optimistic: Control block optimistic count ({}) doesn't match object_proxy optimistic "
-                          "count ({}) AFTER",
+                RPC_ERROR("make_optimistic: Control block optimistic count ({}) and object_proxy optimistic "
+                          "count ({}) disagree on whether a remote reference exists AFTER increment",
                     cb_optimistic_after,
                     inherited_optimistic_after);
+                RPC_ASSERT(false);
             }
 #endif
 
@@ -2467,7 +2437,7 @@ namespace rpc
         else
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
-#ifdef CANOPY_USE_LOGGING
+#ifdef CANOPY_ADD_REF_COUNT_CHECKS
             // TELEMETRY: Check reference counts BEFORE establishing optimistic reference
             long cb_shared_before = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_before = cb->optimistic_count_.load(std::memory_order_acquire);
@@ -2515,7 +2485,7 @@ namespace rpc
                 CO_RETURN err; // Failed (likely OBJECT_GONE)
             }
 
-#ifdef CANOPY_USE_LOGGING
+#ifdef CANOPY_ADD_REF_COUNT_CHECKS
             // TELEMETRY: Check reference counts AFTER establishing optimistic reference
             long cb_shared_after = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);

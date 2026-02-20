@@ -60,6 +60,8 @@ if(NOT DEPENDENCIES_LOADED)
   # Logging and Telemetry Options
   # ####################################################################################################################
   option(CANOPY_USE_LOGGING "Turn on Canopy logging" OFF)
+  option(CANOPY_ADD_REF_COUNT_CHECKS "Turn on Canopy refcount checks" OFF)
+  option(CANOPY_ASSERT_ON_LOGGER_ERROR "Turn on asserts when there is a logger error")
   option(CANOPY_USE_THREAD_LOCAL_LOGGING "Turn on thread-local circular buffer logging" OFF)
   option(CANOPY_HANG_ON_FAILED_ASSERT "Hang on failed assert" OFF)
   option(CANOPY_USE_TELEMETRY "Turn on Canopy telemetry" OFF)
@@ -210,6 +212,18 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_USE_LOGGING_FLAG)
   endif()
 
+  if(CANOPY_ADD_REF_COUNT_CHECKS)
+    set(CANOPY_ADD_REF_COUNT_CHECKS_FLAG CANOPY_ADD_REF_COUNT_CHECKS)
+  else()
+    set(CANOPY_ADD_REF_COUNT_CHECKS_FLAG)
+  endif()
+
+  if(CANOPY_ASSERT_ON_LOGGER_ERROR)
+    set(CANOPY_ASSERT_ON_LOGGER_ERROR_FLAG CANOPY_ASSERT_ON_LOGGER_ERROR)
+  else()
+    set(CANOPY_ASSERT_ON_LOGGER_ERROR_FLAG)
+  endif()
+
   if(CANOPY_USE_THREAD_LOCAL_LOGGING)
     set(CANOPY_USE_THREAD_LOCAL_LOGGING_FLAG CANOPY_USE_THREAD_LOCAL_LOGGING)
   else()
@@ -262,6 +276,8 @@ if(NOT DEPENDENCIES_LOADED)
       NOMINMAX
       _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS
       ${CANOPY_USE_LOGGING_FLAG}
+      ${CANOPY_ADD_REF_COUNT_CHECKS_FLAG}
+      ${CANOPY_ASSERT_ON_LOGGER_ERROR_FLAG}
       ${CANOPY_USE_THREAD_LOCAL_LOGGING_FLAG}
       ${CANOPY_BUILD_COROUTINE_FLAG}
       ${CANOPY_HANG_ON_FAILED_ASSERT_FLAG}
