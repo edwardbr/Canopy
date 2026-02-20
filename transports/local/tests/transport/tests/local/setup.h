@@ -36,7 +36,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
     std::atomic<uint64_t> zone_gen_ = 0;
 
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
 
     bool startup_complete_ = false;
     bool shutdown_complete_ = false;
@@ -45,7 +45,7 @@ public:
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
 
     virtual ~inproc_setup() = default;
 
@@ -64,7 +64,7 @@ public:
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occured_ = true;
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }
@@ -88,9 +88,6 @@ public:
             io_scheduler_
 #endif
         );
-        example_import_idl_register_stubs(root_service_);
-        example_shared_idl_register_stubs(root_service_);
-        example_idl_register_stubs(root_service_);
         current_host_service = root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());
@@ -107,9 +104,6 @@ public:
                 i_host_ptr_ = host;
                 child_service_ = child_service_ptr;
                 child_service_weak_ = child_service_ptr;
-                example_import_idl_register_stubs(child_service_ptr);
-                example_shared_idl_register_stubs(child_service_ptr);
-                example_idl_register_stubs(child_service_ptr);
                 new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
                 if (use_host_in_child_)
                     CO_AWAIT new_example->set_host(host);
@@ -151,7 +145,7 @@ public:
 
         // auto err_code = SYNC_WAIT();
 
-        ASSERT_EQ(error_has_occured_, false);
+        ASSERT_EQ(error_has_occurred_, false);
     }
 
     CORO_TASK(void) CoroTearDown()
@@ -219,9 +213,6 @@ public:
                 rpc::shared_ptr<yyy::i_example>& new_example,
                 const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
             {
-                example_import_idl_register_stubs(child_service_ptr);
-                example_shared_idl_register_stubs(child_service_ptr);
-                example_idl_register_stubs(child_service_ptr);
                 new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
                 if (use_host_in_child_)
                     CO_AWAIT new_example->set_host(host);

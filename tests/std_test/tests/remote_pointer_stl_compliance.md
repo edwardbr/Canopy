@@ -329,7 +329,7 @@ shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U>& from) noexcept {
 
     // First try local interface casting
     ptr = const_cast<T*>(static_cast<const T*>(
-        from->query_interface(T::get_id(VERSION_2)));
+        from->query_interface(T::get_id(get_version())));
     if (ptr)
         CO_RETURN shared_ptr<T>(from, ptr);
 
@@ -348,7 +348,7 @@ shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U>& from) noexcept {
 **Key Features**:
 - **Dual-Path Casting**: First attempts local interface casting using `query_interface()`, then falls back to remote casting via `object_proxy`
 - **Coroutine-Based**: Uses `CO_RETURN` and `CO_AWAIT` for asynchronous remote interface queries
-- **Version-Aware**: Uses `T::get_id(VERSION_2)` for proper interface identification
+- **Version-Aware**: Uses `T::get_id(get_version())` for proper interface identification
 - **Reference Count Semantics**: Remote casting creates new proxy with independent reference counting
 - **Compatibility Note**: `static_pointer_cast` will not work for remote interfaces, only `dynamic_pointer_cast`
 

@@ -11,9 +11,8 @@
 #include "coreclasses.h"
 #include "attributes.h"
 
-std::string get_smart_ptr_type(const std::string& type_name, bool is_optimistic)
+std::string get_smart_ptr_type(const std::string& type_name, bool& is_optimistic)
 {
-    is_optimistic = false;
     auto data = type_name.data();
     while (*data == ' ' || *data == '\t')
     {
@@ -26,7 +25,7 @@ std::string get_smart_ptr_type(const std::string& type_name, bool is_optimistic)
         data += sizeof("rpc::shared_ptr");
         found = true;
     }
-    else if (is_optimistic && begins_with(data, "rpc::optimistic_ptr<"))
+    else if (begins_with(data, "rpc::optimistic_ptr<"))
     {
         found = true;
         data += sizeof("rpc::optimistic_ptr");
@@ -61,7 +60,7 @@ std::string get_smart_ptr_type(const std::string& type_name, bool is_optimistic)
 }
 
 bool is_interface_param(
-    const class_entity& lib, const std::string& type, bool is_optimistic, std::shared_ptr<class_entity>& obj)
+    const class_entity& lib, const std::string& type, bool& is_optimistic, std::shared_ptr<class_entity>& obj)
 {
     std::string reference_modifiers;
     std::string type_name = type;

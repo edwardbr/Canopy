@@ -658,7 +658,6 @@ namespace interface_declaration_generator
                 i++;
             }
         }
-        header("class {}_stub;", interface_name);
         header("class {}{} : public rpc::casting_interface", interface_name, base_class_declaration);
         header("{{");
         header("public:");
@@ -680,7 +679,7 @@ namespace interface_declaration_generator
         header("static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
             interface_name);
         header("");
-        header("virtual ~{}() = default;", interface_name);
+        header("virtual ~{}() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
         header("");
         header("// ********************* interface methods *********************");
 
@@ -775,6 +774,25 @@ namespace interface_declaration_generator
                 }
             }
         }
+        header("}};");
+
+        header("");
+
+        header("// the caller to stubs");
+        header("struct stub_caller");
+        header("{{");
+        header("static CORO_TASK(int) call({}* __rpc_target_,", interface_name);
+        header("uint64_t protocol_version,");
+        header("rpc::encoding encoding,");
+        header("uint64_t tag,");
+        header("rpc::caller_zone caller_zone_id,");
+        header("rpc::destination_zone destination_zone_id,");
+        header("rpc::object object_id,");
+        header("rpc::method method_id,");
+        header("const rpc::span& in_data,");
+        header("std::vector<char>& out_buf_,");
+        header("const std::vector<rpc::back_channel_entry>& in_back_channel,");
+        header("std::vector<rpc::back_channel_entry>& out_back_channel);");
         header("}};");
         header("");
         header("// template pure static class for serialising reply data from a stub");
@@ -909,7 +927,6 @@ namespace interface_declaration_generator
             else
                 header("// no usable functions for a buffered_proxy_serialiser class");
         }
-        header("friend {}_stub;", interface_name);
         header("}};");
         header("");
     };

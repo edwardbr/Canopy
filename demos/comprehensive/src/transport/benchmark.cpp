@@ -220,7 +220,6 @@ namespace comprehensive
             std::atomic<uint64_t> zone_gen{0};
             auto root_service = std::make_shared<rpc::service>("benchmark_root", rpc::zone{++zone_gen}, scheduler);
             root_service->set_default_encoding(enc);
-            comprehensive_idl_register_stubs(root_service);
 
             rpc::zone child_zone_id{++zone_gen};
             auto child_transport
@@ -280,7 +279,6 @@ namespace comprehensive
         {
             auto service_1 = std::make_shared<rpc::service>("spsc_client", zone_1, scheduler);
             service_1->set_default_encoding(enc);
-            comprehensive_idl_register_stubs(service_1);
 
             auto on_shutdown_event = std::make_shared<rpc::event>();
             service_1->set_shutdown_event(on_shutdown_event);
@@ -332,10 +330,9 @@ namespace comprehensive
             auto service_2 = std::make_shared<rpc::service>("spsc_server", zone_2, scheduler);
             service_2->set_shutdown_event(on_shutdown_event);
             service_2->set_default_encoding(enc);
-            comprehensive_idl_register_stubs(service_2);
 
             rpc::event on_connected;
-            auto handler = [&, enc](const rpc::interface_descriptor& input_interface,
+            auto handler = [&, enc](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
                                std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)
@@ -414,10 +411,9 @@ namespace comprehensive
             auto service = std::make_shared<rpc::service>("tcp_server", rpc::zone{++zone_gen}, scheduler);
             service->set_default_encoding(enc);
             service->set_shutdown_event(on_shutdown_event);
-            comprehensive_idl_register_stubs(service);
 
             auto listener = std::make_shared<rpc::tcp::listener>(
-                [enc](const rpc::interface_descriptor& input_descr,
+                [enc](const rpc::connection_settings& input_descr,
                     rpc::interface_descriptor& output_interface,
                     std::shared_ptr<rpc::service> child_service_ptr,
                     std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
@@ -475,7 +471,6 @@ namespace comprehensive
             auto peer_zone_id = rpc::zone{1};
             auto client_service = std::make_shared<rpc::service>("tcp_client", rpc::zone{++zone_gen}, scheduler);
             client_service->set_default_encoding(enc);
-            comprehensive_idl_register_stubs(client_service);
 
             coro::net::tcp::client client(scheduler,
                 coro::net::tcp::client::options{.address = coro::net::ip_address::from_string(host), .port = port});

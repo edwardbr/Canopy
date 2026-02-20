@@ -55,6 +55,9 @@ namespace yyy
         
         [description="Retrieves cached object from autonomous zone (triggers routing failure for unaware zones)"]  
         error_code give_host_cached_object();
+
+        error_code set_optimistic_ptr(const rpc::optimistic_ptr<xxx::i_foo>& val);
+        error_code get_optimistic_ptr([out]rpc::optimistic_ptr<xxx::i_foo>& val);
     };
 
     [status=production]

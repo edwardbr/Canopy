@@ -100,7 +100,6 @@ namespace rpc
         {
             std::lock_guard l(stub_control_);
             stubs_.clear();
-            wrapped_object_to_stub_.clear();
         }
         service_proxies_.clear();
 
@@ -114,23 +113,22 @@ namespace rpc
     {
         if (ptr == nullptr)
             return {};
-        auto* addr = ptr->get_address();
-        if (addr)
+        if (ptr->__rpc_is_local())
         {
-            std::lock_guard g(stub_control_);
-            auto item = wrapped_object_to_stub_.find(addr);
-            if (item != wrapped_object_to_stub_.end())
+            auto stub = ptr->__rpc_get_stub();
+            if (stub)
             {
-                auto obj = item->second.lock();
-                if (obj)
-                    return obj->get_id();
+                return stub->get_id();
+            }
+            else
+            {
+                return {};
             }
         }
         else
         {
             return casting_interface::get_object_id(*ptr);
         }
-        return {};
     }
 
     bool service::check_is_empty() const
@@ -153,24 +151,6 @@ namespace rpc
                             "maintaining a positive reference count suspected unclean shutdown",
                     std::to_string(zone_id_),
                     std::to_string(item.first));
-            }
-            success = false;
-        }
-        for (auto item : wrapped_object_to_stub_)
-        {
-            auto stub = item.second.lock();
-            if (!stub)
-            {
-                RPC_WARNING("wrapped stub zone_id {}, wrapped_object has been released but not deregistered in the "
-                            "service suspected unclean shutdown",
-                    std::to_string(zone_id_));
-            }
-            else
-            {
-                RPC_WARNING("wrapped stub zone_id {}, wrapped_object {} has not been deregistered in the service "
-                            "suspected unclean shutdown",
-                    std::to_string(zone_id_),
-                    std::to_string(stub->get_id()));
             }
             success = false;
         }
@@ -407,36 +387,33 @@ namespace rpc
     // or if the interface is a proxy to add ref it
     CORO_TASK(int)
     service::get_descriptor_from_interface_stub(caller_zone caller_zone_id,
-        rpc::casting_interface* iface,
-        std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
+        const rpc::shared_ptr<rpc::casting_interface>& iface,
         std::shared_ptr<rpc::object_stub>& stub,
-        interface_descriptor& descriptor)
+        interface_descriptor& descriptor,
+        bool optimistic)
     {
-
-        auto* pointer = iface->get_address();
-        // find the stub by its address
+        if (!iface)
+        {
+            CO_RETURN error::INVALID_DATA();
+        }
+        if (!iface->__rpc_is_local())
+        {
+            // we should not be getting the interface from remote objects
+            CO_RETURN error::OBJECT_NOT_FOUND();
+        }
         {
             std::lock_guard g(stub_control_);
-            auto item = wrapped_object_to_stub_.find(pointer);
-            if (item != wrapped_object_to_stub_.end())
+            stub = iface->__rpc_get_stub();
+            if (!stub)
             {
-                stub = item->second.lock();
-                // Don't mask the race condition - if stub is null here, we have a serious problem
-                RPC_ASSERT(stub != nullptr);
-            }
-            else
-            {
-                // else create a stub
                 auto id = generate_new_object_id();
-                stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
-                std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
-                stub->add_interface(interface_stub);
-                wrapped_object_to_stub_[pointer] = stub;
+                stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
                 stubs_[id] = stub;
-                stub->on_added_to_zone(stub);
+                stub->keep_self_alive();
+                iface->__rpc_set_stub(stub);
             }
         }
-        auto ret = CO_AWAIT stub->add_ref(false, false, caller_zone_id);
+        auto ret = CO_AWAIT stub->add_ref(optimistic, false, caller_zone_id);
         if (ret != rpc::error::OK())
         {
             CO_RETURN ret;
@@ -448,16 +425,19 @@ namespace rpc
     CORO_TASK(int)
     service::add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
         caller_zone caller_zone_id,
-        rpc::casting_interface* iface,
-        std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<rpc::object_stub>)> fn,
-        std::shared_ptr<rpc::object_stub>& stub,
-        interface_descriptor& descriptor)
+        const rpc::shared_ptr<rpc::casting_interface>& iface,
+        interface_descriptor& descriptor,
+        bool optimistic)
     {
+        if (!iface)
+        {
+            CO_RETURN error::INVALID_DATA();
+        }
         // This is ALWAYS an out parameter case
-        if (caller_zone_id.is_set() && !iface->is_local())
+        if (caller_zone_id.is_set() && !iface->__rpc_is_local())
         {
             // Inline prepare_out_param logic here for out parameter binding
-            auto object_proxy = iface->get_object_proxy();
+            auto object_proxy = iface->__rpc_get_object_proxy();
             RPC_ASSERT(object_proxy != nullptr);
             auto object_service_proxy = object_proxy->get_service_proxy();
             RPC_ASSERT(object_service_proxy->zone_id_ == zone_id_);
@@ -541,7 +521,8 @@ namespace rpc
                 object_id,
                 caller_zone_id,
                 known_direction,
-                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route,
+                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
+                    | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
                 empty_in,
                 empty_out);
             if (err_code != rpc::error::OK())
@@ -557,7 +538,8 @@ namespace rpc
                     caller_zone_id,
                     object_id,
                     known_direction,
-                    rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route);
+                    rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
+                        | (optimistic ? add_ref_options::optimistic : add_ref_options::normal));
             }
 #endif
 
@@ -566,32 +548,32 @@ namespace rpc
         }
 
         // For local interfaces or when caller_zone_id is not set, create a local stub
-        auto* pointer = iface->get_address();
+        auto stub = iface->__rpc_get_stub();
+        if (!stub)
         {
+            if (optimistic)
+            {
+                CO_RETURN error::OBJECT_GONE();
+            }
+            else
             {
                 std::lock_guard g(stub_control_);
-                auto item = wrapped_object_to_stub_.find(pointer);
-                if (item != wrapped_object_to_stub_.end())
-                {
-                    stub = item->second.lock();
-                    RPC_ASSERT(stub != nullptr);
-                }
-                else
+                stub = iface->__rpc_get_stub();
+                if (!stub)
                 {
                     auto id = generate_new_object_id();
-                    stub = std::make_shared<object_stub>(id, shared_from_this(), pointer);
-                    std::shared_ptr<rpc::i_interface_stub> interface_stub = fn(stub);
-                    stub->add_interface(interface_stub);
-                    wrapped_object_to_stub_[pointer] = stub;
+                    stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
                     stubs_[id] = stub;
-                    stub->on_added_to_zone(stub);
+                    stub->keep_self_alive();
+                    iface->__rpc_set_stub(stub);
                 }
             }
-            auto ret = CO_AWAIT stub->add_ref(false, true, caller_zone_id); // outcall=true
-            if (ret != rpc::error::OK())
-            {
-                CO_RETURN ret;
-            }
+        }
+
+        auto ret = CO_AWAIT stub->add_ref(optimistic, true, caller_zone_id); // outcall=true
+        if (ret != rpc::error::OK())
+        {
+            CO_RETURN ret;
         }
         descriptor = {stub->get_id(), zone_id_.as_destination()};
         CO_RETURN error::OK();
@@ -654,6 +636,7 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
+        bool optimistic = !!(build_out_param_channel & add_ref_options::optimistic);
         bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
         bool build_dest_channel = !!(build_out_param_channel & add_ref_options::build_destination_route)
                                   || build_out_param_channel == add_ref_options::normal
@@ -672,7 +655,8 @@ namespace rpc
                     object_id,
                     caller_zone_id,
                     zone_id_.as_known_direction_zone(),
-                    add_ref_options::build_caller_route,
+                    add_ref_options::build_caller_route
+                        | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
                     in_back_channel,
                     out_back_channel);
                 if (error != rpc::error::OK())
@@ -707,7 +691,7 @@ namespace rpc
                     destination_zone_id,
                     object_id,
                     caller_zone_id,
-                    zone_id_.as_known_direction_zone(),
+                    known_direction_zone_id,
                     build_out_param_channel & (~add_ref_options::build_caller_route),
                     in_back_channel,
                     out_back_channel);
@@ -767,23 +751,8 @@ namespace rpc
         uint64_t count = stub->release(is_optimistic, caller_zone_id);
         if (!is_optimistic && !count)
         {
-            {
-                stubs_.erase(stub->get_id());
-            }
-            {
-                auto* pointer = stub->get_castable_interface()->get_address();
-                auto it = wrapped_object_to_stub_.find(pointer);
-                if (it != wrapped_object_to_stub_.end())
-                {
-                    wrapped_object_to_stub_.erase(it);
-                }
-                else
-                {
-                    // if you get here make sure that get_address is defined in the most derived class
-                    RPC_ASSERT(false);
-                }
-            }
-            stub->reset();
+            stubs_.erase(stub->get_id());
+            stub->dont_keep_alive();
         }
         return count;
     }
@@ -840,44 +809,18 @@ namespace rpc
             count = stub->release(!!(release_options::optimistic & options), caller_zone_id);
             if (!count && !(release_options::optimistic & options))
             {
-                // When shared count drops to zero, notify all transports that have optimistic references
-                // Get the optimistic reference map before releasing the stub
-                std::vector<caller_zone> optimistic_refs;
-                {
-                    std::lock_guard lock(stub->references_mutex_);
-                    optimistic_refs.reserve(stub->optimistic_references_.size());
-                    for (const auto& [zone, count_atomic] : stub->optimistic_references_)
-                    {
-                        uint64_t count_val = count_atomic.load(std::memory_order_acquire);
-                        if (count_val > 0)
-                        {
-                            optimistic_refs.push_back(zone);
-                        }
-                    }
-                }
+                // When shared count drops to zero, notify all transports that have optimistic references.
+                // Snapshot is taken before erasing from service maps so no zone is missed.
+                auto optimistic_refs = stub->get_zones_with_optimistic_refs();
 
                 {
                     // a scoped lock - erase stub from maps
                     std::lock_guard l(stub_control_);
-                    {
-                        stubs_.erase(object_id);
-                    }
-                    {
-                        auto* pointer = stub->get_castable_interface()->get_address();
-                        auto it = wrapped_object_to_stub_.find(pointer);
-                        if (it != wrapped_object_to_stub_.end())
-                        {
-                            wrapped_object_to_stub_.erase(it);
-                        }
-                        else
-                        {
-                            RPC_ASSERT(false);
-                            CO_RETURN rpc::error::OBJECT_NOT_FOUND();
-                        }
-                    }
+                    stubs_.erase(object_id);
                 } // Release stub_control_ lock before calling object_released
 
-                stub->reset();
+                stub->dont_keep_alive();
+                stub.reset();
 
                 // Now notify all transports that had optimistic references
                 // IMPORTANT: This must be done AFTER releasing stub_control_ mutex to avoid deadlock
@@ -1001,13 +944,11 @@ namespace rpc
 
                     // Remove from maps
                     stubs_.erase(obj_id);
-                    auto* pointer = stub->get_castable_interface()->get_address();
-                    wrapped_object_to_stub_.erase(pointer);
 
                     // Track for notification
                     objects_to_notify.push_back(obj_id);
 
-                    stub->reset();
+                    stub->dont_keep_alive();
                 }
             }
         } // Release stub_control_ before calling notify
@@ -1192,60 +1133,6 @@ namespace rpc
         }
     }
 
-    int service::create_interface_stub(rpc::interface_ordinal interface_id,
-        std::function<interface_ordinal(uint8_t)> interface_getter,
-        const std::shared_ptr<rpc::i_interface_stub>& original,
-        std::shared_ptr<rpc::i_interface_stub>& new_stub)
-    {
-        // an identity check, send back the same pointer
-        if (interface_getter(rpc::VERSION_2) == interface_id)
-        {
-            new_stub = std::static_pointer_cast<rpc::i_interface_stub>(original);
-            return rpc::error::OK();
-        }
-
-        auto it = stub_factories_.find(interface_id);
-        if (it == stub_factories_.end())
-        {
-            RPC_INFO("stub factory does not have a record of this interface this not an error in the rpc stack");
-            return rpc::error::INVALID_CAST();
-        }
-
-        new_stub = (*it->second)(original);
-        if (!new_stub)
-        {
-            RPC_INFO("Object does not support the interface this not an error in the rpc stack");
-            return rpc::error::INVALID_CAST();
-        }
-        // note a nullptr return value is a valid value, it indicates that this object does not implement that interface
-        return rpc::error::OK();
-    }
-
-    // note this function is not thread safe!  Use it before using the service class for normal operation
-    void service::add_interface_stub_factory(std::function<interface_ordinal(uint8_t)> id_getter,
-        std::shared_ptr<std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::i_interface_stub>&)>> factory)
-    {
-        auto interface_id = id_getter(rpc::VERSION_2);
-        auto it = stub_factories_.find({interface_id});
-        if (it != stub_factories_.end())
-        {
-            RPC_ERROR("Invalid data - add_interface_stub_factory failed");
-            rpc::error::INVALID_DATA();
-        }
-        stub_factories_[{interface_id}] = factory;
-    }
-
-    rpc::shared_ptr<casting_interface> service::get_castable_interface(object object_id, interface_ordinal interface_id)
-    {
-        auto ob = get_object(object_id).lock();
-        if (!ob)
-            return nullptr;
-        auto interface_stub = ob->get_interface(interface_id);
-        if (!interface_stub)
-            return nullptr;
-        return interface_stub->get_castable_interface();
-    }
-
     void service::add_service_event(const std::weak_ptr<service_event>& event)
     {
         std::lock_guard g(service_events_control_);
@@ -1258,15 +1145,19 @@ namespace rpc
     }
     CORO_TASK(void) service::notify_object_gone_event(object object_id, destination_zone destination)
     {
-        if (!service_events_.empty())
+        std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_copy;
         {
-            auto service_events_copy = service_events_;
-            for (auto se : service_events_copy)
+            std::lock_guard g(service_events_control_);
+            if (!service_events_.empty())
             {
-                auto se_handler = se.lock();
-                if (se_handler)
-                    CO_AWAIT se_handler->on_object_released(object_id, destination);
+                service_events_copy = service_events_;
             }
+        }
+        for (auto se : service_events_copy)
+        {
+            auto se_handler = se.lock();
+            if (se_handler)
+                CO_AWAIT se_handler->on_object_released(object_id, destination);
         }
         CO_RETURN;
     }
@@ -1433,23 +1324,18 @@ namespace rpc
                     obj_id.get_val(),
                     remote_zone.get_val());
 
-                // Remove from maps
-                stubs_.erase(obj_id);
-                auto* pointer = stub->get_castable_interface()->get_address();
-                wrapped_object_to_stub_.erase(pointer);
-
                 // Track for notification
                 objects_to_notify.push_back({obj_id, remote_zone});
-
-                stub->reset();
             }
         }
 
         // Notify service events about deleted objects (outside the lock)
         for (const auto& obj : objects_to_notify)
         {
+            // Remove from maps
+            stubs_.erase(obj.object_id);
+
             CO_AWAIT notify_object_gone_event(obj.object_id, obj.destination_zone_id);
         }
     }
-
 }

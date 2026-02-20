@@ -6,13 +6,15 @@
 
 namespace rpc
 {
-    object_stub::object_stub(object id, const std::shared_ptr<service>& zone, [[maybe_unused]] void* target)
+    object_stub::object_stub(
+        object id, const std::shared_ptr<service>& zone, const rpc::shared_ptr<rpc::casting_interface>& target)
         : id_(id)
+        , target_(target)
         , zone_(zone)
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_stub_creation(zone_->get_zone_id(), id_, (uint64_t)target);
+            telemetry_service->on_stub_creation(zone_->get_zone_id(), id_, (uint64_t)target.get());
 #endif
     }
     object_stub::~object_stub()
@@ -24,28 +26,17 @@ namespace rpc
         RPC_ASSERT(shared_count_ == 0);
     }
 
-    rpc::shared_ptr<rpc::casting_interface> object_stub::get_castable_interface() const
+    rpc::shared_ptr<rpc::casting_interface> object_stub::get_castable_interface(interface_ordinal interface_id) const
     {
-        std::lock_guard g(map_control_);
-        RPC_ASSERT(!stub_map_.empty());
-        auto& iface = stub_map_.begin()->second;
-        return iface->get_castable_interface();
-    }
-
-    // this method is not thread safe as it is only used when the object is constructed by service
-    // or by an internal call by this class
-    void object_stub::add_interface(const std::shared_ptr<rpc::i_interface_stub>& iface)
-    {
-        stub_map_[iface->get_interface_id(rpc::VERSION_2)] = iface;
-    }
-
-    std::shared_ptr<rpc::i_interface_stub> object_stub::get_interface(interface_ordinal interface_id)
-    {
-        std::lock_guard g(map_control_);
-        auto res = stub_map_.find(interface_id);
-        if (res == stub_map_.end())
+        if (!target_)
             return nullptr;
-        return res->second;
+        if (!interface_id.is_set())
+            return target_;
+
+        auto* iface = const_cast<rpc::casting_interface*>(target_->__rpc_query_interface(interface_id));
+        if (!iface)
+            return nullptr;
+        return rpc::shared_ptr<rpc::casting_interface>(target_, iface);
     }
 
     CORO_TASK(int)
@@ -57,18 +48,22 @@ namespace rpc
         const rpc::span& in_data,
         std::vector<char>& out_buf_)
     {
-        std::shared_ptr<rpc::i_interface_stub> stub;
+        if (target_)
         {
-            std::lock_guard g(map_control_);
-            auto item = stub_map_.find(interface_id);
-            if (item != stub_map_.end())
-            {
-                stub = item->second;
-            }
-        }
-        if (stub)
-        {
-            CO_RETURN CO_AWAIT stub->call(protocol_version, enc, caller_zone_id, method_id, in_data, out_buf_);
+            std::vector<rpc::back_channel_entry> empty_in_back_channel;
+            std::vector<rpc::back_channel_entry> empty_out_back_channel;
+            CO_RETURN CO_AWAIT target_->__rpc_call(protocol_version,
+                enc,
+                0,
+                caller_zone_id,
+                zone_->get_zone_id().as_destination(),
+                id_,
+                interface_id,
+                method_id,
+                in_data,
+                out_buf_,
+                empty_in_back_channel,
+                empty_out_back_channel);
         }
         RPC_ERROR("Invalid interface ID in stub call");
         CO_RETURN rpc::error::INVALID_INTERFACE_ID();
@@ -76,20 +71,14 @@ namespace rpc
 
     int object_stub::try_cast(interface_ordinal interface_id)
     {
-        std::lock_guard g(map_control_);
-        int ret = rpc::error::OK();
-        auto item = stub_map_.find(interface_id);
-        if (item == stub_map_.end())
-        {
-            std::shared_ptr<rpc::i_interface_stub> new_stub;
-            std::shared_ptr<rpc::i_interface_stub> stub = stub_map_.begin()->second;
-            ret = stub->cast(interface_id, new_stub);
-            if (ret == rpc::error::OK() && new_stub)
-            {
-                add_interface(new_stub);
-            }
-        }
-        return ret;
+        if (!target_)
+            return rpc::error::OBJECT_NOT_FOUND();
+
+        auto* iface = const_cast<rpc::casting_interface*>(target_->__rpc_query_interface(interface_id));
+        if (!iface)
+            return rpc::error::INVALID_CAST();
+
+        return rpc::error::OK();
     }
 
     CORO_TASK(int) object_stub::add_ref(bool is_optimistic, bool outcall, caller_zone caller_zone_id)
@@ -172,6 +161,10 @@ namespace rpc
                             optimistic_references_.erase(it);
                         }
                     }
+                    else
+                    {
+                        RPC_ERROR("negative optimistic reference count");
+                    }
                 }
                 else
                 {
@@ -197,6 +190,10 @@ namespace rpc
                         {
                             shared_references_.erase(it);
                         }
+                    }
+                    else
+                    {
+                        RPC_ERROR("negative shared reference count");
                     }
                 }
                 else
@@ -225,7 +222,7 @@ namespace rpc
 
     void object_stub::release_from_service(caller_zone caller_zone_id)
     {
-        zone_->release_local_stub(p_this_, false, caller_zone_id);
+        zone_->release_local_stub(shared_from_this(), false, caller_zone_id);
     }
 
     bool object_stub::has_references_from_zone(caller_zone caller_zone_id) const
@@ -249,6 +246,21 @@ namespace rpc
         }
 
         return false;
+    }
+
+    std::vector<caller_zone> object_stub::get_zones_with_optimistic_refs() const
+    {
+        std::lock_guard<std::mutex> lock(references_mutex_);
+        std::vector<caller_zone> result;
+        result.reserve(optimistic_references_.size());
+        for (const auto& [zone, count_atomic] : optimistic_references_)
+        {
+            if (count_atomic.load(std::memory_order_acquire) > 0)
+            {
+                result.push_back(zone);
+            }
+        }
+        return result;
     }
 
     bool object_stub::release_all_from_zone(caller_zone caller_zone_id)

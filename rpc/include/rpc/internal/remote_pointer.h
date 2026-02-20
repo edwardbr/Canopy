@@ -67,7 +67,7 @@
 
 #ifdef TEST_STL_COMPLIANCE
 
-#define DEFAULT_DESTRUCTOR = default;
+#define CANOPY_DEFAULT_DESTRUCTOR = default;
 
 #define RPC_MEMORY std
 
@@ -359,7 +359,7 @@ namespace rpc
                     rpc::casting_interface* ptr = reinterpret_cast<rpc::casting_interface*>(managed_object_ptr_);
                     if (ptr)
                     {
-                        is_local_ = ptr->is_local();
+                        is_local_ = ptr->__rpc_is_local();
                         // CRITICAL: Initialize object_proxy counters to match control block's initial state.
                         // The control block starts with shared_count_=0, then immediately increments to 1.
                         // We need object_proxy to track this so that when control block decrements 1→0,
@@ -367,7 +367,7 @@ namespace rpc
                         // when the total count reaches 0.
                         if (!is_local_)
                         {
-                            auto obj_proxy = ptr->get_object_proxy();
+                            auto obj_proxy = ptr->__rpc_get_object_proxy();
                             if (obj_proxy)
                             {
                                 object_proxy_add_ref_shared(obj_proxy);
@@ -568,7 +568,7 @@ namespace rpc
                     if (managed_object_ptr_ && !is_local_)
                     {
                         auto ci = reinterpret_cast<::rpc::casting_interface*>(managed_object_ptr_);
-                        if (auto obj_proxy = ci->get_object_proxy())
+                        if (auto obj_proxy = ci->__rpc_get_object_proxy())
                         {
                             CO_RETURN CO_AWAIT object_proxy_add_ref(obj_proxy, options);
                         }
@@ -581,7 +581,7 @@ namespace rpc
                     if (managed_object_ptr_ && !is_local_)
                     {
                         auto ci = reinterpret_cast<::rpc::casting_interface*>(managed_object_ptr_);
-                        if (auto obj_proxy = ci->get_object_proxy())
+                        if (auto obj_proxy = ci->__rpc_get_object_proxy())
                         {
                             object_proxy_release(obj_proxy, is_optimistic);
                         }
@@ -1882,12 +1882,12 @@ namespace rpc
         T* ptr = nullptr;
 
         // First try local interface casting
-        ptr = const_cast<T*>(static_cast<const T*>(from->query_interface(T::get_id(VERSION_2))));
+        ptr = const_cast<T*>(static_cast<const T*>(from->__rpc_query_interface(T::get_id(get_version()))));
         if (ptr)
             CO_RETURN shared_ptr<T>(from, ptr);
 
         // Then try remote interface casting through object_proxy
-        auto ob = from->get_object_proxy();
+        auto ob = from->__rpc_get_object_proxy();
         if (!ob)
         {
             CO_RETURN shared_ptr<T>();
@@ -2142,6 +2142,15 @@ namespace rpc
             // local_proxy_holder_ destructor runs automatically
         }
 
+        element_type_impl* get() const noexcept
+        {
+            // For local objects: ptr_ points to __i_xxx_local_proxy (safe - returns OBJECT_GONE)
+            // For remote objects: ptr_ points to interface_proxy (safe - RPC handles errors)
+            if (local_proxy_holder_)
+                return local_proxy_holder_->__get_weak().lock().get();
+            return ptr_;
+        }
+
         // Copy assignment
         optimistic_ptr& operator=(const optimistic_ptr& r) noexcept
         {
@@ -2178,6 +2187,15 @@ namespace rpc
             return *this;
         }
 
+        template<typename U = T>
+        std::enable_if_t<!std::is_void_v<U> && !std::is_array_v<U>, std::remove_extent_t<U>&> operator*() const noexcept
+        {
+            using result_type = std::remove_extent_t<U>;
+            if (local_proxy_holder_)
+                return *static_cast<result_type*>(local_proxy_holder_.get());
+            return *static_cast<result_type*>(ptr_);
+        }
+
         // Access operators - operator-> is safe for making calls through the proxy
         element_type_impl* operator->() const noexcept
         {
@@ -2208,7 +2226,7 @@ namespace rpc
             return ptr_;
         }
 
-        explicit operator bool() const noexcept { return local_proxy_holder_ != nullptr || ptr_ != nullptr; }
+        explicit operator bool() const noexcept { return get() != nullptr; }
 
         void reset() noexcept { optimistic_ptr().swap(*this); }
 
@@ -2262,7 +2280,8 @@ namespace rpc
                 CO_RETURN error::OK();
             }
 
-            auto ptr = const_cast<T*>(static_cast<const T*>(local_shared->query_interface(T::get_id(VERSION_2))));
+            auto ptr
+                = const_cast<T*>(static_cast<const T*>(local_shared->__rpc_query_interface(T::get_id(get_version()))));
             if (ptr)
             {
                 to = optimistic_ptr<T>(from, ptr);
@@ -2276,7 +2295,7 @@ namespace rpc
         }
 
         // Then try remote interface casting through object_proxy
-        auto ob = from->get_object_proxy();
+        auto ob = from->__rpc_get_object_proxy();
         if (!ob)
         {
             to = optimistic_ptr<T>();
@@ -2313,8 +2332,7 @@ namespace rpc
         if (cb->is_local_)
         {
             // Local object: create local_proxy using generated static method
-            weak_ptr<T> wp(in);
-            out.local_proxy_holder_ = T::create_local_proxy(wp);
+            out.local_proxy_holder_ = T::create_local_proxy(in);
             // out.ptr_ and out.cb_ remain nullptr for local objects
             CO_RETURN error::OK();
         }
@@ -2328,7 +2346,7 @@ namespace rpc
 
             // Get object_proxy to check inherited counts (service-level stub counts)
             auto casting_iface = reinterpret_cast<rpc::casting_interface*>(in.internal_get_ptr());
-            auto obj_proxy = casting_iface->get_object_proxy();
+            auto obj_proxy = casting_iface->__rpc_get_object_proxy();
             int inherited_shared_before = 0;
             int inherited_optimistic_before = 0;
             if (obj_proxy)
@@ -2456,7 +2474,7 @@ namespace rpc
 
             // Get object_proxy to check inherited counts (service-level stub counts)
             auto casting_iface = reinterpret_cast<rpc::casting_interface*>(in.ptr_);
-            auto obj_proxy = casting_iface ? casting_iface->get_object_proxy() : nullptr;
+            auto obj_proxy = casting_iface ? casting_iface->__rpc_get_object_proxy() : nullptr;
             int inherited_shared_before = 0;
             int inherited_optimistic_before = 0;
             if (obj_proxy)
@@ -2559,11 +2577,7 @@ namespace rpc
         {
             // Remote object: create shared_ptr from interface_proxy
             // The control block already exists, just increment shared count
-            auto err = CO_AWAIT in.cb_->increment_shared();
-            if (err)
-            {
-                CO_RETURN err;
-            }
+            in.cb_->increment_shared();
             out.cb_ = in.cb_;
             out.ptr_ = in.ptr_;
             CO_RETURN error::OK();

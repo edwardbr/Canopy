@@ -42,6 +42,7 @@
 #include <rpc/internal/remote_pointer.h>
 #include <rpc/internal/coroutine_support.h>
 #include <rpc/internal/service_proxy.h>
+#include <rpc/internal/stub.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
@@ -53,7 +54,6 @@
 
 namespace rpc
 {
-    class i_interface_stub;
     class object_stub;
     class service;
     class child_service;
@@ -70,7 +70,7 @@ namespace rpc
      * Services can register event listeners to receive notifications when
      * objects are released or zone events occur.
      */
-    class service_event
+    class service_event : public std::enable_shared_from_this<service_event>
     {
     public:
         virtual ~service_event() = default;
@@ -133,14 +133,6 @@ namespace rpc
         mutable std::mutex stub_control_;
         std::unordered_map<object, std::weak_ptr<object_stub>> stubs_;
 
-        // factory
-        std::unordered_map<rpc::interface_ordinal,
-            std::shared_ptr<std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::i_interface_stub>&)>>>
-            stub_factories_;
-
-        // map wrapped objects pointers to stubs_
-        std::unordered_map<void*, std::weak_ptr<object_stub>> wrapped_object_to_stub_;
-
         mutable std::mutex service_events_control_;
         std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_;
 
@@ -175,6 +167,9 @@ namespace rpc
         template<class T>
         friend CORO_TASK(int) stub_bind_out_param(
             const std::shared_ptr<rpc::service>&, uint64_t, caller_zone, const shared_ptr<T>&, interface_descriptor&);
+        template<class T>
+        friend CORO_TASK(int) stub_bind_out_param(
+            const std::shared_ptr<rpc::service>&, uint64_t, caller_zone, const optimistic_ptr<T>&, interface_descriptor&);
 
         template<class T>
         friend CORO_TASK(int) stub_bind_in_param(
@@ -395,7 +390,7 @@ namespace rpc
         CORO_TASK(int)
         attach_remote_zone(const char* name,
             std::shared_ptr<transport> peer_transport,
-            rpc::interface_descriptor input_descr,
+            rpc::connection_settings input_descr,
             rpc::interface_descriptor& output_descr,
             std::function<CORO_TASK(int)(const rpc::shared_ptr<PARENT_INTERFACE>&,
                 rpc::shared_ptr<CHILD_INTERFACE>&,
@@ -574,34 +569,6 @@ namespace rpc
             const std::shared_ptr<transport>& transport);
 
     public:
-        /////////////////////////////////
-        // STUB REGISTRATION AND FACTORY LOGIC
-        /////////////////////////////////
-
-        /**
-         * @brief Register a factory for creating interface stubs
-         * @param id_getter Function to get interface ordinal for a protocol version
-         * @param factory Function to create stub from another stub (for casting)
-         *
-         * This registers a factory that can create stubs for a specific interface type.
-         * Used during stub creation and interface casting operations.
-         *
-         * IMPORTANT: This function is NOT thread-safe. Call it during service initialization
-         * before the service is used for normal RPC operations.
-         */
-        void add_interface_stub_factory(std::function<interface_ordinal(uint8_t)> id_getter,
-            std::shared_ptr<std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<rpc::i_interface_stub>&)>>
-                factory);
-
-        template<class T>
-        std::function<std::shared_ptr<rpc::i_interface_stub>(const std::shared_ptr<object_stub>& stub)>
-        get_interface_stub_factory(const shared_ptr<T>& iface);
-
-        int create_interface_stub(rpc::interface_ordinal interface_id,
-            std::function<interface_ordinal(uint8_t)> original_interface_id,
-            const std::shared_ptr<rpc::i_interface_stub>& original,
-            std::shared_ptr<rpc::i_interface_stub>& new_stub);
-
         uint64_t release_local_stub(
             const std::shared_ptr<object_stub>& stub, bool is_optimistic, caller_zone caller_zone_id);
 
@@ -663,28 +630,32 @@ namespace rpc
             caller_zone caller_zone_id,
             interface_descriptor& descriptor);
 
+        template<class T>
+        CORO_TASK(int)
+        bind_in_proxy(uint64_t protocol_version,
+            const optimistic_ptr<T>& iface,
+            std::shared_ptr<rpc::object_stub>& stub,
+            caller_zone caller_zone_id,
+            interface_descriptor& descriptor);
+
         CORO_TASK(int)
         get_descriptor_from_interface_stub(caller_zone caller_zone_id,
-            rpc::casting_interface* pointer,
-            std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
+            const rpc::shared_ptr<rpc::casting_interface>& iface,
             std::shared_ptr<object_stub>& stub,
-            interface_descriptor& descriptor);
+            interface_descriptor& descriptor,
+            bool optimistic);
 
         // Specialized version for binding out parameters (used by stub_bind_out_param)
         CORO_TASK(int)
         add_ref_local_or_remote_return_descriptor(uint64_t protocol_version,
             caller_zone caller_zone_id,
-            rpc::casting_interface* pointer,
-            std::function<std::shared_ptr<rpc::i_interface_stub>(std::shared_ptr<object_stub>)> fn,
-            std::shared_ptr<object_stub>& stub,
-            interface_descriptor& descriptor);
+            const rpc::shared_ptr<rpc::casting_interface>& iface,
+            interface_descriptor& descriptor,
+            bool optimistic);
 
         /////////////////////////////////
         // PRIVATE FUNCTIONS
         /////////////////////////////////
-
-        rpc::shared_ptr<casting_interface> get_castable_interface(object object_id, interface_ordinal interface_id);
-
         void inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy);
         void cleanup_service_proxy(const std::shared_ptr<rpc::service_proxy>& other_zone);
 
@@ -702,6 +673,11 @@ namespace rpc
         friend CORO_TASK(int) rpc::proxy_bind_out_param(const std::shared_ptr<rpc::service_proxy>& sp,
             const rpc::interface_descriptor& encap,
             rpc::shared_ptr<T>& val);
+
+        template<class T>
+        friend CORO_TASK(int) rpc::proxy_bind_out_param(const std::shared_ptr<rpc::service_proxy>& sp,
+            const rpc::interface_descriptor& encap,
+            rpc::optimistic_ptr<T>& val);
 
         template<class T>
         friend CORO_TASK(int) rpc::stub_bind_in_param(uint64_t protocol_version,
@@ -722,6 +698,12 @@ namespace rpc
             rpc::caller_zone caller_zone_id,
             const rpc::shared_ptr<T>& iface,
             rpc::interface_descriptor& descriptor);
+        template<class T>
+        friend CORO_TASK(int) rpc::stub_bind_out_param(const std::shared_ptr<rpc::service>& zone,
+            uint64_t protocol_version,
+            rpc::caller_zone caller_zone_id,
+            const rpc::optimistic_ptr<T>& iface,
+            rpc::interface_descriptor& descriptor);
 
         template<class T>
         friend CORO_TASK(int) rpc::proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
@@ -729,6 +711,37 @@ namespace rpc
             const rpc::shared_ptr<T>& iface,
             std::shared_ptr<rpc::object_stub>& stub,
             rpc::interface_descriptor& descriptor);
+
+        template<class T>
+        friend CORO_TASK(int) rpc::proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
+            uint64_t protocol_version,
+            const rpc::optimistic_ptr<T>& iface,
+            std::shared_ptr<rpc::object_stub>& stub,
+            rpc::interface_descriptor& descriptor);
+    };
+
+    /**
+     * @brief Helper class to keep a transport alive even if it's not being immediately used, needed for components that
+     * expect the transport to be there
+     */
+    struct transport_keep_alive
+    {
+        std::shared_ptr<transport> transport_;
+        destination_zone zone_id_;
+
+        transport_keep_alive() { }
+        transport_keep_alive(const std::shared_ptr<transport>& transport, destination_zone zone_id)
+            : transport_(transport)
+            , zone_id_(zone_id)
+        {
+            transport_->increment_outbound_proxy_count(zone_id);
+        }
+
+        ~transport_keep_alive()
+        {
+            if (transport_)
+                transport_->decrement_outbound_proxy_count(zone_id_);
+        }
     };
 
     /**
@@ -833,7 +846,7 @@ namespace rpc
         template<class PARENT_INTERFACE, class CHILD_INTERFACE>
         static CORO_TASK(int) create_child_zone(const char* name,
             std::shared_ptr<transport> parent_transport,
-            rpc::interface_descriptor input_descr,
+            rpc::connection_settings input_descr,
             rpc::interface_descriptor& output_descr,
             std::function<CORO_TASK(int)(const rpc::shared_ptr<PARENT_INTERFACE>&,
                 rpc::shared_ptr<CHILD_INTERFACE>&,
@@ -844,6 +857,16 @@ namespace rpc
 #endif
         )
         {
+            if (input_descr.caller_interface_id != PARENT_INTERFACE::get_id(rpc::get_version()))
+            {
+                RPC_ERROR("caller_interface_id does not match");
+                CO_RETURN rpc::error::INVALID_INTERFACE_ID();
+            }
+            if (input_descr.destination_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
+            {
+                RPC_ERROR("destination_interface_id does not match");
+                CO_RETURN rpc::error::INVALID_INTERFACE_ID();
+            }
             auto zone_id = parent_transport->get_zone_id();
             auto adjacent_zone_id = parent_transport->get_adjacent_zone_id();
 
@@ -863,15 +886,49 @@ namespace rpc
             // This ensures parent zone remains reachable while child exists
             child_svc->set_parent_transport(parent_transport);
 
-            child_svc->add_transport(input_descr.destination_zone_id, parent_transport);
+            child_svc->add_transport(input_descr.input_zone_id, parent_transport);
+            transport_keep_alive ka(parent_transport, input_descr.input_zone_id);
+            transport_keep_alive adjacent_ka;
+            if (input_descr.input_zone_id != parent_transport->get_adjacent_zone_id().as_destination())
+            {
+                child_svc->add_transport(parent_transport->get_adjacent_zone_id().as_destination(), parent_transport);
+                adjacent_ka.transport_ = parent_transport;
+                adjacent_ka.zone_id_ = parent_transport->get_adjacent_zone_id().as_destination();
+            }
 
             rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
             if (input_descr.object_id != 0)
             {
                 auto parent_service_proxy
-                    = rpc::service_proxy::create("parent", child_svc, parent_transport, input_descr.destination_zone_id);
+                    = rpc::service_proxy::create("parent", child_svc, parent_transport, input_descr.input_zone_id);
 
                 child_svc->add_zone_proxy(parent_service_proxy);
+
+                bool new_proxy_added = true;
+
+                std::shared_ptr<rpc::object_proxy> op;
+                auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.object_id,
+                    service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
+                    new_proxy_added,
+                    {parent_transport->get_adjacent_zone_id().get_val()},
+                    false,
+                    op);
+                if (err_code != error::OK())
+                {
+                    RPC_ERROR("get_or_create_object_proxy failed");
+                    CO_RETURN err_code;
+                }
+                RPC_ASSERT(op != nullptr);
+                if (!op)
+                {
+                    RPC_ERROR("Object not found - object proxy is null");
+                    CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                }
+                err_code = CO_AWAIT op->query_interface(parent_ptr, false);
+                if (err_code != rpc::error::OK())
+                {
+                    CO_RETURN err_code;
+                }
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
@@ -883,13 +940,6 @@ namespace rpc
                         adjacent_zone_id,
                         rpc::add_ref_options::normal);
 #endif
-
-                auto err_code = CO_AWAIT rpc::demarshall_interface_proxy(
-                    rpc::get_version(), parent_service_proxy, input_descr, parent_ptr);
-                if (err_code != rpc::error::OK())
-                {
-                    CO_RETURN err_code;
-                }
             }
             rpc::shared_ptr<CHILD_INTERFACE> child_ptr;
             {
@@ -901,11 +951,11 @@ namespace rpc
             }
             if (child_ptr)
             {
-                RPC_ASSERT(
-                    child_ptr->is_local()
-                    && "we cannot support remote pointers to subordinate zones as it has not been registered yet");
-                auto err_code = CO_AWAIT rpc::create_interface_stub(
-                    *child_svc, child_ptr, parent_transport->get_adjacent_zone_id().as_caller(), output_descr);
+                auto err_code = CO_AWAIT rpc::stub_bind_out_param(child_svc,
+                    rpc::get_version(),
+                    parent_transport->get_adjacent_zone_id().as_caller(),
+                    child_ptr,
+                    output_descr);
 
                 if (err_code == rpc::error::OK())
                 {
@@ -934,40 +984,53 @@ namespace rpc
         rpc::shared_ptr<out_param_type>& output_interface)
     {
         // Marshal input interface if provided
-        rpc::interface_descriptor input_descr{{0}, {0}};
+        rpc::connection_settings input_descr;
         // Connect via transport (calls remote zone's entry point)
         rpc::interface_descriptor output_descr{{0}, {0}};
 
         int err_code = rpc::error::OK();
 
-        bool transport_added = false;
+        std::shared_ptr<rpc::object_stub> input_stub;
+
+        add_transport(child_transport->get_adjacent_zone_id().as_destination(), child_transport);
+        transport_keep_alive ka(child_transport, child_transport->get_adjacent_zone_id().as_destination());
 
         if (input_interface)
         {
-            add_transport(child_transport->get_adjacent_zone_id().as_destination(), child_transport);
-            transport_added = true;
-            std::shared_ptr<object_stub> stub;
-            auto factory = get_interface_stub_factory(input_interface);
-            err_code = CO_AWAIT get_descriptor_from_interface_stub(
-                child_transport->get_adjacent_zone_id().as_caller(), input_interface.get(), factory, stub, input_descr);
-
-            if (err_code != error::OK())
+            // this is to check that an interface is belonging to another zone and not the operating zone
+            if (!input_interface->__rpc_is_local()
+                && casting_interface::get_destination_zone(*input_interface) != get_zone_id().as_destination())
             {
-                remove_transport(child_transport->get_adjacent_zone_id().as_destination());
-                CO_RETURN err_code;
+                input_descr.input_zone_id = casting_interface::get_destination_zone(*input_interface);
+                input_descr.object_id = casting_interface::get_object_id(*input_interface);
+            }
+            else
+            {
+                rpc::interface_descriptor tmp;
+
+                err_code = CO_AWAIT bind_in_proxy(
+                    rpc::get_version(), input_interface, input_stub, child_transport->get_adjacent_zone_id().as_caller(), tmp);
+                if (err_code != error::OK())
+                {
+                    CO_RETURN err_code;
+                }
+                input_descr.input_zone_id = tmp.destination_zone_id;
+                input_descr.object_id = tmp.object_id;
             }
         }
         else
         {
-            input_descr.destination_zone_id = child_transport->get_zone_id().get_val();
+            input_descr.input_zone_id = child_transport->get_zone_id().get_val();
         }
+        input_descr.caller_interface_id = in_param_type::get_id(rpc::get_version());
+        input_descr.destination_interface_id = out_param_type::get_id(rpc::get_version());
+
         err_code = CO_AWAIT child_transport->connect(input_descr, output_descr);
         if (err_code != rpc::error::OK())
         {
-            if (transport_added)
+            if (input_stub)
             {
-                // Clean up on failure
-                remove_transport(child_transport->get_adjacent_zone_id().as_destination());
+                input_stub->release_from_service(child_transport->get_adjacent_zone_id().as_caller());
             }
             CO_RETURN err_code;
         }
@@ -975,11 +1038,6 @@ namespace rpc
         // Demarshal output interface if provided
         if (output_descr.object_id != 0 && output_descr.destination_zone_id != 0)
         {
-            if (!transport_added)
-            {
-                add_transport(child_transport->get_adjacent_zone_id().as_destination(), child_transport);
-            }
-
             // Create service_proxy for this connection
             auto new_service_proxy = rpc::service_proxy::create(
                 name, shared_from_this(), child_transport, child_transport->get_adjacent_zone_id().as_destination());
@@ -987,8 +1045,12 @@ namespace rpc
             // add the proxy to the service
             add_zone_proxy(new_service_proxy);
 
-            err_code = CO_AWAIT rpc::demarshall_interface_proxy(
-                rpc::get_version(), new_service_proxy, output_descr, output_interface);
+            err_code = CO_AWAIT rpc::proxy_bind_out_param(new_service_proxy, output_descr, output_interface);
+        }
+
+        if (input_stub)
+        {
+            input_stub->release_from_service(child_transport->get_adjacent_zone_id().as_caller());
         }
 
         CO_RETURN err_code;
@@ -1000,71 +1062,109 @@ namespace rpc
     CORO_TASK(int)
     service::attach_remote_zone(const char* name,
         std::shared_ptr<transport> peer_transport,
-        rpc::interface_descriptor input_descr,
+        rpc::connection_settings input_descr,
         rpc::interface_descriptor& output_descr,
         std::function<CORO_TASK(int)(
             const rpc::shared_ptr<PARENT_INTERFACE>&, rpc::shared_ptr<CHILD_INTERFACE>&, const std::shared_ptr<rpc::service>&)> fn)
     {
-        // Demarshal parent interface if provided
+        if (input_descr.caller_interface_id != PARENT_INTERFACE::get_id(rpc::get_version()))
+        {
+            RPC_ERROR("caller_interface_id does not match");
+            CO_RETURN rpc::error::INVALID_INTERFACE_ID();
+        }
+        if (input_descr.destination_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
+        {
+            RPC_ERROR("destination_interface_id does not match");
+            CO_RETURN rpc::error::INVALID_INTERFACE_ID();
+        }
+
+        auto adjacent_zone_id = peer_transport->get_adjacent_zone_id();
+
         rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
+        add_transport(input_descr.input_zone_id, peer_transport);
+        transport_keep_alive ka(peer_transport, input_descr.input_zone_id);
+        transport_keep_alive adjacent_ka;
+        if (input_descr.input_zone_id != adjacent_zone_id.as_destination())
+        {
+            add_transport(adjacent_zone_id.as_destination(), peer_transport);
+            adjacent_ka.transport_ = peer_transport;
+            adjacent_ka.zone_id_ = adjacent_zone_id.as_destination();
+        }
+
         if (input_descr.object_id != 0)
         {
-            // Create service_proxy for peer connection
-            auto peer_service_proxy
-                = rpc::service_proxy::create(name, shared_from_this(), peer_transport, input_descr.destination_zone_id);
-            add_zone_proxy(peer_service_proxy);
+            auto parent_service_proxy
+                = rpc::service_proxy::create(name, shared_from_this(), peer_transport, input_descr.input_zone_id);
 
-            auto err_code = CO_AWAIT rpc::demarshall_interface_proxy(
-                rpc::get_version(), peer_service_proxy, input_descr, parent_ptr);
+            add_zone_proxy(parent_service_proxy);
+
+            bool new_proxy_added = true;
+
+            std::shared_ptr<rpc::object_proxy> op;
+            auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.object_id,
+                service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
+                new_proxy_added,
+                {adjacent_zone_id.get_val()},
+                false,
+                op);
+            if (err_code != error::OK())
+            {
+                RPC_ERROR("get_or_create_object_proxy failed");
+                CO_RETURN err_code;
+            }
+            RPC_ASSERT(op != nullptr);
+            if (!op)
+            {
+                RPC_ERROR("Object not found - object proxy is null");
+                CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+            }
+            err_code = CO_AWAIT op->query_interface(parent_ptr, false);
             if (err_code != rpc::error::OK())
             {
                 CO_RETURN err_code;
             }
-        }
-        else
-        {
-            add_transport(peer_transport->get_adjacent_zone_id().as_destination(), peer_transport);
-        }
 
-        auto err_code = CO_AWAIT peer_transport->accept();
-        if (err_code != rpc::error::OK())
-        {
-            if (input_descr != interface_descriptor())
-            {
-                // perhaps we should stop the transport first?
-                remove_transport(peer_transport->get_adjacent_zone_id().as_destination());
-            }
-            CO_RETURN err_code;
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                    adjacent_zone_id,
+                    zone_id_.as_destination(),
+                    adjacent_zone_id.as_caller(),
+                    input_descr.object_id,
+                    adjacent_zone_id,
+                    rpc::add_ref_options::normal);
+#endif
         }
 
         // Call local entry point to create child interface
         rpc::shared_ptr<CHILD_INTERFACE> child_ptr;
-        err_code = CO_AWAIT fn(parent_ptr, child_ptr, shared_from_this());
-        if (err_code != rpc::error::OK())
         {
-            if (input_descr != interface_descriptor())
-            {
-                // perhaps we should stop the transport first?
-                remove_transport(peer_transport->get_adjacent_zone_id().as_destination());
-            }
-            CO_RETURN err_code;
-        }
-
-        // Marshal child interface to return to peer
-        if (child_ptr)
-        {
-            RPC_ASSERT(child_ptr->is_local() && "Cannot support remote pointers from subordinate zones");
-            err_code = CO_AWAIT rpc::create_interface_stub(
-                *this, child_ptr, peer_transport->get_adjacent_zone_id().as_caller(), output_descr);
+            auto err_code = CO_AWAIT fn(parent_ptr, child_ptr, shared_from_this());
             if (err_code != rpc::error::OK())
             {
-                if (input_descr != interface_descriptor())
-                {
-                    // perhaps we should stop the transport first?
-                    remove_transport(peer_transport->get_adjacent_zone_id().as_destination());
-                }
                 CO_RETURN err_code;
             }
+        }
+
+        if (child_ptr)
+        {
+            auto err_code = CO_AWAIT rpc::stub_bind_out_param(
+                shared_from_this(), rpc::get_version(), adjacent_zone_id.as_caller(), child_ptr, output_descr);
+
+            if (err_code == rpc::error::OK())
+            {
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                    telemetry_service->on_transport_outbound_add_ref(zone_id_,
+                        adjacent_zone_id,
+                        zone_id_.as_destination(),
+                        adjacent_zone_id.as_caller(),
+                        output_descr.object_id,
+                        zone_id_,
+                        rpc::add_ref_options::build_caller_route);
+#endif
+            }
+            CO_RETURN err_code;
         }
 
         CO_RETURN rpc::error::OK();

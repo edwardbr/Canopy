@@ -46,7 +46,6 @@ child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
         const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
     {
         // Initialize child zone
-        example_idl_register_stubs(child_service_ptr);
         new_example = rpc::make_shared<example_impl>(child_service_ptr, host);
         CO_RETURN rpc::error::OK();
     });

@@ -83,11 +83,12 @@ foreach(test_name ${BUILDABLE_TESTS})
 
       add_test(NAME ${test_name} COMMAND ${test_name})
 
-      # ASan options: disable leak detection for all tests
-      # Dev10_445289_make_shared also needs alloc_dealloc_mismatch=0 because it overrides operator new/delete
+      # ASan options: disable leak detection for all tests Dev10_445289_make_shared also needs alloc_dealloc_mismatch=0
+      # because it overrides operator new/delete
       if(test_name STREQUAL "Dev10_445289_make_shared")
-        set_tests_properties(${test_name} PROPERTIES ENVIRONMENT
-                                                     "ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0;LSAN_OPTIONS=detect_leaks=0")
+        set_tests_properties(
+          ${test_name} PROPERTIES ENVIRONMENT
+                                  "ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0;LSAN_OPTIONS=detect_leaks=0")
       else()
         set_tests_properties(${test_name} PROPERTIES ENVIRONMENT
                                                      "ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0")

@@ -32,12 +32,12 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     std::atomic<uint64_t> zone_gen_ = 0;
 
     std::shared_ptr<coro::io_scheduler> io_scheduler_;
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
     bool setup_complete_ = false;
 
 public:
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
 
     virtual ~tcp_setup() = default;
 
@@ -57,7 +57,8 @@ public:
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occured_ = true;
+            RPC_ASSERT(false);
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }
@@ -79,15 +80,9 @@ public:
 
         // Create the peer service (server side)
         peer_service_ = std::make_shared<rpc::service>("peer", peer_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(peer_service_);
-        example_shared_idl_register_stubs(peer_service_);
-        example_idl_register_stubs(peer_service_);
 
         // Create the root service (client side)
         root_service_ = std::make_shared<rpc::service>("host", root_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(root_service_);
-        example_shared_idl_register_stubs(root_service_);
-        example_idl_register_stubs(root_service_);
 
         current_host_service = root_service_;
 
@@ -97,7 +92,7 @@ public:
         // Create the listener for the server side
         // The connection handler will be called when a client connects
         listener_ = std::make_unique<rpc::tcp::listener>(
-            [this, use_host_in_child = use_host_in_child_](const rpc::interface_descriptor& input_descr,
+            [this, use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_descr,
                 rpc::interface_descriptor& output_interface,
                 std::shared_ptr<rpc::service> child_service_ptr,
                 std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
@@ -105,10 +100,6 @@ public:
                 // Server-side connection handler
                 // Store the transport for later use
                 server_transport_ = transport;
-
-                // Add the transport to the service first, BEFORE calling attach_remote_zone
-                // attach_remote_zone expects the transport to already be registered
-                child_service_ptr->add_transport(input_descr.destination_zone_id, transport);
 
                 // Use attach_remote_zone to properly manage object lifetime, like SPSC does
                 auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
@@ -162,9 +153,6 @@ public:
             std::move(client),
             nullptr); // client doesn't need handler
 
-        // Start the client pump - this must run before we call connect
-        root_service_->spawn(client_transport_->pump_send_and_receive());
-
         // Connect using the client transport
         auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport_, hst, i_example_ptr_);
 
@@ -202,7 +190,7 @@ public:
             io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
 
-        ASSERT_EQ(error_has_occured_, false);
+        ASSERT_EQ(error_has_occurred_, false);
     }
 
     CORO_TASK(void) CoroTearDown()
@@ -289,7 +277,7 @@ public:
         // TCP setup doesn't support creating local child zones via connect_to_zone
         // Instead, TCP is for connecting to remote services over network
         // For local child zones, use inproc_setup instead
-        RPC_ERROR("create_new_zone is not implemented for tcp_setup - use inproc_setup for local child zones");
+        RPC_INFO("create_new_zone is not implemented for tcp_setup - use inproc_setup for local child zones");
         CO_RETURN nullptr;
     }
 };

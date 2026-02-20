@@ -47,7 +47,7 @@ namespace rpc
     }
 
     CORO_TASK(int)
-    enclave_service_proxy::inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr)
+    enclave_service_proxy::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
     {
         sgx_launch_token_t token = {0};
         int updated = 0;

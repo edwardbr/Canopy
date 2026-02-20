@@ -309,8 +309,7 @@ int main(const int argc, char* argv[])
             std::stringstream stub_header_stream;
             std::stringstream mock_stream;
 
-            synchronous_generator::write_files(module_name,
-                true,
+            synchronous_generator::write_files(true,
                 *objects,
                 header_stream,
                 proxy_stream,

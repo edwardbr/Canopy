@@ -18,8 +18,6 @@ namespace rpc::spsc
         , receive_spsc_queue_(receive_spsc_queue)
         , connection_handler_(handler)
     {
-        // SPSC transport starts in CONNECTING state
-        // Will transition to CONNECTED after successful connection
     }
 
     std::shared_ptr<spsc_transport> spsc_transport::create(std::string name,
@@ -31,13 +29,18 @@ namespace rpc::spsc
     {
         auto transport = std::shared_ptr<spsc_transport>(
             new spsc_transport(name, service, adjacent_zone_id, send_spsc_queue, receive_spsc_queue, handler));
+
+        // Set up the keep alive using member_ptr assignment
         transport->keep_alive_ = transport;
+
+        // Set the transport status to connected
+        transport->set_status(rpc::transport_status::CONNECTED);
         return transport;
     }
 
     // Connection handshake
     CORO_TASK(int)
-    spsc_transport::inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr)
+    spsc_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
     {
         RPC_DEBUG("spsc_transport::connect zone={}", get_zone_id().get_val());
 
@@ -45,10 +48,7 @@ namespace rpc::spsc
         assert(connection_handler_ || !connection_handler_); // Can be null for client side
 
         // Schedule onto the scheduler
-        CO_AWAIT service->get_scheduler()->schedule();
-
-        // Set transport to CONNECTED
-        set_status(rpc::transport_status::CONNECTED);
+        // CO_AWAIT service->get_scheduler()->schedule();
 
         pump_send_and_receive();
 
@@ -60,7 +60,10 @@ namespace rpc::spsc
             int ret = CO_AWAIT call_peer(rpc::get_version(),
                 init_client_channel_send{.caller_zone_id = get_zone_id().get_val(),
                     .caller_object_id = input_descr.object_id.get_val(),
-                    .destination_zone_id = get_adjacent_zone_id().get_val()},
+                    .caller_interface_id = input_descr.caller_interface_id.get_val(),
+                    .destination_zone_id = get_adjacent_zone_id().get_val(),
+                    .destination_interface_id = input_descr.destination_interface_id.get_val(),
+                    .adjacent_zone_id = get_zone_id().get_val()},
                 init_receive);
             if (ret != rpc::error::OK())
             {
@@ -120,9 +123,10 @@ namespace rpc::spsc
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
                 .back_channel = in_back_channel},
             response);
-        if (ret != rpc::error::OK())
+
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed spsc_transport::outbound_send call_send");
+            RPC_DEBUG("failed spsc_transport::outbound_send call_send");
             CO_RETURN ret;
         }
 
@@ -268,7 +272,7 @@ namespace rpc::spsc
         RPC_DEBUG("spsc_transport::outbound_release zone={}", get_zone_id().get_val());
 
         // Check transport status
-        if (get_status() != rpc::transport_status::CONNECTED)
+        if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::DISCONNECTING)
         {
             RPC_ERROR(
                 "failed spsc_transport::outbound_release - not connected, status = {}", static_cast<int>(get_status()));
@@ -412,7 +416,7 @@ namespace rpc::spsc
         // AND response_task_complete being false).
 
         bool stop_loop = false;
-        while (get_status() != rpc::transport_status::DISCONNECTED && !stop_loop)
+        while (get_status() == rpc::transport_status::CONNECTED && !stop_loop)
         {
 
             // Receive prefix chunks
@@ -693,7 +697,7 @@ namespace rpc::spsc
         RPC_DEBUG("send_producer_loop started for zone {}", get_zone_id().get_val());
 
         std::span<uint8_t> send_data;
-        while (get_status() == rpc::transport_status::CONNECTED || get_status() == rpc::transport_status::CONNECTING)
+        while (get_status() == rpc::transport_status::CONNECTED)
         {
             auto status = push_message(send_data);
             if (status == send_queue_status::SEND_QUEUE_EMPTY || status == send_queue_status::SPSC_QUEUE_FULL)
@@ -715,21 +719,20 @@ namespace rpc::spsc
             status = push_message(send_data);
         }
 
-        RPC_DEBUG("send cancellation message {}", get_zone_id().get_val());
+        RPC_DEBUG("close connection message {}", get_zone_id().get_val());
 
-        // plop cancellation message onto queue
         send_payload(rpc::get_version(), message_direction::one_way, close_connection_send{}, 0);
 
-        // then flush the queue
+        // then flush the queue one more time
         status = push_message(send_data);
         while (status == send_queue_status::SEND_QUEUE_NOT_EMPTY)
         {
             status = push_message(send_data);
         }
-
         if (status == send_queue_status::SPSC_QUEUE_FULL)
         {
             RPC_DEBUG("unable to send cancellation message {}", get_zone_id().get_val());
+            CO_RETURN;
         }
 
         RPC_DEBUG("send_producer_loop completed sending for zone {}", get_zone_id().get_val());
@@ -797,9 +800,9 @@ namespace rpc::spsc
             request.back_channel,
             out_back_channel);
 
-        if (ret != rpc::error::OK())
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed send");
+            RPC_DEBUG("inbound_send error {}", ret);
         }
 
         if (prefix.direction == message_direction::one_way)
@@ -877,9 +880,10 @@ namespace rpc::spsc
             {request.interface_id},
             request.back_channel,
             out_back_channel);
-        if (ret != rpc::error::OK())
+
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed try_cast");
+            RPC_DEBUG("inbound_try_cast error {}", ret);
         }
 
         send_payload(prefix.version,
@@ -920,9 +924,9 @@ namespace rpc::spsc
             request.back_channel,
             out_back_channel);
 
-        if (ret != rpc::error::OK())
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed add_ref");
+            RPC_DEBUG("inbound_add_ref error {}", ret);
         }
 
         send_payload(prefix.version,
@@ -959,9 +963,9 @@ namespace rpc::spsc
             request.back_channel,
             out_back_channel);
 
-        if (ret != rpc::error::OK())
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed release");
+            RPC_DEBUG("inbound_release error {}", ret);
         }
 
         auto count = get_destination_count();
@@ -969,7 +973,7 @@ namespace rpc::spsc
         if (count <= 0)
         {
             RPC_DEBUG("destination_count reached 0, triggering disconnect");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
         }
         RPC_DEBUG("release request complete");
         CO_RETURN;
@@ -1032,11 +1036,6 @@ namespace rpc::spsc
     {
         RPC_DEBUG("create_stub zone: {}", get_zone_id().get_val());
 
-        if (get_status() != rpc::transport_status::CONNECTING)
-        {
-            CO_RETURN;
-        }
-
         init_client_channel_send request;
         auto err = rpc::from_yas_binary(rpc::span(payload.payload), request);
         if (!err.empty())
@@ -1044,7 +1043,10 @@ namespace rpc::spsc
             RPC_ERROR("failed create_stub init_client_channel_send deserialization");
             CO_RETURN;
         }
-        rpc::interface_descriptor input_descr{{request.caller_object_id}, {request.caller_zone_id}};
+        rpc::connection_settings input_descr{.caller_interface_id = request.caller_interface_id,
+            .destination_interface_id = request.destination_interface_id,
+            .object_id = request.caller_object_id,
+            .input_zone_id = request.caller_zone_id};
         rpc::interface_descriptor output_interface;
 
         int ret = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
@@ -1055,15 +1057,12 @@ namespace rpc::spsc
             CO_RETURN;
         }
 
-        // Set transport to CONNECTED after successful server-side handshake
-        set_status(rpc::transport_status::CONNECTED);
-
         send_payload(prefix.version,
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .destination_zone_id = output_interface.destination_zone_id.get_val(),
                 .destination_object_id = output_interface.object_id.get_val(),
-                .caller_zone_id = input_descr.destination_zone_id.get_val()},
+                .caller_zone_id = input_descr.input_zone_id.get_val()},
             prefix.sequence_number);
 
         CO_RETURN;

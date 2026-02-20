@@ -111,11 +111,6 @@ child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
         rpc::shared_ptr<yyy::i_example>& new_example,
         const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(error_code)
     {
-        // Register IDL stubs in child zone so that incoming calls can be handled.
-        example_import_idl_register_stubs(child_service_ptr);
-        example_shared_idl_register_stubs(child_service_ptr);
-        example_idl_register_stubs(child_service_ptr);
-
         // Create the object in the child zone, to be transferred to the parent zone.
         new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host));
 
@@ -132,9 +127,6 @@ Peer zones connect via TCP or other network transports, this example uses corout
 ```cpp
 // Server side
 auto server_service = std::make_shared<rpc::service>("server", get_next_zone_id(), io_scheduler_);
-example_import_idl_register_stubs(server_service);
-example_shared_idl_register_stubs(server_service);
-example_idl_register_stubs(server_service);
 
 // Create the listener for the server side
 // The connection handler will be called when a client connects
@@ -144,9 +136,6 @@ auto listener = std::make_unique<rpc::tcp::listener>(
         std::shared_ptr<rpc::service> child_service_ptr,
         std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
     {
-        // Add the transport to the service first, BEFORE calling attach_remote_zone
-        // attach_remote_zone expects the transport to already be registered
-        child_service_ptr->add_transport(input_descr.destination_zone_id, transport);
 
         // Use attach_remote_zone to properly manage object lifetime, like SPSC does
         auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_client, yyy::i_example>("service_proxy",
@@ -178,9 +167,6 @@ if (!listener->start_listening(peer_service_, server_options))
     
 // Create the client service
 auto client_service = std::make_shared<rpc::service>("client", get_next_zone_id(), io_scheduler_);
-example_import_idl_register_stubs(client_service);
-example_shared_idl_register_stubs(client_service);
-example_idl_register_stubs(client_service);
 
 coro::net::tcp::client tcp_client(scheduler,
     coro::net::tcp::client::options{

@@ -315,7 +315,7 @@ namespace rpc
          *
          * Thread-Safety: Implementation-specific (varies by derived class)
          */
-        CORO_TASK(int) connect(interface_descriptor input_descr, interface_descriptor& output_descr);
+        CORO_TASK(int) connect(connection_settings input_descr, interface_descriptor& output_descr);
 
         /**
          * @brief Initiate a transport about to receive a connection request
@@ -529,7 +529,7 @@ namespace rpc
          *
          * Thread-Safety: Implementation-specific
          */
-        virtual CORO_TASK(int) inner_connect(interface_descriptor input_descr, interface_descriptor& output_descr) = 0;
+        virtual CORO_TASK(int) inner_connect(connection_settings& input_descr, interface_descriptor& output_descr) = 0;
 
         virtual CORO_TASK(int) inner_accept() = 0;
 

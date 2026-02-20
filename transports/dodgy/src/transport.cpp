@@ -37,7 +37,7 @@ namespace rpc::dodgy
 
     // Connection handshake
     CORO_TASK(int)
-    dodgy_transport::inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr)
+    dodgy_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
     {
         RPC_DEBUG("dodgy_transport::connect zone={}", get_zone_id().get_val());
 
@@ -55,7 +55,10 @@ namespace rpc::dodgy
             int ret = CO_AWAIT call_peer(rpc::get_version(),
                 init_client_channel_send{.caller_zone_id = get_zone_id().get_val(),
                     .caller_object_id = input_descr.object_id.get_val(),
-                    .destination_zone_id = get_adjacent_zone_id().get_val()},
+                    .caller_interface_id = input_descr.caller_interface_id.get_val(),
+                    .destination_zone_id = get_adjacent_zone_id().get_val(),
+                    .destination_interface_id = input_descr.destination_interface_id.get_val(),
+                    .adjacent_zone_id = get_zone_id().get_val()},
                 init_receive);
             if (ret != rpc::error::OK())
             {
@@ -856,9 +859,9 @@ namespace rpc::dodgy
             {request.interface_id},
             request.back_channel,
             out_back_channel);
-        if (ret != rpc::error::OK())
+        if (rpc::error::is_error(ret))
         {
-            RPC_ERROR("failed try_cast");
+            RPC_DEBUG("inbound_send error {}", ret);
         }
 
         auto err = CO_AWAIT send_payload(prefix.version,

@@ -62,7 +62,7 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr)
+    mock_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
     {
         std::ignore = input_descr;
         std::ignore = output_descr;
@@ -92,24 +92,30 @@ namespace rpc::mock_test
         }
 
         // Check if custom handler is set
+        send_handler handler;
         {
             std::scoped_lock lock(send_handler_mtx_);
             if (send_handler_)
             {
-                CO_RETURN CO_AWAIT send_handler_(protocol_version,
-                    encoding,
-                    tag,
-                    caller_zone_id,
-                    destination_zone_id,
-                    object_id,
-                    interface_id,
-                    method_id,
-                    in_data,
-                    out_buf_,
-                    in_back_channel,
-                    out_back_channel);
+                handler = send_handler_;
+            }
+            else
+            {
+                CO_RETURN rpc::error::OK();
             }
         }
+        CO_RETURN CO_AWAIT handler(protocol_version,
+            encoding,
+            tag,
+            caller_zone_id,
+            destination_zone_id,
+            object_id,
+            interface_id,
+            method_id,
+            in_data,
+            out_buf_,
+            in_back_channel,
+            out_back_channel);
 
         // Default successful response
         CO_RETURN rpc::error::OK();

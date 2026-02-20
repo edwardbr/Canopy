@@ -23,13 +23,13 @@ namespace rpc::local
         parent_transport(std::string name, std::shared_ptr<rpc::service> service, std::shared_ptr<child_transport> parent);
         parent_transport(std::string name, std::shared_ptr<child_transport> parent);
 
-        virtual ~parent_transport() DEFAULT_DESTRUCTOR;
+        virtual ~parent_transport() CANOPY_DEFAULT_DESTRUCTOR;
 
         // Override to propagate disconnect to parent zone
         void set_status(rpc::transport_status status) override;
 
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override
         {
             std::ignore = input_descr;
             std::ignore = output_descr;
@@ -115,7 +115,7 @@ namespace rpc::local
     {
         stdex::member_ptr<parent_transport> child_;
 
-        typedef std::function<CORO_TASK(int)(rpc::interface_descriptor input_descr,
+        typedef std::function<CORO_TASK(int)(rpc::connection_settings input_descr,
             rpc::interface_descriptor& output_descr,
             const std::shared_ptr<child_transport>& parent,
             std::shared_ptr<parent_transport>& child)>
@@ -130,13 +130,13 @@ namespace rpc::local
             set_status(rpc::transport_status::CONNECTED);
         }
 
-        virtual ~child_transport() DEFAULT_DESTRUCTOR;
+        virtual ~child_transport() CANOPY_DEFAULT_DESTRUCTOR;
 
         // Called by parent_transport when child zone disconnects
         void on_child_disconnected();
 
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override
         {
             assert(child_entry_point_factory_fn_);
             std::shared_ptr<parent_transport> child;
@@ -237,7 +237,7 @@ namespace rpc::local
         {
 
             child_entry_point_factory_fn_
-                = [child_entry_point_fn = std::move(child_entry_point_fn)](rpc::interface_descriptor input_descr,
+                = [child_entry_point_fn = std::move(child_entry_point_fn)](rpc::connection_settings input_descr,
                       rpc::interface_descriptor& output_descr,
                       const std::shared_ptr<child_transport>& parent,
                       std::shared_ptr<parent_transport>& child) mutable -> CORO_TASK(int)

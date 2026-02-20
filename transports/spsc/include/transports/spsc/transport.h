@@ -24,7 +24,7 @@ namespace rpc::spsc
     class spsc_transport : public rpc::transport
     {
     public:
-        using connection_handler = std::function<CORO_TASK(int)(const rpc::interface_descriptor& input_descr,
+        using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
             rpc::interface_descriptor& output_interface,
             std::shared_ptr<rpc::service> child_service_ptr,
             std::shared_ptr<spsc_transport>)>;
@@ -133,7 +133,7 @@ namespace rpc::spsc
         CORO_TASK(int)
         call_peer(std::uint64_t protocol_version, SendPayload&& sendPayload, ReceivePayload& receivePayload)
         {
-            if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::CONNECTING)
+            if (get_status() != rpc::transport_status::CONNECTED)
             {
                 RPC_ERROR("call_peer: transport is not connected");
                 CO_RETURN rpc::error::CALL_CANCELLED();
@@ -169,7 +169,11 @@ namespace rpc::spsc
                 rpc::id<SendPayload>::get(rpc::get_version()));
 
             // Check if the operation was cancelled during shutdown
-            if (res_payload.error_code != rpc::error::OK())
+            if (res_payload.error_code == rpc::error::OBJECT_GONE())
+            {
+                CO_RETURN res_payload.error_code;
+            }
+            if (rpc::error::is_critical(res_payload.error_code))
             {
                 RPC_ERROR("call_peer returning cancelled error for zone: {} sequence_number: {}",
                     get_service()->get_zone_id().get_val(),
@@ -204,7 +208,7 @@ namespace rpc::spsc
         // Internal send payload helper
         // rpc::transport override - connect handshake
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
 
         CORO_TASK(int) inner_accept() override;
 

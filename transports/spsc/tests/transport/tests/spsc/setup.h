@@ -39,12 +39,12 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     std::atomic<uint64_t> zone_gen_ = 0;
 
     std::shared_ptr<coro::io_scheduler> io_scheduler_;
-    bool error_has_occured_ = false;
+    bool error_has_occurred_ = false;
     bool setup_complete_ = false;
 
 public:
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
-    bool error_has_occured() const { return error_has_occured_; }
+    bool error_has_occurred() const { return error_has_occurred_; }
 
     virtual ~spsc_setup() = default;
 
@@ -63,7 +63,7 @@ public:
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occured_ = true;
+            error_has_occurred_ = true;
         }
         CO_RETURN;
     }
@@ -83,18 +83,12 @@ public:
         auto root_zone_id = rpc::zone{++zone_gen_};
         auto peer_zone_id = rpc::zone{++zone_gen_};
         root_service_ = std::make_shared<rpc::service>("host", root_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(root_service_);
-        example_shared_idl_register_stubs(root_service_);
-        example_idl_register_stubs(root_service_);
 
         peer_service_ = std::make_shared<rpc::service>("peer", peer_zone_id, io_scheduler_);
-        example_import_idl_register_stubs(peer_service_);
-        example_shared_idl_register_stubs(peer_service_);
-        example_idl_register_stubs(peer_service_);
 
         // Create server-side transport (receives connections)
         rpc::spsc::spsc_transport::connection_handler handler
-            = [use_host_in_child = use_host_in_child_](const rpc::interface_descriptor& input_interface,
+            = [use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_interface,
                   rpc::interface_descriptor& output_interface,
                   std::shared_ptr<rpc::service> service,
                   std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)
@@ -123,10 +117,7 @@ public:
             &send_spsc_queue_,    // reversed for receiver
             handler);
 
-        peer_service_->add_transport(root_zone_id.as_destination(), peer_transport);
-
-        // Schedule the pump coroutine
-        peer_transport->pump_send_and_receive();
+        CO_AWAIT peer_transport->accept();
 
         // Create client-side transport (initiates connection)
         rpc::shared_ptr<yyy::i_host> hst(new host());
@@ -138,9 +129,6 @@ public:
             &send_spsc_queue_,
             &receive_spsc_queue_,
             nullptr); // client doesn't need handler
-
-        // Schedule the pump coroutine for client
-        client_transport->pump_send_and_receive();
 
         auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport, hst, i_example_ptr_);
 
@@ -176,7 +164,7 @@ public:
             io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
 
-        ASSERT_EQ(error_has_occured_, false);
+        ASSERT_EQ(error_has_occurred_, false);
     }
 
     CORO_TASK(void) CoroTearDown()
@@ -231,7 +219,7 @@ public:
     {
         // SPSC setup creates remote zones via transport, not local child zones
         // For now, this is not supported - would need to create new queues and transports
-        RPC_ERROR("create_new_zone is not implemented for spsc_setup - use inproc_setup for local child zones");
+        RPC_INFO("create_new_zone is not implemented for spsc_setup - use inproc_setup for local child zones");
         CO_RETURN nullptr;
     }
 };

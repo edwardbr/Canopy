@@ -32,10 +32,10 @@ namespace websocket_demo
                 const std::shared_ptr<std::queue<std::vector<uint8_t>>>& pending_messages,
                 const std::shared_ptr<std::mutex>& pending_messages_mutex);
 
-            virtual ~transport() DEFAULT_DESTRUCTOR;
+            virtual ~transport() CANOPY_DEFAULT_DESTRUCTOR;
 
             CORO_TASK(int)
-            inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override
+            inner_connect(rpc::connection_settings& input_descr, rpc::interface_descriptor& output_descr) override
             {
                 std::ignore = input_descr;
                 std::ignore = output_descr;

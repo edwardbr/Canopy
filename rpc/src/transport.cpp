@@ -52,7 +52,7 @@ namespace rpc
         service_ = service;
     }
 
-    CORO_TASK(int) transport::connect(interface_descriptor input_descr, interface_descriptor& output_descr)
+    CORO_TASK(int) transport::connect(connection_settings input_descr, interface_descriptor& output_descr)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (input_descr.object_id.is_set())
@@ -679,35 +679,56 @@ namespace rpc
 
     CORO_TASK(void) transport::notify_all_destinations_of_disconnect()
     {
-        std::shared_lock lock(destinations_mutex_);
-        auto service = service_.lock();
-        if (!service)
+        std::shared_ptr<service> service;
+        std::vector<std::shared_ptr<pass_through>> handlers_to_notify;
+        std::vector<destination_zone> zones_to_notify;
+
         {
-            RPC_ERROR("notify_all_destinations_of_disconnect: Local service no longer exists on transport zone={} "
-                      "adjacent_zone={}",
-                zone_id_.get_val(),
-                adjacent_zone_id_.get_val());
-            CO_RETURN;
+            std::shared_lock lock(destinations_mutex_);
+            service = service_.lock();
+            if (!service)
+            {
+                RPC_ERROR("notify_all_destinations_of_disconnect: Local service no longer exists on transport zone={} "
+                          "adjacent_zone={}",
+                    zone_id_.get_val(),
+                    adjacent_zone_id_.get_val());
+                CO_RETURN;
+            }
+
+            handlers_to_notify.reserve(pass_thoughs_.size());
+            for (const auto& [dest_zone, pt] : pass_thoughs_)
+            {
+                std::ignore = dest_zone;
+                if (auto handler = pt.lock())
+                {
+                    handlers_to_notify.push_back(std::move(handler));
+                }
+            }
+
+            zones_to_notify.reserve(zone_counts_.size());
+            for (const auto& zone_item : zone_counts_)
+            {
+                zones_to_notify.push_back(zone_item.first.as_destination());
+            }
         }
 
+        auto self = shared_from_this();
+
         // Iterate through passthrough handlers and notify them
-        for (const auto& [dest_zone, pt] : pass_thoughs_)
+        for (const auto& handler : handlers_to_notify)
         {
-            if (auto handler = pt.lock())
-            {
-                // Send zone_terminating post
-                CO_AWAIT handler->local_transport_down(shared_from_this());
-            }
+            // Send zone_terminating post
+            CO_AWAIT handler->local_transport_down(self);
         }
 
         // Notify service about transport down for each connected remote zone
         // Using zone_counts_ provides direct knowledge of which zones were connected,
         // enabling efficient forward cleanup
-        for (const auto& [remote_zone, counts] : zone_counts_)
+        for (const auto& remote_zone : zones_to_notify)
         {
             RPC_DEBUG("notify_all_destinations_of_disconnect: Notifying service about zone={} going down",
                 remote_zone.get_val());
-            CO_AWAIT service->notify_transport_down(shared_from_this(), remote_zone.as_destination());
+            CO_AWAIT service->notify_transport_down(self, remote_zone);
         }
     }
 
@@ -921,11 +942,7 @@ namespace rpc
                         build_out_param_channel);
                 }
 #endif
-
-                if (error_code != error::OK())
-                {
-                    CO_RETURN error_code;
-                }
+                CO_RETURN error_code;
             }
             if (!dest_transport)
             {
@@ -1374,6 +1391,7 @@ namespace rpc
                 get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id, object_id);
         }
 #endif
+        decrement_inbound_stub_count(caller_zone_id);
     }
 
     CORO_TASK(void)

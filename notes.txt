@@ -1,0 +1,53 @@
+
+• Your redesign is viable and aligns with where the code already wants to go, but there are two immediate gaps:
+
+  1. stub_caller is declared but never generated/defined (build_release/generated/include/example_shared/example_shared.h:288).
+  2. rpc::base::call currently returns OK even if no interface matched (rpc/include/rpc/internal/base.h:48 and rpc/include/rpc/internal/base.h:71).
+
+  Refactor Map
+
+  1. generator/src/interface_declaration_generator.cpp:661 and generator/src/interface_declaration_generator.cpp:930
+     Remove *_stub forward-decl/friend coupling.
+     Change stub_caller::call declaration (generator/src/interface_declaration_generator.cpp:785) to include the target interface pointer/reference (or an equivalent way to access the local object), otherwise static dispatch cannot invoke methods directly.
+  2. generator/src/synchronous_generator.cpp:1677 and generator/src/synchronous_generator.cpp:1787
+     Stop generating concrete class <iface>_stub : i_interface_stub.
+     Generate CORO_TASK(int) <iface>::stub_caller::call(...) implementations from the current switch body.
+     Replace target_stub_.lock() usage in generated method glue (generator/src/synchronous_generator.cpp:483 and generator/src/synchronous_generator.cpp:1213) with __rpc_target_->get_stub().
+  3. generator/src/synchronous_generator.cpp:1728, generator/src/synchronous_generator.cpp:1765, generator/src/synchronous_generator.cpp:2285
+     Delete stub-factory/cast codegen paths:
+
+  - write_stub_factory
+  - write_stub_cast_factory
+  - service::get_interface_stub_factory specializations
+    Bind helpers should call service descriptor creation directly, without interface-stub factories.
+
+  4. rpc/include/rpc/internal/base.h:34
+     Pass the concrete interface pointer into Interfaces::stub_caller::call(...).
+     Return INVALID_INTERFACE_ID when no fold-branch matched.
+  5. rpc/include/rpc/internal/stub.h:104 and rpc/src/stub.cpp:27
+     Redesign object_stub to hold one strong rpc::shared_ptr<rpc::casting_interface> target instead of stub_map_.
+     Then:
+
+  - object_stub::call forwards to target casting_interface::call(...) (rpc/src/stub.cpp:51 path replacement).
+  - object_stub::try_cast uses query_interface(...) instead of factory/cached stub creation (rpc/src/stub.cpp:77).
+  - get_castable_interface(interface_id) should query and alias from the stored root target.
+
+  6. rpc/include/rpc/internal/service.h:138, rpc/include/rpc/internal/service.h:593, rpc/src/service.cpp:389, rpc/src/service.cpp:1135
+     Remove stub_factories_, add_interface_stub_factory, and create_interface_stub.
+     Refactor get_descriptor_from_interface_stub(...)/add_ref_local_or_remote_return_descriptor(...) to no longer accept stub-factory callbacks; they should create object_stub directly from the local casting_interface.
+  7. rpc/include/rpc/internal/bindings.h:58, rpc/include/rpc/internal/bindings.h:155, rpc/include/rpc/internal/bindings.h:360
+     Remove factory usage and any ob->get_interface(...) dependence.
+     Use service::get_castable_interface(...)/new object_stub query-based access for local return binding.
+
+  Important Compatibility Decision
+
+  If you remove i_interface_stub, local implementations that do not derive from rpc::base<...> (or otherwise override casting_interface::call) will stop working.
+  If that compatibility matters, keep a temporary fallback path in object_stub::call during migration.
+
+  Suggested Order
+
+  1. Generate and use real stub_caller::call first.
+  2. Switch runtime dispatch (object_stub::call) to casting_interface::call.
+  3. Remove i_interface_stub/stub_map_/factory plumbing.
+
+  I only analyzed and mapped refactors; no files were modified yet.

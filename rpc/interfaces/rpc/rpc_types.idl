@@ -511,6 +511,14 @@ namespace rpc
         destination_zone destination_zone_id;
     };
 
+    struct connection_settings
+    {
+        interface_ordinal caller_interface_id;
+        interface_ordinal destination_interface_id;
+        object object_id;
+        destination_zone input_zone_id;
+    };
+
     struct function_info
     {
         std::string full_name;

@@ -18,7 +18,7 @@ namespace websocket_demo
         public:
             websocket_service(std::string name, rpc::zone zone_id, std::shared_ptr<coro::io_scheduler> scheduler);
 
-            virtual ~websocket_service() DEFAULT_DESTRUCTOR;
+            virtual ~websocket_service() CANOPY_DEFAULT_DESTRUCTOR;
 
             rpc::shared_ptr<i_calculator> get_demo_instance();
         };

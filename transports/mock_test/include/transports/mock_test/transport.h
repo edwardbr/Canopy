@@ -54,7 +54,8 @@ namespace rpc::mock_test
         std::atomic<uint64_t> transport_down_count_{0};
 
         // Optional response handlers for custom behavior
-        std::function<CORO_TASK(int)(uint64_t,
+
+        typedef std::function<CORO_TASK(int)(uint64_t,
             rpc::encoding,
             uint64_t,
             rpc::caller_zone,
@@ -66,7 +67,9 @@ namespace rpc::mock_test
             std::vector<char>&,
             const std::vector<rpc::back_channel_entry>&,
             std::vector<rpc::back_channel_entry>&)>
-            send_handler_;
+            send_handler;
+
+        send_handler send_handler_;
         std::mutex send_handler_mtx_;
 
         void record_call(call_record::call_type type,
@@ -111,7 +114,7 @@ namespace rpc::mock_test
 
         // outbound i_marshaller implementations
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         CORO_TASK(int)

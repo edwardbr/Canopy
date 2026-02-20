@@ -19,7 +19,7 @@ namespace rpc::tcp
     class tcp_transport : public rpc::transport
     {
     public:
-        using connection_handler = std::function<CORO_TASK(int)(const rpc::interface_descriptor& input_descr,
+        using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
             rpc::interface_descriptor& output_interface,
             std::shared_ptr<rpc::service> child_service_ptr,
             std::shared_ptr<tcp_transport>)>;
@@ -137,7 +137,7 @@ namespace rpc::tcp
                     rpc::id<SendPayload>::get(rpc::get_version()));
 
                 // If peer has initiated shutdown, we're disconnected
-                if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::CONNECTING)
+                if (get_status() != rpc::transport_status::CONNECTED)
                 {
                     RPC_DEBUG("call_peer: shutting_down_=true, returning CALL_CANCELLED for zone {}",
                         get_service()->get_zone_id().get_val());
@@ -214,7 +214,7 @@ namespace rpc::tcp
         // Internal send payload helper
         // rpc::transport override - connect handshake
         CORO_TASK(int)
-        inner_connect(rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
 
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 

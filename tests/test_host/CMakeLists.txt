@@ -11,6 +11,7 @@ add_executable(
   remote_type_test_suite.cpp
   hierachical_transport_tests.cpp
   post_functionality_test_suite.cpp
+  optimistic_ptr_tests.cpp
   ${COROUTINE_TESTS})
 
 target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES})

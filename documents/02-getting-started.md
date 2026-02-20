@@ -127,27 +127,10 @@ Create `include/calculator_impl.h`:
 
 namespace calculator
 {
-
-class calculator_impl : public v1::i_calculator
+class calculator_impl : public rpc::base<calculator_impl, v1::i_calculator>
 {
 public:
     calculator_impl() = default;
-
-    // Required overrides
-    void* get_address() const override
-    {
-        return const_cast<calculator_impl*>(this);
-    }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<v1::i_calculator>(interface_id))
-        {
-            return static_cast<const v1::i_calculator*>(this);
-        }
-        return nullptr;
-    }
 
     // Interface methods
     CORO_TASK(error_code) add(int a, int b, int& result) override

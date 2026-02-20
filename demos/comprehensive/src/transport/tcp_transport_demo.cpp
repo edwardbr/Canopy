@@ -66,19 +66,17 @@ namespace comprehensive
             // Create server service
             auto service = std::make_shared<rpc::service>("tcp_server", rpc::zone{++zone_gen}, scheduler);
             service->set_shutdown_event(on_shutdown_event);
-            comprehensive_idl_register_stubs(service);
 
             std::cout << "Server zone ID: " << service->get_zone_id().get_val() << "\n";
 
             // Create TCP listener with connection handler
             auto listener = std::make_shared<rpc::tcp::listener>(
-                [](const rpc::interface_descriptor& input_descr,
+                [](const rpc::connection_settings& input_descr,
                     rpc::interface_descriptor& output_interface,
                     std::shared_ptr<rpc::service> child_service_ptr,
                     std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
                 {
-                    std::cout << "Server: Accepting connection from zone " << input_descr.destination_zone_id.get_val()
-                              << "\n";
+                    std::cout << "Server: Accepting connection from zone " << input_descr.input_zone_id.get_val() << "\n";
 
                     // Use attach_remote_zone to handle the connection
                     auto ret
@@ -159,7 +157,6 @@ namespace comprehensive
 
                 // Create client service
                 auto client_service = std::make_shared<rpc::service>("tcp_client", rpc::zone{++zone_gen}, scheduler);
-                comprehensive_idl_register_stubs(client_service);
 
                 std::cout << "Client zone ID: " << client_service->get_zone_id().get_val() << "\n";
                 std::cout << "Client: Connecting to " << host << ":" << port << "...\n";

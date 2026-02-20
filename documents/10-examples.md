@@ -168,20 +168,11 @@ namespace service
 ### Data Object Implementation
 
 ```cpp
-class data_impl : public i_data
+class data_impl : public rpc::base<data_impl, i_data>
 {
     int value_ = 0;
 
 public:
-    void* get_address() const override { return const_cast<data_impl*>(this); }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_data>(interface_id))
-            return static_cast<const i_data*>(this);
-        return nullptr;
-    }
 
     CORO_TASK(error_code) get_value(int& value) override
     {
@@ -200,19 +191,10 @@ public:
 ### Factory Implementation
 
 ```cpp
-class factory_impl : public i_factory
+
+class factory_impl : public rpc::base<factory_impl, i_factory>
 {
 public:
-    void* get_address() const override { return const_cast<factory_impl*>(this); }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<i_factory>(interface_id))
-            return static_cast<const i_factory*>(this);
-        return nullptr;
-    }
-
     CORO_TASK(error_code) create_object(rpc::shared_ptr<i_data>& obj) override
     {
         obj = rpc::make_shared<data_impl>();

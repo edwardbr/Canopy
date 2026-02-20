@@ -183,9 +183,6 @@ error_code attach_remote_zone(const char* name,
                               const rpc::interface_descriptor& output_descr,
                               SetupCallback<InterfaceType, Args...> setup);
 
-// Stub Registration
-void add_interface_stub_factory(rpc::interface_ordinal interface_id,
-                                i_interface_stub_factory* factory);
 ```
 
 ## 3. Smart Pointers
@@ -482,26 +479,6 @@ class object_stub
 };
 ```
 
-### Interface Stub (`i_interface_stub`)
-
-Abstract interface for interface-specific stub behavior.
-
-```cpp
-class i_interface_stub
-{
-public:
-    virtual CORO_TASK(int) call(
-        uint64_t protocol_version,
-        rpc::encoding enc,
-        rpc::caller_zone caller_zone_id,
-        rpc::method method_id,
-        const rpc::span& in_data,
-        std::vector<char>& out_data) = 0;
-
-    virtual void* cast(rpc::interface_ordinal interface_id) = 0;
-    virtual rpc::casting_interface* get_pointer() = 0;
-};
-```
 
 ## 5. Interface Pattern
 
@@ -510,24 +487,11 @@ All IDL interfaces must inherit from `casting_interface` and implement required 
 ### Base Interface Requirements
 
 ```cpp
-class my_interface : public rpc::interface<my_interface>
+class app : public rpc::base<app, i_app>
 {
 public:
     virtual error_code do_something(int value) = 0;
 
-    // Required overrides
-    void* get_address() const override
-    {
-        return const_cast<my_interface*>(this);
-    }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (rpc::match<my_interface>(interface_id))
-            return static_cast<const my_interface*>(this);
-        return nullptr;
-    }
 };
 ```
 
@@ -544,19 +508,6 @@ public:
     {
         // SHA3-based fingerprint
     }
-
-    void* get_address() const override
-    {
-        return const_cast<Derived*>(static_cast<const Derived*>(this));
-    }
-
-    const rpc::casting_interface* query_interface(
-        rpc::interface_ordinal interface_id) const override
-    {
-        if (get_id(rpc::CURRENT_VERSION) == interface_id)
-            return static_cast<const Derived*>(this);
-        return nullptr;
-    }
 };
 ```
 
@@ -564,14 +515,6 @@ public:
 
 Each interface has a version-independent ID based on its definition:
 
-```cpp
-// Get interface ID for current version
-auto interface_id = xxx::i_foo::get_id(rpc::CURRENT_VERSION);
-
-// Check interface support
-if (proxy->query_interface(interface_id)) {
-    // Interface is supported
-}
 ```
 
 ## 6. Lifecycle Management

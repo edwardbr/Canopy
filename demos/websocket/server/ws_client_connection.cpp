@@ -67,14 +67,15 @@ namespace websocket_demo
                     = CO_AWAIT service_->attach_remote_zone<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                         "websocket",
                         transport_,
-                        rpc::interface_descriptor{1, 2}, // this magically makes sink
+                        rpc::connection_settings{1,
+                            websocket_demo::v1::i_context_event::get_id(rpc::get_version()),
+                            2}, // this magically makes sink
                         output_descr,
                         [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
                             rpc::shared_ptr<websocket_demo::v1::i_calculator>& local,
                             const std::shared_ptr<rpc::service>& svc) -> coro::task<int>
                         {
                             std::cout << "[WS] Inside attach_remote_zone lambda" << std::endl;
-                            secret_llama_idl_register_stubs(svc);
 
                             auto wsrvc = std::static_pointer_cast<websocket_service>(svc);
 

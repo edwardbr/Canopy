@@ -31,7 +31,7 @@ std::shared_ptr<rpc::child_service> rpc_server;
 
 int marshal_test_init_enclave(uint64_t host_zone_id, uint64_t host_id, uint64_t child_zone_id, uint64_t* example_object_id)
 {
-    rpc::interface_descriptor input_descr{};
+    rpc::connection_settings input_descr{};
     rpc::interface_descriptor output_descr{};
 
     if (host_id)
@@ -53,9 +53,6 @@ int marshal_test_init_enclave(uint64_t host_zone_id, uint64_t host_id, uint64_t 
             rpc::shared_ptr<yyy::i_example>& new_example,
             const std::shared_ptr<rpc::child_service>& child_service_ptr) -> int
         {
-            example_import_idl_register_stubs(child_service_ptr);
-            example_shared_idl_register_stubs(child_service_ptr);
-            example_idl_register_stubs(child_service_ptr);
             new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host));
             return rpc::error::OK();
         },
@@ -157,7 +154,7 @@ int call_enclave(uint64_t protocol_version, // version of the rpc call protocol
         tmp,
         in_back_channel,
         out_back_channel);
-    if (ret >= rpc::error::MIN() && ret <= rpc::error::MAX())
+    if (rpc::error::is_error(ret))
         return ret;
 
     // Combine output payload + back-channel into single buffer

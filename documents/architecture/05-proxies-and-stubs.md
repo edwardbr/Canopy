@@ -167,19 +167,6 @@ class i_calculator_proxy : public comprehensive::i_calculator
 - Each method marshals parameters, sends RPC, unmarshals result
 - Returns same error codes as defined in IDL
 
-### Interface Stub (e.g., i_calculator_stub)
-
-Type-safe server-side stub generated from IDL interface definition. Responsible for:
-- **Parameter deserialization** - Converts wire format to C++ types
-- **Method dispatch** - Routes to correct implementation method
-- **Result serialization** - Converts C++ return values to wire format
-
-
-**Key Characteristics**:
-- Inherits from `rpc::i_interface_stub`
-- Holds `rpc::shared_ptr<i_calculator>` to actual implementation
-- `call()` method dispatches based on method ID
-- Each case unmarshals parameters, calls implementation, marshals result
 
 ## Serialization Formats
 
@@ -384,18 +371,13 @@ namespace comprehensive
     template<typename Derived>
     class interface : public rpc::casting_interface { ... };
 
-    class i_calculator : public interface<i_calculator>
+    class calculator : public rpc::base<calculator, i_calculator>
     {
     public:
         static constexpr uint64_t get_id(uint64_t rpc_version);
 
         virtual CORO_TASK(int) add(int a, int b, int& sum) = 0;
         virtual CORO_TASK(int) subtract(int a, int b, int& difference) = 0;
-
-        // Required interface methods
-        void* get_address() const override;
-        const rpc::casting_interface* query_interface(
-            rpc::interface_ordinal interface_id) const override;
     };
 }
 ```
@@ -418,17 +400,7 @@ static constexpr uint64_t get_id(uint64_t rpc_version)
 }
 ```
 
-**Version Negotiation**:
-```cpp
-// Client checks if server supports interface
-rpc::shared_ptr<i_calculator> calc;
-int error = CO_AWAIT proxy->query_interface(calc);
 
-if (error == rpc::error::INTERFACE_NOT_SUPPORTED())
-{
-    // Server doesn't support this interface version
-}
-```
 
 ## Working Together: Proxies, Stubs, and Memory Management
 
