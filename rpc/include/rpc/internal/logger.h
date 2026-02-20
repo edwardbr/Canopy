@@ -89,6 +89,7 @@ extern "C"
 #define RPC_ERROR(format_str, ...)                                                                                     \
     do                                                                                                                 \
     {                                                                                                                  \
+        RPC_ASSERT(false);                                                                                             \
         auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                       \
         RPC_LOG_BACKEND(4, formatted);                                                                                 \
     } while (0)
