@@ -23,7 +23,6 @@
 #include <comprehensive/comprehensive_stub.h>
 
 #include <transports/local/transport.h>
-#include <fmt/core.h>
 
 #include <algorithm>
 #include <atomic>

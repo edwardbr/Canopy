@@ -571,7 +571,7 @@ target_link_libraries(my_demo
 )
 
 # Compiler and linker options
-target_compile_options(my_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${WARN_OK})
+target_compile_options(my_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(my_demo PRIVATE ${HOST_LINK_EXE_OPTIONS})
 
 # Set PDB name for debugging

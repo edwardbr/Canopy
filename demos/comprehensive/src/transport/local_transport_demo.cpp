@@ -25,7 +25,6 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
-#include <fmt/core.h>
 
 namespace comprehensive
 {

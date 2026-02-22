@@ -10,7 +10,6 @@
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
 #include <llhttp.h>
-#include <fmt/format.h>
 #include "websocket_service.h"
 #include "stream.h"
 

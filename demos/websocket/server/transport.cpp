@@ -7,7 +7,6 @@
 #include "transport.h"
 
 #include <wslay/wslay.h>
-#include <fmt/format.h>
 
 namespace websocket_demo
 {

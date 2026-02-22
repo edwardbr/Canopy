@@ -87,8 +87,8 @@ function(
         ""
         CACHE STRING "Enclave fmt library")
   endif()
-  if(NOT DEFINED WARN_OK)
-    set(WARN_OK
+  if(NOT DEFINED CANOPY_WARN_OK)
+    set(CANOPY_WARN_OK
         ""
         CACHE STRING "Warning flags that are acceptable")
   endif()
@@ -462,7 +462,7 @@ function(
     ${name}_idl
     PUBLIC "$<BUILD_INTERFACE:${output_path}>" "$<BUILD_INTERFACE:${output_path}/include>"
     PRIVATE "${output_path}/include" ${CANOPY_INCLUDES} ${params_include_paths})
-  target_compile_options(${name}_idl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${WARN_OK})
+  target_compile_options(${name}_idl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_directories(${name}_idl PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET ${name}_idl PROPERTY COMPILE_PDB_NAME ${name}_idl)
 
@@ -515,7 +515,7 @@ function(
       PUBLIC "$<BUILD_INTERFACE:${output_path}>" "$<BUILD_INTERFACE:${output_path}/include>"
       PRIVATE "${output_path}/include" ${CANOPY_ENCLAVE_LIBCXX_INCLUDES} ${params_include_paths})
 
-    target_compile_options(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${WARN_OK})
+    target_compile_options(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
     target_link_directories(${name}_idl_enclave PRIVATE ${SGX_LIBRARY_PATH})
     set_property(TARGET ${name}_idl_enclave PROPERTY COMPILE_PDB_NAME ${name}_idl_enclave)
 
