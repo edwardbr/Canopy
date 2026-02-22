@@ -357,7 +357,7 @@ namespace rpc
         CO_AWAIT stub->call(protocol_version, encoding, caller_zone_id, interface_id, method_id, in_data, out_buf_dummy);
 
         // Log that post was delivered to local stub
-        RPC_INFO(
+        RPC_TRACE(
             "service::post delivered to local stub for object_id={} in zone={}", object_id.get_val(), zone_id_.get_val());
 
         CO_RETURN;

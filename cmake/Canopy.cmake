@@ -68,6 +68,26 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_USE_CONSOLE_TELEMETRY "Turn on Canopy console telemetry" OFF)
   option(CANOPY_USE_TELEMETRY_RAII_LOGGING "Turn on RAII telemetry logging" OFF)
 
+  set(CANOPY_LOGGING_LEVEL
+      "2"
+      CACHE STRING "Minimum logging level (0=TRACE, 1=DEBUG, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)")
+  set_property(
+    CACHE CANOPY_LOGGING_LEVEL
+    PROPERTY STRINGS
+             "0"
+             "1"
+             "2"
+             "3"
+             "4"
+             "5")
+
+  if(NOT CANOPY_LOGGING_LEVEL MATCHES "^[0-5]$")
+    message(WARNING "Invalid CANOPY_LOGGING_LEVEL '${CANOPY_LOGGING_LEVEL}', defaulting to 2 (INFO)")
+    set(CANOPY_LOGGING_LEVEL
+        "2"
+        CACHE STRING "Minimum logging level (0=TRACE, 1=DEBUG, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)" FORCE)
+  endif()
+
   # ####################################################################################################################
   # Serialization Encoding Options
   # ####################################################################################################################
@@ -127,6 +147,7 @@ if(NOT DEPENDENCIES_LOADED)
   message("CMAKE_RULE_MESSAGES ${CMAKE_RULE_MESSAGES}")
   message("CANOPY_ENABLE_CLANG_TIDY ${CANOPY_ENABLE_CLANG_TIDY}")
   message("CANOPY_ENABLE_CLANG_TIDY_FIX ${CANOPY_ENABLE_CLANG_TIDY_FIX}")
+  message("CANOPY_LOGGING_LEVEL ${CANOPY_LOGGING_LEVEL}")
 
   # ####################################################################################################################
   # C++ Standard Configuration
@@ -266,6 +287,8 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG)
   endif()
 
+  set(CANOPY_LOGGING_LEVEL_FLAG CANOPY_LOGGING_LEVEL=${CANOPY_LOGGING_LEVEL})
+
   set(CANOPY_FMT_LIB fmt::fmt-header-only)
 
   # ####################################################################################################################
@@ -287,7 +310,8 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_BUILD_TEST_FLAG}
       ${CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG}
       CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE}
-      CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE})
+      CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE}
+      ${CANOPY_LOGGING_LEVEL_FLAG})
 
   # ####################################################################################################################
   # Include Platform-Specific Configuration

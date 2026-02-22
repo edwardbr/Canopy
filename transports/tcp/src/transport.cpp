@@ -749,13 +749,12 @@ namespace rpc::tcp
                         }
                         else
                         {
-                            auto zone_id = service->get_zone_id();
                             result_listener* result = nullptr;
                             {
                                 std::scoped_lock lock(pending_transmits_mtx_);
                                 auto it = pending_transmits_.find(prefix.sequence_number);
                                 RPC_TRACE("pending_transmits_ zone: {} sequence_number: {} id: {}",
-                                    zone_id.get_val(),
+                                    service->get_zone_id().get_val(),
                                     prefix.sequence_number,
                                     payload.payload_fingerprint);
                                 if (it != pending_transmits_.end())
