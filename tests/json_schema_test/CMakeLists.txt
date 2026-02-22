@@ -55,5 +55,8 @@ endif()
 # Add to tests if CTest is enabled - using gtest_discover_tests
 if(CANOPY_BUILD_TEST)
   include(GoogleTest)
-  gtest_discover_tests(json_schema_metadata_test)
+  # Skip gtest_discover_tests when using AddressSanitizer due to protobuf container-overflow false positives
+  if(NOT CANOPY_DEBUG_ADDRESS)
+    gtest_discover_tests(json_schema_metadata_test)
+  endif()
 endif()

@@ -8,6 +8,8 @@
 #include <cstring>
 #include <atomic>
 
+#include <fmt/format.h>
+
 #include <secret_llama/secret_llama.h>
 #include <secret_llama/secret_llama_stub.h>
 #include <websocket_demo/websocket_demo.h>

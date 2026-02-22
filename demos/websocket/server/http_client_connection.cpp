@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <cstring>
 
+#include <fmt/format.h>
+
 namespace websocket_demo
 {
     namespace v1
