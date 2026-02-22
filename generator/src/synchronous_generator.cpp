@@ -464,8 +464,9 @@ namespace synchronous_generator
             return fmt::format("{0}_, ", name);
 
         case PROXY_CLEAN_IN:
-            return fmt::format(
-                "if({0}_stub_) {0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id().as_caller());", name);
+            return fmt::format("if({0}_stub_) CO_AWAIT "
+                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id().as_caller());",
+                name);
 
         case STUB_DEMARSHALL_DECLARATION:
             return fmt::format(R"__(rpc::interface_descriptor {0}_object_{{}};)__", name);
@@ -564,8 +565,9 @@ namespace synchronous_generator
             return fmt::format("{0}_, ", name);
 
         case PROXY_CLEAN_IN:
-            return fmt::format(
-                "if({0}_stub_) {0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id().as_caller());", name);
+            return fmt::format("if({0}_stub_) CO_AWAIT "
+                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id().as_caller());",
+                name);
 
         case STUB_DEMARSHALL_DECLARATION:
             return fmt::format("{} {}", object_type, name);
@@ -2176,11 +2178,11 @@ namespace synchronous_generator
             ns,
             interface_name);
         proxy("{{");
-        proxy("inface = ::{1}{0}_proxy::create(std::move(shared_from_this()));", interface_name, ns);
+        proxy("inface = ::{1}{0}_proxy::create(shared_from_this());", interface_name, ns);
         proxy("}}");
         proxy("");
 
-        stub("template<> CORO_TASK(int) service::bind_in_proxy(uint64_t protocol_version, "
+        stub("template<> CORO_TASK(int) service::bind_in_proxy([[maybe_unused]] uint64_t protocol_version, "
              "const "
              "rpc::shared_ptr<::{}{}>& iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, "
              "rpc::interface_descriptor& "
@@ -2197,7 +2199,7 @@ namespace synchronous_generator
              "false);");
         stub("}}");
 
-        stub("template<> CORO_TASK(int) service::bind_in_proxy(uint64_t protocol_version, "
+        stub("template<> CORO_TASK(int) service::bind_in_proxy([[maybe_unused]] uint64_t protocol_version, "
              "const "
              "rpc::optimistic_ptr<::{}{}>& iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, "
              "rpc::interface_descriptor& "

@@ -90,7 +90,7 @@ namespace rpc
         }
 
         // proxies dont do stub stuff
-        void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
+        void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) override { RPC_ASSERT(false); }
         std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
         {
             RPC_ASSERT(false);
