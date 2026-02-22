@@ -692,24 +692,11 @@ namespace rpc
             rpc::caller_zone caller_zone_id,
             const PtrType<T>& iface,
             rpc::interface_descriptor& descriptor);
-        template<class T>
-        friend CORO_TASK(int) rpc::stub_bind_out_param(const std::shared_ptr<rpc::service>& zone,
-            uint64_t protocol_version,
-            rpc::caller_zone caller_zone_id,
-            const rpc::optimistic_ptr<T>& iface,
-            rpc::interface_descriptor& descriptor);
 
         template<class T, template<class> class PtrType>
         friend CORO_TASK(int) rpc::proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
             uint64_t protocol_version,
             const PtrType<T>& iface,
-            std::shared_ptr<rpc::object_stub>& stub,
-            rpc::interface_descriptor& descriptor);
-
-        template<class T>
-        friend CORO_TASK(int) rpc::proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
-            uint64_t protocol_version,
-            const rpc::optimistic_ptr<T>& iface,
             std::shared_ptr<rpc::object_stub>& stub,
             rpc::interface_descriptor& descriptor);
     };
@@ -1244,8 +1231,10 @@ namespace rpc
 
     template<class T, template<class> class PtrType>
     CORO_TASK(int)
-    service::stub_add_ref(
-        uint64_t protocol_version, caller_zone caller_zone_id, const PtrType<T>& iface, interface_descriptor& descriptor)
+    service::stub_add_ref([[maybe_unused]] uint64_t protocol_version,
+        caller_zone caller_zone_id,
+        const PtrType<T>& iface,
+        interface_descriptor& descriptor)
     {
         static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
             "stub_add_ref only supports rpc::shared_ptr and rpc::optimistic_ptr");
