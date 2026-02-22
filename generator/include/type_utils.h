@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <iostream>
-#include <fmt/format.h>
+#include <cstdint>
 
 // Forward declarations
 class class_entity;
