@@ -26,7 +26,7 @@ if(CANOPY_STANDALONE)
 
   add_library(yas_common INTERFACE)
 
-  target_include_directories(yas_common INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/yas/include>")
+  target_include_directories(yas_common SYSTEM INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/yas/include>")
 
   add_subdirectory(idlparser)
 
