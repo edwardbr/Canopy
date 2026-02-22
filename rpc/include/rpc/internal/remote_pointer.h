@@ -2001,6 +2001,35 @@ namespace rpc
         }
         virtual ~local_proxy() = default;
         rpc::weak_ptr<T> __get_weak() { return ptr_; }
+
+        bool __rpc_is_local() const override { return true; }
+        std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override { return nullptr; }
+
+        void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) override { RPC_ASSERT(false); }
+        std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
+        {
+            auto ptr = ptr_.lock();
+            if (!ptr)
+                return nullptr;
+            return ptr->__rpc_get_stub();
+        }
+
+        CORO_TASK(int)
+        __rpc_call([[maybe_unused]] uint64_t protocol_version,
+            [[maybe_unused]] encoding encoding,
+            [[maybe_unused]] uint64_t tag,
+            [[maybe_unused]] caller_zone caller_zone_id,
+            [[maybe_unused]] destination_zone destination_zone_id,
+            [[maybe_unused]] object object_id,
+            [[maybe_unused]] interface_ordinal interface_id,
+            [[maybe_unused]] method method_id,
+            [[maybe_unused]] const rpc::span& in_data,
+            [[maybe_unused]] std::vector<char>& out_buf_,
+            [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
+            [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel) override
+        {
+            RPC_ASSERT(false);
+        }
     };
 
     // optimistic_ptr<T> - Non-RAII smart pointer for RPC scenarios
@@ -2149,6 +2178,19 @@ namespace rpc
             if (local_proxy_holder_)
                 return local_proxy_holder_->__get_weak().lock().get();
             return ptr_;
+        }
+
+        long use_count() const noexcept
+        {
+            if (local_proxy_holder_)
+                return local_proxy_holder_.use_count();
+            return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0;
+        }
+        bool expired() const noexcept
+        {
+            if (use_count() > 0)
+                return false;
+            return true;
         }
 
         // Copy assignment
@@ -2308,7 +2350,7 @@ namespace rpc
         // behaves the same as with normal dynamic_pointer_cast in that you can use this function to
         // cast back to the original. However static_pointer_cast in this case will not work for
         // remote interfaces.
-        CO_AWAIT ob->template query_interface<T, optimistic_ptr<T>, true>(ret);
+        CO_AWAIT ob->query_interface(ret);
         CO_RETURN ret;
     }
 
@@ -2590,6 +2632,39 @@ namespace rpc
             // Null input
             CO_RETURN error::OK();
         }
+    }
+
+    namespace __rpc_pointer_traits
+    {
+        template<typename PtrType> struct rpc_ptr
+        {
+            using element_type = void;
+            static constexpr bool supported = false;
+            static constexpr bool is_optimistic = false;
+        };
+
+        template<typename T> struct rpc_ptr<rpc::shared_ptr<T>>
+        {
+            using element_type = T;
+            static constexpr bool supported = true;
+            static constexpr bool is_optimistic = false;
+        };
+
+        template<typename T> struct rpc_ptr<rpc::optimistic_ptr<T>>
+        {
+            using element_type = T;
+            static constexpr bool supported = true;
+            static constexpr bool is_optimistic = true;
+        };
+
+        template<typename PtrType> using normalized_t = std::remove_cv_t<std::remove_reference_t<PtrType>>;
+
+        template<typename PtrType> inline constexpr bool is_supported_v = rpc_ptr<normalized_t<PtrType>>::supported;
+
+        template<typename PtrType>
+        inline constexpr bool is_optimistic_v = rpc_ptr<normalized_t<PtrType>>::is_optimistic;
+
+        template<typename PtrType> using enable_if_supported_t = std::enable_if_t<is_supported_v<PtrType>, int>;
     }
 
 #endif // !TEST_STL_COMPLIANCE

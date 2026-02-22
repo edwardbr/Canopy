@@ -33,16 +33,12 @@ namespace rpc
         virtual ~casting_interface() = default;
         virtual const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const = 0;
 
-        virtual bool __rpc_is_local() const { return true; }
-        virtual std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const { return nullptr; }
+        virtual bool __rpc_is_local() const = 0;
+        virtual std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const = 0;
 
         // only for local objects
-        virtual std::shared_ptr<rpc::object_stub> __rpc_get_stub() const
-        {
-            RPC_ASSERT(false);
-            return nullptr;
-        }
-        virtual void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
+        virtual std::shared_ptr<rpc::object_stub> __rpc_get_stub() const = 0;
+        virtual void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) = 0;
 
         virtual CORO_TASK(int) __rpc_call([[maybe_unused]] uint64_t protocol_version,
             [[maybe_unused]] encoding encoding,
@@ -56,10 +52,7 @@ namespace rpc
             [[maybe_unused]] std::vector<char>& out_buf_,
             [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
             [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)
-        {
-            RPC_ASSERT(false);
-            CO_RETURN rpc::error::INVALID_CAST();
-        }
+            = 0;
 
         static object get_object_id(const casting_interface& iface);
         static std::shared_ptr<rpc::service_proxy> get_service_proxy(const casting_interface& iface);
@@ -94,6 +87,31 @@ namespace rpc
         std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override
         {
             return object_proxy_.get_nullable();
+        }
+
+        // proxies dont do stub stuff
+        virtual void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
+        std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
+        {
+            RPC_ASSERT(false);
+            return nullptr;
+        }
+
+        virtual CORO_TASK(int) __rpc_call([[maybe_unused]] uint64_t protocol_version,
+            [[maybe_unused]] encoding encoding,
+            [[maybe_unused]] uint64_t tag,
+            [[maybe_unused]] caller_zone caller_zone_id,
+            [[maybe_unused]] destination_zone destination_zone_id,
+            [[maybe_unused]] object object_id,
+            [[maybe_unused]] interface_ordinal interface_id,
+            [[maybe_unused]] method method_id,
+            [[maybe_unused]] const rpc::span& in_data,
+            [[maybe_unused]] std::vector<char>& out_buf_,
+            [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
+            [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)
+        {
+            RPC_ASSERT(false);
+            CO_RETURN rpc::error::INVALID_CAST();
         }
     };
 

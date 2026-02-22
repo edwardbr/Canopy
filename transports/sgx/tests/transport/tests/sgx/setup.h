@@ -46,6 +46,7 @@ public:
     bool get_use_host_in_child() const { return use_host_in_child_; }
 
     bool error_has_occurred() const { return error_has_occurred_; }
+    bool has_service() { return true; }
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
     {

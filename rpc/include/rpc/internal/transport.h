@@ -206,6 +206,15 @@ namespace rpc
         void set_adjacent_zone_id(zone new_adjacent_zone_id) { adjacent_zone_id_ = new_adjacent_zone_id; }
         CORO_TASK(void) notify_all_destinations_of_disconnect();
 
+        /**
+         * @brief Called when destination_count_ drops to zero
+         *
+         * Derived classes override to initiate graceful shutdown.
+         * Default implementation is a no-op.
+         * Only called when status is CONNECTED to avoid redundant transitions.
+         */
+        virtual void on_destination_count_zero() { }
+
     public:
         virtual ~transport();
 

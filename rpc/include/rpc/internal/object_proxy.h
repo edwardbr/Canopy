@@ -11,6 +11,7 @@
 #include <atomic>
 #include <functional>
 #include <vector>
+#include <type_traits>
 
 #include <rpc/internal/types.h>
 #include <rpc/internal/coroutine_support.h>
@@ -95,40 +96,62 @@ namespace rpc
 
         template<class T> void create_interface_proxy(rpc::shared_ptr<T>& inface);
 
-        template<class T> CORO_TASK(int) query_interface(rpc::shared_ptr<T>& iface, bool do_remote_check = true)
+        template<class T, template<class> class PtrType = rpc::shared_ptr, bool default_do_remote_check = true>
+        CORO_TASK(int)
+        query_interface(PtrType<T>& iface, bool do_remote_check = default_do_remote_check)
         {
-            auto create = [&](std::unordered_map<interface_ordinal, rpc::weak_ptr<casting_interface>>::iterator item) -> int
-            {
-                rpc::shared_ptr<casting_interface> proxy = item->second.lock();
-                if (!proxy)
-                {
-                    // weak pointer needs refreshing
-                    create_interface_proxy<T>(iface);
-                    item->second = rpc::reinterpret_pointer_cast<casting_interface>(iface);
-                    return rpc::error::OK();
-                }
-                iface = rpc::reinterpret_pointer_cast<T>(proxy);
-                return rpc::error::OK();
-            };
+            static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
+                "query_interface only supports rpc::shared_ptr and rpc::optimistic_ptr");
+
+            const auto interface_id = T::get_id(rpc::get_version());
 
             { // scope for the lock
-                std::lock_guard guard(insert_control_);
-                if (T::get_id(rpc::get_version()) == 0)
+                if (interface_id == 0)
                 {
                     CO_RETURN rpc::error::OK();
                 }
+
+                std::unique_lock<std::mutex> guard(insert_control_);
                 {
-                    auto item = proxy_map.find(T::get_id(rpc::get_version()));
+                    auto item = proxy_map.find(interface_id);
                     if (item != proxy_map.end())
                     {
-                        CO_RETURN create(item);
+                        auto proxy = rpc::reinterpret_pointer_cast<T>(item->second.lock());
+                        if (!proxy)
+                        {
+                            // weak pointer needs refreshing
+                            create_interface_proxy<T>(proxy);
+                            item->second = rpc::reinterpret_pointer_cast<casting_interface>(proxy);
+                        }
+
+                        if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
+                        {
+                            guard.unlock();
+                            CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
+                        }
+                        else
+                        {
+                            iface = proxy;
+                            CO_RETURN rpc::error::OK();
+                        }
                     }
                 }
                 if (!do_remote_check)
                 {
-                    create_interface_proxy<T>(iface);
-                    proxy_map[T::get_id(rpc::get_version())] = rpc::reinterpret_pointer_cast<casting_interface>(iface);
-                    CO_RETURN rpc::error::OK();
+                    rpc::shared_ptr<T> tmp;
+                    create_interface_proxy<T>(tmp);
+                    proxy_map[interface_id] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+
+                    if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
+                    {
+                        guard.unlock();
+                        CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
+                    }
+                    else
+                    {
+                        iface = tmp;
+                        CO_RETURN rpc::error::OK();
+                    }
                 }
             }
 
@@ -143,19 +166,47 @@ namespace rpc
                 }
             }
             { // another scope for the lock
-                std::lock_guard guard(insert_control_);
+                std::unique_lock<std::mutex> guard(insert_control_);
 
                 // check again...
                 {
-                    auto item = proxy_map.find(T::get_id(rpc::get_version()));
+                    auto item = proxy_map.find(interface_id);
                     if (item != proxy_map.end())
                     {
-                        CO_RETURN create(item);
+                        auto proxy = rpc::reinterpret_pointer_cast<T>(item->second.lock());
+                        if (!proxy)
+                        {
+                            // weak pointer needs refreshing
+                            create_interface_proxy<T>(proxy);
+                            item->second = rpc::reinterpret_pointer_cast<casting_interface>(proxy);
+                        }
+
+                        if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
+                        {
+                            guard.unlock();
+                            CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
+                        }
+                        else
+                        {
+                            iface = proxy;
+                            CO_RETURN rpc::error::OK();
+                        }
                     }
                 }
-                create_interface_proxy<T>(iface);
-                proxy_map[T::get_id(rpc::get_version())] = rpc::reinterpret_pointer_cast<casting_interface>(iface);
-                CO_RETURN rpc::error::OK();
+                rpc::shared_ptr<T> tmp;
+                create_interface_proxy<T>(tmp);
+                proxy_map[interface_id] = rpc::reinterpret_pointer_cast<casting_interface>(tmp);
+
+                if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
+                {
+                    guard.unlock();
+                    CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
+                }
+                else
+                {
+                    iface = tmp;
+                    CO_RETURN rpc::error::OK();
+                }
             }
         }
 

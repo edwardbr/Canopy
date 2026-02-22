@@ -220,9 +220,10 @@ namespace rpc
         return count;
     }
 
-    void object_stub::release_from_service(caller_zone caller_zone_id)
+    CORO_TASK(void) object_stub::release_from_service(caller_zone caller_zone_id)
     {
-        zone_->release_local_stub(shared_from_this(), false, caller_zone_id);
+        CO_AWAIT zone_->release_local_stub(shared_from_this(), false, caller_zone_id);
+        CO_RETURN;
     }
 
     bool object_stub::has_references_from_zone(caller_zone caller_zone_id) const
@@ -308,19 +309,19 @@ namespace rpc
                 id_.get_val());
         }
 
-        // // Decrement transport counts
-        // if (shared_refs_to_release + optimistic_refs_to_release > 0)
-        // {
-        //     auto transport = zone_->get_transport(caller_zone_id.as_destination());
-        //     if (transport)
-        //     {
-        //         // Decrement once for each reference released
-        //         for (uint64_t i = 0; i < shared_refs_to_release + optimistic_refs_to_release; ++i)
-        //         {
-        //             transport->decrement_inbound_stub_count(caller_zone_id);
-        //         }
-        //     }
-        // }
+        // Decrement transport counts
+        if (shared_refs_to_release + optimistic_refs_to_release > 0)
+        {
+            auto transport = zone_->get_transport(caller_zone_id.as_destination());
+            if (transport)
+            {
+                // Decrement once for each reference released
+                for (uint64_t i = 0; i < shared_refs_to_release + optimistic_refs_to_release; ++i)
+                {
+                    transport->decrement_inbound_stub_count(caller_zone_id);
+                }
+            }
+        }
 
         // Return true if shared count is now zero (stub should be deleted)
         return shared_count_.load(std::memory_order_acquire) == 0;

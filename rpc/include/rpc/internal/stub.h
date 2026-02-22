@@ -132,6 +132,8 @@ namespace rpc
         void keep_self_alive() { p_keep_self_alive_ = shared_from_this(); }
         void dont_keep_alive() { p_keep_self_alive_.reset(); }
 
+        uint64_t get_shared_count() const { return shared_count_; }
+
         std::shared_ptr<service> get_zone() const { return zone_; }
 
         /**
@@ -197,7 +199,7 @@ namespace rpc
          *
          * Used during service shutdown to clean up references.
          */
-        void release_from_service(caller_zone caller_zone_id);
+        CORO_TASK(void) release_from_service(caller_zone caller_zone_id);
 
         /**
          * @brief Check if zone has any references to this stub

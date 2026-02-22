@@ -53,6 +53,15 @@ namespace rpc::tcp
         stdex::member_ptr<tcp_transport> keep_alive_;
 
         std::atomic<bool> pumps_started_ = false;
+        std::atomic<bool> peer_requested_disconnection_ = false;
+        std::atomic<bool> initiator_close_spawned_ = false;
+        // True only when initiator_close_task was actually spawned (not set in the pure-responder
+        // path where initiator_close_spawned_ is set but the task is skipped because the peer
+        // had already requested disconnection).  Used to detect simultaneous close.
+        std::atomic<bool> initiator_task_spawned_ = false;
+        std::atomic<bool> send_cleanup_done_ = false;
+        std::chrono::steady_clock::time_point disconnecting_since_{};
+        static constexpr uint32_t shutdown_timeout_ms_ = 5000;
 
         struct activity_tracker
         {
@@ -68,8 +77,9 @@ namespace rpc::tcp
             connection_handler handler);
 
         // Producer/consumer coroutines
-        CORO_TASK(void)
-        pump_messages(std::function<void(envelope_prefix, envelope_payload)> incoming_message_handler);
+        CORO_TASK(void) pump_messages(std::shared_ptr<activity_tracker> tracker);
+        CORO_TASK(void) initiator_close_task(std::shared_ptr<activity_tracker> tracker);
+        CORO_TASK(void) responder_close_task(std::shared_ptr<activity_tracker> tracker, uint64_t version);
 
         // Stub handlers (called when receiving messages)
         CORO_TASK(void)
@@ -108,7 +118,7 @@ namespace rpc::tcp
                 .sequence_number = sequence_number,
                 .payload_size = payload.size()};
 
-            RPC_DEBUG("send_payload {}\nprefix = {}\npayload = {}",
+            RPC_TRACE("send_payload {}\nprefix = {}\npayload = {}",
                 get_service()->get_zone_id().get_val(),
                 rpc::to_yas_json<std::string>(prefix),
                 rpc::to_yas_json<std::string>(payload_envelope));
@@ -131,15 +141,15 @@ namespace rpc::tcp
                 std::scoped_lock lock(pending_transmits_mtx_);
 
                 sequence_number = ++sequence_number_;
-                RPC_DEBUG("call_peer started zone: {} sequence_number: {} id: {}",
+                RPC_TRACE("call_peer started zone: {} sequence_number: {} id: {}",
                     get_service()->get_zone_id().get_val(),
                     sequence_number,
                     rpc::id<SendPayload>::get(rpc::get_version()));
 
-                // If peer has initiated shutdown, we're disconnected
-                if (get_status() != rpc::transport_status::CONNECTED)
+                // Reject only when fully disconnected; allow DISCONNECTING for cleanup releases
+                if (get_status() >= rpc::transport_status::DISCONNECTED)
                 {
-                    RPC_DEBUG("call_peer: shutting_down_=true, returning CALL_CANCELLED for zone {}",
+                    RPC_DEBUG("call_peer: transport disconnected, returning CALL_CANCELLED for zone {}",
                         get_service()->get_zone_id().get_val());
                     CO_RETURN rpc::error::CALL_CANCELLED();
                 }
@@ -170,7 +180,7 @@ namespace rpc::tcp
 
             CO_AWAIT res_payload.event.wait(); // now wait for the reply
 
-            RPC_DEBUG("call_peer succeeded zone: {} sequence_number: {} id: {}",
+            RPC_TRACE("call_peer succeeded zone: {} sequence_number: {} id: {}",
                 get_service()->get_zone_id().get_val(),
                 sequence_number,
                 rpc::id<SendPayload>::get(rpc::get_version()));
@@ -196,6 +206,9 @@ namespace rpc::tcp
             CO_RETURN rpc::error::OK();
         }
 
+    protected:
+        void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
+
     public:
         static std::shared_ptr<tcp_transport> create(std::string name,
             std::shared_ptr<rpc::service> service,
@@ -206,7 +219,7 @@ namespace rpc::tcp
 
         virtual ~tcp_transport() { };
 
-        // Override set_status to trigger service shutdown event when disconnecting
+        // Override set_status to record disconnecting_since_ and close socket when DISCONNECTED
         void set_status(transport_status new_status) override;
 
         CORO_TASK(void) pump_send_and_receive();

@@ -286,6 +286,8 @@ ctest --tests-regex enclave
 
 # Enable coverage (review build/coverage before large merges)
 cmake --preset Debug -DENABLE_COVERAGE=ON
+
+rpc_test should be run with --telemetry-console to get more telemetry information for better diagnostics
 ```
 
 ### Testing Guidelines

@@ -38,6 +38,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 public:
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
     bool error_has_occurred() const { return error_has_occurred_; }
+    bool has_service() { return true; }
 
     virtual ~tcp_setup() = default;
 

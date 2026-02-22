@@ -48,6 +48,7 @@ public:
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
     bool error_has_occurred() const { return error_has_occurred_; }
+    bool has_service() { return false; }
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
     {

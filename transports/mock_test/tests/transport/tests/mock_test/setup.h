@@ -37,6 +37,8 @@ public:
     std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
     bool error_has_occurred() const { return error_has_occurred_; }
+    bool has_service() { return true; }
+
     std::shared_ptr<rpc::service> get_service() const { return service_; }
     std::shared_ptr<rpc::mock_test::mock_transport> get_forward_transport() const { return forward_transport_; }
     std::shared_ptr<rpc::mock_test::mock_transport> get_reverse_transport() const { return reverse_transport_; }
