@@ -333,7 +333,7 @@ namespace rpc
         current_service_tracker tracker(this);
 
         // Log that post was received
-        RPC_INFO("service::post received for destination_zone={} object_id={}",
+        RPC_TRACE("service::post received for destination_zone={} object_id={}",
             destination_zone_id.get_val(),
             object_id.get_val());
 

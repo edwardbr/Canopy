@@ -33,6 +33,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <fmt/format.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
 #include <transports/spsc/transport.h>

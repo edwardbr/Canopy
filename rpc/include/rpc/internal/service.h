@@ -710,12 +710,33 @@ namespace rpc
         std::shared_ptr<transport> transport_;
         destination_zone zone_id_;
 
-        transport_keep_alive() { }
+        transport_keep_alive() = default;
         transport_keep_alive(const std::shared_ptr<transport>& transport, destination_zone zone_id)
             : transport_(transport)
             , zone_id_(zone_id)
         {
             transport_->increment_outbound_proxy_count(zone_id);
+        }
+
+        transport_keep_alive(const transport_keep_alive&) = delete;
+        transport_keep_alive& operator=(const transport_keep_alive&) = delete;
+
+        transport_keep_alive(transport_keep_alive&& other) noexcept
+            : transport_(std::move(other.transport_))
+            , zone_id_(other.zone_id_)
+        {
+        }
+
+        transport_keep_alive& operator=(transport_keep_alive&& other) noexcept
+        {
+            if (this != &other)
+            {
+                if (transport_)
+                    transport_->decrement_outbound_proxy_count(zone_id_);
+                transport_ = std::move(other.transport_);
+                zone_id_ = other.zone_id_;
+            }
+            return *this;
         }
 
         ~transport_keep_alive()
@@ -873,8 +894,8 @@ namespace rpc
             if (input_descr.input_zone_id != parent_transport->get_adjacent_zone_id().as_destination())
             {
                 child_svc->add_transport(parent_transport->get_adjacent_zone_id().as_destination(), parent_transport);
-                adjacent_ka.transport_ = parent_transport;
-                adjacent_ka.zone_id_ = parent_transport->get_adjacent_zone_id().as_destination();
+                adjacent_ka
+                    = transport_keep_alive(parent_transport, parent_transport->get_adjacent_zone_id().as_destination());
             }
 
             rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
@@ -1068,8 +1089,7 @@ namespace rpc
         if (input_descr.input_zone_id != adjacent_zone_id.as_destination())
         {
             add_transport(adjacent_zone_id.as_destination(), peer_transport);
-            adjacent_ka.transport_ = peer_transport;
-            adjacent_ka.zone_id_ = adjacent_zone_id.as_destination();
+            adjacent_ka = transport_keep_alive(peer_transport, adjacent_zone_id.as_destination());
         }
 
         if (input_descr.object_id != 0)

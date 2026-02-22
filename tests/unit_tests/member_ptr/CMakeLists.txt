@@ -38,6 +38,9 @@ if(NOT CANOPY_BUILD_COROUTINE)
     member_ptr_test PRIVATE ${PROJECT_SOURCE_DIR}/rpc/include ${PROJECT_SOURCE_DIR}/telemetry/include
                             ${CMAKE_BINARY_DIR}/generated/include ${CMAKE_BINARY_DIR}/generated/src)
 
+  target_compile_options(member_ptr_test PRIVATE ${CANOPY_COMPILE_OPTIONS})
+  target_link_options(member_ptr_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+
   # Set C++ standard
   set_property(TARGET member_ptr_test PROPERTY CXX_STANDARD 17)
   set_property(TARGET member_ptr_test PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -46,5 +49,8 @@ if(NOT CANOPY_BUILD_COROUTINE)
   add_test(NAME member_ptr_test COMMAND member_ptr_test)
 
   include(CTest)
-  gtest_discover_tests(member_ptr_test)
+  # Skip gtest_discover_tests when using AddressSanitizer due to protobuf container-overflow false positives
+  if(NOT CANOPY_DEBUG_ADDRESS)
+    gtest_discover_tests(member_ptr_test)
+  endif()
 endif()

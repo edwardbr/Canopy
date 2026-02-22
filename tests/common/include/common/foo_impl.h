@@ -328,7 +328,7 @@ namespace marshalled_tests
         {
             std::lock_guard<std::mutex> lock(messages_mutex_);
             recorded_messages_.push_back(message_id);
-            RPC_INFO("Recorded message: {}", message_id);
+            RPC_DEBUG("Recorded message: {}", message_id);
             CO_RETURN rpc::error::OK();
         }
 

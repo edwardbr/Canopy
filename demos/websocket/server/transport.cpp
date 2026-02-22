@@ -3,7 +3,8 @@
  *   All rights reserved.
  */
 
-// #include <websocket_demo/websocket_demo.h>
+#include <fmt/format.h>
+
 #include "transport.h"
 
 #include <wslay/wslay.h>
