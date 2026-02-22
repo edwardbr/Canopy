@@ -290,10 +290,10 @@ namespace rpc::spsc
 
         auto count = get_destination_count();
         RPC_ASSERT(count >= 0);
-        if (count <= 0)
+        if (count <= 0 && get_status() == rpc::transport_status::CONNECTED)
         {
-            RPC_DEBUG("destination_count reached 0, triggering disconnect");
-            set_status(rpc::transport_status::DISCONNECTED);
+            RPC_DEBUG("destination_count reached 0, triggering graceful shutdown");
+            set_status(rpc::transport_status::DISCONNECTING);
         }
 
         CO_RETURN rpc::error::OK();
@@ -308,10 +308,10 @@ namespace rpc::spsc
     {
         RPC_DEBUG("spsc_transport::outbound_object_released zone={}", get_zone_id().get_val());
 
-        // Check transport status
-        if (get_status() != rpc::transport_status::CONNECTED)
+        // Allow during DISCONNECTING (cleanup messages must get through); block only when fully disconnected
+        if (get_status() == rpc::transport_status::DISCONNECTED)
         {
-            RPC_ERROR("failed spsc_transport::outbound_object_released - not connected, status = {}",
+            RPC_ERROR("failed spsc_transport::outbound_object_released - transport disconnected, status = {}",
                 static_cast<int>(get_status()));
             CO_RETURN;
         }
@@ -337,10 +337,10 @@ namespace rpc::spsc
     {
         RPC_DEBUG("spsc_transport::outbound_transport_down zone={}", get_zone_id().get_val());
 
-        // Check transport status
-        if (get_status() != rpc::transport_status::CONNECTED)
+        // Allow during DISCONNECTING (cleanup messages must get through); block only when fully disconnected
+        if (get_status() == rpc::transport_status::DISCONNECTED)
         {
-            RPC_ERROR("failed spsc_transport::outbound_transport_down - not connected, status = {}",
+            RPC_ERROR("failed spsc_transport::outbound_transport_down - transport disconnected, status = {}",
                 static_cast<int>(get_status()));
             CO_RETURN;
         }
@@ -403,20 +403,10 @@ namespace rpc::spsc
         // Prefix must persist across loop iterations while receiving payload chunks
         envelope_prefix prefix{};
 
-        // Continue running if:
-        // - Not cancelled by peer (or we're waiting for close ack, or we have pending operations), AND
-        // - Not cancelled by us
-        // The waiting_for_close_ack_ check handles simultaneous shutdown where both sides
-        // send close_connection_send - we need to keep receiving to get the response.
-        // We also need to stay alive while the response_task is running (after receiving close_connection_send),
-        // which is indicated by waiting_for_close_ack_ being true AND close_ack_queued_ being false
-        // (meaning the response hasn't been sent yet).
-        // Additionally, we must stay alive until response_task completes sending the close ack
-        // and the send loop has processed it (indicated by waiting_for_close_ack_ being true
-        // AND response_task_complete being false).
-
+        // Continue running while CONNECTED or DISCONNECTING (drain during shutdown).
+        // Loop exits when DISCONNECTED (after close_connection_ack received or timeout).
         bool stop_loop = false;
-        while (get_status() == rpc::transport_status::CONNECTED && !stop_loop)
+        while (get_status() < rpc::transport_status::DISCONNECTED && !stop_loop)
         {
 
             // Receive prefix chunks
@@ -433,15 +423,63 @@ namespace rpc::spsc
                     message_blob blob;
                     if (!receive_spsc_queue_->pop(blob))
                     {
+                        if (!received_any && get_status() == rpc::transport_status::DISCONNECTING)
+                        {
+                            // Queue is empty while disconnecting — handle based on role
+                            if (peer_requested_disconnection_)
+                            {
+                                // Responder: wait until send loop finishes cleanup, then send ack
+                                if (send_cleanup_done_.load(std::memory_order_acquire))
+                                {
+                                    RPC_DEBUG(
+                                        "receive_consumer_loop: responder sending close_connection_ack for zone {}",
+                                        get_zone_id().get_val());
+                                    send_payload(rpc::get_version(), message_direction::one_way, close_connection_ack{}, 0);
+                                    // Flush close_connection_ack directly — send loop has already exited
+                                    std::span<uint8_t> ack_send_data;
+                                    auto ack_status = push_message(ack_send_data);
+                                    while (ack_status == send_queue_status::SEND_QUEUE_NOT_EMPTY)
+                                        ack_status = push_message(ack_send_data);
+                                    RPC_DEBUG("receive_consumer_loop: responder transition to DISCONNECTED zone {}",
+                                        get_zone_id().get_val());
+                                    set_status(rpc::transport_status::DISCONNECTED);
+                                    stop_loop = true;
+                                    break;
+                                }
+                                else
+                                {
+                                    // Send loop still running — check timeout before yielding
+                                    auto elapsed = std::chrono::steady_clock::now() - disconnecting_since_;
+                                    if (elapsed >= std::chrono::milliseconds(shutdown_timeout_ms_))
+                                    {
+                                        RPC_WARNING(
+                                            "receive_consumer_loop: responder shutdown timeout for zone {}, forcing "
+                                            "DISCONNECTED",
+                                            get_zone_id().get_val());
+                                        set_status(rpc::transport_status::DISCONNECTED);
+                                        stop_loop = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Initiator: check shutdown timeout waiting for close_connection_ack
+                                auto elapsed = std::chrono::steady_clock::now() - disconnecting_since_;
+                                if (elapsed >= std::chrono::milliseconds(shutdown_timeout_ms_))
+                                {
+                                    RPC_WARNING(
+                                        "receive_consumer_loop: shutdown timeout for zone {}, forcing DISCONNECTED",
+                                        get_zone_id().get_val());
+                                    set_status(rpc::transport_status::DISCONNECTED);
+                                    stop_loop = true;
+                                    break;
+                                }
+                            }
+                        }
+
                         if (!received_any)
                         {
-                            if (get_status() == rpc::transport_status::DISCONNECTING)
-                            {
-                                // drain the queue until empty then stop the loop
-                                stop_loop = true;
-                                break;
-                            }
-                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(1));
                             CO_AWAIT svc->get_scheduler()->schedule();
                         }
                         break;
@@ -586,9 +624,19 @@ namespace rpc::spsc
                     }
                     else if (payload.payload_fingerprint == rpc::id<close_connection_send>::get(prefix.version))
                     {
-                        RPC_DEBUG("pump: received close_connection_send seq={}", prefix.sequence_number);
+                        RPC_DEBUG("pump: received close_connection_send seq={} zone={}",
+                            prefix.sequence_number,
+                            get_zone_id().get_val());
                         set_status(rpc::transport_status::DISCONNECTING);
                         peer_requested_disconnection_ = true;
+                        // Continue loop to drain remaining messages; ack sent when queue empty + send done
+                    }
+                    else if (payload.payload_fingerprint == rpc::id<close_connection_ack>::get(prefix.version))
+                    {
+                        RPC_DEBUG("pump: received close_connection_ack — shutdown confirmed zone={}",
+                            get_zone_id().get_val());
+                        set_status(rpc::transport_status::DISCONNECTED);
+                        stop_loop = true;
                     }
                     else
                     {
@@ -702,62 +750,60 @@ namespace rpc::spsc
             auto status = push_message(send_data);
             if (status == send_queue_status::SEND_QUEUE_EMPTY || status == send_queue_status::SPSC_QUEUE_FULL)
             {
-                // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(1));
                 CO_AWAIT svc->get_scheduler()->schedule();
             }
         }
 
-        // if peer has requested disconnection, don't send cancellation message just terminate this function
-        if (peer_requested_disconnection_)
-        {
-            RPC_DEBUG("send_producer_loop exiting for zone {} at peer request", get_zone_id().get_val());
-        }
-
+        // Flush any messages queued before DISCONNECTING was set
         auto status = push_message(send_data);
         while (status == send_queue_status::SEND_QUEUE_NOT_EMPTY)
-        {
             status = push_message(send_data);
+
+        // Run cleanup notifications — this adds stub-release and transport-down messages to send_queue_
+        CO_AWAIT notify_all_destinations_of_disconnect();
+
+        if (!peer_requested_disconnection_)
+        {
+            // Initiator: append close_connection_send after all cleanup messages
+            RPC_DEBUG("send_producer_loop: sending close_connection_send for zone {}", get_zone_id().get_val());
+            send_payload(rpc::get_version(), message_direction::one_way, close_connection_send{}, 0);
         }
 
-        RPC_DEBUG("close connection message {}", get_zone_id().get_val());
-
-        send_payload(rpc::get_version(), message_direction::one_way, close_connection_send{}, 0);
-
-        // then flush the queue one more time
+        // Flush cleanup messages (and close_connection_send if initiator)
         status = push_message(send_data);
         while (status == send_queue_status::SEND_QUEUE_NOT_EMPTY)
-        {
             status = push_message(send_data);
-        }
+
         if (status == send_queue_status::SPSC_QUEUE_FULL)
         {
-            RPC_DEBUG("unable to send cancellation message {}", get_zone_id().get_val());
-            CO_RETURN;
+            RPC_WARNING("send_producer_loop: SPSC queue full during shutdown flush for zone {}", get_zone_id().get_val());
         }
 
-        RPC_DEBUG("send_producer_loop completed sending for zone {}", get_zone_id().get_val());
+        // Always signal send_cleanup_done_ — handles both normal responder path and the
+        // simultaneous-disconnect case where the initiator's receive loop enters the responder
+        // path (peer_requested=true) after the send loop already took the initiator path.
+        RPC_DEBUG("send_producer_loop: cleanup done, signalling receive loop for zone {}", get_zone_id().get_val());
+        send_cleanup_done_.store(true, std::memory_order_release);
+
+        RPC_DEBUG("send_producer_loop completed for zone {}", get_zone_id().get_val());
         CO_RETURN;
     }
 
     CORO_TASK(void)
     spsc_transport::cleanup(std::shared_ptr<spsc_transport> transport, std::shared_ptr<rpc::service> svc)
     {
-        RPC_DEBUG("Both tasks completed, releasing keep_alive for zone {}", get_zone_id().get_val());
+        RPC_DEBUG("Both loops completed, finalising transport for zone {}", transport->get_zone_id().get_val());
+        // Cancel any outstanding request-response calls (they will never receive a reply)
         {
-            std::scoped_lock lock(pending_transmits_mtx_);
-            for (auto it : pending_transmits_)
+            std::scoped_lock lock(transport->pending_transmits_mtx_);
+            for (auto it : transport->pending_transmits_)
             {
                 it.second->error_code = rpc::error::CALL_CANCELLED();
                 it.second->event.set();
             }
         }
-        svc->get_scheduler()->spawn(
-            [this](std::shared_ptr<spsc_transport> transport, std::shared_ptr<rpc::service> svc) -> CORO_TASK(void)
-            {
-                CO_AWAIT transport->notify_all_destinations_of_disconnect();
-
-                transport->keep_alive_.reset();
-            }(transport, svc));
+        // Release the self-referential keep_alive — allows the transport to be destroyed
+        transport->keep_alive_.reset();
 
         co_return;
     }
@@ -780,7 +826,7 @@ namespace rpc::spsc
         if (!str_err.empty())
         {
             RPC_ERROR("failed from_yas_binary call_send");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 
@@ -831,7 +877,7 @@ namespace rpc::spsc
         if (!str_err.empty())
         {
             RPC_ERROR("failed post_send from_yas_binary");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 
@@ -867,7 +913,7 @@ namespace rpc::spsc
         if (!str_err.empty())
         {
             RPC_ERROR("failed try_cast_send from_yas_binary");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 
@@ -909,7 +955,7 @@ namespace rpc::spsc
         if (!str_err.empty())
         {
             RPC_ERROR("failed addref_send from_yas_binary");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 
@@ -949,7 +995,7 @@ namespace rpc::spsc
         if (!str_err.empty())
         {
             RPC_ERROR("failed release_send from_yas_binary");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 
@@ -992,7 +1038,7 @@ namespace rpc::spsc
         if (!str_err.empty())
         {
             RPC_ERROR("failed object_released_send from_yas_binary");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 
@@ -1018,7 +1064,7 @@ namespace rpc::spsc
         if (!str_err.empty())
         {
             RPC_ERROR("failed transport_down_send from_yas_binary");
-            set_status(rpc::transport_status::DISCONNECTED);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 

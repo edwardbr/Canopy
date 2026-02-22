@@ -259,9 +259,56 @@ TYPED_TEST(optimistic_ptr_test, optimistic_ptr_local_proxy_test)
         });
 }
 
+class waiter : public rpc::service_event
+{
+    rpc::object object_id_;
+    rpc::destination_zone destination_id_;
+    std::shared_ptr<rpc::service> svc_;
+    std::function<CORO_TASK(void)()> callback_;
+    std::shared_ptr<rpc::event> ev_;
+
+    waiter(rpc::object object_id,
+        rpc::destination_zone destination,
+        const std::shared_ptr<rpc::service>& svc,
+        std::function<CORO_TASK(void)()>&& callback,
+        const std::shared_ptr<rpc::event>& ev)
+        : object_id_(object_id)
+        , destination_id_(destination)
+        , svc_(svc)
+        , callback_(std::move(callback))
+        , ev_(ev)
+    {
+    }
+
+public:
+    static std::shared_ptr<waiter> create(rpc::object object_id,
+        rpc::destination_zone destination,
+        const std::shared_ptr<rpc::service>& svc,
+        std::function<CORO_TASK(void)()>&& callback,
+        const std::shared_ptr<rpc::event>& ev)
+    {
+        std::shared_ptr<waiter> w(new waiter(object_id, destination, svc, std::move(callback), ev));
+        svc->add_service_event(w);
+        return w;
+    }
+
+    virtual ~waiter() { svc_->remove_service_event(weak_from_this()); }
+
+    CORO_TASK(void) on_object_released(rpc::object object_id, rpc::destination_zone destination) override
+    {
+        if (object_id == object_id_ && destination == destination_id_)
+        {
+            CO_AWAIT callback_();
+            ev_->set();
+        }
+        CO_RETURN;
+    }
+};
+
 // Test 4: Optimistic pointer semantics (weak for local, shared for remote)
 template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T& lib)
 {
+    auto root = lib.get_root_service();
     // Get example object (local or remote depending on setup)
     auto example = lib.get_example();
     CORO_ASSERT_NE(example, nullptr);
@@ -284,6 +331,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T&
 
     // Get object_id directly from the interface (avoids service mutex)
     auto baz_object_id = rpc::casting_interface::get_object_id(*baz);
+    auto destination_zone_id = rpc::casting_interface::get_destination_zone(*baz);
 
     // Create optimistic_ptr
     rpc::optimistic_ptr<xxx::i_baz> opt_baz;
@@ -295,15 +343,13 @@ template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T&
     auto error2 = CO_AWAIT opt_baz->callback(42);
     CORO_ASSERT_EQ(error2, 0);
 
-    // Register for object deletion notification with continuation for verification
-    auto waiter = std::make_shared<object_deletion_waiter>(baz_object_id);
+    auto ev = std::make_shared<rpc::event>();
 
-    // Schedule verification - handles both local (immediate) and remote (async) cases
-    // CRITICAL: Pass opt_baz as argument to ensure it lives in the coroutine frame
-    waiter->schedule(
-        lib.get_root_service(),
-        baz,
-        [](auto opt_baz) -> CORO_TASK(void)
+    auto waiter = waiter::create(
+        baz_object_id,
+        destination_zone_id,
+        root,
+        [opt_baz]() -> CORO_TASK(void)
         {
             // This runs after the object is deleted
             // The object is deleted when the last shared_ptr goes away
@@ -316,20 +362,21 @@ template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T&
 
             CO_RETURN;
         },
-        opt_baz); // Pass as argument instead of capturing
+        ev);
 
     // Clear the shared_ptr - for remote this triggers async cleanup, for local it's immediate
     baz.reset();
 
-    // For local objects, run verification immediately; for remote, it runs via async callback
-    CO_AWAIT waiter->run_if_local();
+    CO_AWAIT ev->wait();
+    waiter.reset();
 
     CO_RETURN true;
 }
 
 TYPED_TEST(optimistic_ptr_test, optimistic_ptr_remote_shared_semantics_test)
 {
-    GTEST_SKIP() << "skipped for now.";
+    if (!this->get_lib().has_service())
+        GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_remote_shared_semantics_test(lib); });
 }
 
@@ -385,6 +432,8 @@ TYPED_TEST(optimistic_ptr_test, optimistic_ptr_transparent_access_test)
 // Test 7: Circular dependency resolution use case
 template<class T> CORO_TASK(bool) optimistic_ptr_circular_dependency_test(T& lib)
 {
+    auto root = lib.get_root_service();
+
     // Simulate circular dependency scenario:
     // - Host owns children (shared_ptr)
     // - Children hold optimistic_ptr to host (no RAII ownership)
@@ -409,14 +458,14 @@ template<class T> CORO_TASK(bool) optimistic_ptr_circular_dependency_test(T& lib
     CORO_ASSERT_NE(opt_host.get_unsafe_only_for_testing(), nullptr);
 
     auto host_object_id = rpc::casting_interface::get_object_id(*host);
-    auto waiter = std::make_shared<object_deletion_waiter>(host_object_id);
+    auto destination_zone_id = rpc::casting_interface::get_destination_zone(*host);
 
-    // Schedule verification - handles both local (immediate) and remote (async) cases
-    // CRITICAL: Pass opt_host as argument to ensure it lives in the coroutine frame
-    waiter->schedule(
-        lib.get_root_service(),
-        host,
-        [](auto opt_host) -> CORO_TASK(void)
+    auto ev = std::make_shared<rpc::event>();
+    auto waiter = waiter::create(
+        host_object_id,
+        destination_zone_id,
+        root,
+        [opt_host]() -> CORO_TASK(void)
         {
             // opt_host still exists but points to deleted object
             // This is correct behavior - circular dependency is broken
@@ -424,21 +473,20 @@ template<class T> CORO_TASK(bool) optimistic_ptr_circular_dependency_test(T& lib
 
             CO_RETURN;
         },
-        opt_host); // Pass as argument instead of capturing
+        ev);
 
-    // If we delete host (last shared_ptr), object is destroyed
-    // even though optimistic_ptr exists (weak semantics)
     host.reset();
 
-    // For local objects, run verification immediately; for remote, it runs via async callback
-    CO_AWAIT waiter->run_if_local();
+    CO_AWAIT ev->wait();
+    waiter.reset();
 
     CO_RETURN true;
 }
 
 TYPED_TEST(optimistic_ptr_test, optimistic_ptr_circular_dependency_test)
 {
-    GTEST_SKIP() << "skipped for now.";
+    if (!this->get_lib().has_service())
+        GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_circular_dependency_test(lib); });
 }
 
@@ -573,53 +621,11 @@ TYPED_TEST(optimistic_ptr_test, optimistic_ptr_multiple_refs_test)
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_multiple_refs_test(lib); });
 }
 
-struct object_gone_event : public rpc::service_event
-{
-    std::weak_ptr<rpc::service> svc_;
-    std::function<CORO_TASK(void)()> callback_;
-    rpc::object object_id_;
-    rpc::destination_zone destination_;
-    virtual ~object_gone_event()
-    {
-        auto svc = svc_.lock();
-        if (svc)
-        {
-            // svc->remove_service_event(rpc::service_event::shared_from_this());
-        }
-    }
-
-    static std::shared_ptr<object_gone_event> create(std::shared_ptr<rpc::service> svc,
-        std::function<CORO_TASK(void)()> callback,
-        rpc::object object_id,
-        rpc::destination_zone destination)
-    {
-        auto ret = std::make_shared<object_gone_event>();
-        ret->object_id_ = object_id;
-        ret->destination_ = destination;
-        ret->callback_ = callback;
-        svc->add_service_event(ret);
-        ret->svc_ = svc; // do it after addin service
-        return ret;
-    }
-
-    /**
-     * @brief Called when an object is released in a remote zone
-     * @param object_id The ID of the released object
-     * @param destination The zone where the object was released
-     */
-    virtual CORO_TASK(void) on_object_released(rpc::object object_id, rpc::destination_zone destination) override
-    {
-        if (object_id_ == object_id && destination_ == destination)
-        {
-            CO_AWAIT callback_();
-        }
-        CO_RETURN;
-    }
-};
-
 // Test 11: optimistic_ptr OBJECT_GONE behavior when remote stub is deleted
 template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
 {
+    auto root = lib.get_root_service();
+
     // Get example object (local or remote depending on setup)
     auto example = lib.get_example();
     CORO_ASSERT_NE(example, nullptr);
@@ -636,6 +642,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
 
     // Get object_id directly from the interface (avoids service mutex)
     auto baz_object_id = rpc::casting_interface::get_object_id(*baz);
+    auto destination_zone_id = rpc::casting_interface::get_destination_zone(*baz);
 
     // Test OBJECT_GONE for REMOTE objects only
     // Create optimistic_ptr from shared_ptr
@@ -648,15 +655,12 @@ template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
     auto error1 = CO_AWAIT opt_baz->callback(42);
     CORO_ASSERT_EQ(error1, 0);
 
-    // Register for object deletion notification with continuation for verification
-    auto waiter = std::make_shared<object_deletion_waiter>(baz_object_id);
-
-    // Schedule verification - handles both local (immediate) and remote (async) cases
-    // CRITICAL: Pass opt_baz as argument to ensure it lives in the coroutine frame
-    waiter->schedule(
-        lib.get_root_service(),
-        baz,
-        [](auto opt_baz) -> CORO_TASK(void)
+    auto ev = std::make_shared<rpc::event>();
+    auto waiter = waiter::create(
+        baz_object_id,
+        destination_zone_id,
+        root,
+        [opt_baz]() -> CORO_TASK(void)
         {
             // This runs after the object is deleted
             // Second call through optimistic_ptr should fail with OBJECT_GONE
@@ -669,21 +673,21 @@ template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
 
             CO_RETURN;
         },
-        opt_baz); // Pass as argument instead of capturing
+        ev);
 
-    // Release the shared_ptr - for remote this triggers async cleanup, for local it's immediate
     baz.reset();
     f.reset();
 
-    // For local objects, run verification immediately; for remote, it runs via async callback
-    CO_AWAIT waiter->run_if_local();
+    CO_AWAIT ev->wait();
+    waiter.reset();
 
     CO_RETURN true;
 }
 
 TYPED_TEST(optimistic_ptr_test, optimistic_ptr_object_gone_test)
 {
-    GTEST_SKIP() << "skipped for now.";
+    if (!this->get_lib().has_service())
+        GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_object_gone_test(lib); });
 }
 
@@ -832,6 +836,7 @@ TYPED_TEST(optimistic_ptr_test, optimistic_ptr_set_and_get_via_idl)
 // Test: get returns OBJECT_GONE when shared_ptr is released
 template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_shared_released_test(T& lib)
 {
+    auto root = lib.get_root_service();
     auto example = lib.get_example();
     CORO_ASSERT_NE(example, nullptr);
 
@@ -848,27 +853,18 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
     err = CO_AWAIT example->set_optimistic_ptr(opt_f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
-#ifdef CANOPY_BUILD_COROUTINE
-    rpc::event ev;
-    auto cb = object_gone_event::create(
-        lib.get_root_service(),
-        [&]() -> CORO_TASK(void)
-        {
-            ev.set();
-            CO_RETURN;
-        },
-        rpc::casting_interface::get_object_id(*f),
-        rpc::casting_interface::get_destination_zone(*f));
+    auto ev = std::make_shared<rpc::event>();
 
-#endif
-    // Release the shared_ptr - the underlying object should be destroyed
+    // Get object_id directly from the interface (avoids service mutex)
+    auto object_id = rpc::casting_interface::get_object_id(*f);
+    auto destination_zone_id = rpc::casting_interface::get_destination_zone(*f);
+    auto waiter = waiter::create(object_id, destination_zone_id, root, []() -> CORO_TASK(void) { CO_RETURN; }, ev);
+
+    // Clear the shared_ptr - for remote this triggers async cleanup, for local it's immediate
     f.reset();
 
-#ifdef CANOPY_BUILD_COROUTINE
-    CO_AWAIT ev.wait();
-    lib.get_root_service()->remove_service_event(cb);
-    cb.reset();
-#endif
+    CO_AWAIT ev->wait();
+    waiter.reset();
 
     // Calling through it should return OBJECT_GONE since the shared_ptr is released
     err = CO_AWAIT opt_f->do_something_in_val(42);
@@ -879,7 +875,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
     // Retrieve via get_optimistic_ptr
     rpc::optimistic_ptr<xxx::i_foo> opt_f_out;
     err = CO_AWAIT example->get_optimistic_ptr(opt_f_out);
-    CORO_ASSERT_EQ(err, rpc::error::OK());
+    CORO_ASSERT_EQ(err, rpc::error::OBJECT_GONE());
 
     CORO_ASSERT_EQ(nullptr, opt_f_out.get());
 
@@ -892,7 +888,8 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
 
 TYPED_TEST(optimistic_ptr_test, optimistic_ptr_get_returns_object_gone_when_shared_released)
 {
-    GTEST_SKIP() << "skipped for now.";
+    if (!this->get_lib().has_service())
+        GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_get_returns_object_gone_when_shared_released_test(lib); });
 }
 

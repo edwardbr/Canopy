@@ -170,5 +170,11 @@ namespace rpc
             uint64_t caller_zone_id;
             std::vector<rpc::back_channel_entry> back_channel;
         };
+
+        struct close_connection_send
+        {};
+
+        struct close_connection_ack
+        {};
     }
 }

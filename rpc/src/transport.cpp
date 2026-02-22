@@ -249,12 +249,14 @@ namespace rpc
             }
         }
 
-        // Automatic disconnection when no zones need this transport
-        if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+        // Initiate graceful shutdown when no destinations remain
+        if (destination_count_ == 0 && get_status() == transport_status::CONNECTED)
         {
-            RPC_DEBUG("transport::inner_decrement_outbound_proxy_count: destination_count reached 0, setting status to "
-                      "DISCONNECTED for zone={}",
+            RPC_DEBUG(
+                "transport::inner_decrement_outbound_proxy_count: destination_count reached 0, triggering shutdown "
+                "for zone={}",
                 zone_id_.get_val());
+            on_destination_count_zero();
         }
     }
 
@@ -326,13 +328,13 @@ namespace rpc
             }
         }
 
-        // Automatic disconnection when no zones need this transport
-        if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+        // Initiate graceful shutdown when no destinations remain
+        if (destination_count_ == 0 && get_status() == transport_status::CONNECTED)
         {
-            RPC_DEBUG("transport::inner_decrement_inbound_stub_count: destination_count reached 0, setting status to "
-                      "DISCONNECTED for zone={}",
+            RPC_DEBUG("transport::inner_decrement_inbound_stub_count: destination_count reached 0, triggering shutdown "
+                      "for zone={}",
                 zone_id_.get_val());
-            // set_status(transport_status::DISCONNECTED);
+            on_destination_count_zero();
         }
     }
 
@@ -496,13 +498,12 @@ namespace rpc
                 zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2.as_caller());
 #endif
 
-        // Automatic disconnection when no zones need this transport
-        if (destination_count_ == 0 && get_status() != transport_status::DISCONNECTED)
+        // Initiate graceful shutdown when no destinations remain
+        if (destination_count_ == 0 && get_status() == transport_status::CONNECTED)
         {
-            RPC_DEBUG("transport::remove_passthrough: destination_count reached 0, setting status to DISCONNECTED for "
-                      "zone={}",
+            RPC_DEBUG("transport::remove_passthrough: destination_count reached 0, triggering shutdown for zone={}",
                 zone_id_.get_val());
-            // set_status(transport_status::DISCONNECTED);
+            on_destination_count_zero();
         }
     }
 
@@ -606,9 +607,14 @@ namespace rpc
     void transport::set_status(transport_status new_status)
     {
         [[maybe_unused]] auto old_status = status_.load(std::memory_order_acquire);
-        if (old_status >= new_status)
+        if (old_status == new_status)
         {
-            RPC_ASSERT(false); // invalid transition
+            return; // Already at target status, idempotent
+        }
+        if (old_status > new_status)
+        {
+            RPC_ASSERT(false); // Regressive transition is always a bug
+            return;
         }
         status_.store(new_status, std::memory_order_release);
 
@@ -756,8 +762,8 @@ namespace rpc
         }
 #endif
 
-        // Check transport status before attempting to route
-        if (get_status() == transport_status::DISCONNECTED)
+        // Reject new RPC calls when shutting down; cleanup methods are exempt
+        if (get_status() >= transport_status::DISCONNECTING)
         {
             CO_RETURN error::TRANSPORT_ERROR();
         }
@@ -811,6 +817,12 @@ namespace rpc
         }
 #endif
 
+        // Reject new RPC calls when shutting down; cleanup methods are exempt
+        if (get_status() >= transport_status::DISCONNECTING)
+        {
+            CO_RETURN;
+        }
+
         std::shared_ptr<i_marshaller> dest;
         if (destination_zone_id == zone_id_.as_destination())
         {
@@ -855,6 +867,12 @@ namespace rpc
         }
 #endif
 
+        // Reject new RPC calls when shutting down; cleanup methods are exempt
+        if (get_status() >= transport_status::DISCONNECTING)
+        {
+            CO_RETURN error::TRANSPORT_ERROR();
+        }
+
         std::shared_ptr<i_marshaller> dest;
         if (destination_zone_id == zone_id_.as_destination())
         {
@@ -884,8 +902,8 @@ namespace rpc
         const std::vector<back_channel_entry>& in_back_channel,
         std::vector<back_channel_entry>& out_back_channel)
     {
-        // Check transport status before attempting to route
-        if (get_status() == transport_status::DISCONNECTED)
+        // Reject new add_ref calls when shutting down
+        if (get_status() >= transport_status::DISCONNECTING)
         {
             CO_RETURN error::TRANSPORT_ERROR();
         }

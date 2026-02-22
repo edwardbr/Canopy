@@ -166,5 +166,8 @@ namespace rpc
 
         struct close_connection_send
         {};
+
+        struct close_connection_ack
+        {};  // Acknowledge graceful close; signals all cleanup messages have been sent
     }
 }

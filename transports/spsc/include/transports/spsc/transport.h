@@ -6,6 +6,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <mutex>
 #include <queue>
 #include <unordered_map>
@@ -56,6 +57,11 @@ namespace rpc::spsc
 
         std::atomic<bool> peer_requested_disconnection_ = false;
         std::atomic<bool> pumps_started_ = false;
+
+        // Two-phase close protocol state
+        std::atomic<bool> send_cleanup_done_ = false;
+        std::chrono::steady_clock::time_point disconnecting_since_{};
+        static constexpr uint32_t shutdown_timeout_ms_ = 5000;
 
         struct activity_tracker
         {
@@ -118,7 +124,7 @@ namespace rpc::spsc
                 .sequence_number = sequence_number,
                 .payload_size = payload.size()};
 
-            RPC_DEBUG("send_payload {}\nprefix = {}\npayload = {}",
+            RPC_TRACE("send_payload {}\nprefix = {}\npayload = {}",
                 get_service()->get_zone_id().get_val(),
                 rpc::to_yas_json<std::string>(prefix),
                 rpc::to_yas_json<std::string>(payload_envelope));
@@ -146,7 +152,7 @@ namespace rpc::spsc
             result_listener res_payload;
 
             {
-                RPC_DEBUG("call_peer started zone: {} sequence_number: {} id: {}",
+                RPC_TRACE("call_peer started zone: {} sequence_number: {} id: {}",
                     get_service()->get_zone_id().get_val(),
                     sequence_number,
                     rpc::id<SendPayload>::get(rpc::get_version()));
@@ -163,7 +169,7 @@ namespace rpc::spsc
 
             CO_AWAIT res_payload.event; // now wait for the reply
 
-            RPC_DEBUG("call_peer succeeded zone: {} sequence_number: {} id: {}",
+            RPC_TRACE("call_peer succeeded zone: {} sequence_number: {} id: {}",
                 get_service()->get_zone_id().get_val(),
                 sequence_number,
                 rpc::id<SendPayload>::get(rpc::get_version()));
@@ -192,6 +198,20 @@ namespace rpc::spsc
         }
 
         CORO_TASK(void) cleanup(std::shared_ptr<spsc_transport> transport, std::shared_ptr<rpc::service> svc);
+
+    protected:
+        // Called when destination_count_ drops to zero — initiates graceful shutdown
+        void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
+
+        // Records disconnecting_since_ when entering DISCONNECTING state
+        void set_status(rpc::transport_status new_status) override
+        {
+            if (new_status == rpc::transport_status::DISCONNECTING)
+            {
+                disconnecting_since_ = std::chrono::steady_clock::now();
+            }
+            rpc::transport::set_status(new_status);
+        }
 
     public:
         static std::shared_ptr<spsc_transport> create(std::string name,
