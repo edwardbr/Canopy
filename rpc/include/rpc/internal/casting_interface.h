@@ -90,14 +90,15 @@ namespace rpc
         }
 
         // proxies dont do stub stuff
-        virtual void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
+        void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) { RPC_ASSERT(false); }
         std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
         {
             RPC_ASSERT(false);
             return nullptr;
         }
 
-        virtual CORO_TASK(int) __rpc_call([[maybe_unused]] uint64_t protocol_version,
+        CORO_TASK(int)
+        __rpc_call([[maybe_unused]] uint64_t protocol_version,
             [[maybe_unused]] encoding encoding,
             [[maybe_unused]] uint64_t tag,
             [[maybe_unused]] caller_zone caller_zone_id,
@@ -108,7 +109,7 @@ namespace rpc
             [[maybe_unused]] const rpc::span& in_data,
             [[maybe_unused]] std::vector<char>& out_buf_,
             [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
-            [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)
+            [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel) override
         {
             RPC_ASSERT(false);
             CO_RETURN rpc::error::INVALID_CAST();

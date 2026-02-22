@@ -133,8 +133,8 @@ namespace rpc
         auto& inbound_counts = zone_counts_[inbound_zone];
         inbound_counts.inbound_passthrough_count++;
 
-        RPC_INFO("inner_add_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
-                 "outbound_pt_count={}, inbound_pt_count={}, total_dest_count={}",
+        RPC_DEBUG("inner_add_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
+                  "outbound_pt_count={}, inbound_pt_count={}, total_dest_count={}",
             zone_id_.get_val(),
             adjacent_zone_id_.get_val(),
             outbound_dest.get_val(),
@@ -397,17 +397,14 @@ namespace rpc
                         auto registered_transport = svc->get_transport(outbound_zone.as_destination());
                         if (registered_transport && registered_transport.get() == this)
                         {
-                            RPC_WARNING("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
-                                        "passthrough={}->{}, reason=outbound_counts_zero",
+                            RPC_DEBUG("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
+                                      "passthrough={}->{}, reason=outbound_counts_zero",
                                 zone_id_.get_val(),
                                 adjacent_zone_id_.get_val(),
                                 outbound_dest.get_val(),
                                 outbound_dest.get_val(),
                                 inbound_source.get_val());
                             svc->remove_transport(outbound_zone.as_destination());
-                            RPC_DEBUG(
-                                "remove_passthrough: All counts reached 0 for outbound zone={}, removed transport",
-                                outbound_dest.get_val());
                         }
                         else
                         {
@@ -484,8 +481,8 @@ namespace rpc
             }
         }
 
-        RPC_INFO("remove_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
-                 "remaining_dest_count={}",
+        RPC_DEBUG("remove_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
+                  "remaining_dest_count={}",
             zone_id_.get_val(),
             adjacent_zone_id_.get_val(),
             outbound_dest.get_val(),
@@ -573,9 +570,9 @@ namespace rpc
                     ));
             pt->self_ref_ = pt; // keep self alive based on reference counts
 
-            RPC_INFO("create_pass_through: Creating NEW passthrough {}->{}, "
-                     "forward_transport=(zone={}, adjacent={}), "
-                     "reverse_transport=(zone={}, adjacent={}), pt={}",
+            RPC_DEBUG("create_pass_through: Creating NEW passthrough {}->{}, "
+                      "forward_transport=(zone={}, adjacent={}), "
+                      "reverse_transport=(zone={}, adjacent={}), pt={}",
                 reverse_dest.get_val(),
                 forward_dest.get_val(),
                 forward->zone_id_.get_val(),

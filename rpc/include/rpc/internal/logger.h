@@ -49,7 +49,8 @@ extern "C"
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 #endif
 
-// Unified logging macros with levels (0=DEBUG, 1=TRACE, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)
+// Unified logging macros with levels (0=TRACE, 1=DEBUG, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)
+// CANOPY_LOGGING_LEVEL sets the minimum severity: only messages at or above this level are emitted.
 #if defined(CANOPY_USE_LOGGING) || (defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE))
 
 #ifdef _IN_ENCLAVE
@@ -58,34 +59,55 @@ extern "C"
 #include <fmt/format.h>
 #endif
 
-#define RPC_DEBUG(format_str, ...)                                                                                     \
+#ifndef CANOPY_LOGGING_LEVEL
+#define CANOPY_LOGGING_LEVEL 2
+#endif
+
+#if CANOPY_LOGGING_LEVEL <= 0
+#define RPC_TRACE(format_str, ...)                                                                                     \
     do                                                                                                                 \
     {                                                                                                                  \
         auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                       \
         RPC_LOG_BACKEND(0, formatted);                                                                                 \
     } while (0)
+#else
+#define RPC_TRACE(format_str, ...)
+#endif
 
-#define RPC_TRACE(format_str, ...)                                                                                     \
+#if CANOPY_LOGGING_LEVEL <= 1
+#define RPC_DEBUG(format_str, ...)                                                                                     \
     do                                                                                                                 \
     {                                                                                                                  \
         auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                       \
         RPC_LOG_BACKEND(1, formatted);                                                                                 \
     } while (0)
+#else
+#define RPC_DEBUG(format_str, ...)
+#endif
 
+#if CANOPY_LOGGING_LEVEL <= 2
 #define RPC_INFO(format_str, ...)                                                                                      \
     do                                                                                                                 \
     {                                                                                                                  \
         auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                       \
         RPC_LOG_BACKEND(2, formatted);                                                                                 \
     } while (0)
+#else
+#define RPC_INFO(format_str, ...)
+#endif
 
+#if CANOPY_LOGGING_LEVEL <= 3
 #define RPC_WARNING(format_str, ...)                                                                                   \
     do                                                                                                                 \
     {                                                                                                                  \
         auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                       \
         RPC_LOG_BACKEND(3, formatted);                                                                                 \
     } while (0)
+#else
+#define RPC_WARNING(format_str, ...)
+#endif
 
+#if CANOPY_LOGGING_LEVEL <= 4
 #ifdef CANOPY_ASSERT_ON_LOGGER_ERROR
 #define RPC_ERROR(format_str, ...)                                                                                     \
     do                                                                                                                 \
@@ -102,7 +124,11 @@ extern "C"
         RPC_LOG_BACKEND(4, formatted);                                                                                 \
     } while (0)
 #endif
+#else
+#define RPC_ERROR(format_str, ...)
+#endif
 
+#if CANOPY_LOGGING_LEVEL <= 5
 #ifdef CANOPY_ASSERT_ON_LOGGER_ERROR
 #define RPC_CRITICAL(format_str, ...)                                                                                  \
     do                                                                                                                 \
@@ -119,10 +145,14 @@ extern "C"
         RPC_LOG_BACKEND(5, formatted);                                                                                 \
     } while (0)
 #endif
+#else
+#define RPC_CRITICAL(format_str, ...)
+#endif
+
 #else
 // Disabled logging - all macros are no-ops
-#define RPC_DEBUG(format_str, ...)
 #define RPC_TRACE(format_str, ...)
+#define RPC_DEBUG(format_str, ...)
 #define RPC_INFO(format_str, ...)
 #define RPC_WARNING(format_str, ...)
 #define RPC_ERROR(format_str, ...)

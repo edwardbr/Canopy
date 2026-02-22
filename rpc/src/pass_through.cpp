@@ -264,8 +264,8 @@ namespace rpc
         std::shared_ptr<rpc::transport> caller_transport;
         std::shared_ptr<rpc::transport> destination_transport;
 
-        RPC_INFO("pass_through::add_ref zone={}, fwd={}, rev={}, dest={}, caller={}, options={}, build_dest={}, "
-                 "build_caller={}, no_local={}",
+        RPC_DEBUG("pass_through::add_ref zone={}, fwd={}, rev={}, dest={}, caller={}, options={}, build_dest={}, "
+                  "build_caller={}, no_local={}",
             zone_id_.get_val(),
             forward_destination_.get_val(),
             reverse_destination_.get_val(),
@@ -408,7 +408,7 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_INFO("pass_through::release zone={}, fwd={}, rev={}, dest={}, caller={}, options={}",
+        RPC_DEBUG("pass_through::release zone={}, fwd={}, rev={}, dest={}, caller={}, options={}",
             zone_id_.get_val(),
             forward_destination_.get_val(),
             reverse_destination_.get_val(),
@@ -608,8 +608,8 @@ namespace rpc
             return;
         }
 
-        RPC_WARNING("pass_through: trigger_self_destruction for passthrough {}->{}, zone={}, shared={}, optimistic={}, "
-                    "active={}",
+        RPC_DEBUG("pass_through: trigger_self_destruction for passthrough {}->{}, zone={}, shared={}, optimistic={}, "
+                  "active={}",
             reverse_destination_.get_val(),
             forward_destination_.get_val(),
             zone_id_.get_val(),
@@ -632,9 +632,6 @@ namespace rpc
 
         // No active functions, perform cleanup now
         // Remove destinations from transports in BOTH directions
-        RPC_INFO("pass_through: Removing passthrough {}->{} from transports",
-            reverse_destination_.get_val(),
-            forward_destination_.get_val());
         if (forward_transport_)
         {
             forward_transport_->remove_passthrough(forward_destination_, reverse_destination_);
