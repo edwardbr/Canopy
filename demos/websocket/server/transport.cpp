@@ -69,6 +69,7 @@ namespace websocket_demo
             request.caller_zone_id = caller_zone_id.get_val();
             request.destination_zone_id = destination_zone_id.get_val();
             request.object_id = object_id.get_val();
+            request.interface_id = interface_id.get_val();
             request.method_id = method_id.get_val();
             request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
             request.back_channel = in_back_channel;
@@ -83,8 +84,7 @@ namespace websocket_demo
             // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
             std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
             pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
-            std::cout << "[Transport] Response queued to pending queue, queue size=" << pending_messages_->size()
-                      << std::endl;
+            RPC_TRACE("[Transport] Response queued to pending queue, queue size={}", pending_messages_->size());
             CO_RETURN rpc::error::INCOMPATIBLE_SERVICE();
         }
 
@@ -114,6 +114,7 @@ namespace websocket_demo
             request.caller_zone_id = caller_zone_id.get_val();
             request.destination_zone_id = destination_zone_id.get_val();
             request.object_id = object_id.get_val();
+            request.interface_id = interface_id.get_val();
             request.method_id = method_id.get_val();
             request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
             request.back_channel = {};
@@ -128,8 +129,7 @@ namespace websocket_demo
             // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
             std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
             pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
-            std::cout << "[Transport] Response queued to pending queue, queue size=" << pending_messages_->size()
-                      << std::endl;
+            RPC_TRACE("[Transport] Response queued to pending queue, queue size={}", pending_messages_->size());
             CO_RETURN;
         }
 
@@ -156,7 +156,9 @@ namespace websocket_demo
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel)
         {
-            CO_RETURN rpc::error::INCOMPATIBLE_SERVICE();
+            // WebSocket clients do not participate in RPC reference counting lifecycle.
+            // Return OK to allow stub registration to succeed.
+            CO_RETURN rpc::error::OK();
         }
 
         CORO_TASK(int)
@@ -217,8 +219,8 @@ namespace websocket_demo
                 rpc::encoding::protocol_buffers,
                 request.tag,
                 get_adjacent_zone_id().as_caller(),
-                1,
-                1,
+                get_zone_id().as_destination(),
+                {request.object_id},
                 {request.interface_id},
                 {request.method_id},
                 request.data,
@@ -253,8 +255,7 @@ namespace websocket_demo
 
             std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
             pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
-            std::cout << "[Transport] Response queued to pending queue, queue size=" << pending_messages_->size()
-                      << std::endl;
+            RPC_TRACE("[Transport] Response queued to pending queue, queue size={}", pending_messages_->size());
 
             RPC_DEBUG("send request complete");
             CO_RETURN;

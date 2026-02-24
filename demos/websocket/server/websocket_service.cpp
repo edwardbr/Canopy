@@ -91,6 +91,43 @@ namespace websocket_demo
         {
             if (!demo_)
             {
+#ifdef _DEBUG
+                llama_log_set(
+                    [](enum ggml_log_level level, const char* text, void* /* user_data */)
+                    {
+                        char* text_nonconst = (char*)text;
+                        auto len = strlen(text);
+                        for (size_t i = 0; i < len; ++i)
+                        {
+                            if (text_nonconst[i] == '\n')
+                            {
+                                text_nonconst[i] = ' ';
+                            }
+                        }
+
+                        switch (level)
+                        {
+                        case GGML_LOG_LEVEL_CONT: // continue previous log not sure what to put it under as logger is stateless
+                        case GGML_LOG_LEVEL_DEBUG:
+                            RPC_DEBUG("{}", text);
+                            break;
+                        case GGML_LOG_LEVEL_INFO:
+                            RPC_INFO("{}", text);
+                            break;
+                        case GGML_LOG_LEVEL_WARN:
+                            RPC_WARNING("{}", text);
+                            break;
+                        case GGML_LOG_LEVEL_ERROR:
+                            RPC_ERROR("{}", text);
+                            break;
+                        case GGML_LOG_LEVEL_NONE:
+                        default:
+                            break;
+                        }
+                    },
+                    nullptr);
+#endif
+
                 demo_ = create_websocket_demo_instance(get_llama_cpp(), get_loaded_model(), shared_from_this());
             }
             return demo_;

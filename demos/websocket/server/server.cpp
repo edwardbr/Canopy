@@ -36,7 +36,7 @@ auto handle_tls_client(coro::net::tcp::client client,
     bool handshake_ok = co_await stream->handshake();
     if (!handshake_ok)
     {
-        std::cerr << "TLS handshake failed, closing connection" << std::endl;
+        RPC_ERROR("TLS handshake failed, closing connection");
         co_return;
     }
 
@@ -128,7 +128,7 @@ auto main(int argc, char* argv[]) -> int
         }
         else
         {
-            std::cerr << "Unknown argument: " << arg << std::endl;
+            RPC_ERROR("Unknown argument: {}", arg);
             print_usage(argv[0]);
             return 1;
         }
@@ -142,14 +142,14 @@ auto main(int argc, char* argv[]) -> int
         tls_ctx = std::make_shared<websocket_demo::v1::tls_context>(cert_file, key_file);
         if (!tls_ctx->is_valid())
         {
-            std::cerr << "Failed to initialize TLS context, exiting" << std::endl;
+            RPC_ERROR("Failed to initialize TLS context, exiting");
             return 1;
         }
-        std::cout << "TLS enabled with certificate: " << cert_file << std::endl;
+        RPC_INFO("TLS enabled with certificate: {}", cert_file);
     }
     else if (!cert_file.empty() || !key_file.empty())
     {
-        std::cerr << "Both --cert and --key must be provided for TLS" << std::endl;
+        RPC_ERROR("Both --cert and --key must be provided for TLS");
         return 1;
     }
 
@@ -165,10 +165,10 @@ auto main(int argc, char* argv[]) -> int
             .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
             // If the scheduler is in spawn mode this functor is called upon starting the dedicated
             // event processor thread.
-            .on_io_thread_start_functor = [] { std::cout << "io_scheduler::process event thread start\n"; },
+            .on_io_thread_start_functor = [] { RPC_DEBUG("process event thread start");},
             // If the scheduler is in spawn mode this functor is called upon stopping the dedicated
             // event process thread.
-            .on_io_thread_stop_functor = [] { std::cout << "io_scheduler::process event thread stop\n"; },
+            .on_io_thread_stop_functor = []{ RPC_DEBUG("io_scheduler::process event thread stop");},
             // The io scheduler can use a coro::thread_pool to process the events or tasks it is given.
             // You can use an execution strategy of `process_tasks_inline` to have the event loop thread
             // directly process the tasks, this might be desirable for small tasks vs a thread pool for large tasks.
@@ -176,9 +176,9 @@ auto main(int argc, char* argv[]) -> int
                 coro::thread_pool::options{
                     .thread_count            = std::thread::hardware_concurrency(),
                     .on_thread_start_functor = [](size_t i)
-                    { std::cout << "io_scheduler::thread_pool worker " << i << " starting\n"; },
+                    { RPC_DEBUG("io_scheduler::thread_pool worker {} starting", i); },
                     .on_thread_stop_functor = [](size_t i)
-                    { std::cout << "io_scheduler::thread_pool worker " << i << " stopping\n"; },
+                    { RPC_DEBUG("io_scheduler::thread_pool worker {} stopping", i); },
                 },
             .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
 
@@ -196,13 +196,9 @@ auto main(int argc, char* argv[]) -> int
         coro::net::tcp::server server{scheduler, coro::net::tcp::server::options{.port = port}};
 
         if (tls_ctx)
-        {
-            std::cout << "WebSocket server listening on port " << port << " (TLS enabled)" << std::endl;
-        }
+            RPC_INFO("WebSocket server listening on port {} (TLS enabled)", port);
         else
-        {
-            std::cout << "WebSocket server listening on port " << port << std::endl;
-        }
+            RPC_INFO("WebSocket server listening on port {}", port);
 
         while (true)
         {
@@ -215,7 +211,7 @@ auto main(int argc, char* argv[]) -> int
                 auto client = server.accept();
                 if (client.socket().is_valid())
                 {
-                    std::cout << "New client connected" << std::endl;
+                    RPC_INFO("New client connected");
                     if (tls_ctx)
                     {
                         scheduler->spawn(handle_tls_client(std::move(client), tls_ctx, service));
@@ -231,7 +227,7 @@ auto main(int argc, char* argv[]) -> int
             case coro::poll_status::closed:
             case coro::poll_status::timeout:
             default:
-                std::cerr << "Server poll error, exiting" << std::endl;
+                RPC_ERROR("Server poll error, exiting");
                 co_return;
             }
         }

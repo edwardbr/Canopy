@@ -4,6 +4,7 @@
 // ws_client_connection.h
 #pragma once
 
+#include <optional>
 #include <string>
 #include <memory>
 #include <atomic>
@@ -13,6 +14,7 @@
 #include <coro/coro.hpp>
 #include <wslay/wslay.h>
 #include <rpc/rpc.h>
+#include <websocket_demo/websocket_demo.h>
 
 #include "websocket_service.h"
 #include "transport.h"
@@ -23,6 +25,13 @@ namespace websocket_demo
     namespace v1
     {
         class i_calculator;
+
+        enum class connection_state
+        {
+            awaiting_handshake, // waiting for the initial connect_request
+            running,            // session active — normal RPC dispatch
+            closed              // connection gone
+        };
 
         class ws_client_connection
         {
@@ -39,10 +48,24 @@ namespace websocket_demo
             ws_client_connection(ws_client_connection&&) = delete;
             ws_client_connection& operator=(ws_client_connection&&) = delete;
 
-            // Main coroutine that runs the WebSocket message loop
+            // Main coroutine.  Waits for the client's connect_request (the callback
+            // fires this transition), then sets up the zone and runs the message loop.
             auto run() -> coro::task<void>;
 
         private:
+            // run() helpers
+            void feed_recv_data(std::span<const char> data);
+            coro::task<bool> wait_for_handshake();
+            coro::task<bool> setup_zone();
+            void drain_pending_messages();
+            coro::task<bool> do_write();
+            coro::task<bool> do_read();
+
+            // on_msg_recv_callback helpers
+            void handle_binary_handshake(wslay_event_context_ptr ctx, const wslay_event_on_msg_recv_arg* arg);
+            void handle_binary_envelope(wslay_event_context_ptr ctx, const wslay_event_on_msg_recv_arg* arg);
+            void close_with_parse_error(wslay_event_context_ptr ctx, size_t msg_length, const std::string& error);
+
             // wslay callback functions (static members)
             static ssize_t send_callback(
                 wslay_event_context_ptr ctx, const uint8_t* data, size_t len, int flags, void* user_data);
@@ -65,6 +88,12 @@ namespace websocket_demo
             // Separate queue for async messages (avoids deadlock with wslay_mutex_)
             std::shared_ptr<std::queue<std::vector<uint8_t>>> pending_messages_;
             std::shared_ptr<std::mutex> pending_messages_mutex_;
+
+            connection_state state_{connection_state::awaiting_handshake};
+
+            // Set by on_msg_recv_callback when the connect_request arrives;
+            // consumed once by run() then left empty for the rest of the session.
+            uint64_t client_object_id_;
         };
     }
 }

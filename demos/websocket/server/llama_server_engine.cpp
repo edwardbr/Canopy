@@ -911,37 +911,6 @@ namespace secret_llama
 
         error_types create_llama_cpp(std::shared_ptr<secret_llama::v1_0::llm_engine>& llmengine)
         {
-#ifdef _DEBUG
-            llama_log_set(
-                [](enum ggml_log_level level, const char* text, void* /* user_data */)
-                {
-#ifndef _IN_ENCLAVE
-                    puts(text);
-#else
-                    switch (level)
-                    {
-                    case GGML_LOG_LEVEL_CONT: // continue previous log not sure what to put it under as logger is stateless
-                    case GGML_LOG_LEVEL_DEBUG:
-                        RPC_DEBUG("{}", text);
-                        break;
-                    case GGML_LOG_LEVEL_INFO:
-                        RPC_INFO("{}", text);
-                        break;
-                    case GGML_LOG_LEVEL_WARN:
-                        RPC_WARN("{}", text);
-                        break;
-                    case GGML_LOG_LEVEL_ERROR:
-                        RPC_ERROR("{}", text);
-                        break;
-                    case GGML_LOG_LEVEL_NONE:
-                    default:
-                        break;
-                    }
-#endif
-                },
-                nullptr);
-#endif
-
             llama_backend_init();
             ggml_backend_cpu_init();
 

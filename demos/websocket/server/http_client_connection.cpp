@@ -7,7 +7,6 @@
 #include "ws_client_connection.h"
 // #include <websocket_demo/websocket_demo.h>
 
-#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -164,26 +163,24 @@ namespace websocket_demo
 
                     if (rstatus != coro::net::recv_status::ok || rspan.empty())
                     {
-                        std::cerr << "Failed to read HTTP request" << std::endl;
+                        RPC_ERROR("Failed to read HTTP request");
                         co_return;
                     }
 
                     // 3. Parse the HTTP request
-                    // Debug: print first 100 bytes of received data
-                    std::cout << "Received " << rspan.size() << " bytes, first bytes: ";
-                    for (size_t i = 0; i < std::min(size_t(100), rspan.size()); i++)
+                    // Debug: log first 100 bytes of received data
                     {
-                        unsigned char c = static_cast<unsigned char>(rspan.data()[i]);
-                        if (c >= 32 && c < 127)
+                        std::string preview;
+                        for (size_t i = 0; i < std::min(size_t(100), rspan.size()); i++)
                         {
-                            std::cout << c;
+                            unsigned char c = static_cast<unsigned char>(rspan.data()[i]);
+                            if (c >= 32 && c < 127)
+                                preview += static_cast<char>(c);
+                            else
+                                preview += fmt::format("\\x{:02x}", static_cast<int>(c));
                         }
-                        else
-                        {
-                            std::cout << "\\x" << std::hex << (int)c << std::dec;
-                        }
+                        RPC_DEBUG("Received {} bytes, first bytes: {}", rspan.size(), preview);
                     }
-                    std::cout << std::endl;
 
                     enum llhttp_errno err = llhttp_execute(&parser, rspan.data(), rspan.size());
                     if (err == HPE_PAUSED_UPGRADE)
@@ -195,7 +192,7 @@ namespace websocket_demo
                     }
                     else if (err != HPE_OK)
                     {
-                        std::cerr << "HTTP parse error: " << llhttp_errno_name(err) << std::endl;
+                        RPC_ERROR("HTTP parse error: {}", llhttp_errno_name(err));
                         std::string response = create_error_response(400, "Bad Request");
                         co_await stream_->poll(coro::poll_op::write);
                         stream_->send(std::span<const char>{response});
@@ -210,7 +207,7 @@ namespace websocket_demo
                     auto key_it = ctx.headers.find("Sec-WebSocket-Key");
                     if (key_it == ctx.headers.end())
                     {
-                        std::cerr << "Missing Sec-WebSocket-Key header" << std::endl;
+                        RPC_ERROR("Missing Sec-WebSocket-Key header");
                         co_return;
                     }
 
@@ -221,12 +218,12 @@ namespace websocket_demo
                     auto [send_status, remaining] = stream_->send(std::span<const char>{handshake_response});
                     if (send_status != coro::net::send_status::ok || !remaining.empty())
                     {
-                        std::cerr << "Failed to send WebSocket handshake response" << std::endl;
+                        RPC_ERROR("Failed to send WebSocket handshake response");
                         co_return;
                     }
-                    std::cout << "WebSocket handshake completed" << std::endl;
+                    RPC_INFO("WebSocket handshake completed");
 
-                    // Create websocket connection and run the message loop
+                    // run() waits for the client's connect_request then drives the session
                     ws_client_connection connection(stream_, service_);
                     co_await connection.run();
                     co_return;
@@ -235,7 +232,7 @@ namespace websocket_demo
                 // 5. Handle regular HTTP request
                 std::string method = llhttp_method_name(static_cast<llhttp_method_t>(parser.method));
                 std::string path = ctx.url;
-                std::cout << "HTTP " << method << " request for: " << path << std::endl;
+                RPC_INFO("HTTP {} request for: {}", method, path);
 
                 std::string response;
 
@@ -244,7 +241,7 @@ namespace websocket_demo
                 {
                     // Handle REST API request
                     response = handle_rest_request(method, path, ctx.body);
-                    std::cout << "Handled REST API request: " << method << " " << path << std::endl;
+                    RPC_INFO("Handled REST API request: {} {}", method, path);
                 }
                 else
                 {
@@ -257,7 +254,7 @@ namespace websocket_demo
                             path = "/index.html";
                         }
                         response = serve_file(path);
-                        std::cout << "Served file: " << path << std::endl;
+                        RPC_INFO("Served file: {}", path);
                     }
                     else
                     {
@@ -269,12 +266,12 @@ namespace websocket_demo
                 auto [send_status, remaining] = stream_->send(std::span<const char>{response});
                 if (send_status != coro::net::send_status::ok)
                 {
-                    std::cerr << "Failed to send HTTP response for: " << path << std::endl;
+                    RPC_ERROR("Failed to send HTTP response for: {}", path);
                 }
             }
             catch (const std::exception& e)
             {
-                std::cerr << "Exception in http_client_connection::handle: " << e.what() << std::endl;
+                RPC_ERROR("Exception in http_client_connection::handle: {}", e.what());
             }
 
             co_return;
