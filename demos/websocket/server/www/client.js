@@ -11,6 +11,12 @@ let pendingRequests = new Map(); // messageId -> {methodId}
 // Protobuf messages - loaded from generated websocket_proto.js via module shim
 const WebsocketProto = $protobuf_websocket.protobuf.websocket_demo_v1;
 const RpcProto = $protobuf_websocket.protobuf.rpc;
+
+// Zone/object IDs populated from the server's connect_response
+let clientZoneId = null;   // callerZoneId for all requests
+let serverZoneId = null;   // destinationZoneId for all requests
+let serverObjectId = null; // objectId for all requests
+let handshakeComplete = false;
 // SecretLlamaProto is loaded dynamically in index.html
 
 // DOM elements
@@ -151,20 +157,22 @@ function connect() {
     ws.binaryType = 'arraybuffer'; // Important for binary data
 
     ws.onopen = function () {
-        updateStatus('Connected', 'connected');
-        addMessage('system', '✓ Connected to WebSocket server');
-        setUIConnected(true);
-        connectTime = Date.now();
-        uptimeInterval = setInterval(updateUptime, 1000);
+        updateStatus('Connecting...', 'connecting');
+        addMessage('system', '✓ TCP/WS open — sending connect_request handshake...');
 
-        // Send a welcome message in echo mode
-        if (currentMode === 'echo') {
-            const welcomeMsg = 'Hello from browser client!';
-            ws.send(welcomeMsg);
-            addMessage('sent', `→ ${welcomeMsg}`);
-            sentCount++;
-            updateStats();
-        }
+        // Reset handshake state from any previous connection
+        handshakeComplete = false;
+        clientZoneId = null;
+        serverZoneId = null;
+        serverObjectId = null;
+
+        // The client picks object id 1 for its own back-channel (i_context_event) stub.
+        const clientObjectId = Long.fromNumber(1, true);
+
+        const connectReq = WebsocketProto.connect_request.create({
+            clientObjectId: clientObjectId
+        });
+        ws.send(WebsocketProto.connect_request.encode(connectReq).finish());
     };
 
     ws.onmessage = function (event) {
@@ -176,9 +184,28 @@ function connect() {
         } else {
             // Binary message (calculator/chat mode response or event)
             try {
+                const msgBytes = new Uint8Array(event.data);
+
+                // First binary message from the server is always a raw connect_response.
+                if (!handshakeComplete) {
+                    const connectResp = WebsocketProto.connect_response.decode(msgBytes);
+                    clientZoneId = connectResp.clientZoneId;
+                    serverZoneId = connectResp.serverZoneId;
+                    serverObjectId = connectResp.serverObjectId;
+                    handshakeComplete = true;
+
+                    updateStatus('Connected', 'connected');
+                    setUIConnected(true);
+                    connectTime = Date.now();
+                    uptimeInterval = setInterval(updateUptime, 1000);
+
+                    addMessage('system',
+                        `✓ Handshake complete — client_zone=${clientZoneId}, server_zone=${serverZoneId}, server_object=${serverObjectId}`);
+                    return;
+                }
+
                 // Decode the envelope
-                const envelopeBytes = new Uint8Array(event.data);
-                const envelope = WebsocketProto.envelope.decode(envelopeBytes);
+                const envelope = WebsocketProto.envelope.decode(msgBytes);
 
                 // Check if this is an event (no matching request) or a response
                 const messageId = envelope.messageId.toNumber();
@@ -376,6 +403,11 @@ function calculate() {
         return;
     }
 
+    if (!handshakeComplete) {
+        addMessage('error', 'Handshake not complete yet, please wait');
+        return;
+    }
+
     const opNames = { 1: 'add', 2: 'subtract', 3: 'multiply', 4: 'divide' };
     addMessage('sent', `→ Calculator: ${first} ${opNames[methodId]} ${second}`);
 
@@ -420,9 +452,9 @@ function calculate() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_UNSPECIFIED,
             tag: 0,
-            callerZoneId: 2,
-            destinationZoneId: 1,
-            objectId: 0,
+            callerZoneId: clientZoneId,
+            destinationZoneId: serverZoneId,
+            objectId: serverObjectId,
             interfaceId: Long.fromString("2180915978302953945", true), //i_calculator
             methodId: methodId,
             data: requestBytes,
@@ -482,6 +514,11 @@ function sendChatMessage() {
         return;
     }
 
+    if (!handshakeComplete) {
+        addMessage('error', 'Handshake not complete yet, please wait');
+        return;
+    }
+
     if (!SecretLlamaProto) {
         addMessage('error', 'Secret Llama protobuf not loaded yet, please wait...');
         return;
@@ -509,9 +546,9 @@ function sendChatMessage() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_protocol_buffers,
             tag: 0,
-            callerZoneId: 2,
-            destinationZoneId: 1,
-            objectId: 0,
+            callerZoneId: clientZoneId,
+            destinationZoneId: serverZoneId,
+            objectId: serverObjectId,
             interfaceId: Long.fromString("2180915978302953945", true), // i_context
             methodId: 5, // add_prompt
             data: requestBytes,

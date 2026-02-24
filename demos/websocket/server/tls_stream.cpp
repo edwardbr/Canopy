@@ -3,12 +3,23 @@
 
 // tls_stream.cpp - TLS stream implementation
 #include "tls_stream.h"
-#include <iostream>
+#include <rpc/rpc.h>
 
 namespace websocket_demo
 {
     namespace v1
     {
+        // Drain the OpenSSL error queue and emit each entry via RPC_ERROR.
+        static void log_ssl_errors()
+        {
+            char buf[256];
+            unsigned long err;
+            while ((err = ERR_get_error()) != 0)
+            {
+                ERR_error_string_n(err, buf, sizeof(buf));
+                RPC_ERROR("OpenSSL: {}", buf);
+            }
+        }
         // TLS context implementation
         tls_context::tls_context(const std::string& cert_file, const std::string& key_file)
         {
@@ -16,8 +27,8 @@ namespace websocket_demo
             ctx_ = SSL_CTX_new(TLS_server_method());
             if (!ctx_)
             {
-                std::cerr << "Failed to create SSL context" << std::endl;
-                ERR_print_errors_fp(stderr);
+                RPC_ERROR("Failed to create SSL context");
+                log_ssl_errors();
                 return;
             }
 
@@ -27,8 +38,8 @@ namespace websocket_demo
             // Load certificate
             if (SSL_CTX_use_certificate_file(ctx_, cert_file.c_str(), SSL_FILETYPE_PEM) <= 0)
             {
-                std::cerr << "Failed to load certificate: " << cert_file << std::endl;
-                ERR_print_errors_fp(stderr);
+                RPC_ERROR("Failed to load certificate: {}", cert_file);
+                log_ssl_errors();
                 SSL_CTX_free(ctx_);
                 ctx_ = nullptr;
                 return;
@@ -37,8 +48,8 @@ namespace websocket_demo
             // Load private key
             if (SSL_CTX_use_PrivateKey_file(ctx_, key_file.c_str(), SSL_FILETYPE_PEM) <= 0)
             {
-                std::cerr << "Failed to load private key: " << key_file << std::endl;
-                ERR_print_errors_fp(stderr);
+                RPC_ERROR("Failed to load private key: {}", key_file);
+                log_ssl_errors();
                 SSL_CTX_free(ctx_);
                 ctx_ = nullptr;
                 return;
@@ -47,14 +58,14 @@ namespace websocket_demo
             // Verify private key matches certificate
             if (!SSL_CTX_check_private_key(ctx_))
             {
-                std::cerr << "Private key does not match certificate" << std::endl;
-                ERR_print_errors_fp(stderr);
+                RPC_ERROR("Private key does not match certificate");
+                log_ssl_errors();
                 SSL_CTX_free(ctx_);
                 ctx_ = nullptr;
                 return;
             }
 
-            std::cout << "TLS context initialized with certificate: " << cert_file << std::endl;
+            RPC_INFO("TLS context initialized with certificate: {}", cert_file);
         }
 
         tls_context::~tls_context()
@@ -111,7 +122,7 @@ namespace websocket_demo
         {
             if (!ssl_)
             {
-                std::cerr << "TLS handshake failed: SSL not initialized" << std::endl;
+                RPC_ERROR("TLS handshake failed: SSL not initialized");
                 co_return false;
             }
 
@@ -122,7 +133,7 @@ namespace websocket_demo
                 {
                     // Handshake completed successfully
                     handshake_complete_ = true;
-                    std::cout << "TLS handshake completed successfully" << std::endl;
+                    RPC_INFO("TLS handshake completed successfully");
                     co_return true;
                 }
 
@@ -134,15 +145,17 @@ namespace websocket_demo
                     auto poll_result = co_await client_.poll(op);
                     if (poll_result != coro::poll_status::event)
                     {
-                        std::cerr << "TLS handshake poll failed" << std::endl;
+                        RPC_ERROR("TLS handshake poll failed");
                         co_return false;
                     }
                     continue;
                 }
 
-                // Fatal error
-                std::cerr << "TLS handshake failed with error: " << ssl_error << std::endl;
-                ERR_print_errors_fp(stderr);
+                // Fatal error — ssl_error==1 (SSL_ERROR_SSL) is normal when the browser
+                // sends a certificate-unknown alert on its first probe of a self-signed cert.
+                // The browser will reconnect and succeed after the user accepts the warning.
+                RPC_WARNING("TLS handshake rejected by peer (ssl_error={})", ssl_error);
+                log_ssl_errors();
                 co_return false;
             }
         }

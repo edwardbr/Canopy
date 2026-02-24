@@ -123,10 +123,13 @@ namespace websocket_demo
 
             CORO_TASK(void) stub_handle_send(websocket_demo::v1::envelope request);
 
+            void set_local_object_id(rpc::object id) { local_object_id_ = id; }
+
         private:
             wslay_event_context_ptr wslay_ctx_{nullptr};
             std::shared_ptr<std::queue<std::vector<uint8_t>>> pending_messages_;
             std::shared_ptr<std::mutex> pending_messages_mutex_;
+            rpc::object local_object_id_{0};
         };
     }
 }

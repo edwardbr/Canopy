@@ -9,6 +9,18 @@ namespace websocket_demo
 {
     namespace v1
     {
+        struct connect_request
+        {
+            uint64_t client_object_id;
+        };
+
+        struct connect_response
+        {
+            uint64_t client_zone_id;
+            uint64_t server_zone_id;
+            uint64_t server_object_id;
+        };
+
         struct envelope
         {
             uint64_t message_id;
