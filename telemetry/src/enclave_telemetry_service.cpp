@@ -39,14 +39,14 @@ namespace rpc
     void enclave_telemetry_service::on_service_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         on_service_add_ref_host(zone_id.get_val(),
             remote_object_id.get_val(),
             remote_object_id.get_object().get_val(),
             caller_zone_id.get_val(),
-            known_direction_zone_id.get_val(),
+            requesting_zone_id.get_val(),
             (uint64_t)options);
     }
 
@@ -98,14 +98,14 @@ namespace rpc
     void enclave_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         on_service_proxy_add_ref_host(zone_id.get_val(),
             remote_object_id.get_val(),
             caller_zone_id.get_val(),
             remote_object_id.get_object().get_val(),
-            known_direction_zone_id.get_val(),
+            requesting_zone_id.get_val(),
             (uint64_t)options);
     }
     void enclave_telemetry_service::on_service_proxy_release(rpc::zone zone_id,
@@ -313,14 +313,14 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
         std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
-        std::ignore = known_direction_zone_id;
+        std::ignore = requesting_zone_id;
         std::ignore = options;
     }
 
@@ -406,14 +406,14 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
         std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
-        std::ignore = known_direction_zone_id;
+        std::ignore = requesting_zone_id;
         std::ignore = options;
     }
 

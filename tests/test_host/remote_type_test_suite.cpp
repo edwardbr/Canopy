@@ -1439,7 +1439,7 @@ template<class T> CORO_TASK(bool) coro_test_y_topology_and_return_new_prong_obje
      * - Zone 1 never knows about Zones 6 or 7 (critical for bug reproduction)
      * - Zone 5 gets an object from Zone 7 and passes it to Zone 1
      * - Zone 1 cannot set up service proxy chain to Zone 7 (bug condition)
-     * - The fix: known_direction_zone parameter + reverse proxy creation
+     * - The fix: requesting_zone parameter + reverse proxy creation
      */
 
     // Create the first prong of the Y: Zone 1 → Zone 2 → Zone 3 (factory)
@@ -1499,14 +1499,14 @@ template<class T> CORO_TASK(bool) coro_test_y_topology_and_cache_and_retrieve_pr
      * This creates deeper routing isolation where:
      * - Zone 1 and Zone 2 have no knowledge of Zone 6 or Zone 7
      * - Zone 5 gets Zone 3 to create Zones 6 and 7 autonomously
-     * - Forces system to rely on known_direction_zone hint for routing
+     * - Forces system to rely on requesting_zone hint for routing
      *
      * Bug Trigger Pattern:
      * 1. Zone 7 object gets created in autonomous fork
      * 2. Zone 5 caches Zone 7 object locally
      * 3. Host retrieves cached object, triggering cross-zone routing
      * 4. System must route to Zone 7 but Zone 1 has no direct path
-     * 5. Without known_direction_zone fix: routing failure or infinite recursion
+     * 5. Without requesting_zone fix: routing failure or infinite recursion
      */
 
     // Create Deep Chain: Zone 1 → Zone 2 → Zone 3 → Zone 4 → Zone 5 (deep factory)
@@ -1577,10 +1577,10 @@ template<class T> CORO_TASK(bool) coro_test_y_topology_and_set_host_with_prong_o
      * - Zone 5 caches Zone 7 object locally
      * - In a separate call, Zone 5 sets the cached object in Zone 1's host registry
      * - Zone 1 later accesses object through host registry lookup
-     * - Forces system to rely on known_direction_zone hint for routing
+     * - Forces system to rely on requesting_zone hint for routing
      *
      * Bug Trigger Pattern - STACK OVERFLOW:
-     * When known_direction_zone is disabled (set to 0), the service proxy has no idea
+     * When requesting_zone is disabled (set to 0), the service proxy has no idea
      * where to find Zone 7 and goes into infinite recursive loop until stack overflow.
      * This is the most severe manifestation of the Y-topology routing bug.
      */

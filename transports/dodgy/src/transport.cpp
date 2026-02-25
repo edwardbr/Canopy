@@ -222,7 +222,7 @@ namespace rpc::dodgy
     dodgy_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options build_out_param_channel,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -243,7 +243,7 @@ namespace rpc::dodgy
             addref_send{.destination_zone_id = remote_object_id.get_val(),
                 .object_id = remote_object_id.get_object().get_val(),
                 .caller_zone_id = caller_zone_id.get_val(),
-                .known_direction_zone_id = known_direction_zone_id.get_val(),
+                .requesting_zone_id = requesting_zone_id.get_val(),
                 .build_out_param_channel = build_out_param_channel,
                 .back_channel = in_back_channel},
             response_data);
@@ -887,7 +887,7 @@ namespace rpc::dodgy
         auto ret = CO_AWAIT inbound_add_ref(prefix.version,
             rpc::destination_zone{request.destination_zone_id}.with_object(rpc::object{request.object_id}),
             {request.caller_zone_id},
-            {request.known_direction_zone_id},
+            {request.requesting_zone_id},
             (rpc::add_ref_options)request.build_out_param_channel,
             request.back_channel,
             out_back_channel);

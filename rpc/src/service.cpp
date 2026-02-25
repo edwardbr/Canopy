@@ -481,7 +481,7 @@ namespace rpc
     service::add_ref(uint64_t protocol_version,
         remote_object remote_object_id,
         caller_zone caller_zone_id,
-        known_direction_zone known_direction_zone_id,
+        requesting_zone requesting_zone_id,
         add_ref_options build_out_param_channel,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -505,7 +505,7 @@ namespace rpc
                 auto error = CO_AWAIT caller_transport->add_ref(protocol_version,
                     remote_object_id,
                     caller_zone_id,
-                    zone_id_.as_known_direction_zone(),
+                    zone_id_.as_requesting_zone(),
                     add_ref_options::build_caller_route
                         | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
                     in_back_channel,
@@ -522,7 +522,7 @@ namespace rpc
                 auto destination_transport = inner_get_transport(remote_object_id);
                 if (destination_transport == nullptr)
                 {
-                    destination_transport = inner_get_transport(known_direction_zone_id.as_destination());
+                    destination_transport = inner_get_transport(requesting_zone_id.as_destination());
                     if (destination_transport == nullptr)
                     {
                         RPC_ERROR("Destination transport not found for zone {}", remote_object_id.get_val());
@@ -541,7 +541,7 @@ namespace rpc
                 CO_RETURN CO_AWAIT dest_transport->add_ref(protocol_version,
                     remote_object_id,
                     caller_zone_id,
-                    known_direction_zone_id,
+                    requesting_zone_id,
                     build_out_param_channel & (~add_ref_options::build_caller_route),
                     in_back_channel,
                     out_back_channel);
@@ -572,7 +572,7 @@ namespace rpc
                 auto dest_transport = inner_get_transport(caller_zone_id.as_destination());
                 if (!dest_transport)
                 {
-                    dest_transport = inner_get_transport(known_direction_zone_id.as_destination());
+                    dest_transport = inner_get_transport(requesting_zone_id.as_destination());
                     inner_add_transport(caller_zone_id.as_destination(), dest_transport);
                 }
             }
@@ -588,7 +588,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_add_ref(
-                zone_id_, remote_object_id, caller_zone_id, known_direction_zone_id, build_out_param_channel);
+                zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel);
         }
 #endif
         CO_RETURN rpc::error::OK();
@@ -1083,7 +1083,7 @@ namespace rpc
     service::outbound_add_ref(uint64_t protocol_version,
         remote_object remote_object_id,
         caller_zone caller_zone_id,
-        known_direction_zone known_direction_zone_id,
+        requesting_zone requesting_zone_id,
         add_ref_options build_out_param_channel,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel,
@@ -1093,7 +1093,7 @@ namespace rpc
         CO_RETURN CO_AWAIT transport->add_ref(protocol_version,
             remote_object_id,
             caller_zone_id,
-            known_direction_zone_id,
+            requesting_zone_id,
             build_out_param_channel,
             in_back_channel,
             out_back_channel);

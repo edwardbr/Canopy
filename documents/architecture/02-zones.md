@@ -212,7 +212,7 @@ Canopy uses specialized zone types for different routing scenarios:
 struct zone   // The current zone where all this activity is happening
 struct destination_zone   // Where the call is going
 struct caller_zone        // Where the call came from
-struct known_direction_zone  // Zone with known calling direction, used in add_ref to deal with zones that do not know about the existance of other zones, the known_direction_zone is used to route the add_ref to a zone that can pass on the add_ref to the correct zone
+struct requesting_zone  // Zone with known calling direction, used in add_ref to deal with zones that do not know about the existance of other zones, the requesting_zone is used to route the add_ref to a zone that can pass on the add_ref to the correct zone
 ```
 
 ### Why Different Types?
@@ -246,7 +246,7 @@ rpc::zone zone_id{42};
 
 auto dest = zone_id.as_destination();         // For routing to target
 auto caller = zone_id.as_caller();            // For tracking origin
-auto known = zone_id.as_known_direction_zone(); // For known routing
+auto known = zone_id.as_requesting_zone(); // For known routing
 ```
 
 ## Zone Boundaries
@@ -436,7 +436,7 @@ on_service_creation(name, zone_id, parent_zone_id)
             destination_zone destination_zone_id,
             object_id,
             caller_zone_id,
-            known_direction_zone_id,
+            requesting_zone_id,
             options)
  on_service_release(zone_id,
             destination_zone destination_zone_id,
@@ -475,7 +475,7 @@ on_service_creation(name, zone_id, parent_zone_id)
 **Zone Types**:
 - `rpc_types.idl:destination_zone` - Routing target
 - `rpc_types.idl:caller_zone` - Call origin
-- `rpc_types.idl:known_direction_zone` - Known direction
+- `rpc_types.idl:requesting_zone` - Known direction
 
 ## Next Steps
 

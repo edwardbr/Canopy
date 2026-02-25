@@ -958,7 +958,7 @@ namespace marshalled_tests
             // CRITICAL: This is where the routing bug should trigger
             // When this cached object (from an unknown autonomous zone) gets passed
             // to another zone that has no route to the original zone, it causes
-            // infinite recursion in add_ref without the known_direction_zone fix
+            // infinite recursion in add_ref without the requesting_zone fix
 
             CO_RETURN rpc::error::OK();
         }
@@ -995,7 +995,7 @@ namespace marshalled_tests
             // CRITICAL: This is where the routing bug should trigger
             // When this cached object (from an unknown autonomous zone) gets passed
             // to another zone that has no route to the original zone, it causes
-            // infinite recursion in add_ref without the known_direction_zone fix
+            // infinite recursion in add_ref without the requesting_zone fix
 
             CO_RETURN rpc::error::OK();
         }

@@ -130,7 +130,7 @@ namespace rpc
         void on_service_add_ref(rpc::zone zone_id,
             rpc::remote_object remote_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::known_direction_zone known_direction_zone_id,
+            rpc::requesting_zone requesting_zone_id,
             rpc::add_ref_options options) const override;
         void on_service_release(rpc::zone zone_id,
             rpc::remote_object remote_object_id,
@@ -156,7 +156,7 @@ namespace rpc
         void on_service_proxy_add_ref(rpc::zone zone_id,
             rpc::remote_object remote_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::known_direction_zone known_direction_zone_id,
+            rpc::requesting_zone requesting_zone_id,
             rpc::add_ref_options options) const override;
         void on_service_proxy_release(rpc::zone zone_id,
             rpc::remote_object remote_object_id,
@@ -313,7 +313,7 @@ namespace rpc
             zone adjacent_zone_id,
             remote_object remote_object_id,
             caller_zone caller_zone_id,
-            known_direction_zone known_direction_zone_id,
+            requesting_zone requesting_zone_id,
             add_ref_options options) const override;
         void on_transport_outbound_release(zone zone_id,
             zone adjacent_zone_id,
@@ -349,7 +349,7 @@ namespace rpc
             zone adjacent_zone_id,
             remote_object remote_object_id,
             caller_zone caller_zone_id,
-            known_direction_zone known_direction_zone_id,
+            requesting_zone requesting_zone_id,
             add_ref_options options) const override;
         void on_transport_inbound_release(zone zone_id,
             zone adjacent_zone_id,

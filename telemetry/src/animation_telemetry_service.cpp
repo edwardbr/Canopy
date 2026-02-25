@@ -231,7 +231,7 @@ namespace rpc
     void animation_telemetry_service::on_service_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -241,7 +241,7 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
-                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -315,7 +315,7 @@ namespace rpc
     void animation_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -325,7 +325,7 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -901,7 +901,7 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -912,7 +912,7 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -1020,7 +1020,7 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -1031,7 +1031,7 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_val()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("knownDirectionZone", known_direction_zone_id.get_val()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 

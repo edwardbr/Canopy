@@ -35,7 +35,7 @@ namespace std
     {
         return std::to_string(val.get_address());
     }
-    inline std::string to_string(const rpc::known_direction_zone& val)
+    inline std::string to_string(const rpc::requesting_zone& val)
     {
         return std::to_string(val.get_address());
     }
@@ -96,9 +96,9 @@ namespace std
         }
     };
 
-    template<> struct hash<rpc::known_direction_zone>
+    template<> struct hash<rpc::requesting_zone>
     {
-        auto operator()(const rpc::known_direction_zone& item) const noexcept
+        auto operator()(const rpc::requesting_zone& item) const noexcept
         {
             return std::hash<rpc::zone_address>{}(item.get_address());
         }

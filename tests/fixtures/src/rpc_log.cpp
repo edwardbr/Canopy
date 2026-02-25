@@ -185,7 +185,7 @@ extern "C"
         uint64_t destination_zone_id,
         uint64_t object_id,
         uint64_t caller_zone_id,
-        uint64_t known_direction_zone_id,
+        uint64_t requesting_zone_id,
         char build_out_param_channel)
     {
         auto root_service = current_host_service.lock();
@@ -199,7 +199,7 @@ extern "C"
         CO_RETURN CO_AWAIT root_service->add_ref(protocol_version,
             rpc::destination_zone(destination_zone_id).with_object(rpc::object(object_id)),
             {caller_zone_id},
-            {known_direction_zone_id},
+            {requesting_zone_id},
             static_cast<rpc::add_ref_options>(build_out_param_channel),
             in_back_channel,
             out_back_channel);

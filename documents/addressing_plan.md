@@ -13,7 +13,7 @@ The IDL remains the golden definition for all types. Transport wire protocol IDL
 
 ## Current State (Post Phase 1)
 
-**Zone types** in `rpc/interfaces/rpc/rpc_types.idl`: `zone`, `destination_zone`, `caller_zone`, `known_direction_zone` each wrap a `zone_address` struct internally. The `zone_address` struct currently has fixed fields: `uint64_t routing_prefix`, `uint32_t subnet_id`, `uint32_t object_id`.
+**Zone types** in `rpc/interfaces/rpc/rpc_types.idl`: `zone`, `destination_zone`, `caller_zone`, `requesting_zone` each wrap a `zone_address` struct internally. The `zone_address` struct currently has fixed fields: `uint64_t routing_prefix`, `uint32_t subnet_id`, `uint32_t object_id`.
 
 **i_marshaller** (`rpc/include/rpc/internal/marshaller.h`): Every method takes separate `destination_zone` and `object` parameters. Verified that `destination_zone_id + object_id` always identifies "which object at which zone" across ALL methods (including `object_released` where the message travels in the reverse direction).
 
@@ -149,9 +149,9 @@ The four zone types store `zone_address` internally (already done in Phase 1):
 
 **`caller_zone`**: Stores `zone_address` with `object_id = 0`. Never needs object identity.
 
-**`known_direction_zone`**: Stores `zone_address` with `object_id = 0`. Routing hint only.
+**`requesting_zone`**: Stores `zone_address` with `object_id = 0`. Routing hint only.
 
-**Conversion methods** remain: `as_destination()`, `as_caller()`, `as_known_direction_zone()`. The `as_destination()` from zone/caller/known copies the address with `object_id = 0`.
+**Conversion methods** remain: `as_destination()`, `as_caller()`, `as_requesting_zone()`. The `as_destination()` from zone/caller/known copies the address with `object_id = 0`.
 
 **`get_val()`** returns `const zone_address&` - the full address. New code and transport layers use this directly.
 
@@ -327,7 +327,7 @@ Transport/proxy lookup should compare by zone portion only (routing_prefix + sub
 ### 11. Risks and Gotchas
 
 - **Transport/proxy map lookup**: Must compare by zone portion only (ignoring object_id) when looking up transports. If `destination_zone` carries object_id, naive map lookup would fail to find the transport.
-- **`known_direction_zone` routing bug** (canopy-a8i): Orthogonal to this refactor but implementers should be aware of the interaction.
+- **`requesting_zone` routing bug** (canopy-a8i): Orthogonal to this refactor but implementers should be aware of the interaction.
 - **IDL generator**: Must handle `zone_address` as a struct with YAS serialization. Since it's a plain struct with three uint64_t fields, the existing generator handles it without changes.
 - **Wire format compatibility**: Phase 2 changes the wire format. Need version negotiation so old and new nodes can communicate during rollout. The widened zone_address (24 bytes vs 16 bytes) also changes the wire format in Phase 1b.
 - **Performance**: `zone_address` is 24 bytes vs 8 bytes for the original `uint64_t`. Zone types are copied frequently in routing. Profile to verify this is acceptable. In "none" mode, the extra bytes are all zero, so hash computation can short-circuit.

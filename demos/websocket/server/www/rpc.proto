@@ -39,7 +39,7 @@ message caller_zone {
 	uint64 id = 1;
 }
 
-message known_direction_zone {
+message requesting_zone {
 	uint64 id = 1;
 }
 

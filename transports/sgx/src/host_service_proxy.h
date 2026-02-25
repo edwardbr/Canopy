@@ -56,7 +56,7 @@ namespace rpc
             destination_zone destination_zone_id,
             object object_id,
             caller_zone caller_zone_id,
-            known_direction_zone known_direction_zone_id,
+            requesting_zone requesting_zone_id,
             add_ref_options build_out_param_channel,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;

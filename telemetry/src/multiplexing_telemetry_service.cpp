@@ -134,14 +134,14 @@ namespace rpc
     void multiplexing_telemetry_service::on_service_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         for (const auto& child : children_)
         {
             if (child)
             {
-                child->on_service_add_ref(zone_id, remote_object_id, caller_zone_id, known_direction_zone_id, options);
+                child->on_service_add_ref(zone_id, remote_object_id, caller_zone_id, requesting_zone_id, options);
             }
         }
     }
@@ -275,15 +275,14 @@ namespace rpc
     void multiplexing_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         for (const auto& child : children_)
         {
             if (child)
             {
-                child->on_service_proxy_add_ref(
-                    zone_id, remote_object_id, caller_zone_id, known_direction_zone_id, options);
+                child->on_service_proxy_add_ref(zone_id, remote_object_id, caller_zone_id, requesting_zone_id, options);
             }
         }
     }
@@ -751,7 +750,7 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         for (const auto& child : children_)
@@ -759,7 +758,7 @@ namespace rpc
             if (child)
             {
                 child->on_transport_outbound_add_ref(
-                    zone_id, adjacent_zone_id, remote_object_id, caller_zone_id, known_direction_zone_id, options);
+                    zone_id, adjacent_zone_id, remote_object_id, caller_zone_id, requesting_zone_id, options);
             }
         }
     }
@@ -861,7 +860,7 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         for (const auto& child : children_)
@@ -869,7 +868,7 @@ namespace rpc
             if (child)
             {
                 child->on_transport_inbound_add_ref(
-                    zone_id, adjacent_zone_id, remote_object_id, caller_zone_id, known_direction_zone_id, options);
+                    zone_id, adjacent_zone_id, remote_object_id, caller_zone_id, requesting_zone_id, options);
             }
         }
     }
