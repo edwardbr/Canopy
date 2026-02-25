@@ -196,9 +196,13 @@ auto main(int argc, char* argv[]) -> int
         coro::net::tcp::server server{scheduler, coro::net::tcp::server::options{.port = port}};
 
         if (tls_ctx)
+        {
             RPC_INFO("WebSocket server listening on port {} (TLS enabled)", port);
+        }
         else
+        {
             RPC_INFO("WebSocket server listening on port {}", port);
+        }
 
         while (true)
         {

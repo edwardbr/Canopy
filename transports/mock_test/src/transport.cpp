@@ -17,12 +17,15 @@ namespace rpc::mock_test
     void mock_transport::record_call(call_record::call_type type,
         uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::object object_id)
+        rpc::caller_zone caller_zone_id)
     {
         std::scoped_lock lock(call_history_mtx_);
-        call_history_.push_back(call_record{
-            type, protocol_version, destination_zone_id, caller_zone_id, object_id, std::chrono::steady_clock::now()});
+        call_history_.push_back(call_record{type,
+            protocol_version,
+            destination_zone_id,
+            caller_zone_id,
+            destination_zone_id.get_object(),
+            std::chrono::steady_clock::now()});
     }
 
     void mock_transport::set_force_failure(bool force_failure, int error_code)
@@ -75,7 +78,6 @@ namespace rpc::mock_test
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -84,7 +86,7 @@ namespace rpc::mock_test
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
         send_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::SEND, protocol_version, destination_zone_id, caller_zone_id, object_id);
+        record_call(call_record::call_type::SEND, protocol_version, destination_zone_id, caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
@@ -109,7 +111,6 @@ namespace rpc::mock_test
             tag,
             caller_zone_id,
             destination_zone_id,
-            object_id,
             interface_id,
             method_id,
             in_data,
@@ -127,7 +128,6 @@ namespace rpc::mock_test
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -141,7 +141,7 @@ namespace rpc::mock_test
         std::ignore = in_back_channel;
 
         post_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::POST, protocol_version, destination_zone_id, caller_zone_id, object_id);
+        record_call(call_record::call_type::POST, protocol_version, destination_zone_id, caller_zone_id);
         CO_RETURN;
     }
 
@@ -149,7 +149,6 @@ namespace rpc::mock_test
     mock_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -159,7 +158,7 @@ namespace rpc::mock_test
         std::ignore = out_back_channel;
 
         try_cast_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::TRY_CAST, protocol_version, destination_zone_id, caller_zone_id, object_id);
+        record_call(call_record::call_type::TRY_CAST, protocol_version, destination_zone_id, caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
@@ -172,7 +171,6 @@ namespace rpc::mock_test
     CORO_TASK(int)
     mock_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options build_out_param_channel,
@@ -185,7 +183,7 @@ namespace rpc::mock_test
         std::ignore = out_back_channel;
 
         add_ref_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::ADD_REF, protocol_version, destination_zone_id, caller_zone_id, object_id);
+        record_call(call_record::call_type::ADD_REF, protocol_version, destination_zone_id, caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
@@ -198,7 +196,6 @@ namespace rpc::mock_test
     CORO_TASK(int)
     mock_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -209,7 +206,7 @@ namespace rpc::mock_test
         std::ignore = out_back_channel;
 
         release_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::RELEASE, protocol_version, destination_zone_id, caller_zone_id, object_id);
+        record_call(call_record::call_type::RELEASE, protocol_version, destination_zone_id, caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
@@ -222,15 +219,13 @@ namespace rpc::mock_test
     CORO_TASK(void)
     mock_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
         std::ignore = in_back_channel;
 
         object_released_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(
-            call_record::call_type::OBJECT_RELEASED, protocol_version, destination_zone_id, caller_zone_id, object_id);
+        record_call(call_record::call_type::OBJECT_RELEASED, protocol_version, destination_zone_id, caller_zone_id);
         CO_RETURN;
     }
 
@@ -243,8 +238,7 @@ namespace rpc::mock_test
         std::ignore = in_back_channel;
 
         transport_down_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(
-            call_record::call_type::TRANSPORT_DOWN, protocol_version, destination_zone_id, caller_zone_id, rpc::object{0});
+        record_call(call_record::call_type::TRANSPORT_DOWN, protocol_version, destination_zone_id, caller_zone_id);
 
         mark_as_down();
         CO_RETURN;

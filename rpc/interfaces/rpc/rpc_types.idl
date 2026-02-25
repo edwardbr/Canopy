@@ -5,8 +5,8 @@
 
 namespace rpc
 {
-    //note R^ notation is a way to trick they syntax highlighter to not realise it is a multiline comment
-    #cpp_quote(R^__(
+// note R^ notation is a way to trick they syntax highlighter to not realise it is a multiline comment
+#cpp_quote(R^__(
     // the route to all fingerprinting if your type has been through the idl generator a specialised template version of
     // this static functor class will be made allowing you to get the unique id of this type used for serialisation identification
     template<typename T> class id
@@ -184,6 +184,12 @@ namespace rpc
         // zone-only address (strips object_id)
         zone_address zone_only() const { return zone_address(routing_prefix, subnet_id, 0); }
 
+        // return a copy with a different object_id
+        zone_address with_object(uint64_t obj) const
+        {
+            return zone_address(routing_prefix, subnet_id, static_cast<uint32_t>(obj));
+        }
+
         // check if two addresses refer to the same zone (ignoring object_id)
         bool same_zone(const zone_address& other) const
         {
@@ -213,6 +219,7 @@ namespace rpc
     struct operating_zone;
     struct caller_zone;
     struct known_direction_zone;
+    struct object;
     )__^)
 
     struct zone
@@ -226,7 +233,7 @@ namespace rpc
         zone(const zone&) = default;
         zone(zone&&) noexcept = default;
         zone(uint64_t initial_id)
-            : addr_(initial_id)
+            : addr_(zone_address(initial_id).zone_only())
         {
         }
         zone(const zone_address& addr)
@@ -237,7 +244,7 @@ namespace rpc
         zone& operator=(zone&&) noexcept = default;
         zone& operator=(uint64_t other)
         {
-            addr_ = zone_address(other);
+            addr_ = zone_address(other).zone_only();
             return *this;
         }
 
@@ -246,14 +253,12 @@ namespace rpc
 
         // compare
         friend inline bool operator==(const zone& lhs, const zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator==(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
             return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const zone& lhs, const zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator!=(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
             return addr_.get_val() != static_cast<uint64_t>(val);
         }
@@ -268,7 +273,6 @@ namespace rpc
         inline caller_zone as_caller() const;
         inline known_direction_zone as_known_direction_zone() const;
             )__^)
-
     };
 
     struct destination_zone
@@ -277,7 +281,7 @@ namespace rpc
         zone_address addr_;
 
     public:
-    #cpp_quote(R^__(
+#cpp_quote(R^__(
         destination_zone() = default;
         destination_zone(const destination_zone&) = default;
         destination_zone(destination_zone&&) noexcept = default;
@@ -302,14 +306,12 @@ namespace rpc
 
         // compare
         friend inline bool operator==(const destination_zone& lhs, const destination_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator==(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
             return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const destination_zone& lhs, const destination_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator!=(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
             return addr_.get_val() != static_cast<uint64_t>(val);
         }
@@ -318,6 +320,10 @@ namespace rpc
         bool operator<(const destination_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
+
+        // object accessors for embedded object_id
+        inline object get_object() const;
+        inline destination_zone with_object(object obj) const;
 
         inline zone as_zone() const;
         inline caller_zone as_caller() const;
@@ -331,12 +337,12 @@ namespace rpc
         zone_address addr_;
 
     public:
-    #cpp_quote(R^__(
+#cpp_quote(R^__(
         caller_zone() = default;
         caller_zone(const caller_zone&) = default;
         caller_zone(caller_zone&&) noexcept = default;
         caller_zone(uint64_t initial_id)
-            : addr_(initial_id)
+            : addr_(zone_address(initial_id).zone_only())
         {
         }
         caller_zone(const zone_address& addr)
@@ -347,7 +353,7 @@ namespace rpc
         caller_zone& operator=(caller_zone&&) noexcept = default;
         caller_zone& operator=(uint64_t other)
         {
-            addr_ = zone_address(other);
+            addr_ = zone_address(other).zone_only();
             return *this;
         }
 
@@ -356,14 +362,12 @@ namespace rpc
 
         // compare
         friend inline bool operator==(const caller_zone& lhs, const caller_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator==(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
             return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const caller_zone& lhs, const caller_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator!=(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
             return addr_.get_val() != static_cast<uint64_t>(val);
         }
@@ -385,16 +389,16 @@ namespace rpc
         zone_address addr_;
 
     public:
-     #cpp_quote(R^__(
-       known_direction_zone() = default;
+#cpp_quote(R^__(
+        known_direction_zone() = default;
         known_direction_zone(const known_direction_zone&) = default;
         known_direction_zone(known_direction_zone&&) noexcept = default;
         known_direction_zone(zone z) noexcept
-            : addr_(z.get_address())
+            : addr_(z.get_address().zone_only())
         {
         }
         known_direction_zone(uint64_t initial_id)
-            : addr_(initial_id)
+            : addr_(zone_address(initial_id).zone_only())
         {
         }
         known_direction_zone(const zone_address& addr)
@@ -405,7 +409,7 @@ namespace rpc
         known_direction_zone& operator=(known_direction_zone&&) noexcept = default;
         known_direction_zone& operator=(uint64_t other)
         {
-            addr_ = zone_address(other);
+            addr_ = zone_address(other).zone_only();
             return *this;
         }
 
@@ -414,14 +418,12 @@ namespace rpc
 
         // compare
         friend inline bool operator==(const known_direction_zone& lhs, const known_direction_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator==(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
             return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const known_direction_zone& lhs, const known_direction_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        bool operator!=(T val) const
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
             return addr_.get_val() != static_cast<uint64_t>(val);
         }
@@ -443,8 +445,8 @@ namespace rpc
         uint64_t id = 0;
 
     public:
-     #cpp_quote(R^__(
-       object() = default;
+#cpp_quote(R^__(
+        object() = default;
         object(const object&) = default;
         object(object&&) noexcept = default;
         object(uint64_t initial_id)
@@ -490,8 +492,8 @@ namespace rpc
         uint64_t id = 0;
 
     public:
-      #cpp_quote(R^__(
-      interface_ordinal() = default;
+#cpp_quote(R^__(
+        interface_ordinal() = default;
         interface_ordinal(const interface_ordinal&) = default;
         interface_ordinal(interface_ordinal&&) noexcept = default;
         interface_ordinal(uint64_t initial_id)
@@ -537,8 +539,8 @@ namespace rpc
         uint64_t id = 0;
 
     public:
-     #cpp_quote(R^__(
-       method() = default;
+#cpp_quote(R^__(
+        method() = default;
         method(const method&) = default;
         method(method&&) noexcept = default;
         method(uint64_t initial_id)
@@ -577,7 +579,7 @@ namespace rpc
             )__^)
     };
 
-    #cpp_quote(R^__(
+#cpp_quote(R^__(
     // converters
     destination_zone zone::as_destination() const
     {
@@ -617,20 +619,64 @@ namespace rpc
     {
         return destination_zone(addr_);
     }
+
+    object destination_zone::get_object() const
+    {
+        return object(addr_.get_object_id());
+    }
+
+    destination_zone destination_zone::with_object(object obj) const
+    {
+        return destination_zone(addr_.with_object(obj.get_val()));
+    }
     )__^)
 
     struct interface_descriptor
     {
-        object object_id;
         destination_zone destination_zone_id;
+
+    public:
+#cpp_quote(R^__(
+        interface_descriptor() = default;
+        interface_descriptor(const interface_descriptor&) = default;
+        interface_descriptor(interface_descriptor&&) noexcept = default;
+        interface_descriptor& operator=(const interface_descriptor&) = default;
+        interface_descriptor& operator=(interface_descriptor&&) noexcept = default;
+
+        // construct with object embedded in destination_zone
+        interface_descriptor(object obj, destination_zone dest)
+            : destination_zone_id(dest.with_object(obj))
+        {
+        }
+
+        // construct from destination_zone (which may already contain object_id)
+        interface_descriptor(destination_zone dest)
+            : destination_zone_id(dest)
+        {
+        }
+
+        // accessor for the embedded object_id
+        object get_object_id() const { return destination_zone_id.get_object(); }
+    )__^)
     };
 
     struct connection_settings
     {
         interface_ordinal caller_interface_id;
         interface_ordinal destination_interface_id;
-        object object_id;
         destination_zone input_zone_id;
+
+    public:
+#cpp_quote(R^__(
+        connection_settings() = default;
+        connection_settings(const connection_settings&) = default;
+        connection_settings(connection_settings&&) noexcept = default;
+        connection_settings& operator=(const connection_settings&) = default;
+        connection_settings& operator=(connection_settings&&) noexcept = default;
+
+        // accessor for the embedded object_id in input_zone_id
+        object get_object_id() const { return input_zone_id.get_object(); }
+    )__^)
     };
 
     struct function_info

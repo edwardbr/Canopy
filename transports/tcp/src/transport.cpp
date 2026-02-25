@@ -69,7 +69,7 @@ namespace rpc::tcp
         init_client_channel_response init_receive;
         int ret = CO_AWAIT call_peer(rpc::get_version(),
             init_client_channel_send{.caller_zone_id = get_zone_id().as_caller(),
-                .caller_object_id = input_descr.object_id,
+                .caller_object_id = input_descr.get_object_id(),
                 .caller_interface_id = input_descr.caller_interface_id,
                 .destination_zone_id = get_adjacent_zone_id().as_destination(),
                 .destination_interface_id = input_descr.destination_interface_id,
@@ -100,7 +100,6 @@ namespace rpc::tcp
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -125,7 +124,6 @@ namespace rpc::tcp
                 .tag = tag,
                 .caller_zone_id = caller_zone_id,
                 .destination_zone_id = destination_zone_id,
-                .object_id = object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
@@ -151,7 +149,6 @@ namespace rpc::tcp
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -173,7 +170,6 @@ namespace rpc::tcp
                 .tag = tag,
                 .caller_zone_id = caller_zone_id,
                 .destination_zone_id = destination_zone_id,
-                .object_id = object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
@@ -192,7 +188,6 @@ namespace rpc::tcp
     tcp_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -211,7 +206,6 @@ namespace rpc::tcp
         int ret = CO_AWAIT call_peer(protocol_version,
             try_cast_send{.caller_zone_id = caller_zone_id,
                 .destination_zone_id = destination_zone_id,
-                .object_id = object_id,
                 .interface_id = interface_id,
                 .back_channel = in_back_channel},
             response);
@@ -230,7 +224,6 @@ namespace rpc::tcp
     CORO_TASK(int)
     tcp_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options build_out_param_channel,
@@ -252,7 +245,6 @@ namespace rpc::tcp
         addref_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
             addref_send{.destination_zone_id = destination_zone_id,
-                .object_id = object_id,
                 .caller_zone_id = caller_zone_id,
                 .known_direction_zone_id = known_direction_zone_id,
                 .build_out_param_channel = build_out_param_channel,
@@ -287,7 +279,6 @@ namespace rpc::tcp
     CORO_TASK(int)
     tcp_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -308,7 +299,6 @@ namespace rpc::tcp
         release_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
             release_send{.destination_zone_id = destination_zone_id,
-                .object_id = object_id,
                 .caller_zone_id = caller_zone_id,
                 .options = options,
                 .back_channel = in_back_channel},
@@ -342,7 +332,6 @@ namespace rpc::tcp
     CORO_TASK(void)
     tcp_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
@@ -361,7 +350,6 @@ namespace rpc::tcp
             message_direction::one_way, // Use one_way for fire-and-forget
             object_released_send{.encoding = encoding::yas_binary,
                 .destination_zone_id = destination_zone_id,
-                .object_id = object_id,
                 .caller_zone_id = caller_zone_id,
                 .back_channel = in_back_channel},
             0); // sequence number 0 for one-way messages
@@ -828,7 +816,6 @@ namespace rpc::tcp
             request.tag,
             request.caller_zone_id,
             request.destination_zone_id,
-            request.object_id,
             request.interface_id,
             request.method_id,
             request.payload,
@@ -878,7 +865,6 @@ namespace rpc::tcp
             request.tag,
             request.caller_zone_id,
             request.destination_zone_id,
-            request.object_id,
             request.interface_id,
             request.method_id,
             request.payload,
@@ -908,7 +894,6 @@ namespace rpc::tcp
         auto ret = CO_AWAIT inbound_try_cast(prefix.version,
             request.caller_zone_id,
             request.destination_zone_id,
-            request.object_id,
             request.interface_id,
             request.back_channel,
             out_back_channel);
@@ -950,7 +935,6 @@ namespace rpc::tcp
         // Call inbound_add_ref for routing - transport will route to correct destination
         auto ret = CO_AWAIT inbound_add_ref(prefix.version,
             request.destination_zone_id,
-            request.object_id,
             request.caller_zone_id,
             request.known_direction_zone_id,
             request.build_out_param_channel,
@@ -994,7 +978,6 @@ namespace rpc::tcp
         // Call inbound_release for routing - transport will route to correct destination
         auto ret = CO_AWAIT inbound_release(prefix.version,
             request.destination_zone_id,
-            request.object_id,
             request.caller_zone_id,
             request.options,
             request.back_channel,
@@ -1044,7 +1027,7 @@ namespace rpc::tcp
 
         // Call inbound_object_released for routing - transport will route to correct destination
         CO_AWAIT inbound_object_released(
-            prefix.version, request.destination_zone_id, request.object_id, request.caller_zone_id, request.back_channel);
+            prefix.version, request.destination_zone_id, request.caller_zone_id, request.back_channel);
 
         // No response needed for object_released (fire-and-forget)
         RPC_TRACE("stub_handle_object_released complete");
@@ -1087,10 +1070,10 @@ namespace rpc::tcp
             RPC_ERROR("failed create_stub init_client_channel_send deserialization");
             CO_RETURN;
         }
-        rpc::connection_settings input_descr{.caller_interface_id = request.caller_interface_id,
-            .destination_interface_id = request.destination_interface_id,
-            .object_id = request.caller_object_id,
-            .input_zone_id = request.caller_zone_id.as_destination()};
+        rpc::connection_settings input_descr;
+        input_descr.caller_interface_id = request.caller_interface_id;
+        input_descr.destination_interface_id = request.destination_interface_id;
+        input_descr.input_zone_id = request.caller_zone_id.as_destination().with_object(request.caller_object_id);
         rpc::interface_descriptor output_interface;
 
         // Update the adjacent zone ID from the handshake message
@@ -1111,7 +1094,7 @@ namespace rpc::tcp
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .destination_zone_id = output_interface.destination_zone_id,
-                .destination_object_id = output_interface.object_id,
+                .destination_object_id = output_interface.get_object_id(),
                 .caller_zone_id = input_descr.input_zone_id.as_caller()},
             prefix.sequence_number);
         if (send_err != rpc::error::OK())

@@ -51,7 +51,6 @@ namespace rpc::local
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -72,7 +71,6 @@ namespace rpc::local
             tag,
             caller_zone_id,
             destination_zone_id,
-            object_id,
             interface_id,
             method_id,
             in_data,
@@ -87,7 +85,6 @@ namespace rpc::local
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -100,23 +97,14 @@ namespace rpc::local
             CO_RETURN;
         }
 
-        CO_AWAIT parent->inbound_post(protocol_version,
-            encoding,
-            tag,
-            caller_zone_id,
-            destination_zone_id,
-            object_id,
-            interface_id,
-            method_id,
-            in_data,
-            in_back_channel);
+        CO_AWAIT parent->inbound_post(
+            protocol_version, encoding, tag, caller_zone_id, destination_zone_id, interface_id, method_id, in_data, in_back_channel);
     }
 
     CORO_TASK(int)
     parent_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -128,13 +116,12 @@ namespace rpc::local
         }
 
         CO_RETURN CO_AWAIT parent->inbound_try_cast(
-            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, interface_id, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(int)
     parent_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options build_out_param_channel,
@@ -159,7 +146,6 @@ namespace rpc::local
             destination_zone_id.get_val());
         auto error_code = CO_AWAIT parent->inbound_add_ref(protocol_version,
             destination_zone_id,
-            object_id,
             caller_zone_id,
             known_direction_zone_id,
             build_out_param_channel,
@@ -172,7 +158,6 @@ namespace rpc::local
     CORO_TASK(int)
     parent_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -185,7 +170,7 @@ namespace rpc::local
         }
 
         auto error_code = CO_AWAIT parent->inbound_release(
-            protocol_version, destination_zone_id, object_id, caller_zone_id, options, in_back_channel, out_back_channel);
+            protocol_version, destination_zone_id, caller_zone_id, options, in_back_channel, out_back_channel);
 
         CO_RETURN error_code;
     }
@@ -193,7 +178,6 @@ namespace rpc::local
     CORO_TASK(void)
     parent_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
@@ -204,8 +188,7 @@ namespace rpc::local
             CO_RETURN;
         }
 
-        CO_AWAIT parent->inbound_object_released(
-            protocol_version, destination_zone_id, object_id, caller_zone_id, in_back_channel);
+        CO_AWAIT parent->inbound_object_released(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
     }
 
     CORO_TASK(void)
@@ -241,7 +224,6 @@ namespace rpc::local
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -263,7 +245,6 @@ namespace rpc::local
             tag,
             caller_zone_id,
             destination_zone_id,
-            object_id,
             interface_id,
             method_id,
             in_data,
@@ -278,7 +259,6 @@ namespace rpc::local
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -290,23 +270,14 @@ namespace rpc::local
             CO_RETURN;
         }
 
-        CO_AWAIT child->inbound_post(protocol_version,
-            encoding,
-            tag,
-            caller_zone_id,
-            destination_zone_id,
-            object_id,
-            interface_id,
-            method_id,
-            in_data,
-            in_back_channel);
+        CO_AWAIT child->inbound_post(
+            protocol_version, encoding, tag, caller_zone_id, destination_zone_id, interface_id, method_id, in_data, in_back_channel);
     }
 
     CORO_TASK(int)
     child_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -318,13 +289,12 @@ namespace rpc::local
         }
 
         CO_RETURN CO_AWAIT child->inbound_try_cast(
-            protocol_version, caller_zone_id, destination_zone_id, object_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_zone_id, interface_id, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(int)
     child_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options build_out_param_channel,
@@ -340,7 +310,6 @@ namespace rpc::local
 
         CO_RETURN CO_AWAIT child->inbound_add_ref(protocol_version,
             destination_zone_id,
-            object_id,
             caller_zone_id,
             known_direction_zone_id,
             build_out_param_channel,
@@ -351,7 +320,6 @@ namespace rpc::local
     CORO_TASK(int)
     child_transport::outbound_release(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -364,13 +332,12 @@ namespace rpc::local
         }
 
         CO_RETURN CO_AWAIT child->inbound_release(
-            protocol_version, destination_zone_id, object_id, caller_zone_id, options, in_back_channel, out_back_channel);
+            protocol_version, destination_zone_id, caller_zone_id, options, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(void)
     child_transport::outbound_object_released(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
@@ -380,8 +347,7 @@ namespace rpc::local
             CO_RETURN;
         }
 
-        CO_AWAIT child->inbound_object_released(
-            protocol_version, destination_zone_id, object_id, caller_zone_id, in_back_channel);
+        CO_AWAIT child->inbound_object_released(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
     }
 
     CORO_TASK(void)

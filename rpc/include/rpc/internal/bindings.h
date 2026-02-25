@@ -95,7 +95,7 @@ namespace rpc
         // if it is local to this service then just get the relevant stub
         else if (serv->get_zone_id().as_destination() == encap.destination_zone_id)
         {
-            auto os = serv->get_object(encap.object_id).lock();
+            auto os = serv->get_object(encap.get_object_id()).lock();
             if (!os)
             {
                 RPC_ERROR("Object not found in zone {}", serv->get_zone_id().get_val());
@@ -132,7 +132,7 @@ namespace rpc
             }
 
             std::shared_ptr<rpc::object_proxy> op;
-            auto err = CO_AWAIT service_proxy->get_or_create_object_proxy(encap.object_id,
+            auto err = CO_AWAIT service_proxy->get_or_create_object_proxy(encap.get_object_id(),
                 service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                 new_proxy_added,
                 caller_zone_id.as_known_direction_zone(),
@@ -164,7 +164,7 @@ namespace rpc
             "proxy_bind_out_param only supports rpc::shared_ptr and rpc::optimistic_ptr");
 
         // if we have a null object id then return a null ptr
-        if (!encap.object_id.is_set() || !encap.destination_zone_id.is_set())
+        if (!encap.get_object_id().is_set() || !encap.destination_zone_id.is_set())
             CO_RETURN rpc::error::OK();
 
         auto serv = sp->get_operating_zone_service();
@@ -172,7 +172,7 @@ namespace rpc
         // if it is local to this service then just get the relevant stub
         if (encap.destination_zone_id == serv->get_zone_id().as_destination())
         {
-            auto stub = serv->get_object(encap.object_id).lock();
+            auto stub = serv->get_object(encap.get_object_id()).lock();
             if (!stub)
             {
                 RPC_ERROR("Object not found - object is null in release");
@@ -224,7 +224,7 @@ namespace rpc
         }
 
         std::shared_ptr<rpc::object_proxy> op;
-        auto err = CO_AWAIT service_proxy->get_or_create_object_proxy(encap.object_id,
+        auto err = CO_AWAIT service_proxy->get_or_create_object_proxy(encap.get_object_id(),
             service_proxy::object_proxy_creation_rule::RELEASE_IF_NOT_NEW,
             new_proxy_added,
             {},
@@ -261,7 +261,7 @@ namespace rpc
         }
 
         // if we have a null object id then return a null ptr
-        if (encap.object_id == 0 || encap.destination_zone_id == 0)
+        if (encap.get_object_id() == 0 || encap.destination_zone_id == 0)
             CO_RETURN rpc::error::OK();
 
         if (encap.destination_zone_id != sp->get_destination_zone_id())
@@ -296,7 +296,7 @@ namespace rpc
 
         std::shared_ptr<rpc::object_proxy> op;
         auto err = CO_AWAIT service_proxy->get_or_create_object_proxy(
-            encap.object_id, service_proxy::object_proxy_creation_rule::DO_NOTHING, false, {}, false, op);
+            encap.get_object_id(), service_proxy::object_proxy_creation_rule::DO_NOTHING, false, {}, false, op);
         if (err != error::OK())
         {
             RPC_ERROR("get_or_create_object_proxy failed");
@@ -313,7 +313,7 @@ namespace rpc
             telemetry_service->on_service_proxy_add_ref(service_proxy->get_zone_id(),
                 encap.destination_zone_id,
                 service_proxy->get_zone_id().as_caller(),
-                encap.object_id,
+                encap.get_object_id(),
                 0,
                 rpc::add_ref_options::normal);
         }
