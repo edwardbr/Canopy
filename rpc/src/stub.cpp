@@ -296,7 +296,7 @@ namespace rpc
             RPC_DEBUG("release_all_from_zone: Released {} shared refs from zone {} for object {}",
                 shared_refs_to_release,
                 caller_zone_id.get_subnet(),
-                id_.get_subnet());
+                id_.get_val());
         }
 
         if (optimistic_refs_to_release > 0)
@@ -305,7 +305,7 @@ namespace rpc
             RPC_DEBUG("release_all_from_zone: Released {} optimistic refs from zone {} for object {}",
                 optimistic_refs_to_release,
                 caller_zone_id.get_subnet(),
-                id_.get_subnet());
+                id_.get_val());
         }
 
         // Decrement transport counts
