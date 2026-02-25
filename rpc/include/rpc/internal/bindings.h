@@ -261,7 +261,7 @@ namespace rpc
         }
 
         // if we have a null object id then return a null ptr
-        if (encap.get_object_id() == 0 || encap.destination_zone_id == 0)
+        if (encap.get_object_id() == 0 || !encap.destination_zone_id.is_set())
             CO_RETURN rpc::error::OK();
 
         if (encap.destination_zone_id != sp->get_destination_zone_id())

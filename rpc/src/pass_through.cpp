@@ -76,7 +76,7 @@ namespace rpc
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         method method_id,
         const rpc::span& in_data,
@@ -91,7 +91,7 @@ namespace rpc
         }
 
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(destination_zone_id);
+        auto target_transport = get_directional_transport(destination_object_id);
         if (!target_transport)
         {
             CO_RETURN error::ZONE_NOT_FOUND();
@@ -113,7 +113,7 @@ namespace rpc
             encoding,
             tag,
             caller_zone_id,
-            destination_zone_id,
+            destination_object_id,
             interface_id,
             method_id,
             in_data,
@@ -143,7 +143,7 @@ namespace rpc
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         method method_id,
         const rpc::span& in_data,
@@ -155,7 +155,7 @@ namespace rpc
             CO_RETURN;
         }
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(destination_zone_id);
+        auto target_transport = get_directional_transport(destination_object_id);
         if (!target_transport)
         {
             CO_RETURN;
@@ -166,7 +166,7 @@ namespace rpc
 
         // Forward the post message directly to the transport
         CO_AWAIT target_transport->post(
-            protocol_version, encoding, tag, caller_zone_id, destination_zone_id, interface_id, method_id, in_data, in_back_channel);
+            protocol_version, encoding, tag, caller_zone_id, destination_object_id, interface_id, method_id, in_data, in_back_channel);
 
         // Decrement function count after completing the call
         uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
@@ -181,7 +181,7 @@ namespace rpc
     CORO_TASK(int)
     pass_through::try_cast(uint64_t protocol_version,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -193,7 +193,7 @@ namespace rpc
         }
 
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(destination_zone_id);
+        auto target_transport = get_directional_transport(destination_object_id);
         if (!target_transport)
         {
             CO_RETURN error::ZONE_NOT_FOUND();
@@ -212,7 +212,7 @@ namespace rpc
 
         // Forward the call directly to the transport
         auto result = CO_AWAIT target_transport->try_cast(
-            protocol_version, caller_zone_id, destination_zone_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_object_id, interface_id, in_back_channel, out_back_channel);
 
         // Decrement function count after completing the call
         uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
@@ -233,7 +233,7 @@ namespace rpc
 
     CORO_TASK(int)
     pass_through::add_ref(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         known_direction_zone known_direction_zone_id,
         add_ref_options build_out_param_channel,
@@ -256,7 +256,7 @@ namespace rpc
             zone_id_.get_val(),
             forward_destination_.get_val(),
             reverse_destination_.get_val(),
-            destination_zone_id.get_val(),
+            destination_object_id.get_val(),
             caller_zone_id.get_val(),
             static_cast<uint64_t>(build_out_param_channel),
             build_dest_channel,
@@ -266,7 +266,7 @@ namespace rpc
         // Determine target transport based on destination_zone
         if (build_dest_channel)
         {
-            destination_transport = get_directional_transport(destination_zone_id);
+            destination_transport = get_directional_transport(destination_object_id);
             if (!destination_transport)
             {
                 CO_RETURN error::ZONE_NOT_FOUND();
@@ -307,9 +307,9 @@ namespace rpc
 
         if (build_dest_channel)
         {
-            // Forward the add_ref call to the target transport (destination_zone_id carries embedded object)
+            // Forward the add_ref call to the target transport (destination_object_id carries embedded object)
             auto result = CO_AWAIT destination_transport->add_ref(protocol_version,
-                destination_zone_id,
+                destination_object_id,
                 caller_zone_id,
                 known_direction_zone_id,
                 build_out_param_channel & ~add_ref_options::build_caller_route,
@@ -329,9 +329,9 @@ namespace rpc
 
         if (build_caller_channel)
         {
-            // Forward the add_ref call to the target transport (destination_zone_id carries embedded object)
+            // Forward the add_ref call to the target transport (destination_object_id carries embedded object)
             auto result = CO_AWAIT caller_transport->add_ref(protocol_version,
-                destination_zone_id,
+                destination_object_id,
                 caller_zone_id,
                 known_direction_zone_id,
                 build_out_param_channel & ~add_ref_options::build_destination_route,
@@ -353,7 +353,7 @@ namespace rpc
 
         // Use bitwise AND to check flags, not exact equality
         // because build_out_param_channel may have additional build flags
-        if (no_local_add_ref && destination_zone_id.as_caller() == caller_zone_id)
+        if (no_local_add_ref && destination_object_id.as_caller() == caller_zone_id)
         {
             // this is a passthrough addref and should not be included in either count
         }
@@ -386,7 +386,7 @@ namespace rpc
 
     CORO_TASK(int)
     pass_through::release(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -396,7 +396,7 @@ namespace rpc
             zone_id_.get_val(),
             forward_destination_.get_val(),
             reverse_destination_.get_val(),
-            destination_zone_id.get_val(),
+            destination_object_id.get_val(),
             caller_zone_id.get_val(),
             static_cast<uint64_t>(options));
 
@@ -407,7 +407,7 @@ namespace rpc
         }
 
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(destination_zone_id);
+        auto target_transport = get_directional_transport(destination_object_id);
         if (!target_transport)
         {
             CO_RETURN error::ZONE_NOT_FOUND();
@@ -424,9 +424,9 @@ namespace rpc
         // Increment function count to track this active call
         function_count_.fetch_add(1, std::memory_order_acq_rel);
 
-        // destination_zone_id carries the embedded object_id
+        // destination_object_id carries the embedded object_id
         auto result = CO_AWAIT target_transport->release(
-            protocol_version, destination_zone_id, caller_zone_id, options, in_back_channel, out_back_channel);
+            protocol_version, destination_object_id, caller_zone_id, options, in_back_channel, out_back_channel);
 
         // Decrement function count after completing the call
         uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
@@ -484,7 +484,7 @@ namespace rpc
 
     CORO_TASK(void)
     pass_through::object_released(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
@@ -511,9 +511,9 @@ namespace rpc
                 CO_RETURN;
             }
 
-            // Forward the call directly to the transport (destination_zone_id carries embedded object_id)
+            // Forward the call directly to the transport (destination_object_id carries embedded object_id)
             CO_AWAIT target_transport->object_released(
-                protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
+                protocol_version, destination_object_id, caller_zone_id, in_back_channel);
         }
 
         // Decrement function count after completing the call
