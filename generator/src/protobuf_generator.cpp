@@ -1837,14 +1837,6 @@ namespace protobuf_generator
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");
                 cpp("}}");
-                cpp("{{");
-                cpp("std::vector<char> __obj_buf;");
-                cpp("{}.object_id.protobuf_serialise(__obj_buf);", param_name);
-                cpp("if (!proto_{}->mutable_object_id()->ParseFromArray(__obj_buf.data(), "
-                    "static_cast<int>(__obj_buf.size())))",
-                    param_name);
-                cpp("throw std::runtime_error(\"Failed to parse nested object\");");
-                cpp("}}");
             }
             else if (is_pointer)
             {
@@ -2026,13 +2018,6 @@ namespace protobuf_generator
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
                 cpp("{}.destination_zone_id.protobuf_deserialise(__dz_buf);", param_name);
-                cpp("}}");
-                cpp("{{");
-                cpp("std::vector<char> __obj_buf(proto_{}.object_id().ByteSizeLong());", param_name);
-                cpp("if (!proto_{}.object_id().SerializeToArray(__obj_buf.data(), static_cast<int>(__obj_buf.size())))",
-                    param_name);
-                cpp("throw std::runtime_error(\"Failed to serialize nested object\");");
-                cpp("{}.object_id.protobuf_deserialise(__obj_buf);", param_name);
                 cpp("}}");
             }
             else if (is_pointer)
@@ -2222,13 +2207,6 @@ namespace protobuf_generator
                 cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
                 cpp("{}.destination_zone_id.protobuf_deserialise(__dz_buf);", param_name);
                 cpp("}}");
-                cpp("{{");
-                cpp("std::vector<char> __obj_buf(proto_{}.object_id().ByteSizeLong());", param_name);
-                cpp("if (!proto_{}.object_id().SerializeToArray(__obj_buf.data(), static_cast<int>(__obj_buf.size())))",
-                    param_name);
-                cpp("throw std::runtime_error(\"Failed to serialize nested object\");");
-                cpp("{}.object_id.protobuf_deserialise(__obj_buf);", param_name);
-                cpp("}}");
             }
             else if (is_pointer)
             {
@@ -2405,14 +2383,6 @@ namespace protobuf_generator
                     "static_cast<int>(__dz_buf.size())))",
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");
-                cpp("}}");
-                cpp("{{");
-                cpp("std::vector<char> __obj_buf;");
-                cpp("{}.object_id.protobuf_serialise(__obj_buf);", param_name);
-                cpp("if (!proto_{}->mutable_object_id()->ParseFromArray(__obj_buf.data(), "
-                    "static_cast<int>(__obj_buf.size())))",
-                    param_name);
-                cpp("throw std::runtime_error(\"Failed to parse nested object\");");
                 cpp("}}");
             }
             else if (is_pointer)

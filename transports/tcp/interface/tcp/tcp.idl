@@ -81,7 +81,6 @@ namespace rpc
             uint64_t tag;
             rpc::caller_zone caller_zone_id;
             rpc::destination_zone destination_zone_id;
-            rpc::object object_id;
             rpc::interface_ordinal interface_id;
             rpc::method method_id;
             std::vector<char> payload;
@@ -101,7 +100,6 @@ namespace rpc
             uint64_t tag;
             rpc::caller_zone caller_zone_id;
             rpc::destination_zone destination_zone_id;
-            rpc::object object_id;
             rpc::interface_ordinal interface_id;
             rpc::method method_id;
             std::vector<char> payload;
@@ -112,7 +110,6 @@ namespace rpc
         {
             rpc::caller_zone caller_zone_id;
             rpc::destination_zone destination_zone_id;
-            rpc::object object_id;
             rpc::interface_ordinal interface_id;
             std::vector<rpc::back_channel_entry> back_channel;
         };
@@ -126,7 +123,6 @@ namespace rpc
         struct addref_send
         {
             rpc::destination_zone destination_zone_id;
-            rpc::object object_id;
             rpc::caller_zone caller_zone_id;
             rpc::known_direction_zone known_direction_zone_id;
             rpc::add_ref_options build_out_param_channel;
@@ -142,7 +138,6 @@ namespace rpc
         struct release_send
         {
             rpc::destination_zone destination_zone_id;
-            rpc::object object_id;
             rpc::caller_zone caller_zone_id;
             rpc::release_options options;
             std::vector<rpc::back_channel_entry> back_channel;
@@ -158,7 +153,6 @@ namespace rpc
         {
             rpc::encoding encoding;
             rpc::destination_zone destination_zone_id;
-            rpc::object object_id;
             rpc::caller_zone caller_zone_id;
             std::vector<rpc::back_channel_entry> back_channel;
         };

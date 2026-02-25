@@ -74,8 +74,7 @@ extern "C"
                 rpc::encoding(encoding),
                 tag,
                 {caller_zone_id},
-                {destination_zone_id},
-                {object_id},
+                rpc::destination_zone(destination_zone_id).with_object(rpc::object(object_id)),
                 {interface_id},
                 {method_id},
                 payload,
@@ -146,8 +145,7 @@ extern "C"
             rpc::encoding(encoding),
             tag,
             {caller_zone_id},
-            {destination_zone_id},
-            {object_id},
+            rpc::destination_zone(destination_zone_id).with_object(rpc::object(object_id)),
             {interface_id},
             {method_id},
             payload,
@@ -173,8 +171,12 @@ extern "C"
         }
         std::vector<rpc::back_channel_entry> in_back_channel;
         std::vector<rpc::back_channel_entry> out_back_channel;
-        int ret = CO_AWAIT root_service->try_cast(
-            protocol_version, caller_zone_id, destination_zone_id, {object_id}, {interface_id}, in_back_channel, out_back_channel);
+        int ret = CO_AWAIT root_service->try_cast(protocol_version,
+            caller_zone_id,
+            rpc::destination_zone(destination_zone_id).with_object(rpc::object(object_id)),
+            {interface_id},
+            in_back_channel,
+            out_back_channel);
         CO_RETURN ret;
     }
 
@@ -195,10 +197,9 @@ extern "C"
         std::vector<rpc::back_channel_entry> in_back_channel;
         std::vector<rpc::back_channel_entry> out_back_channel;
         CO_RETURN CO_AWAIT root_service->add_ref(protocol_version,
-            {destination_zone_id},
-            {object_id},
+            rpc::destination_zone(destination_zone_id).with_object(rpc::object(object_id)),
             {caller_zone_id},
-            {known_direction_zone_id}, // known_direction_zone - using 0 for unknown
+            {known_direction_zone_id},
             static_cast<rpc::add_ref_options>(build_out_param_channel),
             in_back_channel,
             out_back_channel);
@@ -221,8 +222,7 @@ extern "C"
         std::vector<rpc::back_channel_entry> in_back_channel;
         std::vector<rpc::back_channel_entry> out_back_channel;
         CO_RETURN CO_AWAIT root_service->release(protocol_version,
-            {zone_id},
-            {object_id},
+            rpc::destination_zone(zone_id).with_object(rpc::object(object_id)),
             {caller_zone_id},
             static_cast<rpc::release_options>(options),
             in_back_channel,

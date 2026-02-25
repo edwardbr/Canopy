@@ -7,6 +7,7 @@
 #include <cstring>
 #include <atomic>
 
+#include <fmt/format.h>
 #include <secret_llama/secret_llama.h>
 #include <secret_llama/secret_llama_stub.h>
 #include <websocket_demo/websocket_demo.h>
@@ -98,10 +99,15 @@ namespace websocket_demo
                 = CO_AWAIT service_->attach_remote_zone<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                     "websocket",
                     transport_,
-                    rpc::connection_settings{websocket_demo::v1::i_context_event::get_id(rpc::get_version()),
-                        websocket_demo::v1::i_calculator::get_id(rpc::get_version()),
-                        client_object_id_,
-                        transport_->get_adjacent_zone_id().as_destination()},
+                    [&]()
+                    {
+                        rpc::connection_settings cs;
+                        cs.caller_interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version());
+                        cs.destination_interface_id = websocket_demo::v1::i_calculator::get_id(rpc::get_version());
+                        cs.input_zone_id
+                            = transport_->get_adjacent_zone_id().as_destination().with_object(client_object_id_);
+                        return cs;
+                    }(),
                     output_descr,
                     [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
                         rpc::shared_ptr<websocket_demo::v1::i_calculator>& local,
@@ -123,13 +129,14 @@ namespace websocket_demo
                         co_return 0;
                     });
 
-            RPC_INFO("[WS] attach_remote_zone returned: {}, server_object_id={}", ret, output_descr.object_id.get_val());
+            RPC_INFO(
+                "[WS] attach_remote_zone returned: {}, server_object_id={}", ret, output_descr.get_object_id().get_val());
 
             // Queue the connect_response so the client knows the zone/object IDs.
             websocket_demo::v1::connect_response connect_resp;
             connect_resp.client_zone_id = transport_->get_adjacent_zone_id().get_val();
             connect_resp.server_zone_id = service_->get_zone_id().get_val();
-            connect_resp.server_object_id = output_descr.object_id.get_val();
+            connect_resp.server_object_id = output_descr.get_object_id().get_val();
 
             auto resp_payload = rpc::to_protobuf<std::vector<uint8_t>>(connect_resp);
             {
@@ -392,7 +399,9 @@ namespace websocket_demo
             if (wslay_is_ctrl_frame(arg->opcode))
             {
                 if (arg->opcode == WSLAY_CONNECTION_CLOSE)
+                {
                     RPC_INFO("Connection close received, status code: {}", arg->status_code);
+                }
                 return;
             }
 

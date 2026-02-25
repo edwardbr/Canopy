@@ -479,7 +479,7 @@ namespace synchronous_generator
         case STUB_PARAM_WRAP:
             return fmt::format(R"__(
                 {0} {1};
-                if(!rpc::error::is_error(__rpc_ret) && {1}_object_.destination_zone_id.is_set() && {1}_object_.object_id.is_set())
+                if(!rpc::error::is_error(__rpc_ret) && {1}_object_.destination_zone_id.is_set() && {1}_object_.get_object_id().is_set())
                 {{
                     auto stub = __rpc_target_->__rpc_get_stub();
                     auto zone_ = stub ? stub->get_zone() : nullptr;

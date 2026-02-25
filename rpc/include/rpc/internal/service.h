@@ -432,7 +432,6 @@ namespace rpc
             uint64_t tag,
             caller_zone caller_zone_id,
             destination_zone destination_zone_id,
-            object object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -462,7 +461,6 @@ namespace rpc
             uint64_t tag,
             caller_zone caller_zone_id,
             destination_zone destination_zone_id,
-            object object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -471,14 +469,12 @@ namespace rpc
         try_cast(uint64_t protocol_version,
             caller_zone caller_zone_id,
             destination_zone destination_zone_id,
-            object object_id,
             interface_ordinal interface_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
         CORO_TASK(int)
         add_ref(uint64_t protocol_version,
             destination_zone destination_zone_id,
-            object object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             add_ref_options build_out_param_channel,
@@ -487,17 +483,14 @@ namespace rpc
         CORO_TASK(int)
         release(uint64_t protocol_version,
             destination_zone destination_zone_id,
-            object object_id,
             caller_zone caller_zone_id,
             release_options options,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
-        // New methods from i_marshaller interface
         CORO_TASK(void)
         object_released(uint64_t protocol_version,
             destination_zone destination_zone_id,
-            object object_id,
             caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 
@@ -521,7 +514,6 @@ namespace rpc
             uint64_t tag,
             caller_zone caller_zone_id,
             destination_zone destination_zone_id,
-            object object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -535,7 +527,6 @@ namespace rpc
             uint64_t tag,
             caller_zone caller_zone_id,
             destination_zone destination_zone_id,
-            object object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -545,7 +536,6 @@ namespace rpc
         virtual CORO_TASK(int) outbound_try_cast(uint64_t protocol_version,
             caller_zone caller_zone_id,
             destination_zone destination_zone_id,
-            object object_id,
             interface_ordinal interface_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel,
@@ -553,7 +543,6 @@ namespace rpc
 
         virtual CORO_TASK(int) outbound_add_ref(uint64_t protocol_version,
             destination_zone destination_zone_id,
-            object object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             add_ref_options build_out_param_channel,
@@ -563,7 +552,6 @@ namespace rpc
 
         virtual CORO_TASK(int) outbound_release(uint64_t protocol_version,
             destination_zone destination_zone_id,
-            object object_id,
             caller_zone caller_zone_id,
             release_options options,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -899,7 +887,7 @@ namespace rpc
             }
 
             rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
-            if (input_descr.object_id != 0)
+            if (input_descr.get_object_id() != 0)
             {
                 auto parent_service_proxy
                     = rpc::service_proxy::create("parent", child_svc, parent_transport, input_descr.input_zone_id);
@@ -909,7 +897,7 @@ namespace rpc
                 bool new_proxy_added = true;
 
                 std::shared_ptr<rpc::object_proxy> op;
-                auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.object_id,
+                auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.get_object_id(),
                     service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                     new_proxy_added,
                     {parent_transport->get_adjacent_zone_id().get_val()},
@@ -938,7 +926,7 @@ namespace rpc
                         adjacent_zone_id,
                         zone_id.as_destination(),
                         adjacent_zone_id.as_caller(),
-                        input_descr.object_id,
+                        input_descr.get_object_id(),
                         adjacent_zone_id,
                         rpc::add_ref_options::normal);
 #endif
@@ -967,7 +955,7 @@ namespace rpc
                             adjacent_zone_id,
                             zone_id.as_destination(),
                             adjacent_zone_id.as_caller(),
-                            output_descr.object_id,
+                            output_descr.get_object_id(),
                             zone_id,
                             rpc::add_ref_options::build_caller_route);
 #endif
@@ -1003,8 +991,8 @@ namespace rpc
             if (!input_interface->__rpc_is_local()
                 && casting_interface::get_destination_zone(*input_interface) != get_zone_id().as_destination())
             {
-                input_descr.input_zone_id = casting_interface::get_destination_zone(*input_interface);
-                input_descr.object_id = casting_interface::get_object_id(*input_interface);
+                input_descr.input_zone_id = casting_interface::get_destination_zone(*input_interface)
+                                                .with_object(casting_interface::get_object_id(*input_interface));
             }
             else
             {
@@ -1016,8 +1004,7 @@ namespace rpc
                 {
                     CO_RETURN err_code;
                 }
-                input_descr.input_zone_id = tmp.destination_zone_id;
-                input_descr.object_id = tmp.object_id;
+                input_descr.input_zone_id = tmp.destination_zone_id.with_object(tmp.get_object_id());
             }
         }
         else
@@ -1038,7 +1025,7 @@ namespace rpc
         }
 
         // Demarshal output interface if provided
-        if (output_descr.object_id != 0 && output_descr.destination_zone_id != 0)
+        if (output_descr.get_object_id() != 0 && output_descr.destination_zone_id != 0)
         {
             // Create service_proxy for this connection
             auto new_service_proxy = rpc::service_proxy::create(
@@ -1092,7 +1079,7 @@ namespace rpc
             adjacent_ka = transport_keep_alive(peer_transport, adjacent_zone_id.as_destination());
         }
 
-        if (input_descr.object_id != 0)
+        if (input_descr.get_object_id() != 0)
         {
             auto parent_service_proxy
                 = rpc::service_proxy::create(name, shared_from_this(), peer_transport, input_descr.input_zone_id);
@@ -1102,7 +1089,7 @@ namespace rpc
             bool new_proxy_added = true;
 
             std::shared_ptr<rpc::object_proxy> op;
-            auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.object_id,
+            auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.get_object_id(),
                 service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                 new_proxy_added,
                 {adjacent_zone_id.get_val()},
@@ -1131,7 +1118,7 @@ namespace rpc
                     adjacent_zone_id,
                     zone_id_.as_destination(),
                     adjacent_zone_id.as_caller(),
-                    input_descr.object_id,
+                    input_descr.get_object_id(),
                     adjacent_zone_id,
                     rpc::add_ref_options::normal);
 #endif
@@ -1160,7 +1147,7 @@ namespace rpc
                         adjacent_zone_id,
                         zone_id_.as_destination(),
                         adjacent_zone_id.as_caller(),
-                        output_descr.object_id,
+                        output_descr.get_object_id(),
                         zone_id_,
                         rpc::add_ref_options::build_caller_route);
 #endif
@@ -1218,9 +1205,9 @@ namespace rpc
             destination_transport != nullptr,
             destination_transport ? destination_transport->get_adjacent_zone_id().get_val() : 0);
 
+        auto dest_with_obj = destination_zone_id.with_object(object_id);
         err_code = CO_AWAIT marshaller->add_ref(protocol_version,
-            destination_zone_id,
-            object_id,
+            dest_with_obj,
             caller_zone_id,
             known_direction,
             rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
