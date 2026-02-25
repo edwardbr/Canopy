@@ -59,7 +59,7 @@ namespace comprehensive
 #endif
             );
 
-            std::cout << "Created root service in Zone " << root_service->get_zone_id().get_val() << "\n";
+            std::cout << "Created root service in Zone " << root_service->get_zone_id().get_subnet() << "\n";
 
             // Create calculator in same zone (direct access)
             auto calculator = create_calculator();
@@ -71,7 +71,7 @@ namespace comprehensive
 
             // Create child zone (Zone 2)
             rpc::zone child_zone_id{++zone_gen};
-            std::cout << "Creating child service in Zone " << child_zone_id.get_val() << "\n";
+            std::cout << "Creating child service in Zone " << child_zone_id.get_subnet() << "\n";
 
             // Create child transport connecting to parent
             auto child_transport
@@ -98,8 +98,8 @@ namespace comprehensive
                 CO_RETURN false;
             }
 
-            std::cout << "Connected Zone " << root_service->get_zone_id().get_val() << " -> Zone "
-                      << child_zone_id.get_val() << "\n";
+            std::cout << "Connected Zone " << root_service->get_zone_id().get_subnet() << " -> Zone "
+                      << child_zone_id.get_subnet() << "\n";
 
             std::cout << "--- Making RPC calls through local transport ---\n";
 

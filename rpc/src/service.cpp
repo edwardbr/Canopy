@@ -334,7 +334,7 @@ namespace rpc
 
         // Log that post was received
         RPC_TRACE("service::post received for destination_zone={} object_id={}",
-            remote_object_id.get_val(),
+            remote_object_id.get_subnet(),
             object_id.get_val());
 
         if (protocol_version < rpc::LOWEST_SUPPORTED_VERSION || protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
@@ -357,8 +357,9 @@ namespace rpc
         CO_AWAIT stub->call(protocol_version, encoding, caller_zone_id, interface_id, method_id, in_data, out_buf_dummy);
 
         // Log that post was delivered to local stub
-        RPC_TRACE(
-            "service::post delivered to local stub for object_id={} in zone={}", object_id.get_val(), zone_id_.get_val());
+        RPC_TRACE("service::post delivered to local stub for object_id={} in zone={}",
+            object_id.get_val(),
+            zone_id_.get_subnet());
 
         CO_RETURN;
     }
@@ -525,7 +526,7 @@ namespace rpc
                     destination_transport = inner_get_transport(requesting_zone_id.as_destination());
                     if (destination_transport == nullptr)
                     {
-                        RPC_ERROR("Destination transport not found for zone {}", remote_object_id.get_val());
+                        RPC_ERROR("Destination transport not found for zone {}", remote_object_id.get_subnet());
                         CO_RETURN rpc::error::ZONE_NOT_FOUND();
                     }
                     inner_add_transport(remote_object_id, destination_transport);
@@ -755,8 +756,8 @@ namespace rpc
         }
 
         RPC_INFO("Transport down notification received from caller_zone={} to destination_zone={}",
-            caller_zone_id.get_val(),
-            destination_zone_id.get_val());
+            caller_zone_id.get_subnet(),
+            destination_zone_id.get_subnet());
 
         // Collect all stubs that have references from the failed zone
         std::vector<std::pair<object, std::shared_ptr<object_stub>>> stubs_to_cleanup;
@@ -774,7 +775,7 @@ namespace rpc
 
             RPC_INFO("transport_down: Found {} stubs with references from zone {}",
                 stubs_to_cleanup.size(),
-                caller_zone_id.get_val());
+                caller_zone_id.get_subnet());
 
             // Release all references from the failed zone and trigger object_released events
             for (auto& [obj_id, stub] : stubs_to_cleanup)
@@ -833,7 +834,7 @@ namespace rpc
 
     void service::inner_add_transport(destination_zone destination_zone_id, const std::shared_ptr<transport>& transport_ptr)
     {
-        RPC_ASSERT(destination_zone_id.get_val());
+        RPC_ASSERT(destination_zone_id.get_subnet());
         RPC_ASSERT(transports_.find(destination_zone_id) == transports_.end());
         transports_[destination_zone_id] = transport_ptr;
         RPC_DEBUG("inner_add_transport service zone: {} destination_zone={} adjacent_zone={}",
@@ -844,7 +845,7 @@ namespace rpc
 
     void service::inner_remove_transport(destination_zone destination_zone_id)
     {
-        RPC_ASSERT(destination_zone_id.get_val());
+        RPC_ASSERT(destination_zone_id.get_subnet());
         auto it = transports_.find(destination_zone_id);
         if (it != transports_.end())
         {
@@ -858,7 +859,7 @@ namespace rpc
     }
     std::shared_ptr<rpc::transport> service::inner_get_transport(destination_zone destination_zone_id) const
     {
-        RPC_ASSERT(destination_zone_id.get_val());
+        RPC_ASSERT(destination_zone_id.get_subnet());
         // Try to find a direct transport to the destination zone
         auto item = transports_.find(destination_zone_id);
         if (item != transports_.end())
@@ -899,9 +900,9 @@ namespace rpc
         std::lock_guard g(service_proxy_control_);
 
         RPC_DEBUG("get_zone_proxy: svc_zone={}, dest={}, caller_zone={}, num_transports={}",
-            zone_id_.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.is_set() ? caller_zone_id.get_val() : 0,
+            zone_id_.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.is_set() ? caller_zone_id.get_subnet() : 0,
             transports_.size());
 
         {
@@ -920,7 +921,7 @@ namespace rpc
                 auto transport = item->second.lock();
                 if (transport)
                 {
-                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_val()),
+                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_subnet()),
                         shared_from_this(),
                         transport,
                         destination_zone_id);
@@ -939,7 +940,7 @@ namespace rpc
                 auto transport = item->second.lock();
                 if (transport)
                 {
-                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_val()),
+                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_subnet()),
                         shared_from_this(),
                         transport,
                         destination_zone_id);
@@ -952,9 +953,9 @@ namespace rpc
         }
 
         RPC_ERROR("get_zone_proxy: Could not find route! svc_zone={}, dest={}, caller_zone={}",
-            zone_id_.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.is_set() ? caller_zone_id.get_val() : 0);
+            zone_id_.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.is_set() ? caller_zone_id.get_subnet() : 0);
 
         return nullptr;
     }
@@ -1151,7 +1152,7 @@ namespace rpc
                 // Shared count reached zero - stub should be deleted
                 RPC_INFO("transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
                     obj_id.get_val(),
-                    remote_zone.get_val());
+                    remote_zone.get_subnet());
 
                 // Track for notification
                 objects_to_notify.push_back({obj_id, remote_zone});
@@ -1206,7 +1207,7 @@ namespace rpc
                     auto found = transports_.find(caller_zone_id.as_destination());
                     if (found == transports_.end())
                     {
-                        RPC_ERROR("No service proxy found for caller zone {}", caller_zone_id.get_val());
+                        RPC_ERROR("No service proxy found for caller zone {}", caller_zone_id.get_subnet());
                         return error::ZONE_NOT_FOUND();
                     }
                     else

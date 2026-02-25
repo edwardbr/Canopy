@@ -295,8 +295,8 @@ namespace rpc
             shared_count_.fetch_sub(shared_refs_to_release, std::memory_order_acq_rel);
             RPC_DEBUG("release_all_from_zone: Released {} shared refs from zone {} for object {}",
                 shared_refs_to_release,
-                caller_zone_id.get_val(),
-                id_.get_val());
+                caller_zone_id.get_subnet(),
+                id_.get_subnet());
         }
 
         if (optimistic_refs_to_release > 0)
@@ -304,8 +304,8 @@ namespace rpc
             optimistic_count_.fetch_sub(optimistic_refs_to_release, std::memory_order_acq_rel);
             RPC_DEBUG("release_all_from_zone: Released {} optimistic refs from zone {} for object {}",
                 optimistic_refs_to_release,
-                caller_zone_id.get_val(),
-                id_.get_val());
+                caller_zone_id.get_subnet(),
+                id_.get_subnet());
         }
 
         // Decrement transport counts

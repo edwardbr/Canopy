@@ -32,7 +32,7 @@ public:
         calculator_ = calculator::create_calculator();
 
         std::cout << "Server started on zone "
-                  << service_->get_zone_id().get_val() << "\n";
+                  << service_->get_zone_id().get_subnet() << "\n";
     }
 
     rpc::shared_ptr<calculator::v1::i_calculator> get_calculator()

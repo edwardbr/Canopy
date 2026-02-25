@@ -122,7 +122,7 @@ namespace comprehensive
 #endif
             );
 
-            RPC_INFO("Service zone ID: {}", service->get_zone_id().get_val());
+            RPC_INFO("Service zone ID: {}", service->get_zone_id().get_subnet());
             RPC_INFO("");
             RPC_INFO("NOTE: optimistic_ptr is for SAME-ZONE references only.");
             RPC_INFO("It cannot be serialized across zone boundaries.");

@@ -79,14 +79,15 @@ namespace rpc
 #ifdef USE_CANOPY_LOGGING
             RPC_WARNING("service_proxy destructor: {} proxies still in map for destination_zone={}",
                 proxies_.size(),
-                destination_zone_id_.get_val());
+                destination_zone_id_.get_subnet());
 
             // Log details of remaining proxies
             for (const auto& proxy_entry : proxies_)
             {
                 auto proxy = proxy_entry.second.lock();
-                RPC_WARNING(
-                    "  Remaining proxy: object_id={}, valid={}", proxy_entry.first.get_val(), (proxy ? "true" : "false"));
+                RPC_WARNING("  Remaining proxy: object_id={}, valid={}",
+                    proxy_entry.first.get_subnet(),
+                    (proxy ? "true" : "false"));
             }
 #endif
         }
@@ -428,7 +429,7 @@ namespace rpc
         {
             RPC_DEBUG("Zone {} not reachable during cleanup ({}), intermediate zone may have been cleaned up "
                       "(normal during multi-level hierarchy cleanup)",
-                destination_zone_id.get_val(),
+                destination_zone_id.get_subnet(),
                 rpc::error::to_string(ret));
         }
         else
@@ -447,8 +448,8 @@ namespace rpc
 
         RPC_DEBUG("on_object_proxy_released service zone: {} destination_zone={}, object_id = {} "
                   "decrement={})",
-            get_zone_id().get_val(),
-            destination_zone_id_.get_val(),
+            get_zone_id().get_subnet(),
+            destination_zone_id_.get_subnet(),
             object_id.get_val(),
             is_optimistic ? "optimistic" : "shared");
 
@@ -483,8 +484,8 @@ namespace rpc
 
         RPC_DEBUG("cleanup_after_object service zone: {} destination_zone={}, object_id = {} "
                   "decrement={}",
-            get_zone_id().get_val(),
-            destination_zone_id_.get_val(),
+            get_zone_id().get_subnet(),
+            destination_zone_id_.get_subnet(),
             object_id.get_val(),
             is_optimistic ? "optimistic" : "shared");
 
@@ -521,9 +522,9 @@ namespace rpc
         std::shared_ptr<rpc::object_proxy>& op)
     {
         RPC_DEBUG("get_or_create_object_proxy service zone: {} destination_zone={}, caller_zone={}, object_id = {}",
-            zone_id_.get_val(),
-            destination_zone_id_.get_val(),
-            zone_id_.as_caller().get_val(),
+            zone_id_.get_subnet(),
+            destination_zone_id_.get_subnet(),
+            zone_id_.as_caller().get_subnet(),
             object_id.get_val());
 
         std::shared_ptr<rpc::object_proxy> tmp;

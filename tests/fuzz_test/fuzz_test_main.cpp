@@ -441,7 +441,7 @@ private:
             CO_RETURN;
 
         auto zone_id = rpc::zone{++g_zone_id_counter};
-        std::string factory_zone_name = "factory_" + std::to_string(node_id_) + "_" + std::to_string(zone_id.get_val());
+        std::string factory_zone_name = "factory_" + std::to_string(node_id_) + "_" + std::to_string(zone_id.get_subnet());
 
         auto child_transport = std::make_shared<rpc::local::child_transport>(
             factory_zone_name.c_str(), current_service->shared_from_this(), zone_id);
@@ -1052,7 +1052,7 @@ public:
             auto op = obj->__rpc_get_object_proxy();
             [[maybe_unused]] auto object_id = op->get_object_id();
             [[maybe_unused]] auto zone_id = op->get_service_proxy()->get_zone_id();
-            RPC_INFO("[GARBAGE_COLLECTOR] Object zone id: {} object_id: {}", zone_id.get_val(), object_id.get_val());
+            RPC_INFO("[GARBAGE_COLLECTOR] Object zone id: {} object_id: {}", zone_id.get_subnet(), object_id.get_val());
 
             // Try to cast to interface types to get more information
             auto autonomous_node = CO_AWAIT rpc::dynamic_pointer_cast<i_autonomous_node>(obj);
@@ -1314,7 +1314,7 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
             // 1. Create the root node
             std::string zone_name = "autonomous_root_" + std::to_string(test_cycle);
             rpc::zone new_zone_id{++g_zone_id_counter};
-            scenario_config.zone_sequence.push_back(new_zone_id.get_val()); // Track zone creation
+            scenario_config.zone_sequence.push_back(new_zone_id.get_subnet()); // Track zone creation
 
             // Create a parent controller node in root service (similar to inproc_setup.h pattern)
             // This will be passed to the child zone
@@ -1328,8 +1328,8 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
                     rpc::shared_ptr<i_autonomous_node>& new_node,
                     const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
                 {
-                    new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_id.get_val());
-                    CO_RETURN CO_AWAIT new_node->initialize_node(node_type::ROOT_NODE, new_zone_id.get_val());
+                    new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_id.get_subnet());
+                    CO_RETURN CO_AWAIT new_node->initialize_node(node_type::ROOT_NODE, new_zone_id.get_subnet());
                 });
 
             auto connect_result = CO_AWAIT root_service->connect_to_zone(

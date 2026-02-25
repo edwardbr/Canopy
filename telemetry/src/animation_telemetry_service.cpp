@@ -183,13 +183,13 @@ namespace rpc
         std::vector<event_field> fields;
         fields.reserve(3);
         fields.push_back(make_string_field("serviceName", name));
-        fields.push_back(make_number_field("zone", zone_id.get_val()));
-        fields.push_back(make_number_field("parentZone", parent_zone_id.get_val()));
+        fields.push_back(make_number_field("zone", zone_id.get_subnet()));
+        fields.push_back(make_number_field("parentZone", parent_zone_id.get_subnet()));
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            zone_names_[zone_id.get_val()] = name;
-            zone_parents_[zone_id.get_val()] = parent_zone_id.get_val();
+            zone_names_[zone_id.get_subnet()] = name;
+            zone_parents_[zone_id.get_subnet()] = parent_zone_id.get_subnet();
 
             event_record record;
             record.timestamp = ts;
@@ -201,10 +201,10 @@ namespace rpc
 
     void animation_telemetry_service::on_service_deletion(rpc::zone zone_id) const
     {
-        std::vector<event_field> fields = {make_number_field("zone", zone_id.get_val())};
+        std::vector<event_field> fields = {make_number_field("zone", zone_id.get_subnet())};
         std::lock_guard<std::mutex> lock(mutex_);
-        zone_names_.erase(zone_id.get_val());
-        zone_parents_.erase(zone_id.get_val());
+        zone_names_.erase(zone_id.get_subnet());
+        zone_parents_.erase(zone_id.get_subnet());
 
         event_record record;
         record.timestamp = timestamp_now();
@@ -221,9 +221,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_try_cast",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
     }
@@ -237,11 +237,11 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_add_ref",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
-                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -253,10 +253,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_release",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -268,9 +268,9 @@ namespace rpc
     {
         std::vector<event_field> fields = {make_string_field("serviceName", service_name),
             make_string_field("serviceProxyName", service_proxy_name),
-            make_number_field("zone", zone_id.get_val()),
-            make_number_field("destinationZone", destination_zone_id.get_val()),
-            make_number_field("callerZone", caller_zone_id.get_val())};
+            make_number_field("zone", zone_id.get_subnet()),
+            make_number_field("destinationZone", destination_zone_id.get_subnet()),
+            make_number_field("callerZone", caller_zone_id.get_subnet())};
         record_event("service_proxy_creation", std::move(fields));
     }
 
@@ -282,9 +282,9 @@ namespace rpc
     {
         std::vector<event_field> fields = {make_string_field("serviceName", service_name),
             make_string_field("serviceProxyName", service_proxy_name),
-            make_number_field("zone", zone_id.get_val()),
-            make_number_field("destinationZone", destination_zone_id.get_val()),
-            make_number_field("callerZone", caller_zone_id.get_val())};
+            make_number_field("zone", zone_id.get_subnet()),
+            make_number_field("destinationZone", destination_zone_id.get_subnet()),
+            make_number_field("callerZone", caller_zone_id.get_subnet())};
         record_event("cloned_service_proxy_creation", std::move(fields));
     }
 
@@ -292,9 +292,9 @@ namespace rpc
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const
     {
         record_event("service_proxy_deletion",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     void animation_telemetry_service::on_service_proxy_try_cast(rpc::zone zone_id,
@@ -305,9 +305,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_try_cast",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
     }
@@ -321,11 +321,11 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_add_ref",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -337,9 +337,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_release",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
@@ -348,38 +348,38 @@ namespace rpc
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const
     {
         record_event("service_proxy_add_external_ref",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     void animation_telemetry_service::on_service_proxy_release_external_ref(
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const
     {
         record_event("service_proxy_release_external_ref",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     void animation_telemetry_service::on_impl_creation(const std::string& name, uint64_t address, rpc::zone zone_id) const
     {
         std::vector<event_field> fields = {make_string_field("name", name),
             make_number_field("address", address),
-            make_number_field("zone", zone_id.get_val())};
+            make_number_field("zone", zone_id.get_subnet())};
         record_event("impl_creation", std::move(fields));
     }
 
     void animation_telemetry_service::on_impl_deletion(uint64_t address, rpc::zone zone_id) const
     {
         record_event(
-            "impl_deletion", {make_number_field("address", address), make_number_field("zone", zone_id.get_val())});
+            "impl_deletion", {make_number_field("address", address), make_number_field("zone", zone_id.get_subnet())});
     }
 
     void animation_telemetry_service::on_stub_creation(rpc::zone zone_id, rpc::object object_id, uint64_t address) const
     {
         record_event("stub_creation",
-            {make_number_field("zone", zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("address", address)});
     }
@@ -387,14 +387,14 @@ namespace rpc
     void animation_telemetry_service::on_stub_deletion(rpc::zone zone_id, rpc::object object_id) const
     {
         record_event("stub_deletion",
-            {make_number_field("zone", zone_id.get_val()), make_number_field("object", object_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()), make_number_field("object", object_id.get_val())});
     }
 
     void animation_telemetry_service::on_stub_send(
         rpc::zone zone_id, rpc::object object_id, rpc::interface_ordinal interface_id, rpc::method method_id) const
     {
         record_event("stub_send",
-            {make_number_field("zone", zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -407,11 +407,11 @@ namespace rpc
         rpc::caller_zone caller_zone_id) const
     {
         record_event("stub_add_ref",
-            {make_number_field("zone", zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("count", count),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     void animation_telemetry_service::on_stub_release(rpc::zone zone_id,
@@ -421,19 +421,19 @@ namespace rpc
         rpc::caller_zone caller_zone_id) const
     {
         record_event("stub_release",
-            {make_number_field("zone", zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("count", count),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     void animation_telemetry_service::on_object_proxy_creation(
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::object object_id, bool add_ref_done) const
     {
         record_event("object_proxy_creation",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_boolean_field("addRefDone", add_ref_done)});
     }
@@ -442,8 +442,8 @@ namespace rpc
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::object object_id) const
     {
         record_event("object_proxy_deletion",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
     }
 
@@ -454,8 +454,8 @@ namespace rpc
         rpc::interface_ordinal interface_id) const
     {
         std::vector<event_field> fields = {make_string_field("name", name),
-            make_number_field("zone", zone_id.get_val()),
-            make_number_field("destinationZone", destination_zone_id.get_val()),
+            make_number_field("zone", zone_id.get_subnet()),
+            make_number_field("destinationZone", destination_zone_id.get_subnet()),
             make_number_field("object", object_id.get_val()),
             make_number_field("interface", interface_id.get_val())};
         record_event("interface_proxy_creation", std::move(fields));
@@ -467,8 +467,8 @@ namespace rpc
         rpc::interface_ordinal interface_id) const
     {
         record_event("interface_proxy_deletion",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
     }
@@ -481,8 +481,8 @@ namespace rpc
         rpc::method method_id) const
     {
         std::vector<event_field> fields = {make_string_field("methodName", method_name),
-            make_number_field("zone", zone_id.get_val()),
-            make_number_field("destinationZone", destination_zone_id.get_val()),
+            make_number_field("zone", zone_id.get_subnet()),
+            make_number_field("destinationZone", destination_zone_id.get_subnet()),
             make_number_field("object", object_id.get_val()),
             make_number_field("interface", interface_id.get_val()),
             make_number_field("method", method_id.get_val())};
@@ -608,16 +608,16 @@ namespace rpc
     {
         record_event("transport_creation",
             {make_string_field("name", name),
-                make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("adjacent_zone_id", adjacent_zone_id.get_val()),
+                make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_number_field("status", static_cast<uint32_t>(status))});
     }
 
     void animation_telemetry_service::on_transport_deletion(rpc::zone zone_id, rpc::zone adjacent_zone_id) const
     {
         record_event("transport_deletion",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("adjacent_zone_id", adjacent_zone_id.get_val())});
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet())});
     }
 
     void animation_telemetry_service::on_transport_status_change(const std::string& name,
@@ -628,8 +628,8 @@ namespace rpc
     {
         record_event("transport_status_change",
             {make_string_field("name", name),
-                make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("adjacent_zone_id", adjacent_zone_id.get_val()),
+                make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_number_field("old_status", static_cast<uint32_t>(old_status)),
                 make_number_field("new_status", static_cast<uint32_t>(new_status))});
     }
@@ -638,27 +638,27 @@ namespace rpc
         rpc::zone zone_id, rpc::zone adjacent_zone_id, rpc::destination_zone destination, rpc::caller_zone caller) const
     {
         record_event("transport_add_destination",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("adjacent_zone_id", adjacent_zone_id.get_val()),
-                make_number_field("destination", destination.get_val()),
-                make_number_field("caller", caller.get_val())});
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
+                make_number_field("destination", destination.get_subnet()),
+                make_number_field("caller", caller.get_subnet())});
     }
 
     void animation_telemetry_service::on_transport_remove_destination(
         rpc::zone zone_id, rpc::zone adjacent_zone_id, rpc::destination_zone destination, rpc::caller_zone caller) const
     {
         record_event("transport_remove_destination",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("adjacent_zone_id", adjacent_zone_id.get_val()),
-                make_number_field("destination", destination.get_val()),
-                make_number_field("caller", caller.get_val())});
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
+                make_number_field("destination", destination.get_subnet()),
+                make_number_field("caller", caller.get_subnet())});
     }
 
     void animation_telemetry_service::on_transport_accept(rpc::zone zone_id, rpc::zone adjacent_zone_id, int result) const
     {
         record_event("transport_accept",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("adjacent_zone_id", adjacent_zone_id.get_val()),
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_signed_field("result", result)});
     }
 
@@ -669,9 +669,9 @@ namespace rpc
         uint64_t optimistic_count) const
     {
         record_event("pass_through_creation",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("forward_destination", forward_destination.get_val()),
-                make_number_field("reverse_destination", reverse_destination.get_val()),
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("forward_destination", forward_destination.get_subnet()),
+                make_number_field("reverse_destination", reverse_destination.get_subnet()),
                 make_number_field("shared_count", shared_count),
                 make_number_field("optimistic_count", optimistic_count)});
     }
@@ -680,9 +680,9 @@ namespace rpc
         rpc::zone zone_id, rpc::destination_zone forward_destination, rpc::destination_zone reverse_destination) const
     {
         record_event("pass_through_deletion",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("forward_destination", forward_destination.get_val()),
-                make_number_field("reverse_destination", reverse_destination.get_val())});
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("forward_destination", forward_destination.get_subnet()),
+                make_number_field("reverse_destination", reverse_destination.get_subnet())});
     }
 
     void animation_telemetry_service::on_pass_through_add_ref(rpc::zone zone_id,
@@ -693,9 +693,9 @@ namespace rpc
         int64_t optimistic_delta) const
     {
         record_event("pass_through_add_ref",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("forward_destination", forward_destination.get_val()),
-                make_number_field("reverse_destination", reverse_destination.get_val()),
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("forward_destination", forward_destination.get_subnet()),
+                make_number_field("reverse_destination", reverse_destination.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options)),
                 make_signed_field("shared_delta", shared_delta),
                 make_signed_field("optimistic_delta", optimistic_delta)});
@@ -708,9 +708,9 @@ namespace rpc
         int64_t optimistic_delta) const
     {
         record_event("pass_through_release",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("forward_destination", forward_destination.get_val()),
-                make_number_field("reverse_destination", reverse_destination.get_val()),
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("forward_destination", forward_destination.get_subnet()),
+                make_number_field("reverse_destination", reverse_destination.get_subnet()),
                 make_signed_field("shared_delta", shared_delta),
                 make_signed_field("optimistic_delta", optimistic_delta)});
     }
@@ -722,9 +722,9 @@ namespace rpc
         rpc::transport_status reverse_status) const
     {
         record_event("pass_through_status_change",
-            {make_number_field("zone_id", zone_id.get_val()),
-                make_number_field("forward_destination", forward_destination.get_val()),
-                make_number_field("reverse_destination", reverse_destination.get_val()),
+            {make_number_field("zone_id", zone_id.get_subnet()),
+                make_number_field("forward_destination", forward_destination.get_subnet()),
+                make_number_field("reverse_destination", reverse_destination.get_subnet()),
                 make_number_field("forward_status", static_cast<uint32_t>(forward_status)),
                 make_number_field("reverse_status", static_cast<uint32_t>(reverse_status))});
     }
@@ -739,9 +739,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_send",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -756,9 +756,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_post",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -770,9 +770,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_object_released",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
     }
 
@@ -780,9 +780,9 @@ namespace rpc
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const
     {
         record_event("service_transport_down",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     // Service proxy methods
@@ -795,9 +795,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_send",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -812,9 +812,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_post",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -826,9 +826,9 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_object_released",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
     }
 
@@ -836,9 +836,9 @@ namespace rpc
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const
     {
         record_event("service_proxy_transport_down",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     // Transport outbound methods
@@ -852,10 +852,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_send",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -871,10 +871,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_post",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -889,10 +889,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_try_cast",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
     }
@@ -907,12 +907,12 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_add_ref",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -925,10 +925,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_release",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
@@ -941,10 +941,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_object_released",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
     }
 
@@ -954,10 +954,10 @@ namespace rpc
         rpc::caller_zone caller_zone_id) const
     {
         record_event("transport_outbound_transport_down",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 
     // Transport inbound methods
@@ -971,10 +971,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_send",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -990,10 +990,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_post",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
@@ -1008,10 +1008,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_try_cast",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
     }
@@ -1026,12 +1026,12 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_add_ref",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
-                make_number_field("knownDirectionZone", requesting_zone_id.get_val()),
+                make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
 
@@ -1044,10 +1044,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_release",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
     }
@@ -1060,10 +1060,10 @@ namespace rpc
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_object_released",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val()),
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
     }
 
@@ -1073,9 +1073,9 @@ namespace rpc
         rpc::caller_zone caller_zone_id) const
     {
         record_event("transport_inbound_transport_down",
-            {make_number_field("zone", zone_id.get_val()),
-                make_number_field("adjacentZone", adjacent_zone_id.get_val()),
-                make_number_field("destinationZone", destination_zone_id.get_val()),
-                make_number_field("callerZone", caller_zone_id.get_val())});
+            {make_number_field("zone", zone_id.get_subnet()),
+                make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
+                make_number_field("destinationZone", destination_zone_id.get_subnet()),
+                make_number_field("callerZone", caller_zone_id.get_subnet())});
     }
 }

@@ -98,7 +98,7 @@ namespace rpc
             auto os = serv->get_object(encap.get_object_id()).lock();
             if (!os)
             {
-                RPC_ERROR("Object not found in zone {}", serv->get_zone_id().get_val());
+                RPC_ERROR("Object not found in zone {}", serv->get_zone_id().get_subnet());
                 CO_RETURN rpc::error::OBJECT_NOT_FOUND();
             }
 

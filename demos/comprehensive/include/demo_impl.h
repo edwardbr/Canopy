@@ -316,7 +316,7 @@ namespace comprehensive
                 auto service = this_service_.lock();
                 if (!service)
                     CO_RETURN rpc::error::OBJECT_NOT_FOUND();
-                zone_id = service->get_zone_id().get_val();
+                zone_id = service->get_zone_id().get_subnet();
                 CO_RETURN rpc::error::OK();
             }
 

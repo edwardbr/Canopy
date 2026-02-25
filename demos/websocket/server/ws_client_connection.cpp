@@ -91,7 +91,7 @@ namespace websocket_demo
             transport_ = std::make_shared<transport>(
                 wslay_ctx_, service_, service_->generate_new_zone_id(), pending_messages_, pending_messages_mutex_);
 
-            RPC_INFO("[WS] connect_request received, inbound_remote_object={}", inbound_remote_object_.get_val());
+            RPC_INFO("[WS] connect_request received, inbound_remote_object={}", inbound_remote_object_.get_subnet());
             RPC_INFO("[WS] Calling attach_remote_zone");
 
             rpc::interface_descriptor output_descr;
@@ -143,8 +143,8 @@ namespace websocket_demo
                 pending_messages_->push(std::move(resp_payload));
             }
             RPC_INFO("[WS] connect_response queued: caller_zone={} outbound_remote_object={}",
-                connect_resp.caller_zone_id.get_val(),
-                connect_resp.outbound_remote_object.get_val());
+                connect_resp.caller_zone_id.get_subnet(),
+                connect_resp.outbound_remote_object.get_subnet());
 
             co_return true;
         }

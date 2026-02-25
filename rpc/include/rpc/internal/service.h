@@ -900,7 +900,7 @@ namespace rpc
                 auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.get_object_id(),
                     service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                     new_proxy_added,
-                    {parent_transport->get_adjacent_zone_id().get_val()},
+                    {parent_transport->get_adjacent_zone_id().get_subnet()},
                     false,
                     op);
                 if (err_code != error::OK())
@@ -1007,7 +1007,7 @@ namespace rpc
         }
         else
         {
-            input_descr.input_zone_id = child_transport->get_zone_id().get_val();
+            input_descr.input_zone_id = child_transport->get_zone_id().get_subnet();
         }
         input_descr.inbound_interface_id = in_param_type::get_id(rpc::get_version());
         input_descr.outbound_interface_id = out_param_type::get_id(rpc::get_version());
@@ -1090,7 +1090,7 @@ namespace rpc
             auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.get_object_id(),
                 service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                 new_proxy_added,
-                {adjacent_zone_id.get_val()},
+                {adjacent_zone_id.get_subnet()},
                 false,
                 op);
             if (err_code != error::OK())
@@ -1194,12 +1194,12 @@ namespace rpc
 
         RPC_DEBUG("remote_add_ref: zone={}, dest_zone={}, caller_zone={}, "
                   "known_direction={}, destination_transport={}, obj_adj_zone={}",
-            zone_id_.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
-            known_direction.get_val(),
+            zone_id_.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
+            known_direction.get_subnet(),
             destination_transport != nullptr,
-            destination_transport ? destination_transport->get_adjacent_zone_id().get_val() : 0);
+            destination_transport ? destination_transport->get_adjacent_zone_id().get_subnet() : 0);
 
         auto dest_with_obj = destination_zone_id.with_object(object_id);
         err_code = CO_AWAIT marshaller->add_ref(protocol_version,

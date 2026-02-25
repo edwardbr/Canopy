@@ -201,7 +201,7 @@ int main()
     // Create calculator instance
     auto calculator = create_calculator_instance();
 
-    std::cout << "Service created with zone ID: " << root_service->get_zone_id().get_val() << "\n";
+    std::cout << "Service created with zone ID: " << root_service->get_zone_id().get_subnet() << "\n";
 
     // Make local calls (same zone)
     int result;
@@ -304,7 +304,7 @@ int main()
     // Register calculator implementation
     auto calculator = create_calculator_instance();
 
-    std::cout << "Server zone ID: " << server_service->get_zone_id().get_val() << "\n";
+    std::cout << "Server zone ID: " << server_service->get_zone_id().get_subnet() << "\n";
 
     // === CLIENT SIDE ===
 
@@ -313,7 +313,7 @@ int main()
         "client",
         rpc::zone{++zone_gen});
 
-    std::cout << "Client zone ID: " << client_service->get_zone_id().get_val() << "\n";
+    std::cout << "Client zone ID: " << client_service->get_zone_id().get_subnet() << "\n";
 
     // Create child transport connecting client to server
     auto child_transport = std::make_shared<rpc::local::child_transport>(

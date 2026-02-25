@@ -116,8 +116,8 @@ template<class T> CORO_TASK(bool) coro_create_and_destroy(T& lib)
 {
     auto pt = lib.get_passthrough();
     CORO_ASSERT_NE(pt, nullptr);
-    CORO_ASSERT_EQ(pt->get_forward_destination().get_val(), lib.get_forward_dest().get_val());
-    CORO_ASSERT_EQ(pt->get_reverse_destination().get_val(), lib.get_reverse_dest().get_val());
+    CORO_ASSERT_EQ(pt->get_forward_destination().get_subnet(), lib.get_forward_dest().get_subnet());
+    CORO_ASSERT_EQ(pt->get_reverse_destination().get_subnet(), lib.get_reverse_dest().get_subnet());
     CO_RETURN true;
 }
 

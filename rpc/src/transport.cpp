@@ -20,7 +20,7 @@ namespace rpc
         , service_(service)
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_val() != 0)
+        if (adjacent_zone_id_.get_subnet() != 0)
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_creation(
@@ -35,7 +35,7 @@ namespace rpc
         , adjacent_zone_id_(adjacent_zone_id)
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_val() != 0)
+        if (adjacent_zone_id_.get_subnet() != 0)
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_creation(
@@ -47,7 +47,7 @@ namespace rpc
     transport::~transport()
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_val() != 0)
+        if (adjacent_zone_id_.get_subnet() != 0)
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_deletion(zone_id_, adjacent_zone_id_);
@@ -72,11 +72,11 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (old_adjacent_zone_id.get_val() != 0)
+            if (old_adjacent_zone_id.get_subnet() != 0)
             {
                 telemetry_service->on_transport_deletion(zone_id_, old_adjacent_zone_id);
             }
-            if (adjacent_zone_id_.get_val() != 0)
+            if (adjacent_zone_id_.get_subnet() != 0)
             {
                 telemetry_service->on_transport_creation(
                     name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire));
@@ -166,10 +166,10 @@ namespace rpc
 
         RPC_DEBUG("inner_add_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
                   "outbound_pt_count={}, inbound_pt_count={}, total_dest_count={}",
-            zone_id_.get_val(),
-            adjacent_zone_id_.get_val(),
-            outbound_dest.get_val(),
-            inbound_source.get_val(),
+            zone_id_.get_subnet(),
+            adjacent_zone_id_.get_subnet(),
+            outbound_dest.get_subnet(),
+            inbound_source.get_subnet(),
             outbound_counts.outbound_passthrough_count.load(),
             inbound_counts.inbound_passthrough_count.load(),
             get_destination_count());
@@ -209,8 +209,8 @@ namespace rpc
     {
         ++destination_count_;
         RPC_DEBUG("increment_outbound_proxy_count {} -> {} count = {}",
-            zone_id_.get_val(),
-            dest.get_val(),
+            zone_id_.get_subnet(),
+            dest.get_subnet(),
             get_destination_count());
 
         zone dest_zone = dest.as_zone();
@@ -224,8 +224,8 @@ namespace rpc
         if (found == zone_counts_.end())
         {
             RPC_WARNING("inner_decrement_outbound_proxy_count: No zone count found for dest={} in zone={}",
-                dest.get_val(),
-                zone_id_.get_val());
+                dest.get_subnet(),
+                zone_id_.get_subnet());
             return;
         }
 
@@ -233,16 +233,16 @@ namespace rpc
         if (counts.proxy_count == 0)
         {
             RPC_WARNING("inner_decrement_outbound_proxy_count: Proxy count already zero for dest={} in zone={}",
-                dest.get_val(),
-                zone_id_.get_val());
+                dest.get_subnet(),
+                zone_id_.get_subnet());
             return;
         }
 
         --destination_count_;
 
         RPC_DEBUG("decrement_outbound_proxy_count {} -> {} count = {}",
-            zone_id_.get_val(),
-            dest.get_val(),
+            zone_id_.get_subnet(),
+            dest.get_subnet(),
             get_destination_count());
 
         auto proxy_count = --counts.proxy_count;
@@ -266,16 +266,16 @@ namespace rpc
                     svc->remove_transport(dest_zone.as_destination());
                     RPC_DEBUG(
                         "inner_decrement_outbound_proxy_count: All counts reached 0 for zone={}, removed transport",
-                        dest.get_val());
+                        dest.get_subnet());
                 }
                 else
                 {
                     RPC_DEBUG("inner_decrement_outbound_proxy_count: All counts reached 0 for zone={}, but not "
                               "registered transport, "
                               "not removing from service (zone={}, adjacent={})",
-                        dest.get_val(),
-                        zone_id_.get_val(),
-                        adjacent_zone_id_.get_val());
+                        dest.get_subnet(),
+                        zone_id_.get_subnet(),
+                        adjacent_zone_id_.get_subnet());
                 }
             }
         }
@@ -286,7 +286,7 @@ namespace rpc
             RPC_DEBUG(
                 "transport::inner_decrement_outbound_proxy_count: destination_count reached 0, triggering shutdown "
                 "for zone={}",
-                zone_id_.get_val());
+                zone_id_.get_subnet());
             on_destination_count_zero();
         }
     }
@@ -294,8 +294,10 @@ namespace rpc
     void transport::inner_increment_inbound_stub_count(caller_zone dest)
     {
         ++destination_count_;
-        RPC_DEBUG(
-            "increment_inbound_stub_count {} -> {} count = {}", zone_id_.get_val(), dest.get_val(), get_destination_count());
+        RPC_DEBUG("increment_inbound_stub_count {} -> {} count = {}",
+            zone_id_.get_subnet(),
+            dest.get_subnet(),
+            get_destination_count());
 
         zone dest_zone = dest.as_destination().as_zone();
         auto& counts = zone_counts_[dest_zone];
@@ -307,7 +309,7 @@ namespace rpc
         auto found = zone_counts_.find(dest_zone);
         if (found == zone_counts_.end())
         {
-            RPC_WARNING("inner_decrement_inbound_stub_count: No zone count found for dest={}", dest.get_val());
+            RPC_WARNING("inner_decrement_inbound_stub_count: No zone count found for dest={}", dest.get_subnet());
             return;
         }
 
@@ -315,15 +317,17 @@ namespace rpc
         if (counts.stub_count == 0)
         {
             RPC_WARNING("inner_decrement_inbound_stub_count: Stub count already zero for dest={} in zone={}",
-                dest.get_val(),
-                zone_id_.get_val());
+                dest.get_subnet(),
+                zone_id_.get_subnet());
             return;
         }
 
         --destination_count_;
 
-        RPC_DEBUG(
-            "decrement_inbound_stub_count {} -> {} count = {}", zone_id_.get_val(), dest.get_val(), get_destination_count());
+        RPC_DEBUG("decrement_inbound_stub_count {} -> {} count = {}",
+            zone_id_.get_subnet(),
+            dest.get_subnet(),
+            get_destination_count());
 
         auto stub_count = --counts.stub_count;
         auto proxy_count = counts.proxy_count.load();
@@ -345,16 +349,16 @@ namespace rpc
                 {
                     svc->remove_transport(dest_zone.as_destination());
                     RPC_DEBUG("inner_decrement_inbound_stub_count: All counts reached 0 for zone={}, removed transport",
-                        dest.get_val());
+                        dest.get_subnet());
                 }
                 else
                 {
                     RPC_DEBUG("inner_decrement_inbound_stub_count: All counts reached 0 for zone={}, but not "
                               "registered transport, "
                               "not removing from service (zone={}, adjacent={})",
-                        dest.get_val(),
-                        zone_id_.get_val(),
-                        adjacent_zone_id_.get_val());
+                        dest.get_subnet(),
+                        zone_id_.get_subnet(),
+                        adjacent_zone_id_.get_subnet());
                 }
             }
         }
@@ -364,7 +368,7 @@ namespace rpc
         {
             RPC_DEBUG("transport::inner_decrement_inbound_stub_count: destination_count reached 0, triggering shutdown "
                       "for zone={}",
-                zone_id_.get_val());
+                zone_id_.get_subnet());
             on_destination_count_zero();
         }
     }
@@ -397,8 +401,8 @@ namespace rpc
         if (outbound_found == zone_counts_.end())
         {
             RPC_WARNING("remove_passthrough: No zone count found for outbound_dest={} in zone={}",
-                outbound_dest.get_val(),
-                zone_id_.get_val());
+                outbound_dest.get_subnet(),
+                zone_id_.get_subnet());
         }
         else
         {
@@ -406,8 +410,8 @@ namespace rpc
             if (outbound_counts.outbound_passthrough_count == 0)
             {
                 RPC_WARNING("remove_passthrough: Outbound count already zero for dest={} in zone={}",
-                    outbound_dest.get_val(),
-                    zone_id_.get_val());
+                    outbound_dest.get_subnet(),
+                    zone_id_.get_subnet());
             }
             else
             {
@@ -430,11 +434,11 @@ namespace rpc
                         {
                             RPC_DEBUG("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
                                       "passthrough={}->{}, reason=outbound_counts_zero",
-                                zone_id_.get_val(),
-                                adjacent_zone_id_.get_val(),
-                                outbound_dest.get_val(),
-                                outbound_dest.get_val(),
-                                inbound_source.get_val());
+                                zone_id_.get_subnet(),
+                                adjacent_zone_id_.get_subnet(),
+                                outbound_dest.get_subnet(),
+                                outbound_dest.get_subnet(),
+                                inbound_source.get_subnet());
                             svc->remove_transport(outbound_zone.as_destination());
                         }
                         else
@@ -442,9 +446,9 @@ namespace rpc
                             RPC_DEBUG("remove_passthrough: All counts reached 0 for outbound zone={}, but not "
                                       "registered transport, "
                                       "not removing from service (zone={}, adjacent={})",
-                                outbound_dest.get_val(),
-                                zone_id_.get_val(),
-                                adjacent_zone_id_.get_val());
+                                outbound_dest.get_subnet(),
+                                zone_id_.get_subnet(),
+                                adjacent_zone_id_.get_subnet());
                         }
                     }
                 }
@@ -456,8 +460,8 @@ namespace rpc
         if (inbound_found == zone_counts_.end())
         {
             RPC_WARNING("remove_passthrough: No zone count found for inbound_source={} in zone={}",
-                inbound_source.get_val(),
-                zone_id_.get_val());
+                inbound_source.get_subnet(),
+                zone_id_.get_subnet());
         }
         else
         {
@@ -465,8 +469,8 @@ namespace rpc
             if (inbound_counts.inbound_passthrough_count == 0)
             {
                 RPC_WARNING("remove_passthrough: Inbound count already zero for source={} in zone={}",
-                    inbound_source.get_val(),
-                    zone_id_.get_val());
+                    inbound_source.get_subnet(),
+                    zone_id_.get_subnet());
             }
             else
             {
@@ -489,23 +493,23 @@ namespace rpc
                         {
                             RPC_WARNING("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
                                         "passthrough={}->{}, reason=inbound_counts_zero",
-                                zone_id_.get_val(),
-                                adjacent_zone_id_.get_val(),
-                                inbound_source.get_val(),
-                                outbound_dest.get_val(),
-                                inbound_source.get_val());
+                                zone_id_.get_subnet(),
+                                adjacent_zone_id_.get_subnet(),
+                                inbound_source.get_subnet(),
+                                outbound_dest.get_subnet(),
+                                inbound_source.get_subnet());
                             svc->remove_transport(inbound_zone.as_destination());
                             RPC_DEBUG("remove_passthrough: All counts reached 0 for inbound zone={}, removed transport",
-                                inbound_source.get_val());
+                                inbound_source.get_subnet());
                         }
                         else
                         {
                             RPC_DEBUG("remove_passthrough: All counts reached 0 for inbound zone={}, but not "
                                       "registered transport, "
                                       "not removing from service (zone={}, adjacent={})",
-                                inbound_source.get_val(),
-                                zone_id_.get_val(),
-                                adjacent_zone_id_.get_val());
+                                inbound_source.get_subnet(),
+                                zone_id_.get_subnet(),
+                                adjacent_zone_id_.get_subnet());
                         }
                     }
                 }
@@ -514,10 +518,10 @@ namespace rpc
 
         RPC_DEBUG("remove_passthrough: zone={}, adjacent={}, outbound_dest={}, inbound_source={}, "
                   "remaining_dest_count={}",
-            zone_id_.get_val(),
-            adjacent_zone_id_.get_val(),
-            outbound_dest.get_val(),
-            inbound_source.get_val(),
+            zone_id_.get_subnet(),
+            adjacent_zone_id_.get_subnet(),
+            outbound_dest.get_subnet(),
+            inbound_source.get_subnet(),
             get_destination_count());
 
 #ifdef CANOPY_USE_TELEMETRY
@@ -530,7 +534,7 @@ namespace rpc
         if (destination_count_ == 0 && get_status() == transport_status::CONNECTED)
         {
             RPC_DEBUG("transport::remove_passthrough: destination_count reached 0, triggering shutdown for zone={}",
-                zone_id_.get_val());
+                zone_id_.get_subnet());
             on_destination_count_zero();
         }
     }
@@ -546,7 +550,7 @@ namespace rpc
         {
             RPC_ERROR("create_pass_through: Invalid pass-through request - forward_dest and reverse_dest are the same "
                       "({})! Pass-throughs should only route between different zones.",
-                forward_dest.get_val());
+                forward_dest.get_subnet());
             return nullptr;
         }
 
@@ -555,8 +559,8 @@ namespace rpc
         {
             RPC_ERROR("create_pass_through: Invalid pass-through request - forward and reverse transports are the same "
                       "object! forward_dest={}, reverse_dest={}",
-                forward_dest.get_val(),
-                reverse_dest.get_val());
+                forward_dest.get_subnet(),
+                reverse_dest.get_subnet());
             return nullptr;
         }
 
@@ -586,8 +590,8 @@ namespace rpc
         if (forward_passthrough)
         {
             RPC_DEBUG("create_pass_through: Found existing pass-through for forward_dest={}, reverse_dest={}",
-                forward_dest.get_val(),
-                reverse_dest.get_val());
+                forward_dest.get_subnet(),
+                reverse_dest.get_subnet());
             return forward_passthrough;
         }
         else
@@ -604,12 +608,12 @@ namespace rpc
             RPC_DEBUG("create_pass_through: Creating NEW passthrough {}->{}, "
                       "forward_transport=(zone={}, adjacent={}), "
                       "reverse_transport=(zone={}, adjacent={}), pt={}",
-                reverse_dest.get_val(),
-                forward_dest.get_val(),
-                forward->zone_id_.get_val(),
-                forward->adjacent_zone_id_.get_val(),
-                reverse->zone_id_.get_val(),
-                reverse->adjacent_zone_id_.get_val(),
+                reverse_dest.get_subnet(),
+                forward_dest.get_subnet(),
+                forward->zone_id_.get_subnet(),
+                forward->adjacent_zone_id_.get_subnet(),
+                reverse->zone_id_.get_subnet(),
+                reverse->adjacent_zone_id_.get_subnet(),
                 (void*)pt.get());
             // Register pass-through on both transports and increment passthrough counts
             // Forward transport: routes TO forward_dest (outbound), FROM reverse_dest (inbound)
@@ -647,7 +651,7 @@ namespace rpc
         status_.store(new_status, std::memory_order_release);
 
 #ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_val() != 0 && old_status != new_status)
+        if (adjacent_zone_id_.get_subnet() != 0 && old_status != new_status)
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_status_change(name_, zone_id_, adjacent_zone_id_, old_status, new_status);
@@ -671,10 +675,10 @@ namespace rpc
             {
                 RPC_WARNING("inner_get_passthrough: weak_ptr expired for zone1={}, zone2={} on transport "
                             "zone={} adjacent_zone={}",
-                    zone1.get_val(),
-                    zone2.get_val(),
-                    zone_id_.get_val(),
-                    adjacent_zone_id_.get_val());
+                    zone1.get_subnet(),
+                    zone2.get_subnet(),
+                    zone_id_.get_subnet(),
+                    adjacent_zone_id_.get_subnet());
             }
             return pt;
         }
@@ -703,10 +707,10 @@ namespace rpc
         std::shared_lock lock(destinations_mutex_);
         auto handler = inner_get_passthrough(zone1, zone2);
         RPC_DEBUG("get_passthrough: zone1={}, zone2={}, transport zone={}, adjacent_zone={}, found={}",
-            zone1.get_val(),
-            zone2.get_val(),
-            zone_id_.get_val(),
-            adjacent_zone_id_.get_val(),
+            zone1.get_subnet(),
+            zone2.get_subnet(),
+            zone_id_.get_subnet(),
+            adjacent_zone_id_.get_subnet(),
             handler != nullptr);
         return handler;
     }
@@ -724,8 +728,8 @@ namespace rpc
             {
                 RPC_ERROR("notify_all_destinations_of_disconnect: Local service no longer exists on transport zone={} "
                           "adjacent_zone={}",
-                    zone_id_.get_val(),
-                    adjacent_zone_id_.get_val());
+                    zone_id_.get_subnet(),
+                    adjacent_zone_id_.get_subnet());
                 CO_RETURN;
             }
 
@@ -761,7 +765,7 @@ namespace rpc
         for (const auto& remote_zone : zones_to_notify)
         {
             RPC_DEBUG("notify_all_destinations_of_disconnect: Notifying service about zone={} going down",
-                remote_zone.get_val());
+                remote_zone.get_subnet());
             CO_AWAIT service->notify_transport_down(self, remote_zone);
         }
     }
@@ -936,12 +940,12 @@ namespace rpc
 
         RPC_DEBUG("inbound_add_ref: svc_zone={}, dest_zone={}, caller_zone={}, build_caller_channel={}, "
                   "build_dest_channel={}, requesting_zone_id={}",
-            svc->get_zone_id().get_val(),
-            remote_object_id.get_val(),
-            caller_zone_id.get_val(),
+            svc->get_zone_id().get_subnet(),
+            remote_object_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             build_caller_channel,
             build_dest_channel,
-            requesting_zone_id.get_val());
+            requesting_zone_id.get_subnet());
 
         if (!remote_object_id.get_address().same_zone(svc->get_zone_id().get_address())
             && caller_zone_id != svc->get_zone_id().as_caller())
@@ -1204,7 +1208,7 @@ namespace rpc
         CO_AWAIT dest->transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
 
         std::shared_lock lock(destinations_mutex_);
-        zone_counts_.erase(caller_zone_id.get_val());
+        zone_counts_.erase(caller_zone_id.get_subnet());
     }
 
     CORO_TASK(int)

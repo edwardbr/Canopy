@@ -119,7 +119,7 @@ namespace rpc::tcp
                 .payload_size = payload.size()};
 
             RPC_TRACE("send_payload {}\nprefix = {}\npayload = {}",
-                get_service()->get_zone_id().get_val(),
+                get_service()->get_zone_id().get_subnet(),
                 rpc::to_yas_json<std::string>(prefix),
                 rpc::to_yas_json<std::string>(payload_envelope));
 
@@ -142,7 +142,7 @@ namespace rpc::tcp
 
                 sequence_number = ++sequence_number_;
                 RPC_TRACE("call_peer started zone: {} sequence_number: {} id: {}",
-                    get_service()->get_zone_id().get_val(),
+                    get_service()->get_zone_id().get_subnet(),
                     sequence_number,
                     rpc::id<SendPayload>::get(rpc::get_version()));
 
@@ -150,7 +150,7 @@ namespace rpc::tcp
                 if (get_status() >= rpc::transport_status::DISCONNECTED)
                 {
                     RPC_DEBUG("call_peer: transport disconnected, returning CALL_CANCELLED for zone {}",
-                        get_service()->get_zone_id().get_val());
+                        get_service()->get_zone_id().get_subnet());
                     CO_RETURN rpc::error::CALL_CANCELLED();
                 }
 
@@ -170,7 +170,7 @@ namespace rpc::tcp
                 RPC_ERROR("failed call_peer send_payload send");
                 std::scoped_lock lock(pending_transmits_mtx_);
                 RPC_ERROR("call_peer failed zone: {} sequence_number: {} id: {}",
-                    get_service()->get_zone_id().get_val(),
+                    get_service()->get_zone_id().get_subnet(),
                     sequence_number,
                     rpc::id<SendPayload>::get(rpc::get_version()));
                 pending_transmits_.erase(sequence_number);
@@ -181,7 +181,7 @@ namespace rpc::tcp
             CO_AWAIT res_payload.event.wait(); // now wait for the reply
 
             RPC_TRACE("call_peer succeeded zone: {} sequence_number: {} id: {}",
-                get_service()->get_zone_id().get_val(),
+                get_service()->get_zone_id().get_subnet(),
                 sequence_number,
                 rpc::id<SendPayload>::get(rpc::get_version()));
 
@@ -189,7 +189,7 @@ namespace rpc::tcp
             if (res_payload.error_code != rpc::error::OK())
             {
                 RPC_DEBUG("call_peer returning cancelled error for zone: {} sequence_number: {}",
-                    get_service()->get_zone_id().get_val(),
+                    get_service()->get_zone_id().get_subnet(),
                     sequence_number);
                 CO_RETURN res_payload.error_code;
             }

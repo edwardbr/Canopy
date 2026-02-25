@@ -29,7 +29,7 @@ public:
     zone() = default;
     explicit zone(uint64_t initial_id) : id(initial_id) {}
 
-    uint64_t get_val() const { return id; }
+    uint64_t get_subnet() const { return id; }
     constexpr bool is_set() const noexcept { return id != 0; }
 
     // Conversion helpers
