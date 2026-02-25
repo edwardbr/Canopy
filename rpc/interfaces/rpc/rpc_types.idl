@@ -64,7 +64,7 @@ namespace rpc
     {
         return e == static_cast<add_ref_options>(0);
     }
-    )__^)    
+    )__^)
 
     enum release_options : uint8_t
     {
@@ -99,7 +99,7 @@ namespace rpc
     {
         return e == static_cast<release_options>(0);
     }
-    )__^)    
+    )__^)
 
     // Back-channel entry for marshalling reference-counted objects across zones
     [no_fingerprint]
@@ -109,6 +109,69 @@ namespace rpc
         std::vector<uint8_t> payload;
     };
 
+    // IPv6-inspired zone address with routing prefix, subnet (zone), and object identity
+    // Total: 128 bits mapping to one IPv6 address
+    //   Bits 0-63:   routing prefix (physical node address)
+    //   Bits 64-95:  subnet ID (zone within the node)
+    //   Bits 96-127: object ID (specific object, 0 = zone-only)
+    struct zone_address
+    {
+        uint64_t routing_prefix = 0;
+        uint32_t subnet_id = 0;
+        uint32_t object_id = 0;
+
+    public:
+    #cpp_quote(R^__(
+        zone_address() = default;
+        zone_address(const zone_address&) = default;
+        zone_address(zone_address&&) noexcept = default;
+
+        // legacy compatibility: uint64_t sets subnet_id only
+        zone_address(uint64_t legacy_id)
+            : routing_prefix(0)
+            , subnet_id(static_cast<uint32_t>(legacy_id))
+            , object_id(0)
+        {
+        }
+
+        zone_address(uint64_t prefix, uint32_t subnet, uint32_t obj = 0)
+            : routing_prefix(prefix)
+            , subnet_id(subnet)
+            , object_id(obj)
+        {
+        }
+
+        zone_address& operator=(const zone_address&) = default;
+        zone_address& operator=(zone_address&&) noexcept = default;
+
+        // legacy compatibility: returns subnet_id as uint64_t
+        uint64_t get_val() const { return static_cast<uint64_t>(subnet_id); }
+
+        // zone-only address (strips object_id)
+        zone_address zone_only() const { return zone_address(routing_prefix, subnet_id, 0); }
+
+        // check if two addresses refer to the same zone (ignoring object_id)
+        bool same_zone(const zone_address& other) const
+        {
+            return routing_prefix == other.routing_prefix && subnet_id == other.subnet_id;
+        }
+
+        bool is_set() const noexcept { return routing_prefix != 0 || subnet_id != 0; }
+
+        // comparison
+        friend inline bool operator==(const zone_address& lhs, const zone_address& rhs);
+        friend inline bool operator!=(const zone_address& lhs, const zone_address& rhs);
+
+        bool operator<(const zone_address& other) const
+        {
+            if (routing_prefix != other.routing_prefix)
+                return routing_prefix < other.routing_prefix;
+            if (subnet_id != other.subnet_id)
+                return subnet_id < other.subnet_id;
+            return object_id < other.object_id;
+        }
+    )__^)
+    };
 
     #cpp_quote(R^__(
     struct zone;
@@ -118,13 +181,10 @@ namespace rpc
     struct known_direction_zone;
     )__^)
 
-
-
-
     struct zone
     {
     private:
-        uint64_t id = 0;
+        zone_address addr_;
 
     public:
     #cpp_quote(R^__(
@@ -132,38 +192,43 @@ namespace rpc
         zone(const zone&) = default;
         zone(zone&&) noexcept = default;
         zone(uint64_t initial_id)
-            : id(initial_id)
+            : addr_(initial_id)
+        {
+        }
+        zone(const zone_address& addr)
+            : addr_(addr.zone_only())
         {
         }
         zone& operator=(const zone&) = default;
         zone& operator=(zone&&) noexcept = default;
         zone& operator=(uint64_t other)
         {
-            id = other;
+            addr_ = zone_address(other);
             return *this;
         }
 
-        uint64_t get_val() const { return id; }
+        uint64_t get_val() const { return addr_.get_val(); }
+        const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const zone& lhs, const zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator==(T val) const
+        bool operator==(T val) const
         {
-            return id == static_cast<uint64_t>(val);
+            return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const zone& lhs, const zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator!=(T val) const
+        bool operator!=(T val) const
         {
-            return id != static_cast<uint64_t>(val);
+            return addr_.get_val() != static_cast<uint64_t>(val);
         }
 
         // less
-        constexpr bool operator<(uint64_t val) const { return id < val; }
-        constexpr bool operator<(const zone& val) const { return id < val.id; }
+        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(const zone& val) const { return addr_ < val.addr_; }
 
-        constexpr bool is_set() const noexcept { return id != 0; }
+        bool is_set() const noexcept { return addr_.is_set(); }
 
         inline destination_zone as_destination() const;
         inline caller_zone as_caller() const;
@@ -175,7 +240,7 @@ namespace rpc
     struct destination_zone
     {
     private:
-        uint64_t id = 0;
+        zone_address addr_;
 
     public:
     #cpp_quote(R^__(
@@ -183,37 +248,42 @@ namespace rpc
         destination_zone(const destination_zone&) = default;
         destination_zone(destination_zone&&) noexcept = default;
         destination_zone(uint64_t initial_id)
-            : id(initial_id)
+            : addr_(initial_id)
+        {
+        }
+        destination_zone(const zone_address& addr)
+            : addr_(addr)
         {
         }
         destination_zone& operator=(const destination_zone&) = default;
         destination_zone& operator=(destination_zone&&) noexcept = default;
         destination_zone& operator=(uint64_t other)
         {
-            id = other;
+            addr_ = zone_address(other);
             return *this;
         }
 
-        uint64_t get_val() const { return id; }
+        uint64_t get_val() const { return addr_.get_val(); }
+        const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const destination_zone& lhs, const destination_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator==(T val) const
+        bool operator==(T val) const
         {
-            return id == static_cast<uint64_t>(val);
+            return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const destination_zone& lhs, const destination_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator!=(T val) const
+        bool operator!=(T val) const
         {
-            return id != static_cast<uint64_t>(val);
+            return addr_.get_val() != static_cast<uint64_t>(val);
         }
 
-        constexpr bool operator<(uint64_t val) const { return id < val; }
-        constexpr bool operator<(const destination_zone& val) const { return id < val.id; }
+        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(const destination_zone& val) const { return addr_ < val.addr_; }
 
-        constexpr bool is_set() const noexcept { return id != 0; }
+        bool is_set() const noexcept { return addr_.is_set(); }
 
         inline zone as_zone() const;
         inline caller_zone as_caller() const;
@@ -224,7 +294,7 @@ namespace rpc
     struct caller_zone
     {
     private:
-        uint64_t id = 0;
+        zone_address addr_;
 
     public:
     #cpp_quote(R^__(
@@ -232,38 +302,43 @@ namespace rpc
         caller_zone(const caller_zone&) = default;
         caller_zone(caller_zone&&) noexcept = default;
         caller_zone(uint64_t initial_id)
-            : id(initial_id)
+            : addr_(initial_id)
+        {
+        }
+        caller_zone(const zone_address& addr)
+            : addr_(addr.zone_only())
         {
         }
         caller_zone& operator=(const caller_zone&) = default;
         caller_zone& operator=(caller_zone&&) noexcept = default;
         caller_zone& operator=(uint64_t other)
         {
-            id = other;
+            addr_ = zone_address(other);
             return *this;
         }
 
-        uint64_t get_val() const { return id; }
+        uint64_t get_val() const { return addr_.get_val(); }
+        const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const caller_zone& lhs, const caller_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator==(T val) const
+        bool operator==(T val) const
         {
-            return id == static_cast<uint64_t>(val);
+            return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const caller_zone& lhs, const caller_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator!=(T val) const
+        bool operator!=(T val) const
         {
-            return id != static_cast<uint64_t>(val);
+            return addr_.get_val() != static_cast<uint64_t>(val);
         }
 
         // less
-        constexpr bool operator<(uint64_t val) const { return id < val; }
-        constexpr bool operator<(const caller_zone& val) const { return id < val.id; }
+        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(const caller_zone& val) const { return addr_ < val.addr_; }
 
-        constexpr bool is_set() const noexcept { return id != 0; }
+        bool is_set() const noexcept { return addr_.is_set(); }
 
         inline destination_zone as_destination() const;
         inline known_direction_zone as_known_direction_zone() const;
@@ -273,7 +348,7 @@ namespace rpc
     struct known_direction_zone
     {
     private:
-        uint64_t id = 0;
+        zone_address addr_;
 
     public:
      #cpp_quote(R^__(
@@ -281,42 +356,47 @@ namespace rpc
         known_direction_zone(const known_direction_zone&) = default;
         known_direction_zone(known_direction_zone&&) noexcept = default;
         known_direction_zone(zone z) noexcept
-            : id(z.get_val())
+            : addr_(z.get_address())
         {
         }
         known_direction_zone(uint64_t initial_id)
-            : id(initial_id)
+            : addr_(initial_id)
+        {
+        }
+        known_direction_zone(const zone_address& addr)
+            : addr_(addr.zone_only())
         {
         }
         known_direction_zone& operator=(const known_direction_zone&) = default;
         known_direction_zone& operator=(known_direction_zone&&) noexcept = default;
         known_direction_zone& operator=(uint64_t other)
         {
-            id = other;
+            addr_ = zone_address(other);
             return *this;
         }
 
-        uint64_t get_val() const { return id; }
+        uint64_t get_val() const { return addr_.get_val(); }
+        const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const known_direction_zone& lhs, const known_direction_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator==(T val) const
+        bool operator==(T val) const
         {
-            return id == static_cast<uint64_t>(val);
+            return addr_.get_val() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const known_direction_zone& lhs, const known_direction_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
-        constexpr bool operator!=(T val) const
+        bool operator!=(T val) const
         {
-            return id != static_cast<uint64_t>(val);
+            return addr_.get_val() != static_cast<uint64_t>(val);
         }
 
         // less
-        constexpr bool operator<(uint64_t val) const { return id < val; }
-        constexpr bool operator<(const known_direction_zone& val) const { return id < val.id; }
+        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(const known_direction_zone& val) const { return addr_ < val.addr_; }
 
-        constexpr bool is_set() const noexcept { return id != 0; }
+        bool is_set() const noexcept { return addr_.is_set(); }
 
         inline destination_zone as_destination() const;
             )__^)
@@ -467,41 +547,41 @@ namespace rpc
     // converters
     destination_zone zone::as_destination() const
     {
-        return destination_zone(id);
+        return destination_zone(addr_);
     }
     caller_zone zone::as_caller() const
     {
-        return caller_zone(id);
+        return caller_zone(addr_);
     }
 
     known_direction_zone zone::as_known_direction_zone() const
     {
-        return known_direction_zone(id);
+        return known_direction_zone(addr_);
     }
 
     zone destination_zone::as_zone() const
     {
-        return zone(id);
+        return zone(addr_);
     }
 
     caller_zone destination_zone::as_caller() const
     {
-        return caller_zone(id);
+        return caller_zone(addr_);
     }
 
     destination_zone caller_zone::as_destination() const
     {
-        return destination_zone(id);
+        return destination_zone(addr_);
     }
 
     known_direction_zone caller_zone::as_known_direction_zone() const
     {
-        return known_direction_zone(id);
+        return known_direction_zone(addr_);
     }
 
     destination_zone known_direction_zone::as_destination() const
     {
-        return destination_zone(id);
+        return destination_zone(addr_);
     }
     )__^)
 

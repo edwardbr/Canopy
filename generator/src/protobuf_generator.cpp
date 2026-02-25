@@ -1829,10 +1829,22 @@ namespace protobuf_generator
             {
                 // Interface types need special handling - serialize interface_descriptor to proto message
                 cpp("auto* proto_{} = __request.mutable_{}();", param_name, param_name);
-                cpp("proto_{}->mutable_destination_zone_id()->set_id({}.destination_zone_id.get_val());",
-                    param_name,
+                cpp("{{");
+                cpp("std::vector<char> __dz_buf;");
+                cpp("{}.destination_zone_id.protobuf_serialise(__dz_buf);", param_name);
+                cpp("if (!proto_{}->mutable_destination_zone_id()->ParseFromArray(__dz_buf.data(), "
+                    "static_cast<int>(__dz_buf.size())))",
                     param_name);
-                cpp("proto_{}->mutable_object_id()->set_id({}.object_id.get_val());", param_name, param_name);
+                cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");
+                cpp("}}");
+                cpp("{{");
+                cpp("std::vector<char> __obj_buf;");
+                cpp("{}.object_id.protobuf_serialise(__obj_buf);", param_name);
+                cpp("if (!proto_{}->mutable_object_id()->ParseFromArray(__obj_buf.data(), "
+                    "static_cast<int>(__obj_buf.size())))",
+                    param_name);
+                cpp("throw std::runtime_error(\"Failed to parse nested object\");");
+                cpp("}}");
             }
             else if (is_pointer)
             {
@@ -2007,10 +2019,21 @@ namespace protobuf_generator
             {
                 // Interface types need special handling - deserialize proto message to interface_descriptor
                 cpp("const auto& proto_{} = __response.{}();", param_name, param_name);
-                cpp("{}.destination_zone_id = rpc::destination_zone{{proto_{}.destination_zone_id().id()}};",
-                    param_name,
+                cpp("{{");
+                cpp("std::vector<char> __dz_buf(proto_{}.destination_zone_id().ByteSizeLong());", param_name);
+                cpp("if (!proto_{}.destination_zone_id().SerializeToArray(__dz_buf.data(), "
+                    "static_cast<int>(__dz_buf.size())))",
                     param_name);
-                cpp("{}.object_id = rpc::object{{proto_{}.object_id().id()}};", param_name, param_name);
+                cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
+                cpp("{}.destination_zone_id.protobuf_deserialise(__dz_buf);", param_name);
+                cpp("}}");
+                cpp("{{");
+                cpp("std::vector<char> __obj_buf(proto_{}.object_id().ByteSizeLong());", param_name);
+                cpp("if (!proto_{}.object_id().SerializeToArray(__obj_buf.data(), static_cast<int>(__obj_buf.size())))",
+                    param_name);
+                cpp("throw std::runtime_error(\"Failed to serialize nested object\");");
+                cpp("{}.object_id.protobuf_deserialise(__obj_buf);", param_name);
+                cpp("}}");
             }
             else if (is_pointer)
             {
@@ -2191,10 +2214,21 @@ namespace protobuf_generator
             {
                 // Interface types need special handling - deserialize proto message to interface_descriptor
                 cpp("const auto& proto_{} = __request.{}();", param_name, param_name);
-                cpp("{}.destination_zone_id = rpc::destination_zone{{proto_{}.destination_zone_id().id()}};",
-                    param_name,
+                cpp("{{");
+                cpp("std::vector<char> __dz_buf(proto_{}.destination_zone_id().ByteSizeLong());", param_name);
+                cpp("if (!proto_{}.destination_zone_id().SerializeToArray(__dz_buf.data(), "
+                    "static_cast<int>(__dz_buf.size())))",
                     param_name);
-                cpp("{}.object_id = rpc::object{{proto_{}.object_id().id()}};", param_name, param_name);
+                cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
+                cpp("{}.destination_zone_id.protobuf_deserialise(__dz_buf);", param_name);
+                cpp("}}");
+                cpp("{{");
+                cpp("std::vector<char> __obj_buf(proto_{}.object_id().ByteSizeLong());", param_name);
+                cpp("if (!proto_{}.object_id().SerializeToArray(__obj_buf.data(), static_cast<int>(__obj_buf.size())))",
+                    param_name);
+                cpp("throw std::runtime_error(\"Failed to serialize nested object\");");
+                cpp("{}.object_id.protobuf_deserialise(__obj_buf);", param_name);
+                cpp("}}");
             }
             else if (is_pointer)
             {
@@ -2364,10 +2398,22 @@ namespace protobuf_generator
             {
                 // Interface types need special handling - serialize interface_descriptor to proto message
                 cpp("auto* proto_{} = __response.mutable_{}();", param_name, param_name);
-                cpp("proto_{}->mutable_destination_zone_id()->set_id({}.destination_zone_id.get_val());",
-                    param_name,
+                cpp("{{");
+                cpp("std::vector<char> __dz_buf;");
+                cpp("{}.destination_zone_id.protobuf_serialise(__dz_buf);", param_name);
+                cpp("if (!proto_{}->mutable_destination_zone_id()->ParseFromArray(__dz_buf.data(), "
+                    "static_cast<int>(__dz_buf.size())))",
                     param_name);
-                cpp("proto_{}->mutable_object_id()->set_id({}.object_id.get_val());", param_name, param_name);
+                cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");
+                cpp("}}");
+                cpp("{{");
+                cpp("std::vector<char> __obj_buf;");
+                cpp("{}.object_id.protobuf_serialise(__obj_buf);", param_name);
+                cpp("if (!proto_{}->mutable_object_id()->ParseFromArray(__obj_buf.data(), "
+                    "static_cast<int>(__obj_buf.size())))",
+                    param_name);
+                cpp("throw std::runtime_error(\"Failed to parse nested object\");");
+                cpp("}}");
             }
             else if (is_pointer)
             {
@@ -2542,7 +2588,8 @@ namespace protobuf_generator
     }
 
     // Forward declaration
-    void generate_struct_to_proto_copy(const class_entity* struct_entity,
+    void generate_struct_to_proto_copy(const class_entity& root_entity,
+        const class_entity* struct_entity,
         const std::string& cpp_var,
         const std::string& proto_var,
         writer& cpp,
@@ -2579,7 +2626,8 @@ namespace protobuf_generator
     }
 
     // Helper to generate code that copies fields from C++ struct to protobuf message
-    void generate_struct_to_proto_copy(const class_entity* struct_entity,
+    void generate_struct_to_proto_copy(const class_entity& root_entity,
+        const class_entity* struct_entity,
         const std::string& cpp_var,
         const std::string& proto_var,
         writer& cpp,
@@ -2607,13 +2655,28 @@ namespace protobuf_generator
                 {
                     cpp("{}{}.set_{}({}.{});", indent, proto_var, field_name, cpp_var, member_name);
                 }
-                // TODO: Handle nested complex types if needed
+                else
+                {
+                    // nested struct type - recursively copy fields
+                    const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
+                    if (nested_struct)
+                    {
+                        cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
+                        generate_struct_to_proto_copy(root_entity,
+                            nested_struct,
+                            cpp_var + "." + member_name,
+                            "(*" + proto_var + ".mutable_" + field_name + "())",
+                            cpp,
+                            indent);
+                    }
+                }
             }
         }
     }
 
     // Helper to generate code that copies fields from protobuf message to C++ struct
-    void generate_proto_to_struct_copy(const class_entity* struct_entity,
+    void generate_proto_to_struct_copy(const class_entity& root_entity,
+        const class_entity* struct_entity,
         const std::string& proto_var,
         const std::string& cpp_var,
         writer& cpp,
@@ -2641,7 +2704,21 @@ namespace protobuf_generator
                 {
                     cpp("{}{}.{} = {}.{}();", indent, cpp_var, member_name, proto_var, field_name);
                 }
-                // TODO: Handle nested complex types if needed
+                else
+                {
+                    // nested struct type - recursively copy fields
+                    const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
+                    if (nested_struct)
+                    {
+                        cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
+                        generate_proto_to_struct_copy(root_entity,
+                            nested_struct,
+                            proto_var + "." + field_name + "()",
+                            cpp_var + "." + member_name,
+                            cpp,
+                            indent);
+                    }
+                }
             }
         }
     }
@@ -2713,7 +2790,8 @@ namespace protobuf_generator
                         const class_entity* inner_struct = find_struct_by_name(root_entity, inner_type);
                         if (inner_struct)
                         {
-                            generate_struct_to_proto_copy(inner_struct, "elem", "(*proto_elem)", cpp, "        ");
+                            generate_struct_to_proto_copy(
+                                root_entity, inner_struct, "elem", "(*proto_elem)", cpp, "        ");
                         }
                         else
                         {
@@ -2746,7 +2824,8 @@ namespace protobuf_generator
                         const class_entity* value_struct = find_struct_by_name(root_entity, value_type);
                         if (value_struct)
                         {
-                            generate_struct_to_proto_copy(value_struct, "value", "proto_value", cpp, "        ");
+                            generate_struct_to_proto_copy(
+                                root_entity, value_struct, "value", "proto_value", cpp, "        ");
                         }
                         else
                         {
@@ -2758,8 +2837,26 @@ namespace protobuf_generator
                 }
                 else
                 {
-                    cpp("// TODO: Handle unsupported type {} for field {}", field_type, field_name);
-                    cpp("(void){};  // Suppress unused warning", member_name);
+                    // check if it's a nested struct type
+                    const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
+                    if (nested_struct)
+                    {
+                        cpp("// Serialize nested struct {}", field_type);
+                        cpp("{{");
+                        cpp("std::vector<char> {}_buf;", field_name);
+                        cpp("{}.protobuf_serialise({}_buf);", member_name, field_name);
+                        cpp("if (!msg.mutable_{}()->ParseFromArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                            field_name,
+                            field_name,
+                            field_name);
+                        cpp("throw std::runtime_error(\"Failed to parse nested {} for field {}\");", field_type, field_name);
+                        cpp("}}");
+                    }
+                    else
+                    {
+                        cpp("// TODO: Handle unsupported type {} for field {}", field_type, field_name);
+                        cpp("(void){};  // Suppress unused warning", member_name);
+                    }
                 }
             }
         }
@@ -2844,7 +2941,7 @@ namespace protobuf_generator
                         const class_entity* inner_struct = find_struct_by_name(root_entity, inner_type);
                         if (inner_struct)
                         {
-                            generate_proto_to_struct_copy(inner_struct, "proto_elem", "elem", cpp, "        ");
+                            generate_proto_to_struct_copy(root_entity, inner_struct, "proto_elem", "elem", cpp, "        ");
                         }
                         else
                         {
@@ -2880,7 +2977,8 @@ namespace protobuf_generator
                         const class_entity* value_struct = find_struct_by_name(root_entity, value_type);
                         if (value_struct)
                         {
-                            generate_proto_to_struct_copy(value_struct, "proto_value", "value", cpp, "        ");
+                            generate_proto_to_struct_copy(
+                                root_entity, value_struct, "proto_value", "value", cpp, "        ");
                         }
                         else
                         {
@@ -2894,7 +2992,27 @@ namespace protobuf_generator
                 }
                 else
                 {
-                    cpp("// TODO: Handle unsupported type {} for field {}", field_type, field_name);
+                    // check if it's a nested struct type
+                    const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
+                    if (nested_struct)
+                    {
+                        cpp("// Deserialize nested struct {}", field_type);
+                        cpp("{{");
+                        cpp("std::vector<char> {}_buf(msg.{}().ByteSizeLong());", field_name, field_name);
+                        cpp("if (!msg.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                            field_name,
+                            field_name,
+                            field_name);
+                        cpp("throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
+                            field_type,
+                            field_name);
+                        cpp("{}.protobuf_deserialise({}_buf);", member_name, field_name);
+                        cpp("}}");
+                    }
+                    else
+                    {
+                        cpp("// TODO: Handle unsupported type {} for field {}", field_type, field_name);
+                    }
                 }
             }
         }
