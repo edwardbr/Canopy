@@ -25,39 +25,39 @@ namespace rpc
         on_service_deletion_host(zone_id.get_val());
     }
     void enclave_telemetry_service::on_service_try_cast(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
         on_service_try_cast_host(zone_id.get_val(),
-            destination_object_id.get_val(),
+            remote_object_id.get_val(),
             caller_zone_id.get_val(),
-            destination_object_id.get_object().get_val(),
+            remote_object_id.get_object().get_val(),
             interface_id.get_val());
     }
 
     void enclave_telemetry_service::on_service_add_ref(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
         on_service_add_ref_host(zone_id.get_val(),
-            destination_object_id.get_val(),
-            destination_object_id.get_object().get_val(),
+            remote_object_id.get_val(),
+            remote_object_id.get_object().get_val(),
             caller_zone_id.get_val(),
             known_direction_zone_id.get_val(),
             (uint64_t)options);
     }
 
     void enclave_telemetry_service::on_service_release(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
         on_service_release_host(zone_id.get_val(),
-            destination_object_id.get_val(),
-            destination_object_id.get_object().get_val(),
+            remote_object_id.get_val(),
+            remote_object_id.get_object().get_val(),
             caller_zone_id.get_val(),
             static_cast<uint64_t>(options));
     }
@@ -85,38 +85,38 @@ namespace rpc
         on_service_proxy_deletion_host(zone_id.get_val(), destination_zone_id.get_val(), caller_zone_id.get_val());
     }
     void enclave_telemetry_service::on_service_proxy_try_cast(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
         on_service_proxy_try_cast_host(zone_id.get_val(),
-            destination_object_id.get_val(),
+            remote_object_id.get_val(),
             caller_zone_id.get_val(),
-            destination_object_id.get_object().get_val(),
+            remote_object_id.get_object().get_val(),
             interface_id.get_val());
     }
     void enclave_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
         on_service_proxy_add_ref_host(zone_id.get_val(),
-            destination_object_id.get_val(),
+            remote_object_id.get_val(),
             caller_zone_id.get_val(),
-            destination_object_id.get_object().get_val(),
+            remote_object_id.get_object().get_val(),
             known_direction_zone_id.get_val(),
             (uint64_t)options);
     }
     void enclave_telemetry_service::on_service_proxy_release(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
         on_service_proxy_release_host(zone_id.get_val(),
-            destination_object_id.get_val(),
+            remote_object_id.get_val(),
             caller_zone_id.get_val(),
-            destination_object_id.get_object().get_val(),
+            remote_object_id.get_object().get_val(),
             static_cast<uint64_t>(options));
     }
 
@@ -268,14 +268,14 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_outbound_send(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = interface_id;
         std::ignore = method_id;
@@ -283,14 +283,14 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_outbound_post(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = interface_id;
         std::ignore = method_id;
@@ -298,27 +298,27 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_outbound_try_cast(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = interface_id;
     }
 
     void enclave_telemetry_service::on_transport_outbound_add_ref(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = known_direction_zone_id;
         std::ignore = options;
@@ -326,25 +326,25 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_outbound_release(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = options;
     }
 
     void enclave_telemetry_service::on_transport_outbound_object_released(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
     }
 
@@ -361,14 +361,14 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_inbound_send(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = interface_id;
         std::ignore = method_id;
@@ -376,14 +376,14 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_inbound_post(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = interface_id;
         std::ignore = method_id;
@@ -391,27 +391,27 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_inbound_try_cast(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = interface_id;
     }
 
     void enclave_telemetry_service::on_transport_inbound_add_ref(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = known_direction_zone_id;
         std::ignore = options;
@@ -419,25 +419,25 @@ namespace rpc
 
     void enclave_telemetry_service::on_transport_inbound_release(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
         std::ignore = options;
     }
 
     void enclave_telemetry_service::on_transport_inbound_object_released(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
         std::ignore = zone_id;
         std::ignore = adjacent_zone_id;
-        std::ignore = destination_object_id;
+        std::ignore = remote_object_id;
         std::ignore = caller_zone_id;
     }
 

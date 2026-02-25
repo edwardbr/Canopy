@@ -26,8 +26,8 @@ extern "C"
     {
         if (auto telemetry_service = rpc::get_telemetry_service())
         {
-            auto destination_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
-            telemetry_service->on_service_try_cast({zone_id}, destination_object_id, {caller_zone_id}, {interface_id});
+            auto remote_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
+            telemetry_service->on_service_try_cast({zone_id}, remote_object_id, {caller_zone_id}, {interface_id});
         }
     }
     void on_service_add_ref_host(uint64_t zone_id,
@@ -39,9 +39,9 @@ extern "C"
     {
         if (auto telemetry_service = rpc::get_telemetry_service())
         {
-            auto destination_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
+            auto remote_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
             telemetry_service->on_service_add_ref(
-                {zone_id}, destination_object_id, {caller_zone_id}, {known_direction_zone_id}, (rpc::add_ref_options)options);
+                {zone_id}, remote_object_id, {caller_zone_id}, {known_direction_zone_id}, (rpc::add_ref_options)options);
         }
     }
     void on_service_release_host(
@@ -49,9 +49,9 @@ extern "C"
     {
         if (auto telemetry_service = rpc::get_telemetry_service())
         {
-            auto destination_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
+            auto remote_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
             telemetry_service->on_service_release(
-                {zone_id}, destination_object_id, {caller_zone_id}, (rpc::release_options)options);
+                {zone_id}, remote_object_id, {caller_zone_id}, (rpc::release_options)options);
         }
     }
 
@@ -86,9 +86,8 @@ extern "C"
     {
         if (auto telemetry_service = rpc::get_telemetry_service())
         {
-            auto destination_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
-            telemetry_service->on_service_proxy_try_cast(
-                {zone_id}, destination_object_id, {caller_zone_id}, {interface_id});
+            auto remote_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
+            telemetry_service->on_service_proxy_try_cast({zone_id}, remote_object_id, {caller_zone_id}, {interface_id});
         }
     }
     void on_service_proxy_add_ref_host(uint64_t zone_id,
@@ -100,9 +99,9 @@ extern "C"
     {
         if (auto telemetry_service = rpc::get_telemetry_service())
         {
-            auto destination_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
+            auto remote_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
             telemetry_service->on_service_proxy_add_ref(
-                {zone_id}, destination_object_id, {caller_zone_id}, {known_direction_zone_id}, (rpc::add_ref_options)options);
+                {zone_id}, remote_object_id, {caller_zone_id}, {known_direction_zone_id}, (rpc::add_ref_options)options);
         }
     }
     void on_service_proxy_release_host(
@@ -110,9 +109,9 @@ extern "C"
     {
         if (auto telemetry_service = rpc::get_telemetry_service())
         {
-            auto destination_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
+            auto remote_object_id = rpc::destination_zone{destination_zone_id}.with_object({object_id});
             telemetry_service->on_service_proxy_release(
-                {zone_id}, destination_object_id, {caller_zone_id}, (rpc::release_options)options);
+                {zone_id}, remote_object_id, {caller_zone_id}, (rpc::release_options)options);
         }
     }
 

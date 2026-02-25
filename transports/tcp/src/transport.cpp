@@ -88,8 +88,7 @@ namespace rpc::tcp
         }
 
         // Update the adjacent zone ID based on the response
-        output_descr
-            = rpc::interface_descriptor(init_receive.destination_object_id, get_adjacent_zone_id().as_destination());
+        output_descr = rpc::interface_descriptor(init_receive.remote_object_id, get_adjacent_zone_id().as_destination());
 
         CO_RETURN rpc::error::OK();
     }
@@ -99,7 +98,7 @@ namespace rpc::tcp
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -123,7 +122,7 @@ namespace rpc::tcp
             call_send{.encoding = encoding,
                 .tag = tag,
                 .caller_zone_id = caller_zone_id,
-                .destination_zone_id = destination_object_id,
+                .destination_zone_id = remote_object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
@@ -148,7 +147,7 @@ namespace rpc::tcp
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -169,7 +168,7 @@ namespace rpc::tcp
             post_send{.encoding = encoding,
                 .tag = tag,
                 .caller_zone_id = caller_zone_id,
-                .destination_zone_id = destination_object_id,
+                .destination_zone_id = remote_object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
@@ -187,7 +186,7 @@ namespace rpc::tcp
     CORO_TASK(int)
     tcp_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::caller_zone caller_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -205,7 +204,7 @@ namespace rpc::tcp
         try_cast_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
             try_cast_send{.caller_zone_id = caller_zone_id,
-                .destination_zone_id = destination_object_id,
+                .destination_zone_id = remote_object_id,
                 .interface_id = interface_id,
                 .back_channel = in_back_channel},
             response);
@@ -223,7 +222,7 @@ namespace rpc::tcp
 
     CORO_TASK(int)
     tcp_transport::outbound_add_ref(uint64_t protocol_version,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options build_out_param_channel,
@@ -244,7 +243,7 @@ namespace rpc::tcp
         // The peer transport will call inbound_add_ref for routing
         addref_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
-            addref_send{.destination_zone_id = destination_object_id,
+            addref_send{.destination_zone_id = remote_object_id,
                 .caller_zone_id = caller_zone_id,
                 .known_direction_zone_id = known_direction_zone_id,
                 .build_out_param_channel = build_out_param_channel,
@@ -278,7 +277,7 @@ namespace rpc::tcp
 
     CORO_TASK(int)
     tcp_transport::outbound_release(uint64_t protocol_version,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -298,7 +297,7 @@ namespace rpc::tcp
         // The peer transport will call inbound_release for routing
         release_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
-            release_send{.destination_zone_id = destination_object_id,
+            release_send{.destination_zone_id = remote_object_id,
                 .caller_zone_id = caller_zone_id,
                 .options = options,
                 .back_channel = in_back_channel},
@@ -331,7 +330,7 @@ namespace rpc::tcp
 
     CORO_TASK(void)
     tcp_transport::outbound_object_released(uint64_t protocol_version,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
@@ -349,7 +348,7 @@ namespace rpc::tcp
         int ret = CO_AWAIT send_payload(protocol_version,
             message_direction::one_way, // Use one_way for fire-and-forget
             object_released_send{.encoding = encoding::yas_binary,
-                .destination_zone_id = destination_object_id,
+                .destination_zone_id = remote_object_id,
                 .caller_zone_id = caller_zone_id,
                 .back_channel = in_back_channel},
             0); // sequence number 0 for one-way messages
@@ -1094,7 +1093,7 @@ namespace rpc::tcp
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .destination_zone_id = output_interface.destination_zone_id,
-                .destination_object_id = output_interface.get_object_id(),
+                .remote_object_id = output_interface.get_object_id(),
                 .caller_zone_id = input_descr.input_zone_id.as_caller()},
             prefix.sequence_number);
         if (send_err != rpc::error::OK())

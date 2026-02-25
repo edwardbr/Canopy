@@ -27,7 +27,7 @@ namespace std
     {
         return std::to_string(val.get_address());
     }
-    inline std::string to_string(const rpc::destination_object& val)
+    inline std::string to_string(const rpc::remote_object& val)
     {
         return std::to_string(val.get_address());
     }
@@ -80,9 +80,9 @@ namespace std
         }
     };
 
-    template<> struct hash<rpc::destination_object>
+    template<> struct hash<rpc::remote_object>
     {
-        auto operator()(const rpc::destination_object& item) const noexcept
+        auto operator()(const rpc::remote_object& item) const noexcept
         {
             return std::hash<rpc::zone_address>{}(item.get_address());
         }

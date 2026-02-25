@@ -153,7 +153,7 @@ struct init_channel_response
 {
     int32_t err_code;
     uint64_t destination_zone_id;
-    uint64_t destination_object_id;
+    uint64_t remote_object_id;
     uint64_t caller_zone_id;
 };
 ```
