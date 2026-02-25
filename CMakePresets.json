@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "configurePresets": [
     {
       "name": "Base",
@@ -174,6 +174,31 @@
       }
     },
     {
+      "name": "Debug_Coverage",
+      "inherits": "Debug",
+      "binaryDir": "build_debug_coverage",
+      "cacheVariables": {
+        "CANOPY_ENABLE_COVERAGE": "ON",
+        "CANOPY_BUILD_DEMOS": "OFF"
+      }
+    },
+    {
+      "name": "Coroutine_Debug_Coverage",
+      "inherits": "Coroutine_Debug",
+      "binaryDir": "build_coroutine_coverage",
+      "cacheVariables": {
+        "CANOPY_BUILD_COROUTINE": "ON",
+        "BUILD_TYPE": "debug",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CANOPY_USE_LOGGING": "ON",
+        "CANOPY_USE_TELEMETRY": "ON",
+        "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
+        "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
+        "CANOPY_BUILD_DEMOS": "ON",
+        "CANOPY_ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
       "name": "Debug_multithreaded",
       "inherits": "Base",
       "binaryDir": "build_debug",
@@ -297,6 +322,66 @@
         "CMAKE_CXX_COMPILER": "g++",
         "CANOPY_BUILD_DEMOS": "ON"
       }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "Debug_Coverage",
+      "configurePreset": "Debug_Coverage"
+    },
+    {
+      "name": "Debug_Coverage_Report",
+      "configurePreset": "Debug_Coverage",
+      "targets": ["coverage-html"]
+    },
+    {
+      "name": "Coroutine_Debug_Coverage",
+      "configurePreset": "Coroutine_Debug_Coverage"
+    },
+    {
+      "name": "Coroutine_Debug_Coverage_Report",
+      "configurePreset": "Coroutine_Debug_Coverage",
+      "targets": ["coverage-html"]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "Debug_Coverage",
+      "configurePreset": "Debug_Coverage",
+      "execution": {
+        "jobs": 1
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "Coroutine_Debug_Coverage",
+      "configurePreset": "Coroutine_Debug_Coverage",
+      "execution": {
+        "jobs": 1
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "Debug_Coverage",
+      "steps": [
+        { "type": "configure", "name": "Debug_Coverage" },
+        { "type": "build",     "name": "Debug_Coverage" },
+        { "type": "build",     "name": "Debug_Coverage_Report" }
+      ]
+    },
+    {
+      "name": "Coroutine_Debug_Coverage",
+      "steps": [
+        { "type": "configure", "name": "Coroutine_Debug_Coverage" },
+        { "type": "build",     "name": "Coroutine_Debug_Coverage" },
+        { "type": "build",     "name": "Coroutine_Debug_Coverage_Report" }
+      ]
     }
   ]
 }
