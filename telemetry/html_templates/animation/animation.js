@@ -976,6 +976,9 @@ function initAnimationTelemetry() {
             case 'transport_deletion':
                 deleteTransport(evt);
                 break;
+            case 'transport_status_change':
+                updateTransportStatus(evt);
+                break;
             case 'transport_outbound_add_ref':
             case 'transport_inbound_add_ref':
             case 'transport_outbound_release':
@@ -1694,7 +1697,71 @@ function initAnimationTelemetry() {
         });
     }
 
-    function createTransport(evt) {
+    function updateTransportStatus(evt) {
+        const zone1Number = normalizeZoneNumber(evt.data.zone_id);
+        const zone2Number = normalizeZoneNumber(evt.data.adjacent_zone_id);
+        const transport1Id = makeTransportId(zone1Number, zone2Number);
+        const transport2Id = makeTransportId(zone2Number, zone1Number);
+        const existingTransport = nodes.get(transport1Id);
+        const hasMatchingExisting = existingTransport && (!evt.data.name || existingTransport.label === evt.data.name);
+
+        if (!hasMatchingExisting) {
+            let fallbackAdjacentZone = null;
+            nodes.forEach((node) => {
+                if (fallbackAdjacentZone !== null) {
+                    return;
+                }
+                if (node.type !== 'transport') {
+                    return;
+                }
+                if (node.zone !== zone1Number) {
+                    return;
+                }
+                if (evt.data.name && node.label !== evt.data.name) {
+                    return;
+                }
+                fallbackAdjacentZone = node.adjacentZone;
+            });
+
+            if (fallbackAdjacentZone !== null && fallbackAdjacentZone !== zone2Number) {
+                deleteTransport(
+                    {
+                        type: 'transport_deletion',
+                        timestamp: evt.timestamp,
+                        data: {
+                            zone_id: zone1Number,
+                            adjacent_zone_id: fallbackAdjacentZone
+                        }
+                    },
+                    false);
+            }
+
+            if (!nodes.has(transport1Id)) {
+                createTransport(
+                    {
+                        type: 'transport_creation',
+                        timestamp: evt.timestamp,
+                        data: {
+                            name: evt.data.name || 'transport',
+                            zone_id: zone1Number,
+                            adjacent_zone_id: zone2Number,
+                            status: evt.data.new_status
+                        }
+                    },
+                    false);
+            }
+        }
+
+        if (nodes.has(transport1Id)) {
+            nodes.get(transport1Id).status = evt.data.new_status;
+        }
+        if (nodes.has(transport2Id)) {
+            nodes.get(transport2Id).status = evt.data.new_status;
+        }
+        appendLog(evt);
+    }
+
+    function createTransport(evt, shouldLog = true) {
         const zone1Number = normalizeZoneNumber(evt.data.zone_id);
         const zone2Number = normalizeZoneNumber(evt.data.adjacent_zone_id);
         const zone1Id = ensureZoneNode(zone1Number);
@@ -1770,10 +1837,12 @@ function initAnimationTelemetry() {
             adjacencyList[zone2Number].add(zone1Number);
         }
 
-        appendLog(evt);
+        if (shouldLog) {
+            appendLog(evt);
+        }
     }
 
-    function deleteTransport(evt) {
+    function deleteTransport(evt, shouldLog = true) {
         const zone1Number = normalizeZoneNumber(evt.data.zone_id);
         const zone2Number = normalizeZoneNumber(evt.data.adjacent_zone_id);
         const transport1Id = makeTransportId(zone1Number, zone2Number);
@@ -1807,7 +1876,9 @@ function initAnimationTelemetry() {
             state.alive = false;
             state.deletedAt = transportAuditState.lastEventTimestamp;
         });
-        appendLog(evt);
+        if (shouldLog) {
+            appendLog(evt);
+        }
     }
 
     function createPassthrough(evt) {

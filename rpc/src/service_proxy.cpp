@@ -141,7 +141,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_send(
-                get_zone_id(), destination_zone_id_, get_zone_id().as_caller(), object_id, interface_id, method_id);
+                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id().as_caller(), interface_id, method_id);
         }
 #endif
         auto dest_with_obj = destination_zone_id_.with_object(object_id);
@@ -197,8 +197,8 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_proxy_send(
-                get_zone_id(), destination_zone_id_, get_zone_id().as_caller(), object_id, interface_id, method_id);
+            telemetry_service->on_service_proxy_post(
+                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id().as_caller(), interface_id, method_id);
         }
 #endif
         auto dest_with_obj = destination_zone_id_.with_object(object_id);
@@ -238,7 +238,7 @@ namespace rpc
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->on_service_proxy_try_cast(
-                    get_zone_id(), destination_zone_id, get_zone_id().as_caller(), object_id, if_id);
+                    get_zone_id(), destination_zone_id.with_object(object_id), get_zone_id().as_caller(), if_id);
             }
 #endif
 
@@ -303,9 +303,8 @@ namespace rpc
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
                     telemetry_service->on_service_proxy_add_ref(get_zone_id(),
-                        destination_zone_id_,
+                        destination_zone_id_.with_object(object_id),
                         zone_id_.as_caller(),
-                        object_id,
                         known_direction_zone_id,
                         build_out_param_channel);
                 }
@@ -355,7 +354,7 @@ namespace rpc
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
                     telemetry_service->on_service_proxy_release(
-                        get_zone_id(), destination_zone_id_, zone_id_.as_caller(), object_id, options);
+                        get_zone_id(), destination_zone_id_.with_object(object_id), zone_id_.as_caller(), options);
                 }
 #endif
                 if (original_version != version)
@@ -407,9 +406,8 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_release(svc->get_zone_id(),
-                destination_zone_id,
+                destination_zone_id.with_object(object_id),
                 svc->get_zone_id().as_caller(),
-                object_id,
                 is_optimistic ? release_options::optimistic : release_options::normal);
         }
 #endif
@@ -460,9 +458,8 @@ namespace rpc
             auto transport = transport_.get_nullable();
             RPC_ASSERT(transport);
             telemetry_service->on_service_proxy_release(get_zone_id(),
-                destination_zone_id_,
+                destination_zone_id_.with_object(object_id),
                 zone_id_.as_caller(),
-                object_id,
                 is_optimistic ? release_options::optimistic : release_options::normal);
         }
 #endif

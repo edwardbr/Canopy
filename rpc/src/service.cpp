@@ -261,8 +261,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_send(
-                zone_id_, destination_object_id, caller_zone_id, object_id, interface_id, method_id);
+            telemetry_service->on_service_send(zone_id_, destination_object_id, caller_zone_id, interface_id, method_id);
         }
 #endif
         if (!destination_object_id.get_address().same_zone(zone_id_.get_address()))
@@ -320,8 +319,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_post(
-                zone_id_, destination_object_id, caller_zone_id, object_id, interface_id, method_id);
+            telemetry_service->on_service_post(zone_id_, destination_object_id, caller_zone_id, interface_id, method_id);
         }
 #endif
 
@@ -590,7 +588,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_add_ref(
-                zone_id_, destination_object_id, object_id, caller_zone_id, known_direction_zone_id, build_out_param_channel);
+                zone_id_, destination_object_id, caller_zone_id, known_direction_zone_id, build_out_param_channel);
         }
 #endif
         CO_RETURN rpc::error::OK();
@@ -691,7 +689,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_release(zone_id_, destination_object_id, object_id, caller_zone_id, options);
+            telemetry_service->on_service_release(zone_id_, destination_object_id, caller_zone_id, options);
         }
 #endif
         CO_RETURN rpc::error::OK();
@@ -709,7 +707,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_object_released(zone_id_, destination_object_id, caller_zone_id, object_id);
+            telemetry_service->on_service_object_released(zone_id_, destination_object_id, caller_zone_id);
         }
 #endif
         if (caller_zone_id != zone_id_.as_caller())

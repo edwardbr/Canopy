@@ -924,9 +924,8 @@ namespace rpc
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                     telemetry_service->on_transport_inbound_add_ref(zone_id,
                         adjacent_zone_id,
-                        zone_id.as_destination(),
+                        zone_id.as_destination().with_object(input_descr.get_object_id()),
                         adjacent_zone_id.as_caller(),
-                        input_descr.get_object_id(),
                         adjacent_zone_id,
                         rpc::add_ref_options::normal);
 #endif
@@ -953,9 +952,8 @@ namespace rpc
                     if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                         telemetry_service->on_transport_outbound_add_ref(zone_id,
                             adjacent_zone_id,
-                            zone_id.as_destination(),
+                            zone_id.as_destination().with_object(output_descr.get_object_id()),
                             adjacent_zone_id.as_caller(),
-                            output_descr.get_object_id(),
                             zone_id,
                             rpc::add_ref_options::build_caller_route);
 #endif
@@ -1116,9 +1114,8 @@ namespace rpc
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_inbound_add_ref(zone_id_,
                     adjacent_zone_id,
-                    zone_id_.as_destination(),
+                    zone_id_.as_destination().with_object(input_descr.get_object_id()),
                     adjacent_zone_id.as_caller(),
-                    input_descr.get_object_id(),
                     adjacent_zone_id,
                     rpc::add_ref_options::normal);
 #endif
@@ -1145,9 +1142,8 @@ namespace rpc
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                     telemetry_service->on_transport_outbound_add_ref(zone_id_,
                         adjacent_zone_id,
-                        zone_id_.as_destination(),
+                        zone_id_.as_destination().with_object(output_descr.get_object_id()),
                         adjacent_zone_id.as_caller(),
-                        output_descr.get_object_id(),
                         zone_id_,
                         rpc::add_ref_options::build_caller_route);
 #endif
@@ -1223,9 +1219,8 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_add_ref(zone_id_,
-                destination_zone_id,
+                destination_zone_id.with_object(object_id),
                 caller_zone_id,
-                object_id,
                 known_direction,
                 rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
                     | (optimistic ? add_ref_options::optimistic : add_ref_options::normal));

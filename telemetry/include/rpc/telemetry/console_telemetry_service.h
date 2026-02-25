@@ -69,37 +69,31 @@ namespace rpc
             const std::string& name, rpc::zone zone_id, rpc::destination_zone parent_zone_id) const override;
         void on_service_deletion(rpc::zone zone_id) const override;
         void on_service_try_cast(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id) const override;
         void on_service_add_ref(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
-            rpc::object object_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::known_direction_zone known_direction_zone_id,
             rpc::add_ref_options options) const override;
         void on_service_release(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
-            rpc::object object_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::release_options options) const override;
         void on_service_send(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_service_post(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_service_object_released(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::object object_id) const override;
+            rpc::destination_object destination_object_id,
+            rpc::caller_zone caller_zone_id) const override;
         void on_service_transport_down(
             rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const override;
 
@@ -116,20 +110,17 @@ namespace rpc
         void on_service_proxy_deletion(
             rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const override;
         void on_service_proxy_try_cast(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id) const override;
         void on_service_proxy_add_ref(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::known_direction_zone known_direction_zone_id,
             rpc::add_ref_options options) const override;
         void on_service_proxy_release(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::release_options options) const override;
         void on_service_proxy_add_external_ref(
             rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const override;
@@ -230,63 +221,54 @@ namespace rpc
 
         // New telemetry functions for missing i_marshaller methods
         void on_service_proxy_send(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_service_proxy_post(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_service_proxy_object_released(rpc::zone zone_id,
-            rpc::destination_zone destination_zone_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::object object_id) const override;
+            rpc::destination_object destination_object_id,
+            rpc::caller_zone caller_zone_id) const override;
         void on_service_proxy_transport_down(
             rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id) const override;
 
         // New telemetry functions for outbound transport methods
         void on_transport_outbound_send(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_transport_outbound_post(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_transport_outbound_try_cast(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id) const override;
         void on_transport_outbound_add_ref(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::known_direction_zone known_direction_zone_id,
             rpc::add_ref_options options) const override;
         void on_transport_outbound_release(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::release_options options) const override;
         void on_transport_outbound_object_released(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::object object_id) const override;
+            rpc::destination_object destination_object_id,
+            rpc::caller_zone caller_zone_id) const override;
         void on_transport_outbound_transport_down(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
             rpc::destination_zone destination_zone_id,
@@ -295,42 +277,36 @@ namespace rpc
         // New telemetry functions for inbound transport methods
         void on_transport_inbound_send(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_transport_inbound_post(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id) const override;
         void on_transport_inbound_try_cast(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::interface_ordinal interface_id) const override;
         void on_transport_inbound_add_ref(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::known_direction_zone known_direction_zone_id,
             rpc::add_ref_options options) const override;
         void on_transport_inbound_release(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
-            rpc::object object_id,
             rpc::release_options options) const override;
         void on_transport_inbound_object_released(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
-            rpc::destination_zone destination_zone_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::object object_id) const override;
+            rpc::destination_object destination_object_id,
+            rpc::caller_zone caller_zone_id) const override;
         void on_transport_inbound_transport_down(rpc::zone zone_id,
             rpc::zone adjacent_zone_id,
             rpc::destination_zone destination_zone_id,

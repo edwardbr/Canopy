@@ -203,7 +203,7 @@ namespace rpc
         void inner_increment_inbound_stub_count(caller_zone dest);
         void inner_decrement_inbound_stub_count(caller_zone dest);
 
-        void set_adjacent_zone_id(zone new_adjacent_zone_id) { adjacent_zone_id_ = new_adjacent_zone_id; }
+        void set_adjacent_zone_id(zone new_adjacent_zone_id);
         CORO_TASK(void) notify_all_destinations_of_disconnect();
 
         /**

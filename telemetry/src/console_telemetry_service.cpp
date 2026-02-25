@@ -373,11 +373,12 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_try_cast(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_try_cast: destination_zone={} caller_zone={} object_id={} interface_id={}{}",
             get_zone_color(zone_id.get_val()),
@@ -390,12 +391,13 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_add_ref(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_add_ref: destination_zone={} object_id={} "
                       "caller_zone={} known_direction_zone={} options={}{}",
@@ -411,11 +413,12 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_release(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_release: destination_zone={} object_id={} caller_zone={} "
                       "options={}{}",
@@ -429,12 +432,13 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_send(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info(
             "{}{} service_send: destination_zone={} caller_zone={} object_id={} interface_id={} method_id={}{}",
@@ -449,12 +453,13 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_post(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_post: destination_zone={} caller_zone={} object_id={} interface_id={} method_id={} "
                       "{}",
@@ -468,11 +473,11 @@ namespace rpc
             reset_color());
     }
 
-    void console_telemetry_service::on_service_object_released(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::object object_id) const
+    void console_telemetry_service::on_service_object_released(
+        rpc::zone zone_id, rpc::destination_object destination_object_id, rpc::caller_zone caller_zone_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_object_released: destination_zone={} caller_zone={} object_id={}{}",
             get_zone_color(zone_id.get_val()),
@@ -548,11 +553,12 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_proxy_try_cast(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_try_cast: destination_zone={} caller_zone={} object_id={} interface_id={}{}",
             get_zone_color(zone_id.get_val()),
@@ -565,12 +571,13 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_add_ref: destination_zone={} caller_zone={} "
                       "known_direction_zone={} object_id={} options={}{}",
@@ -586,11 +593,12 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_proxy_release(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::release_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_release: destination_zone={} caller_zone={} object_id={} "
                       "options={}{}",
@@ -1038,12 +1046,13 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_proxy_send(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_send: dest_zone={} caller_zone={} object={} interface={} method={}{}",
             get_zone_color(zone_id.get_val()),
@@ -1057,12 +1066,13 @@ namespace rpc
     }
 
     void console_telemetry_service::on_service_proxy_post(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_post: dest_zone={} caller_zone={} object={} interface={} method={}{}",
             get_zone_color(zone_id.get_val()),
@@ -1075,11 +1085,11 @@ namespace rpc
             reset_color());
     }
 
-    void console_telemetry_service::on_service_proxy_object_released(rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::object object_id) const
+    void console_telemetry_service::on_service_proxy_object_released(
+        rpc::zone zone_id, rpc::destination_object destination_object_id, rpc::caller_zone caller_zone_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_object_released: dest_zone={} caller_zone={} object={}{}",
             get_zone_color(zone_id.get_val()),
@@ -1104,12 +1114,13 @@ namespace rpc
 
     void console_telemetry_service::on_transport_outbound_send(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_outbound_send:  adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
@@ -1126,12 +1137,13 @@ namespace rpc
 
     void console_telemetry_service::on_transport_outbound_post(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_outbound_post: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
@@ -1148,11 +1160,12 @@ namespace rpc
 
     void console_telemetry_service::on_transport_outbound_try_cast(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_outbound_try_cast: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={}{}",
@@ -1168,12 +1181,13 @@ namespace rpc
 
     void console_telemetry_service::on_transport_outbound_add_ref(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_outbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "known_direction_zone={} options={}{}",
@@ -1191,11 +1205,12 @@ namespace rpc
 
     void console_telemetry_service::on_transport_outbound_release(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::release_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
 
         logger_->info("{}{} transport_outbound_release: adjacent_zone={} dest_zone={} caller_zone={} object={} "
@@ -1213,10 +1228,11 @@ namespace rpc
 
     void console_telemetry_service::on_transport_outbound_object_released(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::object object_id) const
+        rpc::destination_object destination_object_id,
+        rpc::caller_zone caller_zone_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_outbound_object_released: adjacent_zone={} dest_zone={} caller_zone={} "
                       "object={}{}",
@@ -1246,12 +1262,13 @@ namespace rpc
 
     void console_telemetry_service::on_transport_inbound_send(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_inbound_send: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
@@ -1268,12 +1285,13 @@ namespace rpc
 
     void console_telemetry_service::on_transport_inbound_post(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_inbound_post: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={} {}",
@@ -1290,11 +1308,12 @@ namespace rpc
 
     void console_telemetry_service::on_transport_inbound_try_cast(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::interface_ordinal interface_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_inbound_try_cast: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={}{}",
@@ -1310,12 +1329,13 @@ namespace rpc
 
     void console_telemetry_service::on_transport_inbound_add_ref(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_inbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "known_direction_zone={} options={}{}",
@@ -1333,11 +1353,12 @@ namespace rpc
 
     void console_telemetry_service::on_transport_inbound_release(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
+        rpc::destination_object destination_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::object object_id,
         rpc::release_options options) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_inbound_release: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "options={}{}",
@@ -1354,10 +1375,11 @@ namespace rpc
 
     void console_telemetry_service::on_transport_inbound_object_released(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::object object_id) const
+        rpc::destination_object destination_object_id,
+        rpc::caller_zone caller_zone_id) const
     {
+        auto destination_zone_id = destination_object_id.as_destination_zone();
+        auto object_id = destination_object_id.get_object();
         init_logger();
         logger_->info(
             "{}{} transport_inbound_object_released: adjacent_zone={} dest_zone={} caller_zone={} object={}{}",
