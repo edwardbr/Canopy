@@ -125,7 +125,7 @@ namespace rpc::spsc
                 .payload_size = payload.size()};
 
             RPC_TRACE("send_payload {}\nprefix = {}\npayload = {}",
-                get_service()->get_zone_id().get_val(),
+                get_service()->get_zone_id().get_subnet(),
                 rpc::to_yas_json<std::string>(prefix),
                 rpc::to_yas_json<std::string>(payload_envelope));
 
@@ -153,7 +153,7 @@ namespace rpc::spsc
 
             {
                 RPC_TRACE("call_peer started zone: {} sequence_number: {} id: {}",
-                    get_service()->get_zone_id().get_val(),
+                    get_service()->get_zone_id().get_subnet(),
                     sequence_number,
                     rpc::id<SendPayload>::get(rpc::get_version()));
                 std::scoped_lock lock(pending_transmits_mtx_);
@@ -170,7 +170,7 @@ namespace rpc::spsc
             CO_AWAIT res_payload.event; // now wait for the reply
 
             RPC_TRACE("call_peer succeeded zone: {} sequence_number: {} id: {}",
-                get_service()->get_zone_id().get_val(),
+                get_service()->get_zone_id().get_subnet(),
                 sequence_number,
                 rpc::id<SendPayload>::get(rpc::get_version()));
 
@@ -182,7 +182,7 @@ namespace rpc::spsc
             if (rpc::error::is_critical(res_payload.error_code))
             {
                 RPC_ERROR("call_peer returning cancelled error for zone: {} sequence_number: {}",
-                    get_service()->get_zone_id().get_val(),
+                    get_service()->get_zone_id().get_subnet(),
                     sequence_number);
                 CO_RETURN res_payload.error_code;
             }

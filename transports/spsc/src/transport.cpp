@@ -42,7 +42,7 @@ namespace rpc::spsc
     CORO_TASK(int)
     spsc_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
     {
-        RPC_DEBUG("spsc_transport::connect zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::connect zone={}", get_zone_id().get_subnet());
 
         auto service = get_service();
         assert(connection_handler_ || !connection_handler_); // Can be null for client side
@@ -105,7 +105,7 @@ namespace rpc::spsc
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
 
-        RPC_DEBUG("spsc_transport::outbound_send zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_send zone={}", get_zone_id().get_subnet());
 
         // Peer-to-peer: always transmit via SPSC queue to peer
         // The peer transport will call inbound_send for routing
@@ -130,7 +130,7 @@ namespace rpc::spsc
         out_buf_.swap(response.payload);
         out_back_channel.swap(response.back_channel);
 
-        RPC_DEBUG("spsc_transport::outbound_send complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_send complete zone={}", get_zone_id().get_subnet());
 
         CO_RETURN response.err_code;
     }
@@ -146,7 +146,7 @@ namespace rpc::spsc
         const rpc::span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("spsc_transport::outbound_post zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_post zone={}", get_zone_id().get_subnet());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED)
@@ -181,7 +181,7 @@ namespace rpc::spsc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("spsc_transport::outbound_try_cast zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_try_cast zone={}", get_zone_id().get_subnet());
 
         // Peer-to-peer: always transmit via SPSC queue to peer
         // The peer transport will call inbound_try_cast for routing
@@ -198,7 +198,7 @@ namespace rpc::spsc
             CO_RETURN ret;
         }
 
-        RPC_DEBUG("spsc_transport::outbound_try_cast complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_try_cast complete zone={}", get_zone_id().get_subnet());
 
         out_back_channel.swap(response_data.back_channel);
         CO_RETURN response_data.err_code;
@@ -213,7 +213,7 @@ namespace rpc::spsc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("spsc_transport::outbound_add_ref zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_add_ref zone={}", get_zone_id().get_subnet());
 
         // Peer-to-peer: always transmit via SPSC queue to peer
         // The peer transport will call inbound_add_ref for routing
@@ -246,7 +246,7 @@ namespace rpc::spsc
             CO_RETURN response_data.err_code;
         }
 
-        RPC_DEBUG("spsc_transport::outbound_add_ref complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_add_ref complete zone={}", get_zone_id().get_subnet());
 
         CO_RETURN rpc::error::OK();
     }
@@ -259,7 +259,7 @@ namespace rpc::spsc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("spsc_transport::outbound_release zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_release zone={}", get_zone_id().get_subnet());
 
         // Check transport status
         if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::DISCONNECTING)
@@ -294,7 +294,7 @@ namespace rpc::spsc
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("spsc_transport::outbound_object_released zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_object_released zone={}", get_zone_id().get_subnet());
 
         // Allow during DISCONNECTING (cleanup messages must get through); block only when fully disconnected
         if (get_status() == rpc::transport_status::DISCONNECTED)
@@ -313,7 +313,7 @@ namespace rpc::spsc
                 .back_channel = in_back_channel},
             0); // sequence number 0 for one-way messages
 
-        RPC_DEBUG("spsc_transport::outbound_object_released complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_object_released complete zone={}", get_zone_id().get_subnet());
     }
 
     CORO_TASK(void)
@@ -322,7 +322,7 @@ namespace rpc::spsc
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("spsc_transport::outbound_transport_down zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_transport_down zone={}", get_zone_id().get_subnet());
 
         // Allow during DISCONNECTING (cleanup messages must get through); block only when fully disconnected
         if (get_status() == rpc::transport_status::DISCONNECTED)
@@ -341,20 +341,20 @@ namespace rpc::spsc
                 .back_channel = in_back_channel},
             0); // sequence number 0 for one-way messages
 
-        RPC_DEBUG("spsc_transport::outbound_transport_down complete zone={}", get_zone_id().get_val());
+        RPC_DEBUG("spsc_transport::outbound_transport_down complete zone={}", get_zone_id().get_subnet());
     }
 
     // Producer/consumer tasks for message pumping
     void spsc_transport::pump_send_and_receive()
     {
         auto self = shared_from_this();
-        RPC_DEBUG("pump_send_and_receive zone={}", get_zone_id().get_val());
+        RPC_DEBUG("pump_send_and_receive zone={}", get_zone_id().get_subnet());
 
         // Guard against multiple calls
         bool expected = false;
         if (!pumps_started_.compare_exchange_strong(expected, true))
         {
-            RPC_ERROR("pump_send_and_receive called MULTIPLE TIMES on zone {} - BUG!", get_zone_id().get_val());
+            RPC_ERROR("pump_send_and_receive called MULTIPLE TIMES on zone {} - BUG!", get_zone_id().get_subnet());
             return;
         }
 
@@ -366,7 +366,7 @@ namespace rpc::spsc
         scheduler->spawn(receive_consumer_loop(tracker));
         scheduler->spawn(send_producer_loop(tracker));
 
-        RPC_DEBUG("pump_send_and_receive: scheduled tasks for zone {}", get_zone_id().get_val());
+        RPC_DEBUG("pump_send_and_receive: scheduled tasks for zone {}", get_zone_id().get_subnet());
     }
 
     // Receive consumer task
@@ -385,7 +385,7 @@ namespace rpc::spsc
         bool receiving_prefix = true;
         std::span<uint8_t> receive_data;
 
-        RPC_DEBUG("receive_consumer_loop started for zone {}", get_zone_id().get_val());
+        RPC_DEBUG("receive_consumer_loop started for zone {}", get_zone_id().get_subnet());
 
         // Prefix must persist across loop iterations while receiving payload chunks
         envelope_prefix prefix{};
@@ -420,7 +420,7 @@ namespace rpc::spsc
                                 {
                                     RPC_DEBUG(
                                         "receive_consumer_loop: responder sending close_connection_ack for zone {}",
-                                        get_zone_id().get_val());
+                                        get_zone_id().get_subnet());
                                     send_payload(rpc::get_version(), message_direction::one_way, close_connection_ack{}, 0);
                                     // Flush close_connection_ack directly — send loop has already exited
                                     std::span<uint8_t> ack_send_data;
@@ -428,7 +428,7 @@ namespace rpc::spsc
                                     while (ack_status == send_queue_status::SEND_QUEUE_NOT_EMPTY)
                                         ack_status = push_message(ack_send_data);
                                     RPC_DEBUG("receive_consumer_loop: responder transition to DISCONNECTED zone {}",
-                                        get_zone_id().get_val());
+                                        get_zone_id().get_subnet());
                                     set_status(rpc::transport_status::DISCONNECTED);
                                     stop_loop = true;
                                     break;
@@ -442,7 +442,7 @@ namespace rpc::spsc
                                         RPC_WARNING(
                                             "receive_consumer_loop: responder shutdown timeout for zone {}, forcing "
                                             "DISCONNECTED",
-                                            get_zone_id().get_val());
+                                            get_zone_id().get_subnet());
                                         set_status(rpc::transport_status::DISCONNECTED);
                                         stop_loop = true;
                                         break;
@@ -457,7 +457,7 @@ namespace rpc::spsc
                                 {
                                     RPC_WARNING(
                                         "receive_consumer_loop: shutdown timeout for zone {}, forcing DISCONNECTED",
-                                        get_zone_id().get_val());
+                                        get_zone_id().get_subnet());
                                     set_status(rpc::transport_status::DISCONNECTED);
                                     stop_loop = true;
                                     break;
@@ -613,7 +613,7 @@ namespace rpc::spsc
                     {
                         RPC_DEBUG("pump: received close_connection_send seq={} zone={}",
                             prefix.sequence_number,
-                            get_zone_id().get_val());
+                            get_zone_id().get_subnet());
                         set_status(rpc::transport_status::DISCONNECTING);
                         peer_requested_disconnection_ = true;
                         // Continue loop to drain remaining messages; ack sent when queue empty + send done
@@ -621,7 +621,7 @@ namespace rpc::spsc
                     else if (payload.payload_fingerprint == rpc::id<close_connection_ack>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received close_connection_ack — shutdown confirmed zone={}",
-                            get_zone_id().get_val());
+                            get_zone_id().get_subnet());
                         set_status(rpc::transport_status::DISCONNECTED);
                         stop_loop = true;
                     }
@@ -633,7 +633,7 @@ namespace rpc::spsc
                             std::scoped_lock lock(pending_transmits_mtx_);
                             auto it = pending_transmits_.find(prefix.sequence_number);
                             RPC_DEBUG("pending_transmits_ zone: {} sequence_number: {} id: {}",
-                                get_zone_id().get_val(),
+                                get_zone_id().get_subnet(),
                                 prefix.sequence_number,
                                 payload.payload_fingerprint);
 
@@ -659,7 +659,7 @@ namespace rpc::spsc
                             result->payload = std::move(payload);
 
                             RPC_DEBUG("pump_send_and_receive prefix.sequence_number {}\n prefix = {}\n payload = {}",
-                                get_zone_id().get_val(),
+                                get_zone_id().get_subnet(),
                                 rpc::to_yas_json<std::string>(result->prefix),
                                 rpc::to_yas_json<std::string>(result->payload));
 
@@ -673,7 +673,7 @@ namespace rpc::spsc
             }
         }
 
-        RPC_DEBUG("receive_consumer_loop exiting for zone {}", get_zone_id().get_val());
+        RPC_DEBUG("receive_consumer_loop exiting for zone {}", get_zone_id().get_subnet());
 
         CO_RETURN;
     }
@@ -729,7 +729,7 @@ namespace rpc::spsc
         auto svc = get_service();       // keep the service alive until finished
         RPC_ASSERT(svc);
 
-        RPC_DEBUG("send_producer_loop started for zone {}", get_zone_id().get_val());
+        RPC_DEBUG("send_producer_loop started for zone {}", get_zone_id().get_subnet());
 
         std::span<uint8_t> send_data;
         while (get_status() == rpc::transport_status::CONNECTED)
@@ -752,7 +752,7 @@ namespace rpc::spsc
         if (!peer_requested_disconnection_)
         {
             // Initiator: append close_connection_send after all cleanup messages
-            RPC_DEBUG("send_producer_loop: sending close_connection_send for zone {}", get_zone_id().get_val());
+            RPC_DEBUG("send_producer_loop: sending close_connection_send for zone {}", get_zone_id().get_subnet());
             send_payload(rpc::get_version(), message_direction::one_way, close_connection_send{}, 0);
         }
 
@@ -763,23 +763,24 @@ namespace rpc::spsc
 
         if (status == send_queue_status::SPSC_QUEUE_FULL)
         {
-            RPC_WARNING("send_producer_loop: SPSC queue full during shutdown flush for zone {}", get_zone_id().get_val());
+            RPC_WARNING(
+                "send_producer_loop: SPSC queue full during shutdown flush for zone {}", get_zone_id().get_subnet());
         }
 
         // Always signal send_cleanup_done_ — handles both normal responder path and the
         // simultaneous-disconnect case where the initiator's receive loop enters the responder
         // path (peer_requested=true) after the send loop already took the initiator path.
-        RPC_DEBUG("send_producer_loop: cleanup done, signalling receive loop for zone {}", get_zone_id().get_val());
+        RPC_DEBUG("send_producer_loop: cleanup done, signalling receive loop for zone {}", get_zone_id().get_subnet());
         send_cleanup_done_.store(true, std::memory_order_release);
 
-        RPC_DEBUG("send_producer_loop completed for zone {}", get_zone_id().get_val());
+        RPC_DEBUG("send_producer_loop completed for zone {}", get_zone_id().get_subnet());
         CO_RETURN;
     }
 
     CORO_TASK(void)
     spsc_transport::cleanup(std::shared_ptr<spsc_transport> transport, std::shared_ptr<rpc::service> svc)
     {
-        RPC_DEBUG("Both loops completed, finalising transport for zone {}", transport->get_zone_id().get_val());
+        RPC_DEBUG("Both loops completed, finalising transport for zone {}", transport->get_zone_id().get_subnet());
         // Cancel any outstanding request-response calls (they will never receive a reply)
         {
             std::scoped_lock lock(transport->pending_transmits_mtx_);
@@ -1062,7 +1063,7 @@ namespace rpc::spsc
     CORO_TASK(void)
     spsc_transport::create_stub(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
-        RPC_DEBUG("create_stub zone: {}", get_zone_id().get_val());
+        RPC_DEBUG("create_stub zone: {}", get_zone_id().get_subnet());
 
         init_client_channel_send request;
         auto err = rpc::from_yas_binary(rpc::span(payload.payload), request);

@@ -84,7 +84,7 @@ namespace std
     {
         auto operator()(const rpc::pass_through_key& item) const noexcept
         {
-            return (std::size_t)item.zone1.get_val() + (std::size_t)item.zone2.get_val();
+            return (std::size_t)item.zone1.get_subnet() + (std::size_t)item.zone2.get_subnet();
         }
     };
 }

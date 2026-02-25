@@ -67,7 +67,7 @@ namespace comprehensive
             auto service = std::make_shared<rpc::service>("tcp_server", rpc::zone{++zone_gen}, scheduler);
             service->set_shutdown_event(on_shutdown_event);
 
-            std::cout << "Server zone ID: " << service->get_zone_id().get_val() << "\n";
+            std::cout << "Server zone ID: " << service->get_zone_id().get_subnet() << "\n";
 
             // Create TCP listener with connection handler
             auto listener = std::make_shared<rpc::tcp::listener>(
@@ -76,7 +76,8 @@ namespace comprehensive
                     std::shared_ptr<rpc::service> child_service_ptr,
                     std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
                 {
-                    std::cout << "Server: Accepting connection from zone " << input_descr.input_zone_id.get_val() << "\n";
+                    std::cout << "Server: Accepting connection from zone " << input_descr.input_zone_id.get_subnet()
+                              << "\n";
 
                     // Use attach_remote_zone to handle the connection
                     auto ret
@@ -158,7 +159,7 @@ namespace comprehensive
                 // Create client service
                 auto client_service = std::make_shared<rpc::service>("tcp_client", rpc::zone{++zone_gen}, scheduler);
 
-                std::cout << "Client zone ID: " << client_service->get_zone_id().get_val() << "\n";
+                std::cout << "Client zone ID: " << client_service->get_zone_id().get_subnet() << "\n";
                 std::cout << "Client: Connecting to " << host << ":" << port << "...\n";
 
                 // Create TCP client

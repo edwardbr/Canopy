@@ -178,9 +178,6 @@ namespace rpc
             return true;
         }
 
-        // legacy compatibility: returns subnet_id as uint64_t
-        uint64_t get_val() const { return static_cast<uint64_t>(subnet_id); }
-
         // zone-only address (strips object_id)
         zone_address zone_only() const { return zone_address(routing_prefix, subnet_id, 0); }
 
@@ -249,23 +246,23 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return addr_.get_val(); }
+        uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const zone& lhs, const zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
-            return addr_.get_val() == static_cast<uint64_t>(val);
+            return addr_.get_subnet() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const zone& lhs, const zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
-            return addr_.get_val() != static_cast<uint64_t>(val);
+            return addr_.get_subnet() != static_cast<uint64_t>(val);
         }
 
         // less
-        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -302,22 +299,22 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return addr_.get_val(); }
+        uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const destination_zone& lhs, const destination_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
-            return addr_.get_val() == static_cast<uint64_t>(val);
+            return addr_.get_subnet() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const destination_zone& lhs, const destination_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
-            return addr_.get_val() != static_cast<uint64_t>(val);
+            return addr_.get_subnet() != static_cast<uint64_t>(val);
         }
 
-        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const destination_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -357,23 +354,23 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return addr_.get_val(); }
+        uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const caller_zone& lhs, const caller_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
-            return addr_.get_val() == static_cast<uint64_t>(val);
+            return addr_.get_subnet() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const caller_zone& lhs, const caller_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
-            return addr_.get_val() != static_cast<uint64_t>(val);
+            return addr_.get_subnet() != static_cast<uint64_t>(val);
         }
 
         // less
-        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const caller_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -413,23 +410,23 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return addr_.get_val(); }
+        uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const requesting_zone& lhs, const requesting_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
-            return addr_.get_val() == static_cast<uint64_t>(val);
+            return addr_.get_subnet() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const requesting_zone& lhs, const requesting_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
-            return addr_.get_val() != static_cast<uint64_t>(val);
+            return addr_.get_subnet() != static_cast<uint64_t>(val);
         }
 
         // less
-        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const requesting_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -513,22 +510,22 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return addr_.get_val(); }
+        uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const remote_object& lhs, const remote_object& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
-            return addr_.get_val() == static_cast<uint64_t>(val);
+            return addr_.get_subnet() == static_cast<uint64_t>(val);
         }
         friend inline bool operator!=(const remote_object& lhs, const remote_object& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
-            return addr_.get_val() != static_cast<uint64_t>(val);
+            return addr_.get_subnet() != static_cast<uint64_t>(val);
         }
 
-        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const remote_object& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }

@@ -254,28 +254,28 @@ namespace rpc
     void console_telemetry_service::on_service_creation(
         const std::string& name, rpc::zone zone_id, rpc::destination_zone parent_zone_id) const
     {
-        register_zone_name(zone_id.get_val(), name, false);
+        register_zone_name(zone_id.get_subnet(), name, false);
         init_logger();
-        if (parent_zone_id.get_val() == 0)
+        if (parent_zone_id.get_subnet() == 0)
             logger_->info("{}{} service_creation{}",
-                get_zone_color(zone_id.get_val()),
-                get_zone_name(zone_id.get_val()),
+                get_zone_color(zone_id.get_subnet()),
+                get_zone_name(zone_id.get_subnet()),
                 reset_color());
         else
             logger_->info("{}{} child_zone_creation: parent={}{}",
-                get_zone_color(zone_id.get_val()),
-                get_zone_name(zone_id.get_val()),
-                get_zone_name(parent_zone_id.get_val()),
+                get_zone_color(zone_id.get_subnet()),
+                get_zone_name(zone_id.get_subnet()),
+                get_zone_name(parent_zone_id.get_subnet()),
                 reset_color());
 
         // Track the parent-child relationship
         {
             std::unique_lock<std::shared_mutex> lock(zone_children_mutex_);
-            zone_children_[parent_zone_id.get_val()].insert(zone_id.get_val());
+            zone_children_[parent_zone_id.get_subnet()].insert(zone_id.get_subnet());
         }
         {
             std::unique_lock<std::shared_mutex> lock(zone_parents_mutex_);
-            zone_parents_[zone_id.get_val()] = parent_zone_id.get_val();
+            zone_parents_[zone_id.get_subnet()] = parent_zone_id.get_subnet();
         }
         // Print topology diagram after each service creation
         print_topology_diagram();
@@ -368,8 +368,10 @@ namespace rpc
     void console_telemetry_service::on_service_deletion(rpc::zone zone_id) const
     {
         init_logger();
-        logger_->info(
-            "{}{} service_deletion{}", get_zone_color(zone_id.get_val()), get_zone_name(zone_id.get_val()), reset_color());
+        logger_->info("{}{} service_deletion{}",
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            reset_color());
     }
 
     void console_telemetry_service::on_service_try_cast(rpc::zone zone_id,
@@ -381,10 +383,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_try_cast: destination_zone={} caller_zone={} object_id={} interface_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             reset_color());
@@ -401,12 +403,12 @@ namespace rpc
         init_logger();
         logger_->info("{}{} service_add_ref: destination_zone={} object_id={} "
                       "caller_zone={} requesting_zone={} options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
             object_id.get_val(),
-            get_zone_name(caller_zone_id.get_val()),
-            get_zone_name(requesting_zone_id.get_val()),
+            get_zone_name(caller_zone_id.get_subnet()),
+            get_zone_name(requesting_zone_id.get_subnet()),
             static_cast<int>(options),
 
             reset_color());
@@ -422,11 +424,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} service_release: destination_zone={} object_id={} caller_zone={} "
                       "options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
             object_id.get_val(),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_name(caller_zone_id.get_subnet()),
             static_cast<int>(options),
             reset_color());
     }
@@ -442,10 +444,10 @@ namespace rpc
         init_logger();
         logger_->info(
             "{}{} service_send: destination_zone={} caller_zone={} object_id={} interface_id={} method_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -463,10 +465,10 @@ namespace rpc
         init_logger();
         logger_->info("{}{} service_post: destination_zone={} caller_zone={} object_id={} interface_id={} method_id={} "
                       "{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -480,10 +482,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_object_released: destination_zone={} caller_zone={} object_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             reset_color());
     }
@@ -493,10 +495,10 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} service_transport_down: destination_zone={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -508,15 +510,15 @@ namespace rpc
     {
         std::string uppercase_name(service_proxy_name);
         capitalise(uppercase_name);
-        register_zone_name(zone_id.get_val(), service_name, true);
-        register_zone_name(destination_zone_id.get_val(), service_proxy_name, true);
+        register_zone_name(zone_id.get_subnet(), service_name, true);
+        register_zone_name(destination_zone_id.get_subnet(), service_proxy_name, true);
         init_logger();
         logger_->info("{}{} service_proxy_creation: name=[{}] destination_zone={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             uppercase_name,
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -528,15 +530,15 @@ namespace rpc
     {
         std::string uppercase_name(service_proxy_name);
         capitalise(uppercase_name);
-        register_zone_name(zone_id.get_val(), service_name, true);
-        register_zone_name(destination_zone_id.get_val(), service_proxy_name, true);
+        register_zone_name(zone_id.get_subnet(), service_name, true);
+        register_zone_name(destination_zone_id.get_subnet(), service_proxy_name, true);
         init_logger();
         logger_->info("{}{} cloned_service_proxy_creation: name=[{}] destination_zone={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             uppercase_name,
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -545,10 +547,10 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} service_proxy_deletion: destination_zone={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -561,10 +563,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_try_cast: destination_zone={} caller_zone={} object_id={} interface_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             reset_color());
@@ -581,11 +583,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} service_proxy_add_ref: destination_zone={} caller_zone={} "
                       "requesting_zone={} object_id={} options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
-            get_zone_name(requesting_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
+            get_zone_name(requesting_zone_id.get_subnet()),
             object_id.get_val(),
             static_cast<int>(options),
 
@@ -602,10 +604,10 @@ namespace rpc
         init_logger();
         logger_->info("{}{} service_proxy_release: destination_zone={} caller_zone={} object_id={} "
                       "options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             static_cast<int>(options),
 
@@ -618,10 +620,10 @@ namespace rpc
         init_logger();
         logger_->info("{}{} service_proxy_add_external_ref: destination_zone={} "
                       "caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -631,10 +633,10 @@ namespace rpc
         init_logger();
         logger_->info("{}{} service_proxy_release_external_ref: destination_zone={} "
                       "caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -642,8 +644,8 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} impl_creation: name={} address={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             name,
             address,
             reset_color());
@@ -653,8 +655,8 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} impl_deletion: address={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             address,
             reset_color());
     }
@@ -663,8 +665,8 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} stub_creation: object_id={} address={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             object_id.get_val(),
             address,
             reset_color());
@@ -674,8 +676,8 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} stub_deletion: object_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             object_id.get_val(),
             reset_color());
     }
@@ -685,8 +687,8 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} stub_send: object_id={} interface_id={} method_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -701,12 +703,12 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} stub_add_ref: object_id={} interface_id={} count={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             count,
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -718,12 +720,12 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} stub_release: object_id={} interface_id={} count={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             count,
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -732,9 +734,9 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} object_proxy_creation: destination_zone={} object_id={} add_ref_done={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
             object_id.get_val(),
             (add_ref_done ? "true" : "false"),
             reset_color());
@@ -745,9 +747,9 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} object_proxy_deletion: destination_zone={} object_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
             object_id.get_val(),
             reset_color());
     }
@@ -760,10 +762,10 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} interface_proxy_creation: name={} destination_zone={} object_id={} interface_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             name,
-            get_zone_name(destination_zone_id.get_val()),
+            get_zone_name(destination_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             reset_color());
@@ -776,9 +778,9 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} interface_proxy_deletion: destination_zone={} object_id={} interface_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             reset_color());
@@ -794,10 +796,10 @@ namespace rpc
         init_logger();
         logger_->info(
             "{}{} interface_proxy_send: method_name={} destination_zone={} object_id={} interface_id={} method_id={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             method_name,
-            get_zone_name(destination_zone_id.get_val()),
+            get_zone_name(destination_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -856,10 +858,10 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} transport_creation: name={} adjacent_zone={} status={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             name,
-            get_zone_name(adjacent_zone_id.get_val()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
             static_cast<int>(status),
             reset_color());
     }
@@ -868,9 +870,9 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} transport_deletion: adjacent_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -882,10 +884,10 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} transport_status_change: name={} adjacent_zone={} old_status={} new_status={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             name,
-            get_zone_name(adjacent_zone_id.get_val()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
             static_cast<int>(old_status),
             static_cast<int>(new_status),
             reset_color());
@@ -896,11 +898,11 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} transport_add_destination: adjacent_zone={} destination={} caller={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            destination.get_val(),
-            caller.get_val(),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            destination.get_subnet(),
+            caller.get_subnet(),
             reset_color());
     }
 
@@ -909,11 +911,11 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} transport_remove_destination: adjacent_zone={} destination={} caller={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            destination.get_val(),
-            caller.get_val(),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            destination.get_subnet(),
+            caller.get_subnet(),
             reset_color());
     }
 
@@ -921,11 +923,11 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{}{} transport_accept: adjacent_zone={}{}{} result={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             reset_color(),
-            get_zone_color(adjacent_zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
+            get_zone_color(adjacent_zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
             reset_color(),
             result,
             reset_color());
@@ -941,14 +943,14 @@ namespace rpc
         logger_->info(
             "{}{}{} pass_through_creation: forward_destination={}{}{} reverse_destination={}{}{} shared_count={} "
             "optimistic_count={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             reset_color(),
-            get_zone_color(forward_destination.get_val()),
-            get_zone_name(forward_destination.get_val()),
+            get_zone_color(forward_destination.get_subnet()),
+            get_zone_name(forward_destination.get_subnet()),
             reset_color(),
-            get_zone_color(reverse_destination.get_val()),
-            get_zone_name(reverse_destination.get_val()),
+            get_zone_color(reverse_destination.get_subnet()),
+            get_zone_name(reverse_destination.get_subnet()),
             reset_color(),
             shared_count,
             optimistic_count,
@@ -960,14 +962,14 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{}{} pass_through_deletion: forward_destination={}{}{} reverse_destination={}{}{}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             reset_color(),
-            get_zone_color(forward_destination.get_val()),
-            get_zone_name(forward_destination.get_val()),
+            get_zone_color(forward_destination.get_subnet()),
+            get_zone_name(forward_destination.get_subnet()),
             reset_color(),
-            get_zone_color(reverse_destination.get_val()),
-            get_zone_name(reverse_destination.get_val()),
+            get_zone_color(reverse_destination.get_subnet()),
+            get_zone_name(reverse_destination.get_subnet()),
             reset_color(),
             reset_color());
     }
@@ -982,14 +984,14 @@ namespace rpc
         init_logger();
         logger_->info("{}{}{} pass_through_add_ref: forward_destination={}{}{} reverse_destination={}{}{} options={} "
                       "shared_delta={} optimistic_delta={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             reset_color(),
-            get_zone_color(forward_destination.get_val()),
-            get_zone_name(forward_destination.get_val()),
+            get_zone_color(forward_destination.get_subnet()),
+            get_zone_name(forward_destination.get_subnet()),
             reset_color(),
-            get_zone_color(reverse_destination.get_val()),
-            get_zone_name(reverse_destination.get_val()),
+            get_zone_color(reverse_destination.get_subnet()),
+            get_zone_name(reverse_destination.get_subnet()),
             reset_color(),
             static_cast<int>(options),
             shared_delta,
@@ -1007,14 +1009,14 @@ namespace rpc
         logger_->info(
             "{}{}{} pass_through_release: forward_destination={}{}{} reverse_destination={}{}{} shared_delta={} "
             "optimistic_delta={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             reset_color(),
-            get_zone_color(forward_destination.get_val()),
-            get_zone_name(forward_destination.get_val()),
+            get_zone_color(forward_destination.get_subnet()),
+            get_zone_name(forward_destination.get_subnet()),
             reset_color(),
-            get_zone_color(reverse_destination.get_val()),
-            get_zone_name(reverse_destination.get_val()),
+            get_zone_color(reverse_destination.get_subnet()),
+            get_zone_name(reverse_destination.get_subnet()),
             reset_color(),
             shared_delta,
             optimistic_delta,
@@ -1031,14 +1033,14 @@ namespace rpc
         logger_->info("{}{}{} pass_through_status_change: forward_destination={}{}{} reverse_destination={}{}{} "
                       "forward_status={} "
                       "reverse_status={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
             reset_color(),
-            get_zone_color(forward_destination.get_val()),
-            get_zone_name(forward_destination.get_val()),
+            get_zone_color(forward_destination.get_subnet()),
+            get_zone_name(forward_destination.get_subnet()),
             reset_color(),
-            get_zone_color(reverse_destination.get_val()),
-            get_zone_name(reverse_destination.get_val()),
+            get_zone_color(reverse_destination.get_subnet()),
+            get_zone_name(reverse_destination.get_subnet()),
             reset_color(),
             static_cast<int>(forward_status),
             static_cast<int>(reverse_status),
@@ -1055,10 +1057,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_send: dest_zone={} caller_zone={} object={} interface={} method={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1075,10 +1077,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_post: dest_zone={} caller_zone={} object={} interface={} method={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1092,10 +1094,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_object_released: dest_zone={} caller_zone={} object={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             reset_color());
     }
@@ -1105,10 +1107,10 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} service_proxy_transport_down: dest_zone={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -1124,11 +1126,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_outbound_send:  adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1147,11 +1149,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_outbound_post: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1169,11 +1171,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_outbound_try_cast: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             reset_color());
@@ -1191,13 +1193,13 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_outbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "requesting_zone={} options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
-            get_zone_name(requesting_zone_id.get_val()),
+            get_zone_name(requesting_zone_id.get_subnet()),
             static_cast<int>(options),
 
             reset_color());
@@ -1215,11 +1217,11 @@ namespace rpc
 
         logger_->info("{}{} transport_outbound_release: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             static_cast<int>(options),
 
@@ -1236,11 +1238,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_outbound_object_released: adjacent_zone={} dest_zone={} caller_zone={} "
                       "object={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             reset_color());
     }
@@ -1252,11 +1254,11 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} transport_outbound_transport_down: adjacent_zone={} dest_zone={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 
@@ -1272,11 +1274,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_inbound_send: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1295,11 +1297,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_inbound_post: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={} {}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1317,11 +1319,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_inbound_try_cast: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             interface_id.get_val(),
             reset_color());
@@ -1339,13 +1341,13 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_inbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "requesting_zone={} options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
-            get_zone_name(requesting_zone_id.get_val()),
+            get_zone_name(requesting_zone_id.get_subnet()),
             static_cast<int>(options),
 
             reset_color());
@@ -1362,11 +1364,11 @@ namespace rpc
         init_logger();
         logger_->info("{}{} transport_inbound_release: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "options={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             static_cast<int>(options),
 
@@ -1383,11 +1385,11 @@ namespace rpc
         init_logger();
         logger_->info(
             "{}{} transport_inbound_object_released: adjacent_zone={} dest_zone={} caller_zone={} object={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             object_id.get_val(),
             reset_color());
     }
@@ -1399,11 +1401,11 @@ namespace rpc
     {
         init_logger();
         logger_->info("{}{} transport_inbound_transport_down: adjacent_zone={} dest_zone={} caller_zone={}{}",
-            get_zone_color(zone_id.get_val()),
-            get_zone_name(zone_id.get_val()),
-            get_zone_name(adjacent_zone_id.get_val()),
-            get_zone_name(destination_zone_id.get_val()),
-            get_zone_name(caller_zone_id.get_val()),
+            get_zone_color(zone_id.get_subnet()),
+            get_zone_name(zone_id.get_subnet()),
+            get_zone_name(adjacent_zone_id.get_subnet()),
+            get_zone_name(destination_zone_id.get_subnet()),
+            get_zone_name(caller_zone_id.get_subnet()),
             reset_color());
     }
 }

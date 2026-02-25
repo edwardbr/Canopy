@@ -130,10 +130,10 @@ namespace rpc::local
     {
         RPC_DEBUG(
             "parent_transport::outbound_add_ref: my_zone={}, adjacent_zone={}, destination_zone={}, caller_zone={}",
-            get_zone_id().get_val(),
-            get_adjacent_zone_id().get_val(),
-            remote_object_id.get_val(),
-            caller_zone_id.get_val());
+            get_zone_id().get_subnet(),
+            get_adjacent_zone_id().get_subnet(),
+            remote_object_id.get_subnet(),
+            caller_zone_id.get_subnet());
 
         auto parent = parent_.get_nullable();
         if (!parent)
@@ -143,7 +143,7 @@ namespace rpc::local
         }
 
         RPC_DEBUG("parent_transport::outbound_add_ref: Calling parent->inbound_add_ref for zone {}",
-            remote_object_id.get_val());
+            remote_object_id.get_subnet());
         auto error_code = CO_AWAIT parent->inbound_add_ref(protocol_version,
             remote_object_id,
             caller_zone_id,

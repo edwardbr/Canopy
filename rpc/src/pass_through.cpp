@@ -60,11 +60,11 @@ namespace rpc
 
     std::shared_ptr<transport> pass_through::get_directional_transport(destination_zone dest)
     {
-        if (dest.get_val() == forward_destination_.get_val())
+        if (dest.get_subnet() == forward_destination_.get_subnet())
         {
             return forward_transport_;
         }
-        else if (dest.get_val() == reverse_destination_.get_val())
+        else if (dest.get_subnet() == reverse_destination_.get_subnet())
         {
             return reverse_transport_;
         }
@@ -253,11 +253,11 @@ namespace rpc
 
         RPC_DEBUG("pass_through::add_ref zone={}, fwd={}, rev={}, dest={}, caller={}, options={}, build_dest={}, "
                   "build_caller={}, no_local={}",
-            zone_id_.get_val(),
-            forward_destination_.get_val(),
-            reverse_destination_.get_val(),
-            remote_object_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id_.get_subnet(),
+            forward_destination_.get_subnet(),
+            reverse_destination_.get_subnet(),
+            remote_object_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             static_cast<uint64_t>(build_out_param_channel),
             build_dest_channel,
             build_caller_channel,
@@ -393,11 +393,11 @@ namespace rpc
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
         RPC_DEBUG("pass_through::release zone={}, fwd={}, rev={}, dest={}, caller={}, options={}",
-            zone_id_.get_val(),
-            forward_destination_.get_val(),
-            reverse_destination_.get_val(),
-            remote_object_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id_.get_subnet(),
+            forward_destination_.get_subnet(),
+            reverse_destination_.get_subnet(),
+            remote_object_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             static_cast<uint64_t>(options));
 
         // Check if we're in the process of disconnecting
@@ -593,9 +593,9 @@ namespace rpc
 
         RPC_DEBUG("pass_through: trigger_self_destruction for passthrough {}->{}, zone={}, shared={}, optimistic={}, "
                   "active={}",
-            reverse_destination_.get_val(),
-            forward_destination_.get_val(),
-            zone_id_.get_val(),
+            reverse_destination_.get_subnet(),
+            forward_destination_.get_subnet(),
+            zone_id_.get_subnet(),
             shared_count_.load(),
             optimistic_count_.load(),
             function_count_.load());

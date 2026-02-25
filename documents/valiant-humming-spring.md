@@ -12,11 +12,11 @@ The IDL remains the golden definition for all types. Transport wire protocol IDL
 
 **i_marshaller** (`rpc/include/rpc/internal/marshaller.h`): Every method takes separate `destination_zone` and `object` parameters. Verified that `destination_zone_id + object_id` always identifies "which object at which zone" across ALL methods (including `object_released` where the message travels in the reverse direction).
 
-**Wire protocols** (`transports/tcp/interface/tcp/tcp.idl`, `transports/spsc/interface/spsc/spsc.idl`): Use raw `uint64_t` fields with manual `.get_val()` extraction in transport implementations. Already `#import "rpc/rpc_types.idl"`.
+**Wire protocols** (`transports/tcp/interface/tcp/tcp.idl`, `transports/spsc/interface/spsc/spsc.idl`): Use raw `uint64_t` fields with manual `.get_subnet()` extraction in transport implementations. Already `#import "rpc/rpc_types.idl"`.
 
 **Zone generation**: Global `std::atomic<uint64_t>` counter in `service.cpp:32-37`.
 
-**Hash/equality**: `std::hash` specializations in `rpc/include/rpc/internal/types.h` extract `get_val()`.
+**Hash/equality**: `std::hash` specializations in `rpc/include/rpc/internal/types.h` extract `get_subnet()`.
 
 ## Design
 
@@ -66,7 +66,7 @@ The four zone types change their internal `uint64_t id` to `zone_address`:
 
 **Conversion methods** remain: `as_destination()`, `as_caller()`, `as_requesting_zone()`. The `as_destination()` from zone/caller/known copies the address with `object_id = 0`.
 
-**`get_val()`** remains for backward compatibility, returning `subnet_id` as `uint64_t`. New code should use `get_address()`.
+**`get_subnet()`** remains for backward compatibility, returning `subnet_id` as `uint64_t`. New code should use `get_address()`.
 
 ### 3. Merging destination_zone + object in i_marshaller
 
@@ -125,7 +125,7 @@ struct call_send {
 };
 ```
 
-This eliminates all the `.get_val()` boilerplate in `transports/tcp/src/transport.cpp` (70+ occurrences). The IDL-generated serialization handles the `zone_address` fields automatically.
+This eliminates all the `.get_subnet()` boilerplate in `transports/tcp/src/transport.cpp` (70+ occurrences). The IDL-generated serialization handles the `zone_address` fields automatically.
 
 **Structs to update in each transport IDL**:
 - `init_client_channel_send` - `caller_zone_id`, `destination_zone_id`, `adjacent_zone_id` become typed; `caller_object_id` merges into caller info or becomes part of connection_settings
@@ -194,8 +194,8 @@ For backward compatibility, the default allocator uses `routing_prefix=0`, `subn
 
 | Phase | Scope | Breaking? |
 |-------|-------|-----------|
-| **1** | Define `zone_address` in IDL. Change zone types to use it internally. Keep `get_val()`. Keep i_marshaller signatures unchanged. | No - `zone{uint64_t}` still works |
-| **2** | Update wire protocol IDLs to use typed fields. Remove `.get_val()` boilerplate in transport code. | Wire format change (version bump) |
+| **1** | Define `zone_address` in IDL. Change zone types to use it internally. Keep `get_subnet()`. Keep i_marshaller signatures unchanged. | No - `zone{uint64_t}` still works |
+| **2** | Update wire protocol IDLs to use typed fields. Remove `.get_subnet()` boilerplate in transport code. | Wire format change (version bump) |
 | **3** | Merge `object` into `destination_zone` in i_marshaller. Simplify `interface_descriptor`. | API change |
 | **4** | Add `zone_address_allocator`, CLI options, multi-node subnet division. | No |
 | **5** | CMake-configurable packed representations, prefix-length-based routing (future) | No |
@@ -210,7 +210,7 @@ For backward compatibility, the default allocator uses `routing_prefix=0`, `subn
 **Phase 2** (wire protocol):
 - `transports/tcp/interface/tcp/tcp.idl` - Replace uint64_t fields with typed structs
 - `transports/spsc/interface/spsc/spsc.idl` - Same
-- `transports/tcp/src/transport.cpp` - Remove `.get_val()` boilerplate (70+ lines simplified)
+- `transports/tcp/src/transport.cpp` - Remove `.get_subnet()` boilerplate (70+ lines simplified)
 - `transports/spsc/src/transport.cpp` - Same
 
 **Phase 3** (i_marshaller merge):

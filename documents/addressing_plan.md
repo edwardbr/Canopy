@@ -17,7 +17,7 @@ The IDL remains the golden definition for all types. Transport wire protocol IDL
 
 **i_marshaller** (`rpc/include/rpc/internal/marshaller.h`): Every method takes separate `destination_zone` and `object` parameters. Verified that `destination_zone_id + object_id` always identifies "which object at which zone" across ALL methods (including `object_released` where the message travels in the reverse direction).
 
-**Wire protocols** (`transports/tcp/interface/tcp/tcp.idl`, `transports/spsc/interface/spsc/spsc.idl`): Use raw `uint64_t` fields with manual `.get_val()` extraction in transport implementations. Already `#import "rpc/rpc_types.idl"`.
+**Wire protocols** (`transports/tcp/interface/tcp/tcp.idl`, `transports/spsc/interface/spsc/spsc.idl`): Use raw `uint64_t` fields with manual `.get_subnet()` extraction in transport implementations. Already `#import "rpc/rpc_types.idl"`.
 
 **Zone generation**: Global `std::atomic<uint64_t>` counter in `service.cpp:32-37`.
 
@@ -107,9 +107,9 @@ Because the fields are in `#cpp_quote` blocks (invisible to the IDL generator), 
 
 **Future flexibility**: New address modes can be added by defining a new `#ifdef` block with whatever internal layout is needed (packed arrays, bitfields, etc.), as long as the get/set accessors present the same logical interface.
 
-### get_val() Semantics
+### get_subnet() Semantics
 
-`get_val()` returns the whole address as a `const zone_address&`, not a truncated scalar. This replaces the Phase 1 interim behaviour where `get_val()` returned only `subnet_id` as `uint64_t`. Code that needs backward-compatible integer comparison can use `get_address().subnet_id` directly, or rely on `zone_address` comparison operators that handle the "none" mode transparently.
+`get_subnet()` returns the whole address as a `const zone_address&`, not a truncated scalar. This replaces the Phase 1 interim behaviour where `get_subnet()` returned only `subnet_id` as `uint64_t`. Code that needs backward-compatible integer comparison can use `get_address().subnet_id` directly, or rely on `zone_address` comparison operators that handle the "none" mode transparently.
 
 ### CMake Configuration (Compile-Time)
 
@@ -153,7 +153,7 @@ The four zone types store `zone_address` internally (already done in Phase 1):
 
 **Conversion methods** remain: `as_destination()`, `as_caller()`, `as_requesting_zone()`. The `as_destination()` from zone/caller/known copies the address with `object_id = 0`.
 
-**`get_val()`** returns `const zone_address&` - the full address. New code and transport layers use this directly.
+**`get_subnet()`** returns `const zone_address&` - the full address. New code and transport layers use this directly.
 
 ### 3. Merging destination_zone + object in i_marshaller
 
@@ -173,7 +173,7 @@ virtual CORO_TASK(int) send(uint64_t protocol_version, encoding encoding, uint64
     interface_ordinal interface_id, method method_id, ...);
 ```
 
-The `object_id` is accessed via `destination_zone_id.get_val().object_id`.
+The `object_id` is accessed via `destination_zone_id.get_subnet().object_id`.
 
 **`interface_descriptor`** simplifies from `{object, destination_zone}` to just `destination_zone` (which carries both).
 
@@ -212,7 +212,7 @@ struct call_send {
 };
 ```
 
-This eliminates all the `.get_val()` boilerplate in `transports/tcp/src/transport.cpp` (70+ occurrences). The IDL-generated serialization handles the `zone_address` fields automatically.
+This eliminates all the `.get_subnet()` boilerplate in `transports/tcp/src/transport.cpp` (70+ occurrences). The IDL-generated serialization handles the `zone_address` fields automatically.
 
 **Structs to update in each transport IDL**:
 - `init_client_channel_send` - `caller_zone_id`, `destination_zone_id`, `adjacent_zone_id` become typed; `caller_object_id` merges into caller info or becomes part of connection_settings
@@ -282,9 +282,9 @@ Transport/proxy lookup should compare by zone portion only (routing_prefix + sub
 
 | Phase | Scope | Breaking? |
 |-------|-------|-----------|
-| **1** | Define `zone_address` in IDL. Change zone types to use it internally. Keep `get_val()` returning subnet_id. Keep i_marshaller signatures unchanged. | No - `zone{uint64_t}` still works |
-| **1b** | Widen `zone_address` fields to `uint64_t`. Update `get_val()` to return `const zone_address&`. Add CMake options for address mode and field widths. Fix callsites. | API change for `get_val()` |
-| **2** | Update wire protocol IDLs to use typed fields. Remove `.get_val()` boilerplate in transport code. | Wire format change (version bump) |
+| **1** | Define `zone_address` in IDL. Change zone types to use it internally. Keep `get_subnet()` returning subnet_id. Keep i_marshaller signatures unchanged. | No - `zone{uint64_t}` still works |
+| **1b** | Widen `zone_address` fields to `uint64_t`. Update `get_subnet()` to return `const zone_address&`. Add CMake options for address mode and field widths. Fix callsites. | API change for `get_subnet()` |
+| **2** | Update wire protocol IDLs to use typed fields. Remove `.get_subnet()` boilerplate in transport code. | Wire format change (version bump) |
 | **3** | Merge `object` into `destination_zone` in i_marshaller. Simplify `interface_descriptor`. | API change |
 | **4** | Add `zone_address_allocator`, CLI options, multi-node subnet division. | No |
 | **5** | IPv6 object embedding logic, prefix-length-based routing (future) | No |
@@ -297,15 +297,15 @@ Transport/proxy lookup should compare by zone portion only (routing_prefix + sub
 - `generator/src/protobuf_generator.cpp` - Added nested struct protobuf support
 
 **Phase 1b** (configurable address, get_val change):
-- `rpc/interfaces/rpc/rpc_types.idl` - Widen subnet_id and object_id to uint64_t, update get_val() to return zone_address
+- `rpc/interfaces/rpc/rpc_types.idl` - Widen subnet_id and object_id to uint64_t, update get_subnet() to return zone_address
 - `rpc/include/rpc/internal/types.h` - Update to_string for wider fields
 - `cmake/Canopy.cmake` - Add CANOPY_ADDRESS_MODE, CANOPY_SUBNET_BITS, CANOPY_OBJECT_BITS, CANOPY_IPV6_EMBED_OBJECT
-- All callsites using `get_val()` as uint64_t - Update to use `get_address()` or `get_val().subnet_id`
+- All callsites using `get_subnet()` as uint64_t - Update to use `get_address()` or `get_subnet().subnet_id`
 
 **Phase 2** (wire protocol):
 - `transports/tcp/interface/tcp/tcp.idl` - Replace uint64_t fields with typed structs
 - `transports/spsc/interface/spsc/spsc.idl` - Same
-- `transports/tcp/src/transport.cpp` - Remove `.get_val()` boilerplate (70+ lines simplified)
+- `transports/tcp/src/transport.cpp` - Remove `.get_subnet()` boilerplate (70+ lines simplified)
 - `transports/spsc/src/transport.cpp` - Same
 
 **Phase 3** (i_marshaller merge):
@@ -331,7 +331,7 @@ Transport/proxy lookup should compare by zone portion only (routing_prefix + sub
 - **IDL generator**: Must handle `zone_address` as a struct with YAS serialization. Since it's a plain struct with three uint64_t fields, the existing generator handles it without changes.
 - **Wire format compatibility**: Phase 2 changes the wire format. Need version negotiation so old and new nodes can communicate during rollout. The widened zone_address (24 bytes vs 16 bytes) also changes the wire format in Phase 1b.
 - **Performance**: `zone_address` is 24 bytes vs 8 bytes for the original `uint64_t`. Zone types are copied frequently in routing. Profile to verify this is acceptable. In "none" mode, the extra bytes are all zero, so hash computation can short-circuit.
-- **get_val() migration**: Changing `get_val()` from `uint64_t` to `const zone_address&` in Phase 1b requires updating all callsites. The compiler will catch type mismatches, but the volume of changes is significant.
+- **get_subnet() migration**: Changing `get_subnet()` from `uint64_t` to `const zone_address&` in Phase 1b requires updating all callsites. The compiler will catch type mismatches, but the volume of changes is significant.
 
 ### Verification
 

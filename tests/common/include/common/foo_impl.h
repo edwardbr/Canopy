@@ -774,7 +774,7 @@ namespace marshalled_tests
             // The zone_factory is a reference to an intermediate zone that can create new zones
             // fork_zone_ids specifies the chain of zones to create and which zone to get the object from
             RPC_INFO("example::create_fork_and_return_object - Zone {} creating fork chain through zone factory",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (fork_zone_ids.empty())
             {
@@ -861,7 +861,7 @@ namespace marshalled_tests
         {
             RPC_INFO("example::cache_object_from_autonomous_zone - Zone {} autonomously creating and caching object "
                      "from unknown zone",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (zone_ids.empty())
             {
@@ -890,7 +890,7 @@ namespace marshalled_tests
 
             RPC_INFO("Successfully cached object from autonomous zone {} in zone {}",
                 zone_ids.back(),
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
             CO_RETURN rpc::error::OK();
         }
 
@@ -898,7 +898,7 @@ namespace marshalled_tests
         create_y_topology_fork(rpc::shared_ptr<yyy::i_example> factory_zone, const std::vector<uint64_t>& fork_zone_ids) override
         {
             RPC_INFO("example::create_y_topology_fork - Zone {} creating Y-topology fork via factory zone",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (fork_zone_ids.empty())
             {
@@ -919,7 +919,7 @@ namespace marshalled_tests
             // This creates the true Y-topology where one prong creates a fork at an earlier point.
 
             RPC_INFO("Zone {} asking factory zone to create autonomous fork with {} zones",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0,
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0,
                 fork_zone_ids.size());
 
             rpc::shared_ptr<yyy::i_example> object_from_forked_zone;
@@ -934,26 +934,27 @@ namespace marshalled_tests
             cached_autonomous_object_ = object_from_forked_zone;
 
             RPC_INFO("Successfully created Y-topology fork - Zone {} now has object from factory's autonomous zones",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
             CO_RETURN rpc::error::OK();
         }
 
         CORO_TASK(error_code) retrieve_cached_autonomous_object(rpc::shared_ptr<yyy::i_example>& cached_object) override
         {
             RPC_INFO("example::retrieve_cached_autonomous_object - Zone {} retrieving cached autonomous object",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (!cached_autonomous_object_)
             {
                 RPC_ERROR("No cached autonomous object available in zone {}",
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet()
+                                                        : 0);
                 CO_RETURN rpc::error::ZONE_NOT_FOUND();
             }
 
             cached_object = cached_autonomous_object_;
 
             RPC_INFO("Successfully retrieved cached autonomous object in zone {}",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             // CRITICAL: This is where the routing bug should trigger
             // When this cached object (from an unknown autonomous zone) gets passed
@@ -966,12 +967,13 @@ namespace marshalled_tests
         CORO_TASK(error_code) give_host_cached_object() override
         {
             RPC_INFO("example::give_host_cached_object - Zone {} giving host cached autonomous object",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (!cached_autonomous_object_)
             {
                 RPC_ERROR("No cached autonomous object available in zone {}",
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet()
+                                                        : 0);
                 CO_RETURN rpc::error::ZONE_NOT_FOUND();
             }
 
@@ -979,7 +981,8 @@ namespace marshalled_tests
             if (!host)
             {
                 RPC_ERROR("No cached host object available in zone {}",
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet()
+                                                        : 0);
                 CO_RETURN rpc::error::OBJECT_NOT_FOUND();
             }
             auto err = CO_AWAIT host->set_app("foo", cached_autonomous_object_);
@@ -990,7 +993,7 @@ namespace marshalled_tests
             }
 
             RPC_INFO("Successfully retrieved cached autonomous object in zone {}",
-                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_val() : 0);
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             // CRITICAL: This is where the routing bug should trigger
             // When this cached object (from an unknown autonomous zone) gets passed

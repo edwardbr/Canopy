@@ -37,8 +37,8 @@ namespace rpc
             RPC_DEBUG("object_proxy::add_ref: {} reference for service zone={} destination_zone={} object_id={} "
                       "(shared={}, optimistic={}) prev_count={}",
                 is_optimistic ? "optimistic" : "shared",
-                service_proxy->get_zone_id().get_val(),
-                service_proxy->get_destination_zone_id().get_val(),
+                service_proxy->get_zone_id().get_subnet(),
+                service_proxy->get_destination_zone_id().get_subnet(),
                 object_id_.get_val(),
                 shared_count_.load(),
                 optimistic_count_.load(),
@@ -68,8 +68,8 @@ namespace rpc
                 RPC_ERROR("object_proxy::add_ref: Failed to establish remote reference: {} reference zone={} "
                           "destination_zone={} object_id={} error={}",
                     is_optimistic ? "optimistic" : "shared",
-                    service_proxy->get_zone_id().get_val(),
-                    service_proxy->get_destination_zone_id().get_val(),
+                    service_proxy->get_zone_id().get_subnet(),
+                    service_proxy->get_destination_zone_id().get_subnet(),
                     object_id_.get_val(),
                     err);
                 CO_RETURN err;
@@ -100,8 +100,8 @@ namespace rpc
             RPC_DEBUG("object_proxy::release: {} reference for service zone={} destination_zone={} object_id={} "
                       "(shared={}, optimistic={})",
                 is_optimistic ? "optimistic" : "shared",
-                service_proxy->get_zone_id().get_val(),
-                service_proxy->get_destination_zone_id().get_val(),
+                service_proxy->get_zone_id().get_subnet(),
+                service_proxy->get_destination_zone_id().get_subnet(),
                 object_id_.get_val(),
                 shared_count_.load(),
                 optimistic_count_.load());
@@ -132,8 +132,8 @@ namespace rpc
         {
             RPC_DEBUG("object_proxy destructor: service zone={} destination_zone={} object_id={} "
                       "(current: shared={}, optimistic={})",
-                service_proxy->get_zone_id().get_val(),
-                service_proxy->get_destination_zone_id().get_val(),
+                service_proxy->get_zone_id().get_subnet(),
+                service_proxy->get_destination_zone_id().get_subnet(),
                 object_id_.get_val(),
                 current_shared,
                 current_optimistic);

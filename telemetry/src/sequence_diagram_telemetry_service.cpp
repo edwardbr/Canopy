@@ -81,7 +81,7 @@ namespace rpc
             {
                 fmt::println(output_,
                     "error service zone_id {} service {} count {}",
-                    it.first.get_val(),
+                    it.first.get_subnet(),
                     it.second.name,
                     it.second.count);
             });
@@ -92,7 +92,7 @@ namespace rpc
                 fmt::println(output_,
                     "error implementation {} zone_id {} count {}",
                     it.second.name,
-                    it.second.zone_id.get_val(),
+                    it.second.zone_id.get_subnet(),
                     it.second.count);
             });
         std::for_each(stubs.begin(),
@@ -101,7 +101,7 @@ namespace rpc
             {
                 fmt::println(output_,
                     "error stub zone_id {} object_id {} count {} address {}",
-                    it.first.zone_id.get_val(),
+                    it.first.zone_id.get_subnet(),
                     it.first.object_id.get_val(),
                     it.second.count,
                     it.second.address);
@@ -112,9 +112,9 @@ namespace rpc
             {
                 fmt::println(output_,
                     "error service proxy zone_id {} destination_zone_id {} caller_id {} name {} count {}",
-                    it.first.zone_id.get_val(),
-                    it.first.destination_zone_id.get_val(),
-                    it.first.caller_zone_id.get_val(),
+                    it.first.zone_id.get_subnet(),
+                    it.first.destination_zone_id.get_subnet(),
+                    it.first.caller_zone_id.get_subnet(),
                     it.second.name,
                     it.second.count);
             });
@@ -124,8 +124,8 @@ namespace rpc
             {
                 fmt::println(output_,
                     "error object_proxy zone_id {} destination_zone_id {} object_id {} count {}",
-                    it.first.zone_id.get_val(),
-                    it.first.destination_zone_id.get_val(),
+                    it.first.zone_id.get_subnet(),
+                    it.first.destination_zone_id.get_subnet(),
                     it.first.object_id.get_val(),
                     it.second);
             });
@@ -136,8 +136,8 @@ namespace rpc
                 fmt::println(output_,
                     "error interface_proxy {} zone_id {} destination_zone_id {} object_id {} count {}",
                     it.second.name,
-                    it.first.zone_id.get_val(),
-                    it.first.destination_zone_id.get_val(),
+                    it.first.zone_id.get_subnet(),
+                    it.first.destination_zone_id.get_subnet(),
                     it.first.object_id.get_val(),
                     it.second.count);
             });
@@ -161,17 +161,17 @@ namespace rpc
 
     std::string service_alias(rpc::zone zone_id)
     {
-        return fmt::format("s{}", zone_id.get_val());
+        return fmt::format("s{}", zone_id.get_subnet());
     }
 
     uint64_t service_order(rpc::zone zone_id)
     {
-        return std::min((uint32_t)(zone_id.get_val() * 100000), (uint32_t)999999);
+        return std::min((uint32_t)(zone_id.get_subnet() * 100000), (uint32_t)999999);
     }
 
     std::string object_stub_alias(rpc::zone zone_id, rpc::object object_id)
     {
-        return fmt::format("os_{}_{}", zone_id.get_val(), object_id.get_val());
+        return fmt::format("os_{}_{}", zone_id.get_subnet(), object_id.get_val());
     }
 
     uint64_t object_stub_order(rpc::zone zone_id, rpc::object object_id)
@@ -191,23 +191,24 @@ namespace rpc
 
     std::string object_proxy_alias(rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::object object_id)
     {
-        return fmt::format("op_{}_{}_{}", zone_id.get_val(), destination_zone_id.get_val(), object_id.get_val());
+        return fmt::format("op_{}_{}_{}", zone_id.get_subnet(), destination_zone_id.get_subnet(), object_id.get_val());
     }
 
     uint64_t object_proxy_order(rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::object object_id)
     {
-        return service_order(zone_id) + destination_zone_id.get_val() * 1000 + object_id.get_val();
+        return service_order(zone_id) + destination_zone_id.get_subnet() * 1000 + object_id.get_val();
     }
 
     std::string service_proxy_alias(
         rpc::zone zone_id, rpc::destination_zone destination_zone_id, rpc::caller_zone caller_zone_id)
     {
-        return fmt::format("sp{}_{}_{}", zone_id.get_val(), destination_zone_id.get_val(), caller_zone_id.get_val());
+        return fmt::format(
+            "sp{}_{}_{}", zone_id.get_subnet(), destination_zone_id.get_subnet(), caller_zone_id.get_subnet());
     }
 
     uint64_t service_proxy_order(rpc::zone zone_id, rpc::destination_zone destination_zone_id)
     {
-        return service_order(zone_id) + destination_zone_id.get_val() * 10000;
+        return service_order(zone_id) + destination_zone_id.get_subnet() * 10000;
     }
 
     void sequence_diagram_telemetry_service::on_service_creation(
@@ -222,7 +223,7 @@ namespace rpc
             fmt::println(output_,
                 "participant \"{} zone {}\" as {} order {} #Moccasin",
                 name,
-                zone_id.get_val(),
+                zone_id.get_subnet(),
                 service_alias(zone_id),
                 service_order(zone_id));
             fmt::println(output_, "activate {} #Moccasin", service_alias(zone_id));
@@ -236,7 +237,7 @@ namespace rpc
         auto found = services.find(zone_id);
         if (found == services.end())
         {
-            spdlog::error("service not found zone_id {}", zone_id.get_val());
+            spdlog::error("service not found zone_id {}", zone_id.get_subnet());
         }
         else
         {
@@ -310,11 +311,11 @@ namespace rpc
                 fmt::println(output_,
                     "{} -> {} : add_ref",
                     service_alias(zone_id),
-                    service_proxy_alias(zone_id, {dest.get_val()}, caller_zone_id));
+                    service_proxy_alias(zone_id, {dest.get_subnet()}, caller_zone_id));
             }
             else if (object_id != rpc::dummy_object_id)
             {
-                //     fmt::println(output_, "{} -> {} : dummy add_ref", service_alias({caller_zone_id.get_val()}),
+                //     fmt::println(output_, "{} -> {} : dummy add_ref", service_alias({caller_zone_id.get_subnet()}),
                 //     object_stub_alias(zone_id, object_id));
                 // }
                 // else
@@ -329,7 +330,7 @@ namespace rpc
             {
                 fmt::println(output_,
                     "{} -->x {} : add_ref delegate linking",
-                    service_alias({caller_zone_id.get_val()}),
+                    service_alias({caller_zone_id.get_subnet()}),
                     service_alias(zone_id));
             }
             else
@@ -365,7 +366,7 @@ namespace rpc
                 {
                     fmt::println(output_,
                         "{} o-[#magenta]> {} : add_ref build caller {}",
-                        service_alias({caller_zone_id.get_val()}),
+                        service_alias({caller_zone_id.get_subnet()}),
                         service_alias(zone_id),
                         get_thread_id());
                 }
@@ -403,7 +404,7 @@ namespace rpc
             fmt::println(output_,
                 "{} -> {} : release",
                 service_alias(zone_id),
-                service_proxy_alias(zone_id, {dest.get_val()}, caller_zone_id));
+                service_proxy_alias(zone_id, {dest.get_subnet()}, caller_zone_id));
         }
         else if (object_id != rpc::dummy_object_id)
         {
@@ -432,7 +433,7 @@ namespace rpc
         std::string route_name;
         std::string destination_name;
 
-        auto search = services.find({destination_zone_id.get_val()});
+        auto search = services.find({destination_zone_id.get_subnet()});
         if (search != services.end())
             destination_name = search->second.name;
         else
@@ -445,7 +446,7 @@ namespace rpc
         else
         {
             std::string caller_name;
-            search = services.find({caller_zone_id.get_val()});
+            search = services.find({caller_zone_id.get_subnet()});
             if (search != services.end())
                 caller_name = search->second.name;
             else
@@ -456,9 +457,9 @@ namespace rpc
         fmt::println(output_,
             "participant \"{} \\nzone {} \\ndestination {} \\ncaller {}\" as {} order {} #cyan",
             route_name,
-            zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
             service_proxy_order(zone_id, destination_zone_id));
         // fmt::println(output_, "{} --> {} : links to", service_proxy_alias(zone_id, destination_zone_id,
@@ -490,7 +491,7 @@ namespace rpc
         std::string route_name;
         std::string destination_name;
 
-        auto search = services.find({destination_zone_id.get_val()});
+        auto search = services.find({destination_zone_id.get_subnet()});
         if (search != services.end())
             destination_name = search->second.name;
         else
@@ -503,7 +504,7 @@ namespace rpc
         else
         {
             std::string caller_name;
-            search = services.find({caller_zone_id.get_val()});
+            search = services.find({caller_zone_id.get_subnet()});
             if (search != services.end())
                 caller_name = search->second.name;
             else
@@ -514,9 +515,9 @@ namespace rpc
         fmt::println(output_,
             "participant \"{} \\nzone {} \\ndestination {} \\ncaller {}\" as {} order {} #cyan",
             route_name,
-            zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
             service_proxy_order(zone_id, destination_zone_id));
         // fmt::println(output_, "{} --> {} : links to", service_proxy_alias(zone_id, destination_zone_id,
@@ -548,9 +549,9 @@ namespace rpc
         if (found == service_proxies.end())
         {
             spdlog::warn("service_proxy not found zone_id {} destination_zone_id {} caller_zone_id {}",
-                zone_id.get_val(),
-                destination_zone_id.get_val(),
-                caller_zone_id.get_val());
+                zone_id.get_subnet(),
+                destination_zone_id.get_subnet(),
+                caller_zone_id.get_subnet());
         }
         else
         {
@@ -569,9 +570,9 @@ namespace rpc
         {
             spdlog::error("service still being used! name {} zone_id {} destination_zone_id {} caller_zone_id {}",
                 name,
-                zone_id.get_val(),
-                destination_zone_id.get_val(),
-                caller_zone_id.get_val());
+                zone_id.get_subnet(),
+                destination_zone_id.get_subnet(),
+                caller_zone_id.get_subnet());
             fmt::println(output_, "deactivate {}", service_proxy_alias(zone_id, destination_zone_id, caller_zone_id));
             fmt::println(output_,
                 "hnote over {} #red : deleted (still being used!)",
@@ -644,12 +645,12 @@ namespace rpc
         // {
         //     //service_proxies.emplace(orig_zone{zone_id, destination_zone_id, caller_zone_id}, name_count{name, 1});
         //     fmt::println(output_, "object add_ref name with proxy added {} zone_id {} destination_zone_id {}
-        //     caller_zone_id {}", name, zone_id.get_val(), destination_zone_id.get_val(), caller_zone_id.get_val());
+        //     caller_zone_id {}", name, zone_id.get_subnet(), destination_zone_id.get_subnet(), caller_zone_id.get_subnet());
         // }
         // else
         // {
         //     fmt::println(output_, "object add_ref name {} zone_id {} destination_zone_id {} caller_zone_id {}
-        //     object_id {}", name, zone_id.get_val(), destination_zone_id.get_val(), caller_zone_id.get_val(),
+        //     object_id {}", name, zone_id.get_subnet(), destination_zone_id.get_subnet(), caller_zone_id.get_subnet(),
         //     object_id.get_val());
         // }
         if (object_id == rpc::dummy_object_id)
@@ -724,9 +725,9 @@ namespace rpc
         {
             spdlog::error(
                 "service_proxy add_external_ref not found zone_id {} destination_zone_id {} caller_zone_id {}",
-                zone_id.get_val(),
-                destination_zone_id.get_val(),
-                caller_zone_id.get_val());
+                zone_id.get_subnet(),
+                destination_zone_id.get_subnet(),
+                caller_zone_id.get_subnet());
         }
         else
         {
@@ -739,7 +740,7 @@ namespace rpc
             services.emplace(destination_zone_id.as_zone(), name_count{"", 1});
             fmt::println(output_,
                 "participant \"zone {}\" as {} order {} #Moccasin",
-                destination_zone_id.as_zone().get_val(),
+                destination_zone_id.as_zone().get_subnet(),
                 service_alias(destination_zone_id.as_zone()),
                 service_order(destination_zone_id.as_zone()));
             fmt::println(output_, "activate {} #Moccasin", service_alias(destination_zone_id.as_zone()));
@@ -766,9 +767,9 @@ namespace rpc
         {
             spdlog::error(
                 "service_proxy release_external_ref not found zone_id {} destination_zone_id {} caller_zone_id {}",
-                zone_id.get_val(),
-                destination_zone_id.get_val(),
-                caller_zone_id.get_val());
+                zone_id.get_subnet(),
+                destination_zone_id.get_subnet(),
+                caller_zone_id.get_subnet());
         }
 
         fmt::println(output_,
@@ -846,7 +847,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
         fmt::println(output_,
             "participant \"object stub\\nzone {}\\nobject {}\" as {} order {} #lime",
-            zone_id.get_val(),
+            zone_id.get_subnet(),
             object_id.get_val(),
             object_stub_alias(zone_id, object_id),
             object_stub_order(zone_id, object_id));
@@ -862,7 +863,7 @@ namespace rpc
         auto found = stubs.find(zone_object{zone_id, object_id});
         if (found == stubs.end())
         {
-            spdlog::error("stub not found zone_id {}", zone_id.get_val());
+            spdlog::error("stub not found zone_id {}", zone_id.get_subnet());
         }
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
         else
@@ -875,7 +876,7 @@ namespace rpc
             else
             {
                 spdlog::error("stub still being used! zone_id {} object id {} address {}",
-                    zone_id.get_val(),
+                    zone_id.get_subnet(),
                     object_id.get_val(),
                     found->second.address);
                 fmt::println(output_, "deactivate {}", object_stub_alias(zone_id, object_id));
@@ -920,8 +921,8 @@ namespace rpc
         if (found == stubs.end())
         {
             spdlog::error("stub not found zone_id {} caller_zone_id {} object_id {}",
-                zone.get_val(),
-                caller_zone_id.get_val(),
+                zone.get_subnet(),
+                caller_zone_id.get_subnet(),
                 object_id.get_val());
         }
         else
@@ -951,8 +952,8 @@ namespace rpc
         if (found == stubs.end())
         {
             spdlog::error("stub not found zone_id {} caller_zone_id {} object_id {}",
-                zone.get_val(),
-                caller_zone_id.get_val(),
+                zone.get_subnet(),
+                caller_zone_id.get_subnet(),
                 object_id.get_val());
         }
         {
@@ -984,8 +985,8 @@ namespace rpc
         object_proxies.emplace(interface_proxy_id{zone_id, destination_zone_id, object_id, {0}}, 1);
         fmt::println(output_,
             "participant \"object_proxy\\nzone {}\\ndestination {}\\nobject {}\" as {} order {} #pink",
-            zone_id.get_val(),
-            destination_zone_id.get_val(),
+            zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
             object_id.get_val(),
             object_proxy_alias(zone_id, destination_zone_id, object_id),
             object_proxy_order(zone_id, destination_zone_id, object_id));
@@ -1024,8 +1025,8 @@ namespace rpc
         if (found == object_proxies.end())
         {
             spdlog::error("rpc::object proxy not found zone_id {} destination_zone_id {} object_id {}",
-                zone_id.get_val(),
-                destination_zone_id.get_val(),
+                zone_id.get_subnet(),
+                destination_zone_id.get_subnet(),
                 object_id.get_val());
         }
         else
@@ -1043,8 +1044,8 @@ namespace rpc
             else
             {
                 spdlog::error("rpc::object proxy still being used! zone_id {} destination_zone_id {} object_id {}",
-                    zone_id.get_val(),
-                    destination_zone_id.get_val(),
+                    zone_id.get_subnet(),
+                    destination_zone_id.get_subnet(),
                     object_id.get_val());
                 fmt::println(output_, "deactivate {}", object_proxy_alias(zone_id, destination_zone_id, object_id));
             }
@@ -1093,8 +1094,8 @@ namespace rpc
         if (found == interface_proxies.end())
         {
             spdlog::warn("interface proxy not found zone_id {} destination_zone_id {} object_id {}",
-                zone_id.get_val(),
-                destination_zone_id.get_val(),
+                zone_id.get_subnet(),
+                destination_zone_id.get_subnet(),
                 object_id.get_val());
         }
         else
@@ -1113,8 +1114,8 @@ namespace rpc
                 spdlog::error(
                     "interface proxy still being used! name {} zone_id {} destination_zone_id {} object_id {}",
                     found->second.name,
-                    zone_id.get_val(),
-                    destination_zone_id.get_val(),
+                    zone_id.get_subnet(),
+                    destination_zone_id.get_subnet(),
                     object_id.get_val());
                 fmt::println(output_,
                     "hnote over {} : deleted \\n {}",
@@ -1197,9 +1198,9 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_creation: name={} adjacent_zone={} status={}",
-            zone_id.get_val(),
+            zone_id.get_subnet(),
             name,
-            adjacent_zone_id.get_val(),
+            adjacent_zone_id.get_subnet(),
             static_cast<int>(status));
         fflush(output_);
     }
@@ -1208,8 +1209,8 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_deletion: adjacent_zone={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val());
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet());
         fflush(output_);
     }
 
@@ -1221,9 +1222,9 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_status_change: name={} adjacent_zone={} old_status={} new_status={}",
-            zone_id.get_val(),
+            zone_id.get_subnet(),
             name,
-            adjacent_zone_id.get_val(),
+            adjacent_zone_id.get_subnet(),
             static_cast<int>(old_status),
             static_cast<int>(new_status));
         fflush(output_);
@@ -1234,10 +1235,10 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_add_destination: adjacent_zone={} destination={} caller={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination.get_val(),
-            caller.get_val());
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination.get_subnet(),
+            caller.get_subnet());
         fflush(output_);
     }
 
@@ -1246,10 +1247,10 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_remove_destination: adjacent_zone={} destination={} caller={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination.get_val(),
-            caller.get_val());
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination.get_subnet(),
+            caller.get_subnet());
         fflush(output_);
     }
 
@@ -1258,8 +1259,8 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_accept: adjacent_zone={} result={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
             result);
         fflush(output_);
     }
@@ -1273,9 +1274,9 @@ namespace rpc
         fmt::println(output_,
             "note over pass_through: pass_through_creation: zone={} forward_destination={} reverse_destination={} "
             "shared_count={} optimistic_count={}",
-            zone_id.get_val(),
-            forward_destination.get_val(),
-            reverse_destination.get_val(),
+            zone_id.get_subnet(),
+            forward_destination.get_subnet(),
+            reverse_destination.get_subnet(),
             shared_count,
             optimistic_count);
         fflush(output_);
@@ -1286,9 +1287,9 @@ namespace rpc
     {
         fmt::println(output_,
             "note over pass_through: pass_through_deletion: zone={} forward_destination={} reverse_destination={}",
-            zone_id.get_val(),
-            forward_destination.get_val(),
-            reverse_destination.get_val());
+            zone_id.get_subnet(),
+            forward_destination.get_subnet(),
+            reverse_destination.get_subnet());
         fflush(output_);
     }
 
@@ -1303,9 +1304,9 @@ namespace rpc
             "note over pass_through: pass_through_add_ref: zone={} forward_destination={} reverse_destination={} "
             "options={} "
             "shared_delta={} optimistic_delta={}",
-            zone_id.get_val(),
-            forward_destination.get_val(),
-            reverse_destination.get_val(),
+            zone_id.get_subnet(),
+            forward_destination.get_subnet(),
+            reverse_destination.get_subnet(),
             static_cast<int>(options),
             shared_delta,
             optimistic_delta);
@@ -1321,9 +1322,9 @@ namespace rpc
         fmt::println(output_,
             "note over pass_through: pass_through_release: zone={} forward_destination={} reverse_destination={} "
             "shared_delta={} optimistic_delta={}",
-            zone_id.get_val(),
-            forward_destination.get_val(),
-            reverse_destination.get_val(),
+            zone_id.get_subnet(),
+            forward_destination.get_subnet(),
+            reverse_destination.get_subnet(),
             shared_delta,
             optimistic_delta);
         fflush(output_);
@@ -1338,9 +1339,9 @@ namespace rpc
         fmt::println(output_,
             "note over pass_through: pass_through_status_change: zone={} forward_destination={} reverse_destination={} "
             "forward_status={} reverse_status={}",
-            zone_id.get_val(),
-            forward_destination.get_val(),
-            reverse_destination.get_val(),
+            zone_id.get_subnet(),
+            forward_destination.get_subnet(),
+            reverse_destination.get_subnet(),
             static_cast<int>(forward_status),
             static_cast<int>(reverse_status));
         fflush(output_);
@@ -1494,10 +1495,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_send: adjacent={} dest={} caller={} obj={} iface={} method={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val());
@@ -1515,10 +1516,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_post: adjacent={} dest={} caller={} obj={} iface={} method={} ",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val());
@@ -1535,10 +1536,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_try_cast: adjacent={} dest={} caller={} obj={} iface={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             interface_id.get_val());
         fflush(output_);
@@ -1556,12 +1557,12 @@ namespace rpc
         fmt::println(output_,
             "note over zone_{}: transport_outbound_add_ref: adjacent={} dest={} caller={} obj={} "
             "known_direction={} opts={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
-            requesting_zone_id.get_val(),
+            requesting_zone_id.get_subnet(),
             static_cast<int>(options));
         fflush(output_);
     }
@@ -1576,10 +1577,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_release: adjacent={} dest={} caller={} obj={} opts={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             static_cast<int>(options));
         fflush(output_);
@@ -1594,10 +1595,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_object_released: adjacent={} dest={} caller={} obj={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val());
         fflush(output_);
     }
@@ -1609,10 +1610,10 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_outbound_transport_down: adjacent={} dest={} caller={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val());
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet());
         fflush(output_);
     }
 
@@ -1628,10 +1629,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_send: adjacent={} dest={} caller={} obj={} iface={} method={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val());
@@ -1649,10 +1650,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_post: adjacent={} dest={} caller={} obj={} iface={} method={} ",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val());
@@ -1669,10 +1670,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_try_cast: adjacent={} dest={} caller={} obj={} iface={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             interface_id.get_val());
         fflush(output_);
@@ -1690,12 +1691,12 @@ namespace rpc
         fmt::println(output_,
             "note over zone_{}: transport_inbound_add_ref: adjacent={} dest={} caller={} obj={} "
             "known_direction={} opts={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
-            requesting_zone_id.get_val(),
+            requesting_zone_id.get_subnet(),
             static_cast<int>(options));
         fflush(output_);
     }
@@ -1710,10 +1711,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_release: adjacent={} dest={} caller={} obj={} opts={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val(),
             static_cast<int>(options));
         fflush(output_);
@@ -1728,10 +1729,10 @@ namespace rpc
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_object_released: adjacent={} dest={} caller={} obj={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val(),
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet(),
             object_id.get_val());
         fflush(output_);
     }
@@ -1743,10 +1744,10 @@ namespace rpc
     {
         fmt::println(output_,
             "note over zone_{}: transport_inbound_transport_down: adjacent={} dest={} caller={}",
-            zone_id.get_val(),
-            adjacent_zone_id.get_val(),
-            destination_zone_id.get_val(),
-            caller_zone_id.get_val());
+            zone_id.get_subnet(),
+            adjacent_zone_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            caller_zone_id.get_subnet());
         fflush(output_);
     }
 

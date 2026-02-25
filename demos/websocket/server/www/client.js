@@ -467,7 +467,7 @@ function calculate() {
                 addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
             }),
             interfaceId: RpcProto.interface_ordinal.create({
-                id: Long.fromString("13570836582854900302", true) // i_calculator
+                id: Long.fromString("2180915978302953945", true) // i_calculator
             }),
             methodId: RpcProto.method.create({ id: Long.fromNumber(methodId, true) }),
             data: requestBytes,
@@ -566,7 +566,7 @@ function sendChatMessage() {
                 addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
             }),
             interfaceId: RpcProto.interface_ordinal.create({
-                id: Long.fromString("13570836582854900302", true) // i_calculator
+                id: Long.fromString("2180915978302953945", true) // i_calculator
             }),
             methodId: RpcProto.method.create({ id: Long.fromNumber(5, true) }), // add_prompt
             data: requestBytes,
