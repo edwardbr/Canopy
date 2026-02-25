@@ -97,8 +97,8 @@ namespace rpc
         [[nodiscard]] CORO_TASK(int) sp_try_cast(
             destination_zone destination_zone_id, object object_id, std::function<interface_ordinal(uint64_t)> id_getter);
 
-        [[nodiscard]] CORO_TASK(int) sp_add_ref(
-            object object_id, add_ref_options build_out_param_channel, known_direction_zone known_direction_zone_id);
+        [[nodiscard]] CORO_TASK(int)
+            sp_add_ref(object object_id, add_ref_options build_out_param_channel, requesting_zone requesting_zone_id);
 
         CORO_TASK(int) sp_release(object object_id, release_options options);
 
@@ -127,7 +127,7 @@ namespace rpc
         get_or_create_object_proxy(object object_id,
             object_proxy_creation_rule rule,
             bool new_proxy_added,
-            known_direction_zone known_direction_zone_id,
+            requesting_zone requesting_zone_id,
             bool is_optimistic,
             std::shared_ptr<rpc::object_proxy>& op);
 

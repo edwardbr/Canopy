@@ -401,7 +401,7 @@ namespace rpc
         inbound_add_ref(uint64_t protocol_version,
             remote_object remote_object_id,
             caller_zone caller_zone_id,
-            known_direction_zone known_direction_zone_id,
+            requesting_zone requesting_zone_id,
             add_ref_options build_out_param_channel,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel);
@@ -481,7 +481,7 @@ namespace rpc
         add_ref(uint64_t protocol_version,
             remote_object remote_object_id,
             caller_zone caller_zone_id,
-            known_direction_zone known_direction_zone_id,
+            requesting_zone requesting_zone_id,
             add_ref_options build_out_param_channel,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel) final;
@@ -574,7 +574,7 @@ namespace rpc
         virtual CORO_TASK(int) outbound_add_ref(uint64_t protocol_version,
             remote_object remote_object_id,
             caller_zone caller_zone_id,
-            known_direction_zone known_direction_zone_id,
+            requesting_zone requesting_zone_id,
             add_ref_options build_out_param_channel,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel)

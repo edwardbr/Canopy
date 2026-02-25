@@ -219,7 +219,7 @@ namespace rpc
     struct remote_object;
     struct operating_zone;
     struct caller_zone;
-    struct known_direction_zone;
+    struct requesting_zone;
     struct object;
     )__^)
 
@@ -272,7 +272,7 @@ namespace rpc
 
         inline destination_zone as_destination() const;
         inline caller_zone as_caller() const;
-        inline known_direction_zone as_known_direction_zone() const;
+        inline requesting_zone as_requesting_zone() const;
             )__^)
     };
 
@@ -379,35 +379,35 @@ namespace rpc
         bool is_set() const noexcept { return addr_.is_set(); }
 
         inline destination_zone as_destination() const;
-        inline known_direction_zone as_known_direction_zone() const;
+        inline requesting_zone as_requesting_zone() const;
             )__^)
     };
 
-    struct known_direction_zone
+    struct requesting_zone
     {
     private:
         zone_address addr_;
 
     public:
 #cpp_quote(R^__(
-        known_direction_zone() = default;
-        known_direction_zone(const known_direction_zone&) = default;
-        known_direction_zone(known_direction_zone&&) noexcept = default;
-        known_direction_zone(zone z) noexcept
+        requesting_zone() = default;
+        requesting_zone(const requesting_zone&) = default;
+        requesting_zone(requesting_zone&&) noexcept = default;
+        requesting_zone(zone z) noexcept
             : addr_(z.get_address().zone_only())
         {
         }
-        known_direction_zone(uint64_t initial_id)
+        requesting_zone(uint64_t initial_id)
             : addr_(zone_address(initial_id).zone_only())
         {
         }
-        known_direction_zone(const zone_address& addr)
+        requesting_zone(const zone_address& addr)
             : addr_(addr.zone_only())
         {
         }
-        known_direction_zone& operator=(const known_direction_zone&) = default;
-        known_direction_zone& operator=(known_direction_zone&&) noexcept = default;
-        known_direction_zone& operator=(uint64_t other)
+        requesting_zone& operator=(const requesting_zone&) = default;
+        requesting_zone& operator=(requesting_zone&&) noexcept = default;
+        requesting_zone& operator=(uint64_t other)
         {
             addr_ = zone_address(other).zone_only();
             return *this;
@@ -417,12 +417,12 @@ namespace rpc
         const zone_address& get_address() const { return addr_; }
 
         // compare
-        friend inline bool operator==(const known_direction_zone& lhs, const known_direction_zone& rhs);
+        friend inline bool operator==(const requesting_zone& lhs, const requesting_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
         {
             return addr_.get_val() == static_cast<uint64_t>(val);
         }
-        friend inline bool operator!=(const known_direction_zone& lhs, const known_direction_zone& rhs);
+        friend inline bool operator!=(const requesting_zone& lhs, const requesting_zone& rhs);
         template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
         {
             return addr_.get_val() != static_cast<uint64_t>(val);
@@ -430,7 +430,7 @@ namespace rpc
 
         // less
         bool operator<(uint64_t val) const { return addr_.get_val() < val; }
-        bool operator<(const known_direction_zone& val) const { return addr_ < val.addr_; }
+        bool operator<(const requesting_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
 
@@ -650,9 +650,9 @@ namespace rpc
         return caller_zone(addr_);
     }
 
-    known_direction_zone zone::as_known_direction_zone() const
+    requesting_zone zone::as_requesting_zone() const
     {
-        return known_direction_zone(addr_);
+        return requesting_zone(addr_);
     }
 
     zone destination_zone::as_zone() const
@@ -670,12 +670,12 @@ namespace rpc
         return destination_zone(addr_);
     }
 
-    known_direction_zone caller_zone::as_known_direction_zone() const
+    requesting_zone caller_zone::as_requesting_zone() const
     {
-        return known_direction_zone(addr_);
+        return requesting_zone(addr_);
     }
 
-    destination_zone known_direction_zone::as_destination() const
+    destination_zone requesting_zone::as_destination() const
     {
         return destination_zone(addr_);
     }

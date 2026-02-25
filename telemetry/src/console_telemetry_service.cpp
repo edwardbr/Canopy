@@ -393,20 +393,20 @@ namespace rpc
     void console_telemetry_service::on_service_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_add_ref: destination_zone={} object_id={} "
-                      "caller_zone={} known_direction_zone={} options={}{}",
+                      "caller_zone={} requesting_zone={} options={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
             get_zone_name(destination_zone_id.get_val()),
             object_id.get_val(),
             get_zone_name(caller_zone_id.get_val()),
-            get_zone_name(known_direction_zone_id.get_val()),
+            get_zone_name(requesting_zone_id.get_val()),
             static_cast<int>(options),
 
             reset_color());
@@ -573,19 +573,19 @@ namespace rpc
     void console_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} service_proxy_add_ref: destination_zone={} caller_zone={} "
-                      "known_direction_zone={} object_id={} options={}{}",
+                      "requesting_zone={} object_id={} options={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
             get_zone_name(destination_zone_id.get_val()),
             get_zone_name(caller_zone_id.get_val()),
-            get_zone_name(known_direction_zone_id.get_val()),
+            get_zone_name(requesting_zone_id.get_val()),
             object_id.get_val(),
             static_cast<int>(options),
 
@@ -1183,21 +1183,21 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_outbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
-                      "known_direction_zone={} options={}{}",
+                      "requesting_zone={} options={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
             get_zone_name(adjacent_zone_id.get_val()),
             get_zone_name(destination_zone_id.get_val()),
             get_zone_name(caller_zone_id.get_val()),
             object_id.get_val(),
-            get_zone_name(known_direction_zone_id.get_val()),
+            get_zone_name(requesting_zone_id.get_val()),
             static_cast<int>(options),
 
             reset_color());
@@ -1331,21 +1331,21 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
         auto object_id = remote_object_id.get_object();
         init_logger();
         logger_->info("{}{} transport_inbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
-                      "known_direction_zone={} options={}{}",
+                      "requesting_zone={} options={}{}",
             get_zone_color(zone_id.get_val()),
             get_zone_name(zone_id.get_val()),
             get_zone_name(adjacent_zone_id.get_val()),
             get_zone_name(destination_zone_id.get_val()),
             get_zone_name(caller_zone_id.get_val()),
             object_id.get_val(),
-            get_zone_name(known_direction_zone_id.get_val()),
+            get_zone_name(requesting_zone_id.get_val()),
             static_cast<int>(options),
 
             reset_color());

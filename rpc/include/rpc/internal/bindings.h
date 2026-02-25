@@ -135,7 +135,7 @@ namespace rpc
             auto err = CO_AWAIT service_proxy->get_or_create_object_proxy(encap.get_object_id(),
                 service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                 new_proxy_added,
-                caller_zone_id.as_known_direction_zone(),
+                caller_zone_id.as_requesting_zone(),
                 false,
                 op);
             if (err != error::OK())

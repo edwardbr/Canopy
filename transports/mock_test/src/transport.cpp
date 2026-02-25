@@ -172,12 +172,12 @@ namespace rpc::mock_test
     mock_transport::outbound_add_ref(uint64_t protocol_version,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options build_out_param_channel,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        std::ignore = known_direction_zone_id;
+        std::ignore = requesting_zone_id;
         std::ignore = build_out_param_channel;
         std::ignore = in_back_channel;
         std::ignore = out_back_channel;

@@ -219,7 +219,7 @@ const char* to_string(int error_code);
 struct zone { uint64_t id; };
 struct destination_zone { uint64_t id; };
 struct caller_zone { uint64_t id; };
-struct known_direction_zone { uint64_t id; };
+struct requesting_zone { uint64_t id; };
 struct object { uint64_t id; };
 struct interface_ordinal { uint64_t id; };
 struct method { uint64_t id; };
@@ -230,7 +230,7 @@ struct method { uint64_t id; };
 ```cpp
 destination_zone zone::as_destination() const;
 caller_zone zone::as_caller() const;
-known_direction_zone zone::as_known_direction_zone() const;
+requesting_zone zone::as_requesting_zone() const;
 zone destination_zone::as_zone() const;
 ```
 

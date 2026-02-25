@@ -361,7 +361,7 @@ namespace rpc
         destination_zone destination_zone_id,
         object object_id,
         caller_zone caller_zone_id,
-        known_direction_zone known_direction_zone_id,
+        requesting_zone requesting_zone_id,
         rpc::add_ref_options build_out_param_channel,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -384,7 +384,7 @@ namespace rpc
             destination_zone_id.get_val(),
             object_id.get_val(),
             caller_zone_id.get_val(),
-            known_direction_zone_id.get_val(),
+            requesting_zone_id.get_val(),
             (uint8_t)build_out_param_channel,
             &in_bc_buf.size(),
             in_bc_buf.data(),
@@ -402,7 +402,7 @@ namespace rpc
                         destination_zone_id.get_val(),
                         object_id.get_val(),
                         caller_zone_id.get_val(),
-                        known_direction_zone_id.get_val(),
+                        requesting_zone_id.get_val(),
                         (uint8_t)build_out_param_channel,
                         &in_bc_buf.size(),
                         in_bc_buf.data(),
@@ -435,12 +435,8 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_proxy_add_ref(get_zone_id(),
-                destination_zone_id,
-                get_caller_zone_id(),
-                object_id,
-                known_direction_zone_id,
-                build_out_param_channel);
+            telemetry_service->on_service_proxy_add_ref(
+                get_zone_id(), destination_zone_id, get_caller_zone_id(), object_id, requesting_zone_id, build_out_param_channel);
         }
 #endif
         return err_code;

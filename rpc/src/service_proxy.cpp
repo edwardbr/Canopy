@@ -269,7 +269,7 @@ namespace rpc
     }
 
     [[nodiscard]] CORO_TASK(int) service_proxy::sp_add_ref(
-        object object_id, add_ref_options build_out_param_channel, known_direction_zone known_direction_zone_id)
+        object object_id, add_ref_options build_out_param_channel, requesting_zone requesting_zone_id)
     {
         auto transport = transport_.get_nullable();
         if (!transport)
@@ -292,7 +292,7 @@ namespace rpc
             auto attempt = CO_AWAIT service_->outbound_add_ref(version,
                 dest_with_obj,
                 zone_id_.as_caller(),
-                known_direction_zone_id,
+                requesting_zone_id,
                 build_out_param_channel,
                 empty_in,
                 empty_out,
@@ -305,7 +305,7 @@ namespace rpc
                     telemetry_service->on_service_proxy_add_ref(get_zone_id(),
                         destination_zone_id_.with_object(object_id),
                         zone_id_.as_caller(),
-                        known_direction_zone_id,
+                        requesting_zone_id,
                         build_out_param_channel);
                 }
 #endif
@@ -516,7 +516,7 @@ namespace rpc
     service_proxy::get_or_create_object_proxy(object object_id,
         object_proxy_creation_rule rule,
         bool new_proxy_added,
-        known_direction_zone known_direction_zone_id,
+        requesting_zone requesting_zone_id,
         bool is_optimistic,
         std::shared_ptr<rpc::object_proxy>& op)
     {
@@ -569,7 +569,7 @@ namespace rpc
 #endif
             auto ret = CO_AWAIT sp_add_ref(object_id,
                 is_optimistic ? rpc::add_ref_options::optimistic : rpc::add_ref_options::normal,
-                known_direction_zone_id);
+                requesting_zone_id);
             if (ret != error::OK())
             {
                 RPC_ERROR("sp_add_ref failed");

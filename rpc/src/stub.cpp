@@ -123,7 +123,7 @@ namespace rpc
                 ret = CO_AWAIT transport->add_ref(rpc::get_version(),
                     get_zone()->get_zone_id().as_destination().with_object(id_),
                     caller_zone_id,
-                    get_zone()->get_zone_id().as_known_direction_zone(),
+                    get_zone()->get_zone_id().as_requesting_zone(),
                     rpc::add_ref_options::build_caller_route,
                     {},
                     out_back_channel);

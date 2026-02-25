@@ -35,7 +35,7 @@ public:
     // Conversion helpers
     destination_zone as_destination() const;
     caller_zone as_caller() const;
-    known_direction_zone as_known_direction_zone() const;
+    requesting_zone as_requesting_zone() const;
 };
 ```
 
@@ -100,7 +100,7 @@ Canopy uses specialized zone types for different routing scenarios:
 ```cpp
 struct destination_zone   // Where the call is going
 struct caller_zone        // Where the call came from
-struct known_direction_zone  // Zone with known calling direction
+struct requesting_zone  // Zone with known calling direction
 ```
 
 These types enable efficient routing in multi-hop scenarios.

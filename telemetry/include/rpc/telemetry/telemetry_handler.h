@@ -14,7 +14,7 @@ extern "C"
         uint64_t destination_zone_id,
         uint64_t object_id,
         uint64_t caller_zone_id,
-        uint64_t known_direction_zone_id,
+        uint64_t requesting_zone_id,
         uint64_t options);
     void on_service_release_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t object_id, uint64_t caller_zone_id, uint64_t options);
@@ -36,7 +36,7 @@ extern "C"
         uint64_t destination_zone_id,
         uint64_t caller_zone_id,
         uint64_t object_id,
-        uint64_t known_direction_zone_id,
+        uint64_t requesting_zone_id,
         uint64_t options);
     void on_service_proxy_release_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t options);
@@ -149,7 +149,7 @@ extern "C"
         uint64_t destination_zone_id,
         uint64_t object_id,
         uint64_t caller_zone_id,
-        uint64_t known_direction_zone_id,
+        uint64_t requesting_zone_id,
         uint64_t options);
     void on_service_release_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t object_id, uint64_t caller_zone_id, uint64_t options);
@@ -172,7 +172,7 @@ extern "C"
         uint64_t destination_zone_id,
         uint64_t caller_zone_id,
         uint64_t object_id,
-        uint64_t known_direction_zone_id,
+        uint64_t requesting_zone_id,
         uint64_t options);
     void on_service_proxy_release_host(
         uint64_t zone_id, uint64_t destination_zone_id, uint64_t caller_zone_id, uint64_t object_id, uint64_t options);

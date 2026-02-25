@@ -288,7 +288,7 @@ namespace rpc
     void sequence_diagram_telemetry_service::on_service_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -297,7 +297,7 @@ namespace rpc
         std::ignore = destination_zone_id;
         std::ignore = object_id;
         std::ignore = caller_zone_id;
-        std::ignore = known_direction_zone_id;
+        std::ignore = requesting_zone_id;
         std::ignore = options;
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
@@ -607,7 +607,7 @@ namespace rpc
     void sequence_diagram_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -616,7 +616,7 @@ namespace rpc
         std::ignore = destination_zone_id;
         std::ignore = object_id;
         std::ignore = caller_zone_id;
-        std::ignore = known_direction_zone_id;
+        std::ignore = requesting_zone_id;
         std::ignore = options;
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
@@ -1548,7 +1548,7 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -1561,7 +1561,7 @@ namespace rpc
             destination_zone_id.get_val(),
             caller_zone_id.get_val(),
             object_id.get_val(),
-            known_direction_zone_id.get_val(),
+            requesting_zone_id.get_val(),
             static_cast<int>(options));
         fflush(output_);
     }
@@ -1682,7 +1682,7 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
-        rpc::known_direction_zone known_direction_zone_id,
+        rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_destination_zone();
@@ -1695,7 +1695,7 @@ namespace rpc
             destination_zone_id.get_val(),
             caller_zone_id.get_val(),
             object_id.get_val(),
-            known_direction_zone_id.get_val(),
+            requesting_zone_id.get_val(),
             static_cast<int>(options));
         fflush(output_);
     }
