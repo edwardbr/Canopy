@@ -1,0 +1,53 @@
+{
+  "version": 5,
+  "configurePresets": [
+    {
+      "name": "My_Debug",
+      "inherits": "Debug",
+      "binaryDir": "build_user/debug",
+      "cacheVariables": {
+        "CANOPY_BUILD_DEMOS": "OFF"
+      }
+    },
+    {
+      "name": "My_Coroutine_Coverage",
+      "inherits": "Coroutine_Debug_Coverage",
+      "binaryDir": "build_user/coroutine_coverage",
+      "cacheVariables": {
+        "CANOPY_COVERAGE_GTEST_FILTER": "type_test/*"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "My_Debug",
+      "configurePreset": "My_Debug"
+    },
+    {
+      "name": "My_Coroutine_Coverage",
+      "configurePreset": "My_Coroutine_Coverage"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "My_Debug",
+      "configurePreset": "My_Debug",
+      "execution": {
+        "jobs": 1
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "My_Coroutine_Coverage",
+      "configurePreset": "My_Coroutine_Coverage",
+      "execution": {
+        "jobs": 1
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

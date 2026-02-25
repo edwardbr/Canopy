@@ -58,7 +58,7 @@ Canopy uses CMake presets for common build configurations:
 
 ```bash
 # List available presets
-cmake --preset list
+cmake --list-presets
 ```
 
 | Preset | Description |
@@ -68,12 +68,30 @@ cmake --preset list
 | `Coroutine_Debug` | Debug with C++20 coroutines enabled |
 | `Coroutine_Debug_ASAN` | Coroutine debug with AddressSanitizer |
 | `Debug_with_coroutines_no_logging` | Coroutines without logging overhead |
+| `Debug_Coverage` | Debug build with gcov coverage flags enabled |
+| `Coroutine_Debug_Coverage` | Coroutine debug build with gcov coverage flags enabled |
 | `Debug_multithreaded` | Multithreaded debugging with telemetry |
 | `Release` | Optimized production build |
 | `SGX_Debug` | SGX hardware enclave support (debug) |
 | `SGX_Sim_Debug` | SGX simulation mode (debug) |
 | `SGX_Release` | SGX hardware release build |
 | `Release_SGX_Sim` | SGX simulation release build |
+
+### Local Custom Presets
+
+You can keep machine-specific presets in `CMakeUserPresets.json` without editing tracked project presets.
+
+```bash
+# Create local presets from the provided template
+cp CMakeUserPresets.json.example CMakeUserPresets.json
+
+# Verify both project and user presets
+cmake --list-presets
+```
+
+Example local preset names from the template:
+- `My_Debug`
+- `My_Coroutine_Coverage`
 
 ### Base Configuration
 
@@ -150,6 +168,28 @@ cmake --build build
 cmake --preset Release
 cmake --build build --config Release
 ```
+
+### Coverage HTML Reports
+
+Coverage targets are available when `CANOPY_ENABLE_COVERAGE=ON` and tests are enabled.
+
+```bash
+# Configure coverage build (debug)
+cmake --preset Coroutine_Debug_Coverage
+
+# Build tests and runtime
+cmake --build --preset Coroutine_Debug_Coverage
+
+# Run single-process rpc_test and generate HTML report
+cmake --build build_coroutine_coverage --target coverage-html
+```
+
+Available targets:
+- `coverage-reset` - remove stale `.gcda` files in the active build directory
+- `coverage-run-rpc_test` - run `rpc_test --telemetry-console` in single-process mode
+- `coverage-html-gcovr` - generate `build_*/coverage/gcovr/index.html`
+- `coverage-html-lcov` - generate `build_*/coverage/lcov/html/index.html`
+- `coverage-html` - default HTML target (`gcovr` when available, otherwise `lcov`)
 
 ## 5. Build Options
 

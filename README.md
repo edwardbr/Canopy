@@ -91,6 +91,10 @@ cmake --preset Coroutine_Debug
 cmake --preset Debug_ASAN
 cmake --preset Coroutine_Debug_ASAN
 
+# Coverage presets
+cmake --preset Debug_Coverage
+cmake --preset Coroutine_Debug_Coverage
+
 # Build core library
 cmake --build build_debug --target rpc
 
@@ -100,6 +104,17 @@ ctest --test-dir build_debug --output-on-failure
 # Run individual tests with ASan (recommended)
 tests/scripts/run_asan_tests.sh
 ```
+
+### Local User Presets
+
+For machine-specific or personal presets, create `CMakeUserPresets.json` from the template:
+
+```bash
+cp CMakeUserPresets.json.example CMakeUserPresets.json
+cmake --list-presets
+```
+
+This keeps your custom presets local while still inheriting from project presets.
 
 ### Build Options
 

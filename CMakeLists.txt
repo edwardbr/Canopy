@@ -72,4 +72,9 @@ if(CANOPY_BUILD_DEMOS)
   add_subdirectory(demos)
 endif()
 
+if(CANOPY_ENABLE_COVERAGE)
+  include(CoverageUtilities)
+  canopy_add_coverage_targets(rpc_test "*")
+endif()
+
 install(FILES "${CMAKE_CURRENT_LIST_DIR}/cmake/FindCanopyGenerate.cmake" DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake/rpc)
