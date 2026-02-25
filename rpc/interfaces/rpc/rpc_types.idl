@@ -116,12 +116,18 @@ namespace rpc
     //   Bits 96-127: object ID (specific object, 0 = zone-only)
     struct zone_address
     {
+    private:
         uint64_t routing_prefix = 0;
         uint32_t subnet_id = 0;
         uint32_t object_id = 0;
 
     public:
     #cpp_quote(R^__(
+        // max values for each field based on storage type
+        static constexpr uint64_t max_routing_prefix = UINT64_MAX;
+        static constexpr uint64_t max_subnet = UINT32_MAX;
+        static constexpr uint64_t max_object_id = UINT32_MAX;
+
         zone_address() = default;
         zone_address(const zone_address&) = default;
         zone_address(zone_address&&) noexcept = default;
@@ -143,6 +149,34 @@ namespace rpc
 
         zone_address& operator=(const zone_address&) = default;
         zone_address& operator=(zone_address&&) noexcept = default;
+
+        // accessors
+        uint64_t get_routing_prefix() const { return routing_prefix; }
+        bool set_routing_prefix(uint64_t val)
+        {
+            if (val > max_routing_prefix)
+                return false;
+            routing_prefix = val;
+            return true;
+        }
+
+        uint64_t get_subnet() const { return static_cast<uint64_t>(subnet_id); }
+        bool set_subnet(uint64_t val)
+        {
+            if (val > max_subnet)
+                return false;
+            subnet_id = static_cast<uint32_t>(val);
+            return true;
+        }
+
+        uint64_t get_object_id() const { return static_cast<uint64_t>(object_id); }
+        bool set_object_id(uint64_t val)
+        {
+            if (val > max_object_id)
+                return false;
+            object_id = static_cast<uint32_t>(val);
+            return true;
+        }
 
         // legacy compatibility: returns subnet_id as uint64_t
         uint64_t get_val() const { return static_cast<uint64_t>(subnet_id); }

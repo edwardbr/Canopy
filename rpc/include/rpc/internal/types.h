@@ -14,10 +14,10 @@ namespace std
 {
     inline std::string to_string(const rpc::zone_address& val)
     {
-        if (val.routing_prefix == 0 && val.object_id == 0)
-            return std::to_string(val.subnet_id);
-        return std::to_string(val.routing_prefix) + ":" + std::to_string(val.subnet_id) + "/"
-               + std::to_string(val.object_id);
+        if (val.get_routing_prefix() == 0 && val.get_object_id() == 0)
+            return std::to_string(val.get_subnet());
+        return std::to_string(val.get_routing_prefix()) + ":" + std::to_string(val.get_subnet()) + "/"
+               + std::to_string(val.get_object_id());
     }
     inline std::string to_string(const rpc::zone& val)
     {
@@ -52,10 +52,10 @@ namespace std
     {
         auto operator()(const rpc::zone_address& item) const noexcept
         {
-            // combine routing_prefix, subnet_id, and object_id
-            std::size_t h = std::hash<uint64_t>{}(item.routing_prefix);
-            h ^= std::hash<uint32_t>{}(item.subnet_id) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= std::hash<uint32_t>{}(item.object_id) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            // combine routing_prefix, subnet, and object_id
+            std::size_t h = std::hash<uint64_t>{}(item.get_routing_prefix());
+            h ^= std::hash<uint64_t>{}(item.get_subnet()) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<uint64_t>{}(item.get_object_id()) + 0x9e3779b9 + (h << 6) + (h >> 2);
             return h;
         }
     };
