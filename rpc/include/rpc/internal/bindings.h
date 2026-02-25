@@ -311,10 +311,9 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_add_ref(service_proxy->get_zone_id(),
-                encap.destination_zone_id,
+                encap.destination_zone_id.with_object(encap.get_object_id()),
                 service_proxy->get_zone_id().as_caller(),
-                encap.get_object_id(),
-                0,
+                {0},
                 rpc::add_ref_options::normal);
         }
 #endif

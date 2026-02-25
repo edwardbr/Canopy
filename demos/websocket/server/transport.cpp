@@ -58,13 +58,8 @@ namespace websocket_demo
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_transport_outbound_send(get_zone_id(),
-                    get_adjacent_zone_id(),
-                    destination_object_id,
-                    caller_zone_id,
-                    destination_object_id.get_object(),
-                    interface_id,
-                    method_id);
+                telemetry_service->on_transport_outbound_send(
+                    get_zone_id(), get_adjacent_zone_id(), destination_object_id, caller_zone_id, interface_id, method_id);
             }
 #endif
             websocket_demo::v1::request request;
@@ -107,13 +102,8 @@ namespace websocket_demo
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_transport_outbound_send(get_zone_id(),
-                    get_adjacent_zone_id(),
-                    destination_object_id,
-                    caller_zone_id,
-                    destination_object_id.get_object(),
-                    interface_id,
-                    method_id);
+                telemetry_service->on_transport_outbound_post(
+                    get_zone_id(), get_adjacent_zone_id(), destination_object_id, caller_zone_id, interface_id, method_id);
             }
 #endif
             websocket_demo::v1::request request;
