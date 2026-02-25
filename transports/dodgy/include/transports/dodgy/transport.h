@@ -218,7 +218,7 @@ namespace rpc::dodgy
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
             const rpc::span& in_data,
@@ -231,7 +231,7 @@ namespace rpc::dodgy
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
             const rpc::span& in_data,
@@ -240,14 +240,14 @@ namespace rpc::dodgy
         CORO_TASK(int)
         outbound_try_cast(uint64_t protocol_version,
             rpc::caller_zone caller_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::interface_ordinal interface_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         CORO_TASK(int)
         outbound_add_ref(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::known_direction_zone known_direction_zone_id,
             rpc::add_ref_options build_out_param_channel,
@@ -256,7 +256,7 @@ namespace rpc::dodgy
 
         CORO_TASK(int)
         outbound_release(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::release_options options,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -265,7 +265,7 @@ namespace rpc::dodgy
         // New methods from i_marshaller interface
         CORO_TASK(void)
         outbound_object_released(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 

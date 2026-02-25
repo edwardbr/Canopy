@@ -216,6 +216,7 @@ namespace rpc
     #cpp_quote(R^__(
     struct zone;
     struct destination_zone;
+    struct destination_object;
     struct operating_zone;
     struct caller_zone;
     struct known_direction_zone;
@@ -286,18 +287,18 @@ namespace rpc
         destination_zone(const destination_zone&) = default;
         destination_zone(destination_zone&&) noexcept = default;
         destination_zone(uint64_t initial_id)
-            : addr_(initial_id)
+            : addr_(zone_address(initial_id).zone_only())
         {
         }
         destination_zone(const zone_address& addr)
-            : addr_(addr)
+            : addr_(addr.zone_only())
         {
         }
         destination_zone& operator=(const destination_zone&) = default;
         destination_zone& operator=(destination_zone&&) noexcept = default;
         destination_zone& operator=(uint64_t other)
         {
-            addr_ = zone_address(other);
+            addr_ = zone_address(other).zone_only();
             return *this;
         }
 
@@ -321,12 +322,71 @@ namespace rpc
 
         bool is_set() const noexcept { return addr_.is_set(); }
 
-        // object accessors for embedded object_id
-        inline object get_object() const;
-        inline destination_zone with_object(object obj) const;
+        // create a destination_object from this zone and the given object_id
+        inline destination_object with_object(object obj) const;
 
         inline zone as_zone() const;
         inline caller_zone as_caller() const;
+            )__^)
+    };
+
+    // a destination that carries both zone routing and object identity
+    struct destination_object
+    {
+    private:
+        zone_address addr_;
+
+    public:
+#cpp_quote(R^__(
+        destination_object() = default;
+        destination_object(const destination_object&) = default;
+        destination_object(destination_object&&) noexcept = default;
+        destination_object(uint64_t initial_id)
+            : addr_(initial_id)
+        {
+        }
+        destination_object(const zone_address& addr)
+            : addr_(addr)
+        {
+        }
+        destination_object(const destination_zone& d);
+        destination_object& operator=(const destination_object&) = default;
+        destination_object& operator=(destination_object&&) noexcept = default;
+        destination_object& operator=(uint64_t other)
+        {
+            addr_ = zone_address(other);
+            return *this;
+        }
+
+        uint64_t get_val() const { return addr_.get_val(); }
+        const zone_address& get_address() const { return addr_; }
+
+        // compare
+        friend inline bool operator==(const destination_object& lhs, const destination_object& rhs);
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
+        {
+            return addr_.get_val() == static_cast<uint64_t>(val);
+        }
+        friend inline bool operator!=(const destination_object& lhs, const destination_object& rhs);
+        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
+        {
+            return addr_.get_val() != static_cast<uint64_t>(val);
+        }
+
+        bool operator<(uint64_t val) const { return addr_.get_val() < val; }
+        bool operator<(const destination_object& val) const { return addr_ < val.addr_; }
+
+        bool is_set() const noexcept { return addr_.is_set(); }
+
+        // object accessors
+        inline object get_object() const;
+        inline destination_object with_object(object obj) const;
+
+        // zone conversion methods
+        inline zone as_zone() const;
+        inline caller_zone as_caller() const;
+        inline destination_zone as_destination_zone() const;
+        operator destination_zone() const;
             )__^)
     };
 
@@ -620,20 +680,70 @@ namespace rpc
         return destination_zone(addr_);
     }
 
-    object destination_zone::get_object() const
+    inline destination_object destination_zone::with_object(object obj) const
+    {
+        return destination_object(addr_.with_object(obj.get_val()));
+    }
+
+    // destination_object implementations
+    inline object destination_object::get_object() const
     {
         return object(addr_.get_object_id());
     }
 
-    destination_zone destination_zone::with_object(object obj) const
+    inline destination_object destination_object::with_object(object obj) const
     {
-        return destination_zone(addr_.with_object(obj.get_val()));
+        return destination_object(addr_.with_object(obj.get_val()));
+    }
+
+    inline zone destination_object::as_zone() const
+    {
+        return zone(addr_);
+    }
+
+    inline caller_zone destination_object::as_caller() const
+    {
+        return caller_zone(addr_);
+    }
+
+    inline destination_zone destination_object::as_destination_zone() const
+    {
+        return destination_zone(addr_);
+    }
+
+    inline destination_object::operator destination_zone() const
+    {
+        return destination_zone(addr_);
+    }
+
+    inline destination_object::destination_object(const destination_zone& d)
+        : addr_(d.get_address())
+    {
+    }
+
+    // Cross-type comparisons: destination_object vs destination_zone
+    // destination_zone is zone-only, so compare zone fields using same_zone()
+    inline bool operator==(const destination_object& lhs, const destination_zone& rhs)
+    {
+        return lhs.get_address().same_zone(rhs.get_address());
+    }
+    inline bool operator!=(const destination_object& lhs, const destination_zone& rhs)
+    {
+        return !lhs.get_address().same_zone(rhs.get_address());
+    }
+    inline bool operator==(const destination_zone& lhs, const destination_object& rhs)
+    {
+        return lhs.get_address().same_zone(rhs.get_address());
+    }
+    inline bool operator!=(const destination_zone& lhs, const destination_object& rhs)
+    {
+        return !lhs.get_address().same_zone(rhs.get_address());
     }
     )__^)
 
     struct interface_descriptor
     {
-        destination_zone destination_zone_id;
+        destination_object destination_zone_id;
 
     public:
 #cpp_quote(R^__(
@@ -643,13 +753,19 @@ namespace rpc
         interface_descriptor& operator=(const interface_descriptor&) = default;
         interface_descriptor& operator=(interface_descriptor&&) noexcept = default;
 
-        // construct with object embedded in destination_zone
+        // construct with object embedded in destination_object
         interface_descriptor(object obj, destination_zone dest)
             : destination_zone_id(dest.with_object(obj))
         {
         }
 
-        // construct from destination_zone (which may already contain object_id)
+        // construct from destination_object (carries zone + object)
+        interface_descriptor(destination_object dest)
+            : destination_zone_id(dest)
+        {
+        }
+
+        // construct from destination_zone (zone-only, no object)
         interface_descriptor(destination_zone dest)
             : destination_zone_id(dest)
         {
@@ -664,7 +780,7 @@ namespace rpc
     {
         interface_ordinal caller_interface_id;
         interface_ordinal destination_interface_id;
-        destination_zone input_zone_id;
+        destination_object input_zone_id;
 
     public:
 #cpp_quote(R^__(

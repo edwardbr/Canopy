@@ -243,7 +243,7 @@ namespace rpc
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         method method_id,
         const rpc::span& in_data,
@@ -251,7 +251,7 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        auto object_id = destination_zone_id.get_object();
+        auto object_id = destination_object_id.get_object();
 
         // overriden versions of this functions my have more to do with these parameters
         std::ignore = tag;
@@ -262,10 +262,10 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_send(
-                zone_id_, destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
+                zone_id_, destination_object_id, caller_zone_id, object_id, interface_id, method_id);
         }
 #endif
-        if (!destination_zone_id.get_address().same_zone(zone_id_.get_address()))
+        if (!destination_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             RPC_ASSERT(false); // this should be going to the pass through
             CO_RETURN error::TRANSPORT_ERROR();
@@ -296,18 +296,18 @@ namespace rpc
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         method method_id,
         const rpc::span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        auto object_id = destination_zone_id.get_object();
+        auto object_id = destination_object_id.get_object();
 
         // todo!
         std::ignore = encoding;
         std::ignore = caller_zone_id;
-        std::ignore = destination_zone_id;
+        std::ignore = destination_object_id;
         std::ignore = object_id;
         std::ignore = interface_id;
         std::ignore = method_id;
@@ -321,11 +321,11 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_post(
-                zone_id_, destination_zone_id, caller_zone_id, object_id, interface_id, method_id);
+                zone_id_, destination_object_id, caller_zone_id, object_id, interface_id, method_id);
         }
 #endif
 
-        if (!destination_zone_id.get_address().same_zone(zone_id_.get_address()))
+        if (!destination_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             RPC_ASSERT(false); // this should be going to the pass through
             RPC_ERROR("Unsupported post destination");
@@ -336,7 +336,7 @@ namespace rpc
 
         // Log that post was received
         RPC_TRACE("service::post received for destination_zone={} object_id={}",
-            destination_zone_id.get_val(),
+            destination_object_id.get_val(),
             object_id.get_val());
 
         if (protocol_version < rpc::LOWEST_SUPPORTED_VERSION || protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
@@ -446,18 +446,18 @@ namespace rpc
     CORO_TASK(int)
     service::try_cast(uint64_t protocol_version,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        auto object_id = destination_zone_id.get_object();
+        auto object_id = destination_object_id.get_object();
 
         std::ignore = caller_zone_id;
         std::ignore = in_back_channel;
         std::ignore = out_back_channel;
 
-        if (!destination_zone_id.get_address().same_zone(zone_id_.get_address()))
+        if (!destination_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             RPC_ASSERT(false); // this should be going to the pass through
             CO_RETURN error::TRANSPORT_ERROR();
@@ -481,14 +481,14 @@ namespace rpc
 
     CORO_TASK(int)
     service::add_ref(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         known_direction_zone known_direction_zone_id,
         add_ref_options build_out_param_channel,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        auto object_id = destination_zone_id.get_object();
+        auto object_id = destination_object_id.get_object();
 
         bool optimistic = !!(build_out_param_channel & add_ref_options::optimistic);
         bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
@@ -505,7 +505,7 @@ namespace rpc
             {
                 auto caller_transport = get_transport(caller_zone_id.as_destination());
                 auto error = CO_AWAIT caller_transport->add_ref(protocol_version,
-                    destination_zone_id,
+                    destination_object_id,
                     caller_zone_id,
                     zone_id_.as_known_direction_zone(),
                     add_ref_options::build_caller_route
@@ -521,27 +521,27 @@ namespace rpc
             else
             {
                 std::lock_guard g(service_proxy_control_);
-                auto destination_transport = inner_get_transport(destination_zone_id);
+                auto destination_transport = inner_get_transport(destination_object_id);
                 if (destination_transport == nullptr)
                 {
                     destination_transport = inner_get_transport(known_direction_zone_id.as_destination());
                     if (destination_transport == nullptr)
                     {
-                        RPC_ERROR("Destination transport not found for zone {}", destination_zone_id.get_val());
+                        RPC_ERROR("Destination transport not found for zone {}", destination_object_id.get_val());
                         CO_RETURN rpc::error::ZONE_NOT_FOUND();
                     }
-                    inner_add_transport(destination_zone_id, destination_transport);
+                    inner_add_transport(destination_object_id, destination_transport);
                 }
             }
         }
 
         if (build_dest_channel)
         {
-            if (!destination_zone_id.get_address().same_zone(zone_id_.get_address()))
+            if (!destination_object_id.get_address().same_zone(zone_id_.get_address()))
             {
-                auto dest_transport = get_transport(destination_zone_id);
+                auto dest_transport = get_transport(destination_object_id);
                 CO_RETURN CO_AWAIT dest_transport->add_ref(protocol_version,
-                    destination_zone_id,
+                    destination_object_id,
                     caller_zone_id,
                     known_direction_zone_id,
                     build_out_param_channel & (~add_ref_options::build_caller_route),
@@ -590,7 +590,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_add_ref(
-                zone_id_, destination_zone_id, object_id, caller_zone_id, known_direction_zone_id, build_out_param_channel);
+                zone_id_, destination_object_id, object_id, caller_zone_id, known_direction_zone_id, build_out_param_channel);
         }
 #endif
         CO_RETURN rpc::error::OK();
@@ -644,15 +644,15 @@ namespace rpc
 
     CORO_TASK(int)
     service::release(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        auto object_id = destination_zone_id.get_object();
+        auto object_id = destination_object_id.get_object();
 
-        std::ignore = destination_zone_id;
+        std::ignore = destination_object_id;
         std::ignore = in_back_channel;
         std::ignore = out_back_channel;
 
@@ -691,7 +691,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_release(zone_id_, destination_zone_id, object_id, caller_zone_id, options);
+            telemetry_service->on_service_release(zone_id_, destination_object_id, object_id, caller_zone_id, options);
         }
 #endif
         CO_RETURN rpc::error::OK();
@@ -699,17 +699,17 @@ namespace rpc
 
     CORO_TASK(void)
     service::object_released(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        auto object_id = destination_zone_id.get_object();
+        auto object_id = destination_object_id.get_object();
 
         std::ignore = in_back_channel;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_object_released(zone_id_, destination_zone_id, caller_zone_id, object_id);
+            telemetry_service->on_service_object_released(zone_id_, destination_object_id, caller_zone_id, object_id);
         }
 #endif
         if (caller_zone_id != zone_id_.as_caller())
@@ -726,7 +726,7 @@ namespace rpc
         }
 
         // Notify that an object has been released
-        CO_AWAIT notify_object_gone_event(object_id, destination_zone_id);
+        CO_AWAIT notify_object_gone_event(object_id, destination_object_id);
     }
 
     CORO_TASK(void)
@@ -1027,7 +1027,7 @@ namespace rpc
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         method method_id,
         const rpc::span& in_data,
@@ -1041,7 +1041,7 @@ namespace rpc
             encoding,
             tag,
             caller_zone_id,
-            destination_zone_id,
+            destination_object_id,
             interface_id,
             method_id,
             in_data,
@@ -1055,7 +1055,7 @@ namespace rpc
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         method method_id,
         const rpc::span& in_data,
@@ -1064,13 +1064,13 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_AWAIT transport->post(
-            protocol_version, encoding, tag, caller_zone_id, destination_zone_id, interface_id, method_id, in_data, in_back_channel);
+            protocol_version, encoding, tag, caller_zone_id, destination_object_id, interface_id, method_id, in_data, in_back_channel);
     }
 
     CORO_TASK(int)
     service::outbound_try_cast(uint64_t protocol_version,
         caller_zone caller_zone_id,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel,
@@ -1078,12 +1078,12 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->try_cast(
-            protocol_version, caller_zone_id, destination_zone_id, interface_id, in_back_channel, out_back_channel);
+            protocol_version, caller_zone_id, destination_object_id, interface_id, in_back_channel, out_back_channel);
     }
 
     CORO_TASK(int)
     service::outbound_add_ref(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         known_direction_zone known_direction_zone_id,
         add_ref_options build_out_param_channel,
@@ -1093,7 +1093,7 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->add_ref(protocol_version,
-            destination_zone_id,
+            destination_object_id,
             caller_zone_id,
             known_direction_zone_id,
             build_out_param_channel,
@@ -1103,7 +1103,7 @@ namespace rpc
 
     CORO_TASK(int)
     service::outbound_release(uint64_t protocol_version,
-        destination_zone destination_zone_id,
+        destination_object destination_object_id,
         caller_zone caller_zone_id,
         release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -1112,7 +1112,7 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->release(
-            protocol_version, destination_zone_id, caller_zone_id, options, in_back_channel, out_back_channel);
+            protocol_version, destination_object_id, caller_zone_id, options, in_back_channel, out_back_channel);
     }
 
     // Efficient targeted cleanup for a specific remote zone

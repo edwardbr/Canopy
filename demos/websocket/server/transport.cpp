@@ -47,7 +47,7 @@ namespace websocket_demo
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
             const rpc::span& in_data,
@@ -60,9 +60,9 @@ namespace websocket_demo
             {
                 telemetry_service->on_transport_outbound_send(get_zone_id(),
                     get_adjacent_zone_id(),
-                    destination_zone_id,
+                    destination_object_id,
                     caller_zone_id,
-                    destination_zone_id.get_object(),
+                    destination_object_id.get_object(),
                     interface_id,
                     method_id);
             }
@@ -71,8 +71,8 @@ namespace websocket_demo
             request.encoding = encoding;
             request.tag = tag;
             request.caller_zone_id = caller_zone_id.get_val();
-            request.destination_zone_id = destination_zone_id.get_val();
-            request.object_id = destination_zone_id.get_object().get_val();
+            request.destination_zone_id = destination_object_id.get_val();
+            request.object_id = destination_object_id.get_object().get_val();
             request.interface_id = interface_id.get_val();
             request.method_id = method_id.get_val();
             request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
@@ -97,7 +97,7 @@ namespace websocket_demo
             rpc::encoding encoding,
             uint64_t tag,
             rpc::caller_zone caller_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
             const rpc::span& in_data,
@@ -109,9 +109,9 @@ namespace websocket_demo
             {
                 telemetry_service->on_transport_outbound_send(get_zone_id(),
                     get_adjacent_zone_id(),
-                    destination_zone_id,
+                    destination_object_id,
                     caller_zone_id,
-                    destination_zone_id.get_object(),
+                    destination_object_id.get_object(),
                     interface_id,
                     method_id);
             }
@@ -120,8 +120,8 @@ namespace websocket_demo
             request.encoding = encoding;
             request.tag = tag;
             request.caller_zone_id = caller_zone_id.get_val();
-            request.destination_zone_id = destination_zone_id.get_val();
-            request.object_id = destination_zone_id.get_object().get_val();
+            request.destination_zone_id = destination_object_id.get_val();
+            request.object_id = destination_object_id.get_object().get_val();
             request.interface_id = interface_id.get_val();
             request.method_id = method_id.get_val();
             request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
@@ -144,7 +144,7 @@ namespace websocket_demo
         CORO_TASK(int)
         transport::outbound_try_cast(uint64_t protocol_version,
             rpc::caller_zone caller_zone_id,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::interface_ordinal interface_id,
             const std::vector<rpc::back_channel_entry>& back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -155,7 +155,7 @@ namespace websocket_demo
 
         CORO_TASK(int)
         transport::outbound_add_ref(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::known_direction_zone known_direction_zone_id,
             rpc::add_ref_options build_out_param_channel,
@@ -169,7 +169,7 @@ namespace websocket_demo
 
         CORO_TASK(int)
         transport::outbound_release(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::release_options options,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -180,7 +180,7 @@ namespace websocket_demo
 
         CORO_TASK(void)
         transport::outbound_object_released(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
+            rpc::destination_object destination_object_id,
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& back_channel)
         {
