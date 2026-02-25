@@ -101,16 +101,13 @@ namespace comprehensive
 
                 // Create first object
                 rpc::shared_ptr<i_managed_object> obj1;
-                auto error = CO_AWAIT factory->create_object(obj1);
+                uint64_t id1;
+                auto error = CO_AWAIT factory->create_object(id1, obj1);
                 print_result("Create object 1", error);
 
                 if (error == rpc::error::OK() && obj1)
                 {
-                    uint64_t id;
-                    error = CO_AWAIT obj1->get_object_id(id);
-                    print_result("Get object 1 ID", error);
-                    RPC_INFO("  Object 1 ID: {}", id);
-
+                    RPC_INFO("  Object 1 ID: {}", id1);
                     // Perform operation
                     std::string result;
                     error = CO_AWAIT obj1->perform_operation("test_operation", result);
@@ -120,7 +117,8 @@ namespace comprehensive
 
                 // Create second object
                 rpc::shared_ptr<i_managed_object> obj2;
-                error = CO_AWAIT factory->create_object(obj2);
+                uint64_t id2;
+                error = CO_AWAIT factory->create_object(id2, obj2);
                 print_result("Create object 2", error);
 
                 // Demo shared_ptr behavior
@@ -158,14 +156,13 @@ namespace comprehensive
 
                 // Create object
                 rpc::shared_ptr<i_managed_object> obj;
-                auto error = CO_AWAIT factory->create_object(obj);
+                uint64_t id1;
+                auto error = CO_AWAIT factory->create_object(id1, obj);
                 print_result("Create object", error);
 
                 if (error == rpc::error::OK() && obj)
                 {
-                    uint64_t id;
-                    CO_AWAIT obj->get_object_id(id);
-                    RPC_INFO("Created object with ID: {}", id);
+                    RPC_INFO("Created object with ID: {}", id1);
 
                     // Use object multiple times
                     for (int i = 0; i < 3; ++i)

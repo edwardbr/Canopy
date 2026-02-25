@@ -91,7 +91,7 @@ namespace websocket_demo
             transport_ = std::make_shared<transport>(
                 wslay_ctx_, service_, service_->generate_new_zone_id(), pending_messages_, pending_messages_mutex_);
 
-            RPC_INFO("[WS] connect_request received, client_object_id={}", client_object_id_);
+            RPC_INFO("[WS] connect_request received, inbound_remote_object={}", inbound_remote_object_.get_val());
             RPC_INFO("[WS] Calling attach_remote_zone");
 
             rpc::interface_descriptor output_descr;
@@ -102,10 +102,10 @@ namespace websocket_demo
                     [&]()
                     {
                         rpc::connection_settings cs;
-                        cs.caller_interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version());
-                        cs.destination_interface_id = websocket_demo::v1::i_calculator::get_id(rpc::get_version());
-                        cs.input_zone_id
-                            = transport_->get_adjacent_zone_id().as_destination().with_object(client_object_id_);
+                        cs.inbound_interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version());
+                        cs.outbound_interface_id = websocket_demo::v1::i_calculator::get_id(rpc::get_version());
+                        cs.input_zone_id = transport_->get_adjacent_zone_id().as_destination().with_object(
+                            inbound_remote_object_.get_object());
                         return cs;
                     }(),
                     output_descr,
@@ -134,19 +134,17 @@ namespace websocket_demo
 
             // Queue the connect_response so the client knows the zone/object IDs.
             websocket_demo::v1::connect_response connect_resp;
-            connect_resp.client_zone_id = transport_->get_adjacent_zone_id().get_val();
-            connect_resp.server_zone_id = service_->get_zone_id().get_val();
-            connect_resp.server_object_id = output_descr.get_object_id().get_val();
+            connect_resp.caller_zone_id = transport_->get_adjacent_zone_id().as_caller();
+            connect_resp.outbound_remote_object = output_descr.destination_zone_id;
 
             auto resp_payload = rpc::to_protobuf<std::vector<uint8_t>>(connect_resp);
             {
                 std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
                 pending_messages_->push(std::move(resp_payload));
             }
-            RPC_INFO("[WS] connect_response queued: client_zone={} server_zone={} server_object={}",
-                connect_resp.client_zone_id,
-                connect_resp.server_zone_id,
-                connect_resp.server_object_id);
+            RPC_INFO("[WS] connect_response queued: caller_zone={} outbound_remote_object={}",
+                connect_resp.caller_zone_id.get_val(),
+                connect_resp.outbound_remote_object.get_val());
 
             co_return true;
         }
@@ -348,7 +346,7 @@ namespace websocket_demo
                 return;
             }
 
-            client_object_id_ = req.client_object_id;
+            inbound_remote_object_ = req.inbound_remote_object;
             state_ = connection_state::running;
         }
 

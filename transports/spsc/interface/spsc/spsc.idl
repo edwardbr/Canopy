@@ -48,17 +48,15 @@ namespace rpc
 
         struct init_client_channel_send
         {
-            // the zone id of the caller derived from the caller
-            rpc::caller_zone caller_zone_id;
-            // the object id of the callback object from the caller
-            rpc::object caller_object_id;
+            // the caller's zone and callback object combined
+            rpc::remote_object inbound_remote_object;
             // the expected interface id of the caller object
-            rpc::interface_ordinal caller_interface_id;
+            rpc::interface_ordinal inbound_interface_id;
 
-            // the zone id of the destination derived from the caller
+            // the zone id of the destination 
             rpc::destination_zone destination_zone_id;
             // the expected interface id of the destination object
-            rpc::interface_ordinal destination_interface_id;
+            rpc::interface_ordinal outbound_interface_id;
 
             // the zone id of the zone immediately adjacent to the new zone
             rpc::zone adjacent_zone_id;
@@ -67,10 +65,8 @@ namespace rpc
         struct init_client_channel_response
         {
             int err_code;
-            // the destination zone id derived from the destination
-            rpc::destination_zone destination_zone_id;
-            // the destination callable object id generated from the destination
-            rpc::object remote_object_id;
+            // the destination zone and callable object combined, generated from the destination
+            rpc::remote_object outbound_remote_object;
             // the zone id of the caller derived from the destination
             rpc::caller_zone caller_zone_id;
         };
@@ -159,9 +155,11 @@ namespace rpc
         };
 
         struct close_connection_send
-        {};
+        {
+        };
 
         struct close_connection_ack
-        {};  // Acknowledge graceful close; signals all cleanup messages have been sent
+        {
+        }; // Acknowledge graceful close; signals all cleanup messages have been sent
     }
 }

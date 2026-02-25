@@ -1701,13 +1701,19 @@ namespace protobuf_generator
     {
         std::string norm_type = normalize_type(type_str);
 
+        // Extract unqualified name for cross-namespace lookup (e.g. "rpc::encoding" -> "encoding")
+        std::string unqualified = norm_type;
+        size_t ns_pos = norm_type.rfind("::");
+        if (ns_pos != std::string::npos)
+            unqualified = norm_type.substr(ns_pos + 2);
+
         // Recursively search for enum with this name
         std::function<bool(const class_entity&)> search_for_enum = [&](const class_entity& entity) -> bool
         {
             // Check enums in this entity
             for (auto& elem : entity.get_elements(entity_type::ENUM))
             {
-                if (elem->get_name() == norm_type)
+                if (elem->get_name() == norm_type || elem->get_name() == unqualified)
                     return true;
             }
 
@@ -2568,8 +2574,14 @@ namespace protobuf_generator
     // Helper to find a struct entity by name in the class hierarchy
     const class_entity* find_struct_by_name(const class_entity& root, const std::string& name)
     {
+        // Extract unqualified name for cross-namespace lookup (e.g. "rpc::remote_object" -> "remote_object")
+        std::string unqualified = name;
+        size_t ns_pos = name.rfind("::");
+        if (ns_pos != std::string::npos)
+            unqualified = name.substr(ns_pos + 2);
+
         // Check if this entity is the struct we're looking for
-        if (root.get_entity_type() == entity_type::STRUCT && root.get_name() == name)
+        if (root.get_entity_type() == entity_type::STRUCT && (root.get_name() == name || root.get_name() == unqualified))
         {
             return &root;
         }
@@ -2587,7 +2599,7 @@ namespace protobuf_generator
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
                 auto& struct_entity = static_cast<const class_entity&>(*elem);
-                if (struct_entity.get_name() == name)
+                if (struct_entity.get_name() == name || struct_entity.get_name() == unqualified)
                     return &struct_entity;
             }
         }
@@ -2693,12 +2705,35 @@ namespace protobuf_generator
         }
     }
 
+    // Helper to get the full C++ namespace prefix for an entity using :: separator
+    // e.g. a struct in secret_llama::v1_0 returns "::secret_llama::v1_0"
+    std::string get_cpp_namespace_prefix(const class_entity& entity)
+    {
+        std::vector<std::string> parts;
+        const class_entity* current = entity.get_owner();
+        while (current != nullptr && !current->get_name().empty())
+        {
+            parts.push_back(current->get_name());
+            current = current->get_owner();
+        }
+        std::string result;
+        for (auto it = parts.rbegin(); it != parts.rend(); ++it)
+        {
+            result += "::";
+            result += *it;
+        }
+        return result;
+    }
+
     // Helper to write protobuf struct member serialization implementations
     void write_struct_protobuf_cpp(
         const class_entity& root_entity, const class_entity& struct_entity, const std::string& package_name, writer& cpp)
     {
         std::string struct_name = struct_entity.get_name();
         std::string proto_message_name = sanitize_type_name(struct_name);
+
+        // Compute the struct's C++ namespace prefix for qualifying type names (e.g. "::secret_llama::v1_0")
+        std::string struct_cpp_ns = get_cpp_namespace_prefix(struct_entity);
 
         // Generate protobuf_serialise implementation
         cpp("void {}::protobuf_serialise(std::vector<char>& buffer) const", struct_name);
@@ -2763,6 +2798,17 @@ namespace protobuf_generator
                             generate_struct_to_proto_copy(
                                 root_entity, inner_struct, "elem", "(*proto_elem)", cpp, "        ");
                         }
+                        else if (inner_type.find("::") != std::string::npos && !is_enum_type(root_entity, inner_type))
+                        {
+                            // Cross-namespace struct: serialize via protobuf_serialise
+                            cpp("// Serialize cross-namespace struct element {}", inner_type);
+                            cpp("{{");
+                            cpp("std::vector<char> elem_buf;");
+                            cpp("elem.protobuf_serialise(elem_buf);");
+                            cpp("if (!proto_elem->ParseFromArray(elem_buf.data(), static_cast<int>(elem_buf.size())))");
+                            cpp("throw std::runtime_error(\"Failed to parse nested {}\");", inner_type);
+                            cpp("}}");
+                        }
                         else
                         {
                             cpp("// Warning: Could not find struct definition for {}", inner_type);
@@ -2821,6 +2867,27 @@ namespace protobuf_generator
                             field_name);
                         cpp("throw std::runtime_error(\"Failed to parse nested {} for field {}\");", field_type, field_name);
                         cpp("}}");
+                    }
+                    else if (is_enum_type(root_entity, field_type))
+                    {
+                        // Enum field: cast to proto enum via int
+                        // Build fully-qualified proto type name
+                        std::string proto_enum_type;
+                        if (field_type.find("::") != std::string::npos)
+                        {
+                            // Qualified type like rpc::encoding -> ::protobuf::rpc::encoding
+                            proto_enum_type = "::protobuf::" + field_type;
+                        }
+                        else if (!package_name.empty())
+                        {
+                            // Local enum in current package -> ::protobuf::<package>::<enum>
+                            proto_enum_type = "::protobuf::" + package_name + "::" + field_type;
+                        }
+                        else
+                        {
+                            proto_enum_type = "::protobuf::" + field_type;
+                        }
+                        cpp("msg.set_{}(static_cast<{}>(static_cast<int>({})));", field_name, proto_enum_type, member_name);
                     }
                     else
                     {
@@ -2913,6 +2980,18 @@ namespace protobuf_generator
                         {
                             generate_proto_to_struct_copy(root_entity, inner_struct, "proto_elem", "elem", cpp, "        ");
                         }
+                        else if (inner_type.find("::") != std::string::npos && !is_enum_type(root_entity, inner_type))
+                        {
+                            // Cross-namespace struct: deserialize via protobuf_deserialise
+                            cpp("// Deserialize cross-namespace struct element {}", inner_type);
+                            cpp("{{");
+                            cpp("std::vector<char> elem_buf(proto_elem.ByteSizeLong());");
+                            cpp("if (!proto_elem.SerializeToArray(elem_buf.data(), "
+                                "static_cast<int>(elem_buf.size())))");
+                            cpp("throw std::runtime_error(\"Failed to serialize nested {}\");", inner_type);
+                            cpp("elem.protobuf_deserialise(elem_buf);");
+                            cpp("}}");
+                        }
                         else
                         {
                             cpp("// Warning: Could not find struct definition for {}", inner_type);
@@ -2978,6 +3057,27 @@ namespace protobuf_generator
                             field_name);
                         cpp("{}.protobuf_deserialise({}_buf);", member_name, field_name);
                         cpp("}}");
+                    }
+                    else if (is_enum_type(root_entity, field_type))
+                    {
+                        // Enum field: cast from proto enum via int using fully-qualified C++ type
+                        // to avoid member-name shadowing the type name in the cast
+                        std::string qualified_enum_type;
+                        if (field_type.find("::") != std::string::npos)
+                        {
+                            // Already qualified (e.g. rpc::encoding)
+                            qualified_enum_type = "::" + field_type;
+                        }
+                        else if (!struct_cpp_ns.empty())
+                        {
+                            // Local enum - qualify with struct's namespace
+                            qualified_enum_type = struct_cpp_ns + "::" + field_type;
+                        }
+                        else
+                        {
+                            qualified_enum_type = field_type;
+                        }
+                        cpp("{} = static_cast<{}>(static_cast<int>(msg.{}()));", member_name, qualified_enum_type, field_name);
                     }
                     else
                     {

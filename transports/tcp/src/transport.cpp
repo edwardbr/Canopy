@@ -68,11 +68,11 @@ namespace rpc::tcp
         // Create the init client channel request
         init_client_channel_response init_receive;
         int ret = CO_AWAIT call_peer(rpc::get_version(),
-            init_client_channel_send{.caller_zone_id = get_zone_id().as_caller(),
-                .caller_object_id = input_descr.get_object_id(),
-                .caller_interface_id = input_descr.caller_interface_id,
+            init_client_channel_send{
+                .inbound_remote_object = get_zone_id().as_destination().with_object(input_descr.get_object_id()),
+                .inbound_interface_id = input_descr.inbound_interface_id,
                 .destination_zone_id = get_adjacent_zone_id().as_destination(),
-                .destination_interface_id = input_descr.destination_interface_id,
+                .outbound_interface_id = input_descr.outbound_interface_id,
                 .adjacent_zone_id = get_zone_id()},
             init_receive);
         if (ret != rpc::error::OK())
@@ -88,7 +88,7 @@ namespace rpc::tcp
         }
 
         // Update the adjacent zone ID based on the response
-        output_descr = rpc::interface_descriptor(init_receive.remote_object_id, get_adjacent_zone_id().as_destination());
+        output_descr = rpc::interface_descriptor(init_receive.outbound_remote_object);
 
         CO_RETURN rpc::error::OK();
     }
@@ -1070,9 +1070,9 @@ namespace rpc::tcp
             CO_RETURN;
         }
         rpc::connection_settings input_descr;
-        input_descr.caller_interface_id = request.caller_interface_id;
-        input_descr.destination_interface_id = request.destination_interface_id;
-        input_descr.input_zone_id = request.caller_zone_id.as_destination().with_object(request.caller_object_id);
+        input_descr.inbound_interface_id = request.inbound_interface_id;
+        input_descr.outbound_interface_id = request.outbound_interface_id;
+        input_descr.input_zone_id = request.inbound_remote_object;
         rpc::interface_descriptor output_interface;
 
         // Update the adjacent zone ID from the handshake message
@@ -1092,8 +1092,7 @@ namespace rpc::tcp
         auto send_err = CO_AWAIT send_payload(prefix.version,
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
-                .destination_zone_id = output_interface.destination_zone_id,
-                .remote_object_id = output_interface.get_object_id(),
+                .outbound_remote_object = output_interface.destination_zone_id,
                 .caller_zone_id = input_descr.input_zone_id.as_caller()},
             prefix.sequence_number);
         if (send_err != rpc::error::OK())

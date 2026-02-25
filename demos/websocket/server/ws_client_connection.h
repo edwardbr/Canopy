@@ -93,7 +93,7 @@ namespace websocket_demo
 
             // Set by on_msg_recv_callback when the connect_request arrives;
             // consumed once by run() then left empty for the rest of the session.
-            uint64_t client_object_id_;
+            rpc::remote_object inbound_remote_object_;
         };
     }
 }

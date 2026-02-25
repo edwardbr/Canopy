@@ -2,6 +2,7 @@
 
 const WebSocket = require('ws');
 const proto = require('./websocket_proto.js');
+const Long = require('protobufjs/minimal').util.Long;
 
 const WS_URL = process.env.WS_URL || 'ws://localhost:8888';
 
@@ -12,18 +13,26 @@ console.log('====================================\n');
 const WebsocketProto = proto.protobuf.websocket_demo_v1;
 const RpcProto = proto.protobuf.rpc;
 
+// Interface and message type IDs (uint64 as Long strings)
+const I_CALCULATOR_ID = Long.fromString('13570836582854900302', true);
+const REQUEST_MESSAGE_TYPE = Long.fromString('3111821184188816472', true);
+
 // Test runner
 let testsPassed = 0;
 let testsFailed = 0;
 let messageCounter = 0;
-let pendingRequests = new Map(); // messageId -> {methodId}
 
 function runCalculatorTest(operation, methodId, first, second, expected) {
     return new Promise((resolve) => {
-        const opName = operation.toUpperCase();
         console.log(`Testing: ${first} ${operation} ${second} = ${expected}`);
 
         const ws = new WebSocket(WS_URL);
+        ws.binaryType = 'nodebuffer';
+
+        let handshakeComplete = false;
+        let clientZoneId = null;
+        let serverZoneId = null;
+        let serverObjectId = null;
 
         const timeout = setTimeout(() => {
             console.log(`  ✗ FAILED: Timeout\n`);
@@ -34,78 +43,18 @@ function runCalculatorTest(operation, methodId, first, second, expected) {
 
         ws.on('open', () => {
             try {
-                // Increment message counter for unique ID
-                messageCounter++;
-                const messageId = messageCounter;
-
-                // Create the request message based on the method
-                let requestMessage;
-                switch (methodId) {
-                    case 1:
-                        requestMessage = WebsocketProto.i_calculator_addRequest.create({
-                            firstVal: first,
-                            secondVal: second
-                        });
-                        break;
-                    case 2:
-                        requestMessage = WebsocketProto.i_calculator_subtractRequest.create({
-                            firstVal: first,
-                            secondVal: second
-                        });
-                        break;
-                    case 3:
-                        requestMessage = WebsocketProto.i_calculator_multiplyRequest.create({
-                            firstVal: first,
-                            secondVal: second
-                        });
-                        break;
-                    case 4:
-                        requestMessage = WebsocketProto.i_calculator_divideRequest.create({
-                            firstVal: first,
-                            secondVal: second
-                        });
-                        break;
-                }
-
-                // Encode the request message
-                const requestBytes = Object.getPrototypeOf(requestMessage).constructor.encode(requestMessage).finish();
-
-                // Create the websocket::request wrapper
-                const wsRequest = WebsocketProto.request.create({
-                    encoding: RpcProto.encoding.encoding_UNSPECIFIED,
-                    tag: 0,
-                    callerZoneId: 0,
-                    destinationZoneId: 0,
-                    objectId: 0,
-                    interfaceId: 6162774132854230330, //i_calculator
-                    methodId: methodId,
-                    data: requestBytes,
-                    backChannel: []
+                // Send connect_request handshake.
+                // Zone is left as 0 — the server assigns it via generate_new_zone_id().
+                // Object id 1 is used as the client's back-channel (i_context_event) stub.
+                const connectReq = WebsocketProto.connect_request.create({
+                    inboundRemoteObject: RpcProto.remote_object.create({
+                        addr_: RpcProto.zone_address.create({ objectId: 1 })
+                    })
                 });
-
-                // Encode the websocket::request
-                const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
-
-                // Create the envelope
-                // Use the fingerprint ID for websocket::request as a Long (uint64)
-                // JavaScript numbers lose precision above 2^53-1, so use protobuf Long
-                const protobuf = require('protobufjs/minimal');
-                const REQUEST_MESSAGE_TYPE = protobuf.util.Long.fromString("12812964479505592837", true);
-                const envelope = WebsocketProto.envelope.create({
-                    messageId: protobuf.util.Long.fromNumber(messageId, true),
-                    messageType: REQUEST_MESSAGE_TYPE,
-                    data: wsRequestBytes
-                });
-
-                // Store the request info for response matching
-                pendingRequests.set(messageId, { methodId });
-
-                // Encode and send the envelope
-                const envelopeBytes = WebsocketProto.envelope.encode(envelope).finish();
-                ws.send(envelopeBytes);
+                ws.send(WebsocketProto.connect_request.encode(connectReq).finish());
             } catch (err) {
                 clearTimeout(timeout);
-                console.log(`  ✗ FAILED: Encoding error: ${err.message}\n`);
+                console.log(`  ✗ FAILED: Handshake encoding error: ${err.message}\n`);
                 testsFailed++;
                 ws.close();
             }
@@ -113,45 +62,85 @@ function runCalculatorTest(operation, methodId, first, second, expected) {
 
         ws.on('message', (data) => {
             try {
-                clearTimeout(timeout);
+                if (!handshakeComplete) {
+                    // First binary message is connect_response
+                    const connectResp = WebsocketProto.connect_response.decode(data);
+                    clientZoneId = connectResp.callerZoneId && connectResp.callerZoneId.addr_
+                        ? connectResp.callerZoneId.addr_.subnetId : 0;
+                    serverZoneId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
+                        ? connectResp.outboundRemoteObject.addr_.subnetId : 0;
+                    serverObjectId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
+                        ? connectResp.outboundRemoteObject.addr_.objectId : 0;
+                    handshakeComplete = true;
 
-                // Decode the envelope
-                const envelope = WebsocketProto.envelope.decode(data);
+                    // Now send the calculator request
+                    messageCounter++;
+                    const messageId = messageCounter;
 
-                // Get the message ID and match to pending request
-                const messageId = envelope.messageId.toNumber();
-                const requestInfo = pendingRequests.get(messageId);
-                if (!requestInfo) {
-                    console.log(`  ✗ FAILED: Received response for unknown request ID: ${messageId}\n`);
-                    testsFailed++;
-                    ws.close();
-                    return;
-                }
-                pendingRequests.delete(messageId);
-
-                // Decode the response from the envelope data
-                const response = WebsocketProto.response.decode(envelope.data);
-
-                if (response.error == 0 && response.data && response.data.length > 0) {
-                    // Decode the response data to get the result
-                    // Use protobufjs Reader to extract field 3 (the out parameter)
-                    const protobuf = require('protobufjs/minimal');
-                    const reader = protobuf.Reader.create(response.data);
-                    let resultValue = null;
-                    switch (requestInfo.methodId) {
+                    // Encode the inner method request
+                    let requestMessage;
+                    switch (methodId) {
                         case 1:
-
-                            resultValue = WebsocketProto.i_calculator_addResponse.decode(response.data);
+                            requestMessage = WebsocketProto.i_calculator_addRequest.create({
+                                firstVal: first, secondVal: second });
                             break;
                         case 2:
-                            resultValue = WebsocketProto.i_calculator_subtractResponse.decode(response.data);
+                            requestMessage = WebsocketProto.i_calculator_subtractRequest.create({
+                                firstVal: first, secondVal: second });
                             break;
                         case 3:
-                            resultValue = WebsocketProto.i_calculator_multiplyResponse.decode(response.data);
+                            requestMessage = WebsocketProto.i_calculator_multiplyRequest.create({
+                                firstVal: first, secondVal: second });
                             break;
                         case 4:
-                            resultValue = WebsocketProto.i_calculator_divideResponse.decode(response.data);
+                            requestMessage = WebsocketProto.i_calculator_divideRequest.create({
+                                firstVal: first, secondVal: second });
                             break;
+                    }
+
+                    const requestBytes = Object.getPrototypeOf(requestMessage).constructor.encode(requestMessage).finish();
+
+                    // Build the typed request
+                    const wsRequest = WebsocketProto.request.create({
+                        encoding: RpcProto.encoding.encoding_protocol_buffers,
+                        tag: Long.fromNumber(messageId, true),
+                        callerZoneId: RpcProto.caller_zone.create({
+                            addr_: RpcProto.zone_address.create({ subnetId: clientZoneId })
+                        }),
+                        destinationZoneId: RpcProto.remote_object.create({
+                            addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
+                        }),
+                        interfaceId: RpcProto.interface_ordinal.create({ id: I_CALCULATOR_ID }),
+                        methodId: RpcProto.method.create({ id: Long.fromNumber(methodId, true) }),
+                        data: requestBytes,
+                        backChannel: []
+                    });
+
+                    const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
+
+                    const envelope = WebsocketProto.envelope.create({
+                        messageId: Long.fromNumber(messageId, true),
+                        messageType: REQUEST_MESSAGE_TYPE,
+                        data: wsRequestBytes
+                    });
+
+                    ws.send(WebsocketProto.envelope.encode(envelope).finish());
+                    return;
+                }
+
+                // Subsequent messages are responses wrapped in an envelope
+                const envelope = WebsocketProto.envelope.decode(data);
+                const response = WebsocketProto.response.decode(envelope.data);
+
+                clearTimeout(timeout);
+
+                if (response.error == 0 && response.data && response.data.length > 0) {
+                    let resultValue = null;
+                    switch (methodId) {
+                        case 1: resultValue = WebsocketProto.i_calculator_addResponse.decode(response.data); break;
+                        case 2: resultValue = WebsocketProto.i_calculator_subtractResponse.decode(response.data); break;
+                        case 3: resultValue = WebsocketProto.i_calculator_multiplyResponse.decode(response.data); break;
+                        case 4: resultValue = WebsocketProto.i_calculator_divideResponse.decode(response.data); break;
                     }
 
                     if (resultValue !== null) {
@@ -175,7 +164,7 @@ function runCalculatorTest(operation, methodId, first, second, expected) {
                 ws.close();
             } catch (err) {
                 clearTimeout(timeout);
-                console.log(`  ✗ FAILED: Decoding error: ${err.message}\n`);
+                console.log(`  ✗ FAILED: Decode error: ${err.message}\n`);
                 testsFailed++;
                 ws.close();
             }

@@ -11,14 +11,16 @@ namespace websocket_demo
     {
         struct connect_request
         {
-            uint64_t client_object_id;
+            // the caller's zone and callback object combined
+            rpc::remote_object inbound_remote_object;
         };
 
         struct connect_response
         {
-            uint64_t client_zone_id;
-            uint64_t server_zone_id;
-            uint64_t server_object_id;
+            // the zone id of the caller derived from the server
+            rpc::caller_zone caller_zone_id;
+            // the server's zone and callable object combined
+            rpc::remote_object outbound_remote_object;
         };
 
         struct envelope
@@ -30,13 +32,12 @@ namespace websocket_demo
 
         struct request
         {
-            rpc::encoding encoding; 
+            rpc::encoding encoding;
             uint64_t tag;
-            uint64_t caller_zone_id;
-            uint64_t destination_zone_id;
-            uint64_t object_id;
-            uint64_t interface_id;
-            uint64_t method_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::remote_object destination_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
             std::vector<char> data;
             std::vector<rpc::back_channel_entry> back_channel;
         };
