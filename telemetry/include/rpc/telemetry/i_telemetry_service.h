@@ -50,33 +50,30 @@ namespace rpc
         virtual void on_service_deletion(zone zone_id) const = 0;
         // i_marshaller methods for service
         virtual void on_service_send(zone zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
         virtual void on_service_post(zone zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
-        virtual void on_service_try_cast(zone zone_id,
-            destination_object destination_object_id,
-            caller_zone caller_zone_id,
-            interface_ordinal interface_id) const
+        virtual void on_service_try_cast(
+            zone zone_id, remote_object remote_object_id, caller_zone caller_zone_id, interface_ordinal interface_id) const
             = 0;
         virtual void on_service_add_ref(zone zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             rpc::add_ref_options options) const
             = 0;
         virtual void on_service_release(
-            zone zone_id, destination_object destination_object_id, caller_zone caller_zone_id, release_options options) const
+            zone zone_id, remote_object remote_object_id, caller_zone caller_zone_id, release_options options) const
             = 0;
-        virtual void on_service_object_released(
-            zone zone_id, destination_object destination_object_id, caller_zone caller_zone_id) const
+        virtual void on_service_object_released(zone zone_id, remote_object remote_object_id, caller_zone caller_zone_id) const
             = 0;
         virtual void on_service_transport_down(
             zone zone_id, destination_zone destination_zone_id, caller_zone caller_zone_id) const
@@ -99,33 +96,31 @@ namespace rpc
             zone zone_id, destination_zone destination_zone_id, caller_zone caller_zone_id) const
             = 0;
         virtual void on_service_proxy_send(zone zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
         virtual void on_service_proxy_post(zone zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
-        virtual void on_service_proxy_try_cast(zone zone_id,
-            destination_object destination_object_id,
-            caller_zone caller_zone_id,
-            interface_ordinal interface_id) const
+        virtual void on_service_proxy_try_cast(
+            zone zone_id, remote_object remote_object_id, caller_zone caller_zone_id, interface_ordinal interface_id) const
             = 0;
         virtual void on_service_proxy_add_ref(zone zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             rpc::add_ref_options options) const
             = 0;
         virtual void on_service_proxy_release(
-            zone zone_id, destination_object destination_object_id, caller_zone caller_zone_id, release_options options) const
+            zone zone_id, remote_object remote_object_id, caller_zone caller_zone_id, release_options options) const
             = 0;
         virtual void on_service_proxy_object_released(
-            zone zone_id, destination_object destination_object_id, caller_zone caller_zone_id) const
+            zone zone_id, remote_object remote_object_id, caller_zone caller_zone_id) const
             = 0;
         virtual void on_service_proxy_transport_down(
             zone zone_id, destination_zone destination_zone_id, caller_zone caller_zone_id) const
@@ -160,39 +155,39 @@ namespace rpc
 
         virtual void on_transport_outbound_send(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
         virtual void on_transport_outbound_post(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
         virtual void on_transport_outbound_try_cast(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id) const
             = 0;
         virtual void on_transport_outbound_add_ref(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             add_ref_options options) const
             = 0;
         virtual void on_transport_outbound_release(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             release_options options) const
             = 0;
         virtual void on_transport_outbound_object_released(
-            zone zone_id, zone adjacent_zone_id, destination_object destination_object_id, caller_zone caller_zone_id) const
+            zone zone_id, zone adjacent_zone_id, remote_object remote_object_id, caller_zone caller_zone_id) const
             = 0;
         virtual void on_transport_outbound_transport_down(
             zone zone_id, zone adjacent_zone_id, destination_zone destination_zone_id, caller_zone caller_zone_id) const
@@ -200,39 +195,39 @@ namespace rpc
 
         virtual void on_transport_inbound_send(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
         virtual void on_transport_inbound_post(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id) const
             = 0;
         virtual void on_transport_inbound_try_cast(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             interface_ordinal interface_id) const
             = 0;
         virtual void on_transport_inbound_add_ref(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             add_ref_options options) const
             = 0;
         virtual void on_transport_inbound_release(zone zone_id,
             zone adjacent_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             release_options options) const
             = 0;
         virtual void on_transport_inbound_object_released(
-            zone zone_id, zone adjacent_zone_id, destination_object destination_object_id, caller_zone caller_zone_id) const
+            zone zone_id, zone adjacent_zone_id, remote_object remote_object_id, caller_zone caller_zone_id) const
             = 0;
         virtual void on_transport_inbound_transport_down(
             zone zone_id, zone adjacent_zone_id, destination_zone destination_zone_id, caller_zone caller_zone_id) const

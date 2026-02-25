@@ -214,12 +214,12 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_try_cast(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_try_cast",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -229,13 +229,13 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_add_ref(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_add_ref",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -246,12 +246,12 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_release(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_release",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -298,12 +298,12 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_proxy_try_cast(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_proxy_try_cast",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -313,13 +313,13 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_proxy_add_ref",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -330,12 +330,12 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_proxy_release(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_proxy_release",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -731,13 +731,13 @@ namespace rpc
 
     // Service methods
     void animation_telemetry_service::on_service_send(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_send",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -748,13 +748,13 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_post(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_post",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -765,10 +765,10 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_object_released(
-        rpc::zone zone_id, rpc::destination_object destination_object_id, rpc::caller_zone caller_zone_id) const
+        rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_object_released",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -787,13 +787,13 @@ namespace rpc
 
     // Service proxy methods
     void animation_telemetry_service::on_service_proxy_send(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_proxy_send",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -804,13 +804,13 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_proxy_post(rpc::zone zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_proxy_post",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -821,10 +821,10 @@ namespace rpc
     }
 
     void animation_telemetry_service::on_service_proxy_object_released(
-        rpc::zone zone_id, rpc::destination_object destination_object_id, rpc::caller_zone caller_zone_id) const
+        rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("service_proxy_object_released",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("destinationZone", destination_zone_id.get_val()),
@@ -844,13 +844,13 @@ namespace rpc
     // Transport outbound methods
     void animation_telemetry_service::on_transport_outbound_send(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_send",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -863,13 +863,13 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_outbound_post(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_post",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -882,12 +882,12 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_outbound_try_cast(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_try_cast",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -899,13 +899,13 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_outbound_add_ref(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_add_ref",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -918,12 +918,12 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_outbound_release(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_release",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -935,11 +935,11 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_outbound_object_released(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_object_released",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -963,13 +963,13 @@ namespace rpc
     // Transport inbound methods
     void animation_telemetry_service::on_transport_inbound_send(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_send",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -982,13 +982,13 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_inbound_post(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_post",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -1001,12 +1001,12 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_inbound_try_cast(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_try_cast",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -1018,13 +1018,13 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_inbound_add_ref(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_add_ref",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -1037,12 +1037,12 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_inbound_release(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_release",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),
@@ -1054,11 +1054,11 @@ namespace rpc
 
     void animation_telemetry_service::on_transport_inbound_object_released(rpc::zone zone_id,
         rpc::zone adjacent_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = destination_object_id.as_destination_zone();
-        auto object_id = destination_object_id.get_object();
+        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_object_released",
             {make_number_field("zone", zone_id.get_val()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_val()),

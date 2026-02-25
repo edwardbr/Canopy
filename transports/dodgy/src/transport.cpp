@@ -73,7 +73,7 @@ namespace rpc::dodgy
             }
 
             // Update the adjacent zone ID based on the response
-            rpc::object output_object_id = {init_receive.destination_object_id};
+            rpc::object output_object_id = {init_receive.remote_object_id};
             output_descr = {output_object_id, get_adjacent_zone_id().as_destination()};
         }
 
@@ -89,7 +89,7 @@ namespace rpc::dodgy
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -113,8 +113,8 @@ namespace rpc::dodgy
             call_send{.encoding = encoding,
                 .tag = tag,
                 .caller_zone_id = caller_zone_id.get_val(),
-                .destination_zone_id = destination_object_id.get_val(),
-                .object_id = destination_object_id.get_object().get_val(),
+                .destination_zone_id = remote_object_id.get_val(),
+                .object_id = remote_object_id.get_object().get_val(),
                 .interface_id = interface_id.get_val(),
                 .method_id = method_id.get_val(),
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
@@ -139,7 +139,7 @@ namespace rpc::dodgy
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
         const rpc::span& in_data,
@@ -162,8 +162,8 @@ namespace rpc::dodgy
             dodgy::post_send{.encoding = encoding,
                 .tag = tag,
                 .caller_zone_id = caller_zone_id.get_val(),
-                .destination_zone_id = destination_object_id.get_val(),
-                .object_id = destination_object_id.get_object().get_val(),
+                .destination_zone_id = remote_object_id.get_val(),
+                .object_id = remote_object_id.get_object().get_val(),
                 .interface_id = interface_id.get_val(),
                 .method_id = method_id.get_val(),
                 .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
@@ -181,7 +181,7 @@ namespace rpc::dodgy
     CORO_TASK(int)
     dodgy_transport::outbound_try_cast(uint64_t protocol_version,
         rpc::caller_zone caller_zone_id,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -201,8 +201,8 @@ namespace rpc::dodgy
         try_cast_receive response_data;
         int ret = CO_AWAIT call_peer(protocol_version,
             try_cast_send{.caller_zone_id = caller_zone_id.get_val(),
-                .destination_zone_id = destination_object_id.get_val(),
-                .object_id = destination_object_id.get_object().get_val(),
+                .destination_zone_id = remote_object_id.get_val(),
+                .object_id = remote_object_id.get_object().get_val(),
                 .interface_id = interface_id.get_val(),
                 .back_channel = in_back_channel},
             response_data);
@@ -220,7 +220,7 @@ namespace rpc::dodgy
 
     CORO_TASK(int)
     dodgy_transport::outbound_add_ref(uint64_t protocol_version,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::known_direction_zone known_direction_zone_id,
         rpc::add_ref_options build_out_param_channel,
@@ -240,8 +240,8 @@ namespace rpc::dodgy
         // The peer transport will call inbound_add_ref for routing
         addref_receive response_data;
         int ret = CO_AWAIT call_peer(protocol_version,
-            addref_send{.destination_zone_id = destination_object_id.get_val(),
-                .object_id = destination_object_id.get_object().get_val(),
+            addref_send{.destination_zone_id = remote_object_id.get_val(),
+                .object_id = remote_object_id.get_object().get_val(),
                 .caller_zone_id = caller_zone_id.get_val(),
                 .known_direction_zone_id = known_direction_zone_id.get_val(),
                 .build_out_param_channel = build_out_param_channel,
@@ -268,7 +268,7 @@ namespace rpc::dodgy
 
     CORO_TASK(int)
     dodgy_transport::outbound_release(uint64_t protocol_version,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
@@ -288,8 +288,8 @@ namespace rpc::dodgy
         // The peer transport will call inbound_release for routing
         release_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
-            release_send{.destination_zone_id = destination_object_id.get_val(),
-                .object_id = destination_object_id.get_object().get_val(),
+            release_send{.destination_zone_id = remote_object_id.get_val(),
+                .object_id = remote_object_id.get_object().get_val(),
                 .caller_zone_id = caller_zone_id.get_val(),
                 .options = options,
                 .back_channel = in_back_channel},
@@ -316,7 +316,7 @@ namespace rpc::dodgy
 
     CORO_TASK(void)
     dodgy_transport::outbound_object_released(uint64_t protocol_version,
-        rpc::destination_object destination_object_id,
+        rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
@@ -335,8 +335,8 @@ namespace rpc::dodgy
         int ret = CO_AWAIT send_payload(protocol_version,
             message_direction::one_way,                            // Use one_way for fire-and-forget
             object_released_send{.encoding = encoding::yas_binary, // Assuming encoding field exists
-                .destination_zone_id = destination_object_id.get_val(),
-                .object_id = destination_object_id.get_object().get_val(),
+                .destination_zone_id = remote_object_id.get_val(),
+                .object_id = remote_object_id.get_object().get_val(),
                 .caller_zone_id = caller_zone_id.get_val(),
                 .back_channel = in_back_channel},
             0); // sequence number 0 for one-way messages
@@ -1028,7 +1028,7 @@ namespace rpc::dodgy
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .destination_zone_id = output_interface.destination_zone_id.get_val(),
-                .destination_object_id = output_interface.get_object_id().get_val(),
+                .remote_object_id = output_interface.get_object_id().get_val(),
                 .caller_zone_id = input_descr.destination_zone_id.get_val()},
             prefix.sequence_number);
         if (send_err != rpc::error::OK())

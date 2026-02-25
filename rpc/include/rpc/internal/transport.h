@@ -370,7 +370,7 @@ namespace rpc
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -383,7 +383,7 @@ namespace rpc
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -392,14 +392,14 @@ namespace rpc
         CORO_TASK(int)
         inbound_try_cast(uint64_t protocol_version,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel);
 
         CORO_TASK(int)
         inbound_add_ref(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             add_ref_options build_out_param_channel,
@@ -408,7 +408,7 @@ namespace rpc
 
         CORO_TASK(int)
         inbound_release(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             release_options options,
             const std::vector<back_channel_entry>& in_back_channel,
@@ -416,7 +416,7 @@ namespace rpc
 
         CORO_TASK(void)
         inbound_object_released(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             const std::vector<back_channel_entry>& in_back_channel);
 
@@ -450,7 +450,7 @@ namespace rpc
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -463,7 +463,7 @@ namespace rpc
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -472,14 +472,14 @@ namespace rpc
         CORO_TASK(int)
         try_cast(uint64_t protocol_version,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel) final;
 
         CORO_TASK(int)
         add_ref(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             add_ref_options build_out_param_channel,
@@ -488,7 +488,7 @@ namespace rpc
 
         CORO_TASK(int)
         release(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             release_options options,
             const std::vector<back_channel_entry>& in_back_channel,
@@ -496,7 +496,7 @@ namespace rpc
 
         CORO_TASK(void)
         object_released(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             const std::vector<back_channel_entry>& in_back_channel) final;
 
@@ -543,7 +543,7 @@ namespace rpc
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -556,7 +556,7 @@ namespace rpc
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
             const rpc::span& in_data,
@@ -565,14 +565,14 @@ namespace rpc
 
         virtual CORO_TASK(int) outbound_try_cast(uint64_t protocol_version,
             caller_zone caller_zone_id,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             interface_ordinal interface_id,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel)
             = 0;
 
         virtual CORO_TASK(int) outbound_add_ref(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             known_direction_zone known_direction_zone_id,
             add_ref_options build_out_param_channel,
@@ -581,7 +581,7 @@ namespace rpc
             = 0;
 
         virtual CORO_TASK(int) outbound_release(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             release_options options,
             const std::vector<back_channel_entry>& in_back_channel,
@@ -589,7 +589,7 @@ namespace rpc
             = 0;
 
         virtual CORO_TASK(void) outbound_object_released(uint64_t protocol_version,
-            destination_object destination_object_id,
+            remote_object remote_object_id,
             caller_zone caller_zone_id,
             const std::vector<back_channel_entry>& in_back_channel)
             = 0;
