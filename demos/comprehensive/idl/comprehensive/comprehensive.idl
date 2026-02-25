@@ -10,7 +10,7 @@ namespace comprehensive
         // Simple calculator interface for basic RPC demos
         interface i_calculator
         {
-            [description="Add two integers"]
+            [description="Add two integers"] 
             int add(int a, int b, [out] int& sum);
 
             [description="Subtract two integers"]
@@ -67,8 +67,8 @@ namespace comprehensive
         // Shared pointer demo - object factory
         interface i_object_factory
         {
-            [description="Create a new shared object"]
-            int create_object([out] rpc::shared_ptr<i_managed_object>& obj);
+            [description="Create a new shared object"] 
+            int create_object([out] uint64_t& object_id, [out] rpc::shared_ptr<i_managed_object>& obj);
 
             [description="Get existing object by ID"]
             int get_object(uint64_t object_id, [out] rpc::shared_ptr<i_managed_object>& obj);

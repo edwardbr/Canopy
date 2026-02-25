@@ -249,11 +249,10 @@ namespace comprehensive
             mutable std::mutex mutex_;
 
         public:
-            CORO_TASK(int) create_object(rpc::shared_ptr<i_managed_object>& obj) override
+            CORO_TASK(int) create_object(uint64_t& object_id, rpc::shared_ptr<i_managed_object>& obj) override
             {
                 auto new_obj = rpc::shared_ptr<i_managed_object>(new managed_object_impl());
                 obj = new_obj;
-                uint64_t object_id;
                 auto err = CO_AWAIT new_obj->get_object_id(object_id);
                 if (err != rpc::error::OK())
                 {

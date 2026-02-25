@@ -65,11 +65,10 @@ namespace websocket_demo
             websocket_demo::v1::request request;
             request.encoding = encoding;
             request.tag = tag;
-            request.caller_zone_id = caller_zone_id.get_val();
-            request.destination_zone_id = remote_object_id.get_val();
-            request.object_id = remote_object_id.get_object().get_val();
-            request.interface_id = interface_id.get_val();
-            request.method_id = method_id.get_val();
+            request.caller_zone_id = caller_zone_id;
+            request.destination_zone_id = remote_object_id;
+            request.interface_id = interface_id;
+            request.method_id = method_id;
             request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
             request.back_channel = in_back_channel;
 
@@ -109,11 +108,10 @@ namespace websocket_demo
             websocket_demo::v1::request request;
             request.encoding = encoding;
             request.tag = tag;
-            request.caller_zone_id = caller_zone_id.get_val();
-            request.destination_zone_id = remote_object_id.get_val();
-            request.object_id = remote_object_id.get_object().get_val();
-            request.interface_id = interface_id.get_val();
-            request.method_id = method_id.get_val();
+            request.caller_zone_id = caller_zone_id;
+            request.destination_zone_id = remote_object_id;
+            request.interface_id = interface_id;
+            request.method_id = method_id;
             request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
             request.back_channel = {};
 
@@ -213,9 +211,9 @@ namespace websocket_demo
                 rpc::encoding::protocol_buffers,
                 request.tag,
                 get_adjacent_zone_id().as_caller(),
-                get_zone_id().as_destination().with_object(rpc::object{request.object_id}),
-                {request.interface_id},
-                {request.method_id},
+                request.destination_zone_id,
+                request.interface_id,
+                request.method_id,
                 request.data,
                 out_buf,
                 {},
@@ -223,7 +221,7 @@ namespace websocket_demo
 
             if (ret != rpc::error::OK())
             {
-                RPC_ERROR("failed send");
+                RPC_ERROR("failed send {}", rpc::error::to_string(ret));
             }
 
             // create a response

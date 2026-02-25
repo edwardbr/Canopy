@@ -13,9 +13,9 @@ const WebsocketProto = $protobuf_websocket.protobuf.websocket_demo_v1;
 const RpcProto = $protobuf_websocket.protobuf.rpc;
 
 // Zone/object IDs populated from the server's connect_response
-let clientZoneId = null;   // callerZoneId for all requests
-let serverZoneId = null;   // destinationZoneId for all requests
-let serverObjectId = null; // objectId for all requests
+let clientZoneId = null;   // callerZoneId (subnet) for all requests
+let serverZoneId = null;   // destinationZoneId (subnet) for all requests
+let serverObjectId = null; // destinationZoneId (objectId) for all requests
 let handshakeComplete = false;
 // SecretLlamaProto is loaded dynamically in index.html
 
@@ -167,10 +167,11 @@ function connect() {
         serverObjectId = null;
 
         // The client picks object id 1 for its own back-channel (i_context_event) stub.
-        const clientObjectId = Long.fromNumber(1, true);
-
+        // Zone is left as 0 — the server assigns it via generate_new_zone_id().
         const connectReq = WebsocketProto.connect_request.create({
-            clientObjectId: clientObjectId
+            inboundRemoteObject: RpcProto.remote_object.create({
+                addr_: RpcProto.zone_address.create({ objectId: 1 })
+            })
         });
         ws.send(WebsocketProto.connect_request.encode(connectReq).finish());
     };
@@ -189,9 +190,14 @@ function connect() {
                 // First binary message from the server is always a raw connect_response.
                 if (!handshakeComplete) {
                     const connectResp = WebsocketProto.connect_response.decode(msgBytes);
-                    clientZoneId = connectResp.clientZoneId;
-                    serverZoneId = connectResp.serverZoneId;
-                    serverObjectId = connectResp.serverObjectId;
+                    // callerZoneId carries the server's view of the client zone (subnetId only)
+                    clientZoneId = connectResp.callerZoneId && connectResp.callerZoneId.addr_
+                        ? connectResp.callerZoneId.addr_.subnetId : 0;
+                    // outboundRemoteObject carries the server's zone + object combined
+                    serverZoneId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
+                        ? connectResp.outboundRemoteObject.addr_.subnetId : 0;
+                    serverObjectId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
+                        ? connectResp.outboundRemoteObject.addr_.objectId : 0;
                     handshakeComplete = true;
 
                     updateStatus('Connected', 'connected');
@@ -224,8 +230,10 @@ function connect() {
 
                         console.log('[' + new Date().toLocaleTimeString() + '] Event received:', {
                             messageId: messageId,
-                            interfaceId: eventRequest.interfaceId.toString(),
-                            methodId: eventRequest.methodId,
+                            interfaceId: eventRequest.interfaceId && eventRequest.interfaceId.id
+                                ? eventRequest.interfaceId.id.toString() : '0',
+                            methodId: eventRequest.methodId && eventRequest.methodId.id
+                                ? eventRequest.methodId.id.toString() : '0',
                             dataLength: eventRequest.data.length
                         });
 
@@ -452,11 +460,16 @@ function calculate() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_UNSPECIFIED,
             tag: 0,
-            callerZoneId: clientZoneId,
-            destinationZoneId: serverZoneId,
-            objectId: serverObjectId,
-            interfaceId: Long.fromString("2180915978302953945", true), //i_calculator
-            methodId: methodId,
+            callerZoneId: RpcProto.caller_zone.create({
+                addr_: RpcProto.zone_address.create({ subnetId: clientZoneId })
+            }),
+            destinationZoneId: RpcProto.remote_object.create({
+                addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
+            }),
+            interfaceId: RpcProto.interface_ordinal.create({
+                id: Long.fromString("13570836582854900302", true) // i_calculator
+            }),
+            methodId: RpcProto.method.create({ id: Long.fromNumber(methodId, true) }),
             data: requestBytes,
             backChannel: []
         });
@@ -467,7 +480,7 @@ function calculate() {
         // Create the envelope
         // Use the fingerprint ID for websocket::request as a Long (uint64)
         // JavaScript numbers lose precision above 2^53-1, so use protobuf.Long
-        const REQUEST_MESSAGE_TYPE = Long.fromString("12812964479505592837", true);
+        const REQUEST_MESSAGE_TYPE = Long.fromString("3111821184188816472", true);
         const envelope = WebsocketProto.envelope.create({
             messageId: Long.fromNumber(messageId, true),
             messageType: REQUEST_MESSAGE_TYPE,
@@ -546,11 +559,16 @@ function sendChatMessage() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_protocol_buffers,
             tag: 0,
-            callerZoneId: clientZoneId,
-            destinationZoneId: serverZoneId,
-            objectId: serverObjectId,
-            interfaceId: Long.fromString("2180915978302953945", true), // i_context
-            methodId: 5, // add_prompt
+            callerZoneId: RpcProto.caller_zone.create({
+                addr_: RpcProto.zone_address.create({ subnetId: clientZoneId })
+            }),
+            destinationZoneId: RpcProto.remote_object.create({
+                addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
+            }),
+            interfaceId: RpcProto.interface_ordinal.create({
+                id: Long.fromString("13570836582854900302", true) // i_calculator
+            }),
+            methodId: RpcProto.method.create({ id: Long.fromNumber(5, true) }), // add_prompt
             data: requestBytes,
             backChannel: []
         });
@@ -559,7 +577,7 @@ function sendChatMessage() {
         const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
 
         // Create the envelope
-        const REQUEST_MESSAGE_TYPE = Long.fromString("12812964479505592837", true);
+        const REQUEST_MESSAGE_TYPE = Long.fromString("3111821184188816472", true);
         const envelope = WebsocketProto.envelope.create({
             messageId: Long.fromNumber(messageId, true),
             messageType: REQUEST_MESSAGE_TYPE,
@@ -572,8 +590,10 @@ function sendChatMessage() {
         console.log('[' + new Date().toLocaleTimeString() + '] Sending chat message:', {
             messageId: messageId,
             promptLength: prompt.length,
-            interfaceId: wsRequest.interfaceId.toString(),
-            methodId: wsRequest.methodId
+            interfaceId: wsRequest.interfaceId && wsRequest.interfaceId.id
+                ? wsRequest.interfaceId.id.toString() : '0',
+            methodId: wsRequest.methodId && wsRequest.methodId.id
+                ? wsRequest.methodId.id.toString() : '0'
         });
 
         // Encode and send the envelope

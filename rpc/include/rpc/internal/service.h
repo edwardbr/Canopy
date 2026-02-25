@@ -847,14 +847,14 @@ namespace rpc
 #endif
         )
         {
-            if (input_descr.caller_interface_id != PARENT_INTERFACE::get_id(rpc::get_version()))
+            if (input_descr.inbound_interface_id != PARENT_INTERFACE::get_id(rpc::get_version()))
             {
-                RPC_ERROR("caller_interface_id does not match");
+                RPC_ERROR("inbound_interface_id does not match");
                 CO_RETURN rpc::error::INVALID_INTERFACE_ID();
             }
-            if (input_descr.destination_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
+            if (input_descr.outbound_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
             {
-                RPC_ERROR("destination_interface_id does not match");
+                RPC_ERROR("outbound_interface_id does not match");
                 CO_RETURN rpc::error::INVALID_INTERFACE_ID();
             }
             auto zone_id = parent_transport->get_zone_id();
@@ -1009,8 +1009,8 @@ namespace rpc
         {
             input_descr.input_zone_id = child_transport->get_zone_id().get_val();
         }
-        input_descr.caller_interface_id = in_param_type::get_id(rpc::get_version());
-        input_descr.destination_interface_id = out_param_type::get_id(rpc::get_version());
+        input_descr.inbound_interface_id = in_param_type::get_id(rpc::get_version());
+        input_descr.outbound_interface_id = out_param_type::get_id(rpc::get_version());
 
         err_code = CO_AWAIT child_transport->connect(input_descr, output_descr);
         if (err_code != rpc::error::OK())
@@ -1054,14 +1054,14 @@ namespace rpc
         std::function<CORO_TASK(int)(
             const rpc::shared_ptr<PARENT_INTERFACE>&, rpc::shared_ptr<CHILD_INTERFACE>&, const std::shared_ptr<rpc::service>&)> fn)
     {
-        if (input_descr.caller_interface_id != PARENT_INTERFACE::get_id(rpc::get_version()))
+        if (input_descr.inbound_interface_id != PARENT_INTERFACE::get_id(rpc::get_version()))
         {
-            RPC_ERROR("caller_interface_id does not match");
+            RPC_ERROR("inbound_interface_id does not match");
             CO_RETURN rpc::error::INVALID_INTERFACE_ID();
         }
-        if (input_descr.destination_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
+        if (input_descr.outbound_interface_id != CHILD_INTERFACE::get_id(rpc::get_version()))
         {
-            RPC_ERROR("destination_interface_id does not match");
+            RPC_ERROR("outbound_interface_id does not match");
             CO_RETURN rpc::error::INVALID_INTERFACE_ID();
         }
 

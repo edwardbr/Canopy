@@ -778,8 +778,8 @@ namespace rpc
 
     struct connection_settings
     {
-        interface_ordinal caller_interface_id;
-        interface_ordinal destination_interface_id;
+        interface_ordinal inbound_interface_id;
+        interface_ordinal outbound_interface_id;
         remote_object input_zone_id;
 
     public:
