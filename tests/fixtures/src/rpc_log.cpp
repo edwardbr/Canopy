@@ -236,10 +236,10 @@ extern "C"
         switch (level)
         {
         case 0:
-            rpc_global_logger::debug(message);
+            rpc_global_logger::trace(message);
             break;
         case 1:
-            rpc_global_logger::trace(message);
+            rpc_global_logger::debug(message);
             break;
         case 2:
             rpc_global_logger::info(message);
