@@ -17,7 +17,7 @@
 	path = submodules/args
 	url = https://github.com/edwardbr/args.git
 [submodule "submodules/libcoro"]
-	path = submodules/libcoro
+	path = submodules/libcoro_for_enclaves
 	url = https://github.com/edwardbr/libcoro.git
 [submodule "submodules/c-ares"]
 	path = submodules/c-ares
