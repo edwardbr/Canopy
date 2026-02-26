@@ -19,3 +19,4 @@ demos/websocket/server/www/websocket_proto.js
 venv
 telemetry/reports
 .beads/bd.sock.startlock
+.beads/*.log.gz
