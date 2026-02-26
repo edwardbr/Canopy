@@ -28,10 +28,10 @@ extern "C"
         switch (level)
         {
         case 0:
-            printf("[DEBUG] %s\n", message.c_str());
+            printf("[TRACE] %s\n", message.c_str());
             break;
         case 1:
-            printf("[TRACE] %s\n", message.c_str());
+            printf("[DEBUG] %s\n", message.c_str());
             break;
         case 2:
             printf("[INFO] %s\n", message.c_str());

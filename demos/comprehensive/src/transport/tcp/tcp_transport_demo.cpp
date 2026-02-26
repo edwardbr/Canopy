@@ -247,10 +247,10 @@ void rpc_log(int level, const char* str, size_t sz)
     switch (level)
     {
     case 0:
-        printf("[DEBUG] %s\n", message.c_str());
+        printf("[TRACE] %s\n", message.c_str());
         break;
     case 1:
-        printf("[TRACE] %s\n", message.c_str());
+        printf("[DEBUG] %s\n", message.c_str());
         break;
     case 2:
         printf("[INFO] %s\n", message.c_str());
@@ -309,7 +309,7 @@ int main(int argc, char* argv[])
 
     // subnet_id == 0 with no routing prefix is the "unset" sentinel in zone_address::is_set().
     // For local demos without a network routing prefix, reserve subnet IDs from 1 onwards.
-    if (!cfg.has_routing_prefix() && cfg.subnet_base == 0)
+    if (cfg.subnet_base == 0)
         cfg.subnet_base = 1;
 
     // Require an explicit port for the demo; default to 18888 when not specified.
