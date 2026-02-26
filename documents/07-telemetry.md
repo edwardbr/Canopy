@@ -185,13 +185,35 @@ rpc::multiplexing_telemetry_service::create(
 ```cpp
 on_service_creation(name, zone_id, parent_zone_id)
 on_service_deletion(name, zone_id)
-on_service_send(zone_id, method_id)
-on_service_post(zone_id, method_id)
-on_service_try_cast(zone_id, interface_id)
-on_service_add_ref(zone_id, object_id)
-on_service_release(zone_id, object_id)
-on_service_object_released(zone_id, object_id)
-on_service_transport_down(zone_id)
+on_service_send(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
+            caller_zone_id,
+            interface_id,
+            method_id)
+on_service_post(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
+            caller_zone_id,
+            interface_id,
+            method_id)
+on_service_try_cast(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
+            caller_zone_id,
+            interface_id)
+on_service_add_ref(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
+            caller_zone_id,
+            requesting_zone_id,
+            options)
+on_service_release(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
+            caller_zone_id,
+            options)
+on_service_object_released(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
+            caller_zone_id)
+on_service_transport_down(zone_id,
+            destination_zone destination_zone_id,  // zone-only, no object_id
+            caller_zone_id)
 ```
 
 ### Proxy Events

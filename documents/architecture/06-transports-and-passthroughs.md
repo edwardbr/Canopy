@@ -92,10 +92,10 @@ The base `transport` class manages:
 ```cpp
 enum class transport_status
 {
-    CONNECTING,   // Initial state, establishing connection
-    CONNECTED,    // Fully operational
-    DISCONNECTING, // Beginning to shut down a close signal is being sent or recieved, all active outgoing calls are canceled only incoming releases are processed, all out parameters of incoming calls are not marshalled
-    DISCONNECTED  // Terminal state close signal has been acknowleged, or there is a terminal failure, no further traffic allowed
+    CONNECTING,    // Initial state, establishing connection
+    CONNECTED,     // Fully operational
+    DISCONNECTING, // Beginning to shut down, a close signal is being sent or received, all active outgoing calls are canceled, only incoming releases are processed, all out parameters of incoming calls are not marshalled
+    DISCONNECTED   // Terminal state, close signal has been acknowledged, or there is a terminal failure, no further traffic allowed
 };
 ```
 
@@ -130,35 +130,39 @@ Canopy provides several transport implementations, each optimized for different 
 | [SGX](../transports/sgx.md) | Secure enclave communication | SGX SDK |
 | [Custom](../transports/custom.md) | User-defined transport implementations | Depends on implementation |
 
-Choose the transport that matches your use case: Local for in-process testing, TCP for network communication, SPSC for high-performance IPC, or SGX for secure computation.
+Choose the transport that matches your use case: Local for in-process testing, network transports for distributed systems, or custom transports for specialized requirements.
 
 ### Connection Handshake
 
-Most transports use a two-phase handshake:
+Some transports (such as TCP and SPSC) use a two-phase handshake to establish connections. The handshake structures are transport-specific. For example, TCP and SPSC transports use the following message types:
+
+**Example: TCP/SPSC Handshake**
 
 **Client sends** `init_client_channel_send`:
 ```idl
-struct init_channel_send
+struct init_client_channel_send
 {
-    uint64_t caller_zone_id;
-    uint64_t caller_object_id;
-    uint64_t destination_zone_id;
-    // TCP includes: adjacent_zone_id
+    rpc::remote_object inbound_remote_object;      // caller's zone and callback object
+    rpc::interface_ordinal inbound_interface_id;   // expected interface of caller object
+    rpc::destination_zone destination_zone_id;     // zone id of the destination
+    rpc::interface_ordinal outbound_interface_id;  // expected interface of destination object
+    rpc::zone adjacent_zone_id;                    // zone adjacent to the new zone
 };
 ```
 
 **Server responds** `init_client_channel_response`:
 ```idl
-struct init_channel_response
+struct init_client_channel_response
 {
-    int32_t err_code;
-    uint64_t destination_zone_id;
-    uint64_t remote_object_id;
-    uint64_t caller_zone_id;
+    int err_code;
+    rpc::remote_object outbound_remote_object;  // destination zone and callable object
+    rpc::caller_zone caller_zone_id;            // caller zone derived from destination
 };
 ```
 
 This handshake establishes zone identity, object routing, and confirms the connection is ready for bidirectional communication.
+
+**Note**: Other transports (such as local transport) may use different connection mechanisms. See the specific transport documentation for details.
 
 ### Transport Reference Counting
 
@@ -199,14 +203,14 @@ class pass_through
 
 #### Lifetime Patterns
 
-**Peer-to-Peer Arrangements** (e.g., TCP transport between standalone services):
+**Peer-to-Peer Arrangements** (e.g., network transports between standalone services):
 - Service manages lifetimes of all objects within its zone
 - Service holds **weak references** to transports (registry only)
 - **Service proxies** hold **strong references** to transports
 - **Active stubs** may cause transports to hold references to adjacent transports
 - Transport destroyed when all strong references released
 
-**Hierarchical Arrangements** (e.g., local transport with `child_service`):
+**Hierarchical Arrangements** (e.g., parent/child zone transports):
 - Parent-side transport is last to survive
 - **Child service** holds **strong reference** to parent transport
 - **Service proxies** hold **strong references** to transports
@@ -582,8 +586,8 @@ Both transports and passthroughs are thread-safe:
 
 **Transport Overhead:**
 - Serialization at zone boundaries
-- Network/IPC latency (TCP, SPSC)
-- Minimal overhead for local transport
+- Communication medium latency (varies by transport type)
+- Minimal overhead for in-process transports
 
 **Passthrough Overhead:**
 - Additional routing hop through intermediary zone
@@ -592,7 +596,7 @@ Both transports and passthroughs are thread-safe:
 
 **Benefits:**
 - Transparent multi-zone communication
-- No need for every zone to connect to every other zone
+- No need for every zone to connect directly to every other zone
 - Simplified topology management
 - Automatic routing through complex hierarchies
 

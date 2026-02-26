@@ -56,8 +56,8 @@ namespace rpc
     {
         CONNECTING,    // Initial state, establishing connection
         CONNECTED,     // Fully operational
-        DISCONNECTING, // Beginning to shut down a close signal is being sent or recieved
-        DISCONNECTED // Terminal state close signal has been acknowleged, or there is a terminal failure, no further traffic allowed
+        DISCONNECTING, // Beginning to shut down, a close signal is being sent or received
+        DISCONNECTED // Terminal state, close signal has been acknowledged, or there is a terminal failure, no further traffic allowed
     };
 
     /**

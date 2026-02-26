@@ -58,7 +58,7 @@ namespace rpc
         // int UNABLE_TO_CREATE_SERVICE_PROXY(); // unable to create service proxy
         int SERVICE_PROXY_LOST_CONNECTION(); // channel is no longer available
         int CALL_CANCELLED();                // Service proxy remote call is cancelled
-        int OBJECT_GONE(); // The service no longer has an object of that id, perhaps an optimistic pointer call attempt is happining
+        int OBJECT_GONE(); // The service no longer has an object of that id, perhaps an optimistic pointer call attempt is happening
         int MAX(); // the biggest value
 
         bool is_error(int err);    // any error listed above other than OK

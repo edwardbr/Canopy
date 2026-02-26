@@ -11,8 +11,8 @@ A zone is an execution context that represents a boundary between different part
 
 Each zone has its own:
 
-- **Zone ID**: A unique identifier (`rpc::zone`)
-- **Object Namespace**: Objects are uniquely identified within a zone
+- **Zone Address**: A 128-bit unique identifier (`rpc::zone`) structured like an IPv6 address
+- **Object Namespace**: Objects are identified within a zone using a 32-bit Object ID, which is now part of the `zone_address`.
 - **Service**: Manages object lifecycle and references
 - **Transport Connections**: Links to other zones
 
@@ -22,32 +22,86 @@ Think of a zone as a membrane that separates "here" from "there":
 
 ## Zone Identity
 
-### Zone IDs Must Be Unique
+### Configurable Zone Addressing
 
-**Important Rule**: Zone IDs must be unique across the entire distributed system.
+Canopy uses a structured addressing model inspired by IPv4/IPv6. This enables network-routable addressing and hierarchical subnet-based allocation.
+
+The `zone_address` struct supports three addressing modes, selectable at build time via CMake:
+
+**Mode: None (local-only)**
+No routing prefix. The address is a simple local identifier, equivalent to sequential zone counters. `subnet_id` identifies the zone, `object_id` identifies the resource within it. Suitable for single-process and in-memory transports.
+
+**Mode: IPv4 with local suffix**
+A 32-bit IPv4 address is mapped into the 64-bit routing prefix (using 6to4 encoding). The remaining address space is split between subnet and object fields. Suitable for traditional network deployments where IPv4 addressing is used between nodes.
+
+**Mode: IPv6**
+Full 128-bit address space usage. The routing prefix occupies the upper 64 bits, with subnet (32 bits) and object (32 bits) sharing the lower 64 bits.
+
+### Field Width Configuration (Future)
+
+Future CMake options may allow configurable field widths:
+
+- **Subnet size**: Currently 32 bits (fixed)
+- **Object size**: Currently 32 bits (fixed)
+
+This allows the same `zone_address` type to serve different deployment scenarios while maintaining a consistent 128-bit total size.
+
+### Zone Address Structure
+
+A `zone_address` consists of three main components:
+
+- **Routing Prefix (64 bits)**: Identifies the physical node or network (0 in local-only mode)
+- **Subnet ID (32 bits)**: Identifies the specific zone within that node
+- **Object ID (32 bits)**: Identifies a specific object within that zone (0 indicates a zone-only address)
+
+**Total size**: 16 bytes = 128 bits (one IPv6 address). The layout is:
+```
+Bits 0-63:   routing_prefix (network prefix, identifies the physical node)
+Bits 64-95:  subnet_id (zone within the node)
+Bits 96-127: object_id (specific object, or 0 for zone-only)
+```
+
+**CMake-configurable packed representation**: A CMake option controls whether the in-memory representation uses the structured form above or a packed `uint128_t` / `std::array<uint8_t, 16>` for compact storage and wire serialization. The structured form with named fields is always the canonical form for code access.
+
+### Zone Address Types
+
+Canopy uses specialized types for different routing scenarios, all wrapping a `zone_address`:
+
+- `rpc::zone`: Stores a `zone_address` with `object_id = 0`. Used for general zone identity.
+- `rpc::remote_object`: Stores a full `zone_address` **including** the `object_id`. This identifies a specific object at a specific zone. Used in i_marshaller methods.
+- `rpc::destination_zone`: Stores a `zone_address` with `object_id = 0` (zone-only). Used for zone routing without object identity.
+- `rpc::caller_zone`: Stores a `zone_address` with `object_id = 0`. Never needs object identity.
+- `rpc::requesting_zone`: Stores a `zone_address` with `object_id = 0`. Used as a routing hint.
 
 ### Zone ID Generation Strategies
 
-Canopy does not prescribe a specific zone ID allocation scheme. Common strategies include:
+Zone IDs (subnets) are allocated using a `zone_address_allocator`. This ensures uniqueness within the node's allocated subnet range.
 
-**IPv4-Based Schemes**:
-- Use IP address as the zone ID base
-- Combine with locally assigned random number or sequential counter
-- Example: `zone_id = (ip_address << 32) | local_counter`
+**CLI Configuration**:
+Nodes can be configured via CLI arguments to use specific network ranges:
+```bash
+# Local-only mode (default)
+./my_app
 
-**IPv6-Based Schemes**:
-- Use IP address with subnet-based allocation
-- For larger deployments, extend zone type to 128-bit:
-  - 64 bits for IP address
-  - 64 bits for local ID
-- Alternative: 32 bits for IP, 32 bits for local zone number, 32 bits for object ID, 32 bits reserved
+# Use IPv4 192.168.1.1 as routing prefix, with a specific subnet range
+./my_app -4 --routing-prefix 192.168.1.1 --subnet-base=0x10000 --subnet-range=0xFFFF
 
-**TCP Transport Zone ID Translation**:
-- For environments where IP-based schemes are not feasible
-- TCP transport provides zone ID translation/mapping capabilities
+# Use IPv6 prefix
+./my_app -6 --routing-prefix 2001:db8::1 --subnet-base=0x10000
+```
 
-**Implementation Details**:
-*[Placeholder: Specific zone ID generator implementation and examples to be added]*
+**Address-family flags** (mutually exclusive):
+- `-4`: `--routing-prefix` is an IPv4 address in dotted-decimal notation
+- `-6`: `--routing-prefix` is an IPv6 address in colon-hex notation
+- *(neither)*: Local-only mode: `routing_prefix=0`, inter-node routing disabled
+
+**IPv4 → routing_prefix conversion** (6to4-inspired, RFC 3056):
+```
+routing_prefix = 0x2002 << 48 | (uint64_t)ipv4_addr << 16
+```
+For example `192.168.1.1` (`0xC0A80101`): `routing_prefix = 0x2002C0A801010000`
+
+**IPv6 → routing_prefix**: The first 64 bits of the address are taken directly as the routing prefix.
 
 ## Zone Hierarchy
 
@@ -85,15 +139,27 @@ Zone 2 can create:
 
 ### Root Zone
 
+The root zone is typically created using a `zone_address_allocator` configured via network arguments.
+
 ```cpp
+#include <canopy/network_config/network_args.h>
+
+// ... in main()
+args::ArgumentParser parser("My App");
+canopy::network_config::add_network_args(parser);
+parser.ParseCLI(argc, argv);
+
+auto cfg = canopy::network_config::get_network_config(parser);
+auto allocator = canopy::network_config::make_allocator(cfg);
+
 auto root_service = std::make_shared<rpc::service>(
     "root_service",
-    rpc::zone{1}  // Zone ID 1
-#ifdef CANOPY_BUILD_COROUTINE
-    , scheduler   // Optional coroutine scheduler
-#endif
+    allocator.allocate_zone(),
+    scheduler
 );
 ```
+
+**Default behavior**: If no `--routing-prefix` is provided, the library auto-detects the best routing prefix from the host's network interfaces (globally-routable IPv6 > public IPv4 > private IPv4 > 0 for local-only).
 
 ### Child Zone (Hierarchical)
 
@@ -210,7 +276,7 @@ Canopy uses specialized zone types for different routing scenarios:
 
 ```cpp
 struct zone   // The current zone where all this activity is happening
-struct destination_zone   // Where the call is going
+struct destination_zone   // Where the call is going (includes object_id)
 struct caller_zone        // Where the call came from
 struct requesting_zone  // Zone with known calling direction, used in add_ref to deal with zones that do not know about the existance of other zones, the requesting_zone is used to route the add_ref to a zone that can pass on the add_ref to the correct zone
 ```
@@ -223,16 +289,15 @@ These types enable efficient routing in multi-hop scenarios and provide type saf
 // Transport routing logic
 CORO_TASK(int) transport::inbound_send(
     rpc::caller_zone caller,           // Who's calling
-    rpc::destination_zone destination, // Where it's going
-    rpc::object object_id,
+    rpc::destination_zone destination, // Where it's going (includes object_id)
     rpc::interface_ordinal interface_id,
     rpc::method method_id,
     const rpc::span& in_data,
     std::vector<char>& out_data)
 {
-    // Route based on destination
-    if (destination == get_zone_id()) {
-        // Deliver locally
+    // Route based on destination zone portion (ignoring object_id)
+    if (destination.get_address().same_zone(get_zone_id())) {
+        // Deliver locally to the object specified in destination.get_address().object_id
     } else {
         // Forward to passthrough
     }
@@ -244,9 +309,27 @@ CORO_TASK(int) transport::inbound_send(
 ```cpp
 rpc::zone zone_id{42};
 
-auto dest = zone_id.as_destination();         // For routing to target
+auto dest = zone_id.as_destination();         // For routing to target (object_id=0)
 auto caller = zone_id.as_caller();            // For tracking origin
-auto known = zone_id.as_requesting_zone(); // For known routing
+auto known = zone_id.as_requesting_zone();    // For known routing
+auto obj = dest.with_object(object_id);       // For specific object (remote_object)
+```
+
+### Accessing the Full Address
+
+```cpp
+rpc::remote_object remote_obj = ...;
+
+// Get the full zone_address (routing_prefix, subnet_id, object_id)
+const zone_address& addr = remote_obj.get_address();
+
+// Access individual components
+uint64_t prefix = addr.get_routing_prefix();
+uint64_t subnet = addr.get_subnet();
+uint64_t obj_id = addr.get_object_id();
+
+// Check if two addresses are in the same zone (ignoring object_id)
+if (addr1.same_zone(addr2)) { ... }
 ```
 
 ## Zone Boundaries
@@ -414,39 +497,34 @@ For zone ID generation strategies, see [Zone ID Generation Strategies](#zone-id-
 
 ```javascript
 on_service_creation(name, zone_id, parent_zone_id)
- on_service_deletion(zone_id)
- on_service_send(zone_id,
-            destination_zone destination_zone_id,
+on_service_deletion(zone_id)
+on_service_send(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
             caller_zone_id,
-            object_id,
             interface_id,
             method_id)
- on_service_post(zone_id,
-            destination_zone destination_zone_id,
+on_service_post(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
             caller_zone_id,
-            object_id,
             interface_id,
             method_id)
- on_service_try_cast(zone_id,
-            destination_zone destination_zone_id,
+on_service_try_cast(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
             caller_zone_id,
-            object_id,
             interface_id)
- on_service_add_ref(zone_id,
-            destination_zone destination_zone_id,
-            object_id,
+on_service_add_ref(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
             caller_zone_id,
             requesting_zone_id,
             options)
- on_service_release(zone_id,
-            destination_zone destination_zone_id,
-            object_id,
+on_service_release(zone_id,
+            remote_object remote_object_id,  // includes zone and object_id
             caller_zone_id,
             options)
- on_service_object_released(
-            zone_id, destination_zone destination_zone_id, caller_zone_id, object object_id)
- on_service_transport_down(
-            zone_id, destination_zone destination_zone_id, caller_zone_id)
+on_service_object_released(
+            zone_id, remote_object remote_object_id, caller_zone_id)
+on_service_transport_down(
+            zone_id, destination_zone destination_zone_id, caller_zone_id)  // zone-only, no object_id
 ```
 
 ### Common Issues

@@ -283,10 +283,10 @@ switch (status)
         // Ready for operations
         break;
     case transport_status::DISCONNECTING:
-        // Beginning to shut down a close signal is being sent or recieved
+        // Beginning to shut down, a close signal is being sent or received
         break;
     case transport_status::DISCONNECTED:
-        // Terminal state close signal has been acknowleged, or there is a terminal failure, no further traffic allowed
+        // Terminal state, close signal has been acknowledged, or there is a terminal failure, no further traffic allowed
         CO_RETURN rpc::error::TRANSPORT_ERROR();
 }
 ```

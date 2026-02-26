@@ -156,10 +156,10 @@ class service : public i_marshaller
 {
 public:
 ...
-    // Called an optimistic pointer remote object is released
+    // Called when an optimistic pointer remote object is released
     virtual void object_released
 
-    // Called when a coonection fails betwee two zones, this will be passed to all interested zones
+    // Called when a connection fails between two zones, this will be passed to all interested zones
     virtual void transport_down
 };
 ```
