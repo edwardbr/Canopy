@@ -36,7 +36,7 @@ target_link_options(local_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET local_transport_demo PROPERTY COMPILE_PDB_NAME local_transport_demo)
 
 if(CANOPY_BUILD_COROUTINE)
-  add_executable(tcp_transport_demo src/transport/tcp_transport_demo.cpp)
+  add_executable(tcp_transport_demo src/transport/tcp/tcp_transport_demo.cpp)
   target_compile_definitions(tcp_transport_demo PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
     tcp_transport_demo
@@ -48,6 +48,7 @@ if(CANOPY_BUILD_COROUTINE)
            transport_local
            transport_tcp
            rpc
+           canopy_network_config
            ${CANOPY_LIBRARIES})
   target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(tcp_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
