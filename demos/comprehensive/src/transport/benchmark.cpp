@@ -665,10 +665,10 @@ void rpc_log(int level, const char* str, size_t sz)
     switch (level)
     {
     case 0:
-        std::cout << "[DEBUG] " << message << std::endl;
+        std::cout << "[TRACE] " << message << std::endl;
         break;
     case 1:
-        std::cout << "[TRACE] " << message << std::endl;
+        std::cout << "[DEBUG] " << message << std::endl;
         break;
     case 2:
         std::cout << "[INFO] " << message << std::endl;

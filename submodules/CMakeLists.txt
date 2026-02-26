@@ -89,7 +89,7 @@ if(CANOPY_STANDALONE)
     # set(c-ares_DIR "${CMAKE_SOURCE_DIR}/submodules/c-ares") list(APPEND CMAKE_PREFIX_PATH
     # "${CMAKE_SOURCE_DIR}/submodules/c-ares")
     add_subdirectory(c-ares)
-    add_subdirectory(libcoro)
+    add_subdirectory(libcoro_for_enclaves)
     add_subdirectory(wslay)
 
     # llhttp for HTTP parsing - build as simple static library Install dependencies and generate llhttp.c from

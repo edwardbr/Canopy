@@ -68,7 +68,8 @@ namespace rpc::tcp
             coro::net::tcp::server::options opts = {})
         {
             service_ = service;
-            server_ = std::make_shared<coro::net::tcp::server>(service->get_scheduler(), endpoint, opts);
+            auto scheduler = service->get_scheduler();
+            server_ = std::make_shared<coro::net::tcp::server>(scheduler, endpoint, opts);
             return service->spawn(run_listener(service));
         }
 
