@@ -119,7 +119,6 @@ telemetry/                    # Telemetry services
 
 ## Version and Requirements
 
-- **Version**: 2.2.0
 - **C++ Standard**: C++17 (C++20 when CANOPY_BUILD_COROUTINE=ON)
 - **CMake**: 3.24+
 - **Compilers**: Clang 10+, GCC 9.4+, MSVC 2019+

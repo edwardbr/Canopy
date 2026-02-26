@@ -20,17 +20,43 @@ A zone is an execution context that represents a boundary between different part
 
 ```cpp
 // From rpc_types.idl
-struct zone
+// 128-bit address = 64-bit routing_prefix + 32-bit subnet_id + 32-bit object_id
+
+struct zone_address
 {
 private:
-    uint64_t id = 0;
+    uint64_t routing_prefix_ = 0;  // Bits 0-63: network prefix
+    uint32_t subnet_id_ = 0;       // Bits 64-95: zone within node
+    uint32_t object_id_ = 0;       // Bits 96-127: object within zone
 
 public:
-    zone() = default;
-    explicit zone(uint64_t initial_id) : id(initial_id) {}
+    // Accessors
+    uint64_t get_routing_prefix() const { return routing_prefix_; }
+    void set_routing_prefix(uint64_t val) { routing_prefix_ = val; }
+    uint64_t get_subnet() const { return subnet_id_; }
+    void set_subnet(uint64_t val) { subnet_id_ = val; }
+    uint64_t get_object_id() const { return object_id_; }
+    void set_object_id(uint64_t val) { object_id_ = val; }
 
-    uint64_t get_subnet() const { return id; }
-    constexpr bool is_set() const noexcept { return id != 0; }
+    // Comparison
+    bool same_zone(const zone_address& other) const;  // Compare zone portion only
+    constexpr bool is_set() const noexcept;
+
+    // Conversion
+    std::string to_string() const;  // CIDR-like notation
+
+    // Packed 128-bit representation (CMake-configurable)
+    // Converts to/from uint128_t or std::array<uint8_t, 16> for wire serialization
+};
+
+struct zone
+{
+    zone_address addr;
+
+    zone() = default;
+    explicit zone(uint64_t initial_id) : addr{0, static_cast<uint32_t>(initial_id), 0} {}  // Legacy compat
+
+    const zone_address& get_address() const { return addr; }
 
     // Conversion helpers
     destination_zone as_destination() const;
@@ -59,14 +85,27 @@ Zone 1 (Root)
 ### Creating a Root Zone
 
 ```cpp
+#include <canopy/network_config/network_args.h>
+
+// ... in main()
+args::ArgumentParser parser("My App");
+canopy::network_config::add_network_args(parser);
+parser.ParseCLI(argc, argv);
+
+auto cfg = canopy::network_config::get_network_config(parser);
+auto allocator = canopy::network_config::make_allocator(cfg);
+
+// Default behavior: If no --routing-prefix is provided, auto-detects best interface
 auto root_service = std::make_shared<rpc::service>(
     "root_service",
-    rpc::zone{1}  // Zone ID 1
+    allocator.allocate_zone(),
 #ifdef CANOPY_BUILD_COROUTINE
-    , scheduler   // Optional coroutine scheduler
+    scheduler   // Optional coroutine scheduler
 #endif
 );
 ```
+
+**Legacy compatibility**: `rpc::zone{42}` still works in local-only mode (routing_prefix=0).
 
 ### Creating Child Zones
 
@@ -95,15 +134,34 @@ auto ret = CO_AWAIT root_service_->connect_to_zone(
 
 ### Zone Types for Routing
 
-Canopy uses specialized zone types for different routing scenarios:
+Canopy uses specialized zone types for different routing scenarios, all wrapping `zone_address`:
 
 ```cpp
-struct destination_zone   // Where the call is going
-struct caller_zone        // Where the call came from
-struct requesting_zone  // Zone with known calling direction
+struct zone               // General zone identity (object_id=0)
+struct remote_object      // Routing target with object identity (includes object_id)
+struct destination_zone   // Zone-only routing (object_id=0)
+struct caller_zone        // Call origin (object_id=0)
+struct requesting_zone    // Known direction (object_id=0)
 ```
 
-These types enable efficient routing in multi-hop scenarios.
+**Key distinction**: `remote_object` carries the full `zone_address` including `object_id`, while `destination_zone` is zone-only. i_marshaller methods use `remote_object` for object identity.
+
+```cpp
+// Access the full address
+const zone_address& addr = remote_object.get_address();
+
+// Access components
+uint64_t prefix = addr.get_routing_prefix();
+uint64_t subnet = addr.get_subnet();
+uint64_t obj_id = addr.get_object_id();
+
+// Compare zone portion only (ignoring object_id)
+if (addr1.same_zone(addr2)) { ... }
+
+// Convert between types
+destination_zone dest = zone.as_destination();  // zone-only
+remote_object obj = dest.with_object(object_id); // adds object_id
+```
 
 ## 2. Services
 

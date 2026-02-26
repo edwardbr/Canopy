@@ -103,3 +103,51 @@ public:
         std::function<void(...)> inbound_handler);
 };
 ```
+
+## Message Protocol
+
+TCP transport uses the same message structures as SPSC:
+
+```idl
+struct envelope_prefix
+{
+    uint64_t version;
+    message_direction direction;      // send, receive, one_way
+    uint64_t sequence_number;
+    uint64_t payload_size;
+};
+
+struct envelope_payload
+{
+    uint64_t payload_fingerprint;
+    std::vector<uint8_t> payload;
+};
+```
+
+**Message Types**:
+- `init_client_channel_send` / `init_client_channel_response` - Connection handshake
+- `call_send` / `call_receive` - Request-response RPC calls
+- `post_send` - Fire-and-forget notifications
+- `try_cast_send` / `try_cast_receive` - Interface queries
+- `addref_send` / `addref_receive` - Reference count increments
+- `release_send` / `release_receive` - Reference count decrements
+- `object_released_send` - Object lifecycle notification
+- `transport_down_send` - Transport disconnection notification
+- `close_connection_send` / `close_connection_ack` - Graceful shutdown
+
+**Key Fields in `call_send`**:
+```idl
+struct call_send
+{
+    rpc::encoding encoding;
+    uint64_t tag;
+    rpc::caller_zone caller_zone_id;
+    rpc::remote_object destination_zone_id;  // includes zone and object_id
+    rpc::interface_ordinal interface_id;
+    rpc::method method_id;
+    std::vector<char> payload;
+    std::vector<rpc::back_channel_entry> back_channel;
+};
+```
+
+Note that `destination_zone_id` in message structures is actually `rpc::remote_object` (carrying both zone and object identity), not `rpc::destination_zone` (which is zone-only).

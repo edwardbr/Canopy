@@ -86,26 +86,26 @@ Messages include metadata and payload:
 ```idl
 struct envelope_prefix
 {
-    uint8_t version;
-    uint8_t direction;      // send, receive, one_way
-    uint64_t sequence;
-    uint32_t payload_size;
+    uint64_t version;
+    message_direction direction;      // send, receive, one_way
+    uint64_t sequence_number;
+    uint64_t payload_size;
 };
 
 struct envelope_payload
 {
     uint64_t payload_fingerprint;
-    std::vector<char> serialized_data;
+    std::vector<uint8_t> payload;
 };
 ```
 
 **Message Types**:
-- `init_client_channel_send/receive`
-- `call_send/receive`
-- `post_send`
-- `try_cast_send/receive`
-- `addref_send/receive`
-- `release_send/receive`
-- `object_released_send`
-- `transport_down_send`
-- `close_connection_send/received`
+- `init_client_channel_send` / `init_client_channel_response` - Connection handshake
+- `call_send` / `call_receive` - Request-response RPC calls
+- `post_send` - Fire-and-forget notifications
+- `try_cast_send` / `try_cast_receive` - Interface queries
+- `addref_send` / `addref_receive` - Reference count increments
+- `release_send` / `release_receive` - Reference count decrements
+- `object_released_send` - Object lifecycle notification
+- `transport_down_send` - Transport disconnection notification
+- `close_connection_send` / `close_connection_ack` - Graceful shutdown

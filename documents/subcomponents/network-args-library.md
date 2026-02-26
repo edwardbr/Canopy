@@ -4,6 +4,26 @@
 
 All demo binaries and test hosts that create a `zone_address_allocator` need to parse address-family flags and routing-prefix arguments. Rather than duplicating this parsing logic across each binary, a shared static library (`canopy_network_config`) provides a common API. This keeps `args.hxx` boilerplate and the IPv4→IPv6 conversion in one place.
 
+## CMake Configuration (Phase 1b)
+
+The packed representation for wire serialization is configured at build time:
+
+```cmake
+# Packed 128-bit representation for wire serialization
+# When ON: uses uint128_t or std::array<uint8_t, 16>
+# When OFF: uses structured form (uint64_t + uint32_t + uint32_t = 16 bytes)
+option(CANOPY_ADDRESS_PACKED "Use packed 128-bit representation" OFF)
+```
+
+The `zone_address` structured form is always:
+- `uint64_t routing_prefix` (64 bits)
+- `uint32_t subnet_id` (32 bits)
+- `uint32_t object_id` (32 bits)
+
+**Total: 16 bytes = 128 bits** (one IPv6 address)
+
+**Default**: `CANOPY_ADDRESS_PACKED=OFF` (structured form with named fields for debugger visibility).
+
 ## CLI Address-Family Options
 
 ### Address-family flag
@@ -69,8 +89,8 @@ namespace canopy::network_config {
 struct network_config
 {
     uint64_t routing_prefix = 0;    // converted uint64_t, ready for zone_address_allocator
-    uint32_t subnet_base    = 0;
-    uint32_t subnet_range   = 0xFFFFFFFFu;
+    uint32_t subnet_base    = 0;    // matches zone_address::subnet_id (32 bits)
+    uint32_t subnet_range   = 0xFFFFFFFFu;  // matches zone_address::subnet_id (32 bits)
 };
 
 // Add the address-family group and routing/subnet args to an existing ArgumentParser.
