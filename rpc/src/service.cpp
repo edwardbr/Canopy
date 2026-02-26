@@ -43,7 +43,7 @@ namespace rpc
     }
 
 #ifdef CANOPY_BUILD_COROUTINE
-    service::service(const char* name, zone zone_id, const std::shared_ptr<coro::io_scheduler>& scheduler)
+    service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler)
         : zone_id_(zone_id)
         , name_(name)
         , io_scheduler_(scheduler)
@@ -53,7 +53,7 @@ namespace rpc
             telemetry_service->on_service_creation(name, zone_id, destination_zone{0});
 #endif
     }
-    service::service(const char* name, zone zone_id, const std::shared_ptr<coro::io_scheduler>& scheduler, child_service_tag)
+    service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler, child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
         , io_scheduler_(scheduler)
@@ -785,7 +785,7 @@ namespace rpc
                 if (should_delete)
                 {
                     // Shared count reached zero - stub should be deleted
-                    RPC_INFO("transport_down: Object {} ref count dropped to zero, cleaning up", obj_id.get_val());
+                    RPC_DEBUG("transport_down: Object {} ref count dropped to zero, cleaning up", obj_id.get_val());
 
                     // Remove from maps
                     stubs_.erase(obj_id);
@@ -1150,7 +1150,7 @@ namespace rpc
             if (should_delete)
             {
                 // Shared count reached zero - stub should be deleted
-                RPC_INFO("transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
+                RPC_DEBUG("transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
                     obj_id.get_val(),
                     remote_zone.get_subnet());
 

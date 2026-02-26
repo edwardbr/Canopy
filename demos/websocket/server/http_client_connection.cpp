@@ -159,9 +159,9 @@ namespace websocket_demo
                 {
                     // 2. Read the HTTP request
                     co_await stream_->poll(coro::poll_op::read);
-                    auto [rstatus, rspan] = stream_->recv(buffer);
+                    auto [rstatus, rspan] = co_await stream_->recv(buffer);
 
-                    if (rstatus != coro::net::recv_status::ok || rspan.empty())
+                    if (!rstatus.is_ok() || rspan.empty())
                     {
                         RPC_ERROR("Failed to read HTTP request");
                         co_return;
@@ -215,8 +215,8 @@ namespace websocket_demo
                     std::string handshake_response = build_websocket_handshake_response(accept_key);
 
                     co_await stream_->poll(coro::poll_op::write);
-                    auto [send_status, remaining] = stream_->send(std::span<const char>{handshake_response});
-                    if (send_status != coro::net::send_status::ok || !remaining.empty())
+                    auto [wsstatus, remaining] = stream_->send(std::span<const char>{handshake_response});
+                    if (!wsstatus.is_ok() || !remaining.empty())
                     {
                         RPC_ERROR("Failed to send WebSocket handshake response");
                         co_return;
@@ -263,8 +263,8 @@ namespace websocket_demo
                 }
 
                 co_await stream_->poll(coro::poll_op::write);
-                auto [send_status, remaining] = stream_->send(std::span<const char>{response});
-                if (send_status != coro::net::send_status::ok)
+                auto [httpstatus, remaining2] = stream_->send(std::span<const char>{response});
+                if (!httpstatus.is_ok())
                 {
                     RPC_ERROR("Failed to send HTTP response for: {}", path);
                 }

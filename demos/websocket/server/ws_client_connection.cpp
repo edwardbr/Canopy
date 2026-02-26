@@ -58,28 +58,21 @@ namespace websocket_demo
         }
 
         // Wait for the client's initial connect_request binary frame.
-        // Returns false if the connection closed before the handshake completed.
+        // Returns false if the connection closed or timed out before the handshake completed.
         coro::task<bool> ws_client_connection::wait_for_handshake()
         {
             RPC_INFO("[WS] Waiting for connect_request handshake");
-            while (state_ == connection_state::awaiting_handshake)
+            auto [recv_status, recv_span] = co_await stream_->recv(buffer_, std::chrono::seconds{5});
+            if (!recv_status.is_ok())
             {
-                auto poll_status = co_await stream_->poll(coro::poll_op::read, std::chrono::milliseconds{100});
-                if (poll_status != coro::poll_status::event)
-                    continue;
-
-                auto [recv_status, recv_span] = stream_->recv(buffer_);
-                if (recv_status == coro::net::recv_status::closed)
-                {
-                    state_ = connection_state::closed;
-                    co_return false;
-                }
-                if (recv_status == coro::net::recv_status::ok && !recv_span.empty())
-                {
-                    feed_recv_data(recv_span);
-                    std::lock_guard<std::mutex> lock(wslay_mutex_);
-                    wslay_event_recv(wslay_ctx_);
-                }
+                state_ = connection_state::closed;
+                co_return false;
+            }
+            if (!recv_span.empty())
+            {
+                feed_recv_data(recv_span);
+                std::lock_guard<std::mutex> lock(wslay_mutex_);
+                wslay_event_recv(wslay_ctx_);
             }
             co_return state_ != connection_state::closed;
         }
@@ -198,18 +191,14 @@ namespace websocket_demo
         // Returns false on a hard error; true on success or timeout.
         coro::task<bool> ws_client_connection::do_read()
         {
-            auto poll_status = co_await stream_->poll(coro::poll_op::read, std::chrono::milliseconds{5});
-            if (poll_status != coro::poll_status::event)
-                co_return true; // timeout — loop back to check pending_messages_
-
-            auto [recv_status, recv_span] = stream_->recv(buffer_);
-            if (recv_status == coro::net::recv_status::closed)
+            auto [recv_status, recv_span] = co_await stream_->recv(buffer_, std::chrono::milliseconds{5});
+            if (recv_status.is_closed())
             {
                 RPC_INFO("Client disconnected");
                 stream_->set_closed();
                 co_return false;
             }
-            if (recv_status == coro::net::recv_status::ok && !recv_span.empty())
+            if (recv_status.is_ok() && !recv_span.empty())
             {
                 feed_recv_data(recv_span);
                 std::lock_guard<std::mutex> lock(wslay_mutex_);
@@ -292,10 +281,10 @@ namespace websocket_demo
             auto [status, remaining]
                 = self->stream_->send(std::span<const char>(reinterpret_cast<const char*>(data), len));
 
-            if (status == coro::net::send_status::ok)
+            if (status.is_ok())
                 return static_cast<ssize_t>(len - remaining.size());
 
-            if (status == coro::net::send_status::would_block)
+            if (status.try_again())
             {
                 wslay_event_set_error(ctx, WSLAY_ERR_WOULDBLOCK);
                 return -1;
@@ -373,7 +362,7 @@ namespace websocket_demo
 
             if (envelope.message_type == rpc::id<websocket_demo::v1::request>::get(rpc::get_version()))
             {
-                service_->get_scheduler()->spawn(transport_->stub_handle_send(std::move(envelope)));
+                service_->spawn(transport_->stub_handle_send(std::move(envelope)));
                 return;
             }
 

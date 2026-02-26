@@ -73,7 +73,7 @@ namespace comprehensive
         }
 
 #ifdef CANOPY_BUILD_COROUTINE
-        CORO_TASK(bool) run_shared_ptr_demo(std::shared_ptr<coro::io_scheduler> scheduler)
+        CORO_TASK(bool) run_shared_ptr_demo(std::shared_ptr<coro::scheduler> scheduler)
 #else
         bool run_shared_ptr_demo()
 #endif
@@ -212,7 +212,7 @@ namespace comprehensive
         CORO_TASK(bool)
         demo_task(
 #ifdef CANOPY_BUILD_COROUTINE
-            std::shared_ptr<coro::io_scheduler> scheduler
+            std::shared_ptr<coro::scheduler> scheduler
 #endif
         )
         {
@@ -264,14 +264,14 @@ int main()
     RPC_INFO("");
 
 #ifdef CANOPY_BUILD_COROUTINE
-    auto scheduler = coro::io_scheduler::make_shared(
-        coro::io_scheduler::options{
-            .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{
+            .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{
                 .thread_count = std::thread::hardware_concurrency(),
             },
-            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool
-        });
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool
+        }));
 
     bool result = coro::sync_wait(comprehensive::v1::demo_task(scheduler));
 

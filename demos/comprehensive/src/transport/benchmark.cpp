@@ -213,7 +213,7 @@ namespace comprehensive
         }
 
         CORO_TASK(benchmark_result)
-        run_local_benchmark(std::shared_ptr<coro::io_scheduler> scheduler, rpc::encoding enc, size_t blob_size)
+        run_local_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size)
         {
             benchmark_result result{};
 
@@ -268,7 +268,7 @@ namespace comprehensive
         };
 
         CORO_TASK(void)
-        spsc_process_1_task(std::shared_ptr<coro::io_scheduler> scheduler,
+        spsc_process_1_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
             rpc::zone zone_2,
             spsc_queues* queues,
@@ -318,7 +318,7 @@ namespace comprehensive
         }
 
         CORO_TASK(void)
-        spsc_process_2_task(std::shared_ptr<coro::io_scheduler> scheduler,
+        spsc_process_2_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_2,
             rpc::zone zone_1,
             spsc_queues* queues,
@@ -375,15 +375,15 @@ namespace comprehensive
             rpc::zone zone_2{2};
             auto queues = std::make_shared<spsc_queues>();
 
-            auto scheduler_1 = coro::io_scheduler::make_shared(
-                coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
                     .pool = coro::thread_pool::options{.thread_count = 1},
-                    .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-            auto scheduler_2 = coro::io_scheduler::make_shared(
-                coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            auto scheduler_2 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
                     .pool = coro::thread_pool::options{.thread_count = 1},
-                    .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
             rpc::event server_ready;
             rpc::event client_finished;
@@ -399,7 +399,7 @@ namespace comprehensive
         }
 
         CORO_TASK(void)
-        tcp_server_task(std::shared_ptr<coro::io_scheduler> scheduler,
+        tcp_server_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
             const rpc::event& client_finished,
             rpc::encoding enc,
@@ -436,10 +436,7 @@ namespace comprehensive
                 },
                 std::chrono::milliseconds(100000));
 
-            const auto server_options = coro::net::tcp::server::options{
-                .address = coro::net::ip_address::from_string("127.0.0.1"), .port = port, .backlog = 10};
-
-            if (!listener->start_listening(service, server_options))
+            if (!listener->start_listening(service, coro::net::socket_address{"127.0.0.1", port}))
             {
                 server_ready.set();
                 CO_RETURN;
@@ -455,7 +452,7 @@ namespace comprehensive
         }
 
         CORO_TASK(void)
-        tcp_client_task(std::shared_ptr<coro::io_scheduler> scheduler,
+        tcp_client_task(std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
             rpc::event& client_finished,
             rpc::encoding enc,
@@ -472,8 +469,7 @@ namespace comprehensive
             auto client_service = std::make_shared<rpc::service>("tcp_client", rpc::zone{++zone_gen}, scheduler);
             client_service->set_default_encoding(enc);
 
-            coro::net::tcp::client client(scheduler,
-                coro::net::tcp::client::options{.address = coro::net::ip_address::from_string(host), .port = port});
+            coro::net::tcp::client client(scheduler, coro::net::socket_address{host, port});
 
             const auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
             if (connection_status != coro::net::connect_status::connected)
@@ -485,8 +481,6 @@ namespace comprehensive
 
             auto client_transport = rpc::tcp::tcp_transport::create(
                 "client_transport", client_service, peer_zone_id, std::chrono::milliseconds(100000), std::move(client), nullptr);
-
-            client_service->spawn(client_transport->pump_send_and_receive());
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -522,15 +516,15 @@ namespace comprehensive
         {
             benchmark_result result{};
 
-            auto scheduler_1 = coro::io_scheduler::make_shared(
-                coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
                     .pool = coro::thread_pool::options{.thread_count = 2},
-                    .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-            auto scheduler_2 = coro::io_scheduler::make_shared(
-                coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            auto scheduler_2 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
                     .pool = coro::thread_pool::options{.thread_count = 2},
-                    .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
             rpc::event server_ready;
             rpc::event client_finished;
@@ -608,10 +602,10 @@ int main()
 
     print_header();
 
-    auto local_scheduler = coro::io_scheduler::make_shared(
-        coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+    auto local_scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{.thread_count = 2},
-            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
     for (const auto& enc : encodings)
     {

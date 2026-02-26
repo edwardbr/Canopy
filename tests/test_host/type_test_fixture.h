@@ -158,7 +158,7 @@ void run_coro_test(TestFixture& test_fixture, CoroFunc&& coro_function, Args&&..
         CO_RETURN result;
     };
 
-    RPC_ASSERT(lib.get_scheduler()->spawn(lib.check_for_error(wrapper_function())));
+    RPC_ASSERT(lib.get_scheduler()->spawn_detached(lib.check_for_error(wrapper_function())));
 
     // Process events until main coroutine completes
     while (!is_ready)

@@ -60,7 +60,6 @@ target_link_libraries(
          GTest::gtest_main
          GTest::gmock_main
          spdlog::spdlog
-         ${CORO_RUNTIME}
          ${CANOPY_FMT_LIB}
          ${ENCLAVE_DEPENDANCIES}
          ${CANOPY_LIBRARIES})

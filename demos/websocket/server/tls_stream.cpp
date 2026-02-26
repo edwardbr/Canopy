@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// tls_stream.cpp - TLS stream implementation
+// tls_stream.cpp - TLS stream implementation using OpenSSL memory BIOs
 #include "tls_stream.h"
 #include <rpc/rpc.h>
+#include <array>
 
 namespace websocket_demo
 {
@@ -20,10 +21,10 @@ namespace websocket_demo
                 RPC_ERROR("OpenSSL: {}", buf);
             }
         }
+
         // TLS context implementation
         tls_context::tls_context(const std::string& cert_file, const std::string& key_file)
         {
-            // Create SSL context for TLS server
             ctx_ = SSL_CTX_new(TLS_server_method());
             if (!ctx_)
             {
@@ -32,10 +33,8 @@ namespace websocket_demo
                 return;
             }
 
-            // Set minimum TLS version to 1.2
             SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
 
-            // Load certificate
             if (SSL_CTX_use_certificate_file(ctx_, cert_file.c_str(), SSL_FILETYPE_PEM) <= 0)
             {
                 RPC_ERROR("Failed to load certificate: {}", cert_file);
@@ -45,7 +44,6 @@ namespace websocket_demo
                 return;
             }
 
-            // Load private key
             if (SSL_CTX_use_PrivateKey_file(ctx_, key_file.c_str(), SSL_FILETYPE_PEM) <= 0)
             {
                 RPC_ERROR("Failed to load private key: {}", key_file);
@@ -55,7 +53,6 @@ namespace websocket_demo
                 return;
             }
 
-            // Verify private key matches certificate
             if (!SSL_CTX_check_private_key(ctx_))
             {
                 RPC_ERROR("Private key does not match certificate");
@@ -77,8 +74,8 @@ namespace websocket_demo
         }
 
         // TLS stream implementation
-        tls_stream::tls_stream(coro::net::tcp::client&& client, std::shared_ptr<tls_context> tls_ctx)
-            : client_(std::move(client))
+        tls_stream::tls_stream(std::shared_ptr<stream> underlying, std::shared_ptr<tls_context> tls_ctx)
+            : underlying_(std::move(underlying))
             , tls_ctx_(std::move(tls_ctx))
         {
             if (tls_ctx_ && tls_ctx_->is_valid())
@@ -86,8 +83,12 @@ namespace websocket_demo
                 ssl_ = SSL_new(tls_ctx_->get());
                 if (ssl_)
                 {
-                    // Set the file descriptor for the SSL connection
-                    SSL_set_fd(ssl_, client_.socket().native_handle());
+                    // Use memory BIOs so SSL has no direct socket access.
+                    // rbio: we write raw network bytes here for SSL to read.
+                    // wbio: SSL writes encrypted output here; we drain it to underlying_.
+                    rbio_ = BIO_new(BIO_s_mem());
+                    wbio_ = BIO_new(BIO_s_mem());
+                    SSL_set_bio(ssl_, rbio_, wbio_);
                 }
             }
         }
@@ -98,25 +99,51 @@ namespace websocket_demo
             {
                 if (handshake_complete_ && !closed_)
                 {
-                    // Try to send close_notify, but don't block
                     SSL_shutdown(ssl_);
+                    flush_wbio();
                 }
-                SSL_free(ssl_);
+                SSL_free(ssl_); // also frees rbio_ and wbio_
             }
         }
 
-        coro::poll_op tls_stream::get_poll_op_for_ssl_error(int ssl_error)
+        // -----------------------------------------------------------------------
+        // Private helpers
+        // -----------------------------------------------------------------------
+
+        // Read one chunk of raw bytes from the underlying stream and push them
+        // into rbio so OpenSSL can process them.
+        auto tls_stream::feed_rbio(std::chrono::milliseconds timeout) -> coro::task<bool>
         {
-            switch (ssl_error)
-            {
-            case SSL_ERROR_WANT_READ:
-                return coro::poll_op::read;
-            case SSL_ERROR_WANT_WRITE:
-                return coro::poll_op::write;
-            default:
-                return coro::poll_op::read; // Default to read
-            }
+            std::array<char, 4096> buf;
+            auto [status, span] = co_await underlying_->recv(std::span<char>{buf}, timeout);
+            if (!status.is_ok() || span.empty())
+                co_return false;
+            BIO_write(rbio_, span.data(), static_cast<int>(span.size()));
+            co_return true;
         }
+
+        // Drain all pending SSL output from wbio to the underlying stream.
+        bool tls_stream::flush_wbio()
+        {
+            std::array<char, 4096> buf;
+            int len;
+            while ((len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()))) > 0)
+            {
+                std::span<const char> remaining(buf.data(), static_cast<size_t>(len));
+                while (!remaining.empty())
+                {
+                    auto [status, unsent] = underlying_->send(remaining);
+                    if (!status.is_ok() && !status.try_again())
+                        return false;
+                    remaining = unsent;
+                }
+            }
+            return true;
+        }
+
+        // -----------------------------------------------------------------------
+        // Handshake
+        // -----------------------------------------------------------------------
 
         auto tls_stream::handshake() -> coro::task<bool>
         {
@@ -129,109 +156,122 @@ namespace websocket_demo
             while (true)
             {
                 int result = SSL_accept(ssl_);
+
+                // Always flush any handshake data SSL wants to send to the peer.
+                if (!flush_wbio())
+                {
+                    RPC_ERROR("TLS handshake: flush_wbio failed");
+                    co_return false;
+                }
+
                 if (result == 1)
                 {
-                    // Handshake completed successfully
                     handshake_complete_ = true;
                     RPC_INFO("TLS handshake completed successfully");
                     co_return true;
                 }
 
                 int ssl_error = SSL_get_error(ssl_, result);
-                if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
+                if (ssl_error == SSL_ERROR_WANT_READ)
                 {
-                    // Need to wait for I/O
-                    coro::poll_op op = get_poll_op_for_ssl_error(ssl_error);
-                    auto poll_result = co_await client_.poll(op);
-                    if (poll_result != coro::poll_status::event)
+                    // Need more bytes from the peer — fetch them with no timeout during handshake.
+                    if (!co_await feed_rbio(std::chrono::milliseconds{0}))
                     {
-                        RPC_ERROR("TLS handshake poll failed");
+                        RPC_WARNING("TLS handshake: peer closed or error while reading");
                         co_return false;
                     }
-                    continue;
                 }
-
-                // Fatal error — ssl_error==1 (SSL_ERROR_SSL) is normal when the browser
-                // sends a certificate-unknown alert on its first probe of a self-signed cert.
-                // The browser will reconnect and succeed after the user accepts the warning.
-                RPC_WARNING("TLS handshake rejected by peer (ssl_error={})", ssl_error);
-                log_ssl_errors();
-                co_return false;
+                else if (ssl_error == SSL_ERROR_WANT_WRITE)
+                {
+                    // Data already flushed above; wait for the socket to drain.
+                    co_await underlying_->poll(coro::poll_op::write);
+                }
+                else
+                {
+                    RPC_WARNING("TLS handshake rejected by peer (ssl_error={})", ssl_error);
+                    log_ssl_errors();
+                    co_return false;
+                }
             }
         }
+
+        // -----------------------------------------------------------------------
+        // Stream interface
+        // -----------------------------------------------------------------------
 
         auto tls_stream::poll(coro::poll_op op, std::chrono::milliseconds timeout) -> coro::task<coro::poll_status>
         {
-            // For TLS, we need to check if there's pending data in the SSL buffer first
-            if (op == coro::poll_op::read && SSL_pending(ssl_) > 0)
-            {
-                co_return coro::poll_status::event;
-            }
+            // If decrypted data is already buffered by OpenSSL, report read-ready immediately.
+            if (op == coro::poll_op::read && ssl_ && SSL_pending(ssl_) > 0)
+                co_return coro::poll_status::read;
 
-            // Otherwise, poll the underlying socket
-            co_return co_await client_.poll(op, timeout);
+            co_return co_await underlying_->poll(op, timeout);
         }
 
-        auto tls_stream::recv(std::span<char> buffer) -> std::pair<coro::net::recv_status, std::span<char>>
+        auto tls_stream::recv(std::span<char> buffer, std::chrono::milliseconds timeout)
+            -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
         {
             if (!ssl_ || !handshake_complete_ || closed_)
+                co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+
+            while (true)
             {
-                return {coro::net::recv_status::closed, std::span<char>{}};
-            }
+                // Try to decrypt whatever is already in rbio.
+                int bytes_read = SSL_read(ssl_, buffer.data(), static_cast<int>(buffer.size()));
+                if (bytes_read > 0)
+                    co_return {coro::net::io_status{coro::net::io_status::kind::ok},
+                        std::span<char>{buffer.data(), static_cast<size_t>(bytes_read)}};
 
-            int bytes_read = SSL_read(ssl_, buffer.data(), static_cast<int>(buffer.size()));
-            if (bytes_read > 0)
-            {
-                return {coro::net::recv_status::ok, std::span<char>{buffer.data(), static_cast<size_t>(bytes_read)}};
-            }
+                int ssl_error = SSL_get_error(ssl_, bytes_read);
+                if (ssl_error == SSL_ERROR_ZERO_RETURN)
+                {
+                    closed_ = true;
+                    co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                }
+                if (ssl_error != SSL_ERROR_WANT_READ && ssl_error != SSL_ERROR_WANT_WRITE)
+                {
+                    closed_ = true;
+                    co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                }
 
-            int ssl_error = SSL_get_error(ssl_, bytes_read);
-            switch (ssl_error)
-            {
-            case SSL_ERROR_ZERO_RETURN:
-                // Clean shutdown
-                closed_ = true;
-                return {coro::net::recv_status::closed, std::span<char>{}};
+                // Need more raw bytes — wait on the underlying stream with the caller's timeout.
+                auto poll_status = co_await underlying_->poll(coro::poll_op::read, timeout);
+                if (poll_status == coro::poll_status::timeout)
+                    co_return {coro::net::io_status{coro::net::io_status::kind::timeout}, {}};
+                if (poll_status != coro::poll_status::read)
+                {
+                    closed_ = true;
+                    co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                }
 
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                // Would block - return as if no data available
-                return {static_cast<coro::net::recv_status>(EAGAIN), std::span<char>{}};
-
-            default:
-                // Error occurred
-                closed_ = true;
-                return {coro::net::recv_status::closed, std::span<char>{}};
+                if (!co_await feed_rbio(std::chrono::milliseconds{0}))
+                {
+                    closed_ = true;
+                    co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                }
             }
         }
 
-        auto tls_stream::send(std::span<const char> buffer) -> std::pair<coro::net::send_status, std::span<const char>>
+        auto tls_stream::send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>>
         {
             if (!ssl_ || !handshake_complete_ || closed_)
-            {
-                return {coro::net::send_status::closed, buffer};
-            }
+                return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
 
             int bytes_written = SSL_write(ssl_, buffer.data(), static_cast<int>(buffer.size()));
-            if (bytes_written > 0)
+            if (bytes_written <= 0)
             {
-                return {coro::net::send_status::ok,
-                    std::span<const char>{buffer.data() + bytes_written, buffer.size() - bytes_written}};
-            }
-
-            int ssl_error = SSL_get_error(ssl_, bytes_written);
-            switch (ssl_error)
-            {
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                // Would block
-                return {coro::net::send_status::would_block, buffer};
-
-            default:
-                // Error occurred
+                int ssl_error = SSL_get_error(ssl_, bytes_written);
+                if (ssl_error == SSL_ERROR_WANT_WRITE || ssl_error == SSL_ERROR_WANT_READ)
+                    return {coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again}, buffer};
                 closed_ = true;
-                return {coro::net::send_status::closed, buffer};
+                return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
             }
+
+            // Push the encrypted bytes out to the underlying stream.
+            flush_wbio();
+
+            return {coro::net::io_status{coro::net::io_status::kind::ok},
+                std::span<const char>{buffer.data() + bytes_written, buffer.size() - static_cast<size_t>(bytes_written)}};
         }
 
     } // namespace websocket_demo

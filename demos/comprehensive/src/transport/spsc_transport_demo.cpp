@@ -43,7 +43,7 @@ namespace comprehensive
         };
 
         CORO_TASK(void)
-        process_1_task(std::shared_ptr<coro::io_scheduler> scheduler,
+        process_1_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
             rpc::zone zone_2,
             spsc_queues* queues,
@@ -108,7 +108,7 @@ namespace comprehensive
         }
 
         CORO_TASK(void)
-        process_2_task(std::shared_ptr<coro::io_scheduler> scheduler,
+        process_2_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_2,
             rpc::zone zone_1,
             spsc_queues* queues,
@@ -178,15 +178,15 @@ namespace comprehensive
             rpc::zone zone_2{2};
             auto queues = std::make_shared<spsc_queues>();
 
-            auto scheduler_1 = coro::io_scheduler::make_shared(
-                coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
                     .pool = coro::thread_pool::options{.thread_count = 1},
-                    .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-            auto scheduler_2 = coro::io_scheduler::make_shared(
-                coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            auto scheduler_2 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
                     .pool = coro::thread_pool::options{.thread_count = 1},
-                    .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
             std::atomic<bool> is_loaded = false;
 

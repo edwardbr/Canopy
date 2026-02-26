@@ -1246,7 +1246,7 @@ create_deep_branch(
 #ifdef CANOPY_BUILD_COROUTINE
 CORO_TASK(void)
 run_autonomous_instruction_test(
-    int test_cycle, int instruction_count, const std::shared_ptr<coro::io_scheduler>& scheduler, uint64_t override_seed = 0)
+    int test_cycle, int instruction_count, const std::shared_ptr<coro::scheduler>& scheduler, uint64_t override_seed = 0)
 #else
 CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_count, uint64_t override_seed = 0)
 #endif
@@ -1609,8 +1609,8 @@ int main(int argc, char** argv)
                 // Initialize root service for the cycle
 #ifdef CANOPY_BUILD_COROUTINE
                 // Execute the coroutine with scheduler
-                auto scheduler = coro::io_scheduler::make_shared(
-                    coro::io_scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}});
+                auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                    coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
 
                 bool completed = false;
                 auto wrapper_task = [&]() -> coro::task<void>
@@ -1619,7 +1619,7 @@ int main(int argc, char** argv)
                     completed = true;
                 }();
 
-                RPC_ASSERT(scheduler->spawn(std::move(wrapper_task)));
+                RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
 
                 // Process events until completion
                 while (!completed)
@@ -1802,8 +1802,8 @@ int replay_test_scenario(const std::string& scenario_file)
 
 #ifdef CANOPY_BUILD_COROUTINE
         // Create scheduler for replay
-        auto scheduler = coro::io_scheduler::make_shared(
-            coro::io_scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}});
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
 
         // Run the exact same test scenario with the saved seed
         bool completed = false;
@@ -1814,7 +1814,7 @@ int replay_test_scenario(const std::string& scenario_file)
             completed = true;
         }();
 
-        RPC_ASSERT(scheduler->spawn(std::move(wrapper_task)));
+        RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
 
         while (!completed)
         {

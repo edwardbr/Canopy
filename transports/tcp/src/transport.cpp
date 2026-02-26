@@ -63,7 +63,7 @@ namespace rpc::tcp
         auto service = get_service();
         assert(connection_handler_ || !connection_handler_); // Can be null for client side
 
-        service->get_scheduler()->spawn(pump_send_and_receive());
+        service->spawn(pump_send_and_receive());
 
         // Create the init client channel request
         init_client_channel_response init_receive;
@@ -401,7 +401,7 @@ namespace rpc::tcp
         auto self = shared_from_this();
 
         RPC_TRACE("pump_send_and_receive zone={}", get_service()->get_zone_id().get_subnet());
-        assert(client_.socket().is_valid());
+        assert(client_.socket().is_ok());
 
         // Guard against multiple calls
         bool expected = false;
@@ -523,7 +523,7 @@ namespace rpc::tcp
                     RPC_TRACE("pump_messages: spawning initiator_close_task for zone {}",
                         service->get_zone_id().get_subnet());
                     initiator_task_spawned_.store(true, std::memory_order_release);
-                    service->get_scheduler()->spawn(initiator_close_task(tracker));
+                    service->spawn(initiator_close_task(tracker));
                 }
 
                 // Responder exit: cleanup done + all messages sent + no pending calls.
@@ -566,7 +566,7 @@ namespace rpc::tcp
             if (send_queue_count_.load(std::memory_order_acquire) > 0)
             {
                 RPC_TRACE("pump_messages: acquiring send_queue_mtx_ zone={}", service->get_zone_id().get_subnet());
-                auto scoped_lock = CO_AWAIT send_queue_mtx_.lock();
+                auto scoped_lock = CO_AWAIT send_queue_mtx_.scoped_lock();
                 RPC_TRACE("pump_messages: acquired send_queue_mtx_ zone={}", service->get_zone_id().get_subnet());
                 // Re-check status after the lock acquire yield point — another coroutine
                 // may have set DISCONNECTED while we were waiting for the lock.
@@ -578,34 +578,21 @@ namespace rpc::tcp
                 while (!send_queue_.empty() && !failed)
                 {
                     auto& item = send_queue_.front();
-                    auto marshal_status = client_.send(std::span{(const char*)item.data(), item.size()});
-                    if (marshal_status.first == coro::net::send_status::try_again)
+                    auto marshal_status = co_await client_.write_some(std::span{(const char*)item.data(), item.size()});
+                    if (marshal_status.first.is_timeout())
                     {
-                        RPC_TRACE("pump_messages: waiting for write poll zone={}", service->get_zone_id().get_subnet());
-                        auto wstatus = CO_AWAIT client_.poll(coro::poll_op::write);
-                        RPC_TRACE("pump_messages: write poll returned {} zone={}",
-                            static_cast<int>(wstatus),
-                            service->get_zone_id().get_subnet());
-                        if (wstatus == coro::poll_status::timeout)
-                        {
-                            CO_AWAIT service->get_scheduler()->schedule();
-                            break;
-                        }
-                        if (wstatus != coro::poll_status::event)
-                        {
-                            failed = true;
-                            break;
-                        }
-                        marshal_status = client_.send(std::span{(const char*)item.data(), item.size()});
-                    }
-                    send_queue_.pop();
-                    send_queue_count_.fetch_sub(1, std::memory_order_release);
-                    if (marshal_status.first != coro::net::send_status::ok)
-                    {
-                        RPC_ERROR("failed to send data to peer");
+                        RPC_TRACE("pump_messages: timed out zone={}", service->get_zone_id().get_subnet());
                         failed = true;
                         break;
                     }
+                    else if (!marshal_status.first.is_ok())
+                    {
+                        RPC_TRACE("pump_messages: failed zone={}", service->get_zone_id().get_subnet());
+                        failed = true;
+                        break;
+                    }
+                    send_queue_.pop();
+                    send_queue_count_.fetch_sub(1, std::memory_order_release);
                 }
                 if (failed)
                 {
@@ -623,32 +610,23 @@ namespace rpc::tcp
             }
 
             {
-                auto [recv_status, recv_bytes] = client_.recv(remaining_span);
-
-                if (recv_status == coro::net::recv_status::try_again || recv_status == coro::net::recv_status::would_block)
+                auto [recv_status, recv_bytes] = co_await client_.read_some(remaining_span, std::chrono::milliseconds(1));
+                if (recv_status.is_timeout())
                 {
-                    auto pstatus = CO_AWAIT client_.poll(coro::poll_op::read, std::chrono::milliseconds(1));
-                    if (pstatus == coro::poll_status::timeout)
-                    {
-                        CO_AWAIT service->get_scheduler()->schedule();
-                        continue;
-                    }
-                    if (pstatus == coro::poll_status::error || pstatus == coro::poll_status::closed)
-                    {
-                        RPC_TRACE("pump_messages: poll indicates disconnect for zone {}",
-                            service->get_zone_id().get_subnet());
-                        break;
-                    }
-                    std::tie(recv_status, recv_bytes) = client_.recv(remaining_span);
-                    if (recv_status == coro::net::recv_status::try_again
-                        || recv_status == coro::net::recv_status::would_block)
-                    {
-                        CO_AWAIT service->get_scheduler()->schedule();
-                        continue;
-                    }
+                    CO_AWAIT service->schedule();
+                    continue;
                 }
-
-                if (recv_status == coro::net::recv_status::ok)
+                else if (recv_status.is_closed())
+                {
+                    RPC_INFO("tcp transport connection closed for zone {}", service->get_zone_id().get_subnet());
+                    break;
+                }
+                else if (!recv_status.is_ok())
+                {
+                    RPC_ERROR("failed invalid received message {}", coro::net::to_string(recv_status.type));
+                    break;
+                }
+                else
                 {
                     if (recv_bytes.size() != remaining_span.size())
                     {
@@ -690,7 +668,7 @@ namespace rpc::tcp
                             {
                                 set_status(transport_status::DISCONNECTING);
                             }
-                            service->get_scheduler()->spawn(responder_close_task(tracker, prefix.version));
+                            service->spawn(responder_close_task(tracker, prefix.version));
                         }
                         else if (payload.payload_fingerprint == rpc::id<close_connection_ack>::get(prefix.version))
                         {
@@ -700,42 +678,35 @@ namespace rpc::tcp
                         }
                         else if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
                         }
                         else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(
-                                stub_handle_send(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(stub_handle_send(tracker, std::move(prefix), std::move(payload)));
                         }
                         else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(
-                                stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
                         }
                         else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(
-                                stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
                         }
                         else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(
-                                stub_handle_release(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(stub_handle_release(tracker, std::move(prefix), std::move(payload)));
                         }
                         else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(
-                                stub_handle_post(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(stub_handle_post(tracker, std::move(prefix), std::move(payload)));
                         }
                         else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(
-                                stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
                         }
                         else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
                         {
-                            service->get_scheduler()->spawn(
-                                stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
+                            service->spawn(stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
                         }
                         else
                         {
@@ -770,21 +741,11 @@ namespace rpc::tcp
                         }
 
                         // Yield to allow spawned tasks to run
-                        CO_AWAIT service->get_scheduler()->schedule();
+                        CO_AWAIT service->schedule();
                         RPC_TRACE("pump_messages: resumed from schedule zone={} status={}",
                             service->get_zone_id().get_subnet(),
                             static_cast<int>(get_status()));
                     }
-                }
-                else if (recv_status == coro::net::recv_status::closed)
-                {
-                    RPC_INFO("tcp transport connection closed for zone {}", service->get_zone_id().get_subnet());
-                    break;
-                }
-                else
-                {
-                    RPC_ERROR("failed invalid received message {}", coro::net::to_string(recv_status));
-                    break;
                 }
             }
         }

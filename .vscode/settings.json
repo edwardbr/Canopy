@@ -106,5 +106,6 @@
         "${workspaceFolder}/.cmake-format.yaml"
     ],
     "protobuf.clangFormat.enabled": true,
-    "protobuf.clangFormat.path": "/usr/bin/clang-format"
+    "protobuf.clangFormat.path": "/usr/bin/clang-format",
+    "git.detectSubmodulesLimit": 50
 }

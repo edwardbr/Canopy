@@ -14,14 +14,15 @@ namespace websocket_demo
         class tcp_stream : public stream
         {
         public:
-            explicit tcp_stream(coro::net::tcp::client&& client);
+            explicit tcp_stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler);
 
             auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
                 -> coro::task<coro::poll_status> override;
 
-            auto recv(std::span<char> buffer) -> std::pair<coro::net::recv_status, std::span<char>> override;
+            auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+                -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
 
-            auto send(std::span<const char> buffer) -> std::pair<coro::net::send_status, std::span<const char>> override;
+            auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
 
             bool is_closed() const override;
 
@@ -32,6 +33,7 @@ namespace websocket_demo
 
         private:
             coro::net::tcp::client client_;
+            std::shared_ptr<coro::scheduler> scheduler_;
             bool closed_{false};
         };
 

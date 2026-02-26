@@ -466,7 +466,7 @@ function(
   target_link_directories(${name}_idl PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET ${name}_idl PROPERTY COMPILE_PDB_NAME ${name}_idl)
 
-  target_link_libraries(${name}_idl PUBLIC rpc::rpc ${CANOPY_FMT_LIB})
+  target_link_libraries(${name}_idl PUBLIC rpc::rpc ${CANOPY_FMT_LIB} ${CANOPY_CORO_RUNTIME} libcoro)
 
   # Link YAS if any YAS format is enabled
   if(generate_yas)

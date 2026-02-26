@@ -96,7 +96,7 @@ cmake --preset Coroutine_Debug
 
 ```cpp
 #ifdef CANOPY_BUILD_COROUTINE
-auto scheduler = coro::io_scheduler::make_shared(...);
+auto scheduler = coro::scheduler::make_unique(...);
 auto service = std::make_shared<rpc::service>("name", zone_id, scheduler);
 #else
 auto service = std::make_shared<rpc::service>("name", zone_id);

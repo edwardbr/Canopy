@@ -31,12 +31,12 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
     std::atomic<uint64_t> zone_gen_ = 0;
 
-    std::shared_ptr<coro::io_scheduler> io_scheduler_;
+    std::shared_ptr<coro::scheduler> io_scheduler_;
     bool error_has_occurred_ = false;
     bool setup_complete_ = false;
 
 public:
-    std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
+    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
     bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return true; }
 
@@ -122,22 +122,15 @@ public:
             std::chrono::milliseconds(100000));
 
         // Start the listener on the peer service
-        auto server_options = coro::net::tcp::server::options{
-            .address = {coro::net::ip_address::from_string("127.0.0.1")}, .port = 8080, .backlog = 128};
-
-        if (!listener_->start_listening(peer_service_, server_options))
+        if (!listener_->start_listening(peer_service_, coro::net::socket_address{"127.0.0.1", 8080}))
         {
             RPC_ERROR("Failed to start TCP listener");
             CO_RETURN false;
         }
 
-        // Create a TCP client and connect to the server
+        // Create a TCP client and connect to the server.
         auto scheduler = root_service_->get_scheduler();
-        coro::net::tcp::client client(scheduler,
-            coro::net::tcp::client::options{
-                .address = {coro::net::ip_address::from_string("127.0.0.1")},
-                .port = 8080,
-            });
+        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8080});
 
         auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
         if (connection_status != coro::net::connect_status::connected)
@@ -169,11 +162,11 @@ public:
     virtual void set_up()
     {
         setup_complete_ = false;
-        io_scheduler_ = coro::io_scheduler::make_shared(
-            coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::manual,
+        io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{
                     .thread_count = 1,
-                }});
+                }}));
 
         auto setup_task = [this]() -> coro::task<void>
         {
@@ -182,7 +175,7 @@ public:
             CO_RETURN;
         };
 
-        io_scheduler_->spawn(setup_task());
+        io_scheduler_->spawn_detached(setup_task());
 
         // Process events until setup completes
         // Note: pump_send_and_receive tasks keep running, so scheduler never empties
@@ -223,7 +216,7 @@ public:
             CO_RETURN;
         };
 
-        RPC_ASSERT(io_scheduler_->spawn(shutdown_task()));
+        RPC_ASSERT(io_scheduler_->spawn_detached(shutdown_task()));
 
         // Process events until shutdown completes
         while (!shutdown_complete)

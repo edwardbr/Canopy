@@ -48,7 +48,7 @@ namespace rpc::spsc
         assert(connection_handler_ || !connection_handler_); // Can be null for client side
 
         // Schedule onto the scheduler
-        // CO_AWAIT service->get_scheduler()->schedule();
+        // CO_AWAIT service->schedule();
 
         pump_send_and_receive();
 
@@ -360,11 +360,10 @@ namespace rpc::spsc
 
         // Schedule both producer and consumer tasks
         auto svc = get_service();
-        auto scheduler = svc->get_scheduler();
         auto tracker = std::shared_ptr<activity_tracker>(
             new activity_tracker{.transport = std::static_pointer_cast<spsc_transport>(self), .svc = svc});
-        scheduler->spawn(receive_consumer_loop(tracker));
-        scheduler->spawn(send_producer_loop(tracker));
+        svc->spawn(receive_consumer_loop(tracker));
+        svc->spawn(send_producer_loop(tracker));
 
         RPC_DEBUG("pump_send_and_receive: scheduled tasks for zone {}", get_zone_id().get_subnet());
     }
@@ -467,7 +466,7 @@ namespace rpc::spsc
 
                         if (!received_any)
                         {
-                            CO_AWAIT svc->get_scheduler()->schedule();
+                            CO_AWAIT svc->schedule();
                         }
                         break;
                     }
@@ -528,8 +527,8 @@ namespace rpc::spsc
                         // }
                         if (!received_any)
                         {
-                            // CO_AWAIT svc->get_scheduler()->yield_for(std::chrono::milliseconds(1));
-                            CO_AWAIT svc->get_scheduler()->schedule();
+                            // CO_AWAIT svc->yield_for(std::chrono::milliseconds(1));
+                            CO_AWAIT svc->schedule();
                         }
                         break;
                     }
@@ -565,49 +564,42 @@ namespace rpc::spsc
                     if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received init_client_channel_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received call_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(
-                            stub_handle_send(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(stub_handle_send(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received post_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(
-                            stub_handle_post(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(stub_handle_post(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received try_cast_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(
-                            stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received addref_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(
-                            stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received release_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(
-                            stub_handle_release(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(stub_handle_release(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received object_released_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(
-                            stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received transport_down_send seq={}", prefix.sequence_number);
-                        get_service()->get_scheduler()->spawn(
-                            stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
+                        get_service()->spawn(stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
                     }
                     else if (payload.payload_fingerprint == rpc::id<close_connection_send>::get(prefix.version))
                     {
@@ -737,7 +729,7 @@ namespace rpc::spsc
             auto status = push_message(send_data);
             if (status == send_queue_status::SEND_QUEUE_EMPTY || status == send_queue_status::SPSC_QUEUE_FULL)
             {
-                CO_AWAIT svc->get_scheduler()->schedule();
+                CO_AWAIT svc->schedule();
             }
         }
 

@@ -12,14 +12,14 @@
 #include <transports/mock_test/transport.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 #endif
 
 // Setup class for passthrough tests - handles both blocking and coroutine modes
 class passthrough_setup
 {
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::io_scheduler> io_scheduler_;
+    std::shared_ptr<coro::scheduler> io_scheduler_;
 #endif
     std::shared_ptr<rpc::service> service_;
     std::shared_ptr<rpc::mock_test::mock_transport> forward_transport_;
@@ -34,7 +34,7 @@ class passthrough_setup
 
 public:
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
+    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
     bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return true; }
@@ -98,13 +98,13 @@ public:
 #ifdef CANOPY_BUILD_COROUTINE
         RPC_INFO("passthrough_setup::set_up - CANOPY_BUILD_COROUTINE mode");
         RPC_INFO("passthrough_setup::set_up - Creating io_scheduler");
-        io_scheduler_ = coro::io_scheduler::make_shared(
-            coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::manual,
+        io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{
                     .thread_count = 1,
-                }});
+                }}));
         RPC_INFO("passthrough_setup::set_up - Spawning CoroSetUp");
-        RPC_ASSERT(io_scheduler_->spawn(check_for_error(CoroSetUp())));
+        RPC_ASSERT(io_scheduler_->spawn_detached(check_for_error(CoroSetUp())));
         RPC_INFO("passthrough_setup::set_up - Processing events until startup complete");
         while (startup_complete_ == false)
         {
@@ -146,7 +146,7 @@ public:
     virtual void tear_down()
     {
 #ifdef CANOPY_BUILD_COROUTINE
-        RPC_ASSERT(io_scheduler_->spawn(CoroTearDown()));
+        RPC_ASSERT(io_scheduler_->spawn_detached(CoroTearDown()));
         while (shutdown_complete_ == false)
         {
             io_scheduler_->process_events(std::chrono::milliseconds(1));

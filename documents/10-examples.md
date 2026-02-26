@@ -97,25 +97,25 @@ public:
 
 ```cpp
 #include "calculator_impl.h"
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 #include <thread>
 
 class coro_server
 {
     std::shared_ptr<rpc::service> service_;
     rpc::shared_ptr<calculator::v1::i_calculator> calculator_;
-    std::shared_ptr<coro::io_scheduler> scheduler_;
+    std::shared_ptr<coro::scheduler> scheduler_;
 
 public:
     void start()
     {
-        scheduler_ = coro::io_scheduler::make_shared(
-            coro::io_scheduler::options{
-                .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+        scheduler_ = coro::scheduler::make_unique(
+            coro::scheduler::options{
+                .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
                 .pool = coro::thread_pool::options{
                     .thread_count = std::thread::hardware_concurrency(),
                 },
-                .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool
+                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool
             });
 
         service_ = std::make_shared<rpc::service>(

@@ -23,10 +23,12 @@ namespace websocket_demo
                 = 0;
 
             // Receive data into buffer
-            virtual auto recv(std::span<char> buffer) -> std::pair<coro::net::recv_status, std::span<char>> = 0;
+            virtual auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+                -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+                = 0;
 
-            // Send data from buffer
-            virtual auto send(std::span<const char> buffer) -> std::pair<coro::net::send_status, std::span<const char>> = 0;
+            // Send data from buffer (synchronous — must remain non-coroutine for wslay callbacks)
+            virtual auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> = 0;
 
             // Check if connection is closed
             virtual bool is_closed() const = 0;

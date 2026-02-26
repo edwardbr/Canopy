@@ -81,8 +81,7 @@ namespace websocket_demo
             return loaded_model_;
         }
 
-        websocket_service::websocket_service(
-            std::string name, rpc::zone zone_id, std::shared_ptr<coro::io_scheduler> scheduler)
+        websocket_service::websocket_service(std::string name, rpc::zone zone_id, std::shared_ptr<coro::scheduler> scheduler)
             : rpc::service(name.data(), zone_id, std::move(scheduler))
         {
         }

@@ -21,7 +21,7 @@
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class inproc_setup
 {
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::io_scheduler> io_scheduler_;
+    std::shared_ptr<coro::scheduler> io_scheduler_;
 #endif
     std::shared_ptr<rpc::service> root_service_;
     std::shared_ptr<rpc::child_service> child_service_;
@@ -43,7 +43,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
 public:
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
+    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
     bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return true; }
@@ -124,13 +124,13 @@ public:
     {
 
 #ifdef CANOPY_BUILD_COROUTINE
-        io_scheduler_ = coro::io_scheduler::make_shared(
-            coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::manual,
+        io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{
                     .thread_count = 1,
-                }});
+                }}));
 
-        RPC_ASSERT(io_scheduler_->spawn(check_for_error(CoroSetUp())));
+        RPC_ASSERT(io_scheduler_->spawn_detached(check_for_error(CoroSetUp())));
         while (startup_complete_ == false)
         {
             io_scheduler_->process_events(std::chrono::milliseconds(1));
@@ -170,7 +170,7 @@ public:
     virtual void tear_down()
     {
 #ifdef CANOPY_BUILD_COROUTINE
-        RPC_ASSERT(io_scheduler_->spawn(CoroTearDown()));
+        RPC_ASSERT(io_scheduler_->spawn_detached(CoroTearDown()));
         // Process events until CoroTearDown completes and all scheduled cleanup tasks finish
         // Note: We can't reliably wait for child_service_weak_ to be null because cleanup
         // operations are async and may have complex reference patterns in nested hierarchies

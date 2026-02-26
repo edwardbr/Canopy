@@ -51,7 +51,7 @@
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 #endif
 
 namespace rpc
@@ -139,7 +139,7 @@ namespace rpc
         std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_;
 
 #ifdef CANOPY_BUILD_COROUTINE
-        std::shared_ptr<coro::io_scheduler> io_scheduler_;
+        std::shared_ptr<coro::scheduler> io_scheduler_;
 #endif
 
         std::shared_ptr<rpc::event> on_shutdown_;
@@ -179,9 +179,9 @@ namespace rpc
 
     public:
 #ifdef CANOPY_BUILD_COROUTINE
-        explicit service(const char* name, zone zone_id, const std::shared_ptr<coro::io_scheduler>& scheduler);
+        explicit service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler);
         explicit service(
-            const char* name, zone zone_id, const std::shared_ptr<coro::io_scheduler>& scheduler, child_service_tag);
+            const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler, child_service_tag);
 #else
         explicit service(const char* name, zone zone_id);
         explicit service(const char* name, zone zone_id, child_service_tag);
@@ -221,10 +221,12 @@ namespace rpc
             return io_scheduler_->schedule(std::forward<Callable>(callable));
         }
 
+        coro::scheduler::schedule_operation schedule() { return io_scheduler_->schedule(); }
+
         bool spawn(coro::task<void>&& callable)
         {
             // Forwards the lambda (or any other callable) to the real scheduler
-            return io_scheduler_->spawn(std::forward<coro::task<void>>(callable));
+            return io_scheduler_->spawn_detached(std::forward<coro::task<void>>(callable));
         }
         auto get_scheduler() const { return io_scheduler_; }
 
@@ -810,7 +812,7 @@ namespace rpc
         explicit child_service(const char* name,
             zone zone_id,
             destination_zone parent_zone_id,
-            const std::shared_ptr<coro::io_scheduler>& io_scheduler)
+            const std::shared_ptr<coro::scheduler>& io_scheduler)
             : service(name, zone_id, io_scheduler, child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
@@ -843,7 +845,7 @@ namespace rpc
                 const std::shared_ptr<rpc::child_service>&)>&& fn
 #ifdef CANOPY_BUILD_COROUTINE
             ,
-            const std::shared_ptr<coro::io_scheduler>& io_scheduler
+            const std::shared_ptr<coro::scheduler>& io_scheduler
 #endif
         )
         {

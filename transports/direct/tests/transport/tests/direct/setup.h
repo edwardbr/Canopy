@@ -28,7 +28,7 @@ template<bool UseHostInChild> class in_memory_setup
     std::atomic<uint64_t> zone_gen_ = 0;
 
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::io_scheduler> io_scheduler_;
+    std::shared_ptr<coro::scheduler> io_scheduler_;
 #endif
     bool error_has_occurred_ = false;
 
@@ -45,7 +45,7 @@ public:
     bool get_use_host_in_child() const { return use_host_in_child_; }
 
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::io_scheduler> get_scheduler() const { return io_scheduler_; }
+    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
     bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return false; }
@@ -63,11 +63,11 @@ public:
     virtual void set_up()
     {
 #ifdef CANOPY_BUILD_COROUTINE
-        io_scheduler_ = coro::io_scheduler::make_shared(
-            coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::manual,
+        io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{
                     .thread_count = 1,
-                }});
+                }}));
 #endif
         zone_gen = &zone_gen_;
 #ifdef CANOPY_USE_TELEMETRY

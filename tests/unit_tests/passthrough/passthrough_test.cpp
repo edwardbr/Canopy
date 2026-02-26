@@ -93,7 +93,7 @@ void run_passthrough_test(TestFixture& test_fixture, CoroFunc&& coro_function)
         CO_RETURN result;
     };
 
-    RPC_ASSERT(lib.get_scheduler()->spawn(lib.check_for_error(wrapper_function())));
+    RPC_ASSERT(lib.get_scheduler()->spawn_detached(lib.check_for_error(wrapper_function())));
 
     while (!is_ready)
     {
