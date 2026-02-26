@@ -139,10 +139,10 @@ This eliminates all the `.get_subnet()` boilerplate in `transports/tcp/src/trans
 When multiple nodes run on the same physical machine (same `routing_prefix`), the `subnet_id` space must be divided. This is configured via CLI:
 
 ```
---subnet-base=0x10000 --subnet-range=0xFFFF
+-4 --routing-prefix 192.168.1.1 --subnet-base=0x10000 --subnet-range=0xFFFF
 ```
 
-The `zone_address_allocator` respects these bounds:
+The `routing_prefix_` stored in the allocator is the converted uint64_t value (see section 8 for the IPv4→IPv6 conversion rule). The `zone_address_allocator` respects these bounds:
 ```cpp
 class zone_address_allocator
 {
@@ -184,23 +184,190 @@ For backward compatibility, the default allocator uses `routing_prefix=0`, `subn
 
 **Tests**: In the default configuration (routing_prefix=0), `zone{++zone_gen}` continues to work. The `zone_address` stores `{0, N, 0}` where N is the sequential counter. All 29 zones in complex topology tests work unchanged.
 
-**Demos**: Add CLI options for IPv6-mode configuration:
-- `--routing-prefix <hex>` (default: 0, meaning local-only)
-- `--subnet-base <int>` (default: 0)
-- `--subnet-range <int>` (default: 0xFFFFFFFF)
-- Uses `args.hxx` (already used in fuzz_test_main.cpp)
+**Demos**: Add CLI options for network-mode configuration. All demo binaries use `args.hxx` (already used in `fuzz_test_main.cpp`; `websocket_server` requires migration from manual parsing first).
 
-### 9. Migration Phases
+Address-family flag — mutually exclusive, controls how `--routing-prefix` is parsed:
+
+| Flag | Meaning |
+|------|---------|
+| `-4` | `--routing-prefix` is an IPv4 address in dotted-decimal notation (`a.b.c.d`) |
+| `-6` | `--routing-prefix` is an IPv6 address in colon-hex notation (`2001:db8::1`) |
+| *(neither)* | Local-only mode: `routing_prefix=0`, inter-node routing disabled |
+
+Routing and subnet options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--routing-prefix <addr>` | `0` | This node's network address. Format determined by `-4`/`-6` (see conversion below). |
+| `--subnet-base <int>` | `0` | First `subnet_id` allocated by this process. |
+| `--subnet-range <int>` | `0xFFFFFFFF` | Number of `subnet_id` values reserved for this process. |
+
+**IPv4 → `routing_prefix` conversion** (6to4-inspired, RFC 3056):
+
+```
+routing_prefix = 0x2002 << 48 | (uint64_t)ipv4_addr << 16
+```
+
+For example `192.168.1.1` (`0xC0A80101`):
+
+```
+routing_prefix = 0x2002C0A801010000
+```
+
+The `0x2002` well-known prefix occupies bits 63–48, the 32-bit IPv4 address occupies bits 47–16, and bits 15–0 are zero (available for future site-subnet use). This encoding is unambiguous, reversible, and avoids collision with the all-zeros local prefix.
+
+**IPv6 → `routing_prefix`**: the first 64 bits of the address are taken directly as the routing prefix (equivalent to a /64 network prefix).
+
+Telemetry options (consistent with `test_host/main.cpp`):
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--telemetry-console` | off | Enable console telemetry output |
+| `--console-path <path>` | `telemetry/reports/` | Telemetry report output directory |
+
+**Comprehensive transport demos** (`demos/comprehensive/src/transport/`) currently hardcode all zone IDs and network parameters. Each must be updated to accept the CLI options above and delegate to the network args library (see section 9):
+
+| Demo | Current zone strategy | Change required |
+|------|-----------------------|-----------------|
+| `local_transport_demo` | `std::atomic<uint64_t> zone_gen{0}`, `++zone_gen` | Replace with `allocator.allocate_zone()` |
+| `spsc_transport_demo` | Fixed: `zone{1}`, `zone{2}` | Replace with allocator; add `main(int argc, char* argv[])` |
+| `tcp_transport_demo` | Server `zone{1}`, client `zone{100+}`; port/host hardcoded | Replace zones with allocator; expose `--port`/`--host` |
+| `benchmark` | Same split-range pattern as TCP demo | Replace zones with allocator; expose `--port` |
+
+### 9. Network Arguments Library
+
+All binaries that need to interpret the address-family options and populate a `zone_address_allocator` should link a shared helper library rather than duplicate the parsing logic. This keeps `args.hxx` boilerplate and the IPv4→IPv6 conversion in one place.
+
+**Location:** `subcomponents/network_config/`
+
+**CMake target:** `canopy_network_config` (static library)
+
+**Public API** (`subcomponents/network_config/include/canopy/network_config/network_args.h`):
+
+```cpp
+namespace canopy::network_config {
+
+struct network_config
+{
+    uint64_t routing_prefix = 0;    // converted uint64_t, ready for zone_address_allocator
+    uint32_t subnet_base    = 0;
+    uint32_t subnet_range   = 0xFFFFFFFFu;
+};
+
+// Add the address-family group and routing/subnet args to an existing ArgumentParser.
+// Call this before parser.ParseCLI(argc, argv).
+void add_network_args(args::ArgumentParser& parser);
+
+// Extract a network_config from a parser that was populated by add_network_args().
+// Throws std::invalid_argument on bad address format.
+network_config get_network_config(const args::ArgumentParser& parser);
+
+// Convenience: parse and return in one step.
+network_config parse_network_args(int argc, char* argv[], args::ArgumentParser& parser);
+
+// Low-level converters (also useful in tests).
+uint64_t ipv4_to_routing_prefix(const std::string& dotted_decimal);  // 6to4 mapping
+uint64_t ipv6_to_routing_prefix(const std::string& colon_hex);       // first 64 bits
+
+// Auto-detect the best routing prefix from the host's network interfaces.
+// Selection priority:
+//   1. First globally-routable unicast IPv6 address (non-link-local, non-loopback)
+//   2. First public IPv4 address (not 10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x)
+//   3. First private IPv4 address (RFC 1918)
+//   4. Returns 0 if no usable address is found (local-only mode)
+uint64_t detect_routing_prefix();
+
+}
+```
+
+**`add_network_args` registers:**
+
+```
+-4, -6                  mutually exclusive group (address family)
+--routing-prefix <addr> address in dotted-decimal (IPv4) or colon-hex (IPv6) format;
+                        if omitted, detect_routing_prefix() selects the best interface address
+--subnet-base <int>
+--subnet-range <int>
+--telemetry-console
+--console-path <path>
+```
+
+**Routing prefix auto-detection** (`detect_routing_prefix()`):
+
+When `--routing-prefix` is not provided, the library enumerates the host's network interfaces using POSIX `getifaddrs()` (Linux/macOS) and selects an address using the following priority:
+
+| Priority | Criterion |
+|----------|-----------|
+| 1 | Globally-routable unicast IPv6 (non-link-local `fe80::/10`, non-loopback `::1`) |
+| 2 | Public IPv4 (not loopback `127.x`, link-local `169.254.x`, or RFC 1918 private ranges) |
+| 3 | Private IPv4 (RFC 1918: `10.x`, `172.16-31.x`, `192.168.x`) |
+| 4 | Returns `0` — local-only mode, no routing prefix |
+
+The address-family flag (`-4`/`-6`) constrains which address families are considered during auto-detection when `--routing-prefix` is absent. If neither flag is given, IPv6 is tried first, then IPv4.
+
+The selected address is converted to a `routing_prefix` using the same rules as explicit `--routing-prefix` (6to4 mapping for IPv4, first 64 bits for IPv6).
+
+**Usage pattern in a demo `main()`:**
+
+```cpp
+#include <canopy/cli/network_args.h>
+#include <args.hxx>
+
+int main(int argc, char* argv[])
+{
+    args::ArgumentParser parser("TCP Transport Demo");
+    canopy::network_config::add_network_args(parser);
+    // add any demo-specific args here ...
+
+    try { parser.ParseCLI(argc, argv); }
+    catch (args::Help&)          { std::cout << parser; return 0; }
+    catch (args::ParseError& e)  { std::cerr << e.what() << "\n" << parser; return 1; }
+
+    // If --routing-prefix was not supplied, get_network_config() calls
+    // detect_routing_prefix() automatically to select the best interface address.
+    auto cfg       = canopy::network_config::get_network_config(parser);
+    auto allocator = canopy::network_config::make_allocator(cfg);
+
+    auto service = std::make_shared<rpc::service>("server", allocator.allocate_zone(), scheduler);
+    // ...
+}
+```
+
+**Files** (already implemented in `subcomponents/network_config/`):
+
+```
+subcomponents/network_config/
+  CMakeLists.txt
+  include/canopy/network_config/zone_address_allocator.h
+  include/canopy/network_config/network_args.h
+  src/network_args.cpp           ← CLI parsing, conversion, get_network_config()
+  src/network_auto_detect.cpp    ← detect_routing_prefix() via getifaddrs()
+```
+
+**Dependencies:** `args` (INTERFACE target from `submodules/args`), `rpc_types_idl`.
+
+**Consumers** — every binary that creates a `zone_address_allocator` links `canopy_network_config`:
+
+| Binary | Location | Notes |
+|--------|----------|-------|
+| `local_transport_demo` | `demos/comprehensive/src/transport/` | Replace `zone_gen` atomic counter |
+| `spsc_transport_demo` | `demos/comprehensive/src/transport/` | Replace fixed `zone{1}`/`zone{2}` |
+| `tcp_transport_demo` | `demos/comprehensive/src/transport/` | Replace split-range zone IDs; also expose `--port`/`--host` |
+| `benchmark` | `demos/comprehensive/src/transport/` | Same as tcp_transport_demo |
+| `websocket_server` | `demos/websocket/server/` | Migrate from manual arg parsing to `args.hxx` first |
+| `rpc_test` | `tests/test_host/main.cpp` | Already uses `args.hxx`; add `add_network_args()` call |
+
+### 10. Migration Phases
 
 | Phase | Scope | Breaking? |
 |-------|-------|-----------|
 | **1** | Define `zone_address` in IDL. Change zone types to use it internally. Keep `get_subnet()`. Keep i_marshaller signatures unchanged. | No - `zone{uint64_t}` still works |
 | **2** | Update wire protocol IDLs to use typed fields. Remove `.get_subnet()` boilerplate in transport code. | Wire format change (version bump) |
 | **3** | Merge `object` into `destination_zone` in i_marshaller. Simplify `interface_descriptor`. | API change |
-| **4** | Add `zone_address_allocator`, CLI options, multi-node subnet division. | No |
+| **4** | Add `zone_address_allocator`, `canopy_network_config` library, CLI options with auto-detection of routing prefix, multi-node subnet division. | No |
 | **5** | CMake-configurable packed representations, prefix-length-based routing (future) | No |
 
-### 10. Files to Modify
+### 11. Files to Modify
 
 **Phase 1** (zone_address introduction):
 - `rpc/interfaces/rpc/rpc_types.idl` - Add `zone_address` struct, change zone types' internal storage
@@ -226,10 +393,15 @@ For backward compatibility, the default allocator uses `routing_prefix=0`, `subn
 
 **Phase 4** (allocator + CLI):
 - `rpc/src/service.cpp` - Allocator-based zone generation
-- Demo main files - CLI argument additions
-- Test fixture files - Optional allocator support
+- `subcomponents/network_config/` - `canopy_network_config` static library (see section 9, already implemented)
+- `demos/comprehensive/src/transport/local_transport_demo.cpp` - Use `canopy_network_config`
+- `demos/comprehensive/src/transport/spsc_transport_demo.cpp` - Use `canopy_network_config`
+- `demos/comprehensive/src/transport/tcp_transport_demo.cpp` - Use `canopy_network_config`
+- `demos/comprehensive/src/transport/benchmark.cpp` - Use `canopy_network_config`
+- `demos/websocket/server/server.cpp` - Migrate to args.hxx, use `canopy_network_config`
+- `tests/test_host/main.cpp` - Add `add_network_args()` call
 
-### 11. Risks and Gotchas
+### 12. Risks and Gotchas
 
 - **Transport/proxy map lookup**: Must compare by zone portion only (ignoring object_id) when looking up transports. If `destination_zone` carries object_id, naive map lookup would fail to find the transport.
 - **`requesting_zone` routing bug** (canopy-a8i): Orthogonal to this refactor but implementers should be aware of the interaction.

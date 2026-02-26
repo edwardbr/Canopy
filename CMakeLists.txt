@@ -63,6 +63,7 @@ add_subdirectory(telemetry)
 add_subdirectory(rpc)
 add_subdirectory(transports)
 add_subdirectory(types)
+add_subdirectory(subcomponents/network_config)
 
 if(CANOPY_BUILD_TEST)
   add_subdirectory(tests)
