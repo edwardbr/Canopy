@@ -183,7 +183,7 @@ Create `src/main.cpp`:
 #include <chrono>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 #endif
 
 using namespace calculator;
@@ -283,7 +283,7 @@ This tutorial extends the calculator to support two zones communicating via the 
 #include <atomic>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 #endif
 
 using namespace calculator;
@@ -383,7 +383,7 @@ cmake --preset Coroutine_Debug -DCMAKE_BUILD_TYPE=Debug
 #include "calculator_impl.h"
 #include <iostream>
 #include <memory>
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 
 using namespace calculator;
 
@@ -392,13 +392,13 @@ int main()
     std::cout << "Coroutine Calculator Demo\n";
 
     // Create IO scheduler for coroutines
-    auto scheduler = coro::io_scheduler::make_shared(
-        coro::io_scheduler::options{
-            .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+    auto scheduler = coro::scheduler::make_unique(
+        coro::scheduler::options{
+            .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{
                 .thread_count = std::thread::hardware_concurrency(),
             },
-            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool
         });
 
     // Create service with scheduler

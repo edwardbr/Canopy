@@ -39,7 +39,7 @@
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 #endif
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

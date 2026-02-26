@@ -46,9 +46,7 @@ namespace rpc::tcp
          * @param timeout Timeout for TCP operations
          * @param server_options Options for configuring the TCP server (address, port, SSL, etc.)
          */
-        listener(connection_handler handler,
-            std::chrono::milliseconds timeout,
-            coro::net::tcp::server::options server_options = {})
+        listener(connection_handler handler, std::chrono::milliseconds timeout)
             : timeout_(timeout)
             , connection_handler_(handler)
         {
@@ -65,10 +63,12 @@ namespace rpc::tcp
          * @param service The RPC service to attach incoming connections to
          * @return true if listening started successfully, false otherwise
          */
-        bool start_listening(std::shared_ptr<rpc::service> service, coro::net::tcp::server::options server_options = {})
+        bool start_listening(std::shared_ptr<rpc::service> service,
+            const coro::net::socket_address& endpoint,
+            coro::net::tcp::server::options opts = {})
         {
             service_ = service;
-            server_ = std::make_shared<coro::net::tcp::server>(service->get_scheduler(), server_options);
+            server_ = std::make_shared<coro::net::tcp::server>(service->get_scheduler(), endpoint, opts);
             return service->spawn(run_listener(service));
         }
 
@@ -95,7 +95,7 @@ namespace rpc::tcp
          */
         CORO_TASK(void) run_client(std::shared_ptr<rpc::service> service, coro::net::tcp::client client)
         {
-            assert(client.socket().is_valid());
+            assert(client.socket().is_ok());
 
             // Create a transport for this incoming connection
             // We don't know the remote zone ID yet - it will be provided in the handshake
@@ -133,32 +133,27 @@ namespace rpc::tcp
 
             while (!stop_)
             {
-                // Wait for an incoming connection and accept it
-                auto poll_status = CO_AWAIT server_->poll(poll_timeout_);
-                if (poll_status == coro::poll_status::timeout)
-                {
-                    continue; // No connection yet, keep waiting
-                }
-                if (poll_status != coro::poll_status::event)
-                {
-                    RPC_ERROR("failed run_listener poll_status = {}", static_cast<int>(poll_status));
-                    break; // Handle error, see poll_status for detailed error states
-                }
-
                 // Accept the incoming client connection
-                auto client = server_->accept();
-
-                // Verify the incoming connection was accepted correctly
-                if (!client.socket().is_valid())
+                auto client = co_await server_->accept(poll_timeout_);
+                if (client)
                 {
-                    RPC_ERROR("failed run_listener client is_valid");
-                    break; // Handle error
+                    RPC_DEBUG("Accepted TCP connection, scheduling run_client");
+                    service->spawn(run_client(service, std::move(*client)));
                 }
-
-                RPC_DEBUG("Accepted TCP connection, scheduling run_client");
-
-                // Schedule the client handler
-                service->spawn(run_client(service, std::move(client)));
+                else if (client.error().is_timeout())
+                {
+                    // Poll window elapsed with no new connection — keep waiting
+                    continue;
+                }
+                else
+                {
+                    // Actual socket error (closed, etc.)
+                    if (!stop_)
+                    {
+                        RPC_ERROR("run_listener: accept error");
+                    }
+                    break;
+                }
             }
 
             stop_confirmation_evt_.set();

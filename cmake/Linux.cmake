@@ -234,6 +234,6 @@ endif()
 # ######################################################################################################################
 # Final Library List
 # ######################################################################################################################
-set(CANOPY_LIBRARIES ${CANOPY_SHARED_LIBRARIES})
+set(CANOPY_LIBRARIES ${CANOPY_SHARED_LIBRARIES} ${CANOPY_CORO_RUNTIME})
 
 message(STATUS "Linux platform support configured successfully")

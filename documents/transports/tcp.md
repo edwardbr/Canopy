@@ -51,13 +51,13 @@ listener->start_listening(peer_service_, server_options);
 ## Client Connection
 
 ```cpp
-auto scheduler = coro::io_scheduler::make_shared(
-    coro::io_scheduler::options{
-        .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+auto scheduler = coro::scheduler::make_unique(
+    coro::scheduler::options{
+        .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
         .pool = coro::thread_pool::options{
             .thread_count = std::thread::hardware_concurrency(),
         },
-        .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool
+        .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool
     });
 
 coro::net::tcp::client client(scheduler,

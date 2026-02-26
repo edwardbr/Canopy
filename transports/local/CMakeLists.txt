@@ -41,10 +41,6 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE ${CANOPY_INCLUDES})
 
-if(CANOPY_BUILD_COROUTINE)
-  set(CORO_RUNTIME libcoro)
-endif()
-
 target_link_libraries(transport_local PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 target_compile_options(transport_local PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

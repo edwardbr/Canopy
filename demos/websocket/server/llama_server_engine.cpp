@@ -101,7 +101,7 @@ namespace secret_llama
                 std::string content;
             };
             std::list<chat_message> msg_strs_;
-            bool use_jinja_ = false;
+            bool use_jinja_ = true;
             int prev_len_ = 0;
 
             std::vector<char> formatted_;

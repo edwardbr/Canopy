@@ -17,7 +17,7 @@ rpc::service(const char* name, rpc::zone zone_id);
 
 // Coroutine mode
 rpc::service(const char* name, rpc::zone zone_id,
-             std::shared_ptr<coro::io_scheduler> scheduler);
+             std::shared_ptr<coro::scheduler> scheduler);
 ```
 
 ### Zone and Object Management

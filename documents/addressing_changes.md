@@ -514,7 +514,7 @@ Flow Control	Managed by OS (TCP Window).	You must handle packet loss/ordering (o
 5. Integration with libcoro
 Because libcoro uses an io_scheduler, the best way to integrate this is to:
 
-Create a coro::io_scheduler.
+Create a coro::scheduler.
 
 Assign the tun_fd to a pollable task.
 

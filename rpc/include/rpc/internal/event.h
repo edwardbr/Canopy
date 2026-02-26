@@ -5,7 +5,7 @@
 #pragma once
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/io_scheduler.hpp>
+#include <coro/scheduler.hpp>
 #else
 #include <mutex>
 #include <condition_variable>

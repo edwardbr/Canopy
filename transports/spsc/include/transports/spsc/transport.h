@@ -67,7 +67,7 @@ namespace rpc::spsc
         {
             std::shared_ptr<spsc_transport> transport;
             std::shared_ptr<rpc::service> svc; // kept here to keep the service alive
-            ~activity_tracker() { svc->get_scheduler()->spawn(transport->cleanup(transport, svc)); }
+            ~activity_tracker() { svc->spawn(transport->cleanup(transport, svc)); }
         };
 
         spsc_transport(std::string name,

@@ -58,7 +58,7 @@ namespace comprehensive
 
 #ifdef CANOPY_BUILD_COROUTINE
         CORO_TASK(bool)
-        run_tcp_server(std::shared_ptr<coro::io_scheduler> scheduler,
+        run_tcp_server(std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
             const rpc::event& client_finished,
             const canopy::network_config::network_config& cfg)
@@ -111,14 +111,12 @@ namespace comprehensive
                 },
                 std::chrono::milliseconds(100000));
 
-            auto server_options = coro::net::tcp::server::options{
-                .address = coro::net::ip_address::from_string(host,
-                    cfg.host_family == canopy::network_config::ip_address_family::ipv6 ? coro::net::domain_t::ipv6
-                                                                                       : coro::net::domain_t::ipv4),
-                .port = port,
-                .backlog = 10};
+            const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+                                    ? coro::net::domain_t::ipv6
+                                    : coro::net::domain_t::ipv4;
 
-            if (!listener->start_listening(service, server_options))
+            if (!listener->start_listening(
+                    service, coro::net::socket_address{coro::net::ip_address::from_string(host, domain), port}))
             {
                 RPC_ERROR("Server: Failed to start listening");
                 CO_RETURN false;
@@ -146,7 +144,7 @@ namespace comprehensive
         }
 
         CORO_TASK(bool)
-        run_tcp_client(std::shared_ptr<coro::io_scheduler> scheduler,
+        run_tcp_client(std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
             rpc::event& client_finished,
             const canopy::network_config::network_config& cfg)
@@ -174,12 +172,11 @@ namespace comprehensive
                 RPC_INFO("Client: Connecting to {}:{}...", host, port);
 
                 // Create TCP client.
+                const auto client_domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+                                               ? coro::net::domain_t::ipv6
+                                               : coro::net::domain_t::ipv4;
                 coro::net::tcp::client client(scheduler,
-                    coro::net::tcp::client::options{.address = coro::net::ip_address::from_string(host,
-                                                        cfg.host_family == canopy::network_config::ip_address_family::ipv6
-                                                            ? coro::net::domain_t::ipv6
-                                                            : coro::net::domain_t::ipv4),
-                        .port = port});
+                    coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
 
                 auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
                 if (connection_status != coro::net::connect_status::connected)
@@ -197,9 +194,6 @@ namespace comprehensive
                     std::chrono::milliseconds(100000),
                     std::move(client),
                     nullptr);
-
-                // Start the pump before connect_to_zone.
-                client_service->spawn(client_transport->pump_send_and_receive());
 
                 RPC_INFO("Client: Starting RPC connection...");
 
@@ -338,15 +332,15 @@ int main(int argc, char* argv[])
     return 1;
 #else
 
-    auto scheduler_1 = coro::io_scheduler::make_shared(
-        coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+    auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{.thread_count = 4},
-            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-    auto scheduler_2 = coro::io_scheduler::make_shared(
-        coro::io_scheduler::options{.thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+    auto scheduler_2 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{.thread_count = 4},
-            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
     for (int i = 0; i < 100; i++)
     {

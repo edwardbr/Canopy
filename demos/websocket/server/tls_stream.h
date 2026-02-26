@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// tls_stream.h - TLS stream wrapper using OpenSSL
+// tls_stream.h - TLS stream wrapper using OpenSSL memory BIOs
 #pragma once
 
 #include "stream.h"
@@ -9,6 +9,7 @@
 #include <openssl/err.h>
 #include <memory>
 #include <string>
+#include <array>
 
 namespace websocket_demo
 {
@@ -33,11 +34,12 @@ namespace websocket_demo
             SSL_CTX* ctx_{nullptr};
         };
 
-        // TLS stream that wraps a TCP connection
+        // TLS stream that wraps any stream using OpenSSL memory BIOs.
+        // Has no knowledge of sockets — all I/O is delegated to the underlying stream.
         class tls_stream : public stream
         {
         public:
-            tls_stream(coro::net::tcp::client&& client, std::shared_ptr<tls_context> tls_ctx);
+            tls_stream(std::shared_ptr<stream> underlying, std::shared_ptr<tls_context> tls_ctx);
             ~tls_stream();
 
             // Non-copyable
@@ -51,23 +53,30 @@ namespace websocket_demo
             auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
                 -> coro::task<coro::poll_status> override;
 
-            auto recv(std::span<char> buffer) -> std::pair<coro::net::recv_status, std::span<char>> override;
+            auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+                -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
 
-            auto send(std::span<const char> buffer) -> std::pair<coro::net::send_status, std::span<const char>> override;
+            auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
 
             bool is_closed() const override { return closed_; }
 
             void set_closed() override { closed_ = true; }
 
         private:
-            coro::net::tcp::client client_;
+            std::shared_ptr<stream> underlying_;
             std::shared_ptr<tls_context> tls_ctx_;
             SSL* ssl_{nullptr};
+            BIO* rbio_{nullptr}; // network → SSL (we write raw bytes here)
+            BIO* wbio_{nullptr}; // SSL → network (we drain this to underlying_->send)
             bool closed_{false};
             bool handshake_complete_{false};
 
-            // Handle SSL errors and determine if we need to retry
-            coro::poll_op get_poll_op_for_ssl_error(int ssl_error);
+            // Read raw bytes from underlying stream and feed them into rbio.
+            auto feed_rbio(std::chrono::milliseconds timeout) -> coro::task<bool>;
+
+            // Drain any pending SSL output from wbio to the underlying stream.
+            // Returns false if the underlying stream errored.
+            bool flush_wbio();
         };
 
     } // namespace websocket_demo

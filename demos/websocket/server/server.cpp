@@ -19,7 +19,7 @@
 auto handle_client(coro::net::tcp::client client, std::shared_ptr<websocket_demo::v1::websocket_service> service)
     -> coro::task<void>
 {
-    auto stream = std::make_shared<websocket_demo::v1::tcp_stream>(std::move(client));
+    auto stream = std::make_shared<websocket_demo::v1::tcp_stream>(std::move(client), service->get_scheduler());
     websocket_demo::v1::http_client_connection connection(stream, service);
     co_await connection.handle();
     co_return;
@@ -30,7 +30,8 @@ auto handle_tls_client(coro::net::tcp::client client,
     std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx,
     std::shared_ptr<websocket_demo::v1::websocket_service> service) -> coro::task<void>
 {
-    auto stream = std::make_shared<websocket_demo::v1::tls_stream>(std::move(client), tls_ctx);
+    auto tcp = std::make_shared<websocket_demo::v1::tcp_stream>(std::move(client), service->get_scheduler());
+    auto stream = std::make_shared<websocket_demo::v1::tls_stream>(tcp, tls_ctx);
 
     // Perform TLS handshake
     bool handshake_ok = co_await stream->handshake();
@@ -158,17 +159,19 @@ auto main(int argc, char* argv[]) -> int
     // to the closed socket would normally generate SIGPIPE and terminate the process.
     std::signal(SIGPIPE, SIG_IGN);
 
-    auto scheduler = coro::io_scheduler::make_shared(
-        coro::io_scheduler::options{
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{
             // The scheduler will spawn a dedicated event processing thread.  This is the default, but
             // it is possible to use 'manual' and call 'process_events()' to drive the scheduler yourself.
-            .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             // If the scheduler is in spawn mode this functor is called upon starting the dedicated
             // event processor thread.
-            .on_io_thread_start_functor = [] { RPC_DEBUG("process event thread start");},
+            .on_io_thread_start_functor = [] {
+        RPC_DEBUG("process event thread start");},
             // If the scheduler is in spawn mode this functor is called upon stopping the dedicated
             // event process thread.
-            .on_io_thread_stop_functor = []{ RPC_DEBUG("io_scheduler::process event thread stop");},
+            .on_io_thread_stop_functor = []{
+        RPC_DEBUG("io_scheduler::process event thread stop");},
             // The io scheduler can use a coro::thread_pool to process the events or tasks it is given.
             // You can use an execution strategy of `process_tasks_inline` to have the event loop thread
             // directly process the tasks, this might be desirable for small tasks vs a thread pool for large tasks.
@@ -176,24 +179,26 @@ auto main(int argc, char* argv[]) -> int
                 coro::thread_pool::options{
                     .thread_count            = std::thread::hardware_concurrency(),
                     .on_thread_start_functor = [](size_t i)
-                    { RPC_DEBUG("io_scheduler::thread_pool worker {} starting", i); },
+                    {
+        RPC_DEBUG("io_scheduler::thread_pool worker {} starting", i); },
                     .on_thread_stop_functor = [](size_t i)
-                    { RPC_DEBUG("io_scheduler::thread_pool worker {} stopping", i); },
+                    {
+        RPC_DEBUG("io_scheduler::thread_pool worker {} stopping", i); },
                 },
-            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_on_thread_pool});
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
     std::atomic<uint64_t> zone_gen = 0;
     auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", rpc::zone{++zone_gen}, scheduler);
     root_service->generate_new_zone_id();
     // auto demo = websocket_demo::v1::create_websocket_demo_instance();
 
-    auto make_websocket_server = [](std::shared_ptr<coro::io_scheduler> scheduler,
+    auto make_websocket_server = [](std::shared_ptr<coro::scheduler> scheduler,
                                      std::shared_ptr<websocket_demo::v1::websocket_service> service,
                                      std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx,
                                      uint16_t port) -> coro::task<void>
     {
         co_await scheduler->schedule();
-        coro::net::tcp::server server{scheduler, coro::net::tcp::server::options{.port = port}};
+        coro::net::tcp::server server{scheduler, coro::net::socket_address{"0.0.0.0", port}};
 
         if (tls_ctx)
         {
@@ -206,32 +211,23 @@ auto main(int argc, char* argv[]) -> int
 
         while (true)
         {
-            // Wait for a new connection
-            auto pstatus = co_await server.poll();
-            switch (pstatus)
+            // Wait for a new connection (zero timeout = wait indefinitely)
+            auto client = co_await server.accept();
+            if (client)
             {
-            case coro::poll_status::event:
-            {
-                auto client = server.accept();
-                if (client.socket().is_valid())
+                RPC_INFO("New client connected");
+                if (tls_ctx)
                 {
-                    RPC_INFO("New client connected");
-                    if (tls_ctx)
-                    {
-                        scheduler->spawn(handle_tls_client(std::move(client), tls_ctx, service));
-                    }
-                    else
-                    {
-                        scheduler->spawn(handle_client(std::move(client), service));
-                    }
+                    scheduler->spawn_detached(handle_tls_client(std::move(*client), tls_ctx, service));
+                }
+                else
+                {
+                    scheduler->spawn_detached(handle_client(std::move(*client), service));
                 }
             }
-            break;
-            case coro::poll_status::error:
-            case coro::poll_status::closed:
-            case coro::poll_status::timeout:
-            default:
-                RPC_ERROR("Server poll error, exiting");
+            else if (!client.error().is_timeout())
+            {
+                RPC_ERROR("Server accept error, exiting");
                 co_return;
             }
         }

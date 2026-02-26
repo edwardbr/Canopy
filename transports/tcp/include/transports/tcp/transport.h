@@ -107,7 +107,7 @@ namespace rpc::tcp
             std::uint64_t protocol_version, message_direction direction, SendPayload&& sendPayload, uint64_t sequence_number)
         {
             assert(direction);
-            auto scoped_lock = CO_AWAIT send_queue_mtx_.lock();
+            auto scoped_lock = CO_AWAIT send_queue_mtx_.scoped_lock();
 
             envelope_payload payload_envelope = {.payload_fingerprint = rpc::id<SendPayload>::get(protocol_version),
                 .payload = rpc::to_compressed_yas_binary(sendPayload)};

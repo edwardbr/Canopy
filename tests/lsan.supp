@@ -20,7 +20,7 @@ leak:_GLOBAL__sub
 leak:__cxx_global_var_init
 
 # libcoro scheduler infrastructure (if any static state)
-leak:coro::io_scheduler::make_shared
+leak:coro::scheduler::make_unique
 leak:coro::thread_pool
 
 # C++ standard library static objects

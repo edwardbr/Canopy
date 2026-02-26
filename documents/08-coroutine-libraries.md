@@ -88,7 +88,7 @@ target_link_libraries(target PUBLIC YourCoroutineLibrary::YourCoroutineLibrary)
 
 For transports that use async I/O (TCP, SPSC), you may need to adapt the networking primitives:
 
-- **libcoro**: Uses `coro::io_scheduler` and `coro::net::tcp::*`
+- **libcoro**: Uses `coro::scheduler` and `coro::net::tcp::*`
 - **Asio**: Uses `asio::io_context` and `asio::ip::tcp::*`
 - **libunifex**: Uses `unifex::single_thread_context` and sender-based operations
 
