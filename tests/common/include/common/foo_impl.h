@@ -447,12 +447,11 @@ namespace marshalled_tests
 
         CORO_TASK(error_code)
         inner_create_example_in_subordinate_zone(
-            rpc::shared_ptr<yyy::i_example>& target, uint64_t new_zone_id, const rpc::shared_ptr<yyy::i_host>& host_ptr)
+            rpc::shared_ptr<yyy::i_example>& target, const rpc::shared_ptr<yyy::i_host>& host_ptr)
         {
             auto this_service = this_service_.lock();
-            rpc::zone new_zone{new_zone_id};
 
-            auto child_transport = std::make_shared<rpc::local::child_transport>("example_zone", this_service, new_zone);
+            auto child_transport = std::make_shared<rpc::local::child_transport>("example_zone", this_service);
             child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
                 [](const rpc::shared_ptr<yyy::i_host>& host,
                     rpc::shared_ptr<yyy::i_example>& new_example,
@@ -469,18 +468,17 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
-        create_example_in_subordinate_zone(rpc::shared_ptr<yyy::i_example>& target,
-            const rpc::shared_ptr<yyy::i_host>& host_ptr,
-            uint64_t new_zone_id) override
+        create_example_in_subordinate_zone(
+            rpc::shared_ptr<yyy::i_example>& target, const rpc::shared_ptr<yyy::i_host>& host_ptr) override
         {
-            CO_RETURN CO_AWAIT inner_create_example_in_subordinate_zone(target, new_zone_id, host_ptr);
+            CO_RETURN CO_AWAIT inner_create_example_in_subordinate_zone(target, host_ptr);
         }
         CORO_TASK(error_code)
         create_example_in_subordinate_zone_and_set_in_host(
-            uint64_t new_zone_id, const std::string& name, const rpc::shared_ptr<yyy::i_host>& host_ptr) override
+            const std::string& name, const rpc::shared_ptr<yyy::i_host>& host_ptr) override
         {
             rpc::shared_ptr<yyy::i_example> target;
-            auto ret = CO_AWAIT inner_create_example_in_subordinate_zone(target, new_zone_id, host_ptr);
+            auto ret = CO_AWAIT inner_create_example_in_subordinate_zone(target, host_ptr);
             if (ret != rpc::error::OK())
                 CO_RETURN ret;
             rpc::shared_ptr<yyy::i_host> host;
@@ -800,7 +798,7 @@ namespace marshalled_tests
                 RPC_INFO("Creating zone {} in fork chain (step {} of {})", zone_id, i + 1, fork_zone_ids.size());
 
                 rpc::shared_ptr<yyy::i_example> new_zone;
-                auto err = CO_AWAIT current_zone->create_example_in_subordinate_zone(new_zone, host, zone_id);
+                auto err = CO_AWAIT current_zone->create_example_in_subordinate_zone(new_zone, host);
                 if (err != rpc::error::OK())
                 {
                     RPC_ERROR("Failed to create zone {} in fork chain: {}", zone_id, err);

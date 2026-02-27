@@ -217,13 +217,11 @@ namespace comprehensive
         {
             benchmark_result result{};
 
-            std::atomic<uint64_t> zone_gen{0};
-            auto root_service = std::make_shared<rpc::service>("benchmark_root", rpc::zone{++zone_gen}, scheduler);
+            auto root_service
+                = std::make_shared<rpc::service>("benchmark_root", rpc::service::generate_new_zone_id(), scheduler);
             root_service->set_default_encoding(enc);
 
-            rpc::zone child_zone_id{++zone_gen};
-            auto child_transport
-                = std::make_shared<rpc::local::child_transport>("benchmark_child", root_service, child_zone_id);
+            auto child_transport = std::make_shared<rpc::local::child_transport>("benchmark_child", root_service);
 
             child_transport->set_child_entry_point<i_data_processor, i_data_processor>(
                 [enc](const rpc::shared_ptr<i_data_processor>& parent,

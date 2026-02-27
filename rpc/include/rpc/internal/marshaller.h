@@ -86,6 +86,13 @@ namespace rpc
             caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel)
             = 0;
+
+        // request a new zone id from the root zone
+        virtual CORO_TASK(int) get_new_zone_id(uint64_t protocol_version,
+            zone& zone_id,
+            const std::vector<rpc::back_channel_entry>& in_back_channel,
+            std::vector<rpc::back_channel_entry>& out_back_channel)
+            = 0;
     };
 
     struct retry_buffer

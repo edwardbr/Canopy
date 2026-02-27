@@ -201,6 +201,12 @@ namespace rpc
             caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 
+        CORO_TASK(int)
+        get_new_zone_id(uint64_t protocol_version,
+            zone& zone_id,
+            const std::vector<rpc::back_channel_entry>& in_back_channel,
+            std::vector<rpc::back_channel_entry>& out_back_channel) override;
+
         CORO_TASK(void)
         local_transport_down(const std::shared_ptr<transport>& local_transport);
 

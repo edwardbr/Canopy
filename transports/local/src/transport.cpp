@@ -207,6 +207,18 @@ namespace rpc::local
         CO_AWAIT parent->inbound_transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
     }
 
+    CORO_TASK(int)
+    parent_transport::outbound_get_new_zone_id(uint64_t protocol_version,
+        rpc::zone& zone_id,
+        const std::vector<rpc::back_channel_entry>& in_back_channel,
+        std::vector<rpc::back_channel_entry>& out_back_channel)
+    {
+        auto parent = parent_.get_nullable();
+        if (!parent)
+            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+        CO_RETURN CO_AWAIT parent->get_new_zone_id(protocol_version, zone_id, in_back_channel, out_back_channel);
+    }
+
     // Transport from parent zone to child zone
     // Used by parent to communicate with child
 

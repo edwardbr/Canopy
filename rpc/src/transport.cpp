@@ -1402,4 +1402,28 @@ namespace rpc
 #endif
     }
 
+    CORO_TASK(int)
+    transport::get_new_zone_id(uint64_t protocol_version,
+        zone& zone_id,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+        CO_RETURN CO_AWAIT outbound_get_new_zone_id(protocol_version, zone_id, in_back_channel, out_back_channel);
+    }
+
+    CORO_TASK(int)
+    transport::outbound_get_new_zone_id(uint64_t protocol_version,
+        zone& zone_id,
+        const std::vector<back_channel_entry>& in_back_channel,
+        std::vector<back_channel_entry>& out_back_channel)
+    {
+        // Default: delegate to the local service.
+        // For a root service this allocates locally; for a child_service it
+        // forwards the request up to the parent zone.
+        auto svc = service_.lock();
+        if (!svc)
+            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+        CO_RETURN CO_AWAIT svc->get_new_zone_id(protocol_version, zone_id, in_back_channel, out_back_channel);
+    }
+
 } // namespace rpc

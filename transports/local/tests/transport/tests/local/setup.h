@@ -34,8 +34,6 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     bool use_host_in_child_ = UseHostInChild;
     bool run_standard_tests_ = RunStandardTests;
 
-    std::atomic<uint64_t> zone_gen_ = 0;
-
     bool error_has_occurred_ = false;
 
     bool startup_complete_ = false;
@@ -72,7 +70,6 @@ public:
 
     CORO_TASK(bool) CoroSetUp()
     {
-        zone_gen = &zone_gen_;
 #ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
         if (auto telemetry_service
@@ -83,9 +80,9 @@ public:
 #endif
 
         root_service_ = std::make_shared<rpc::service>("host",
-            rpc::zone{++zone_gen_}
+            rpc::service::generate_new_zone_id()
 #ifdef CANOPY_BUILD_COROUTINE
-            ,
+                ,
             io_scheduler_
 #endif
         );
@@ -94,9 +91,7 @@ public:
         rpc::shared_ptr<yyy::i_host> hst(new host());
         local_host_ptr_ = hst; // assign to weak ptr
 
-        rpc::zone new_zone_id{++(zone_gen_)};
-
-        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", root_service_, new_zone_id);
+        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", root_service_);
         child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
             [&](const rpc::shared_ptr<yyy::i_host>& host,
                 rpc::shared_ptr<yyy::i_example>& new_example,
@@ -187,7 +182,6 @@ public:
         CoroTearDown();
 #endif
 
-        zone_gen = nullptr;
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service
             = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
@@ -206,9 +200,7 @@ public:
 
         rpc::shared_ptr<yyy::i_example> example_relay_ptr;
 
-        auto zone_id = rpc::zone{++zone_gen_};
-
-        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", root_service_, zone_id);
+        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", root_service_);
         child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
             [&](const rpc::shared_ptr<yyy::i_host>& host,
                 rpc::shared_ptr<yyy::i_example>& new_example,
@@ -226,7 +218,7 @@ public:
         {
             rpc::shared_ptr<yyy::i_example> new_ptr;
             auto err = CO_AWAIT example_relay_ptr->create_example_in_subordinate_zone(
-                new_ptr, use_host_in_child_ ? hst : nullptr, ++zone_gen_);
+                new_ptr, use_host_in_child_ ? hst : nullptr);
             if (err == rpc::error::OK())
             {
                 CO_AWAIT example_relay_ptr->set_host(nullptr);

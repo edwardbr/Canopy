@@ -29,11 +29,10 @@ namespace rpc
         current_service_ = svc;
     }
 
-    std::atomic<uint64_t> service::zone_id_generator_ = 0;
+    zone_id_allocator service::zone_allocator_;
     zone service::generate_new_zone_id()
     {
-        auto count = ++zone_id_generator_;
-        return {count};
+        return zone{zone_allocator_.allocate_zone()};
     }
 
     object service::generate_new_object_id() const
@@ -807,6 +806,19 @@ namespace rpc
         RPC_INFO("transport_down: Cleanup complete, {} objects deleted", objects_to_notify.size());
     }
 
+    CORO_TASK(int)
+    service::get_new_zone_id(uint64_t protocol_version,
+        zone& zone_id,
+        const std::vector<rpc::back_channel_entry>& in_back_channel,
+        std::vector<rpc::back_channel_entry>& out_back_channel)
+    {
+        std::ignore = protocol_version;
+        std::ignore = in_back_channel;
+        std::ignore = out_back_channel;
+        zone_id = generate_new_zone_id();
+        CO_RETURN rpc::error::OK();
+    }
+
     void service::inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)
     {
         // this is for internal use only has no lock
@@ -1015,6 +1027,18 @@ namespace rpc
         {
             parent->set_status(transport_status::DISCONNECTED);
         }
+    }
+
+    CORO_TASK(int)
+    child_service::get_new_zone_id(uint64_t protocol_version,
+        zone& zone_id,
+        const std::vector<rpc::back_channel_entry>& in_back_channel,
+        std::vector<rpc::back_channel_entry>& out_back_channel)
+    {
+        auto parent = get_parent_transport();
+        if (!parent)
+            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+        CO_RETURN CO_AWAIT parent->get_new_zone_id(protocol_version, zone_id, in_back_channel, out_back_channel);
     }
 
     ///////////////////////////////////////////////////////////////////////////////

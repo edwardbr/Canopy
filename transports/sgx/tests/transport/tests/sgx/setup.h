@@ -110,8 +110,7 @@ public:
         if (CreateNewZoneThenCreateSubordinatedZone)
         {
             rpc::shared_ptr<yyy::i_example> new_ptr;
-            err_code = ptr->create_example_in_subordinate_zone(
-                new_ptr, use_host_in_child_ ? i_host_ptr_ : nullptr, ++zone_gen_);
+            err_code = ptr->create_example_in_subordinate_zone(new_ptr, use_host_in_child_ ? i_host_ptr_ : nullptr);
             if (err_code != rpc::error::OK())
                 return nullptr;
             ptr = new_ptr;

@@ -278,8 +278,7 @@ TYPED_TEST(hierachical_transport_tests, create_store_delete)
 template<class T> CORO_TASK(bool) coro_create_subordinate_zone(T& lib)
 {
     rpc::shared_ptr<yyy::i_example> target;
-    CORO_ASSERT_EQ(
-        CO_AWAIT lib.get_example()->create_example_in_subordinate_zone(target, lib.get_local_host_ptr(), ++(*zone_gen)),
+    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->create_example_in_subordinate_zone(target, lib.get_local_host_ptr()),
         rpc::error::OK());
     CO_RETURN true;
 }
@@ -291,8 +290,8 @@ TYPED_TEST(hierachical_transport_tests, create_subordinate_zone) // TODO: Missin
 
 template<class T> CORO_TASK(bool) coro_create_subordinate_zone_and_set_in_host(T& lib)
 {
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->create_example_in_subordinate_zone_and_set_in_host(
-                       ++(*zone_gen), "foo", lib.get_local_host_ptr()),
+    CORO_ASSERT_EQ(
+        CO_AWAIT lib.get_example()->create_example_in_subordinate_zone_and_set_in_host("foo", lib.get_local_host_ptr()),
         rpc::error::OK());
     rpc::shared_ptr<yyy::i_example> target;
     CO_AWAIT lib.get_host()->look_up_app("foo", target);

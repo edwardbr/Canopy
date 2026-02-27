@@ -332,15 +332,8 @@ namespace comprehensive
                 if (!service)
                     CO_RETURN rpc::error::OBJECT_NOT_FOUND();
 
-                // Generate new zone ID
-                static std::atomic<uint64_t> child_zone_gen{0};
-                uint64_t new_zone_id = ++child_zone_gen;
-
-                // Create child transport for new zone
-                auto child_zone = rpc::zone{new_zone_id};
-                auto zone_name = name_ + "_child_" + std::to_string(new_zone_id);
-
-                auto child_transport = std::make_shared<rpc::local::child_transport>(zone_name, service, child_zone);
+                auto child_transport = std::make_shared<rpc::local::child_transport>("child", service);
+                auto zone_name = name_ + "_child_" + std::to_string(child_transport->get_adjacent_zone_id().get_subnet());
                 child_transport->set_child_entry_point<i_demo_service, i_demo_service>(
                     [](const rpc::shared_ptr<i_demo_service>& parent,
                         rpc::shared_ptr<i_demo_service>& child,

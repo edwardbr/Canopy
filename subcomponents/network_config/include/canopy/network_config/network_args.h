@@ -40,12 +40,12 @@ namespace canopy::network_config
 #pragma GCC diagnostic pop
 #endif
 
-#include <canopy/network_config/zone_address_allocator.h>
+#include <rpc/internal/zone_id_allocator.h>
 
 namespace canopy::network_config
 {
 
-    // Parsed network configuration ready for constructing a zone_address_allocator.
+    // Parsed network configuration ready for constructing a rpc::zone_id_allocator.
     // subnet_base and subnet_range use uint64_t so they remain valid if the
     // subnet field of zone_address widens beyond 32 bits in future.
     //
@@ -56,7 +56,7 @@ namespace canopy::network_config
     //                bytes[0..7] for the /64 network prefix, bytes[8..15] are zero)
     //
     // This separates the network-layer representation from the RPC-layer encoding
-    // used internally by zone_address_allocator.  The conversion to whatever integer
+    // used internally by rpc::zone_id_allocator.  The conversion to whatever integer
     // format zone_address currently requires happens in make_allocator(), in one place,
     // so that widening zone_address to 128 bits only requires changing that function.
     struct network_config
@@ -142,13 +142,13 @@ namespace canopy::network_config
     //   all-zero addr: returns 0 (local-only mode)
     uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family);
 
-    // Build a zone_address_allocator from a network_config.
+    // Build a rpc::zone_id_allocator from a network_config.
     // Converts binary routing_prefix_addr to the internal integer encoding via
     // ip_address_to_uint64(); if zone_address widens beyond 64 bits in future,
     // only this function needs to change.
-    inline zone_address_allocator make_allocator(const network_config& cfg)
+    inline rpc::zone_id_allocator make_allocator(const network_config& cfg)
     {
-        return zone_address_allocator{
+        return rpc::zone_id_allocator{
             ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family), cfg.subnet_base, cfg.subnet_range};
     }
 
