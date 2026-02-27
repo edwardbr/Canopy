@@ -100,6 +100,13 @@ namespace rpc::local
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
+
+        // Forwards the request up to the parent zone's child_transport inbound handler.
+        CORO_TASK(int)
+        outbound_get_new_zone_id(uint64_t protocol_version,
+            rpc::zone& zone_id,
+            const std::vector<rpc::back_channel_entry>& in_back_channel,
+            std::vector<rpc::back_channel_entry>& out_back_channel) override;
     };
 
     // Transport from parent zone to child zone
@@ -118,8 +125,8 @@ namespace rpc::local
         child_entry_point_factory_fn child_entry_point_factory_fn_;
 
     public:
-        child_transport(std::string name, std::shared_ptr<rpc::service> service, rpc::zone adjacent_zone_id)
-            : rpc::transport(name, service, adjacent_zone_id)
+        child_transport(std::string name, std::shared_ptr<rpc::service> service)
+            : rpc::transport(name, service, rpc::service::generate_new_zone_id())
         {
             set_status(rpc::transport_status::CONNECTED);
         }

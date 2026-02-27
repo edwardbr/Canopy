@@ -506,6 +506,21 @@ namespace rpc
             caller_zone caller_zone_id,
             const std::vector<back_channel_entry>& in_back_channel) final;
 
+        // Requests a new zone ID from the root zone.
+        // Non-hierarchical transports forward to the local service allocator.
+        // Child-side hierarchical transports override outbound_get_new_zone_id to
+        // forward the request up to the parent zone instead.
+        CORO_TASK(int)
+        get_new_zone_id(uint64_t protocol_version,
+            zone& zone_id,
+            const std::vector<back_channel_entry>& in_back_channel,
+            std::vector<back_channel_entry>& out_back_channel) final;
+
+        virtual CORO_TASK(int) outbound_get_new_zone_id(uint64_t protocol_version,
+            zone& zone_id,
+            const std::vector<back_channel_entry>& in_back_channel,
+            std::vector<back_channel_entry>& out_back_channel);
+
         /////////////////////////////////
         // VIRTUAL METHODS - Derived classes implement transport-specific behavior
         /////////////////////////////////

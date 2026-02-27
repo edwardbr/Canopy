@@ -564,6 +564,19 @@ namespace rpc
         }
     }
 
+    CORO_TASK(int)
+    pass_through::get_new_zone_id(uint64_t protocol_version,
+        zone& zone_id,
+        const std::vector<rpc::back_channel_entry>& in_back_channel,
+        std::vector<rpc::back_channel_entry>& out_back_channel)
+    {
+        std::ignore = protocol_version;
+        std::ignore = zone_id;
+        std::ignore = in_back_channel;
+        std::ignore = out_back_channel;
+        CO_RETURN rpc::error::ZONE_NOT_SUPPORTED();
+    }
+
     CORO_TASK(void)
     pass_through::local_transport_down(const std::shared_ptr<transport>& local_transport)
     {

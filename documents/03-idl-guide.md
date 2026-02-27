@@ -802,8 +802,7 @@ namespace yyy
         [description="Creates an example instance in a subordinate zone"]
         error_code create_example_in_subordinate_zone(
             [out] rpc::shared_ptr<yyy::i_example>& target,
-            const rpc::shared_ptr<i_host>& host_ptr,
-            uint64_t new_zone_id);
+            const rpc::shared_ptr<i_host>& host_ptr);
 
         [description="Receives an interface object (can be null)"]
         error_code receive_interface([out] rpc::shared_ptr<xxx::i_foo>& val);

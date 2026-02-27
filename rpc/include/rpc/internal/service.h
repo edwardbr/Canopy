@@ -40,6 +40,7 @@
 #include <rpc/internal/types.h>
 #include <rpc/internal/version.h>
 #include <rpc/internal/marshaller.h>
+#include <rpc/internal/zone_id_allocator.h>
 #include <rpc/internal/pass_through.h>
 #include <rpc/internal/remote_pointer.h>
 #include <rpc/internal/coroutine_support.h>
@@ -123,7 +124,7 @@ namespace rpc
     class service : public i_marshaller, public std::enable_shared_from_this<rpc::service>
     {
     protected:
-        static std::atomic<uint64_t> zone_id_generator_;
+        static zone_id_allocator zone_allocator_;
 
         zone zone_id_ = {0};
         std::string name_;
@@ -502,6 +503,12 @@ namespace rpc
             caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 
+        CORO_TASK(int)
+        get_new_zone_id(uint64_t protocol_version,
+            zone& zone_id,
+            const std::vector<rpc::back_channel_entry>& in_back_channel,
+            std::vector<rpc::back_channel_entry>& out_back_channel) override;
+
         ///////////////////////////////////////////////////////////////////////////////
         // OUTBOUND COMMUNICATION FUNCTIONS - Allow derived classes to add functionality
         ///////////////////////////////////////////////////////////////////////////////
@@ -834,6 +841,13 @@ namespace rpc
 #endif
 
         virtual ~child_service();
+
+        // Forwards the request up to the parent zone via the parent transport.
+        CORO_TASK(int)
+        get_new_zone_id(uint64_t protocol_version,
+            zone& zone_id,
+            const std::vector<rpc::back_channel_entry>& in_back_channel,
+            std::vector<rpc::back_channel_entry>& out_back_channel) override;
 
         template<class PARENT_INTERFACE, class CHILD_INTERFACE>
         static CORO_TASK(int) create_child_zone(const char* name,

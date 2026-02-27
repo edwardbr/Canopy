@@ -48,13 +48,11 @@ namespace comprehensive
         {
             print_separator("LOCAL TRANSPORT DEMO (Coroutine Mode)");
 
-            std::atomic<uint64_t> zone_gen{0};
-
             // Create root service in Zone 1
             auto root_service = std::make_shared<rpc::service>("root_service",
-                rpc::zone{++zone_gen}
+                rpc::service::generate_new_zone_id()
 #ifdef CANOPY_BUILD_COROUTINE
-                ,
+                    ,
                 scheduler
 #endif
             );
@@ -69,13 +67,9 @@ namespace comprehensive
             auto data_processor = create_data_processor();
             std::cout << "Created data processor\n";
 
-            // Create child zone (Zone 2)
-            rpc::zone child_zone_id{++zone_gen};
-            std::cout << "Creating child service in Zone " << child_zone_id.get_subnet() << "\n";
-
             // Create child transport connecting to parent
-            auto child_transport
-                = std::make_shared<rpc::local::child_transport>("child_service", root_service, child_zone_id);
+            auto child_transport = std::make_shared<rpc::local::child_transport>("child_service", root_service);
+            std::cout << "Creating child service in Zone " << child_transport->get_adjacent_zone_id().get_subnet() << "\n";
 
             child_transport->set_child_entry_point<i_demo_service, i_demo_service>(
                 [&](const rpc::shared_ptr<i_demo_service>& parent,
