@@ -50,9 +50,9 @@ namespace comprehensive
 
             // Create root service in Zone 1
             auto root_service = std::make_shared<rpc::service>("root_service",
-                rpc::service::generate_new_zone_id()
+                rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
-                    ,
+                ,
                 scheduler
 #endif
             );
@@ -93,7 +93,7 @@ namespace comprehensive
             }
 
             std::cout << "Connected Zone " << root_service->get_zone_id().get_subnet() << " -> Zone "
-                      << child_zone_id.get_subnet() << "\n";
+                      << child_transport->get_adjacent_zone_id().get_subnet() << "\n";
 
             std::cout << "--- Making RPC calls through local transport ---\n";
 

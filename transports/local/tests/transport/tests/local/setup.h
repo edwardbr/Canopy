@@ -80,9 +80,9 @@ public:
 #endif
 
         root_service_ = std::make_shared<rpc::service>("host",
-            rpc::service::generate_new_zone_id()
+            rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
-                ,
+            ,
             io_scheduler_
 #endif
         );

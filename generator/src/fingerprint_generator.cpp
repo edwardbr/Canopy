@@ -393,7 +393,7 @@ namespace fingerprint
             if (seed.empty())
                 (*comment)("//EMPTY_SEED!");
             else
-                (*comment)("//{}", seed);
+                (*comment)("/*{}*/", seed);
         }
 
         entity_stack.pop_back();
