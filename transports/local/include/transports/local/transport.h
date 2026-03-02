@@ -126,7 +126,7 @@ namespace rpc::local
 
     public:
         child_transport(std::string name, std::shared_ptr<rpc::service> service)
-            : rpc::transport(name, service, rpc::service::generate_new_zone_id())
+            : rpc::transport(name, service, service->generate_new_zone_id())
         {
             set_status(rpc::transport_status::CONNECTED);
         }

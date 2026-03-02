@@ -217,8 +217,7 @@ namespace comprehensive
         {
             benchmark_result result{};
 
-            auto root_service
-                = std::make_shared<rpc::service>("benchmark_root", rpc::service::generate_new_zone_id(), scheduler);
+            auto root_service = std::make_shared<rpc::service>("benchmark_root", rpc::DEFAULT_PREFIX, scheduler);
             root_service->set_default_encoding(enc);
 
             auto child_transport = std::make_shared<rpc::local::child_transport>("benchmark_child", root_service);

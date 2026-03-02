@@ -133,14 +133,14 @@ namespace rpc
         zone_address(zone_address&&) noexcept = default;
 
         // legacy compatibility: uint64_t sets subnet_id only
-        zone_address(uint64_t legacy_id)
+        constexpr zone_address(uint64_t legacy_id)
             : routing_prefix(0)
             , subnet_id(static_cast<uint32_t>(legacy_id))
             , object_id(0)
         {
         }
 
-        zone_address(uint64_t prefix, uint32_t subnet, uint32_t obj = 0)
+        constexpr zone_address(uint64_t prefix, uint32_t subnet, uint32_t obj = 0)
             : routing_prefix(prefix)
             , subnet_id(subnet)
             , object_id(obj)
@@ -736,6 +736,10 @@ namespace rpc
     {
         return !lhs.get_address().same_zone(rhs.get_address());
     }
+
+    // Default routing prefix for local-node zone addresses (routing_prefix=0).
+    // Use when the application does not specify a routing prefix explicitly.
+    static constexpr zone_address DEFAULT_PREFIX(0, 1);
     )__^)
 
     struct interface_descriptor

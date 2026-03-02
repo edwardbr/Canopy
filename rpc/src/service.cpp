@@ -29,7 +29,6 @@ namespace rpc
         current_service_ = svc;
     }
 
-    zone_id_allocator service::zone_allocator_;
     zone service::generate_new_zone_id()
     {
         return zone{zone_allocator_.allocate_zone()};
@@ -45,6 +44,7 @@ namespace rpc
     service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler)
         : zone_id_(zone_id)
         , name_(name)
+        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
         , io_scheduler_(scheduler)
     {
 #ifdef CANOPY_USE_TELEMETRY
@@ -55,6 +55,7 @@ namespace rpc
     service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler, child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
+        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
         , io_scheduler_(scheduler)
     {
         // No telemetry call for child services

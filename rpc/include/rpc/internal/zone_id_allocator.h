@@ -43,7 +43,7 @@ namespace rpc
             uint64_t routing_prefix = 0, uint64_t subnet_base = 0, uint64_t subnet_range = zone_address::max_subnet)
             : subnet_base_(subnet_base)
             , subnet_range_(subnet_range)
-            , next_subnet_(1)
+            , next_subnet_(subnet_base + 1)
             , next_object_(1)
         {
             prefix_.set_routing_prefix(routing_prefix);
@@ -55,7 +55,7 @@ namespace rpc
             const zone_address& prefix, uint64_t subnet_base = 0, uint64_t subnet_range = zone_address::max_subnet)
             : subnet_base_(subnet_base)
             , subnet_range_(subnet_range)
-            , next_subnet_(1)
+            , next_subnet_(subnet_base + 1)
             , next_object_(1)
         {
             prefix_ = prefix.zone_only();

@@ -124,10 +124,10 @@ namespace rpc
     class service : public i_marshaller, public std::enable_shared_from_this<rpc::service>
     {
     protected:
-        static zone_id_allocator zone_allocator_;
-
         zone zone_id_ = {0};
         std::string name_;
+
+        zone_id_allocator zone_allocator_;
 
         mutable std::atomic<uint64_t> object_id_generator_ = 0;
         std::atomic<encoding> default_encoding_ = CANOPY_DEFAULT_ENCODING;
@@ -213,7 +213,7 @@ namespace rpc
          *
          * Thread-Safety: Safe to call from multiple threads
          */
-        static zone generate_new_zone_id();
+        zone generate_new_zone_id();
 
 #ifdef CANOPY_BUILD_COROUTINE
         template<typename Callable> auto schedule(Callable&& callable)
