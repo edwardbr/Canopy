@@ -11,7 +11,7 @@ namespace websocket_demo
 {
     namespace v1
     {
-        class websocket_service : public rpc::service
+        class websocket_service : public rpc::root_service
         {
             rpc::shared_ptr<i_calculator> demo_;
 

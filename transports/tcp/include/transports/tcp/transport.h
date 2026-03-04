@@ -35,7 +35,7 @@ namespace rpc::tcp
         };
 
         coro::net::tcp::client client_;
-        std::chrono::milliseconds timeout_;
+        // std::chrono::milliseconds timeout_;
 
         std::atomic<uint64_t> sequence_number_ = 0;
 
@@ -51,6 +51,8 @@ namespace rpc::tcp
 
         connection_handler connection_handler_;
         stdex::member_ptr<tcp_transport> keep_alive_;
+
+        std::shared_ptr<rpc::object_stub> stub_;
 
         std::atomic<bool> pumps_started_ = false;
         std::atomic<bool> peer_requested_disconnection_ = false;
@@ -71,8 +73,7 @@ namespace rpc::tcp
 
         tcp_transport(std::string name,
             std::shared_ptr<rpc::service> service,
-            rpc::zone adjacent_zone_id,
-            std::chrono::milliseconds timeout,
+            // std::chrono::milliseconds timeout,
             coro::net::tcp::client client,
             connection_handler handler);
 
@@ -212,8 +213,7 @@ namespace rpc::tcp
     public:
         static std::shared_ptr<tcp_transport> create(std::string name,
             std::shared_ptr<rpc::service> service,
-            rpc::zone adjacent_zone_id,
-            std::chrono::milliseconds timeout,
+            // std::chrono::milliseconds timeout,
             coro::net::tcp::client client,
             connection_handler handler);
 
@@ -227,7 +227,9 @@ namespace rpc::tcp
         // Internal send payload helper
         // rpc::transport override - connect handshake
         CORO_TASK(int)
-        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings& input_descr,
+            rpc::interface_descriptor& output_descr) override;
 
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 

@@ -22,8 +22,8 @@
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class spsc_setup
 {
-    std::shared_ptr<rpc::service> root_service_;
-    std::shared_ptr<rpc::service> peer_service_;
+    std::shared_ptr<rpc::root_service> root_service_;
+    std::shared_ptr<rpc::root_service> peer_service_;
 
     rpc::spsc::queue_type send_spsc_queue_;
     rpc::spsc::queue_type receive_spsc_queue_;
@@ -49,7 +49,7 @@ public:
 
     virtual ~spsc_setup() = default;
 
-    std::shared_ptr<rpc::service> get_root_service() const { return root_service_; }
+    std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
     bool get_has_enclave() const { return has_enclave_; }
     bool is_sgx_setup() const { return false; }
     rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
@@ -83,9 +83,9 @@ public:
 
         auto root_zone_id = rpc::zone{++zone_gen_};
         auto peer_zone_id = rpc::zone{++zone_gen_};
-        root_service_ = std::make_shared<rpc::service>("host", root_zone_id, io_scheduler_);
+        root_service_ = std::make_shared<rpc::root_service>("host", root_zone_id, io_scheduler_);
 
-        peer_service_ = std::make_shared<rpc::service>("peer", peer_zone_id, io_scheduler_);
+        peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, io_scheduler_);
 
         // Create server-side transport (receives connections)
         rpc::spsc::spsc_transport::connection_handler handler
@@ -113,7 +113,6 @@ public:
 
         auto peer_transport = rpc::spsc::spsc_transport::create("peer_transport",
             peer_service_,
-            root_zone_id,
             &receive_spsc_queue_, // reversed for receiver
             &send_spsc_queue_,    // reversed for receiver
             handler);
@@ -126,7 +125,6 @@ public:
 
         auto client_transport = rpc::spsc::spsc_transport::create("client_transport",
             root_service_,
-            peer_zone_id,
             &send_spsc_queue_,
             &receive_spsc_queue_,
             nullptr); // client doesn't need handler

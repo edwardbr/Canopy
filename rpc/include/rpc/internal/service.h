@@ -63,7 +63,6 @@ namespace rpc
     class service_proxy;
     class casting_interface;
     class transport;
-    class transport_to_parent;
 
     const object dummy_object_id = {std::numeric_limits<uint64_t>::max()};
 
@@ -127,8 +126,6 @@ namespace rpc
         zone zone_id_ = {0};
         std::string name_;
 
-        zone_id_allocator zone_allocator_;
-
         mutable std::atomic<uint64_t> object_id_generator_ = 0;
         std::atomic<encoding> default_encoding_ = CANOPY_DEFAULT_ENCODING;
 
@@ -178,7 +175,6 @@ namespace rpc
 
         friend transport;
 
-    public:
 #ifdef CANOPY_BUILD_COROUTINE
         explicit service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler);
         explicit service(
@@ -187,6 +183,8 @@ namespace rpc
         explicit service(const char* name, zone zone_id);
         explicit service(const char* name, zone zone_id, child_service_tag);
 #endif
+
+    public:
         /**
          * @brief Service destructor - ensures clean zone shutdown
          *
@@ -206,14 +204,6 @@ namespace rpc
          * See documents/transports/hierarchical.md for hierarchical transport pattern.
          */
         virtual ~service();
-
-        /**
-         * @brief Generate a globally unique zone identifier
-         * @return A new zone ID that is unique across all zones in the system
-         *
-         * Thread-Safety: Safe to call from multiple threads
-         */
-        zone generate_new_zone_id();
 
 #ifdef CANOPY_BUILD_COROUTINE
         template<typename Callable> auto schedule(Callable&& callable)
@@ -507,7 +497,8 @@ namespace rpc
         get_new_zone_id(uint64_t protocol_version,
             zone& zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
+            std::vector<rpc::back_channel_entry>& out_back_channel) override
+            = 0;
 
         ///////////////////////////////////////////////////////////////////////////////
         // OUTBOUND COMMUNICATION FUNCTIONS - Allow derived classes to add functionality
@@ -696,6 +687,45 @@ namespace rpc
             const PtrType<T>& iface,
             std::shared_ptr<rpc::object_stub>& stub,
             rpc::interface_descriptor& descriptor);
+    };
+
+    /**
+     * @brief Root service for zones that own zone ID allocation
+     *
+     * root_service is the concrete base for all top-level (non-child) zones. It holds
+     * the zone_id_allocator and satisfies the pure-virtual get_new_zone_id() requirements left open by the abstract service class.
+     *
+     * Use root_service wherever a zone is the authoritative owner of its own ID space
+     * (i.e. it is NOT a child zone created by a hierarchical transport). Child zones
+     * use child_service, which forwards get_new_zone_id() requests up to the root
+     * via the parent transport.
+     *
+     * See documents/architecture/03-services.md for service lifecycle details.
+     */
+    class root_service : public service
+    {
+    protected:
+        zone_id_allocator zone_allocator_;
+
+    public:
+#ifdef CANOPY_BUILD_COROUTINE
+        explicit root_service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler);
+#else
+        explicit root_service(const char* name, zone zone_id);
+#endif
+
+        virtual ~root_service() = default;
+
+        /**
+         * @brief i_marshaller implementation: allocate a new zone ID for the caller
+         *
+         * Thread-Safety: Safe to call from multiple threads
+         */
+        CORO_TASK(int)
+        get_new_zone_id(uint64_t protocol_version,
+            zone& zone_id,
+            const std::vector<rpc::back_channel_entry>& in_back_channel,
+            std::vector<rpc::back_channel_entry>& out_back_channel) override;
     };
 
     /**
@@ -995,9 +1025,7 @@ namespace rpc
         int err_code = rpc::error::OK();
 
         std::shared_ptr<rpc::object_stub> input_stub;
-
-        add_transport(child_transport->get_adjacent_zone_id().as_destination(), child_transport);
-        transport_keep_alive ka(child_transport, child_transport->get_adjacent_zone_id().as_destination());
+        bool stub_created = false;
 
         if (input_interface)
         {
@@ -1010,15 +1038,24 @@ namespace rpc
             }
             else
             {
-                rpc::interface_descriptor tmp;
-
-                err_code = CO_AWAIT bind_in_proxy(
-                    rpc::get_version(), input_interface, input_stub, child_transport->get_adjacent_zone_id().as_caller(), tmp);
+                {
+                    std::lock_guard g(stub_control_);
+                    input_stub = input_interface->__rpc_get_stub(); // get stub after lock
+                    if (!input_stub)
+                    {
+                        auto id = generate_new_object_id();
+                        input_stub = std::make_shared<object_stub>(id, shared_from_this(), input_interface);
+                        stubs_[id] = input_stub;
+                        input_stub->keep_self_alive();
+                        input_interface->__rpc_set_stub(input_stub);
+                        stub_created = true;
+                    }
+                }
                 if (err_code != error::OK())
                 {
                     CO_RETURN err_code;
                 }
-                input_descr.input_zone_id = tmp.destination_zone_id.with_object(tmp.get_object_id());
+                input_descr.input_zone_id = zone_id_.as_destination().with_object(input_stub->get_id());
             }
         }
         else
@@ -1028,13 +1065,28 @@ namespace rpc
         input_descr.inbound_interface_id = in_param_type::get_id(rpc::get_version());
         input_descr.outbound_interface_id = out_param_type::get_id(rpc::get_version());
 
-        err_code = CO_AWAIT child_transport->connect(input_descr, output_descr);
+        // once the transport is connected the adjacent zone id is known it must add_ref the stub against the transport
+        // if the input interface is remote then the addref is not needed.
+        err_code = CO_AWAIT child_transport->connect(input_stub, input_descr, output_descr);
         if (err_code != rpc::error::OK())
         {
             if (input_stub)
             {
-                CO_AWAIT input_stub->release_from_service(child_transport->get_adjacent_zone_id().as_caller());
+                CO_AWAIT release_local_stub(input_stub, false, child_transport->get_adjacent_zone_id().as_caller());
+
+                std::lock_guard g(stub_control_);
+                // this is a hard race condition but we need to check if the stub was created and if it is not
+                // referenced, there is a microscopic risk that somehow the reference to the stub was shared around in
+                // other threads and they have not got around to add_refing it.  The stub will remain valid until their
+                // callstacks hold onto the shared_ptr of the object that the stub is holding, but then the object may
+                // be deleted soon afterwards.
+                if (stub_created && input_stub->get_shared_count() == 0 && input_stub->get_optimistic_count() == 0)
+                {
+                    // take the cyonide pill die when people leave the room
+                    input_stub->dont_keep_alive();
+                }
             }
+            CO_AWAIT child_transport->notify_all_destinations_of_disconnect();
             CO_RETURN err_code;
         }
 
@@ -1051,9 +1103,10 @@ namespace rpc
             err_code = CO_AWAIT rpc::proxy_bind_out_param(new_service_proxy, output_descr, output_interface);
         }
 
+        // we release the stub here because we did an add_ref in inner_connect.
         if (input_stub)
         {
-            CO_AWAIT input_stub->release_from_service(child_transport->get_adjacent_zone_id().as_caller());
+            CO_AWAIT release_local_stub(input_stub, false, child_transport->get_adjacent_zone_id().as_caller());
         }
 
         CO_RETURN err_code;

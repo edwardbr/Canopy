@@ -55,6 +55,8 @@ namespace rpc::spsc
         connection_handler connection_handler_;
         stdex::member_ptr<spsc_transport> keep_alive_;
 
+        std::shared_ptr<rpc::object_stub> stub_;
+
         std::atomic<bool> peer_requested_disconnection_ = false;
         std::atomic<bool> pumps_started_ = false;
 
@@ -72,7 +74,6 @@ namespace rpc::spsc
 
         spsc_transport(std::string name,
             std::shared_ptr<rpc::service> service,
-            rpc::zone adjacent_zone_id,
             queue_type* send_spsc_queue,
             queue_type* receive_spsc_queue,
             connection_handler handler);
@@ -216,7 +217,6 @@ namespace rpc::spsc
     public:
         static std::shared_ptr<spsc_transport> create(std::string name,
             std::shared_ptr<rpc::service> service,
-            rpc::zone adjacent_zone_id,
             queue_type* send_spsc_queue,
             queue_type* receive_spsc_queue,
             connection_handler handler);
@@ -228,7 +228,9 @@ namespace rpc::spsc
         // Internal send payload helper
         // rpc::transport override - connect handshake
         CORO_TASK(int)
-        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings& input_descr,
+            rpc::interface_descriptor& output_descr) override;
 
         CORO_TASK(int) inner_accept() override;
 

@@ -21,7 +21,7 @@ class passthrough_setup
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> io_scheduler_;
 #endif
-    std::shared_ptr<rpc::service> service_;
+    std::shared_ptr<rpc::root_service> service_;
     std::shared_ptr<rpc::mock_test::mock_transport> forward_transport_;
     std::shared_ptr<rpc::mock_test::mock_transport> reverse_transport_;
     std::shared_ptr<rpc::pass_through> passthrough_;
@@ -39,7 +39,7 @@ public:
     bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return true; }
 
-    std::shared_ptr<rpc::service> get_service() const { return service_; }
+    std::shared_ptr<rpc::root_service> get_service() const { return service_; }
     std::shared_ptr<rpc::mock_test::mock_transport> get_forward_transport() const { return forward_transport_; }
     std::shared_ptr<rpc::mock_test::mock_transport> get_reverse_transport() const { return reverse_transport_; }
     std::shared_ptr<rpc::pass_through> get_passthrough() const { return passthrough_; }
@@ -61,9 +61,9 @@ public:
         RPC_INFO("passthrough_setup::CoroSetUp - Starting setup");
         RPC_INFO("passthrough_setup::CoroSetUp - Creating service");
 #ifdef CANOPY_BUILD_COROUTINE
-        service_ = std::make_shared<rpc::service>("test_service", rpc::zone{1}, io_scheduler_);
+        service_ = std::make_shared<rpc::root_service>("test_service", rpc::zone{1}, io_scheduler_);
 #else
-        service_ = std::make_shared<rpc::service>("test_service", rpc::zone{1});
+        service_ = std::make_shared<rpc::root_service>("test_service", rpc::zone{1});
 #endif
 
         // Create mock transports

@@ -9,11 +9,10 @@ namespace rpc::spsc
 {
     spsc_transport::spsc_transport(std::string name,
         std::shared_ptr<rpc::service> service,
-        rpc::zone adjacent_zone_id,
         queue_type* send_spsc_queue,
         queue_type* receive_spsc_queue,
         connection_handler handler)
-        : rpc::transport(name, service, adjacent_zone_id)
+        : rpc::transport(name, service)
         , send_spsc_queue_(send_spsc_queue)
         , receive_spsc_queue_(receive_spsc_queue)
         , connection_handler_(handler)
@@ -22,13 +21,12 @@ namespace rpc::spsc
 
     std::shared_ptr<spsc_transport> spsc_transport::create(std::string name,
         std::shared_ptr<rpc::service> service,
-        rpc::zone adjacent_zone_id,
         queue_type* send_spsc_queue,
         queue_type* receive_spsc_queue,
         connection_handler handler)
     {
         auto transport = std::shared_ptr<spsc_transport>(
-            new spsc_transport(name, service, adjacent_zone_id, send_spsc_queue, receive_spsc_queue, handler));
+            new spsc_transport(name, service, send_spsc_queue, receive_spsc_queue, handler));
 
         // Set up the keep alive using member_ptr assignment
         transport->keep_alive_ = transport;
@@ -40,15 +38,15 @@ namespace rpc::spsc
 
     // Connection handshake
     CORO_TASK(int)
-    spsc_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
+    spsc_transport::inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+        connection_settings& input_descr,
+        rpc::interface_descriptor& output_descr)
     {
         RPC_DEBUG("spsc_transport::connect zone={}", get_zone_id().get_subnet());
+        stub_ = stub;
 
         auto service = get_service();
         assert(connection_handler_ || !connection_handler_); // Can be null for client side
-
-        // Schedule onto the scheduler
-        // CO_AWAIT service->schedule();
 
         pump_send_and_receive();
 
@@ -67,12 +65,14 @@ namespace rpc::spsc
                 init_receive);
             if (ret != rpc::error::OK())
             {
+                stub_.reset();
                 RPC_ERROR("spsc_transport::connect call_peer failed {}", rpc::error::to_string(ret));
                 CO_RETURN ret;
             }
 
             if (init_receive.err_code != rpc::error::OK())
             {
+                stub_.reset();
                 RPC_ERROR("init_client_channel_send failed");
                 CO_RETURN init_receive.err_code;
             }
@@ -601,6 +601,34 @@ namespace rpc::spsc
                         RPC_DEBUG("pump: received transport_down_send seq={}", prefix.sequence_number);
                         get_service()->spawn(stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
                     }
+                    else if (payload.payload_fingerprint
+                             == rpc::id<init_client_initial_channel_response>::get(prefix.version))
+                    {
+                        init_client_initial_channel_response early_response;
+                        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), early_response);
+                        if (str_err.empty())
+                        {
+                            RPC_DEBUG("pump: received init_client_initial_channel_response, adjacent_zone={}",
+                                early_response.zone_id.get_subnet());
+                            set_adjacent_zone_id(early_response.zone_id);
+
+                            get_service()->add_transport(early_response.zone_id.as_destination(), shared_from_this());
+
+                            if (stub_)
+                            {
+                                auto ret = CO_AWAIT stub_->add_ref(false, false, early_response.zone_id.as_caller());
+                                stub_.reset();
+                                if (ret != rpc::error::OK())
+                                {
+                                    set_status(transport_status::DISCONNECTING);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            RPC_ERROR("failed to deserialize init_client_initial_channel_response");
+                        }
+                    }
                     else if (payload.payload_fingerprint == rpc::id<close_connection_send>::get(prefix.version))
                     {
                         RPC_DEBUG("pump: received close_connection_send seq={} zone={}",
@@ -1069,6 +1097,14 @@ namespace rpc::spsc
         input_descr.outbound_interface_id = request.outbound_interface_id;
         input_descr.input_zone_id = request.inbound_remote_object;
         rpc::interface_descriptor output_interface;
+
+        // Update the adjacent zone ID from the handshake message
+        set_adjacent_zone_id(request.adjacent_zone_id);
+
+        // Immediately inform the peer of our zone_id before invoking connection_handler_, so that
+        // the peer can update its adjacent_zone_id before any back-channel calls arrive.
+        send_payload(
+            prefix.version, message_direction::one_way, init_client_initial_channel_response{.zone_id = get_zone_id()}, 0);
 
         int ret = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
         connection_handler_ = nullptr;

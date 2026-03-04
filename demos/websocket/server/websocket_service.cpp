@@ -82,7 +82,7 @@ namespace websocket_demo
         }
 
         websocket_service::websocket_service(std::string name, rpc::zone zone_id, std::shared_ptr<coro::scheduler> scheduler)
-            : rpc::service(name.data(), zone_id, std::move(scheduler))
+            : rpc::root_service(name.data(), zone_id, std::move(scheduler))
         {
         }
 

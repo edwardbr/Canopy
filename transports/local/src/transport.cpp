@@ -10,7 +10,7 @@ namespace rpc::local
 {
     parent_transport::parent_transport(
         std::string name, std::shared_ptr<rpc::service> service, std::shared_ptr<child_transport> parent)
-        : rpc::transport(name, service, parent->get_zone_id())
+        : rpc::transport(name, service)
         , parent_(parent)
     {
         // Local transports are always immediately available (in-process)
@@ -18,9 +18,10 @@ namespace rpc::local
     }
 
     parent_transport::parent_transport(std::string name, std::shared_ptr<child_transport> parent)
-        : rpc::transport(name, parent->get_adjacent_zone_id(), parent->get_zone_id())
+        : rpc::transport(name, parent->get_adjacent_zone_id())
         , parent_(parent)
     {
+        set_adjacent_zone_id(parent->get_zone_id());
         // Local transports are always immediately available (in-process)
         set_status(rpc::transport_status::CONNECTED);
     }

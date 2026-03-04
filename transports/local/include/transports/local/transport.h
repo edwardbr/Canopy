@@ -29,12 +29,15 @@ namespace rpc::local
         void set_status(rpc::transport_status status) override;
 
         CORO_TASK(int)
-        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override
+        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings& input_descr,
+            rpc::interface_descriptor& output_descr) override
         {
+            std::ignore = stub;
             std::ignore = input_descr;
             std::ignore = output_descr;
             // Parent transport is connected immediately - no handshake needed
-            CO_RETURN rpc::error::OK();
+            CO_RETURN rpc::error::ZONE_NOT_SUPPORTED();
         }
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
@@ -126,7 +129,7 @@ namespace rpc::local
 
     public:
         child_transport(std::string name, std::shared_ptr<rpc::service> service)
-            : rpc::transport(name, service, service->generate_new_zone_id())
+            : rpc::transport(name, service)
         {
             set_status(rpc::transport_status::CONNECTED);
         }
@@ -137,8 +140,37 @@ namespace rpc::local
         void on_child_disconnected();
 
         CORO_TASK(int)
-        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override
+        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings& input_descr,
+            rpc::interface_descriptor& output_descr) override
         {
+            auto svc = get_service();
+            rpc::zone adjacent_zone_id;
+            // get a new adjacenct_zone_id
+            {
+                std::vector<rpc::back_channel_entry> out_back_channel;
+                auto err = CO_AWAIT svc->get_new_zone_id(rpc::get_version(), adjacent_zone_id, {}, out_back_channel);
+                if (err != rpc::error::OK())
+                {
+                    RPC_ERROR("[WS] get_new_zone_id failed: {}", err);
+                    RPC_ASSERT(false);
+                    CO_RETURN err;
+                }
+
+                set_adjacent_zone_id(adjacent_zone_id);
+            }
+
+            svc->add_transport(adjacent_zone_id.as_destination(), shared_from_this());
+
+            if (stub)
+            {
+                auto ret = CO_AWAIT stub->add_ref(false, false, adjacent_zone_id.as_caller());
+                if (ret != rpc::error::OK())
+                {
+                    CO_RETURN ret;
+                }
+            }
+
             assert(child_entry_point_factory_fn_);
             std::shared_ptr<parent_transport> child;
             auto ret = CO_AWAIT child_entry_point_factory_fn_(

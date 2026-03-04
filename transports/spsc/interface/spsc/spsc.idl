@@ -53,13 +53,23 @@ namespace rpc
             // the expected interface id of the caller object
             rpc::interface_ordinal inbound_interface_id;
 
-            // the zone id of the destination 
+            // the zone id of the destination
             rpc::destination_zone destination_zone_id;
             // the expected interface id of the destination object
             rpc::interface_ordinal outbound_interface_id;
 
             // the zone id of the zone immediately adjacent to the new zone
             rpc::zone adjacent_zone_id;
+        };
+
+        // Sent immediately by the server upon receiving init_client_channel_send, before
+        // invoking connection_handler_.  Informs the peer of the server's root zone_id so
+        // that the peer's adjacent_zone_id is established before any back-channel calls
+        // (e.g. addref) arrive from the server.
+        struct init_client_initial_channel_response
+        {
+            // the server's root service zone_id (equivalent to the peer's adjacent zone)
+            rpc::zone zone_id;
         };
 
         struct init_client_channel_response

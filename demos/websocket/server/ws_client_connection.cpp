@@ -81,8 +81,7 @@ namespace websocket_demo
         // send the connect_response back to the client.
         coro::task<bool> ws_client_connection::setup_zone()
         {
-            transport_ = std::make_shared<transport>(
-                wslay_ctx_, service_, service_->generate_new_zone_id(), pending_messages_, pending_messages_mutex_);
+            transport_ = std::make_shared<transport>(wslay_ctx_, service_, pending_messages_, pending_messages_mutex_);
 
             RPC_INFO("[WS] connect_request received, inbound_remote_object={}", inbound_remote_object_.get_subnet());
             RPC_INFO("[WS] Calling attach_remote_zone");

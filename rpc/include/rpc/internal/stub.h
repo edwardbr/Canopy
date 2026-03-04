@@ -133,6 +133,7 @@ namespace rpc
         void dont_keep_alive() { p_keep_self_alive_.reset(); }
 
         uint64_t get_shared_count() const { return shared_count_; }
+        uint64_t get_optimistic_count() const { return optimistic_count_; }
 
         std::shared_ptr<service> get_zone() const { return zone_; }
 

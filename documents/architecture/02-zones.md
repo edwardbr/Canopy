@@ -250,8 +250,7 @@ if (connection_status != coro::net::connect_status::connected)
 // Create the client transport
 auto client_transport = rpc::tcp::tcp_transport::create("client_transport",
     client_service,
-    peer_zone_id,
-    std::chrono::milliseconds(100000),
+    // std::chrono::milliseconds(100000),
     std::move(tcp_client),
     nullptr); // client doesn't need handler
 

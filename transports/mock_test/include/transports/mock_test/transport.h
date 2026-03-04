@@ -77,8 +77,8 @@ namespace rpc::mock_test
             rpc::caller_zone caller_zone_id);
 
     public:
-        mock_transport(std::string name, std::shared_ptr<rpc::service> service, rpc::zone adjacent_zone_id);
-        mock_transport(std::string name, rpc::zone zone_id, rpc::zone adjacent_zone_id);
+        mock_transport(std::string name, std::shared_ptr<rpc::service> service);
+        mock_transport(std::string name, rpc::zone zone_id);
         virtual ~mock_transport() = default;
 
         // Control methods for testing
@@ -112,7 +112,9 @@ namespace rpc::mock_test
 
         // outbound i_marshaller implementations
         CORO_TASK(int)
-        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings& input_descr,
+            rpc::interface_descriptor& output_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         CORO_TASK(int)

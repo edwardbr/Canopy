@@ -8,8 +8,8 @@
 
 namespace rpc::mock_test
 {
-    mock_transport::mock_transport(std::string name, std::shared_ptr<rpc::service> service, rpc::zone adjacent_zone_id)
-        : rpc::transport(name, service, adjacent_zone_id)
+    mock_transport::mock_transport(std::string name, std::shared_ptr<rpc::service> service)
+        : rpc::transport(name, service)
     {
         set_status(rpc::transport_status::CONNECTED);
     }
@@ -65,8 +65,11 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
+    mock_transport::inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+        connection_settings& input_descr,
+        rpc::interface_descriptor& output_descr)
     {
+        std::ignore = stub;
         std::ignore = input_descr;
         std::ignore = output_descr;
         CO_RETURN rpc::error::OK();

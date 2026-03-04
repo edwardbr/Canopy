@@ -13,10 +13,9 @@
 
 namespace rpc
 {
-    transport::transport(std::string name, std::shared_ptr<service> service, zone adjacent_zone_id)
+    transport::transport(std::string name, std::shared_ptr<service> service)
         : name_(name)
         , zone_id_(service->get_zone_id())
-        , adjacent_zone_id_(adjacent_zone_id)
         , service_(service)
     {
 #ifdef CANOPY_USE_TELEMETRY
@@ -29,10 +28,9 @@ namespace rpc
 #endif
     }
 
-    transport::transport(std::string name, zone zone_id_, zone adjacent_zone_id)
+    transport::transport(std::string name, zone zone_id_)
         : name_(name)
         , zone_id_(zone_id_)
-        , adjacent_zone_id_(adjacent_zone_id)
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (adjacent_zone_id_.get_subnet() != 0)
@@ -85,7 +83,9 @@ namespace rpc
 #endif
     }
 
-    CORO_TASK(int) transport::connect(connection_settings input_descr, interface_descriptor& output_descr)
+    CORO_TASK(int)
+    transport::connect(
+        const std::shared_ptr<rpc::object_stub>& stub, connection_settings input_descr, interface_descriptor& output_descr)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (input_descr.get_object_id().is_set())
@@ -99,7 +99,7 @@ namespace rpc
                     rpc::add_ref_options::normal);
         }
 #endif
-        int ret = CO_AWAIT inner_connect(input_descr, output_descr);
+        int ret = CO_AWAIT inner_connect(stub, input_descr, output_descr);
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (output_descr.get_object_id().is_set())

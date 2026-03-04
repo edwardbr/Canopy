@@ -9,21 +9,23 @@
 #include "test_host.h"
 #include "test_globals.h"
 #include <gtest/gtest.h>
-#include <common/foo_impl.h>
-#include <common/tests.h>
-#include <transports/local/transport.h>
 
+#include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
 #include <rpc/telemetry/multiplexing_telemetry_service.h>
 #endif
+
+#include <common/foo_impl.h>
+#include <common/tests.h>
+#include <transports/local/transport.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class inproc_setup
 {
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> io_scheduler_;
 #endif
-    std::shared_ptr<rpc::service> root_service_;
+    std::shared_ptr<rpc::root_service> root_service_;
     std::shared_ptr<rpc::child_service> child_service_;
     std::weak_ptr<rpc::child_service> child_service_weak_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
@@ -48,7 +50,7 @@ public:
 
     virtual ~inproc_setup() = default;
 
-    std::shared_ptr<rpc::service> get_root_service() const { return root_service_; }
+    std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
     bool get_has_enclave() const { return has_enclave_; }
     bool is_sgx_setup() const { return false; }
     rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
@@ -79,7 +81,7 @@ public:
         }
 #endif
 
-        root_service_ = std::make_shared<rpc::service>("host",
+        root_service_ = std::make_shared<rpc::root_service>("host",
             rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
             ,

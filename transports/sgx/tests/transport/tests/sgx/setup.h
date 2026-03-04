@@ -20,7 +20,7 @@
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class sgx_setup
 {
-    std::shared_ptr<rpc::service> root_service_;
+    std::shared_ptr<rpc::root_service> root_service_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
     rpc::weak_ptr<yyy::i_host> local_host_ptr_;
     rpc::shared_ptr<yyy::i_example> i_example_ptr_;
@@ -35,7 +35,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 public:
     virtual ~sgx_setup() = default;
 
-    std::shared_ptr<rpc::service> get_root_service() const { return root_service_; }
+    std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
     bool get_has_enclave() const { return has_enclave_; }
     bool is_sgx_setup() const { return true; }
     rpc::shared_ptr<yyy::i_host> get_local_host_ptr() { return local_host_ptr_.lock(); }
@@ -69,7 +69,7 @@ public:
             telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
         }
 #endif
-        root_service_ = std::make_shared<rpc::service>("host", rpc::zone{++zone_gen_});
+        root_service_ = std::make_shared<rpc::root_service>("host", rpc::zone{++zone_gen_});
         current_host_service = root_service_;
 
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());

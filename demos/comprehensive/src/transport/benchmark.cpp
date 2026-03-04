@@ -217,7 +217,7 @@ namespace comprehensive
         {
             benchmark_result result{};
 
-            auto root_service = std::make_shared<rpc::service>("benchmark_root", rpc::DEFAULT_PREFIX, scheduler);
+            auto root_service = std::make_shared<rpc::root_service>("benchmark_root", rpc::DEFAULT_PREFIX, scheduler);
             root_service->set_default_encoding(enc);
 
             auto child_transport = std::make_shared<rpc::local::child_transport>("benchmark_child", root_service);
@@ -267,21 +267,20 @@ namespace comprehensive
         CORO_TASK(void)
         spsc_process_1_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
-            rpc::zone zone_2,
             spsc_queues* queues,
             rpc::event& client_finished,
             rpc::encoding enc,
             size_t blob_size,
             benchmark_result& result)
         {
-            auto service_1 = std::make_shared<rpc::service>("spsc_client", zone_1, scheduler);
+            auto service_1 = std::make_shared<rpc::root_service>("spsc_client", zone_1, scheduler);
             service_1->set_default_encoding(enc);
 
             auto on_shutdown_event = std::make_shared<rpc::event>();
             service_1->set_shutdown_event(on_shutdown_event);
 
             auto transport_1 = rpc::spsc::spsc_transport::create(
-                "spsc_transport_1", service_1, zone_2, &queues->to_process_1, &queues->to_process_2, nullptr);
+                "spsc_transport_1", service_1, &queues->to_process_1, &queues->to_process_2, nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -317,14 +316,13 @@ namespace comprehensive
         CORO_TASK(void)
         spsc_process_2_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_2,
-            rpc::zone zone_1,
             spsc_queues* queues,
             rpc::event& server_ready,
             const rpc::event& client_finished,
             rpc::encoding enc)
         {
             auto on_shutdown_event = std::make_shared<rpc::event>();
-            auto service_2 = std::make_shared<rpc::service>("spsc_server", zone_2, scheduler);
+            auto service_2 = std::make_shared<rpc::root_service>("spsc_server", zone_2, scheduler);
             service_2->set_shutdown_event(on_shutdown_event);
             service_2->set_default_encoding(enc);
 
@@ -352,7 +350,7 @@ namespace comprehensive
             };
 
             auto transport_2 = rpc::spsc::spsc_transport::create(
-                "spsc_transport_2", service_2, zone_1, &queues->to_process_2, &queues->to_process_1, handler);
+                "spsc_transport_2", service_2, &queues->to_process_2, &queues->to_process_1, handler);
 
             co_await transport_2->accept();
             server_ready.set();
@@ -386,8 +384,8 @@ namespace comprehensive
             rpc::event client_finished;
 
             coro::sync_wait(coro::when_all(
-                spsc_process_1_task(scheduler_1, zone_1, zone_2, queues.get(), client_finished, enc, blob_size, result),
-                spsc_process_2_task(scheduler_2, zone_2, zone_1, queues.get(), server_ready, client_finished, enc)));
+                spsc_process_1_task(scheduler_1, zone_1, queues.get(), client_finished, enc, blob_size, result),
+                spsc_process_2_task(scheduler_2, zone_2, queues.get(), server_ready, client_finished, enc)));
 
             scheduler_1->shutdown();
             scheduler_2->shutdown();
@@ -405,7 +403,7 @@ namespace comprehensive
             std::atomic<uint64_t> zone_gen{0};
             auto on_shutdown_event = std::make_shared<rpc::event>();
 
-            auto service = std::make_shared<rpc::service>("tcp_server", rpc::zone{++zone_gen}, scheduler);
+            auto service = std::make_shared<rpc::root_service>("tcp_server", rpc::zone_address(1, 1), scheduler);
             service->set_default_encoding(enc);
             service->set_shutdown_event(on_shutdown_event);
 
@@ -430,8 +428,9 @@ namespace comprehensive
                             CO_RETURN rpc::error::OK();
                         });
                     CO_RETURN ret;
-                },
-                std::chrono::milliseconds(100000));
+                }
+                // ,                std::chrono::milliseconds(100000)
+            );
 
             if (!listener->start_listening(service, coro::net::socket_address{"127.0.0.1", port}))
             {
@@ -459,11 +458,9 @@ namespace comprehensive
         {
             co_await server_ready.wait();
 
-            std::atomic<uint64_t> zone_gen{100};
             const char* host = "127.0.0.1";
 
-            auto peer_zone_id = rpc::zone{1};
-            auto client_service = std::make_shared<rpc::service>("tcp_client", rpc::zone{++zone_gen}, scheduler);
+            auto client_service = std::make_shared<rpc::root_service>("tcp_client", rpc::zone_address(2, 1), scheduler);
             client_service->set_default_encoding(enc);
 
             coro::net::tcp::client client(scheduler, coro::net::socket_address{host, port});
@@ -477,7 +474,7 @@ namespace comprehensive
             }
 
             auto client_transport = rpc::tcp::tcp_transport::create(
-                "client_transport", client_service, peer_zone_id, std::chrono::milliseconds(100000), std::move(client), nullptr);
+                "client_transport", client_service, /*std::chrono::milliseconds(100000),*/ std::move(client), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;

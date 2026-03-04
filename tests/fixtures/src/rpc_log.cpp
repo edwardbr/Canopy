@@ -25,11 +25,11 @@ extern std::weak_ptr<rpc::service> current_host_service;
 // an ocall for logging the test
 extern "C"
 {
+#ifndef CANOPY_BUILD_COROUTINE
     // #ifdef CANOPY_USE_TELEMETRY
-    CORO_TASK(int)
-    call_host(uint64_t protocol_version, // version of the rpc call protocol
-        uint64_t encoding,               // format of the serialised data
-        uint64_t tag,                    // info on the type of the call
+    int call_host(uint64_t protocol_version, // version of the rpc call protocol
+        uint64_t encoding,                   // format of the serialised data
+        uint64_t tag,                        // info on the type of the call
         uint64_t caller_zone_id,
         uint64_t destination_zone_id,
         uint64_t object_id,
@@ -48,7 +48,7 @@ extern "C"
         {
             retry_buf.data.clear();
             RPC_ERROR("Transport error - no root service in call_host");
-            CO_RETURN rpc::error::TRANSPORT_ERROR();
+            return rpc::error::TRANSPORT_ERROR();
         }
         if (retry_buf.data.empty())
         {
@@ -70,7 +70,7 @@ extern "C"
 
             std::vector<char> out_data(sz_out);
             std::vector<rpc::back_channel_entry> out_back_channel;
-            retry_buf.return_value = CO_AWAIT root_service->send(protocol_version,
+            retry_buf.return_value = root_service->send(protocol_version,
                 rpc::encoding(encoding),
                 tag,
                 {caller_zone_id},
@@ -83,7 +83,7 @@ extern "C"
                 out_back_channel);
             if (rpc::error::is_error(retry_buf.return_value))
             {
-                CO_RETURN retry_buf.return_value;
+                return retry_buf.return_value;
             }
 
             // Combine output payload + back-channel into single buffer
@@ -98,16 +98,15 @@ extern "C"
         }
         *data_out_sz = retry_buf.data.size();
         if (*data_out_sz > sz_out)
-            CO_RETURN rpc::error::NEED_MORE_MEMORY();
+            return rpc::error::NEED_MORE_MEMORY();
         memcpy(data_out, retry_buf.data.data(), retry_buf.data.size());
         retry_buf.data.clear();
-        CO_RETURN retry_buf.return_value;
+        return retry_buf.return_value;
     }
 
-    CORO_TASK(int)
-    post_host(uint64_t protocol_version, // version of the rpc call protocol
-        uint64_t encoding,               // format of the serialised data
-        uint64_t tag,                    // info on the type of the call
+    int post_host(uint64_t protocol_version, // version of the rpc call protocol
+        uint64_t encoding,                   // format of the serialised data
+        uint64_t tag,                        // info on the type of the call
         uint64_t caller_zone_id,
         uint64_t destination_zone_id,
         uint64_t object_id,
@@ -122,7 +121,7 @@ extern "C"
         if (!root_service)
         {
             RPC_ERROR("Transport error - no root service in post_host");
-            CO_RETURN rpc::error::TRANSPORT_ERROR();
+            return rpc::error::TRANSPORT_ERROR();
         }
 
         // Split combined input buffer into payload + back-channel
@@ -141,7 +140,7 @@ extern "C"
             ia & in_back_channel;                      // Read back-channel
         }
 
-        CO_AWAIT root_service->post(protocol_version,
+        root_service->post(protocol_version,
             rpc::encoding(encoding),
             tag,
             {caller_zone_id},
@@ -153,11 +152,10 @@ extern "C"
 
         // Fire and forget - no output
         *data_out_sz = 0;
-        CO_RETURN rpc::error::OK();
+        return rpc::error::OK();
     }
 
-    CORO_TASK(int)
-    try_cast_host(uint64_t protocol_version, // version of the rpc call protocol
+    int try_cast_host(uint64_t protocol_version, // version of the rpc call protocol
         uint64_t caller_zone_id,
         uint64_t destination_zone_id,
         uint64_t object_id,
@@ -167,21 +165,20 @@ extern "C"
         if (!root_service)
         {
             RPC_ERROR("Transport error - no root service in try_cast_host");
-            CO_RETURN rpc::error::TRANSPORT_ERROR();
+            return rpc::error::TRANSPORT_ERROR();
         }
         std::vector<rpc::back_channel_entry> in_back_channel;
         std::vector<rpc::back_channel_entry> out_back_channel;
-        int ret = CO_AWAIT root_service->try_cast(protocol_version,
+        int ret = root_service->try_cast(protocol_version,
             caller_zone_id,
             rpc::destination_zone(destination_zone_id).with_object(rpc::object(object_id)),
             {interface_id},
             in_back_channel,
             out_back_channel);
-        CO_RETURN ret;
+        return ret;
     }
 
-    CORO_TASK(int)
-    add_ref_host(uint64_t protocol_version, // version of the rpc call protocol
+    int add_ref_host(uint64_t protocol_version, // version of the rpc call protocol
         uint64_t destination_zone_id,
         uint64_t object_id,
         uint64_t caller_zone_id,
@@ -192,11 +189,11 @@ extern "C"
         if (!root_service)
         {
             RPC_ERROR("Transport error - no root service in add_ref_host");
-            CO_RETURN rpc::error::TRANSPORT_ERROR();
+            return rpc::error::TRANSPORT_ERROR();
         }
         std::vector<rpc::back_channel_entry> in_back_channel;
         std::vector<rpc::back_channel_entry> out_back_channel;
-        CO_RETURN CO_AWAIT root_service->add_ref(protocol_version,
+        return root_service->add_ref(protocol_version,
             rpc::destination_zone(destination_zone_id).with_object(rpc::object(object_id)),
             {caller_zone_id},
             {requesting_zone_id},
@@ -205,8 +202,7 @@ extern "C"
             out_back_channel);
     }
 
-    CORO_TASK(int)
-    release_host(uint64_t protocol_version // version of the rpc call protocol
+    int release_host(uint64_t protocol_version // version of the rpc call protocol
         ,
         uint64_t zone_id,
         uint64_t object_id,
@@ -217,18 +213,18 @@ extern "C"
         if (!root_service)
         {
             RPC_ERROR("Transport error - no root service in release_host");
-            CO_RETURN rpc::error::TRANSPORT_ERROR();
+            return rpc::error::TRANSPORT_ERROR();
         }
         std::vector<rpc::back_channel_entry> in_back_channel;
         std::vector<rpc::back_channel_entry> out_back_channel;
-        CO_RETURN CO_AWAIT root_service->release(protocol_version,
+        return root_service->release(protocol_version,
             rpc::destination_zone(zone_id).with_object(rpc::object(object_id)),
             {caller_zone_id},
             static_cast<rpc::release_options>(options),
             in_back_channel,
             out_back_channel);
     }
-    // #endif
+#endif
 
     void rpc_log(int level, const char* str, size_t sz)
     {

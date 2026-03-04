@@ -107,7 +107,7 @@ namespace websocket_demo
 
                 if (err != rpc::error::OK())
                 {
-                    co_return err;
+                    CO_RETURN err;
                 }
 
                 service_->spawn(get_next(context_, event_, evt_stopped_, complete_, signal_stop_));

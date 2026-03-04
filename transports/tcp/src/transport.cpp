@@ -12,26 +12,24 @@ namespace rpc::tcp
 {
     tcp_transport::tcp_transport(std::string name,
         std::shared_ptr<rpc::service> service,
-        rpc::zone adjacent_zone_id,
-        std::chrono::milliseconds timeout,
+        // std::chrono::milliseconds timeout,
         coro::net::tcp::client client,
         connection_handler handler)
-        : rpc::transport(name, service, adjacent_zone_id)
+        : rpc::transport(name, service)
         , client_(std::move(client))
-        , timeout_(timeout)
+        // , timeout_(timeout)
         , connection_handler_(std::move(handler))
     {
     }
 
     std::shared_ptr<tcp_transport> tcp_transport::create(std::string name,
         std::shared_ptr<rpc::service> service,
-        rpc::zone adjacent_zone_id,
-        std::chrono::milliseconds timeout,
+        // std::chrono::milliseconds timeout,
         coro::net::tcp::client client,
         connection_handler handler)
     {
         auto transport = std::shared_ptr<tcp_transport>(
-            new tcp_transport(name, service, adjacent_zone_id, timeout, std::move(client), std::move(handler)));
+            new tcp_transport(name, service, /*timeout,*/ std::move(client), std::move(handler)));
 
         // Set up the keep alive using member_ptr assignment
         transport->keep_alive_ = transport;
@@ -56,9 +54,12 @@ namespace rpc::tcp
 
     // Connection handshake
     CORO_TASK(int)
-    tcp_transport::inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr)
+    tcp_transport::inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+        connection_settings& input_descr,
+        rpc::interface_descriptor& output_descr)
     {
         RPC_TRACE("tcp_transport::connect zone={}", get_zone_id().get_subnet());
+        stub_ = stub;
 
         auto service = get_service();
         assert(connection_handler_ || !connection_handler_); // Can be null for client side
@@ -78,12 +79,14 @@ namespace rpc::tcp
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("tcp_transport->call_peer init_client_channel_send failed {}", rpc::error::to_string(ret));
+            stub_.reset();
             CO_RETURN ret;
         }
 
         if (init_receive.err_code != rpc::error::OK())
         {
             RPC_ERROR("init_client_channel_send failed");
+            stub_.reset();
             CO_RETURN init_receive.err_code;
         }
 
@@ -708,6 +711,34 @@ namespace rpc::tcp
                         {
                             service->spawn(stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
                         }
+                        else if (payload.payload_fingerprint
+                                 == rpc::id<init_client_initial_channel_response>::get(prefix.version))
+                        {
+                            init_client_initial_channel_response early_response;
+                            auto str_err = rpc::from_yas_compressed_binary(rpc::span(payload.payload), early_response);
+                            if (str_err.empty())
+                            {
+                                RPC_TRACE("pump: received init_client_initial_channel_response, adjacent_zone={}",
+                                    early_response.zone_id.get_subnet());
+                                set_adjacent_zone_id(early_response.zone_id);
+
+                                get_service()->add_transport(early_response.zone_id.as_destination(), shared_from_this());
+
+                                if (stub_)
+                                {
+                                    auto ret = CO_AWAIT stub_->add_ref(false, false, early_response.zone_id.as_caller());
+                                    stub_.reset();
+                                    if (ret != rpc::error::OK())
+                                    {
+                                        set_status(transport_status::DISCONNECTING);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                RPC_ERROR("failed to deserialize init_client_initial_channel_response");
+                            }
+                        }
                         else
                         {
                             result_listener* result = nullptr;
@@ -1043,6 +1074,17 @@ namespace rpc::tcp
         // The server transport is initially created with zone{0}, but now we know the real client zone
         // Use adjacent_zone_id (the zone of the transport) not caller_zone_id (which may be different in pass-through)
         set_adjacent_zone_id(request.adjacent_zone_id);
+
+        // Immediately inform the peer of our zone_id before invoking connection_handler_, so that
+        // the peer can update its adjacent_zone_id before any back-channel calls arrive.
+        auto early_err = CO_AWAIT send_payload(
+            prefix.version, message_direction::one_way, init_client_initial_channel_response{.zone_id = get_zone_id()}, 0);
+        if (early_err != rpc::error::OK())
+        {
+            RPC_ERROR("failed to send init_client_initial_channel_response");
+            set_status(rpc::transport_status::DISCONNECTED);
+            CO_RETURN;
+        }
 
         int ret = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
         connection_handler_ = nullptr;

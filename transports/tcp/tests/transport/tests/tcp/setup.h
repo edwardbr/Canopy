@@ -15,8 +15,8 @@
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class tcp_setup
 {
-    std::shared_ptr<rpc::service> root_service_;
-    std::shared_ptr<rpc::service> peer_service_;
+    std::shared_ptr<rpc::root_service> root_service_;
+    std::shared_ptr<rpc::root_service> peer_service_;
 
     std::shared_ptr<rpc::tcp::tcp_transport> server_transport_;
     std::shared_ptr<rpc::tcp::tcp_transport> client_transport_;
@@ -42,7 +42,7 @@ public:
 
     virtual ~tcp_setup() = default;
 
-    std::shared_ptr<rpc::service> get_root_service() const { return root_service_; }
+    std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
     std::shared_ptr<rpc::tcp::tcp_transport> get_server_transport() const { return server_transport_; };
     bool get_has_enclave() const { return has_enclave_; }
     bool is_sgx_setup() const { return false; }
@@ -80,10 +80,10 @@ public:
         auto peer_zone_id = rpc::zone{++zone_gen_};
 
         // Create the peer service (server side)
-        peer_service_ = std::make_shared<rpc::service>("peer", peer_zone_id, io_scheduler_);
+        peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, io_scheduler_);
 
         // Create the root service (client side)
-        root_service_ = std::make_shared<rpc::service>("host", root_zone_id, io_scheduler_);
+        root_service_ = std::make_shared<rpc::root_service>("host", root_zone_id, io_scheduler_);
 
         current_host_service = root_service_;
 
@@ -118,8 +118,9 @@ public:
                         CO_RETURN rpc::error::OK();
                     });
                 CO_RETURN ret;
-            },
-            std::chrono::milliseconds(100000));
+            }
+            // ,            std::chrono::milliseconds(100000)
+        );
 
         // Start the listener on the peer service
         if (!listener_->start_listening(peer_service_, coro::net::socket_address{"127.0.0.1", 8080}))
@@ -142,8 +143,7 @@ public:
         // Create the client transport
         client_transport_ = rpc::tcp::tcp_transport::create("client_transport",
             root_service_,
-            peer_zone_id,
-            std::chrono::milliseconds(100000),
+            // std::chrono::milliseconds(100000),
             std::move(client),
             nullptr); // client doesn't need handler
 
