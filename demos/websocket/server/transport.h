@@ -24,19 +24,46 @@ namespace websocket_demo
         {
 
         public:
-            transport(std::string name, std::shared_ptr<rpc::service> service, rpc::zone adjacent_zone_id);
-            transport(std::string name, rpc::zone zone_id, rpc::zone adjacent_zone_id);
+            transport(std::string name, std::shared_ptr<rpc::service> service);
+            transport(std::string name, rpc::zone zone_id);
             transport(wslay_event_context_ptr wslay_ctx,
                 std::shared_ptr<rpc::service> service,
-                rpc::zone adjacent_zone_id,
                 const std::shared_ptr<std::queue<std::vector<uint8_t>>>& pending_messages,
                 const std::shared_ptr<std::mutex>& pending_messages_mutex);
 
             virtual ~transport() CANOPY_DEFAULT_DESTRUCTOR;
 
             CORO_TASK(int)
-            inner_connect(rpc::connection_settings& input_descr, rpc::interface_descriptor& output_descr) override
+            inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+                rpc::connection_settings& input_descr,
+                rpc::interface_descriptor& output_descr) override
             {
+                auto svc = get_service();
+                rpc::zone adjacent_zone_id;
+                // get a new adjacenct_zone_id
+                {
+                    std::vector<rpc::back_channel_entry> out_back_channel;
+                    auto err = CO_AWAIT svc->get_new_zone_id(rpc::get_version(), adjacent_zone_id, {}, out_back_channel);
+                    if (err != rpc::error::OK())
+                    {
+                        RPC_ERROR("[WS] get_new_zone_id failed: {}", err);
+                        RPC_ASSERT(false);
+                        CO_RETURN err;
+                    }
+
+                    set_adjacent_zone_id(adjacent_zone_id);
+                }
+
+                svc->add_transport(adjacent_zone_id.as_destination(), shared_from_this());
+
+                if (stub)
+                {
+                    auto ret = CO_AWAIT stub->add_ref(false, false, adjacent_zone_id.as_caller());
+                    if (ret != rpc::error::OK())
+                    {
+                        CO_RETURN ret;
+                    }
+                }
                 std::ignore = input_descr;
                 std::ignore = output_descr;
                 // Parent transport is connected immediately - no handshake needed

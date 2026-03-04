@@ -43,7 +43,9 @@
                 "CANOPY_ENABLE_CLANG_TIDY_FIX": "OFF",
                 "CANOPY_ADD_REF_COUNT_CHECKS": "OFF",
                 "CANOPY_ASSERT_ON_LOGGER_ERROR": "OFF",
-                "CANOPY_LOGGING_LEVEL": "2"
+                "CANOPY_LOGGING_LEVEL": "2",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++"
             }
         },
         {

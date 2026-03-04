@@ -38,7 +38,9 @@ namespace rpc
             std::string filename);
 
         CORO_TASK(int)
-        inner_connect(connection_settings& input_descr, rpc::interface_descriptor& output_descr) override;
+        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings& input_descr,
+            rpc::interface_descriptor& output_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         int send(uint64_t protocol_version,

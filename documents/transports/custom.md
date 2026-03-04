@@ -14,7 +14,7 @@ class my_transport : public rpc::transport
 {
 public:
     // Connection establishment
-    CORO_TASK(int) inner_connect(connection_settings& input_descr,
+    CORO_TASK(int) inner_connect(const std::shared_ptr<rpc::object_stub>& stub, connection_settings& input_descr,
                                   interface_descriptor& output_descr) override
     {
         // Perform handshake

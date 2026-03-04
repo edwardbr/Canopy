@@ -29,11 +29,6 @@ namespace rpc
         current_service_ = svc;
     }
 
-    zone service::generate_new_zone_id()
-    {
-        return zone{zone_allocator_.allocate_zone()};
-    }
-
     object service::generate_new_object_id() const
     {
         auto count = ++object_id_generator_;
@@ -44,20 +39,16 @@ namespace rpc
     service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler)
         : zone_id_(zone_id)
         , name_(name)
-        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
         , io_scheduler_(scheduler)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation(name, zone_id, destination_zone{0});
-#endif
+        RPC_ASSERT(zone_id_.get_subnet() != 0);
     }
     service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler, child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
-        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
         , io_scheduler_(scheduler)
     {
+        RPC_ASSERT(zone_id_.get_subnet() != 0);
         // No telemetry call for child services
     }
 
@@ -66,19 +57,55 @@ namespace rpc
         : zone_id_(zone_id)
         , name_(name)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation(name, zone_id, destination_zone{0});
-#endif
+        RPC_ASSERT(zone_id_.get_subnet() != 0);
     }
     service::service(const char* name, zone zone_id, child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
     {
+        RPC_ASSERT(zone_id_.get_subnet() != 0);
         // No telemetry call for child services
     }
 
 #endif
+
+    ////////////////////////////////////////////////////////////////////////////
+    // root_service
+
+#ifdef CANOPY_BUILD_COROUTINE
+    root_service::root_service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler)
+        : service(name, zone_id, scheduler)
+        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
+    {
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_service_creation(name, zone_id, destination_zone{0});
+#endif
+    }
+#else
+    root_service::root_service(const char* name, zone zone_id)
+        : service(name, zone_id)
+        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
+    {
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_service_creation(name, zone_id, destination_zone{0});
+#endif
+    }
+#endif
+
+    CORO_TASK(int)
+    root_service::get_new_zone_id(uint64_t protocol_version,
+        zone& zone_id,
+        const std::vector<rpc::back_channel_entry>& in_back_channel,
+        std::vector<rpc::back_channel_entry>& out_back_channel)
+    {
+        std::ignore = protocol_version;
+        std::ignore = in_back_channel;
+        std::ignore = out_back_channel;
+        zone_id = zone{zone_allocator_.allocate_zone()};
+        CO_RETURN rpc::error::OK();
+    }
 
     service::~service()
     {
@@ -805,19 +832,6 @@ namespace rpc
         }
 
         RPC_INFO("transport_down: Cleanup complete, {} objects deleted", objects_to_notify.size());
-    }
-
-    CORO_TASK(int)
-    service::get_new_zone_id(uint64_t protocol_version,
-        zone& zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
-    {
-        std::ignore = protocol_version;
-        std::ignore = in_back_channel;
-        std::ignore = out_back_channel;
-        zone_id = generate_new_zone_id();
-        CO_RETURN rpc::error::OK();
     }
 
     void service::inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)

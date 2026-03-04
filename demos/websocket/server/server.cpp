@@ -187,9 +187,8 @@ auto main(int argc, char* argv[]) -> int
                 },
             .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-    std::atomic<uint64_t> zone_gen = 0;
-    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", rpc::zone{++zone_gen}, scheduler);
-    root_service->generate_new_zone_id();
+    auto root_service
+        = std::make_shared<websocket_demo::v1::websocket_service>("demo", rpc::zone_address{1, 1}, scheduler);
     // auto demo = websocket_demo::v1::create_websocket_demo_instance();
 
     auto make_websocket_server = [](std::shared_ptr<coro::scheduler> scheduler,

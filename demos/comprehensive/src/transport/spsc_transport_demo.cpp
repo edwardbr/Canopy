@@ -50,13 +50,13 @@ namespace comprehensive
             std::atomic<bool>& is_loaded,
             rpc::event& client_finished)
         {
-            auto service_1 = std::make_shared<rpc::service>("process_1", zone_1, scheduler);
+            auto service_1 = std::make_shared<rpc::root_service>("process_1", zone_1, scheduler);
 
             auto on_shutdown_event = std::make_shared<rpc::event>();
             service_1->set_shutdown_event(on_shutdown_event);
 
             auto transport_1 = rpc::spsc::spsc_transport::create(
-                "transport_1", service_1, zone_2, &queues->to_process_1, &queues->to_process_2, nullptr);
+                "transport_1", service_1, &queues->to_process_1, &queues->to_process_2, nullptr);
 
             rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
 
@@ -117,11 +117,11 @@ namespace comprehensive
             const rpc::event& client_finished)
         {
             auto on_shutdown_event = std::make_shared<rpc::event>();
-            auto service_2 = std::make_shared<rpc::service>("process_2", zone_2, scheduler);
+            auto service_2 = std::make_shared<rpc::root_service>("process_2", zone_2, scheduler);
             service_2->set_shutdown_event(on_shutdown_event);
 
             rpc::event on_connected;
-            auto handler = [&, zone_1](const rpc::connection_settings& input_interface,
+            auto handler = [&](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
                                std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)
@@ -143,7 +143,7 @@ namespace comprehensive
             };
 
             auto transport_2 = rpc::spsc::spsc_transport::create(
-                "transport_2", service_2, zone_1, &queues->to_process_2, &queues->to_process_1, handler);
+                "transport_2", service_2, &queues->to_process_2, &queues->to_process_1, handler);
 
             co_await transport_2->accept();
 

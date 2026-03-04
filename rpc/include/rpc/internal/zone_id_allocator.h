@@ -40,10 +40,10 @@ namespace rpc
         // subnet_base/subnet_range default to the full available subnet space.
         // next_subnet starts at 1 to match legacy zone_id_generator_ counter behaviour.
         explicit zone_id_allocator(
-            uint64_t routing_prefix = 0, uint64_t subnet_base = 0, uint64_t subnet_range = zone_address::max_subnet)
+            uint64_t routing_prefix, uint64_t subnet_base, uint64_t subnet_range = zone_address::max_subnet)
             : subnet_base_(subnet_base)
             , subnet_range_(subnet_range)
-            , next_subnet_(subnet_base + 1)
+            , next_subnet_(1)
             , next_object_(1)
         {
             prefix_.set_routing_prefix(routing_prefix);
@@ -52,10 +52,10 @@ namespace rpc
         // Construct from an existing zone_address (routing_prefix portion only).
         // Useful when the caller already holds a zone_address from auto-detection.
         explicit zone_id_allocator(
-            const zone_address& prefix, uint64_t subnet_base = 0, uint64_t subnet_range = zone_address::max_subnet)
+            const zone_address& prefix, uint64_t subnet_base, uint64_t subnet_range = zone_address::max_subnet)
             : subnet_base_(subnet_base)
             , subnet_range_(subnet_range)
-            , next_subnet_(subnet_base + 1)
+            , next_subnet_(1)
             , next_object_(1)
         {
             prefix_ = prefix.zone_only();

@@ -26,7 +26,7 @@ namespace rpc::tcp
     {
         rpc::event stop_confirmation_evt_;
         bool stop_ = false;
-        std::chrono::milliseconds timeout_;
+        // std::chrono::milliseconds timeout_;
         std::chrono::milliseconds poll_timeout_ = std::chrono::milliseconds(10);
 
         using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
@@ -46,9 +46,11 @@ namespace rpc::tcp
          * @param timeout Timeout for TCP operations
          * @param server_options Options for configuring the TCP server (address, port, SSL, etc.)
          */
-        listener(connection_handler handler, std::chrono::milliseconds timeout)
-            : timeout_(timeout)
-            , connection_handler_(handler)
+        listener(connection_handler handler
+            // , std::chrono::milliseconds timeout
+            )
+            // : timeout_(timeout)
+            : connection_handler_(handler)
         {
         }
 
@@ -102,8 +104,7 @@ namespace rpc::tcp
             // We don't know the remote zone ID yet - it will be provided in the handshake
             auto transport = tcp_transport::create("server_transport",
                 service,
-                rpc::zone{0}, // Will be updated during handshake
-                timeout_,
+                // timeout_,
                 std::move(client),
                 connection_handler_);
 

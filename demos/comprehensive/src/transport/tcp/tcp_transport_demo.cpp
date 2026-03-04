@@ -74,7 +74,7 @@ namespace comprehensive
             auto on_shutdown_event = std::make_shared<rpc::event>();
 
             // Create server service using the zone address provided by the allocator.
-            auto service = std::make_shared<rpc::service>("tcp_server", rpc::zone{zone_addr}, scheduler);
+            auto service = std::make_shared<rpc::root_service>("tcp_server", rpc::zone{zone_addr}, scheduler);
             service->set_shutdown_event(on_shutdown_event);
 
             RPC_INFO("Server zone ID (address): {}", rpc::to_yas_json<std::string>(service->get_zone_id().get_address()));
@@ -108,8 +108,9 @@ namespace comprehensive
                         RPC_ERROR("Server: Client connection failed: {}", static_cast<int>(ret));
 
                     CO_RETURN ret;
-                },
-                std::chrono::milliseconds(100000));
+                }
+                // , std::chrono::milliseconds(100000)
+            );
 
             const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
                                     ? coro::net::domain_t::ipv6
@@ -164,7 +165,7 @@ namespace comprehensive
                 co_await server_ready.wait();
 
                 // Create client service using the zone address provided by the allocator.
-                auto client_service = std::make_shared<rpc::service>("tcp_client", client_zone, scheduler);
+                auto client_service = std::make_shared<rpc::root_service>("tcp_client", client_zone, scheduler);
 
                 RPC_INFO("Client zone ID (address): {}",
                     rpc::to_yas_json<std::string>(client_service->get_zone_id().get_address()));
@@ -190,8 +191,7 @@ namespace comprehensive
                 // Create TCP transport — server_zone identifies the remote zone.
                 auto client_transport = rpc::tcp::tcp_transport::create("client_transport",
                     client_service,
-                    server_zone,
-                    std::chrono::milliseconds(100000),
+                    // std::chrono::milliseconds(100000),
                     std::move(client),
                     nullptr);
 

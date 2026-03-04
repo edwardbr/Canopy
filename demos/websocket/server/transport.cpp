@@ -13,15 +13,15 @@ namespace websocket_demo
 {
     namespace v1
     {
-        transport::transport(std::string name, std::shared_ptr<rpc::service> service, rpc::zone adjacent_zone_id)
-            : rpc::transport(name, service, adjacent_zone_id)
+        transport::transport(std::string name, std::shared_ptr<rpc::service> service)
+            : rpc::transport(name, service)
         {
             // Local transports are always immediately available (in-process)
             set_status(rpc::transport_status::CONNECTED);
         }
 
-        transport::transport(std::string name, rpc::zone zone_id, rpc::zone adjacent_zone_id)
-            : rpc::transport(name, zone_id, adjacent_zone_id)
+        transport::transport(std::string name, rpc::zone zone_id)
+            : rpc::transport(name, zone_id)
         {
             // Local transports are always immediately available (in-process)
             set_status(rpc::transport_status::CONNECTED);
@@ -29,10 +29,9 @@ namespace websocket_demo
 
         transport::transport(wslay_event_context_ptr wslay_ctx,
             std::shared_ptr<rpc::service> service,
-            rpc::zone adjacent_zone_id,
             const std::shared_ptr<std::queue<std::vector<uint8_t>>>& pending_messages,
             const std::shared_ptr<std::mutex>& pending_messages_mutex)
-            : rpc::transport("websocket", service, adjacent_zone_id)
+            : rpc::transport("websocket", service)
             , wslay_ctx_(wslay_ctx)
             , pending_messages_(pending_messages)
             , pending_messages_mutex_(pending_messages_mutex)

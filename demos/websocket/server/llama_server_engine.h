@@ -41,6 +41,7 @@ namespace secret_llama
     {
         struct context
         {
+            virtual ~context() = default;
             virtual int add_prompt(const std::string& prompt) = 0;
             virtual int get_piece(std::string& piece, bool& complete) = 0;
         };

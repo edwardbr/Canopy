@@ -181,10 +181,11 @@ namespace rpc
 
     protected:
         // Constructor for derived transport classes
-        transport(std::string name, std::shared_ptr<service> service, zone adjacent_zone_id);
-        transport(std::string name, zone zone_id, zone adjacent_zone_id);
+        transport(std::string name, std::shared_ptr<service> service);
+        transport(std::string name, zone zone_id);
 
         // lock free version - adds handler for zone pair and increments passthrough counts
+
         // Caller must hold destinations_mutex_
         // outbound_dest: zone reachable via this transport (increments outbound_passthrough_count)
         // inbound_source: zone routing through this transport (increments inbound_passthrough_count)
@@ -202,9 +203,6 @@ namespace rpc
 
         void inner_increment_inbound_stub_count(caller_zone dest);
         void inner_decrement_inbound_stub_count(caller_zone dest);
-
-        void set_adjacent_zone_id(zone new_adjacent_zone_id);
-        CORO_TASK(void) notify_all_destinations_of_disconnect();
 
         /**
          * @brief Called when destination_count_ drops to zero
@@ -315,7 +313,16 @@ namespace rpc
         zone get_adjacent_zone_id() const { return adjacent_zone_id_; }
 
         /**
+         * @brief Set the adjacent zone ID
+         * @param zone_id Zone ID of the zone on the other side of this transport
+         */
+        void set_adjacent_zone_id(zone new_adjacent_zone_id);
+
+        CORO_TASK(void) notify_all_destinations_of_disconnect();
+
+        /**
          * @brief Initiate connection handshake with remote zone
+         * @param stub once the adjacent zone id is known if this is not null call add_ref on the stub with the adjacent zone id
          * @param input_descr Descriptor of interface to send to remote zone
          * @param output_descr[out] Descriptor of interface received from remote zone
          * @return error::OK() on success, error code on failure
@@ -324,7 +331,10 @@ namespace rpc
          *
          * Thread-Safety: Implementation-specific (varies by derived class)
          */
-        CORO_TASK(int) connect(connection_settings input_descr, interface_descriptor& output_descr);
+        CORO_TASK(int)
+        connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings input_descr,
+            interface_descriptor& output_descr);
 
         /**
          * @brief Initiate a transport about to receive a connection request
@@ -527,6 +537,7 @@ namespace rpc
 
         /**
          * @brief Establish connection with remote zone
+         * @param stub once the adjacent zone id is known if this is not null call add_ref on the stub with the adjacent zone id
          * @param input_descr Descriptor of interface to send to remote zone
          * @param output_descr[out] Descriptor of interface received from remote zone
          * @return error::OK() on success, error code on failure
@@ -539,7 +550,10 @@ namespace rpc
          *
          * Thread-Safety: Implementation-specific
          */
-        virtual CORO_TASK(int) inner_connect(connection_settings& input_descr, interface_descriptor& output_descr) = 0;
+        virtual CORO_TASK(int) inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+            connection_settings& input_descr,
+            interface_descriptor& output_descr)
+            = 0;
 
         virtual CORO_TASK(int) inner_accept() = 0;
 
@@ -614,18 +628,6 @@ namespace rpc
             caller_zone caller_zone_id,
             const std::vector<back_channel_entry>& in_back_channel)
             = 0;
-    };
-
-    class transport_to_parent : public transport
-    {
-        std::shared_ptr<transport> parent_;
-
-    public:
-        transport_to_parent(std::string name, std::shared_ptr<service> service, std::shared_ptr<transport> parent)
-            : transport(name, service, parent->get_zone_id())
-            , parent_(parent)
-        {
-        }
     };
 
 } // namespace rpc

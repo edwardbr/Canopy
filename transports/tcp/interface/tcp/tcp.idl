@@ -62,6 +62,16 @@ namespace rpc
             rpc::zone adjacent_zone_id;
         };
 
+        // Sent immediately by the server upon receiving init_client_channel_send, before
+        // invoking connection_handler_.  Informs the peer of the server's root zone_id so
+        // that the peer's adjacent_zone_id is established before any back-channel calls
+        // (e.g. addref) arrive from the server.
+        struct init_client_initial_channel_response
+        {
+            // the server's root service zone_id (equivalent to the peer's adjacent zone)
+            rpc::zone zone_id;
+        };
+
         struct init_client_channel_response
         {
             int err_code;
