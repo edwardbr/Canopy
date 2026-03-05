@@ -13,6 +13,7 @@
 
 #include "websocket_service.h"
 #include "ws_stream.h"
+#include "transport.h"
 
 #include <canopy/network_config/network_args.h>
 

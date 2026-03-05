@@ -44,7 +44,7 @@ if(${CANOPY_BUILD})
     src/animation_telemetry_service.cpp
     src/sequence_diagram_telemetry_service.cpp
     src/console_telemetry_service.cpp
-    src/telemetry_handler.cpp
+    # src/telemetry_handler.cpp
     src/telemetry_service_factory.cpp
     src/multiplexing_telemetry_service.cpp)
 

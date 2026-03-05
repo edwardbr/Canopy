@@ -28,8 +28,7 @@ namespace marshalled_tests
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("baz",
                     (uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
 
@@ -38,8 +37,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_deletion((uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
         CORO_TASK(error_code) callback(int val) override
@@ -75,8 +73,7 @@ namespace marshalled_tests
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("foo",
                     (uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
         virtual ~foo()
@@ -84,8 +81,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_deletion((uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
         CORO_TASK(error_code) do_something_in_val(int val) override
@@ -356,8 +352,7 @@ namespace marshalled_tests
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("multiple_inheritance",
                     (uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
         virtual ~multiple_inheritance()
@@ -365,8 +360,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_deletion((uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
 
@@ -402,8 +396,7 @@ namespace marshalled_tests
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("example",
                     (uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
         virtual ~example()
@@ -411,8 +404,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_deletion((uint64_t)this,
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id()
-                                                        : rpc::zone{0});
+                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
 

@@ -22,7 +22,7 @@ namespace rpc
 
         if (iface.use_count() == 0)
         {
-            descriptor = {0, 0};
+            descriptor = interface_descriptor();
             CO_RETURN error::OK();
         }
 
@@ -59,7 +59,7 @@ namespace rpc
 
         if (iface.use_count() == 0)
         {
-            descriptor = {0, 0};
+            descriptor = interface_descriptor();
             CO_RETURN rpc::error::OK();
         }
 
@@ -215,7 +215,7 @@ namespace rpc
         {
             // if the zone is different lookup or clone the right proxy
             // the service proxy is where the object came from so it should be used as the new caller channel for this returned object
-            service_proxy = serv->get_zone_proxy({0}, {encap.destination_zone_id}, new_proxy_added);
+            service_proxy = serv->get_zone_proxy(rpc::caller_zone(), {encap.destination_zone_id}, new_proxy_added);
             if (!service_proxy)
             {
                 RPC_ERROR("Object not found - service proxy is null in proxy_bind_out_param");
@@ -313,7 +313,7 @@ namespace rpc
             telemetry_service->on_service_proxy_add_ref(service_proxy->get_zone_id(),
                 encap.destination_zone_id.with_object(encap.get_object_id()),
                 service_proxy->get_zone_id().as_caller(),
-                {0},
+                rpc::requesting_zone(),
                 rpc::add_ref_options::normal);
         }
 #endif

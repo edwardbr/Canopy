@@ -123,7 +123,7 @@ namespace rpc
     class service : public i_marshaller, public std::enable_shared_from_this<rpc::service>
     {
     protected:
-        zone zone_id_ = {0};
+        zone zone_id_;
         std::string name_;
 
         mutable std::atomic<uint64_t> object_id_generator_ = 0;
@@ -946,7 +946,7 @@ namespace rpc
                 auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.get_object_id(),
                     service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                     new_proxy_added,
-                    {parent_transport->get_adjacent_zone_id().get_subnet()},
+                    {parent_transport->get_adjacent_zone_id().get_address()},
                     false,
                     op);
                 if (err_code != error::OK())
@@ -1020,7 +1020,7 @@ namespace rpc
         // Marshal input interface if provided
         rpc::connection_settings input_descr;
         // Connect via transport (calls remote zone's entry point)
-        rpc::interface_descriptor output_descr{{0}, {0}};
+        rpc::interface_descriptor output_descr;
 
         int err_code = rpc::error::OK();
 
@@ -1060,7 +1060,7 @@ namespace rpc
         }
         else
         {
-            input_descr.input_zone_id = child_transport->get_zone_id().get_subnet();
+            input_descr.input_zone_id = child_transport->get_zone_id().get_address();
         }
         input_descr.inbound_interface_id = in_param_type::get_id(rpc::get_version());
         input_descr.outbound_interface_id = out_param_type::get_id(rpc::get_version());
@@ -1159,7 +1159,7 @@ namespace rpc
             auto err_code = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(input_descr.get_object_id(),
                 service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                 new_proxy_added,
-                {adjacent_zone_id.get_subnet()},
+                {adjacent_zone_id.get_address()},
                 false,
                 op);
             if (err_code != error::OK())

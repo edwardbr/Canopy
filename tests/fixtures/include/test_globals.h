@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include <atomic>
 #include <string>
 #include <rpc/rpc.h>
+#include <rpc/internal/zone_id_allocator.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
@@ -15,7 +15,6 @@
 
 // Other global variables used by the test setup classes
 extern std::weak_ptr<rpc::service> current_host_service;
-extern std::atomic<uint64_t>* zone_gen;
 extern std::string telemetry_config;
 
 #ifdef _WIN32 // windows

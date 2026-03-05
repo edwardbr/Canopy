@@ -38,7 +38,7 @@ namespace rpc
         std::mutex insert_control_;
 
         const zone zone_id_;
-        destination_zone destination_zone_id_ = {0};
+        destination_zone destination_zone_id_;
         std::shared_ptr<service> service_; // Strong reference to keep service alive while service_proxy exists
 
         // Transport for routing calls to remote zones

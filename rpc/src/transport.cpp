@@ -1208,7 +1208,7 @@ namespace rpc
         CO_AWAIT dest->transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
 
         std::shared_lock lock(destinations_mutex_);
-        zone_counts_.erase(caller_zone_id.get_subnet());
+        zone_counts_.erase(caller_zone_id.get_address());
     }
 
     CORO_TASK(int)

@@ -29,7 +29,6 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     bool use_host_in_child_ = UseHostInChild;
     bool run_standard_tests_ = RunStandardTests;
 
-    std::atomic<uint64_t> zone_gen_ = 0;
     bool error_has_occurred_ = false;
 
 public:
@@ -60,7 +59,6 @@ public:
 
     virtual void set_up()
     {
-        zone_gen = &zone_gen_;
 #ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
         if (auto telemetry_service
@@ -69,13 +67,12 @@ public:
             telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
         }
 #endif
-        root_service_ = std::make_shared<rpc::root_service>("host", rpc::zone{++zone_gen_});
+        root_service_ = std::make_shared<rpc::root_service>("host", rpc::zone_address{1, 1});
         current_host_service = root_service_;
 
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());
         local_host_ptr_ = i_host_ptr_;
 
-        auto new_zone_id = ++(*zone_gen);
         auto err_code = root_service_->connect_to_zone<rpc::enclave_service_proxy>(
             "main child", {new_zone_id}, use_host_in_child_ ? i_host_ptr_ : nullptr, i_example_ptr_, enclave_path);
 
@@ -88,7 +85,6 @@ public:
         i_host_ptr_ = nullptr;
         root_service_ = nullptr;
         current_host_service.reset();
-        zone_gen = nullptr;
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service
             = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
@@ -101,7 +97,7 @@ public:
     rpc::shared_ptr<yyy::i_example> create_new_zone()
     {
         rpc::shared_ptr<yyy::i_example> ptr;
-        auto new_zone_id = ++(zone_gen_);
+        auto new_zone_id = zone_gen_.allocate_zone();
         auto err_code = root_service_->connect_to_zone<rpc::enclave_service_proxy>(
             "main child", {new_zone_id}, use_host_in_child_ ? i_host_ptr_ : nullptr, ptr, enclave_path);
 
