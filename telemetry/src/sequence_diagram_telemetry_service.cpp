@@ -330,7 +330,7 @@ namespace rpc
             {
                 fmt::println(output_,
                     "{} -->x {} : add_ref delegate linking",
-                    service_alias({caller_zone_id.get_subnet()}),
+                    service_alias(caller_zone_id.get_address()),
                     service_alias(zone_id));
             }
             else
@@ -366,7 +366,7 @@ namespace rpc
                 {
                     fmt::println(output_,
                         "{} o-[#magenta]> {} : add_ref build caller {}",
-                        service_alias({caller_zone_id.get_subnet()}),
+                        service_alias(caller_zone_id.get_address()),
                         service_alias(zone_id),
                         get_thread_id());
                 }
@@ -404,7 +404,7 @@ namespace rpc
             fmt::println(output_,
                 "{} -> {} : release",
                 service_alias(zone_id),
-                service_proxy_alias(zone_id, {dest.get_subnet()}, caller_zone_id));
+                service_proxy_alias(zone_id, dest.as_destination(), caller_zone_id));
         }
         else if (object_id != rpc::dummy_object_id)
         {
@@ -433,7 +433,7 @@ namespace rpc
         std::string route_name;
         std::string destination_name;
 
-        auto search = services.find({destination_zone_id.get_subnet()});
+        auto search = services.find(destination_zone_id.as_zone());
         if (search != services.end())
             destination_name = search->second.name;
         else
@@ -446,7 +446,7 @@ namespace rpc
         else
         {
             std::string caller_name;
-            search = services.find({caller_zone_id.get_subnet()});
+            search = services.find(caller_zone_id.get_address());
             if (search != services.end())
                 caller_name = search->second.name;
             else
@@ -491,7 +491,7 @@ namespace rpc
         std::string route_name;
         std::string destination_name;
 
-        auto search = services.find({destination_zone_id.get_subnet()});
+        auto search = services.find(destination_zone_id.as_zone());
         if (search != services.end())
             destination_name = search->second.name;
         else
@@ -504,7 +504,7 @@ namespace rpc
         else
         {
             std::string caller_name;
-            search = services.find({caller_zone_id.get_subnet()});
+            search = services.find(caller_zone_id.get_address());
             if (search != services.end())
                 caller_name = search->second.name;
             else
