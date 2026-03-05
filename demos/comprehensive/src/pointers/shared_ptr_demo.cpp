@@ -80,14 +80,12 @@ namespace comprehensive
         {
             print_separator("SHARED PTR DEMO");
 
-            std::atomic<uint64_t> zone_gen{0};
-
             // Create root service
 #ifdef CANOPY_BUILD_COROUTINE
             auto service
-                = std::make_shared<rpc::root_service>("shared_ptr_demo_service", rpc::zone{++zone_gen}, scheduler);
+                = std::make_shared<rpc::root_service>("shared_ptr_demo_service", rpc::zone_address{1, 1}, scheduler);
 #else
-            auto service = std::make_shared<rpc::root_service>("shared_ptr_demo_service", rpc::zone{++zone_gen});
+            auto service = std::make_shared<rpc::root_service>("shared_ptr_demo_service", rpc::zone_address{1, 1});
 #endif
 
             RPC_INFO("Service zone ID: {}", service->get_zone_id().get_subnet());

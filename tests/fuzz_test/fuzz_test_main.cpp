@@ -1254,10 +1254,12 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
 
 #ifdef CANOPY_BUILD_COROUTINE
     // Create root service with zone 1 and scheduler
-    auto root_service = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::zone{++g_zone_id_counter}, scheduler);
+    auto root_service = std::make_shared<rpc::root_service>(
+        "AUTONOMOUS_ROOT", rpc::zone{rpc::zone_address(0, static_cast<uint32_t>(++g_zone_id_counter))}, scheduler);
 #else
     // Create root service with zone 1 (no scheduler in non-coroutine build)
-    auto root_service = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::zone{++g_zone_id_counter});
+    auto root_service = std::make_shared<rpc::root_service>(
+        "AUTONOMOUS_ROOT", rpc::zone{rpc::zone_address(0, static_cast<uint32_t>(++g_zone_id_counter))});
 #endif
 
     // Initialize test scenario configuration for replay system

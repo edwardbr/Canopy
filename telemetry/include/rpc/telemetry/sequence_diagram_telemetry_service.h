@@ -25,8 +25,8 @@ namespace rpc
 
         struct zone_object
         {
-            rpc::zone zone_id = {0};
-            rpc::object object_id = {0};
+            rpc::zone zone_id;
+            rpc::object object_id;
 
             bool operator==(const zone_object& other) const
             {
@@ -46,9 +46,9 @@ namespace rpc
 
         struct orig_zone
         {
-            rpc::zone zone_id = {0};
-            rpc::destination_zone destination_zone_id = {0};
-            rpc::caller_zone caller_zone_id = {0};
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
             bool operator==(const orig_zone& other) const
             {
                 return zone_id == other.zone_id && destination_zone_id == other.destination_zone_id
@@ -74,10 +74,10 @@ namespace rpc
                 return zone_id == other.zone_id && destination_zone_id == other.destination_zone_id
                        && object_id == other.object_id && interface_id == other.interface_id;
             }
-            rpc::zone zone_id = {0};
-            rpc::destination_zone destination_zone_id = {0};
-            rpc::object object_id = {0};
-            rpc::interface_ordinal interface_id = {0};
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
         };
 
         struct interface_proxy_id_hash

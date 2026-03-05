@@ -11,7 +11,7 @@ host::host()
     if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         telemetry_service->on_impl_creation("host",
             (uint64_t)this,
-            rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone{0});
+            rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
 }
 
@@ -20,7 +20,7 @@ host::~host()
 #ifdef CANOPY_USE_TELEMETRY
     if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         telemetry_service->on_impl_deletion((uint64_t)this,
-            rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone{0});
+            rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
 }
 
@@ -29,9 +29,8 @@ CORO_TASK(error_code) host::create_enclave(rpc::shared_ptr<yyy::i_example>& targ
 #ifdef CANOPY_BUILD_ENCLAVE
     rpc::shared_ptr<yyy::i_host> host = shared_from_this();
     auto serv = current_host_service.lock();
-    auto new_zone_id = ++(*zone_gen);
-    auto err_code
-        = serv->connect_to_zone<rpc::enclave_service_proxy>("an enclave", {new_zone_id}, host, target, enclave_path);
+    auto err_code = serv->connect_to_zone<rpc::enclave_service_proxy>(
+        "an enclave", rpc::zone_address{1, 1}, host, target, enclave_path);
 
     CO_RETURN err_code;
 #endif

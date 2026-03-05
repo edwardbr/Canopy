@@ -49,7 +49,7 @@ namespace rpc
     {
         auto proxy = get_service_proxy(iface);
         if (!proxy)
-            return {0};
+            return zone();
         return proxy->get_zone_id();
     }
 
@@ -57,7 +57,7 @@ namespace rpc
     {
         auto proxy = get_service_proxy(iface);
         if (!proxy)
-            return {0};
+            return destination_zone();
         return proxy->get_destination_zone_id();
     }
 

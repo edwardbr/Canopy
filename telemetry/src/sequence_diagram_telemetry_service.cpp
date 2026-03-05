@@ -311,7 +311,7 @@ namespace rpc
                 fmt::println(output_,
                     "{} -> {} : add_ref",
                     service_alias(zone_id),
-                    service_proxy_alias(zone_id, {dest.get_subnet()}, caller_zone_id));
+                    service_proxy_alias(zone_id, destination_zone_id, caller_zone_id));
             }
             else if (object_id != rpc::dummy_object_id)
             {

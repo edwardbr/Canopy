@@ -29,8 +29,6 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     bool use_host_in_child_ = UseHostInChild;
     bool run_standard_tests_ = RunStandardTests;
 
-    std::atomic<uint64_t> zone_gen_ = 0;
-
     std::shared_ptr<coro::scheduler> io_scheduler_;
     bool error_has_occurred_ = false;
     bool setup_complete_ = false;
@@ -66,7 +64,6 @@ public:
 
     CORO_TASK(bool) CoroSetUp()
     {
-        zone_gen = &zone_gen_;
 #ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
         if (auto telemetry_service
@@ -76,8 +73,8 @@ public:
         }
 #endif
 
-        auto root_zone_id = rpc::zone{++zone_gen_};
-        auto peer_zone_id = rpc::zone{++zone_gen_};
+        auto root_zone_id = rpc::zone{rpc::zone_address{1, 1}};
+        auto peer_zone_id = rpc::zone{rpc::zone_address{2, 1}};
 
         // Create the peer service (server side)
         peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, io_scheduler_);
@@ -256,7 +253,6 @@ public:
 
         peer_service_.reset();
         root_service_.reset();
-        zone_gen = nullptr;
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service
             = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))

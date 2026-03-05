@@ -52,7 +52,7 @@ namespace rpc
             // service_proxy->add_external_ref();
             // Call service_proxy->sp_add_ref() to increment remote service's reference count
             // This MUST happen sequentially to ensure remote count ≥ 1 before constructor returns
-            auto err = CO_AWAIT service_proxy->sp_add_ref(object_id_, options, {0});
+            auto err = CO_AWAIT service_proxy->sp_add_ref(object_id_, options, rpc::requesting_zone());
             if (err)
             {
                 // Rollback local counter on failure
@@ -200,7 +200,7 @@ namespace rpc
         auto service_proxy = service_proxy_.get_nullable();
         RPC_ASSERT(service_proxy);
         if (!service_proxy)
-            return destination_zone{0};
+            return destination_zone();
         return service_proxy->get_destination_zone_id();
     }
 

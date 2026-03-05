@@ -132,14 +132,6 @@ namespace rpc
         zone_address(const zone_address&) = default;
         zone_address(zone_address&&) noexcept = default;
 
-        // legacy compatibility: uint64_t sets subnet_id only
-        constexpr zone_address(uint64_t legacy_id)
-            : routing_prefix(0)
-            , subnet_id(static_cast<uint32_t>(legacy_id))
-            , object_id(0)
-        {
-        }
-
         constexpr zone_address(uint64_t prefix, uint32_t subnet, uint32_t obj = 0)
             : routing_prefix(prefix)
             , subnet_id(subnet)
@@ -230,21 +222,12 @@ namespace rpc
         zone() = default;
         zone(const zone&) = default;
         zone(zone&&) noexcept = default;
-        zone(uint64_t initial_id)
-            : addr_(zone_address(initial_id).zone_only())
-        {
-        }
         zone(const zone_address& addr)
             : addr_(addr.zone_only())
         {
         }
         zone& operator=(const zone&) = default;
         zone& operator=(zone&&) noexcept = default;
-        zone& operator=(uint64_t other)
-        {
-            addr_ = zone_address(other).zone_only();
-            return *this;
-        }
 
         uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
@@ -262,7 +245,6 @@ namespace rpc
         }
 
         // less
-        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -283,21 +265,12 @@ namespace rpc
         destination_zone() = default;
         destination_zone(const destination_zone&) = default;
         destination_zone(destination_zone&&) noexcept = default;
-        destination_zone(uint64_t initial_id)
-            : addr_(zone_address(initial_id).zone_only())
-        {
-        }
         destination_zone(const zone_address& addr)
             : addr_(addr.zone_only())
         {
         }
         destination_zone& operator=(const destination_zone&) = default;
         destination_zone& operator=(destination_zone&&) noexcept = default;
-        destination_zone& operator=(uint64_t other)
-        {
-            addr_ = zone_address(other).zone_only();
-            return *this;
-        }
 
         uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
@@ -314,7 +287,6 @@ namespace rpc
             return addr_.get_subnet() != static_cast<uint64_t>(val);
         }
 
-        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const destination_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -338,21 +310,12 @@ namespace rpc
         caller_zone() = default;
         caller_zone(const caller_zone&) = default;
         caller_zone(caller_zone&&) noexcept = default;
-        caller_zone(uint64_t initial_id)
-            : addr_(zone_address(initial_id).zone_only())
-        {
-        }
         caller_zone(const zone_address& addr)
             : addr_(addr.zone_only())
         {
         }
         caller_zone& operator=(const caller_zone&) = default;
         caller_zone& operator=(caller_zone&&) noexcept = default;
-        caller_zone& operator=(uint64_t other)
-        {
-            addr_ = zone_address(other).zone_only();
-            return *this;
-        }
 
         uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
@@ -370,7 +333,6 @@ namespace rpc
         }
 
         // less
-        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const caller_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -394,21 +356,12 @@ namespace rpc
             : addr_(z.get_address().zone_only())
         {
         }
-        requesting_zone(uint64_t initial_id)
-            : addr_(zone_address(initial_id).zone_only())
-        {
-        }
         requesting_zone(const zone_address& addr)
             : addr_(addr.zone_only())
         {
         }
         requesting_zone& operator=(const requesting_zone&) = default;
         requesting_zone& operator=(requesting_zone&&) noexcept = default;
-        requesting_zone& operator=(uint64_t other)
-        {
-            addr_ = zone_address(other).zone_only();
-            return *this;
-        }
 
         uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
@@ -426,7 +379,6 @@ namespace rpc
         }
 
         // less
-        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const requesting_zone& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }
@@ -493,10 +445,6 @@ namespace rpc
         remote_object() = default;
         remote_object(const remote_object&) = default;
         remote_object(remote_object&&) noexcept = default;
-        remote_object(uint64_t initial_id)
-            : addr_(initial_id)
-        {
-        }
         remote_object(const zone_address& addr)
             : addr_(addr)
         {
@@ -504,11 +452,6 @@ namespace rpc
         remote_object(const destination_zone& d);
         remote_object& operator=(const remote_object&) = default;
         remote_object& operator=(remote_object&&) noexcept = default;
-        remote_object& operator=(uint64_t other)
-        {
-            addr_ = zone_address(other);
-            return *this;
-        }
 
         uint64_t get_subnet() const { return addr_.get_subnet(); }
         const zone_address& get_address() const { return addr_; }
@@ -525,7 +468,6 @@ namespace rpc
             return addr_.get_subnet() != static_cast<uint64_t>(val);
         }
 
-        bool operator<(uint64_t val) const { return addr_.get_subnet() < val; }
         bool operator<(const remote_object& val) const { return addr_ < val.addr_; }
 
         bool is_set() const noexcept { return addr_.is_set(); }

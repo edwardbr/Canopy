@@ -79,7 +79,7 @@ namespace rpc
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation(name, zone_id, destination_zone{0});
+            telemetry_service->on_service_creation(name, zone_id, destination_zone());
 #endif
     }
 #else
@@ -89,7 +89,7 @@ namespace rpc
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation(name, zone_id, destination_zone{0});
+            telemetry_service->on_service_creation(name, zone_id, destination_zone());
 #endif
     }
 #endif

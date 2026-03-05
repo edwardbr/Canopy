@@ -111,11 +111,9 @@ namespace comprehensive
         {
             print_separator("OPTIMISTIC PTR DEMO");
 
-            std::atomic<uint64_t> zone_gen{0};
-
             // Create root service
             auto service = std::make_shared<rpc::root_service>("optimistic_ptr_demo_service",
-                rpc::zone{++zone_gen}
+                rpc::zone_address{1, 1}
 #ifdef CANOPY_BUILD_COROUTINE
                 ,
                 scheduler

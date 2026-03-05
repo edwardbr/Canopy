@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include <atomic>
 #include "test_host.h"
 #include "test_globals.h"
 #include <gtest/gtest.h>
@@ -24,8 +23,6 @@ template<bool UseHostInChild> class in_memory_setup
 
     const bool has_enclave_ = false;
     bool use_host_in_child_ = UseHostInChild;
-
-    std::atomic<uint64_t> zone_gen_ = 0;
 
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> io_scheduler_;
@@ -69,7 +66,6 @@ public:
                     .thread_count = 1,
                 }}));
 #endif
-        zone_gen = &zone_gen_;
 #ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
         if (auto telemetry_service
@@ -89,7 +85,6 @@ public:
     {
         i_host_ptr_ = nullptr;
         i_example_ptr_ = nullptr;
-        zone_gen = nullptr;
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service
             = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
