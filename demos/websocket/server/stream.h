@@ -7,11 +7,20 @@
 #include <coro/coro.hpp>
 #include <span>
 
+#include <canopy/network_config/network_args.h>
+
 namespace websocket_demo
 {
     namespace v1
     {
         // Abstract stream interface that can be implemented by plain TCP or TLS
+        struct peer_info
+        {
+            canopy::network_config::ip_address addr = {};
+            canopy::network_config::ip_address_family family = canopy::network_config::ip_address_family::ipv4;
+            uint16_t port = 0;
+        };
+
         class stream
         {
         public:
@@ -35,6 +44,9 @@ namespace websocket_demo
 
             // Mark connection as closed
             virtual void set_closed() = 0;
+
+            // Return the remote peer's address and port
+            virtual peer_info get_peer_info() const = 0;
         };
 
     } // namespace websocket_demo

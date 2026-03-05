@@ -4,6 +4,7 @@
 // http_client_connection.cpp
 #include "http_client_connection.h"
 #include "websocket_handshake.h"
+#include "ws_stream.h"
 #include "ws_client_connection.h"
 // #include <websocket_demo/websocket_demo.h>
 
@@ -223,8 +224,9 @@ namespace websocket_demo
                     }
                     RPC_INFO("WebSocket handshake completed");
 
-                    // run() waits for the client's connect_request then drives the session
-                    ws_client_connection connection(stream_, service_);
+                    // Wrap the stream in a WebSocket framing layer, then drive the session
+                    auto ws = std::make_shared<websocket_demo::v1::ws_stream>(stream_);
+                    ws_client_connection connection(ws, service_);
                     co_await connection.run();
                     co_return;
                 }

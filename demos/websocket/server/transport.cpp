@@ -27,14 +27,9 @@ namespace websocket_demo
             set_status(rpc::transport_status::CONNECTED);
         }
 
-        transport::transport(wslay_event_context_ptr wslay_ctx,
-            std::shared_ptr<rpc::service> service,
-            const std::shared_ptr<std::queue<std::vector<uint8_t>>>& pending_messages,
-            const std::shared_ptr<std::mutex>& pending_messages_mutex)
+        transport::transport(std::shared_ptr<ws_stream> ws, std::shared_ptr<rpc::service> service)
             : rpc::transport("websocket", service)
-            , wslay_ctx_(wslay_ctx)
-            , pending_messages_(pending_messages)
-            , pending_messages_mutex_(pending_messages_mutex)
+            , ws_(std::move(ws))
         {
             // WebSocket transports are immediately available once connection is established
             set_status(rpc::transport_status::CONNECTED);
@@ -76,12 +71,9 @@ namespace websocket_demo
             envelope.message_type = rpc::id<websocket_demo::v1::request>::get(rpc::get_version());
             envelope.data = std::move(payload);
             auto complete_payload = rpc::to_protobuf(envelope);
-            // send to parent
 
-            // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
-            std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
-            pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
-            RPC_TRACE("[Transport] Response queued to pending queue, queue size={}", pending_messages_->size());
+            ws_->queue_message(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
+            RPC_TRACE("[Transport] Message queued, size={}", complete_payload.size());
             CO_RETURN rpc::error::INCOMPATIBLE_SERVICE();
         }
 
@@ -119,12 +111,9 @@ namespace websocket_demo
             envelope.message_type = rpc::id<websocket_demo::v1::request>::get(rpc::get_version());
             envelope.data = std::move(payload);
             auto complete_payload = rpc::to_protobuf(envelope);
-            // send to parent
 
-            // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
-            std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
-            pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
-            RPC_TRACE("[Transport] Response queued to pending queue, queue size={}", pending_messages_->size());
+            ws_->queue_message(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
+            RPC_TRACE("[Transport] Message queued, size={}", complete_payload.size());
             CO_RETURN;
         }
 
@@ -196,10 +185,7 @@ namespace websocket_demo
                 auto reason = fmt::format("invalid message format {}", error);
                 RPC_DEBUG("Received message ({} bytes) parsing error: {}", envelope.data.size(), error);
 
-                wslay_event_queue_close(wslay_ctx_,
-                    WSLAY_CODE_INVALID_FRAME_PAYLOAD_DATA, // 1007
-                    reinterpret_cast<const uint8_t*>(reason.data()),
-                    reason.size());
+                ws_->queue_close(WSLAY_CODE_INVALID_FRAME_PAYLOAD_DATA, reason);
                 CO_RETURN; // no reply.
             }
 
@@ -238,14 +224,10 @@ namespace websocket_demo
             response_envelope.message_type = rpc::id<websocket_demo::v1::response>::get(rpc::get_version());
             response_envelope.data = std::move(payload);
 
-            // convert to protobuf
+            // convert to protobuf and queue
             auto complete_payload = rpc::to_protobuf(response_envelope);
-
-            // Queue the response message via pending queue (avoids race condition with wslay_mutex_)
-
-            std::lock_guard<std::mutex> lock(*pending_messages_mutex_);
-            pending_messages_->push(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
-            RPC_TRACE("[Transport] Response queued to pending queue, queue size={}", pending_messages_->size());
+            ws_->queue_message(std::vector<uint8_t>(complete_payload.begin(), complete_payload.end()));
+            RPC_TRACE("[Transport] Response queued, size={}", complete_payload.size());
 
             RPC_DEBUG("send request complete");
             CO_RETURN;
