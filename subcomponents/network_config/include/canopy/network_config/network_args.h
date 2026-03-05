@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <string>
 
-#include <rpc/rpc_types.h>
+#include <rpc/rpc.h>
 
 namespace canopy::network_config
 {

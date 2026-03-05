@@ -28,6 +28,8 @@ namespace websocket_demo
 
             void set_closed() override;
 
+            peer_info get_peer_info() const override;
+
             // Access to underlying client for operations that need it
             coro::net::tcp::client& client();
 

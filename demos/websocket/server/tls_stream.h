@@ -4,12 +4,16 @@
 // tls_stream.h - TLS stream wrapper using OpenSSL memory BIOs
 #pragma once
 
-#include "stream.h"
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 #include <memory>
 #include <string>
 #include <array>
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+#include <rpc/rpc.h>
+
+#include "stream.h"
 
 namespace websocket_demo
 {
@@ -61,6 +65,8 @@ namespace websocket_demo
             bool is_closed() const override { return closed_; }
 
             void set_closed() override { closed_ = true; }
+
+            peer_info get_peer_info() const override { return underlying_->get_peer_info(); }
 
         private:
             std::shared_ptr<stream> underlying_;

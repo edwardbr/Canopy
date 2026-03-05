@@ -12,6 +12,7 @@ add_executable(
   server.cpp
   demo.cpp
   http_client_connection.cpp
+  ws_stream.cpp
   ws_client_connection.cpp
   websocket_handshake.cpp
   websocket_service.cpp
@@ -39,6 +40,7 @@ target_link_libraries(
          llama
          common
          rpc
+         canopy_network_config
          ${CANOPY_LIBRARIES})
 target_compile_options(websocket_server PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(websocket_server PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

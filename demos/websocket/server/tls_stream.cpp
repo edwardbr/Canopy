@@ -3,7 +3,6 @@
 
 // tls_stream.cpp - TLS stream implementation using OpenSSL memory BIOs
 #include "tls_stream.h"
-#include <rpc/rpc.h>
 #include <array>
 
 namespace websocket_demo
