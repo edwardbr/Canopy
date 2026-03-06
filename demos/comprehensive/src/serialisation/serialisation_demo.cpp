@@ -211,7 +211,7 @@ namespace comprehensive
                 print_separator("6. DIRECT SERIALIZATION API");
 
                 RPC_INFO("  Note: Direct serialization API available in serialiser.h");
-                RPC_INFO("        #include <rpc/internal/serialiser.h>");
+                RPC_INFO("        #include <rpc/rpc.h>");
                 RPC_INFO("        rpc::serialise<T, encoding>(obj)");
                 RPC_INFO("        rpc::deserialise<encoding>(data, obj)");
                 RPC_INFO("  This requires types to be registered with YAS serializer");

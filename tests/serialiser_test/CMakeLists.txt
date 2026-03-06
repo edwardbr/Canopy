@@ -20,6 +20,7 @@ target_link_libraries(
          example_idl
          example_import_idl
          example_shared_idl
+         test_types_idl
          yas_common
          rpc::rpc
          transport_local

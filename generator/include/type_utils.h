@@ -66,6 +66,8 @@ namespace rpc_generator
     bool is_uint32(const std::string& type);
     bool is_int64(const std::string& type);
     bool is_uint64(const std::string& type);
+    bool is_int128(const std::string& type);
+    bool is_uint128(const std::string& type);
     bool is_long(const std::string& type);
     bool is_ulong(const std::string& type);
     bool is_float(const std::string& type);

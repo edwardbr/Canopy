@@ -174,9 +174,12 @@ namespace comprehensive
         {
             std::cout << "=== SPSC Transport Demo ===\n";
 
-            rpc::zone_id_allocator zone_gen_{0, 0};
-            rpc::zone zone_1(zone_gen_.allocate_zone());
-            rpc::zone zone_2(zone_gen_.allocate_zone());
+            rpc::zone_id_allocator zone_gen_{rpc::DEFAULT_PREFIX};
+            rpc::zone_address addr1, addr2;
+            zone_gen_.allocate_zone(addr1);
+            zone_gen_.allocate_zone(addr2);
+            rpc::zone zone_1(addr1);
+            rpc::zone zone_2(addr2);
             auto queues = std::make_shared<spsc_queues>();
 
             auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(

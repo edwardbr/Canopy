@@ -1,0 +1,135 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+// IDL for testing serialisation of scalar types, strings, vectors and arrays
+// across every supported encoding format including protocol_buffers.
+
+namespace scalar_test
+{
+    // ---- Scalar holders ----
+
+    [status = production, description = "Wrapper struct for int8_t roundtrip tests"] struct int8_holder { int8_t value; };
+
+    [status = production, description = "Wrapper struct for uint8_t roundtrip tests"] struct uint8_holder
+    { uint8_t value; };
+
+    [status = production, description = "Wrapper struct for int16_t roundtrip tests"] struct int16_holder
+    { int16_t value; };
+
+    [status = production, description = "Wrapper struct for uint16_t roundtrip tests"] struct uint16_holder
+    { uint16_t value; };
+
+    [status = production, description = "Wrapper struct for int32_t roundtrip tests"] struct int32_holder
+    { int32_t value; };
+
+    [status = production, description = "Wrapper struct for uint32_t roundtrip tests"] struct uint32_holder
+    { uint32_t value; };
+
+    [status = production, description = "Wrapper struct for int64_t roundtrip tests"] struct int64_holder
+    { int64_t value; };
+
+    [status = production, description = "Wrapper struct for uint64_t roundtrip tests"] struct uint64_holder
+    { uint64_t value; };
+
+    [status = production, description = "Wrapper struct for __int128 roundtrip tests"] struct int128_holder
+    { __int128 value; };
+
+    [status = production, description = "Wrapper struct for unsigned __int128 roundtrip tests"] struct uint128_holder
+    { unsigned __int128 value; };
+
+    [status = production, description = "Wrapper struct for float roundtrip tests"] struct float_holder { float value; };
+
+    [status = production, description = "Wrapper struct for double roundtrip tests"] struct double_holder
+    { double value; };
+
+    // ---- String holder ----
+
+    [status = production, description = "Wrapper struct for std::string roundtrip tests"] struct string_holder
+    { std::string value; };
+
+    // ---- Vector holders ----
+
+    [status = production, description = "Wrapper struct for std::vector<int8_t> roundtrip tests"] struct int8_vec_holder
+    { std::vector<int8_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<uint8_t> roundtrip tests"] struct uint8_vec_holder
+    { std::vector<uint8_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<int16_t> roundtrip tests"] struct int16_vec_holder
+    { std::vector<int16_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<uint16_t> roundtrip tests"] struct uint16_vec_holder
+    { std::vector<uint16_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<int32_t> roundtrip tests"] struct int32_vec_holder
+    { std::vector<int32_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<uint32_t> roundtrip tests"] struct uint32_vec_holder
+    { std::vector<uint32_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<int64_t> roundtrip tests"] struct int64_vec_holder
+    { std::vector<int64_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<uint64_t> roundtrip tests"] struct uint64_vec_holder
+    { std::vector<uint64_t> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<__int128> roundtrip tests"] struct int128_vec_holder
+    { std::vector<__int128> value; };
+
+    [status = production,
+        description = "Wrapper struct for std::vector<unsigned __int128> roundtrip tests"] struct uint128_vec_holder
+    { std::vector<unsigned __int128> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<float> roundtrip tests"] struct float_vec_holder
+    { std::vector<float> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<double> roundtrip tests"] struct double_vec_holder
+    { std::vector<double> value; };
+
+    [status = production, description = "Wrapper struct for std::vector<std::string> roundtrip tests"] struct string_vec_holder
+    { std::vector<std::string> value; };
+
+    // ---- Array holders (size 4) ----
+
+    [status = production, description = "Wrapper struct for std::array<int8_t,4> roundtrip tests"] struct int8_arr_holder
+    { std::array<int8_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<uint8_t,4> roundtrip tests"] struct uint8_arr_holder
+    { std::array<uint8_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<int16_t,4> roundtrip tests"] struct int16_arr_holder
+    { std::array<int16_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<uint16_t,4> roundtrip tests"] struct uint16_arr_holder
+    { std::array<uint16_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<int32_t,4> roundtrip tests"] struct int32_arr_holder
+    { std::array<int32_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<uint32_t,4> roundtrip tests"] struct uint32_arr_holder
+    { std::array<uint32_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<int64_t,4> roundtrip tests"] struct int64_arr_holder
+    { std::array<int64_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<uint64_t,4> roundtrip tests"] struct uint64_arr_holder
+    { std::array<uint64_t, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<__int128,4> roundtrip tests"] struct int128_arr_holder
+    { std::array<__int128, 4> value; };
+
+    [status = production,
+        description = "Wrapper struct for std::array<unsigned __int128,4> roundtrip tests"] struct uint128_arr_holder
+    { std::array<unsigned __int128, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<float,4> roundtrip tests"] struct float_arr_holder
+    { std::array<float, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<double,4> roundtrip tests"] struct double_arr_holder
+    { std::array<double, 4> value; };
+
+    [status = production, description = "Wrapper struct for std::array<std::string,4> roundtrip tests"] struct string_arr_holder
+    { std::array<std::string, 4> value; };
+}

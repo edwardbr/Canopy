@@ -6,85 +6,48 @@
 #pragma once
 
 #include <atomic>
-#include <stdexcept>
 
-#include <rpc/rpc_types.h>
+#include <rpc/rpc.h>
 
 namespace rpc
 {
-    // Allocates zone and object IDs within a bounded subnet range.
+    // Allocates zone and object IDs within the subnet range encoded in a zone_address prefix.
     //
-    // In local-only mode (routing_prefix=0, subnet_base=0, subnet_range=max_subnet),
-    // this behaves identically to the legacy std::atomic<uint64_t> counter:
-    //   rpc::zone{zone_address{subnet=++counter}}
-    //
-    // In network mode, routing_prefix identifies the physical node and
-    // subnet_base/subnet_range carve out a slice of the subnet_id space
-    // reserved for this process instance.
-    //
-    // The allocator is designed to remain valid if zone_address migrates from
-    // separate (routing_prefix, subnet_id, object_id) fields to a single
-    // 128-bit address field: allocation is done entirely through the
-    // zone_address setter API rather than field-count-specific constructors,
-    // so only the prefix_ initialisation needs updating when the layout changes.
+    // The prefix passed to the constructor determines the routing prefix and, in the
+    // flexible layout, the subnet and object field offsets.  Each call to allocate_zone()
+    // increments the subnet counter and embeds the new value into a copy of the prefix
+    // via zone_address::set_subnet(), which enforces the field-width limit and returns
+    // false when the range is exhausted.
     class zone_id_allocator
     {
-        zone_address prefix_; // routing_prefix set; subnet_id and object_id = 0
-        uint64_t subnet_base_;
-        uint64_t subnet_range_;
+        zone_address prefix_; // routing prefix with subnet = 0
         std::atomic<uint64_t> next_subnet_;
         std::atomic<uint64_t> next_object_;
 
     public:
-        // Construct from a raw routing prefix value (current uint64_t encoding).
-        // subnet_base/subnet_range default to the full available subnet space.
-        // next_subnet starts at 1 to match legacy zone_id_generator_ counter behaviour.
-        explicit zone_id_allocator(
-            uint64_t routing_prefix, uint64_t subnet_base, uint64_t subnet_range = zone_address::max_subnet)
-            : subnet_base_(subnet_base)
-            , subnet_range_(subnet_range)
-            , next_subnet_(1)
+        explicit zone_id_allocator(const zone_address& prefix)
+            : prefix_(prefix.zone_only())
+            , next_subnet_(prefix.get_subnet() + 1)
             , next_object_(1)
         {
-            prefix_.set_routing_prefix(routing_prefix);
-        }
-
-        // Construct from an existing zone_address (routing_prefix portion only).
-        // Useful when the caller already holds a zone_address from auto-detection.
-        explicit zone_id_allocator(
-            const zone_address& prefix, uint64_t subnet_base, uint64_t subnet_range = zone_address::max_subnet)
-            : subnet_base_(subnet_base)
-            , subnet_range_(subnet_range)
-            , next_subnet_(1)
-            , next_object_(1)
-        {
-            prefix_ = prefix.zone_only();
-            prefix_.set_subnet(0);
         }
 
         // Allocate the next zone address (object_id = 0).
-        // Uses the zone_address setter API so this stays correct if the internal
-        // layout changes to a single 128-bit field.
-        zone_address allocate_zone()
+        // Returns rpc::error::OK() on success, rpc::error::INVALID_DATA() when the
+        // subnet field of the prefix is exhausted.
+        int allocate_zone(zone_address& addr)
         {
-            auto offset = next_subnet_.fetch_add(1, std::memory_order_relaxed);
-            if (offset >= subnet_range_)
-                throw std::overflow_error("zone_id_allocator: subnet range exhausted");
-            zone_address addr = prefix_;
-            addr.set_subnet(subnet_base_ + offset);
-            return addr;
+            auto subnet = next_subnet_.fetch_add(1, std::memory_order_relaxed);
+            addr = prefix_;
+            if (!addr.set_subnet(subnet))
+                return rpc::error::INVALID_DATA();
+            return rpc::error::OK();
         }
 
         // Allocate the next object ID within the current zone.
-        object allocate_object()
-        {
-            auto id = next_object_.fetch_add(1, std::memory_order_relaxed);
-            return object{id};
-        }
+        object allocate_object() { return object{next_object_.fetch_add(1, std::memory_order_relaxed)}; }
 
         uint64_t routing_prefix() const { return prefix_.get_routing_prefix(); }
-        uint64_t subnet_base() const { return subnet_base_; }
-        uint64_t subnet_range() const { return subnet_range_; }
     };
 
 } // namespace rpc

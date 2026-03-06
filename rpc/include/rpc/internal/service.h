@@ -123,7 +123,7 @@ namespace rpc
     class service : public i_marshaller, public std::enable_shared_from_this<rpc::service>
     {
     protected:
-        zone zone_id_;
+        const zone zone_id_;
         std::string name_;
 
         mutable std::atomic<uint64_t> object_id_generator_ = 0;

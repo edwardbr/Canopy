@@ -381,7 +381,7 @@ namespace interface_declaration_generator
         }
         else
         {
-            header.raw("{{}};\n");
+            header.raw(";\n");
         }
     }
 

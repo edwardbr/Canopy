@@ -11,7 +11,6 @@
 #include <assert.h>
 #include <array>
 
-#include <rpc/internal/build_modifiers.h>
 #include <rpc/internal/types.h>
 #include <rpc/internal/error_codes.h>
 

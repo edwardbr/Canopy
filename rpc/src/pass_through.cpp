@@ -3,8 +3,6 @@
  *   All rights reserved.
  */
 #include <rpc/rpc.h>
-#include <rpc/internal/pass_through.h>
-#include <rpc/internal/transport.h>
 
 namespace rpc
 {

@@ -7,7 +7,6 @@
 
 #include <string>
 #include <rpc/rpc.h>
-#include <rpc/internal/zone_id_allocator.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
