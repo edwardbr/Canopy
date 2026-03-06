@@ -33,10 +33,30 @@ jobs:
       - name: Test
         working-directory: build_debug/output
         run: ./rpc_test
+      - name: Test
+        working-directory: build_debug/output
+        run: ./serialiser_test
+      - name: Test
+        working-directory: build_debug/output
+        run: ./json_schema_metadata_test
       - name: CMake configure
         run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Release
       - name: Build
         run: cmake --build build_release
       - name: Test
         working-directory: build_release/output
+        run: ./rpc_test
+      - name: CMake configure
+        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Coroutine_Debug
+      - name: Build
+        run: cmake --build build_coroutine_debug
+      - name: Test
+        working-directory: build_coroutine_debug/output
+        run: ./rpc_test
+      - name: CMake configure
+        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Release_with_coroutines_no_logging
+      - name: Build
+        run: cmake --build build_coroutine_release
+      - name: Test
+        working-directory: build_coroutine_release/output
         run: ./rpc_test
