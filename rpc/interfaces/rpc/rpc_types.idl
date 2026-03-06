@@ -133,7 +133,6 @@ namespace rpc
 #define CANOPY_LOCAL_ADDRESS_SIZE 15
 #endif
 
-
     // Flexible layout (CANOPY_FIXED_ADDRESS_SIZE not defined – default on GCC/Clang):
     //   host_address stores the full reversible host identity.
     //   local_address is a (CANOPY_LOCAL_ADDRESS_SIZE * 8)-bit local payload
@@ -150,6 +149,7 @@ namespace rpc
         static constexpr uint64_t max_routing_prefix = UINT64_MAX;
         static constexpr uint64_t max_subnet = UINT32_MAX;
         static constexpr uint64_t max_object_id = UINT32_MAX;
+
     private:
         uint64_t routing_prefix = 0;
         uint32_t subnet_id = 0;
@@ -157,6 +157,7 @@ namespace rpc
 #else
         static constexpr uint8_t host_address_size = CANOPY_HOST_ADDRESS_SIZE;
         static constexpr uint8_t local_address_size = CANOPY_LOCAL_ADDRESS_SIZE;
+
     private:
         std::array<uint8_t, host_address_size> host_address = {};
         std::array<uint8_t, local_address_size> local_address = {};
@@ -283,15 +284,19 @@ namespace rpc
                 width = 64u;
 
             uint64_t value = 0;
-            for (uint8_t i = 0; i < width; ++i)
+            uint8_t bit_offset = static_cast<uint8_t>(begin % 8u);
+            uint8_t start_byte = static_cast<uint8_t>((data.size() - 1u) - (begin / 8u));
+            uint8_t bytes_to_read = static_cast<uint8_t>((bit_offset + width + 7u) / 8u);
+            for (uint8_t i = 0; i < bytes_to_read; ++i)
             {
-                uint8_t bit_index = begin + i;
-                uint8_t byte_index = static_cast<uint8_t>((data.size() - 1u) - (bit_index / 8u));
-                uint8_t bit_in_byte = static_cast<uint8_t>(bit_index % 8u);
-                uint8_t bit = static_cast<uint8_t>((data[byte_index] >> bit_in_byte) & 0x1u);
-                value |= static_cast<uint64_t>(bit) << i;
+                value |= static_cast<uint64_t>(data[start_byte - i]) << (i * 8u);
             }
-            return value;
+            value >>= bit_offset;
+
+            if (width == 64u)
+                return value;
+
+            return value & ((uint64_t(1) << width) - 1u);
         }
 
         static bool set_local_bits(std::array<uint8_t, local_address_size>& data, uint8_t begin, uint8_t end, uint64_t value)
@@ -303,22 +308,22 @@ namespace rpc
             if (width < 64u && value >= (uint64_t(1) << width))
                 return false;
 
-            for (uint8_t i = begin; i < end; ++i)
+            uint8_t bit_offset = static_cast<uint8_t>(begin % 8u);
+            uint8_t start_byte = static_cast<uint8_t>((data.size() - 1u) - (begin / 8u));
+            uint8_t bytes_to_write = static_cast<uint8_t>((bit_offset + width + 7u) / 8u);
+            uint64_t current = 0;
+            for (uint8_t i = 0; i < bytes_to_write; ++i)
             {
-                uint8_t byte_index = static_cast<uint8_t>((data.size() - 1u) - (i / 8u));
-                uint8_t bit_in_byte = static_cast<uint8_t>(i % 8u);
-                data[byte_index] &= static_cast<uint8_t>(~(uint8_t(1) << bit_in_byte));
+                current |= static_cast<uint64_t>(data[start_byte - i]) << (i * 8u);
             }
 
-            uint8_t bits_to_write = width > 64u ? 64u : width;
-            for (uint8_t i = 0; i < bits_to_write; ++i)
+            uint64_t mask = width == 64u ? UINT64_MAX : ((uint64_t(1) << width) - 1u);
+            current &= ~(mask << bit_offset);
+            current |= (value & mask) << bit_offset;
+
+            for (uint8_t i = 0; i < bytes_to_write; ++i)
             {
-                if (((value >> i) & 0x1u) == 0)
-                    continue;
-                uint8_t bit_index = begin + i;
-                uint8_t byte_index = static_cast<uint8_t>((data.size() - 1u) - (bit_index / 8u));
-                uint8_t bit_in_byte = static_cast<uint8_t>(bit_index % 8u);
-                data[byte_index] |= static_cast<uint8_t>(uint8_t(1) << bit_in_byte);
+                data[start_byte - i] = static_cast<uint8_t>((current >> (i * 8u)) & 0xffu);
             }
             return true;
         }
@@ -392,7 +397,10 @@ namespace rpc
 #ifdef CANOPY_HASH_ADDRESS_SIZE
         uint64_t get_hash() const { return get_local_bits(local_address, hash_offset_value_(), local_address_bits); }
 
-        bool set_hash(uint64_t val) { return set_local_bits(local_address, hash_offset_value_(), local_address_bits, val); }
+        bool set_hash(uint64_t val)
+        {
+            return set_local_bits(local_address, hash_offset_value_(), local_address_bits, val);
+        }
 #endif
 
         zone_address zone_only() const
@@ -498,7 +506,6 @@ namespace rpc
     typedef zone destination_zone;
     typedef zone caller_zone;
     typedef zone requesting_zone;
-
 
     // an id for objects unique to each zone
     struct object
@@ -690,13 +697,13 @@ namespace rpc
 
 #cpp_quote(R^__(
     // converters
-    
+
     inline remote_object zone::with_object(object obj) const
     {
         return remote_object(addr_.with_object(obj.get_val()));
     }
 
-// remote_object implementations
+    // remote_object implementations
     inline object remote_object::get_object() const
     {
         return object(addr_.get_object_id());
@@ -711,7 +718,6 @@ namespace rpc
     {
         return zone(addr_);
     }
-
 
     inline remote_object::remote_object(const destination_zone& d)
         : addr_(d.get_address())

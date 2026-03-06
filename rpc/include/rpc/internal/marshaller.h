@@ -13,6 +13,12 @@
 
 namespace rpc
 {
+    inline const std::vector<rpc::back_channel_entry>& empty_back_channel() noexcept
+    {
+        static const std::vector<rpc::back_channel_entry> empty;
+        return empty;
+    }
+
     // the used for marshalling data between zones
     class i_marshaller
     {
