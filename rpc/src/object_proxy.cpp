@@ -49,9 +49,8 @@ namespace rpc
         // This ensures remote service's reference count ≥ 1 while local pointers exist
         if (prev_count == 0 && service_proxy)
         {
-            // service_proxy->add_external_ref();
-            // Call service_proxy->sp_add_ref() to increment remote service's reference count
-            // This MUST happen sequentially to ensure remote count ≥ 1 before constructor returns
+            // Call service_proxy->sp_add_ref() to increment remote service's reference count.
+            // This MUST happen sequentially to ensure remote count >= 1 before constructor returns.
             auto err = CO_AWAIT service_proxy->sp_add_ref(object_id_, options, rpc::requesting_zone());
             if (err)
             {

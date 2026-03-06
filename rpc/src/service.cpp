@@ -163,7 +163,9 @@ namespace rpc
 
     bool service::check_is_empty() const
     {
-        std::lock_guard l(stub_control_);
+        // Acquire both locks up-front in a consistent order to avoid deadlock.
+        // stub_control_ always precedes service_proxy_control_ across this codebase.
+        std::scoped_lock l(stub_control_, service_proxy_control_);
         bool success = true;
         for (const auto& item : stubs_)
         {
@@ -185,7 +187,7 @@ namespace rpc
             success = false;
         }
 
-        for (auto item : service_proxies_)
+        for (const auto& item : service_proxies_)
         {
             auto svcproxy = item.second.lock();
             if (!svcproxy)
@@ -223,7 +225,6 @@ namespace rpc
         // Check for live transports
         // Note: For child_service, the parent_transport is expected to still be alive during shutdown
         // as it's where the thread goes when shutting down this zone
-        std::lock_guard g(service_proxy_control_);
         const child_service* child_svc = dynamic_cast<const child_service*>(this);
         std::shared_ptr<transport> expected_parent_transport;
         destination_zone expected_parent_zone_id;
@@ -1000,12 +1001,12 @@ namespace rpc
         auto item = service_proxies_.find(destination_zone_id);
         if (item == service_proxies_.end())
         {
-            RPC_ASSERT(false);
+            RPC_ERROR("remove_zone_proxy: destination_zone {} not found in service {}",
+                std::to_string(destination_zone_id),
+                std::to_string(zone_id_));
+            return;
         }
-        else
-        {
-            service_proxies_.erase(item);
-        }
+        service_proxies_.erase(item);
     }
 
     void service::add_service_event(const std::weak_ptr<service_event>& event)

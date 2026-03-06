@@ -62,7 +62,6 @@ namespace rpc::tcp
         stub_ = stub;
 
         auto service = get_service();
-        assert(connection_handler_ || !connection_handler_); // Can be null for client side
 
         service->spawn(pump_send_and_receive());
 
@@ -268,7 +267,6 @@ namespace rpc::tcp
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
 #endif
-            RPC_ASSERT(false);
             CO_RETURN response.err_code;
         }
 
