@@ -199,7 +199,6 @@ namespace rpc
             }
             else
             {
-                auto transport = svcproxy->get_transport();
                 RPC_WARNING("service proxy zone_id {}, destination_zone_id {} "
                             "has not been released in the service suspected unclean shutdown",
                     std::to_string(zone_id_),
@@ -297,7 +296,8 @@ namespace rpc
 #endif
         if (!remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
-            RPC_ASSERT(false); // this should be going to the pass through
+            RPC_ERROR("Routing error: send() reached wrong zone - should have been routed via passthrough");
+            RPC_ASSERT(false);
             CO_RETURN error::TRANSPORT_ERROR();
         }
         current_service_tracker tracker(this);
@@ -356,8 +356,8 @@ namespace rpc
 
         if (!remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
-            RPC_ASSERT(false); // this should be going to the pass through
-            RPC_ERROR("Unsupported post destination");
+            RPC_ERROR("Routing error: post() reached wrong zone - should have been routed via passthrough");
+            RPC_ASSERT(false);
             CO_RETURN;
         }
 
@@ -489,7 +489,8 @@ namespace rpc
 
         if (!remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
-            RPC_ASSERT(false); // this should be going to the pass through
+            RPC_ERROR("Routing error: try_cast() reached wrong zone - should have been routed via passthrough");
+            RPC_ASSERT(false);
             CO_RETURN error::TRANSPORT_ERROR();
         }
         current_service_tracker tracker(this);
@@ -595,6 +596,7 @@ namespace rpc
             auto stub = weak_stub.lock();
             if (!stub)
             {
+                RPC_ERROR("Stub found in registry but already expired in add_ref: object_id={}", object_id.get_val());
                 RPC_ASSERT(false);
                 CO_RETURN rpc::error::OBJECT_NOT_FOUND();
             }
@@ -711,6 +713,7 @@ namespace rpc
 
             if (!stub)
             {
+                RPC_ERROR("Stub found in registry but already expired in release: object_id={}", object_id.get_val());
                 RPC_ASSERT(false);
                 CO_RETURN rpc::error::OBJECT_NOT_FOUND();
             }
@@ -744,7 +747,8 @@ namespace rpc
 #endif
         if (caller_zone_id != zone_id_)
         {
-            RPC_ASSERT(false); // this should be going to the pass through
+            RPC_ERROR("Routing error: object_released() reached wrong zone - should have been routed via passthrough");
+            RPC_ASSERT(false);
             CO_RETURN;
         }
         current_service_tracker tracker(this);
@@ -775,7 +779,8 @@ namespace rpc
 
         if (!destination_zone_id.get_address().same_zone(zone_id_.get_address()))
         {
-            RPC_ASSERT(false); // this should be going to the pass through
+            RPC_ERROR("Routing error: transport_down() reached wrong zone - should have been routed via passthrough");
+            RPC_ASSERT(false);
             CO_RETURN;
         }
         current_service_tracker tracker(this);
@@ -881,7 +886,12 @@ namespace rpc
         if (it != transports_.end())
         {
             auto dest = it->second.lock();
-            RPC_ASSERT(dest);
+            if (!dest)
+            {
+                RPC_ERROR("inner_remove_transport: Transport for zone={} is in registry but already expired",
+                    destination_zone_id.get_subnet());
+                RPC_ASSERT(false);
+            }
             transports_.erase(it);
             RPC_DEBUG("remove_transport service zone: {} destination_zone_id={}",
                 std::to_string(zone_id_),
@@ -1162,65 +1172,65 @@ namespace rpc
     CORO_TASK(void)
     service::notify_transport_down([[maybe_unused]] const std::shared_ptr<transport>& transport, destination_zone remote_zone)
     {
-        std::lock_guard l(stub_control_);
-
         std::vector<interface_descriptor> objects_to_notify;
 
-        // Clean up service proxy for this specific zone
         {
-            std::lock_guard g(service_proxy_control_);
-            auto zit = service_proxies_.find(remote_zone);
-            if (zit != service_proxies_.end())
+            std::lock_guard l(stub_control_);
+
+            // Clean up service proxy for this specific zone
             {
-                auto sp = zit->second.lock();
-                if (sp)
+                std::lock_guard g(service_proxy_control_);
+                auto zit = service_proxies_.find(remote_zone);
+                if (zit != service_proxies_.end())
                 {
-                    sp->set_transport(nullptr);
+                    auto sp = zit->second.lock();
+                    if (sp)
+                    {
+                        sp->set_transport(nullptr);
+                    }
+                    service_proxies_.erase(zit);
                 }
-                service_proxies_.erase(zit);
             }
-        }
 
-        // Clean up stubs referenced by this specific zone
-        for (auto& [obj_id, weak_stub] : stubs_)
-        {
-            auto stub = weak_stub.lock();
-            if (!stub)
-                continue;
-
-            bool should_delete = stub->release_all_from_zone(remote_zone);
-
-            if (should_delete)
+            // Clean up stubs referenced by this specific zone
+            for (auto& [obj_id, weak_stub] : stubs_)
             {
-                // Shared count reached zero - stub should be deleted
-                RPC_DEBUG("transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
-                    obj_id.get_val(),
-                    remote_zone.get_subnet());
+                auto stub = weak_stub.lock();
+                if (!stub)
+                    continue;
 
-                // Track for notification
-                objects_to_notify.push_back({obj_id, remote_zone});
-                stub->dont_keep_alive();
+                bool should_delete = stub->release_all_from_zone(remote_zone);
+
+                if (should_delete)
+                {
+                    // Shared count reached zero - stub should be deleted
+                    RPC_DEBUG("transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
+                        obj_id.get_val(),
+                        remote_zone.get_subnet());
+
+                    objects_to_notify.push_back({obj_id, remote_zone});
+                    stub->dont_keep_alive();
+                }
             }
-        }
+
+            // Remove deleted stubs from map inside the lock (separate pass avoids iterator invalidation)
+            for (const auto& obj : objects_to_notify)
+                stubs_.erase(obj.get_object_id());
+
+            // Remove the transport entry for the disconnected zone.
+            // When notify_transport_down is called (from transport cleanup), the transport's
+            // destination_count may still be non-zero because release_all_from_zone does not
+            // decrement transport counts. We must explicitly remove the stale entry here to
+            // keep transports_ consistent so the service destructor's check_is_empty() passes.
+            {
+                std::lock_guard g(service_proxy_control_);
+                transports_.erase(remote_zone);
+            }
+        } // stub_control_ released here
 
         // Notify service events about deleted objects (outside the lock)
         for (const auto& obj : objects_to_notify)
-        {
-            // Remove from maps
-            stubs_.erase(obj.get_object_id());
-
             CO_AWAIT notify_object_gone_event(obj.get_object_id(), obj.destination_zone_id.as_zone());
-        }
-
-        // Remove the transport entry for the disconnected zone.
-        // When notify_transport_down is called (from transport cleanup), the transport's
-        // destination_count may still be non-zero because release_all_from_zone does not
-        // decrement transport counts. We must explicitly remove the stale entry here to
-        // keep transports_ consistent so the service destructor's check_is_empty() passes.
-        {
-            std::lock_guard g(service_proxy_control_);
-            transports_.erase(remote_zone);
-        }
     }
 
     int service::get_or_create_link_between_source_and_destination(caller_zone caller_zone_id,
