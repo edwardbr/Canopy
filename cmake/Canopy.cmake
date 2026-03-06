@@ -34,6 +34,10 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_DEBUG_DEFAULT_DESTRUCTOR "Get the generator produce verbose messages" OFF)
   option(CANOPY_FIXED_ADDRESS_SIZE
          "Use fixed-size routing_prefix/subnet_id/object_id fields in zone_address (required for MSVC)" OFF)
+  set(CANOPY_HASH_ADDRESS_SIZE
+      "0"
+      CACHE STRING
+            "Reserve this many bits at the tail of flexible zone addresses for a nonce-derived hash (0 disables)")
 
   # SGX Enclave support (disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
@@ -296,6 +300,14 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_FIXED_ADDRESS_SIZE_FLAG)
   endif()
 
+  if(CANOPY_HASH_ADDRESS_SIZE
+     AND NOT CANOPY_HASH_ADDRESS_SIZE STREQUAL "0"
+     AND NOT CANOPY_FIXED_ADDRESS_SIZE)
+    set(CANOPY_HASH_ADDRESS_SIZE_FLAG CANOPY_HASH_ADDRESS_SIZE=${CANOPY_HASH_ADDRESS_SIZE})
+  else()
+    set(CANOPY_HASH_ADDRESS_SIZE_FLAG)
+  endif()
+
   set(CANOPY_LOGGING_LEVEL_FLAG CANOPY_LOGGING_LEVEL=${CANOPY_LOGGING_LEVEL})
 
   set(CANOPY_FMT_LIB fmt::fmt-header-only)
@@ -319,6 +331,7 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_BUILD_TEST_FLAG}
       ${CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG}
       ${CANOPY_FIXED_ADDRESS_SIZE_FLAG}
+      ${CANOPY_HASH_ADDRESS_SIZE_FLAG}
       CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE}
       CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE}
       ${CANOPY_LOGGING_LEVEL_FLAG})

@@ -22,13 +22,11 @@ namespace rpc
     {
         zone_address prefix_; // routing prefix with subnet = 0
         std::atomic<uint64_t> next_subnet_;
-        std::atomic<uint64_t> next_object_;
 
     public:
         explicit zone_id_allocator(const zone_address& prefix)
             : prefix_(prefix.zone_only())
             , next_subnet_(prefix.get_subnet() + 1)
-            , next_object_(1)
         {
         }
 
@@ -43,9 +41,6 @@ namespace rpc
                 return rpc::error::INVALID_DATA();
             return rpc::error::OK();
         }
-
-        // Allocate the next object ID within the current zone.
-        object allocate_object() { return object{next_object_.fetch_add(1, std::memory_order_relaxed)}; }
 
         uint64_t routing_prefix() const { return prefix_.get_routing_prefix(); }
     };
