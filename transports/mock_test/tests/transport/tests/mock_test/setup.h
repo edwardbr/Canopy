@@ -8,7 +8,6 @@
 #include <memory>
 #include <gtest/gtest.h>
 #include <rpc/rpc.h>
-#include <rpc/internal/pass_through.h>
 #include <transports/mock_test/transport.h>
 
 #ifdef CANOPY_BUILD_COROUTINE

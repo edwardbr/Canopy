@@ -5,9 +5,7 @@
 #pragma once
 
 #include <string>
-#include <rpc/internal/types.h>
-#include <rpc/internal/marshaller.h>
-#include <rpc/internal/transport.h> // Include transport status enum
+#include <rpc/rpc.h>
 
 #ifndef _IN_ENCLAVE
 #include <filesystem>

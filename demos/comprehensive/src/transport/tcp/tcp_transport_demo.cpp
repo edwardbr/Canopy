@@ -31,8 +31,8 @@
  *     --port <n>            TCP port to connect/listen on (default: 18888)
  *     --routing-prefix <p>  Network routing prefix (auto-detected when omitted)
  *     -4 / -6               Interpret --routing-prefix as IPv4 / IPv6
- *     --subnet-base <n>     First subnet ID to allocate (default: 1 for local demos)
- *     --subnet-range <n>    Number of subnets reserved (default: max)
+ *     --subnet-offset <n>   Bit offset of subnet field in zone_address (default: 64)
+ *     --object-offset <n>   Bit offset of object field in zone_address (default: 96)
  */
 
 #include <demo_impl.h>
@@ -61,11 +61,9 @@ namespace comprehensive
         run_tcp_server(std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
             const rpc::event& client_finished,
-            const canopy::network_config::network_config& cfg)
+            const canopy::network_config::network_config& cfg,
+            rpc::zone server_zone)
         {
-            rpc::zone_address zone_addr(
-                canopy::network_config::ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family),
-                static_cast<uint32_t>(cfg.subnet_base));
             std::string host = cfg.get_host_string();
             uint16_t port = cfg.port;
 
@@ -74,7 +72,7 @@ namespace comprehensive
             auto on_shutdown_event = std::make_shared<rpc::event>();
 
             // Create server service using the zone address provided by the allocator.
-            auto service = std::make_shared<rpc::root_service>("tcp_server", rpc::zone{zone_addr}, scheduler);
+            auto service = std::make_shared<rpc::root_service>("tcp_server", server_zone, scheduler);
             service->set_shutdown_event(on_shutdown_event);
 
             RPC_INFO("Server zone ID (address): {}", rpc::to_yas_json<std::string>(service->get_zone_id().get_address()));
@@ -148,14 +146,9 @@ namespace comprehensive
         run_tcp_client(std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
             rpc::event& client_finished,
-            const canopy::network_config::network_config& cfg)
+            const canopy::network_config::network_config& cfg,
+            rpc::zone client_zone)
         {
-            rpc::zone client_zone(rpc::zone_address{
-                canopy::network_config::ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family) + 1,
-                static_cast<uint32_t>(cfg.subnet_base)});
-            rpc::zone server_zone(rpc::zone_address{
-                canopy::network_config::ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family),
-                static_cast<uint32_t>(cfg.subnet_base)});
             std::string host = cfg.get_host_string();
             uint16_t port = cfg.port;
 
@@ -301,31 +294,21 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // subnet_id == 0 with no routing prefix is the "unset" sentinel in zone_address::is_set().
-    // For local demos without a network routing prefix, reserve subnet IDs from 1 onwards.
-    if (cfg.subnet_base == 0)
-        cfg.subnet_base = 1;
-
     // Require an explicit port for the demo; default to 18888 when not specified.
     if (cfg.port == 0)
         cfg.port = 18888;
 
-    // Build the zone allocator for this process from the parsed network config.
-    // In local-only mode (no routing prefix) this behaves like the old zone_gen counter.
-    // In network mode, routing_prefix encodes the host's IP address so that zone addresses
-    // are globally unique without any coordination with other nodes.
-    // auto allocator = canopy::network_config::make_allocator(cfg);
-
-    // Pre-allocate zone addresses for server and client so both sides can refer to the
-    // server's zone before the TCP connection is established.
-    // auto server_zone_addr = allocator.allocate_zone();
-    // auto client_zone_addr = allocator.allocate_zone();
-
-    const std::string host = cfg.get_host_string();
-
     cfg.log_values();
-    // RPC_INFO("Server subnet  : {}", server_zone_addr.get_subnet());
-    // RPC_INFO("Client subnet  : {}", client_zone_addr.get_subnet());
+
+    // Build the zone allocator for this process from the parsed network config.
+    auto allocator = canopy::network_config::make_allocator(cfg);
+
+    // Pre-allocate zone addresses for server and client so both sides can refer to
+    // stable zone IDs across all iterations.
+    rpc::zone_address server_zone_addr;
+    rpc::zone_address client_zone_addr;
+    allocator.allocate_zone(server_zone_addr);
+    allocator.allocate_zone(client_zone_addr);
 
 #ifndef CANOPY_BUILD_COROUTINE
     RPC_ERROR("TCP transport requires coroutines. Please configure with: cmake --preset Coroutine_Debug");
@@ -349,8 +332,10 @@ int main(int argc, char* argv[])
         rpc::event server_ready;
         rpc::event client_finished;
 
-        coro::sync_wait(coro::when_all(comprehensive::v1::run_tcp_server(scheduler_1, server_ready, client_finished, cfg),
-            comprehensive::v1::run_tcp_client(scheduler_2, server_ready, client_finished, cfg)));
+        coro::sync_wait(coro::when_all(comprehensive::v1::run_tcp_server(
+                                           scheduler_1, server_ready, client_finished, cfg, rpc::zone{server_zone_addr}),
+            comprehensive::v1::run_tcp_client(
+                scheduler_2, server_ready, client_finished, cfg, rpc::zone{client_zone_addr})));
     }
 
     print_separator("TCP TRANSPORT DEMO COMPLETED");

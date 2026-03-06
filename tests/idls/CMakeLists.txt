@@ -61,3 +61,15 @@ CanopyGenerate(
   protocol_buffers
   mock fuzz_test/fuzz_test_mock.h
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
+
+CanopyGenerate(
+  test_types
+  serialiser_test/test_types.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  protocol_buffers
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)

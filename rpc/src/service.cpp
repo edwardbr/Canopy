@@ -85,7 +85,7 @@ namespace rpc
 #else
     root_service::root_service(const char* name, zone zone_id)
         : service(name, zone_id)
-        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
+        , zone_allocator_(zone_id.get_address())
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
@@ -103,7 +103,10 @@ namespace rpc
         std::ignore = protocol_version;
         std::ignore = in_back_channel;
         std::ignore = out_back_channel;
-        zone_id = zone{zone_allocator_.allocate_zone()};
+        zone_address addr;
+        if (auto ret = zone_allocator_.allocate_zone(addr); ret != rpc::error::OK())
+            CO_RETURN ret;
+        zone_id = zone{addr};
         CO_RETURN rpc::error::OK();
     }
 

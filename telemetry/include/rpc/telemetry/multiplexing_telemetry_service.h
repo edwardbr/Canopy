@@ -9,7 +9,7 @@
 #include <string>
 #include <filesystem>
 
-#include <rpc/internal/build_modifiers.h>
+#include <rpc/rpc.h>
 #include <rpc/telemetry/i_telemetry_service.h>
 
 #ifndef _IN_ENCLAVE

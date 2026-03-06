@@ -1933,7 +1933,7 @@ namespace synchronous_generator
                 }
                 else
                 {
-                    header.raw("{{}};\n");
+                    header.raw(";\n");
                 }
             }
             else if (field->get_entity_type() == entity_type::CPPQUOTE)
@@ -2442,6 +2442,7 @@ namespace synchronous_generator
 
         header("");
 
+        proxy("#include <rpc/rpc.h>");
         proxy("#include <yas/mem_streams.hpp>");
         proxy("#include <yas/binary_iarchive.hpp>");
         proxy("#include <yas/binary_oarchive.hpp>");
@@ -2451,7 +2452,6 @@ namespace synchronous_generator
         proxy("#include <yas/text_oarchive.hpp>");
         proxy("#include <yas/std_types.hpp>");
         proxy("#include <yas/count_streams.hpp>");
-        proxy("#include <rpc/rpc.h>");
         proxy("#include \"{}\"", header_filename);
 
         proxy("");
@@ -2460,12 +2460,12 @@ namespace synchronous_generator
         stub_header("#include <rpc/rpc.h>");
         stub_header("");
 
+        stub("#include <rpc/rpc.h>");
         stub("#include <yas/mem_streams.hpp>");
         stub("#include <yas/binary_iarchive.hpp>");
         stub("#include <yas/binary_oarchive.hpp>");
         stub("#include <yas/count_streams.hpp>");
         stub("#include <yas/std_types.hpp>");
-        stub("#include <rpc/rpc.h>");
         stub("#include \"{}\"", header_filename);
         // stub("#include \"{}\"", yas_header_filename);
         stub("#include \"{}\"", stub_header_filename);

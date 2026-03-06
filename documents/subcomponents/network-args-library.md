@@ -81,7 +81,6 @@ The first 64 bits of the address are taken directly as the routing prefix (equiv
 
 **Headers:**
 - `subcomponents/network_config/include/canopy/network_config/network_args.h`
-- `subcomponents/network_config/include/canopy/network_config/zone_address_allocator.h`
 
 ```cpp
 namespace canopy::network_config {
@@ -179,7 +178,6 @@ int main(int argc, char* argv[])
 ```
 subcomponents/network_config/
   CMakeLists.txt
-  include/canopy/network_config/zone_address_allocator.h
   include/canopy/network_config/network_args.h
   src/network_args.cpp           ← CLI parsing, conversion, get_network_config()
   src/network_auto_detect.cpp    ← detect_routing_prefix() via getifaddrs()

@@ -13,6 +13,8 @@
 #include <rpc/internal/version.h>
 #include <rpc/internal/build_modifiers.h>
 
+// needed for uint128_t and int128_t serialisation support protobuffers are sending pairs of uint64_t's
+#include <rpc/internal/int128.h>
 #include <rpc/rpc_types.h>
 
 #include <rpc/internal/assert.h>
@@ -62,3 +64,5 @@
 
 // the base class that all remoteable objects should inherit from
 #include <rpc/internal/base.h>
+
+#include <rpc/internal/zone_id_allocator.h>

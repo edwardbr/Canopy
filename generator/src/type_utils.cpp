@@ -41,13 +41,12 @@ namespace rpc_generator
 
     bool is_int32(const std::string& type)
     {
-        return type == "int32_t" || type == "int" || type == "signed int" || type == "signed" || type == "long"
-               || type == "signed long";
+        return type == "int32_t" || type == "int" || type == "signed int" || type == "long" || type == "signed long";
     }
 
     bool is_uint32(const std::string& type)
     {
-        return type == "uint32_t" || type == "unsigned int" || type == "unsigned" || type == "unsigned long";
+        return type == "uint32_t" || type == "unsigned int" || type == "unsigned long";
     }
 
     bool is_int64(const std::string& type)
@@ -59,6 +58,16 @@ namespace rpc_generator
     bool is_uint64(const std::string& type)
     {
         return type == "uint64_t" || type == "unsigned long long" || type == "unsigned long long int";
+    }
+
+    bool is_int128(const std::string& type)
+    {
+        return type == "int128_t" || type == "__int128";
+    }
+
+    bool is_uint128(const std::string& type)
+    {
+        return type == "uint128_t" || type == "unsigned __int128";
     }
 
     bool is_long(const std::string& type)
@@ -209,8 +218,8 @@ namespace rpc_generator
     bool is_integer_type(const std::string& type)
     {
         return is_int8(type) || is_uint8(type) || is_int16(type) || is_uint16(type) || is_int32(type) || is_uint32(type)
-               || is_int64(type) || is_uint64(type) || is_long(type) || is_ulong(type) || type == "size_t"
-               || type == "ptrdiff_t";
+               || is_int64(type) || is_uint64(type) || is_int128(type) || is_uint128(type) || is_long(type)
+               || is_ulong(type) || type == "size_t" || type == "ptrdiff_t";
     }
 
     bool is_numeric_type(const std::string& type)

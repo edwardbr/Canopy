@@ -121,8 +121,8 @@ namespace canopy::network_config
     void network_config::log_values() const
     {
         RPC_INFO("routing prefix : {}", get_routing_prefix_string());
-        RPC_INFO("subnet base    : {}", subnet_base);
-        RPC_INFO("subnet range   : {}", subnet_range);
+        RPC_INFO("subnet offset  : {}", subnet_offset);
+        RPC_INFO("object offset  : {}", object_offset);
         RPC_INFO("host           : {}", get_host_string());
         RPC_INFO("port           : {}", port);
     }
@@ -231,22 +231,24 @@ namespace canopy::network_config
               "Auto-detected from network interfaces when omitted.",
               {"routing-prefix"},
               "")
-        , subnet_base_(parser, "int", "First subnet_id allocated by this process", {"subnet-base"}, uint64_t{0})
-        , subnet_range_(parser,
-              "int",
-              "Number of subnet_id values reserved for this process",
-              {"subnet-range"},
-              rpc::zone_address::max_subnet)
         , host_(parser, "addr", "TCP address to bind/connect. \"detect\" derives it from --routing-prefix.", {"host"}, "detect")
         , port_(parser, "n", "TCP port (0 = not specified)", {"port"}, uint32_t{0})
+        , subnet_offset_(parser,
+              "bits",
+              "Bit offset of subnet field in zone_address (flexible layout, default 64)",
+              {"subnet-offset"},
+              uint32_t{64})
+        , object_offset_(parser,
+              "bits",
+              "Bit offset of object field in zone_address (flexible layout, default 96)",
+              {"object-offset"},
+              uint32_t{96})
     {
     }
 
     network_config network_args_context::get_config() const
     {
         network_config cfg;
-        cfg.subnet_base = args::get(subnet_base_);
-        cfg.subnet_range = args::get(subnet_range_);
 
         const std::string& prefix_str = args::get(routing_prefix_);
         if (prefix_str.empty())
@@ -278,43 +280,18 @@ namespace canopy::network_config
             }
         }
 
-        // Validate that the routing prefix fits within zone_address field bounds.
-        // Convert to uint64_t here so that the check uses zone_address's own constants,
-        // which automatically tightens if the field widths change.
-        {
-            uint64_t prefix64 = ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family);
-            rpc::zone_address probe;
-            if (!probe.set_routing_prefix(prefix64))
-            {
-                throw std::invalid_argument(fmt::format("routing-prefix {} exceeds the maximum routing prefix ({})",
-                    cfg.get_routing_prefix_string(),
-                    rpc::zone_address::max_routing_prefix));
-            }
-        }
+        cfg.subnet_offset = static_cast<uint8_t>(args::get(subnet_offset_));
+        cfg.object_offset = static_cast<uint8_t>(args::get(object_offset_));
 
-        // subnet_base must fit in the subnet field.
-        if (cfg.subnet_base > rpc::zone_address::max_subnet)
+        if (cfg.subnet_offset >= 128 || cfg.object_offset > 128)
         {
             throw std::invalid_argument(fmt::format(
-                "subnet-base {} exceeds the maximum subnet ID ({})", cfg.subnet_base, rpc::zone_address::max_subnet));
+                "subnet-offset ({}) and object-offset ({}) must be in range [0..128]", cfg.subnet_offset, cfg.object_offset));
         }
-
-        // subnet_range must be at least 1.
-        if (cfg.subnet_range == 0)
-        {
-            throw std::invalid_argument("subnet-range must be at least 1");
-        }
-
-        // subnet_base + subnet_range must not exceed the end of the subnet space.
-        const uint64_t subnet_limit = rpc::zone_address::max_subnet + uint64_t{1};
-        if (cfg.subnet_base + cfg.subnet_range > subnet_limit)
+        if (cfg.object_offset < cfg.subnet_offset)
         {
             throw std::invalid_argument(
-                fmt::format("subnet-base ({}) + subnet-range ({}) = {} exceeds the available subnet space (max {})",
-                    cfg.subnet_base,
-                    cfg.subnet_range,
-                    cfg.subnet_base + cfg.subnet_range,
-                    subnet_limit));
+                fmt::format("object-offset ({}) must be >= subnet-offset ({})", cfg.object_offset, cfg.subnet_offset));
         }
 
         const std::string& host_str = args::get(host_);

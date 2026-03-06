@@ -28,12 +28,3 @@
                 _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
 #define YAS_WARNINGS_POP _Pragma("GCC diagnostic pop")
 #endif
-
-// Disable pedantic warnings for YAS library headers
-YAS_WARNINGS_PUSH
-
-#include <yas/count_streams.hpp>
-#include <yas/serialize.hpp>
-#include <yas/std_types.hpp>
-
-YAS_WARNINGS_POP

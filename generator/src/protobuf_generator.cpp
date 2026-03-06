@@ -236,7 +236,7 @@ namespace protobuf_generator
             return "int32";
 
         // int32_t, int
-        if (type == "int32_t" || type == "int" || type == "signed int" || type == "signed")
+        if (type == "int32_t" || type == "int" || type == "signed int")
             return "int32";
 
         // int64_t, long long, long (long is 64-bit on most platforms, safer to use int64)
@@ -255,7 +255,7 @@ namespace protobuf_generator
             return "uint32";
 
         // uint32_t, unsigned int, unsigned
-        if (type == "uint32_t" || type == "unsigned int" || type == "unsigned")
+        if (type == "uint32_t" || type == "unsigned int")
             return "uint32";
 
         // uint64_t, unsigned long long, unsigned long
@@ -384,6 +384,12 @@ namespace protobuf_generator
             return "rpc.interface_descriptor";
         }
 
+        // Handle 128-bit integers using the dedicated uint128 message type (two uint64 halves).
+        // Protobuf has no native 128-bit type; uint128 {lo, hi} is emitted into the proto file
+        // whenever a struct field of this type is encountered.
+        if (type == "unsigned __int128" || type == "__int128" || type == "uint128_t" || type == "int128_t")
+            return "uint128";
+
         // Check scalar types
         std::string scalar_type = cpp_scalar_to_proto_type(type);
         if (!scalar_type.empty())
@@ -405,7 +411,7 @@ namespace protobuf_generator
                 // Replace common types with short names for readability
                 if (inner_content == "int" || inner_content == "int32_t")
                     sanitized_suffix = "int";
-                else if (inner_content == "uint32_t" || inner_content == "unsigned int" || inner_content == "unsigned")
+                else if (inner_content == "uint32_t" || inner_content == "unsigned int")
                     sanitized_suffix = "uint";
                 else if (inner_content == "int64_t" || inner_content == "long" || inner_content == "long long")
                     sanitized_suffix = "int64";
@@ -901,6 +907,60 @@ namespace protobuf_generator
         }
     }
 
+    // Returns true if any non-static field in any non-template struct in current_lib is __int128.
+    // Used to decide whether to emit the uint128 helper message into the proto file.
+    bool namespace_has_int128_fields(const class_entity& current_lib)
+    {
+        for (auto& elem : current_lib.get_elements(entity_type::NAMESPACE_MEMBERS))
+        {
+            if (elem->get_entity_type() == entity_type::STRUCT)
+            {
+                auto& struct_entity = static_cast<const class_entity&>(*elem);
+                if (struct_entity.get_is_template())
+                    continue;
+                for (auto& member : struct_entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+                {
+                    if (member->get_entity_type() == entity_type::FUNCTION_VARIABLE)
+                    {
+                        auto func_entity = std::static_pointer_cast<function_entity>(member);
+                        if (func_entity->is_static())
+                            continue;
+                        const std::string& t = func_entity->get_return_type();
+                        if (t == "unsigned __int128" || t == "__int128" || t == "uint128_t" || t == "int128_t")
+                            return true;
+                        // Also detect int128 inside vector/array container fields.
+                        // Inline the type check here to avoid forward-reference dependency on later helpers.
+                        auto inner_is_int128 = [](const std::string& inner)
+                        {
+                            return inner == "__int128" || inner == "unsigned __int128" || inner == "int128_t"
+                                   || inner == "uint128_t";
+                        };
+                        auto extract_first_template_arg = [](const std::string& type) -> std::string
+                        {
+                            size_t lt = type.find('<');
+                            size_t gt = type.rfind('>');
+                            if (lt == std::string::npos || gt == std::string::npos || gt <= lt)
+                                return "";
+                            std::string inner = type.substr(lt + 1, gt - lt - 1);
+                            // For array<T, N> take only the part before the first comma
+                            size_t comma = inner.find(',');
+                            if (comma != std::string::npos)
+                                inner = inner.substr(0, comma);
+                            // Trim spaces
+                            size_t f = inner.find_first_not_of(' ');
+                            size_t l = inner.find_last_not_of(' ');
+                            return (f == std::string::npos) ? "" : inner.substr(f, l - f + 1);
+                        };
+                        if ((t.find("std::vector<") == 0 || t.find("std::array<") == 0)
+                            && inner_is_int128(extract_first_template_arg(t)))
+                            return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     // Helper function to write a single namespace to a file
     void write_single_namespace(const class_entity& lib,
         const class_entity& current_lib,
@@ -984,6 +1044,18 @@ namespace protobuf_generator
         // If the C++ namespace is xxx, the protobuf package will be protobuf.xxx
         proto("package protobuf.{};", namespace_name);
         proto("");
+
+        // Emit the uint128 helper message when any struct field uses a 128-bit integer type.
+        // Protobuf has no native 128-bit type; we represent it as two uint64 halves.
+        if (namespace_has_int128_fields(current_lib))
+        {
+            proto("// 128-bit integer represented as two 64-bit halves (lo = bits 0-63, hi = bits 64-127).");
+            proto("message uint128 {{");
+            proto("\tuint64 lo = 1;");
+            proto("\tuint64 hi = 2;");
+            proto("}}");
+            proto("");
+        }
 
         // First, collect all interface types that are referenced by this interface
         // Also track which packages are referenced for cross-package imports
@@ -1543,8 +1615,6 @@ namespace protobuf_generator
             "uint64_t",
             "unsigned int",
             "signed int",
-            "unsigned",
-            "signed",
             "short",
             "unsigned short",
             "signed short",
@@ -2507,6 +2577,34 @@ namespace protobuf_generator
         return type_str.find("std::vector<") == 0;
     }
 
+    // Helper to check if a type is a std::array
+    bool is_std_array(const std::string& type_str)
+    {
+        return type_str.find("std::array<") == 0;
+    }
+
+    // Helper to check if a type is a 128-bit integer
+    bool is_int128_type(const std::string& type_str)
+    {
+        return type_str == "__int128" || type_str == "unsigned __int128" || type_str == "int128_t"
+               || type_str == "uint128_t";
+    }
+
+    // Helper to extract element type from std::array<T, N>
+    std::string extract_array_inner_type(const std::string& type_str)
+    {
+        size_t start = type_str.find('<');
+        if (start == std::string::npos)
+            return "";
+        std::string inner_content;
+        if (extract_template_content(type_str, start, inner_content) == std::string::npos)
+            return "";
+        std::string element_type, size_param;
+        if (split_template_args(inner_content, element_type, size_param))
+            return element_type;
+        return "";
+    }
+
     // Helper to check if a type is a std::map
     bool is_std_map(const std::string& type_str)
     {
@@ -2761,7 +2859,14 @@ namespace protobuf_generator
                 std::string member_name = func_entity->get_name();
 
                 // Handle different type categories
-                if (is_primitive_type(field_type) || field_type == "std::string")
+                if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
+                    || field_type == "int128_t")
+                {
+                    // Serialize 128-bit integer into a uint128 message (lo = bits 0-63, hi = bits 64-127).
+                    cpp("msg.mutable_{}()->set_lo(static_cast<uint64_t>({}));", field_name, member_name);
+                    cpp("msg.mutable_{}()->set_hi(static_cast<uint64_t>({} >> 64));", field_name, member_name);
+                }
+                else if (is_primitive_type(field_type) || field_type == "std::string")
                 {
                     // Simple primitive types
                     cpp("msg.set_{}({});", field_name, member_name);
@@ -2781,7 +2886,14 @@ namespace protobuf_generator
                     cpp("for (const auto& elem : {})", member_name);
                     cpp("{{");
 
-                    if (is_primitive_type(inner_type) || inner_type == "std::string")
+                    if (is_int128_type(inner_type))
+                    {
+                        // Vector of 128-bit integers: add a uint128 message per element
+                        cpp("auto* pb_elem = msg.add_{}();", field_name);
+                        cpp("pb_elem->set_lo(static_cast<uint64_t>(elem));");
+                        cpp("pb_elem->set_hi(static_cast<uint64_t>(elem >> 64));");
+                    }
+                    else if (is_primitive_type(inner_type) || inner_type == "std::string")
                     {
                         // Vector of primitives
                         cpp("msg.add_{}(elem);", field_name);
@@ -2813,6 +2925,33 @@ namespace protobuf_generator
                         {
                             cpp("// Warning: Could not find struct definition for {}", inner_type);
                         }
+                    }
+
+                    cpp("}}");
+                }
+                else if (is_std_array(field_type))
+                {
+                    // Handle std::array<T, N> — serialized as a repeated field (same as vector)
+                    std::string inner_type = extract_array_inner_type(field_type);
+
+                    cpp("// Serialize std::array<{}>", inner_type);
+                    cpp("for (const auto& elem : {})", member_name);
+                    cpp("{{");
+
+                    if (is_int128_type(inner_type))
+                    {
+                        // Array of 128-bit integers: add a uint128 message per element
+                        cpp("auto* pb_elem = msg.add_{}();", field_name);
+                        cpp("pb_elem->set_lo(static_cast<uint64_t>(elem));");
+                        cpp("pb_elem->set_hi(static_cast<uint64_t>(elem >> 64));");
+                    }
+                    else if (is_primitive_type(inner_type) || inner_type == "std::string")
+                    {
+                        cpp("msg.add_{}(elem);", field_name);
+                    }
+                    else
+                    {
+                        cpp("// TODO: Handle unsupported array element type {} for field {}", inner_type, field_name);
                     }
 
                     cpp("}}");
@@ -2941,7 +3080,17 @@ namespace protobuf_generator
                 std::string member_name = func_entity->get_name();
 
                 // Handle different type categories
-                if (is_primitive_type(field_type) || field_type == "std::string")
+                if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
+                    || field_type == "int128_t")
+                {
+                    // Deserialize 128-bit integer from a uint128 message (lo = bits 0-63, hi = bits 64-127).
+                    cpp("{} = (static_cast<unsigned __int128>(msg.{}().hi()) << 64)"
+                        " | static_cast<unsigned __int128>(msg.{}().lo());",
+                        member_name,
+                        field_name,
+                        field_name);
+                }
+                else if (is_primitive_type(field_type) || field_type == "std::string")
                 {
                     // Simple primitive types
                     cpp("{} = msg.{}();", member_name, field_name);
@@ -2963,7 +3112,15 @@ namespace protobuf_generator
                     cpp("for (int i = 0; i < msg.{}_size(); ++i)", field_name);
                     cpp("{{");
 
-                    if (is_primitive_type(inner_type) || inner_type == "std::string")
+                    if (is_int128_type(inner_type))
+                    {
+                        // Vector of 128-bit integers: reconstruct from uint128 lo/hi fields
+                        cpp("const auto& pb_elem = msg.{}(i);", field_name);
+                        cpp("{}.push_back((static_cast<unsigned __int128>(pb_elem.hi()) << 64)"
+                            " | static_cast<unsigned __int128>(pb_elem.lo()));",
+                            member_name);
+                    }
+                    else if (is_primitive_type(inner_type) || inner_type == "std::string")
                     {
                         // Vector of primitives
                         cpp("{}.push_back(msg.{}(i));", member_name, field_name);
@@ -2998,6 +3155,35 @@ namespace protobuf_generator
                         }
 
                         cpp("{}.push_back(std::move(elem));", member_name);
+                    }
+
+                    cpp("}}");
+                }
+                else if (is_std_array(field_type))
+                {
+                    // Handle std::array<T, N> — deserialized from a repeated field
+                    std::string inner_type = extract_array_inner_type(field_type);
+
+                    cpp("// Deserialize std::array<{}>", inner_type);
+                    cpp("for (size_t i = 0; i < {}.size() && i < static_cast<size_t>(msg.{}_size()); ++i)",
+                        member_name,
+                        field_name);
+                    cpp("{{");
+
+                    if (is_int128_type(inner_type))
+                    {
+                        cpp("const auto& pb_elem = msg.{}(static_cast<int>(i));", field_name);
+                        cpp("{}[i] = (static_cast<unsigned __int128>(pb_elem.hi()) << 64)"
+                            " | static_cast<unsigned __int128>(pb_elem.lo());",
+                            member_name);
+                    }
+                    else if (is_primitive_type(inner_type) || inner_type == "std::string")
+                    {
+                        cpp("{}[i] = msg.{}(static_cast<int>(i));", member_name, field_name);
+                    }
+                    else
+                    {
+                        cpp("// TODO: Handle unsupported array element type {}", inner_type);
                     }
 
                     cpp("}}");
