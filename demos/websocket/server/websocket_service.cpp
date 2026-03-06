@@ -64,6 +64,7 @@ namespace websocket_demo
                                       .engine_type = secret_llama::llm_engine_type::LLAMA_CPP,
                                       .engine_config = {},
                                       .encryption_type = secret_llama::encryption_type::NONE,
+                                      .encryption_key = "",
                                       .hash_type = secret_llama::hash_type::NONE,
                                       .hash = {},
                                       // file_system::download_status    status;

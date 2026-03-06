@@ -30,7 +30,7 @@ CORO_TASK(error_code) host::create_enclave(rpc::shared_ptr<yyy::i_example>& targ
     rpc::shared_ptr<yyy::i_host> host = shared_from_this();
     auto serv = current_host_service.lock();
     auto err_code = serv->connect_to_zone<rpc::enclave_service_proxy>(
-        "an enclave", rpc::zone_address{1, 1}, host, target, enclave_path);
+        "an enclave", rpc::DEFAULT_PREFIX, host, target, enclave_path);
 
     CO_RETURN err_code;
 #endif

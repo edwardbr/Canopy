@@ -785,6 +785,58 @@ namespace protobuf_generator
             }
         }
 
+        // Scan non-template struct fields for template type usages (e.g. test_template<int> as a field)
+        for (auto& struct_elem : lib.get_elements(entity_type::STRUCT))
+        {
+            auto& struct_entity = static_cast<const class_entity&>(*struct_elem);
+            if (struct_entity.get_is_template())
+                continue;
+
+            for (auto& member : struct_entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+            {
+                if (member->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                    continue;
+
+                auto func_entity = std::static_pointer_cast<function_entity>(member);
+                if (func_entity->is_static())
+                    continue;
+
+                std::string field_type = func_entity->get_return_type();
+                size_t template_start = field_type.find('<');
+                if (template_start == std::string::npos || field_type.find('>') == std::string::npos)
+                    continue;
+
+                std::string template_name = field_type.substr(0, template_start);
+                // Skip std:: and rpc:: container types — only user-defined templates
+                if (template_name.find("std::") == 0 || template_name.find("rpc::") == 0)
+                    continue;
+
+                // Extract template parameter
+                int bracket_count = 1;
+                size_t pos = template_start + 1;
+                while (pos < field_type.length() && bracket_count > 0)
+                {
+                    if (field_type[pos] == '<')
+                        bracket_count++;
+                    else if (field_type[pos] == '>')
+                        bracket_count--;
+                    pos++;
+                }
+
+                if (bracket_count == 0)
+                {
+                    std::string template_param = field_type.substr(template_start + 1, pos - template_start - 2);
+                    std::string concrete_name = cpp_type_to_proto_type(field_type);
+
+                    TemplateInstantiation inst;
+                    inst.template_name = template_name;
+                    inst.template_param = template_param;
+                    inst.concrete_name = concrete_name;
+                    instantiations.insert(inst);
+                }
+            }
+        }
+
         // Recursively process nested namespaces
         for (auto& ns_elem : lib.get_elements(entity_type::NAMESPACE_MEMBERS))
         {
@@ -2992,9 +3044,26 @@ namespace protobuf_generator
                 }
                 else
                 {
+                    // Check if it's a user-defined template instantiation (e.g. test_template<int>)
+                    size_t tmpl_start = field_type.find('<');
+                    bool is_user_template = tmpl_start != std::string::npos && field_type.find("std::") != 0
+                                            && field_type.find("rpc::") != 0;
+
+                    if (is_user_template)
+                    {
+                        cpp("// Serialize template instantiation {}", field_type);
+                        cpp("{{");
+                        cpp("std::vector<char> {}_buf;", field_name);
+                        cpp("{}.protobuf_serialise({}_buf);", member_name, field_name);
+                        cpp("if (!msg.mutable_{}()->ParseFromArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                            field_name,
+                            field_name,
+                            field_name);
+                        cpp("throw std::runtime_error(\"Failed to parse nested {} for field {}\");", field_type, field_name);
+                        cpp("}}");
+                    }
                     // check if it's a nested struct type
-                    const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
-                    if (nested_struct)
+                    else if (const class_entity* nested_struct = find_struct_by_name(root_entity, field_type); nested_struct)
                     {
                         cpp("// Serialize nested struct {}", field_type);
                         cpp("{{");
@@ -3227,9 +3296,28 @@ namespace protobuf_generator
                 }
                 else
                 {
+                    // Check if it's a user-defined template instantiation (e.g. test_template<int>)
+                    size_t tmpl_start = field_type.find('<');
+                    bool is_user_template = tmpl_start != std::string::npos && field_type.find("std::") != 0
+                                            && field_type.find("rpc::") != 0;
+
+                    if (is_user_template)
+                    {
+                        cpp("// Deserialize template instantiation {}", field_type);
+                        cpp("{{");
+                        cpp("std::vector<char> {}_buf(msg.{}().ByteSizeLong());", field_name, field_name);
+                        cpp("if (!msg.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                            field_name,
+                            field_name,
+                            field_name);
+                        cpp("throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
+                            field_type,
+                            field_name);
+                        cpp("{}.protobuf_deserialise({}_buf);", member_name, field_name);
+                        cpp("}}");
+                    }
                     // check if it's a nested struct type
-                    const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
-                    if (nested_struct)
+                    else if (const class_entity* nested_struct = find_struct_by_name(root_entity, field_type); nested_struct)
                     {
                         cpp("// Deserialize nested struct {}", field_type);
                         cpp("{{");
@@ -3371,6 +3459,35 @@ namespace protobuf_generator
     void write_namespace_protobuf_cpp(
         const class_entity& root_entity, const class_entity& lib, const std::string& package_name, writer& cpp)
     {
+        // Generate explicit template specializations FIRST so they are defined before any struct
+        // implementation that might call them, preventing "explicit specialization after instantiation" errors.
+        std::set<TemplateInstantiation> template_instantiations;
+        collect_template_instantiations(lib, template_instantiations);
+
+        for (const auto& inst : template_instantiations)
+        {
+            // Find the template struct - ONLY in the current namespace (not nested)
+            const class_entity* found_template = nullptr;
+            for (auto& struct_elem : lib.get_elements(entity_type::STRUCT))
+            {
+                auto& struct_entity = static_cast<const class_entity&>(*struct_elem);
+                if (struct_entity.get_is_template() && struct_entity.get_name() == inst.template_name)
+                {
+                    found_template = &struct_entity;
+                    break;
+                }
+            }
+
+            // Only generate if the template is defined in THIS namespace
+            if (found_template)
+            {
+                // Compute the protobuf package name (uses underscores, includes inline namespaces)
+                std::string protobuf_package_name = get_namespace_name(lib);
+                write_template_instantiation_protobuf_cpp(
+                    *found_template, inst.template_param, inst.concrete_name, protobuf_package_name, cpp);
+            }
+        }
+
         // First pass: process namespaces and structs
         for (auto& elem : lib.get_elements(entity_type::NAMESPACE_MEMBERS))
         {
@@ -3415,35 +3532,6 @@ namespace protobuf_generator
                     std::string protobuf_package_name = get_namespace_name(lib);
                     write_struct_protobuf_cpp(root_entity, struct_entity, protobuf_package_name, cpp);
                 }
-            }
-        }
-
-        // Generate template instantiations for this namespace (between structs and interfaces)
-        // Only generate instantiations for templates DEFINED in this namespace, not nested ones
-        std::set<TemplateInstantiation> template_instantiations;
-        collect_template_instantiations(lib, template_instantiations);
-
-        for (const auto& inst : template_instantiations)
-        {
-            // Find the template struct - ONLY in the current namespace (not nested)
-            const class_entity* found_template = nullptr;
-            for (auto& struct_elem : lib.get_elements(entity_type::STRUCT))
-            {
-                auto& struct_entity = static_cast<const class_entity&>(*struct_elem);
-                if (struct_entity.get_is_template() && struct_entity.get_name() == inst.template_name)
-                {
-                    found_template = &struct_entity;
-                    break;
-                }
-            }
-
-            // Only generate if the template is defined in THIS namespace
-            if (found_template)
-            {
-                // Compute the protobuf package name (uses underscores, includes inline namespaces)
-                std::string protobuf_package_name = get_namespace_name(lib);
-                write_template_instantiation_protobuf_cpp(
-                    *found_template, inst.template_param, inst.concrete_name, protobuf_package_name, cpp);
             }
         }
 

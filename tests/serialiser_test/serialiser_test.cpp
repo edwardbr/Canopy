@@ -12,7 +12,6 @@
 #include <vector>
 
 #include <rpc/rpc.h>
-#include <example_shared/example_shared.h>
 #include <serialiser_test/test_types.h>
 
 #include "gmock/gmock.h"
@@ -516,7 +515,7 @@ protected:
 // Test to_yas_json serialization with generated structure
 TEST_F(SerialiserTest, ToYasJson)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 
@@ -529,7 +528,7 @@ TEST_F(SerialiserTest, ToYasJson)
 // Test to_yas_binary serialization with generated structure
 TEST_F(SerialiserTest, ToYasBinary)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 
@@ -541,7 +540,7 @@ TEST_F(SerialiserTest, ToYasBinary)
 // Test to_compressed_yas_binary serialization with generated structure
 TEST_F(SerialiserTest, ToCompressedYasBinary)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 
@@ -553,7 +552,7 @@ TEST_F(SerialiserTest, ToCompressedYasBinary)
 // Test to_protobuf serialization with generated structure
 TEST_F(SerialiserTest, ToProtobuf)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test";
 
@@ -566,14 +565,14 @@ TEST_F(SerialiserTest, ToProtobuf)
 // Test from_yas_json deserialization with generated structure
 TEST_F(SerialiserTest, FromYasJson)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 
     auto serialized = rpc::to_yas_json(obj);
     rpc::span data_span(serialized);
 
-    xxx::something_complicated deserialized;
+    scalar_test::something_complicated deserialized;
     auto error = rpc::from_yas_json(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -584,14 +583,14 @@ TEST_F(SerialiserTest, FromYasJson)
 // Test from_yas_binary deserialization with generated structure
 TEST_F(SerialiserTest, FromYasBinary)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 
     auto serialized = rpc::to_yas_binary(obj);
     rpc::span data_span(serialized);
 
-    xxx::something_complicated deserialized;
+    scalar_test::something_complicated deserialized;
     auto error = rpc::from_yas_binary(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -602,14 +601,14 @@ TEST_F(SerialiserTest, FromYasBinary)
 // Test from_yas_compressed_binary deserialization with generated structure
 TEST_F(SerialiserTest, FromYasCompressedBinary)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 
     auto serialized = rpc::to_compressed_yas_binary(obj);
     rpc::span data_span(serialized);
 
-    xxx::something_complicated deserialized;
+    scalar_test::something_complicated deserialized;
     auto error = rpc::from_yas_compressed_binary(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -620,14 +619,14 @@ TEST_F(SerialiserTest, FromYasCompressedBinary)
 // Test from_protobuf deserialization with generated structure
 TEST_F(SerialiserTest, FromProtobuf)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 100;
     obj.string_val = "hello";
 
     auto serialized = rpc::to_protobuf(obj);
     rpc::span data_span(serialized);
 
-    xxx::something_complicated deserialized;
+    scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -638,7 +637,7 @@ TEST_F(SerialiserTest, FromProtobuf)
 // Test serialise function with all encodings using generated structure
 TEST_F(SerialiserTest, SerialiseAllEncodings)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "serialize_test";
 
@@ -658,14 +657,14 @@ TEST_F(SerialiserTest, SerialiseAllEncodings)
 // Test deserialise function with all encodings using generated structure
 TEST_F(SerialiserTest, DeserialiseAllEncodings)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "deserialize_test";
 
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::yas_json);
         rpc::span data_span(serialized);
-        xxx::something_complicated deserialized;
+        scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::yas_json, data_span, deserialized);
         EXPECT_TRUE(error.empty());
         EXPECT_EQ(deserialized.int_val, obj.int_val);
@@ -675,7 +674,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::yas_binary);
         rpc::span data_span(serialized);
-        xxx::something_complicated deserialized;
+        scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::yas_binary, data_span, deserialized);
         EXPECT_TRUE(error.empty());
         EXPECT_EQ(deserialized.int_val, obj.int_val);
@@ -685,7 +684,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::yas_compressed_binary);
         rpc::span data_span(serialized);
-        xxx::something_complicated deserialized;
+        scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::yas_compressed_binary, data_span, deserialized);
         EXPECT_TRUE(error.empty());
         EXPECT_EQ(deserialized.int_val, obj.int_val);
@@ -695,7 +694,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
         rpc::span data_span(serialized);
-        xxx::something_complicated deserialized;
+        scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::protocol_buffers, data_span, deserialized);
         EXPECT_TRUE(error.empty());
         EXPECT_EQ(deserialized.int_val, obj.int_val);
@@ -706,7 +705,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
 // Test get_saved_size function with all encodings
 TEST_F(SerialiserTest, GetSavedSizeAllEncodings)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "size_test";
 
@@ -735,7 +734,7 @@ TEST_F(SerialiserTest, GetSavedSizeAllEncodings)
 // Test with complex structure
 TEST_F(SerialiserTest, ComplexStructProtobuf)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 123;
     obj.string_val = "complex_test";
 
@@ -743,7 +742,7 @@ TEST_F(SerialiserTest, ComplexStructProtobuf)
     EXPECT_FALSE(serialized.empty());
 
     rpc::span data_span(serialized);
-    xxx::something_complicated deserialized;
+    scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -754,7 +753,7 @@ TEST_F(SerialiserTest, ComplexStructProtobuf)
 // Test with nested structure
 TEST_F(SerialiserTest, NestedStructProtobuf)
 {
-    xxx::something_more_complicated obj;
+    scalar_test::something_more_complicated obj;
     obj.vector_val.push_back({1, "first"});
     obj.vector_val.push_back({2, "second"});
     obj.map_val["key1"] = {10, "map_first"};
@@ -764,7 +763,7 @@ TEST_F(SerialiserTest, NestedStructProtobuf)
     EXPECT_FALSE(serialized.empty());
 
     rpc::span data_span(serialized);
-    xxx::something_more_complicated deserialized;
+    scalar_test::something_more_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -775,7 +774,7 @@ TEST_F(SerialiserTest, NestedStructProtobuf)
 // Test roundtrip for all encodings with generated structure
 TEST_F(SerialiserTest, RoundtripAllEncodings)
 {
-    xxx::something_complicated original;
+    scalar_test::something_complicated original;
     original.int_val = 999;
     original.string_val = "roundtrip_test";
 
@@ -790,7 +789,7 @@ TEST_F(SerialiserTest, RoundtripAllEncodings)
         EXPECT_FALSE(serialized.empty()) << "Serialization failed for encoding: " << static_cast<int>(enc);
 
         rpc::span data_span(serialized);
-        xxx::something_complicated deserialized;
+        scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(enc, data_span, deserialized);
         EXPECT_TRUE(error.empty()) << "Deserialization failed for encoding: " << static_cast<int>(enc)
                                    << " error: " << error;
@@ -803,14 +802,14 @@ TEST_F(SerialiserTest, RoundtripAllEncodings)
 // Test with template structure
 TEST_F(SerialiserTest, TemplateStructProtobuf)
 {
-    xxx::test_template<int> obj;
+    scalar_test::test_template<int> obj;
     obj.type_t = 42;
 
     auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(serialized.empty());
 
     rpc::span data_span(serialized);
-    xxx::test_template<int> deserialized;
+    scalar_test::test_template<int> deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -820,7 +819,7 @@ TEST_F(SerialiserTest, TemplateStructProtobuf)
 // Test protobuf_saved_size function
 TEST_F(SerialiserTest, ProtobufSavedSize)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test";
 
@@ -834,14 +833,14 @@ TEST_F(SerialiserTest, ProtobufSavedSize)
 // Test edge cases - empty string
 TEST_F(SerialiserTest, EmptyStringProtobuf)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 0;
     obj.string_val = "";
 
     auto serialized = rpc::to_protobuf(obj);
     rpc::span data_span(serialized);
 
-    xxx::something_complicated deserialized;
+    scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -852,14 +851,14 @@ TEST_F(SerialiserTest, EmptyStringProtobuf)
 // Test edge cases - large values
 TEST_F(SerialiserTest, LargeValuesProtobuf)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = INT_MAX;
     obj.string_val = std::string(1000, 'x');
 
     auto serialized = rpc::to_protobuf(obj);
     rpc::span data_span(serialized);
 
-    xxx::something_complicated deserialized;
+    scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
     EXPECT_TRUE(error.empty());
@@ -870,7 +869,7 @@ TEST_F(SerialiserTest, LargeValuesProtobuf)
 // Test to_yas_json with std::array
 TEST_F(SerialiserTest, ToYasJsonWithArray)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 
@@ -883,7 +882,7 @@ TEST_F(SerialiserTest, ToYasJsonWithArray)
 // Test to_yas_binary with std::array
 TEST_F(SerialiserTest, ToYasBinaryWithArray)
 {
-    xxx::something_complicated obj;
+    scalar_test::something_complicated obj;
     obj.int_val = 42;
     obj.string_val = "test_string";
 

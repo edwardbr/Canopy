@@ -121,7 +121,6 @@ namespace canopy::network_config
     void network_config::log_values() const
     {
         RPC_INFO("routing prefix : {}", get_routing_prefix_string());
-        RPC_INFO("subnet offset  : {}", subnet_offset);
         RPC_INFO("object offset  : {}", object_offset);
         RPC_INFO("host           : {}", get_host_string());
         RPC_INFO("port           : {}", port);
@@ -233,16 +232,11 @@ namespace canopy::network_config
               "")
         , host_(parser, "addr", "TCP address to bind/connect. \"detect\" derives it from --routing-prefix.", {"host"}, "detect")
         , port_(parser, "n", "TCP port (0 = not specified)", {"port"}, uint32_t{0})
-        , subnet_offset_(parser,
-              "bits",
-              "Bit offset of subnet field in zone_address (flexible layout, default 64)",
-              {"subnet-offset"},
-              uint32_t{64})
         , object_offset_(parser,
               "bits",
-              "Bit offset of object field in zone_address (flexible layout, default 96)",
+              "Bit offset where object_id begins in zone_address::local_address (flexible layout, default 64)",
               {"object-offset"},
-              uint32_t{96})
+              uint32_t{64})
     {
     }
 
@@ -280,18 +274,11 @@ namespace canopy::network_config
             }
         }
 
-        cfg.subnet_offset = static_cast<uint8_t>(args::get(subnet_offset_));
         cfg.object_offset = static_cast<uint8_t>(args::get(object_offset_));
 
-        if (cfg.subnet_offset >= 128 || cfg.object_offset > 128)
+        if (cfg.object_offset > 120)
         {
-            throw std::invalid_argument(fmt::format(
-                "subnet-offset ({}) and object-offset ({}) must be in range [0..128]", cfg.subnet_offset, cfg.object_offset));
-        }
-        if (cfg.object_offset < cfg.subnet_offset)
-        {
-            throw std::invalid_argument(
-                fmt::format("object-offset ({}) must be >= subnet-offset ({})", cfg.object_offset, cfg.subnet_offset));
+            throw std::invalid_argument(fmt::format("object-offset ({}) must be in range [0..120]", cfg.object_offset));
         }
 
         const std::string& host_str = args::get(host_);

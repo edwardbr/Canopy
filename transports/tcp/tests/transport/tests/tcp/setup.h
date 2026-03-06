@@ -73,8 +73,9 @@ public:
         }
 #endif
 
-        auto root_zone_id = rpc::zone{rpc::zone_address{1, 1}};
-        auto peer_zone_id = rpc::zone{rpc::zone_address{2, 1}};
+        auto root_zone_id = rpc::DEFAULT_PREFIX;
+        auto peer_zone_id = rpc::DEFAULT_PREFIX;
+        peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
         // Create the peer service (server side)
         peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, io_scheduler_);
