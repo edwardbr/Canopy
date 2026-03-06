@@ -13,6 +13,14 @@
 
 namespace rpc
 {
+    namespace
+    {
+        pass_through_key make_pass_through_key(destination_zone zone1, destination_zone zone2)
+        {
+            return zone1 < zone2 ? pass_through_key{zone1, zone2} : pass_through_key{zone2, zone1};
+        }
+    }
+
     transport::transport(std::string name, std::shared_ptr<service> service)
         : name_(name)
         , zone_id_(service->get_zone_id())
@@ -133,12 +141,7 @@ namespace rpc
         std::weak_ptr<pass_through> pt, destination_zone outbound_dest, destination_zone inbound_source)
     {
         // Caller must hold destinations_mutex_
-        pass_through_key lookup_val;
-
-        if (outbound_dest < inbound_source)
-            lookup_val = {outbound_dest, inbound_source};
-        else
-            lookup_val = {inbound_source, outbound_dest};
+        auto lookup_val = make_pass_through_key(outbound_dest, inbound_source);
 
         // Check if entry already exists
         auto outer_it = pass_thoughs_.find(lookup_val);
@@ -376,11 +379,7 @@ namespace rpc
     void transport::remove_passthrough(destination_zone outbound_dest, destination_zone inbound_source)
     {
         std::unique_lock lock(destinations_mutex_);
-        pass_through_key lookup_val;
-        if (outbound_dest < inbound_source)
-            lookup_val = {outbound_dest, inbound_source};
-        else
-            lookup_val = {inbound_source, outbound_dest};
+        auto lookup_val = make_pass_through_key(outbound_dest, inbound_source);
 
         auto outer_it = pass_thoughs_.find(lookup_val);
         if (outer_it != pass_thoughs_.end())
@@ -564,21 +563,8 @@ namespace rpc
             return nullptr;
         }
 
-        // we need to lock both transports destination mutexes without deadlock when adding the destinations
-        // we do this by locking them in zone id order
-        std::unique_ptr<std::lock_guard<std::shared_mutex>> g1;
-        std::unique_ptr<std::lock_guard<std::shared_mutex>> g2;
-
-        if (forward->get_adjacent_zone_id() < reverse->get_adjacent_zone_id())
-        {
-            g1 = std::make_unique<std::lock_guard<std::shared_mutex>>(forward->destinations_mutex_);
-            g2 = std::make_unique<std::lock_guard<std::shared_mutex>>(reverse->destinations_mutex_);
-        }
-        else
-        {
-            g1 = std::make_unique<std::lock_guard<std::shared_mutex>>(reverse->destinations_mutex_);
-            g2 = std::make_unique<std::lock_guard<std::shared_mutex>>(forward->destinations_mutex_);
-        }
+        // Lock both transport destination tables before checking or inserting a shared pass-through.
+        std::scoped_lock lock(forward->destinations_mutex_, reverse->destinations_mutex_);
 
         // Check if pass-through already exists for this zone pair
         auto forward_passthrough = forward->inner_get_passthrough(reverse_dest, forward_dest);
@@ -594,40 +580,38 @@ namespace rpc
                 reverse_dest.get_subnet());
             return forward_passthrough;
         }
-        else
-        {
-            std::shared_ptr<pass_through> pt(
-                new rpc::pass_through(forward, // forward_transport: handles messages TO final destination
-                    reverse,                   // reverse_transport: handles messages back to caller
-                    service,                   // service
-                    forward_dest,
-                    reverse_dest // reverse_destination: where reverse messages go
-                    ));
-            pt->self_ref_ = pt; // keep self alive based on reference counts
 
-            RPC_DEBUG("create_pass_through: Creating NEW passthrough {}->{}, "
-                      "forward_transport=(zone={}, adjacent={}), "
-                      "reverse_transport=(zone={}, adjacent={}), pt={}",
-                reverse_dest.get_subnet(),
-                forward_dest.get_subnet(),
-                forward->zone_id_.get_subnet(),
-                forward->adjacent_zone_id_.get_subnet(),
-                reverse->zone_id_.get_subnet(),
-                reverse->adjacent_zone_id_.get_subnet(),
-                (void*)pt.get());
-            // Register pass-through on both transports and increment passthrough counts
-            // Forward transport: routes TO forward_dest (outbound), FROM reverse_dest (inbound)
-            // Reverse transport: routes TO reverse_dest (outbound), FROM forward_dest (inbound)
-            forward->inner_add_passthrough(pt, forward_dest, reverse_dest);
-            reverse->inner_add_passthrough(pt, reverse_dest, forward_dest);
+        std::shared_ptr<pass_through> pt(
+            new rpc::pass_through(forward, // forward_transport: handles messages TO final destination
+                reverse,                   // reverse_transport: handles messages back to caller
+                service,                   // service
+                forward_dest,
+                reverse_dest // reverse_destination: where reverse messages go
+                ));
+        pt->self_ref_ = pt; // keep self alive based on reference counts
 
-            // Note: We do NOT register forward_dest in service->transports here because:
-            // 1. The pass-through might fail to reach the destination (zone doesn't exist downstream)
-            // 2. Registering it would create routing loops
-            // 3. The registration should happen after successful routing, by the caller
+        RPC_DEBUG("create_pass_through: Creating NEW passthrough {}->{}, "
+                  "forward_transport=(zone={}, adjacent={}), "
+                  "reverse_transport=(zone={}, adjacent={}), pt={}",
+            reverse_dest.get_subnet(),
+            forward_dest.get_subnet(),
+            forward->zone_id_.get_subnet(),
+            forward->adjacent_zone_id_.get_subnet(),
+            reverse->zone_id_.get_subnet(),
+            reverse->adjacent_zone_id_.get_subnet(),
+            (void*)pt.get());
+        // Register pass-through on both transports and increment passthrough counts
+        // Forward transport: routes TO forward_dest (outbound), FROM reverse_dest (inbound)
+        // Reverse transport: routes TO reverse_dest (outbound), FROM forward_dest (inbound)
+        forward->inner_add_passthrough(pt, forward_dest, reverse_dest);
+        reverse->inner_add_passthrough(pt, reverse_dest, forward_dest);
 
-            return pt;
-        }
+        // Note: We do NOT register forward_dest in service->transports here because:
+        // 1. The pass-through might fail to reach the destination (zone doesn't exist downstream)
+        // 2. Registering it would create routing loops
+        // 3. The registration should happen after successful routing, by the caller
+
+        return pt;
     }
 
     // Status management
@@ -661,11 +645,7 @@ namespace rpc
 
     std::shared_ptr<pass_through> transport::inner_get_passthrough(destination_zone zone1, destination_zone zone2) const
     {
-        pass_through_key lookup_val;
-        if (zone1 < zone2)
-            lookup_val = {zone1, zone2};
-        else
-            lookup_val = {zone2, zone1};
+        auto lookup_val = make_pass_through_key(zone1, zone2);
 
         auto it = pass_thoughs_.find(lookup_val);
         if (it != pass_thoughs_.end())
@@ -692,7 +672,8 @@ namespace rpc
         {
             if (key.zone1 == destination_zone_id || key.zone2 == destination_zone_id)
             {
-                return pt.lock()->get_directional_transport(destination_zone_id);
+                if (auto handler = pt.lock())
+                    return handler->get_directional_transport(destination_zone_id);
             }
         }
         return nullptr;

@@ -1254,9 +1254,7 @@ namespace rpc
         }
 
         auto known_direction = zone_id_;
-        std::vector<rpc::back_channel_entry> empty_in;
         std::vector<rpc::back_channel_entry> empty_out;
-
         RPC_DEBUG("remote_add_ref: zone={}, dest_zone={}, caller_zone={}, "
                   "known_direction={}, destination_transport={}, obj_adj_zone={}",
             zone_id_.get_subnet(),
@@ -1273,7 +1271,7 @@ namespace rpc
             known_direction,
             rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
                 | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
-            empty_in,
+            empty_back_channel(),
             empty_out);
         if (err_code != rpc::error::OK())
         {
