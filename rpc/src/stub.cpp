@@ -132,8 +132,8 @@ namespace rpc
         else
         {
             ret = error::TRANSPORT_ERROR();
-            RPC_ASSERT(false);
             RPC_ERROR("Failed to find transport to increment inbound stub count");
+            RPC_ASSERT(false);
         }
 
         CO_RETURN ret;
