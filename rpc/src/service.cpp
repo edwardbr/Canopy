@@ -75,7 +75,7 @@ namespace rpc
 #ifdef CANOPY_BUILD_COROUTINE
     root_service::root_service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler)
         : service(name, zone_id, scheduler)
-        , zone_allocator_(zone_id.get_address(), zone_id.get_subnet())
+        , zone_allocator_(zone_id.get_address())
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)

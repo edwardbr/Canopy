@@ -18,6 +18,23 @@ namespace websocket_demo
 {
     namespace v1
     {
+        namespace
+        {
+            rpc::zone make_socket_zone(const canopy::network_config::ip_address& client_addr, uint16_t port)
+            {
+#ifdef CANOPY_FIXED_ADDRESS_SIZE
+                return rpc::zone(rpc::zone_address(canopy::network_config::ip_address_to_uint64(
+                                                       client_addr, canopy::network_config::ip_address_family::ipv6),
+                    port));
+#else
+                rpc::zone_address addr(client_addr, 64, 0);
+                [[maybe_unused]] bool ok = addr.set_subnet(port);
+                RPC_ASSERT(ok);
+                return rpc::zone(addr);
+#endif
+            }
+        } // namespace
+
         ws_client_connection::ws_client_connection(std::shared_ptr<ws_stream> ws, std::shared_ptr<websocket_service> service)
             : ws_(std::move(ws))
             , service_(std::move(service))
@@ -86,8 +103,12 @@ namespace websocket_demo
             RPC_INFO("[WS] New client connection from [{}]:{}", tmp.get_host_string(), peer.port);
 
             transport_ = std::make_shared<transport>(ws_, service_);
-            transport_->set_adjacent_zone_id(rpc::zone_address(
-                ip_address_to_uint64(client_addr, canopy::network_config::ip_address_family::ipv6), peer.port));
+            auto adjacent_zone = inbound_remote_object_.as_zone();
+            if (!adjacent_zone.is_set())
+            {
+                adjacent_zone = make_socket_zone(client_addr, peer.port);
+            }
+            transport_->set_adjacent_zone_id(adjacent_zone);
 
             RPC_INFO("[WS] connect_request received, inbound_remote_object={}", inbound_remote_object_.get_subnet());
             RPC_INFO("[WS] Calling attach_remote_zone");

@@ -118,36 +118,52 @@ namespace rpc
     //   Max constants max_routing_prefix / max_subnet / max_object_id are available.
     //   Constructor: zone_address(uint64_t prefix, uint32_t subnet, uint32_t obj = 0)
     //
+
+// if you only need 32 bits for ipv4 then it makes sense to reduce these values to a more sensible sizes
+// if you dont need to make this work on the internet then you can reduce the size of the host address to 0
+// the host address could be hashed to a smaller size if you do not need to pass an object reference in machine A
+// living in machine B, to machine C
+#ifndef CANOPY_HOST_ADDRESS_SIZE
+// this is big enough to store a 128 bit ipv6 address
+#define CANOPY_HOST_ADDRESS_SIZE 16
+#endif
+
+#ifndef CANOPY_LOCAL_ADDRESS_SIZE
+// this is big enough to store a 120 bit local address
+#define CANOPY_LOCAL_ADDRESS_SIZE 15
+#endif
+
+
     // Flexible layout (CANOPY_FIXED_ADDRESS_SIZE not defined – default on GCC/Clang):
-    //   One unsigned __int128 address field packed with variable-width fields:
-    //     bits [0 .. subnet_offset-1]          routing prefix
-    //     bits [subnet_offset .. object_offset-1]  subnet ID
-    //     bits [object_offset .. 127]          object ID
-    //   Constructor: zone_address(unsigned __int128 address, uint8_t subnet_offset,
+    //   host_address stores the full reversible host identity.
+    //   local_address is a (CANOPY_LOCAL_ADDRESS_SIZE * 8)-bit local payload
+    //   split by object_offset:
+    //     bits [0 .. object_offset-1]                    subnet ID
+    //     bits [object_offset .. (N * 8) - 1]            object ID
+    //   Constructor: zone_address(std::array<uint8_t, CANOPY_HOST_ADDRESS_SIZE> host_address,
     //                             uint8_t object_offset, uint32_t obj = 0)
     struct zone_address
     {
-#ifdef CANOPY_FIXED_ADDRESS_SIZE
-    private:
-        uint64_t routing_prefix = 0;
-        uint32_t subnet_id = 0;
-        uint32_t object_id = 0;
-#else
-    private:
-        unsigned __int128 address_ = 0;
-        uint8_t subnet_offset_ = 0;
-        uint8_t object_offset_ = 0;
-#endif
-#cpp_quote(R^__(
-
-    public:
 #ifdef CANOPY_FIXED_ADDRESS_SIZE
         // max values for each field based on the fixed storage type
         static constexpr uint64_t max_routing_prefix = UINT64_MAX;
         static constexpr uint64_t max_subnet = UINT32_MAX;
         static constexpr uint64_t max_object_id = UINT32_MAX;
+    private:
+        uint64_t routing_prefix = 0;
+        uint32_t subnet_id = 0;
+        uint32_t object_id = 0;
+#else
+        static constexpr uint64_t host_address_size = CANOPY_HOST_ADDRESS_SIZE;
+        static constexpr uint64_t local_address_size = CANOPY_LOCAL_ADDRESS_SIZE;
+    private:
+        std::array<uint8_t, host_address_size> host_address = {};
+        uint8_t object_offset_ = 0;
+        std::array<uint8_t, local_address_size> local_address = {};
 #endif
+#cpp_quote(R^__(
 
+    public:
         zone_address() = default;
         zone_address(const zone_address&) = default;
         zone_address(zone_address&&) noexcept = default;
@@ -168,6 +184,16 @@ namespace rpc
 
         // accessors
         uint64_t get_routing_prefix() const { return routing_prefix; }
+        std::array<uint8_t, host_address_size> get_host_address() const
+        {
+            std::array<uint8_t, host_address_size> host = {};
+            size_t prefix_bytes = host.size() < 8 ? host.size() : 8u;
+            for (size_t i = 0; i < prefix_bytes; ++i)
+            {
+                host[(prefix_bytes - 1u) - i] = static_cast<uint8_t>(routing_prefix >> (i * 8));
+            }
+            return host;
+        }
         bool set_routing_prefix(uint64_t val)
         {
             if (val > max_routing_prefix)
@@ -220,98 +246,169 @@ namespace rpc
             return object_id < other.object_id;
         }
 
-#else // flexible layout: one unsigned __int128 with variable-width fields
+#else // flexible layout: configurable host bytes plus a configurable local payload
 
-        // address encodes routing prefix in bits [0..subnet_offset-1],
-        // subnet in bits [subnet_offset..object_offset-1], and
-        // object in bits [object_offset..127].  obj is embedded at object_offset.
-        constexpr zone_address(unsigned __int128 address, uint8_t subnet_offset, uint8_t object_offset, uint32_t obj = 0)
-            : subnet_offset_(subnet_offset)
+    private:
+        static constexpr uint8_t host_address_bytes = host_address_size;
+        static constexpr uint8_t local_address_bytes = local_address_size;
+        static constexpr uint16_t local_address_bits = local_address_size * 8u;
+
+        static uint64_t get_local_bits(const std::array<uint8_t, local_address_size>& data, uint8_t begin, uint8_t end)
+        {
+            if (end <= begin)
+                return 0;
+
+            uint8_t width = end - begin;
+            if (width > 64u)
+                width = 64u;
+
+            uint64_t value = 0;
+            for (uint8_t i = 0; i < width; ++i)
+            {
+                uint8_t bit_index = begin + i;
+                uint8_t byte_index = static_cast<uint8_t>((data.size() - 1u) - (bit_index / 8u));
+                uint8_t bit_in_byte = static_cast<uint8_t>(bit_index % 8u);
+                uint8_t bit = static_cast<uint8_t>((data[byte_index] >> bit_in_byte) & 0x1u);
+                value |= static_cast<uint64_t>(bit) << i;
+            }
+            return value;
+        }
+
+        static bool set_local_bits(std::array<uint8_t, local_address_size>& data, uint8_t begin, uint8_t end, uint64_t value)
+        {
+            if (end <= begin)
+                return value == 0;
+
+            uint8_t width = end - begin;
+            if (width < 64u && value >= (uint64_t(1) << width))
+                return false;
+
+            for (uint8_t i = begin; i < end; ++i)
+            {
+                uint8_t byte_index = static_cast<uint8_t>((data.size() - 1u) - (i / 8u));
+                uint8_t bit_in_byte = static_cast<uint8_t>(i % 8u);
+                data[byte_index] &= static_cast<uint8_t>(~(uint8_t(1) << bit_in_byte));
+            }
+
+            uint8_t bits_to_write = width > 64u ? 64u : width;
+            for (uint8_t i = 0; i < bits_to_write; ++i)
+            {
+                if (((value >> i) & 0x1u) == 0)
+                    continue;
+                uint8_t bit_index = begin + i;
+                uint8_t byte_index = static_cast<uint8_t>((data.size() - 1u) - (bit_index / 8u));
+                uint8_t bit_in_byte = static_cast<uint8_t>(bit_index % 8u);
+                data[byte_index] |= static_cast<uint8_t>(uint8_t(1) << bit_in_byte);
+            }
+            return true;
+        }
+
+        static uint64_t host_prefix64(const std::array<uint8_t, host_address_size>& host)
+        {
+            uint64_t prefix = 0;
+            size_t prefix_bytes = host.size() < 8 ? host.size() : 8u;
+            for (size_t i = 0; i < prefix_bytes; ++i)
+            {
+                prefix = (prefix << 8) | host[i];
+            }
+            return prefix;
+        }
+
+    public:
+        zone_address(uint64_t prefix, uint32_t subnet, uint32_t obj = 0)
+            : object_offset_(64)
+        {
+            size_t prefix_bytes = host_address.size() < 8 ? host_address.size() : 8u;
+            for (size_t i = 0; i < prefix_bytes; ++i)
+            {
+                host_address[(prefix_bytes - 1u) - i] = static_cast<uint8_t>(prefix >> (i * 8));
+            }
+            [[maybe_unused]] bool subnet_ok = set_subnet(subnet);
+            [[maybe_unused]] bool object_ok = set_object_id(obj);
+            // RPC_ASSERT(subnet_ok);
+            // RPC_ASSERT(object_ok);
+        }
+
+        zone_address(std::array<uint8_t, host_address_size> host, uint8_t object_offset, uint32_t obj = 0)
+            : host_address(host)
             , object_offset_(object_offset)
         {
-            unsigned __int128 mask = object_offset < 128u ? (static_cast<unsigned __int128>(1) << object_offset) - 1
-                                                          : ~static_cast<unsigned __int128>(0);
-            address_ = (address & mask) | (static_cast<unsigned __int128>(obj) << object_offset);
+            // RPC_ASSERT(object_offset <= local_address_bits);
+            [[maybe_unused]] bool ok = set_object_id(obj);
+            // RPC_ASSERT(ok);
         }
 
-        // accessors – extract bits using the stored offsets
-        uint64_t get_routing_prefix() const
+        template<size_t N>
+        zone_address(const std::array<uint8_t, N>& host, uint8_t object_offset, uint32_t obj = 0)
+            : object_offset_(object_offset)
         {
-            if (subnet_offset_ == 0)
-                return 0;
-            unsigned __int128 mask = (static_cast<unsigned __int128>(1) << subnet_offset_) - 1;
-            return static_cast<uint64_t>(address_ & mask);
+            constexpr size_t copy_bytes = N < host_address_size ? N : host_address_size;
+            for (size_t i = 0; i < copy_bytes; ++i)
+            {
+                host_address[i] = host[i];
+            }
+            // RPC_ASSERT(object_offset <= local_address_bits);
+            [[maybe_unused]] bool ok = set_object_id(obj);
+            // RPC_ASSERT(ok);
         }
 
-        uint64_t get_subnet() const
-        {
-            if (object_offset_ <= subnet_offset_)
-                return 0;
-            unsigned __int128 mask = (static_cast<unsigned __int128>(1) << (object_offset_ - subnet_offset_)) - 1;
-            return static_cast<uint64_t>((address_ >> subnet_offset_) & mask);
-        }
+        uint64_t get_routing_prefix() const { return host_prefix64(host_address); }
+        const std::array<uint8_t, host_address_size>& get_host_address() const { return host_address; }
 
-        uint64_t get_object_id() const { return static_cast<uint64_t>(address_ >> object_offset_); }
+        uint64_t get_subnet() const { return get_local_bits(local_address, 0, object_offset_); }
 
-        bool set_subnet(uint64_t val)
-        {
-            if (object_offset_ <= subnet_offset_)
-                return val == 0;
-            uint8_t bits = object_offset_ - subnet_offset_;
-            uint64_t max_val = bits >= 64u ? ~uint64_t(0) : (uint64_t(1) << bits) - 1;
-            if (val > max_val)
-                return false;
-            unsigned __int128 subnet_mask = static_cast<unsigned __int128>(max_val) << subnet_offset_;
-            address_ = (address_ & ~subnet_mask) | (static_cast<unsigned __int128>(val) << subnet_offset_);
-            return true;
-        }
+        uint64_t get_object_id() const { return get_local_bits(local_address, object_offset_, local_address_bits); }
 
-        bool set_object_id(uint64_t val)
-        {
-            uint8_t bits = 128u - object_offset_;
-            uint64_t max_val = bits >= 64u ? ~uint64_t(0) : (uint64_t(1) << bits) - 1;
-            if (val > max_val)
-                return false;
-            unsigned __int128 obj_mask = static_cast<unsigned __int128>(max_val) << object_offset_;
-            address_ = (address_ & ~obj_mask) | (static_cast<unsigned __int128>(val) << object_offset_);
-            return true;
-        }
+        bool set_subnet(uint64_t val) { return set_local_bits(local_address, 0, object_offset_, val); }
 
-        // zone-only address (clears the object field)
+        bool set_object_id(uint64_t val) { return set_local_bits(local_address, object_offset_, local_address_bits, val); }
+
         zone_address zone_only() const
         {
-            unsigned __int128 mask = object_offset_ < 128u ? (static_cast<unsigned __int128>(1) << object_offset_) - 1
-                                                           : ~static_cast<unsigned __int128>(0);
-            return zone_address(address_ & mask, subnet_offset_, object_offset_, 0);
+            zone_address copy(*this);
+            [[maybe_unused]] bool ok = copy.set_object_id(0);
+            // RPC_ASSERT(ok);
+            return copy;
         }
 
-        // return a copy with a different object_id
         zone_address with_object(uint64_t obj) const
         {
-            unsigned __int128 mask = object_offset_ < 128u ? (static_cast<unsigned __int128>(1) << object_offset_) - 1
-                                                           : ~static_cast<unsigned __int128>(0);
-            return zone_address(address_ & mask, subnet_offset_, object_offset_, static_cast<uint32_t>(obj));
+            zone_address copy(*this);
+            [[maybe_unused]] bool ok = copy.set_object_id(obj);
+            // RPC_ASSERT(ok);
+            return copy;
         }
 
-        // check if two addresses refer to the same zone (ignoring object_id)
         bool same_zone(const zone_address& other) const
         {
-            if (subnet_offset_ != other.subnet_offset_ || object_offset_ != other.object_offset_)
-                return false;
-            unsigned __int128 mask = object_offset_ < 128u ? (static_cast<unsigned __int128>(1) << object_offset_) - 1
-                                                           : ~static_cast<unsigned __int128>(0);
-            return (address_ & mask) == (other.address_ & mask);
+            return host_address == other.host_address && object_offset_ == other.object_offset_
+                   && get_subnet() == other.get_subnet();
         }
 
-        bool is_set() const noexcept { return address_ != 0 || subnet_offset_ != 0; }
+        bool is_set() const noexcept
+        {
+            if (object_offset_ != 0)
+                return true;
+            for (auto byte : host_address)
+            {
+                if (byte != 0)
+                    return true;
+            }
+            for (auto byte : local_address)
+            {
+                if (byte != 0)
+                    return true;
+            }
+            return false;
+        }
 
         bool operator<(const zone_address& other) const
         {
-            if (address_ != other.address_)
-                return address_ < other.address_;
-            if (subnet_offset_ != other.subnet_offset_)
-                return subnet_offset_ < other.subnet_offset_;
-            return object_offset_ < other.object_offset_;
+            if (host_address != other.host_address)
+                return host_address < other.host_address;
+            if (object_offset_ != other.object_offset_)
+                return object_offset_ < other.object_offset_;
+            return local_address < other.local_address;
         }
 
 #endif // CANOPY_FIXED_ADDRESS_SIZE
@@ -798,15 +895,19 @@ namespace rpc
 // Default routing prefix for local-node zone addresses (routing_prefix=0, subnet=1).
 // Use when the application does not specify a routing prefix explicitly.
 //
-// Flexible layout: matches the standard IPv6-inspired bit layout
-//   (subnet in bits 64-95, object in bits 96-127).
+// Flexible layout: host bytes are zero and local fields use the default
+//   subnet/object split within the configurable local payload
+//   (120 bits when local_address_size is left at 15).
 #ifdef CANOPY_FIXED_ADDRESS_SIZE
     static constexpr zone_address DEFAULT_PREFIX(0, 1);
 #else
-    static constexpr zone_address DEFAULT_PREFIX(static_cast<unsigned __int128>(1) << 64, // subnet = 1 at bit offset 64
-        64,                                                                               // subnet_offset
-        96,                                                                               // object_offset
-        0);                                                                               // obj
+    inline const zone_address DEFAULT_PREFIX = []()
+    {
+        zone_address addr({}, 64, 0);
+        [[maybe_unused]] bool ok = addr.set_subnet(1);
+        // RPC_ASSERT(ok);
+        return addr;
+    }();
 #endif
     )__^)
 

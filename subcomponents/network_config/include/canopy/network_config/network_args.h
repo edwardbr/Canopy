@@ -55,11 +55,12 @@ namespace canopy::network_config
     // no separate configuration.  make_allocator() is the single conversion point
     // between binary network addresses and the rpc::zone_address encoding.
     //
-    // subnet_offset and object_offset are only used by the flexible zone_address
-    // layout (CANOPY_FIXED_ADDRESS_SIZE not set).  They specify the bit boundaries
-    // within the packed 128-bit address: routing prefix occupies bits
-    // [0 .. subnet_offset-1], subnet occupies [subnet_offset .. object_offset-1],
-    // and object occupies [object_offset .. 127].
+    // object_offset is only used by the flexible zone_address layout
+    // (CANOPY_FIXED_ADDRESS_SIZE not set). It marks the boundary within
+    // zone_address::local_address:
+    //   bits [0 .. object_offset-1]                 subnet
+    //   bits [object_offset .. (local_bits - 1)]    object
+    // local_bits defaults to 120 when CANOPY_LOCAL_ADDRESS_SIZE is left at 15.
     struct network_config
     {
         ip_address routing_prefix_addr = {}; // network prefix in binary
@@ -67,8 +68,7 @@ namespace canopy::network_config
         ip_address host_addr = {}; // host address in binary
         ip_address_family host_family = ip_address_family::ipv4;
         uint16_t port = 0;          // TCP port; 0 means not specified
-        uint8_t subnet_offset = 64; // bit offset of subnet field (flexible layout only)
-        uint8_t object_offset = 96; // bit offset of object field (flexible layout only)
+        uint8_t object_offset = 64; // bit offset of object field (flexible layout only)
 
         // Returns true when a non-loopback routing prefix has been set.
         bool has_routing_prefix() const { return routing_prefix_addr != ip_address{}; }
@@ -105,7 +105,6 @@ namespace canopy::network_config
         mutable args::ValueFlag<std::string> routing_prefix_;
         mutable args::ValueFlag<std::string> host_;
         mutable args::ValueFlag<uint32_t> port_;
-        mutable args::ValueFlag<uint32_t> subnet_offset_;
         mutable args::ValueFlag<uint32_t> object_offset_;
 
     public:
@@ -123,8 +122,8 @@ namespace canopy::network_config
     //   -4                 --routing-prefix is an IPv4 dotted-decimal address (a.b.c.d)
     //   -6                 --routing-prefix is an IPv6 colon-hex address (2001:db8::1)
     //   --routing-prefix   this node's routing prefix (auto-detected when omitted)
-    //   --subnet-offset    bit offset of subnet field in zone_address (flexible layout, default 64)
-    //   --object-offset    bit offset of object field in zone_address (flexible layout, default 96)
+    //   --object-offset    bit offset where object_id begins in zone_address::local_address
+    //                      (flexible layout, default 64)
     //   --host             TCP address to bind/connect; "detect" derives it from routing_prefix
     //   --port             TCP port (default 0 = not specified)
     [[nodiscard]] network_args_context add_network_args(args::ArgumentParser& parser);
@@ -142,35 +141,17 @@ namespace canopy::network_config
     //   all-zero addr: returns 0 (local-only mode)
     uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family);
 
-#ifndef CANOPY_FIXED_ADDRESS_SIZE
-    // Pack all 16 bytes of addr into an unsigned __int128 for the flexible
-    // zone_address layout.  Uses the same big-endian convention as
-    // ip_address_to_uint64 extended to the full address:
-    //   bytes [0..7]  → bits [63..0]   (routing prefix, consistent with DEFAULT_PREFIX)
-    //   bytes [8..15] → bits [127..64] (subnet + object fields)
-    inline unsigned __int128 ip_address_to_uint128(const ip_address& addr)
-    {
-        uint64_t lo = 0;
-        for (int i = 0; i < 8; ++i)
-            lo = (lo << 8) | addr[i];
-        uint64_t hi = 0;
-        for (int i = 8; i < 16; ++i)
-            hi = (hi << 8) | addr[i];
-        return (static_cast<unsigned __int128>(hi) << 64) | lo;
-    }
-#endif
-
     // Build a rpc::zone_id_allocator from a network_config.
     // Fixed layout:   converts routing_prefix_addr via ip_address_to_uint64().
-    // Flexible layout: packs all 16 bytes via ip_address_to_uint128() and uses
-    //   cfg.subnet_offset / cfg.object_offset to describe the field boundaries.
+    // Flexible layout: stores the full 16-byte host address and uses
+    //   cfg.object_offset to describe the local subnet/object boundary.
     // The subnet range is determined by the zone_address field width automatically.
     inline rpc::zone_id_allocator make_allocator(const network_config& cfg)
     {
 #ifdef CANOPY_FIXED_ADDRESS_SIZE
         rpc::zone_address prefix(ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family), 0);
 #else
-        rpc::zone_address prefix(ip_address_to_uint128(cfg.routing_prefix_addr), cfg.subnet_offset, cfg.object_offset, 0);
+        rpc::zone_address prefix(cfg.routing_prefix_addr, cfg.object_offset, 0);
 #endif
         return rpc::zone_id_allocator{prefix};
     }

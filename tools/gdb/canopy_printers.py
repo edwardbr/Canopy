@@ -25,47 +25,83 @@ import gdb
 import gdb.printing
 
 
-def _read_zone_address_mem(val):
-    """
-    Read a zone_address value via raw memory.
+def _unwrap_value(val):
+    if val.type.code == gdb.TYPE_CODE_REF:
+        val = val.referenced_value()
+    return val
 
-    Flexible layout (no CANOPY_FIXED_ADDRESS_SIZE):
-        offset  0: unsigned __int128  address_       (16 bytes, little-endian)
-        offset 16: uint8_t            subnet_offset_
-        offset 17: uint8_t            object_offset_
 
-    Fixed layout (CANOPY_FIXED_ADDRESS_SIZE defined):
-        offset  0: uint64_t  routing_prefix  (8 bytes)
-        offset  8: uint32_t  subnet_id       (4 bytes)
-        offset 12: uint32_t  object_id       (4 bytes)
-
-    Returns (routing_prefix, subnet, object_id, layout_name).
-    """
-    ptr = val.address
+def _array_to_bytes(array_val):
+    array_val = _unwrap_value(array_val)
+    ptr = array_val.address
     if ptr is None:
-        raise gdb.MemoryError("zone_address value has no address (not in memory)")
+        raise gdb.MemoryError("array value has no address (not in memory)")
+    size = int(array_val.type.strip_typedefs().sizeof)
+    mem = bytes(gdb.selected_inferior().read_memory(int(ptr), size))
+    return list(mem)
 
-    inf = gdb.selected_inferior()
 
-    # Detect layout by checking type field names.
+def _bits_from_bytes(byte_list, begin, end):
+    if end <= begin:
+        return 0
+
+    width = min(end - begin, 64)
+    value = 0
+    byte_count = len(byte_list)
+    for i in range(width):
+        bit_index = begin + i
+        byte_index = (byte_count - 1) - (bit_index // 8)
+        bit_in_byte = bit_index % 8
+        bit = (byte_list[byte_index] >> bit_in_byte) & 0x1
+        value |= bit << i
+    return value
+
+
+def _prefix64_from_host_bytes(byte_list):
+    prefix = 0
+    for b in byte_list[:8]:
+        prefix = (prefix << 8) | b
+    return prefix
+
+
+def _read_zone_address(val):
+    """
+    Read a zone_address value.
+
+    Returns a dict with decoded layout-specific fields.
+    """
+    val = _unwrap_value(val)
+
     fields = {f.name for f in val.type.strip_typedefs().fields()}
 
     if 'routing_prefix' in fields:
-        # Fixed layout: 8 + 4 + 4 = 16 bytes
-        mem = bytes(inf.read_memory(int(ptr), 16))
-        import struct as _struct
-        rp, sn, oid = _struct.unpack_from('<QII', mem)
-        return rp, sn, oid, "fixed"
-    else:
-        # Flexible layout: __int128 (16 bytes) + 2 x uint8
-        mem = bytes(inf.read_memory(int(ptr), 18))
-        address = int.from_bytes(mem[0:16], 'little')
-        so = mem[16]
-        oo = mem[17]
-        rp  = (address & ((1 << so) - 1)) if so > 0 else 0
-        sn  = ((address >> so) & ((1 << (oo - so)) - 1)) if oo > so else 0
-        oid = (address >> oo) if oo > 0 else 0
-        return rp, sn, oid, "flex"
+        routing_prefix = int(val['routing_prefix'])
+        host_bytes = [0] * 16
+        for i in range(min(8, len(host_bytes))):
+            host_bytes[7 - i] = (routing_prefix >> (i * 8)) & 0xFF
+        return {
+            "layout": "fixed",
+            "routing_prefix": routing_prefix,
+            "subnet": int(val['subnet_id']),
+            "object_id": int(val['object_id']),
+            "host_address": host_bytes,
+            "object_offset": None,
+            "local_address": None,
+        }
+
+    host_bytes = _array_to_bytes(val['host_address'])
+    local_bytes = _array_to_bytes(val['local_address'])
+    object_offset = int(val['object_offset_'])
+
+    return {
+        "layout": "flex",
+        "routing_prefix": _prefix64_from_host_bytes(host_bytes),
+        "subnet": _bits_from_bytes(local_bytes, 0, object_offset),
+        "object_id": _bits_from_bytes(local_bytes, object_offset, len(local_bytes) * 8),
+        "host_address": host_bytes,
+        "object_offset": object_offset,
+        "local_address": local_bytes,
+    }
 
 
 class ZoneAddressPrinter:
@@ -76,7 +112,11 @@ class ZoneAddressPrinter:
 
     def to_string(self):
         try:
-            rp, sn, oid, layout = _read_zone_address_mem(self.val)
+            data = _read_zone_address(self.val)
+            rp = data["routing_prefix"]
+            sn = data["subnet"]
+            oid = data["object_id"]
+            layout = data["layout"]
             if rp == 0 and oid == 0:
                 return f"zone_address({layout}) subnet={sn}"
             return f"zone_address({layout}) prefix={rp} subnet={sn} object={oid}"
@@ -85,10 +125,16 @@ class ZoneAddressPrinter:
 
     def children(self):
         try:
-            rp, sn, oid, _ = _read_zone_address_mem(self.val)
-            yield ("routing_prefix", rp)
-            yield ("subnet",         sn)
-            yield ("object_id",      oid)
+            data = _read_zone_address(self.val)
+            yield ("routing_prefix", data["routing_prefix"])
+            yield ("subnet", data["subnet"])
+            yield ("object_id", data["object_id"])
+            if data["host_address"] is not None:
+                yield ("host_address", "[" + " ".join(f"{b:02x}" for b in data["host_address"]) + "]")
+            if data["object_offset"] is not None:
+                yield ("object_offset", data["object_offset"])
+            if data["local_address"] is not None:
+                yield ("local_address", "[" + " ".join(f"{b:02x}" for b in data["local_address"]) + "]")
         except Exception:
             pass
 
@@ -125,11 +171,21 @@ Example:
             return
         try:
             val = gdb.parse_and_eval(arg.strip())
-            rp, sn, oid, layout = _read_zone_address_mem(val)
+            data = _read_zone_address(val)
+            rp = data["routing_prefix"]
+            sn = data["subnet"]
+            oid = data["object_id"]
+            layout = data["layout"]
             print(f"zone_address [{layout}]")
             print(f"  routing_prefix : {rp}")
             print(f"  subnet         : {sn}")
             print(f"  object_id      : {oid}")
+            if data["host_address"] is not None:
+                print("  host_address   : " + " ".join(f"{b:02x}" for b in data["host_address"]))
+            if data["object_offset"] is not None:
+                print(f"  object_offset  : {data['object_offset']}")
+            if data["local_address"] is not None:
+                print("  local_address  : " + " ".join(f"{b:02x}" for b in data["local_address"]))
         except Exception as e:
             print(f"pza error: {e}")
 

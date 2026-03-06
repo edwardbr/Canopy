@@ -366,8 +366,9 @@ namespace comprehensive
         benchmark_result run_spsc_benchmark(rpc::encoding enc, size_t blob_size)
         {
             benchmark_result result{};
-            rpc::zone zone_1(rpc::zone_address{1, 1});
-            rpc::zone zone_2(rpc::zone_address{2, 1});
+            auto zone_1 = rpc::DEFAULT_PREFIX;
+            auto zone_2 = rpc::DEFAULT_PREFIX;
+            zone_2.set_subnet(zone_2.get_subnet() + 1);
             auto queues = std::make_shared<spsc_queues>();
 
             auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -402,7 +403,7 @@ namespace comprehensive
         {
             auto on_shutdown_event = std::make_shared<rpc::event>();
 
-            auto service = std::make_shared<rpc::root_service>("tcp_server", rpc::zone_address(1, 1), scheduler);
+            auto service = std::make_shared<rpc::root_service>("tcp_server", rpc::DEFAULT_PREFIX, scheduler);
             service->set_default_encoding(enc);
             service->set_shutdown_event(on_shutdown_event);
 

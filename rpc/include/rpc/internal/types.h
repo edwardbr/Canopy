@@ -56,8 +56,11 @@ namespace std
     {
         auto operator()(const rpc::zone_address& item) const noexcept
         {
-            // combine routing_prefix, subnet, and object_id
-            std::size_t h = std::hash<uint64_t>{}(item.get_routing_prefix());
+            std::size_t h = 0;
+            for (auto byte : item.get_host_address())
+            {
+                h ^= std::hash<uint8_t>{}(byte) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            }
             h ^= std::hash<uint64_t>{}(item.get_subnet()) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<uint64_t>{}(item.get_object_id()) + 0x9e3779b9 + (h << 6) + (h >> 2);
             return h;

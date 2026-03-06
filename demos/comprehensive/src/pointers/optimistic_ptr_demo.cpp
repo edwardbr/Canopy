@@ -113,7 +113,7 @@ namespace comprehensive
 
             // Create root service
             auto service = std::make_shared<rpc::root_service>("optimistic_ptr_demo_service",
-                rpc::zone_address{1, 1}
+                rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
                 ,
                 scheduler
