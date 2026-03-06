@@ -308,9 +308,9 @@ CORO_TASK(int) transport::inbound_send(
 ```cpp
 rpc::zone zone_id{42};
 
-auto dest = zone_id.as_destination();         // For routing to target (object_id=0)
-auto caller = zone_id.as_caller();            // For tracking origin
-auto known = zone_id.as_requesting_zone();    // For known routing
+auto dest = zone_id;         // For routing to target (object_id=0)
+auto caller = zone_id;            // For tracking origin
+auto known = zone_id;    // For known routing
 auto obj = dest.with_object(object_id);       // For specific object (remote_object)
 ```
 

@@ -218,7 +218,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_try_cast",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -234,7 +234,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_add_ref",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -250,7 +250,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_release",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -302,7 +302,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_try_cast",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -318,7 +318,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_add_ref",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -334,7 +334,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_release",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -736,7 +736,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_send",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -753,7 +753,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_post",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -767,7 +767,7 @@ namespace rpc
     void animation_telemetry_service::on_service_object_released(
         rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_object_released",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -792,7 +792,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_send",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -809,7 +809,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_post",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -823,7 +823,7 @@ namespace rpc
     void animation_telemetry_service::on_service_proxy_object_released(
         rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("service_proxy_object_released",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -849,7 +849,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_send",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -868,7 +868,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_post",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -886,7 +886,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_try_cast",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -904,7 +904,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_add_ref",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -922,7 +922,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_release",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -938,7 +938,7 @@ namespace rpc
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_outbound_object_released",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -968,7 +968,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_send",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -987,7 +987,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_post",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -1005,7 +1005,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_try_cast",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -1023,7 +1023,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_add_ref",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -1041,7 +1041,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_release",
             {make_number_field("zone", zone_id.get_subnet()),
@@ -1057,7 +1057,7 @@ namespace rpc
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         record_event("transport_inbound_object_released",
             {make_number_field("zone", zone_id.get_subnet()),

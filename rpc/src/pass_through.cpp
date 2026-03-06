@@ -89,7 +89,7 @@ namespace rpc
         }
 
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(remote_object_id);
+        auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
             CO_RETURN error::ZONE_NOT_FOUND();
@@ -153,7 +153,7 @@ namespace rpc
             CO_RETURN;
         }
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(remote_object_id);
+        auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
             CO_RETURN;
@@ -191,7 +191,7 @@ namespace rpc
         }
 
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(remote_object_id);
+        auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
             CO_RETURN error::ZONE_NOT_FOUND();
@@ -264,7 +264,7 @@ namespace rpc
         // Determine target transport based on destination_zone
         if (build_dest_channel)
         {
-            destination_transport = get_directional_transport(remote_object_id);
+            destination_transport = get_directional_transport(remote_object_id.as_zone());
             if (!destination_transport)
             {
                 CO_RETURN error::ZONE_NOT_FOUND();
@@ -280,7 +280,7 @@ namespace rpc
 
         if (build_caller_channel)
         {
-            caller_transport = get_directional_transport(caller_zone_id.as_destination());
+            caller_transport = get_directional_transport(caller_zone_id);
             if (!caller_transport)
             {
                 CO_RETURN error::ZONE_NOT_FOUND();
@@ -351,7 +351,7 @@ namespace rpc
 
         // Use bitwise AND to check flags, not exact equality
         // because build_out_param_channel may have additional build flags
-        if (no_local_add_ref && remote_object_id.as_caller() == caller_zone_id)
+        if (no_local_add_ref && remote_object_id == caller_zone_id)
         {
             // this is a passthrough addref and should not be included in either count
         }
@@ -405,7 +405,7 @@ namespace rpc
         }
 
         // Determine target transport based on destination_zone
-        auto target_transport = get_directional_transport(remote_object_id);
+        auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
             CO_RETURN error::ZONE_NOT_FOUND();
@@ -497,7 +497,7 @@ namespace rpc
 
         // In the case of object_released, the notification goes to the caller side
         // Determine target transport based on caller_zone (reverse direction)
-        auto target_transport = get_directional_transport(caller_zone_id.as_destination());
+        auto target_transport = get_directional_transport(caller_zone_id);
         if (target_transport)
         {
             // Check transport status before routing
@@ -580,13 +580,11 @@ namespace rpc
     {
         if (forward_transport_ != local_transport)
         {
-            CO_AWAIT forward_transport_->transport_down(
-                rpc::get_version(), forward_destination_, reverse_destination_.as_caller(), {});
+            CO_AWAIT forward_transport_->transport_down(rpc::get_version(), forward_destination_, reverse_destination_, {});
         }
         if (reverse_transport_)
         {
-            CO_AWAIT reverse_transport_->transport_down(
-                rpc::get_version(), reverse_destination_, forward_destination_.as_caller(), {});
+            CO_AWAIT reverse_transport_->transport_down(rpc::get_version(), reverse_destination_, forward_destination_, {});
         }
         trigger_self_destruction();
     }

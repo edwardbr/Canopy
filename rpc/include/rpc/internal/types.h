@@ -23,19 +23,7 @@ namespace std
     {
         return std::to_string(val.get_address());
     }
-    inline std::string to_string(const rpc::destination_zone& val)
-    {
-        return std::to_string(val.get_address());
-    }
     inline std::string to_string(const rpc::remote_object& val)
-    {
-        return std::to_string(val.get_address());
-    }
-    inline std::string to_string(const rpc::caller_zone& val)
-    {
-        return std::to_string(val.get_address());
-    }
-    inline std::string to_string(const rpc::requesting_zone& val)
     {
         return std::to_string(val.get_address());
     }
@@ -75,33 +63,9 @@ namespace std
         }
     };
 
-    template<> struct hash<rpc::destination_zone>
-    {
-        auto operator()(const rpc::destination_zone& item) const noexcept
-        {
-            return std::hash<rpc::zone_address>{}(item.get_address());
-        }
-    };
-
     template<> struct hash<rpc::remote_object>
     {
         auto operator()(const rpc::remote_object& item) const noexcept
-        {
-            return std::hash<rpc::zone_address>{}(item.get_address());
-        }
-    };
-
-    template<> struct hash<rpc::caller_zone>
-    {
-        auto operator()(const rpc::caller_zone& item) const noexcept
-        {
-            return std::hash<rpc::zone_address>{}(item.get_address());
-        }
-    };
-
-    template<> struct hash<rpc::requesting_zone>
-    {
-        auto operator()(const rpc::requesting_zone& item) const noexcept
         {
             return std::hash<rpc::zone_address>{}(item.get_address());
         }

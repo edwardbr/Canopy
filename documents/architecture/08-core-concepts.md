@@ -159,7 +159,7 @@ uint64_t obj_id = addr.get_object_id();
 if (addr1.same_zone(addr2)) { ... }
 
 // Convert between types
-destination_zone dest = zone.as_destination();  // zone-only
+destination_zone dest = zone;  // zone-only
 remote_object obj = dest.with_object(object_id); // adds object_id
 ```
 

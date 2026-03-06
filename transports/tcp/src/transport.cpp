@@ -69,10 +69,9 @@ namespace rpc::tcp
         // Create the init client channel request
         init_client_channel_response init_receive;
         int ret = CO_AWAIT call_peer(rpc::get_version(),
-            init_client_channel_send{
-                .inbound_remote_object = get_zone_id().as_destination().with_object(input_descr.get_object_id()),
+            init_client_channel_send{.inbound_remote_object = get_zone_id().with_object(input_descr.get_object_id()),
                 .inbound_interface_id = input_descr.inbound_interface_id,
-                .destination_zone_id = get_adjacent_zone_id().as_destination(),
+                .destination_zone_id = get_adjacent_zone_id(),
                 .outbound_interface_id = input_descr.outbound_interface_id,
                 .adjacent_zone_id = get_zone_id()},
             init_receive);
@@ -722,11 +721,11 @@ namespace rpc::tcp
                                     early_response.zone_id.get_subnet());
                                 set_adjacent_zone_id(early_response.zone_id);
 
-                                get_service()->add_transport(early_response.zone_id.as_destination(), shared_from_this());
+                                get_service()->add_transport(early_response.zone_id, shared_from_this());
 
                                 if (stub_)
                                 {
-                                    auto ret = CO_AWAIT stub_->add_ref(false, false, early_response.zone_id.as_caller());
+                                    auto ret = CO_AWAIT stub_->add_ref(false, false, early_response.zone_id);
                                     stub_.reset();
                                     if (ret != rpc::error::OK())
                                     {
@@ -1099,7 +1098,7 @@ namespace rpc::tcp
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .outbound_remote_object = output_interface.destination_zone_id,
-                .caller_zone_id = input_descr.input_zone_id.as_caller()},
+                .caller_zone_id = input_descr.input_zone_id.as_zone()},
             prefix.sequence_number);
         if (send_err != rpc::error::OK())
         {

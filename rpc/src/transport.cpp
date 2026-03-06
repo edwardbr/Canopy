@@ -93,8 +93,8 @@ namespace rpc
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_outbound_add_ref(zone_id_,
                     adjacent_zone_id_,
-                    adjacent_zone_id_.as_destination().with_object(input_descr.get_object_id()),
-                    zone_id_.as_caller(),
+                    adjacent_zone_id_.with_object(input_descr.get_object_id()),
+                    zone_id_,
                     zone_id_,
                     rpc::add_ref_options::normal);
         }
@@ -107,8 +107,8 @@ namespace rpc
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_inbound_add_ref(zone_id_,
                     adjacent_zone_id_,
-                    zone_id_.as_destination().with_object(output_descr.get_object_id()),
-                    adjacent_zone_id_.as_caller(),
+                    zone_id_.with_object(output_descr.get_object_id()),
+                    adjacent_zone_id_,
                     adjacent_zone_id_,
                     rpc::add_ref_options::normal);
         }
@@ -155,12 +155,12 @@ namespace rpc
         destination_count_ += 2;
 
         // Increment outbound passthrough count
-        zone outbound_zone = outbound_dest.as_zone();
+        zone outbound_zone = outbound_dest;
         auto& outbound_counts = zone_counts_[outbound_zone];
         outbound_counts.outbound_passthrough_count++;
 
         // Increment inbound passthrough count
-        zone inbound_zone = inbound_source.as_zone();
+        zone inbound_zone = inbound_source;
         auto& inbound_counts = zone_counts_[inbound_zone];
         inbound_counts.inbound_passthrough_count++;
 
@@ -177,7 +177,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_transport_add_destination(
-                zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2.as_caller());
+                zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2);
 #endif
 
         return true;
@@ -213,13 +213,13 @@ namespace rpc
             dest.get_subnet(),
             get_destination_count());
 
-        zone dest_zone = dest.as_zone();
+        zone dest_zone = dest;
         auto& counts = zone_counts_[dest_zone];
         counts.proxy_count++;
     }
     void transport::inner_decrement_outbound_proxy_count(destination_zone dest)
     {
-        zone dest_zone = dest.as_zone();
+        zone dest_zone = dest;
         auto found = zone_counts_.find(dest_zone);
         if (found == zone_counts_.end())
         {
@@ -260,10 +260,10 @@ namespace rpc
             // but only the transport actually registered in service::transports_[zone] should remove it
             if (auto svc = service_.lock())
             {
-                auto registered_transport = svc->get_transport(dest_zone.as_destination());
+                auto registered_transport = svc->get_transport(dest_zone);
                 if (registered_transport && registered_transport.get() == this)
                 {
-                    svc->remove_transport(dest_zone.as_destination());
+                    svc->remove_transport(dest_zone);
                     RPC_DEBUG(
                         "inner_decrement_outbound_proxy_count: All counts reached 0 for zone={}, removed transport",
                         dest.get_subnet());
@@ -299,13 +299,13 @@ namespace rpc
             dest.get_subnet(),
             get_destination_count());
 
-        zone dest_zone = dest.as_destination().as_zone();
+        zone dest_zone = dest;
         auto& counts = zone_counts_[dest_zone];
         counts.stub_count++;
     }
     void transport::inner_decrement_inbound_stub_count(caller_zone dest)
     {
-        zone dest_zone = dest.as_destination().as_zone();
+        zone dest_zone = dest;
         auto found = zone_counts_.find(dest_zone);
         if (found == zone_counts_.end())
         {
@@ -344,10 +344,10 @@ namespace rpc
             // but only the transport actually registered in service::transports_[zone] should remove it
             if (auto svc = service_.lock())
             {
-                auto registered_transport = svc->get_transport(dest_zone.as_destination());
+                auto registered_transport = svc->get_transport(dest_zone);
                 if (registered_transport && registered_transport.get() == this)
                 {
-                    svc->remove_transport(dest_zone.as_destination());
+                    svc->remove_transport(dest_zone);
                     RPC_DEBUG("inner_decrement_inbound_stub_count: All counts reached 0 for zone={}, removed transport",
                         dest.get_subnet());
                 }
@@ -393,8 +393,8 @@ namespace rpc
             return;
         }
 
-        zone outbound_zone = outbound_dest.as_zone();
-        zone inbound_zone = inbound_source.as_zone();
+        zone outbound_zone = outbound_dest;
+        zone inbound_zone = inbound_source;
 
         // Decrement outbound passthrough count
         auto outbound_found = zone_counts_.find(outbound_zone);
@@ -429,7 +429,7 @@ namespace rpc
                     // but only the transport actually registered in service::transports_[zone] should remove it
                     if (auto svc = service_.lock())
                     {
-                        auto registered_transport = svc->get_transport(outbound_zone.as_destination());
+                        auto registered_transport = svc->get_transport(outbound_zone);
                         if (registered_transport && registered_transport.get() == this)
                         {
                             RPC_DEBUG("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
@@ -439,7 +439,7 @@ namespace rpc
                                 outbound_dest.get_subnet(),
                                 outbound_dest.get_subnet(),
                                 inbound_source.get_subnet());
-                            svc->remove_transport(outbound_zone.as_destination());
+                            svc->remove_transport(outbound_zone);
                         }
                         else
                         {
@@ -488,7 +488,7 @@ namespace rpc
                     // but only the transport actually registered in service::transports_[zone] should remove it
                     if (auto svc = service_.lock())
                     {
-                        auto registered_transport = svc->get_transport(inbound_zone.as_destination());
+                        auto registered_transport = svc->get_transport(inbound_zone);
                         if (registered_transport && registered_transport.get() == this)
                         {
                             RPC_WARNING("remove_passthrough: Removing transport! zone={}, adjacent={}, target_zone={}, "
@@ -498,7 +498,7 @@ namespace rpc
                                 inbound_source.get_subnet(),
                                 outbound_dest.get_subnet(),
                                 inbound_source.get_subnet());
-                            svc->remove_transport(inbound_zone.as_destination());
+                            svc->remove_transport(inbound_zone);
                             RPC_DEBUG("remove_passthrough: All counts reached 0 for inbound zone={}, removed transport",
                                 inbound_source.get_subnet());
                         }
@@ -527,7 +527,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_transport_remove_destination(
-                zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2.as_caller());
+                zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2);
 #endif
 
         // Initiate graceful shutdown when no destinations remain
@@ -701,8 +701,8 @@ namespace rpc
     // Helper to route incoming messages to registered handlers
     std::shared_ptr<pass_through> transport::get_passthrough(destination_zone zone1, destination_zone zone2) const
     {
-        RPC_ASSERT(zone1 != zone_id_.as_destination());
-        RPC_ASSERT(zone2 != zone_id_.as_destination());
+        RPC_ASSERT(zone1 != zone_id_);
+        RPC_ASSERT(zone2 != zone_id_);
 
         std::shared_lock lock(destinations_mutex_);
         auto handler = inner_get_passthrough(zone1, zone2);
@@ -746,7 +746,7 @@ namespace rpc
             zones_to_notify.reserve(zone_counts_.size());
             for (const auto& zone_item : zone_counts_)
             {
-                zones_to_notify.push_back(zone_item.first.as_destination());
+                zones_to_notify.push_back(zone_item.first);
             }
         }
 
@@ -807,7 +807,7 @@ namespace rpc
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id, caller_zone_id.as_destination());
+            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
             if (!dest)
             {
                 CO_RETURN error::ZONE_NOT_FOUND();
@@ -860,7 +860,7 @@ namespace rpc
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id, caller_zone_id.as_destination());
+            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
             if (!dest)
             {
                 CO_RETURN;
@@ -901,7 +901,7 @@ namespace rpc
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id, caller_zone_id.as_destination());
+            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
             if (!dest)
             {
                 CO_RETURN error::ZONE_NOT_FOUND();
@@ -948,10 +948,10 @@ namespace rpc
             requesting_zone_id.get_subnet());
 
         if (!remote_object_id.get_address().same_zone(svc->get_zone_id().get_address())
-            && caller_zone_id != svc->get_zone_id().as_caller())
+            && caller_zone_id != svc->get_zone_id())
         {
-            auto dest_transport = svc->get_transport(remote_object_id);
-            if (remote_object_id.get_address().same_zone(caller_zone_id.as_destination().get_address()))
+            auto dest_transport = svc->get_transport(remote_object_id.as_zone());
+            if (remote_object_id.get_address().same_zone(caller_zone_id.get_address()))
             {
                 // caller and destination are the same zone, so we just call the transport to pass the call along and not involve a pass through
                 if (!dest_transport)
@@ -980,14 +980,14 @@ namespace rpc
             {
                 if (build_dest_channel)
                 {
-                    dest_transport = inner_get_transport_from_passthroughs(remote_object_id);
+                    dest_transport = inner_get_transport_from_passthroughs(remote_object_id.as_zone());
                     if (!dest_transport)
                     {
-                        dest_transport = svc->get_transport(requesting_zone_id.as_destination());
+                        dest_transport = svc->get_transport(requesting_zone_id);
                     }
-                    if (!dest_transport && remote_object_id != requesting_zone_id.as_destination())
+                    if (!dest_transport && remote_object_id != requesting_zone_id)
                     {
-                        dest_transport = inner_get_transport_from_passthroughs(requesting_zone_id.as_destination());
+                        dest_transport = inner_get_transport_from_passthroughs(requesting_zone_id);
                     }
                     if (!dest_transport)
                     {
@@ -998,12 +998,12 @@ namespace rpc
                 {
                     dest_transport = shared_from_this();
                 }
-                svc->add_transport(remote_object_id, dest_transport);
+                svc->add_transport(remote_object_id.as_zone(), dest_transport);
             }
 
             // otherwise we are going to use or create a pass-through
             {
-                auto passthrough = dest_transport->get_passthrough(caller_zone_id.as_destination(), remote_object_id);
+                auto passthrough = dest_transport->get_passthrough(caller_zone_id, remote_object_id.as_zone());
                 if (passthrough)
                 {
                     CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
@@ -1016,19 +1016,19 @@ namespace rpc
                 }
             }
 
-            auto caller_transport = svc->get_transport(caller_zone_id.as_destination());
+            auto caller_transport = svc->get_transport(caller_zone_id);
             if (!caller_transport)
             {
                 if (!build_dest_channel && build_caller_channel)
                 {
-                    caller_transport = inner_get_transport_from_passthroughs(caller_zone_id.as_destination());
+                    caller_transport = inner_get_transport_from_passthroughs(caller_zone_id);
                     if (!caller_transport)
                     {
-                        caller_transport = svc->get_transport(requesting_zone_id.as_destination());
+                        caller_transport = svc->get_transport(requesting_zone_id);
                     }
-                    if (!dest_transport && caller_zone_id.as_destination() != requesting_zone_id.as_destination())
+                    if (!dest_transport && caller_zone_id != requesting_zone_id)
                     {
-                        caller_transport = inner_get_transport_from_passthroughs(requesting_zone_id.as_destination());
+                        caller_transport = inner_get_transport_from_passthroughs(requesting_zone_id);
                     }
                     if (!dest_transport)
                     {
@@ -1039,7 +1039,7 @@ namespace rpc
                 {
                     caller_transport = shared_from_this();
                 }
-                svc->add_transport(caller_zone_id.as_destination(), caller_transport);
+                svc->add_transport(caller_zone_id, caller_transport);
             }
 
             if (dest_transport == caller_transport)
@@ -1063,7 +1063,7 @@ namespace rpc
             }
 
             auto passthrough = transport::create_pass_through(
-                dest_transport, caller_transport, svc, remote_object_id, caller_zone_id.as_destination());
+                dest_transport, caller_transport, svc, remote_object_id.as_zone(), caller_zone_id);
 
             auto error_code = CO_AWAIT passthrough->add_ref(protocol_version,
                 remote_object_id,
@@ -1117,7 +1117,7 @@ namespace rpc
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id, caller_zone_id.as_destination());
+            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
             if (!dest)
             {
                 CO_RETURN error::ZONE_NOT_FOUND();
@@ -1150,7 +1150,7 @@ namespace rpc
         }
 #endif
 
-        if (caller_zone_id == get_zone_id().as_caller())
+        if (caller_zone_id == get_zone_id())
         {
             CO_AWAIT get_service() -> object_released(protocol_version, remote_object_id, caller_zone_id, in_back_channel);
             CO_RETURN;
@@ -1165,7 +1165,7 @@ namespace rpc
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id, caller_zone_id.as_destination());
+            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
             if (!dest)
             {
                 // Zone not found - just return without propagating error
@@ -1191,14 +1191,14 @@ namespace rpc
 #endif
 
         std::shared_ptr<i_marshaller> dest;
-        if (destination_zone_id == zone_id_.as_destination())
+        if (destination_zone_id == zone_id_)
         {
             dest = service_.lock();
         }
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            dest = get_passthrough(destination_zone_id, caller_zone_id);
             if (!dest)
             {
                 CO_RETURN;
@@ -1291,7 +1291,7 @@ namespace rpc
             if (ret == error::OK() || ret == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_try_cast(
-                    get_zone_id(), get_adjacent_zone_id(), remote_object_id, get_zone_id().as_caller(), interface_id);
+                    get_zone_id(), get_adjacent_zone_id(), remote_object_id, get_zone_id(), interface_id);
             }
             else
             {

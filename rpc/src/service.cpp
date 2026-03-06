@@ -456,7 +456,7 @@ namespace rpc
         {
             CO_RETURN ret;
         }
-        descriptor = {stub->get_id(), zone_id_.as_destination()};
+        descriptor = {stub->get_id(), zone_id_};
         CO_RETURN error::OK();
     }
 
@@ -530,13 +530,13 @@ namespace rpc
         current_service_tracker tracker(this);
         if (build_caller_channel)
         {
-            if (zone_id_.as_caller() != caller_zone_id)
+            if (zone_id_ != caller_zone_id)
             {
-                auto caller_transport = get_transport(caller_zone_id.as_destination());
+                auto caller_transport = get_transport(caller_zone_id);
                 auto error = CO_AWAIT caller_transport->add_ref(protocol_version,
                     remote_object_id,
                     caller_zone_id,
-                    zone_id_.as_requesting_zone(),
+                    zone_id_,
                     add_ref_options::build_caller_route
                         | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
                     in_back_channel,
@@ -550,16 +550,16 @@ namespace rpc
             else
             {
                 std::lock_guard g(service_proxy_control_);
-                auto destination_transport = inner_get_transport(remote_object_id);
+                auto destination_transport = inner_get_transport(remote_object_id.as_zone());
                 if (destination_transport == nullptr)
                 {
-                    destination_transport = inner_get_transport(requesting_zone_id.as_destination());
+                    destination_transport = inner_get_transport(requesting_zone_id);
                     if (destination_transport == nullptr)
                     {
                         RPC_ERROR("Destination transport not found for zone {}", remote_object_id.get_subnet());
                         CO_RETURN rpc::error::ZONE_NOT_FOUND();
                     }
-                    inner_add_transport(remote_object_id, destination_transport);
+                    inner_add_transport(remote_object_id.as_zone(), destination_transport);
                 }
             }
         }
@@ -568,7 +568,7 @@ namespace rpc
         {
             if (!remote_object_id.get_address().same_zone(zone_id_.get_address()))
             {
-                auto dest_transport = get_transport(remote_object_id);
+                auto dest_transport = get_transport(remote_object_id.as_zone());
                 CO_RETURN CO_AWAIT dest_transport->add_ref(protocol_version,
                     remote_object_id,
                     caller_zone_id,
@@ -600,11 +600,11 @@ namespace rpc
 
             {
                 std::lock_guard g(service_proxy_control_);
-                auto dest_transport = inner_get_transport(caller_zone_id.as_destination());
+                auto dest_transport = inner_get_transport(caller_zone_id);
                 if (!dest_transport)
                 {
-                    dest_transport = inner_get_transport(requesting_zone_id.as_destination());
-                    inner_add_transport(caller_zone_id.as_destination(), dest_transport);
+                    dest_transport = inner_get_transport(requesting_zone_id);
+                    inner_add_transport(caller_zone_id, dest_transport);
                 }
             }
 
@@ -651,13 +651,13 @@ namespace rpc
             // to code that tries to acquire stub_control_ again
             for (const auto& caller_zone_id : optimistic_refs)
             {
-                auto transport = get_transport(caller_zone_id.as_destination());
+                auto transport = get_transport(caller_zone_id);
                 if (transport)
                 {
                     // Call object_released on the transport to notify the remote zone
                     // This is a fire-and-forget operation
                     CO_AWAIT transport->object_released(rpc::get_version(),
-                        zone_id_.as_destination().with_object(object_id), // destination with embedded object_id
+                        zone_id_.with_object(object_id), // destination with embedded object_id
                         caller_zone_id,
                         {}); // empty back channel
                 }
@@ -741,7 +741,7 @@ namespace rpc
             telemetry_service->on_service_object_released(zone_id_, remote_object_id, caller_zone_id);
         }
 #endif
-        if (caller_zone_id != zone_id_.as_caller())
+        if (caller_zone_id != zone_id_)
         {
             RPC_ASSERT(false); // this should be going to the pass through
             CO_RETURN;
@@ -755,7 +755,7 @@ namespace rpc
         }
 
         // Notify that an object has been released
-        CO_AWAIT notify_object_gone_event(object_id, remote_object_id);
+        CO_AWAIT notify_object_gone_event(object_id, remote_object_id.as_zone());
     }
 
     CORO_TASK(void)
@@ -843,7 +843,7 @@ namespace rpc
         // service_proxy->add_external_ref();
         auto destination_zone_id = service_proxy->get_destination_zone_id();
         // auto caller_zone_id = service_proxy->get_caller_zone_id();
-        RPC_ASSERT(destination_zone_id != zone_id_.as_destination());
+        RPC_ASSERT(destination_zone_id != zone_id_);
         RPC_ASSERT(service_proxies_.find(destination_zone_id) == service_proxies_.end());
         service_proxies_[destination_zone_id] = service_proxy;
 
@@ -857,7 +857,7 @@ namespace rpc
 
     void service::add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)
     {
-        RPC_ASSERT(service_proxy->get_destination_zone_id() != zone_id_.as_destination());
+        RPC_ASSERT(service_proxy->get_destination_zone_id() != zone_id_);
         std::lock_guard g(service_proxy_control_);
         inner_add_zone_proxy(service_proxy);
     }
@@ -964,7 +964,7 @@ namespace rpc
 
         if (caller_zone_id.is_set())
         {
-            auto item = transports_.find(caller_zone_id.as_destination());
+            auto item = transports_.find(caller_zone_id);
             if (item != transports_.end())
             {
                 auto transport = item->second.lock();
@@ -1187,7 +1187,7 @@ namespace rpc
             if (!stub)
                 continue;
 
-            bool should_delete = stub->release_all_from_zone(remote_zone.as_caller());
+            bool should_delete = stub->release_all_from_zone(remote_zone);
 
             if (should_delete)
             {
@@ -1208,7 +1208,7 @@ namespace rpc
             // Remove from maps
             stubs_.erase(obj.get_object_id());
 
-            CO_AWAIT notify_object_gone_event(obj.get_object_id(), obj.destination_zone_id);
+            CO_AWAIT notify_object_gone_event(obj.get_object_id(), obj.destination_zone_id.as_zone());
         }
 
         // Remove the transport entry for the disconnected zone.
@@ -1230,7 +1230,7 @@ namespace rpc
         RPC_ASSERT(caller_zone_id.is_set());
         RPC_ASSERT(destination_zone_id.is_set());
 
-        if (caller_zone_id == destination_zone_id.as_caller())
+        if (caller_zone_id == destination_zone_id)
         {
             marshaller = destination_transport;
             if (!marshaller)
@@ -1240,13 +1240,13 @@ namespace rpc
         }
         else
         {
-            marshaller = destination_transport->get_passthrough(destination_zone_id, caller_zone_id.as_destination());
+            marshaller = destination_transport->get_passthrough(destination_zone_id, caller_zone_id);
             if (!marshaller)
             {
                 std::shared_ptr<rpc::transport> caller_transport;
                 {
                     std::lock_guard g(service_proxy_control_);
-                    auto found = transports_.find(caller_zone_id.as_destination());
+                    auto found = transports_.find(caller_zone_id);
                     if (found == transports_.end())
                     {
                         RPC_ERROR("No service proxy found for caller zone {}", caller_zone_id.get_subnet());
@@ -1269,11 +1269,8 @@ namespace rpc
                 }
                 else
                 {
-                    marshaller = transport::create_pass_through(destination_transport,
-                        caller_transport,
-                        shared_from_this(),
-                        destination_zone_id,
-                        caller_zone_id.as_destination());
+                    marshaller = transport::create_pass_through(
+                        destination_transport, caller_transport, shared_from_this(), destination_zone_id, caller_zone_id);
                 }
             }
         }

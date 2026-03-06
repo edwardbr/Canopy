@@ -465,7 +465,7 @@ namespace synchronous_generator
 
         case PROXY_CLEAN_IN:
             return fmt::format("if({0}_stub_) CO_AWAIT "
-                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id().as_caller());",
+                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id());",
                 name);
 
         case STUB_DEMARSHALL_DECLARATION:
@@ -566,7 +566,7 @@ namespace synchronous_generator
 
         case PROXY_CLEAN_IN:
             return fmt::format("if({0}_stub_) CO_AWAIT "
-                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id().as_caller());",
+                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id());",
                 name);
 
         case STUB_DEMARSHALL_DECLARATION:
