@@ -1,0 +1,39 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#include <gtest/gtest.h>
+
+#include <rpc/rpc.h>
+
+TEST(zone_address_test, zone_only_clears_object_id)
+{
+    rpc::zone_address addr(0x1122334455667788ULL, 42, 99);
+
+    auto zone_only = addr.zone_only();
+
+    EXPECT_EQ(zone_only.get_subnet(), 42u);
+    EXPECT_EQ(zone_only.get_object_id(), 0u);
+}
+
+#if defined(CANOPY_HASH_ADDRESS_SIZE) && !defined(CANOPY_FIXED_ADDRESS_SIZE)
+TEST(zone_address_test, hash_uses_reserved_tail_bits)
+{
+    std::array<uint8_t, rpc::zone_address::host_address_size> host = {};
+    host[0] = 0x20;
+    host[1] = 0x01;
+    host[2] = 0x0d;
+    host[3] = 0xb8;
+
+    rpc::zone_address addr(host, 64, 0x1234);
+
+    ASSERT_TRUE(addr.set_subnet(0x55AA));
+    auto expected_hash = addr.calculate_hash(0x123456789abcdef0ULL);
+    ASSERT_TRUE(addr.update_hash(0x123456789abcdef0ULL));
+
+    EXPECT_EQ(addr.get_hash(), expected_hash);
+    EXPECT_EQ(addr.get_subnet(), 0x55AAu);
+    EXPECT_EQ(addr.get_object_id(), 0x1234u);
+}
+#endif

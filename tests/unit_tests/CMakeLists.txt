@@ -4,4 +4,5 @@
 
 # Add subdirectories for different unit test categories
 add_subdirectory(member_ptr)
+add_subdirectory(zone_address)
 # add_subdirectory(passthrough)

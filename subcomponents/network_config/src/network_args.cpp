@@ -276,9 +276,17 @@ namespace canopy::network_config
 
         cfg.object_offset = static_cast<uint8_t>(args::get(object_offset_));
 
-        if (cfg.object_offset > 120)
+        constexpr uint8_t local_address_bits = rpc::zone_address::local_address_size * 8u;
+#ifdef CANOPY_HASH_ADDRESS_SIZE
+        constexpr uint8_t object_limit = local_address_bits - CANOPY_HASH_ADDRESS_SIZE;
+#else
+        constexpr uint8_t object_limit = local_address_bits;
+#endif
+
+        if (cfg.object_offset > object_limit)
         {
-            throw std::invalid_argument(fmt::format("object-offset ({}) must be in range [0..120]", cfg.object_offset));
+            throw std::invalid_argument(
+                fmt::format("object-offset ({}) must be in range [0..{}]", cfg.object_offset, object_limit));
         }
 
         const std::string& host_str = args::get(host_);

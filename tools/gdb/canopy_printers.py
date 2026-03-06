@@ -92,14 +92,21 @@ def _read_zone_address(val):
     host_bytes = _array_to_bytes(val['host_address'])
     local_bytes = _array_to_bytes(val['local_address'])
     object_offset = int(val['object_offset_'])
+    hash_offset = None
+    hash_value = None
+    if 'hash_offset_' in fields:
+        hash_offset = int(val['hash_offset_'])
+        hash_value = _bits_from_bytes(local_bytes, hash_offset, len(local_bytes) * 8)
 
     return {
         "layout": "flex",
         "routing_prefix": _prefix64_from_host_bytes(host_bytes),
         "subnet": _bits_from_bytes(local_bytes, 0, object_offset),
-        "object_id": _bits_from_bytes(local_bytes, object_offset, len(local_bytes) * 8),
+        "object_id": _bits_from_bytes(local_bytes, object_offset, hash_offset or (len(local_bytes) * 8)),
         "host_address": host_bytes,
         "object_offset": object_offset,
+        "hash_offset": hash_offset,
+        "hash_value": hash_value,
         "local_address": local_bytes,
     }
 

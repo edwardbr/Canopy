@@ -59,7 +59,8 @@ namespace canopy::network_config
     // (CANOPY_FIXED_ADDRESS_SIZE not set). It marks the boundary within
     // zone_address::local_address:
     //   bits [0 .. object_offset-1]                 subnet
-    //   bits [object_offset .. (local_bits - 1)]    object
+    //   bits [object_offset .. (local_bits - hash_bits - 1)] object
+    //   bits [local_bits - hash_bits .. local_bits - 1]      optional hash
     // local_bits defaults to 120 when CANOPY_LOCAL_ADDRESS_SIZE is left at 15.
     struct network_config
     {
