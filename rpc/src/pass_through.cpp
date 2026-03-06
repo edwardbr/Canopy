@@ -17,8 +17,6 @@ namespace rpc
         , forward_transport_(forward)
         , reverse_transport_(reverse)
         , service_(service)
-        , status_(pass_through_status::CONNECTED)
-        , function_count_(0)
         , zone_id_(service->get_zone_id())
     {
 #ifdef CANOPY_USE_TELEMETRY
@@ -82,8 +80,7 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        // Check if we're in the process of disconnecting
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED)
+        if (!begin_call())
         {
             CO_RETURN error::TRANSPORT_ERROR();
         }
@@ -92,21 +89,17 @@ namespace rpc
         auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
+            end_call();
             CO_RETURN error::ZONE_NOT_FOUND();
         }
 
-        // Check transport status before routing
         if (target_transport->get_status() != transport_status::CONNECTED)
         {
-            // Transport error - trigger self-deletion
+            end_call();
             trigger_self_destruction();
             CO_RETURN error::TRANSPORT_ERROR();
         }
 
-        // Increment function count to track this active call
-        function_count_.fetch_add(1, std::memory_order_acq_rel);
-
-        // Forward the call directly to the transport
         auto result = CO_AWAIT target_transport->send(protocol_version,
             encoding,
             tag,
@@ -119,16 +112,9 @@ namespace rpc
             in_back_channel,
             out_back_channel);
 
-        // Decrement function count after completing the call
-        uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
+        end_call();
 
-        // If transport error, trigger self-deletion
         if (result == error::TRANSPORT_ERROR())
-        {
-            trigger_self_destruction();
-        }
-        // Check if we need to trigger cleanup after call completion
-        else if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
         {
             trigger_self_destruction();
         }
@@ -147,33 +133,22 @@ namespace rpc
         const rpc::span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        // Check if we're in the process of disconnecting
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED)
+        if (!begin_call())
         {
             CO_RETURN;
         }
-        // Determine target transport based on destination_zone
+
         auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
+            end_call();
             CO_RETURN;
         }
 
-        // Increment function count to track this active call
-        function_count_.fetch_add(1, std::memory_order_acq_rel);
-
-        // Forward the post message directly to the transport
         CO_AWAIT target_transport->post(
             protocol_version, encoding, tag, caller_zone_id, remote_object_id, interface_id, method_id, in_data, in_back_channel);
 
-        // Decrement function count after completing the call
-        uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
-
-        // Check if we need to trigger cleanup after call completion
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
-        {
-            trigger_self_destruction();
-        }
+        end_call();
     }
 
     CORO_TASK(int)
@@ -184,44 +159,31 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        // Check if we're in the process of disconnecting
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED)
+        if (!begin_call())
         {
             CO_RETURN error::TRANSPORT_ERROR();
         }
 
-        // Determine target transport based on destination_zone
         auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
+            end_call();
             CO_RETURN error::ZONE_NOT_FOUND();
         }
 
-        // Check transport status before routing
         if (target_transport->get_status() != transport_status::CONNECTED)
         {
-            // Transport error - trigger self-deletion
+            end_call();
             trigger_self_destruction();
             CO_RETURN error::TRANSPORT_ERROR();
         }
 
-        // Increment function count to track this active call
-        function_count_.fetch_add(1, std::memory_order_acq_rel);
-
-        // Forward the call directly to the transport
         auto result = CO_AWAIT target_transport->try_cast(
             protocol_version, caller_zone_id, remote_object_id, interface_id, in_back_channel, out_back_channel);
 
-        // Decrement function count after completing the call
-        uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
+        end_call();
 
-        // If transport error, trigger self-deletion
         if (result == error::TRANSPORT_ERROR())
-        {
-            trigger_self_destruction();
-        }
-        // Check if we need to trigger cleanup after call completion
-        else if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
         {
             trigger_self_destruction();
         }
@@ -294,18 +256,13 @@ namespace rpc
             }
         }
 
-        // Check if we're in the process of disconnecting
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED)
+        if (!begin_call())
         {
             CO_RETURN error::TRANSPORT_ERROR();
         }
 
-        // Increment function count to track this active call
-        function_count_.fetch_add(1, std::memory_order_acq_rel);
-
         if (build_dest_channel)
         {
-            // Forward the add_ref call to the target transport (remote_object_id carries embedded object)
             auto result = CO_AWAIT destination_transport->add_ref(protocol_version,
                 remote_object_id,
                 caller_zone_id,
@@ -314,12 +271,9 @@ namespace rpc
                 in_back_channel,
                 out_back_channel);
 
-            // ONLY increment pass_through reference count if the forward succeeded
-            // This ensures our count matches the actual established references
             if (result != error::OK())
             {
-                // Decrement function count after completing the call
-                function_count_.fetch_sub(1, std::memory_order_acq_rel);
+                end_call();
                 trigger_self_destruction();
                 CO_RETURN result;
             }
@@ -327,7 +281,6 @@ namespace rpc
 
         if (build_caller_channel)
         {
-            // Forward the add_ref call to the target transport (remote_object_id carries embedded object)
             auto result = CO_AWAIT caller_transport->add_ref(protocol_version,
                 remote_object_id,
                 caller_zone_id,
@@ -336,18 +289,13 @@ namespace rpc
                 in_back_channel,
                 out_back_channel);
 
-            // ONLY increment pass_through reference count if the forward succeeded
-            // This ensures our count matches the actual established references
             if (result != error::OK())
             {
-                // Decrement function count after completing the call
-                function_count_.fetch_sub(1, std::memory_order_acq_rel);
+                end_call();
                 trigger_self_destruction();
                 CO_RETURN result;
             }
         }
-        // Decrement function count after completing the call
-        uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
 
         // Use bitwise AND to check flags, not exact equality
         // because build_out_param_channel may have additional build flags
@@ -374,11 +322,7 @@ namespace rpc
 #endif
         }
 
-        // Check if we need to trigger cleanup after call completion
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
-        {
-            trigger_self_destruction();
-        }
+        end_call();
         CO_RETURN error::OK();
     }
 
@@ -398,49 +342,39 @@ namespace rpc
             caller_zone_id.get_subnet(),
             static_cast<uint64_t>(options));
 
-        // Check if we're in the process of disconnecting
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED)
+        if (!begin_call())
         {
             CO_RETURN error::TRANSPORT_ERROR();
         }
 
-        // Determine target transport based on destination_zone
         auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
+            end_call();
             CO_RETURN error::ZONE_NOT_FOUND();
         }
 
-        // Check transport status before routing
         if (target_transport->get_status() != transport_status::CONNECTED)
         {
-            // Transport error - trigger self-deletion
+            end_call();
             trigger_self_destruction();
             CO_RETURN error::TRANSPORT_ERROR();
         }
 
-        // Increment function count to track this active call
-        function_count_.fetch_add(1, std::memory_order_acq_rel);
-
-        // remote_object_id carries the embedded object_id
         auto result = CO_AWAIT target_transport->release(
             protocol_version, remote_object_id, caller_zone_id, options, in_back_channel, out_back_channel);
 
-        // Decrement function count after completing the call
-        uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
+        end_call();
 
-        // If the forward failed, trigger cleanup and return the error
         if (result != error::OK())
         {
             trigger_self_destruction();
             CO_RETURN result;
         }
 
-        // Update pass_through reference count ONLY if forward succeeded
+        // Update pass_through RAII reference count only on success.
         bool should_delete = false;
 
-        // Check for optimistic first, then default to normal (shared_count)
-        // This mirrors the add_ref logic and handles normal=0 correctly
         if (!!(options & release_options::optimistic))
         {
             uint64_t prev = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
@@ -453,7 +387,7 @@ namespace rpc
                 should_delete = true;
             }
         }
-        else // Default to normal (shared_count) when no optimistic flag
+        else
         {
             uint64_t prev = shared_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -466,13 +400,7 @@ namespace rpc
             }
         }
 
-        // Trigger self-destruction if counts are zero
         if (should_delete)
-        {
-            trigger_self_destruction();
-        }
-        // Check if we need to trigger cleanup after call completion
-        else if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
         {
             trigger_self_destruction();
         }
@@ -487,51 +415,34 @@ namespace rpc
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
         // Check if we're in the process of disconnecting
-        if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED)
+        if (!begin_call())
         {
             CO_RETURN;
         }
 
-        // Increment function count to track this active call
-        function_count_.fetch_add(1, std::memory_order_acq_rel);
-
-        // In the case of object_released, the notification goes to the caller side
-        // Determine target transport based on caller_zone (reverse direction)
+        // The notification goes to the caller side (reverse direction).
         auto target_transport = get_directional_transport(caller_zone_id);
         if (target_transport)
         {
-            // Check transport status before routing
             if (target_transport->get_status() != transport_status::CONNECTED)
             {
-                // Transport error - trigger self-destruction
-                function_count_.fetch_sub(1, std::memory_order_acq_rel);
+                end_call();
                 trigger_self_destruction();
                 CO_RETURN;
             }
 
-            // Forward the call directly to the transport (remote_object_id carries embedded object_id)
             CO_AWAIT target_transport->object_released(protocol_version, remote_object_id, caller_zone_id, in_back_channel);
         }
 
-        // Decrement function count after completing the call
-        uint64_t remaining_count = function_count_.fetch_sub(1, std::memory_order_acq_rel);
+        end_call();
 
-        // Decrement optimistic count by one and trigger garbage collection if total count is zero
+        // Decrement the optimistic RAII count and trigger destruction if both counts hit zero.
         uint64_t prev_optimistic = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_pass_through_release(zone_id_, forward_destination_, reverse_destination_, 0, -1);
 #endif
         if (prev_optimistic == 1 && shared_count_.load(std::memory_order_acquire) == 0)
-        {
-            // If no more active functions, trigger cleanup
-            if (remaining_count == 1) // We just decremented from 1 to 0
-            {
-                trigger_self_destruction();
-            }
-        }
-        // Also trigger cleanup if we're in DISCONNECTED state and no more functions
-        else if (status_.load(std::memory_order_acquire) == pass_through_status::DISCONNECTED && remaining_count == 1)
         {
             trigger_self_destruction();
         }
@@ -552,14 +463,9 @@ namespace rpc
                 protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
         }
 
-        // Change state to DISCONNECTED to prevent new calls from starting
-        status_.store(pass_through_status::DISCONNECTED, std::memory_order_release);
-
-        // Check if there are no active functions - if so, trigger cleanup immediately
-        if (function_count_.load(std::memory_order_acquire) == 0)
-        {
-            trigger_self_destruction();
-        }
+        // Atomically mark shutdown. do_cleanup() will run either immediately (no
+        // active calls) or when the last in-flight call's end_call() fires.
+        trigger_self_destruction();
     }
 
     CORO_TASK(int)
@@ -589,13 +495,36 @@ namespace rpc
         trigger_self_destruction();
     }
 
+    bool pass_through::begin_call()
+    {
+        // Atomically check SHUTDOWN_BIT and increment the active-call counter together.
+        // If SHUTDOWN_BIT is already set the increment is rolled back and the call is rejected.
+        uint64_t prev = combined_.fetch_add(1, std::memory_order_acq_rel);
+        if (prev & SHUTDOWN_BIT)
+        {
+            combined_.fetch_sub(1, std::memory_order_acq_rel);
+            return false;
+        }
+        return true;
+    }
+
+    void pass_through::end_call()
+    {
+        // Decrement the active-call counter.  If we were the last active call while
+        // SHUTDOWN_BIT is set, trigger the one-time cleanup.
+        uint64_t prev = combined_.fetch_sub(1, std::memory_order_acq_rel);
+        if ((prev & SHUTDOWN_BIT) && ((prev & ~SHUTDOWN_BIT) == 1))
+        {
+            do_cleanup();
+        }
+    }
+
     void pass_through::trigger_self_destruction()
     {
-        // Change status to DISCONNECTED to prevent new calls from starting
-        auto old_status = status_.exchange(pass_through_status::DISCONNECTED, std::memory_order_acq_rel);
-
-        // If we were already disconnected, nothing more to do
-        if (old_status == pass_through_status::DISCONNECTED)
+        // Atomically set SHUTDOWN_BIT.  If it was already set someone else is handling
+        // shutdown, so we have nothing to do.
+        uint64_t prev = combined_.fetch_or(SHUTDOWN_BIT, std::memory_order_acq_rel);
+        if (prev & SHUTDOWN_BIT)
         {
             return;
         }
@@ -607,23 +536,24 @@ namespace rpc
             zone_id_.get_subnet(),
             shared_count_.load(),
             optimistic_count_.load(),
-            function_count_.load());
+            prev & ~SHUTDOWN_BIT);
 
+        // If there are no active calls, perform cleanup immediately.
+        // Otherwise end_call() will call do_cleanup() when the last call exits.
+        if ((prev & ~SHUTDOWN_BIT) == 0)
+        {
+            do_cleanup();
+        }
+    }
+
+    void pass_through::do_cleanup()
+    {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_pass_through_deletion(zone_id_, forward_destination_, reverse_destination_);
 #endif
 
-        // Check if there are any active functions running
-        uint64_t current_function_count = function_count_.load(std::memory_order_acquire);
-        if (current_function_count > 0)
-        {
-            // There are active functions, cleanup will happen when function_count_ reaches 0
-            return;
-        }
-
-        // No active functions, perform cleanup now
-        // Remove destinations from transports in BOTH directions
+        // Remove this passthrough from both transports so no new calls are routed here.
         if (forward_transport_)
         {
             forward_transport_->remove_passthrough(forward_destination_, reverse_destination_);
@@ -633,12 +563,13 @@ namespace rpc
             reverse_transport_->remove_passthrough(reverse_destination_, forward_destination_);
         }
 
-        // Release transport and service pointers
+        // Release all strong references.
         forward_transport_.reset();
         reverse_transport_.reset();
         service_.reset();
 
-        // Release self-reference - this will delete the pass_through when last external reference is gone
+        // Drop the self-reference; the pass_through is deleted once all external
+        // shared_ptrs to it are also released.
         self_ref_.reset();
     }
 

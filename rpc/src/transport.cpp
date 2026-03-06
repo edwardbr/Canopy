@@ -376,6 +376,90 @@ namespace rpc
         }
     }
 
+    // Returns true if on_destination_count_zero() should be called by the caller
+    // after releasing destinations_mutex_, so the virtual call cannot re-enter the lock.
+    bool transport::inner_decrement_inbound_stub_count_by(caller_zone dest, uint64_t count)
+    {
+        zone dest_zone = dest;
+        auto found = zone_counts_.find(dest_zone);
+        if (found == zone_counts_.end())
+        {
+            RPC_WARNING("inner_decrement_inbound_stub_count_by: No zone count found for dest={}", dest.get_subnet());
+            return false;
+        }
+
+        auto& counts = found->second;
+        if (counts.stub_count < count)
+        {
+            RPC_WARNING("inner_decrement_inbound_stub_count_by: Stub count {} less than requested decrement {} "
+                        "for dest={} in zone={}",
+                counts.stub_count.load(),
+                count,
+                dest.get_subnet(),
+                zone_id_.get_subnet());
+            count = counts.stub_count.load();
+        }
+
+        if (count == 0)
+            return false;
+
+        destination_count_ -= static_cast<int64_t>(count);
+
+        RPC_DEBUG("decrement_inbound_stub_count_by {} -> {} count={} by={}",
+            zone_id_.get_subnet(),
+            dest.get_subnet(),
+            get_destination_count(),
+            count);
+
+        counts.stub_count -= count;
+
+        if (counts.stub_count == 0 && counts.proxy_count.load() == 0 && counts.outbound_passthrough_count.load() == 0
+            && counts.inbound_passthrough_count.load() == 0)
+        {
+            zone_counts_.erase(found);
+
+            if (auto svc = service_.lock())
+            {
+                auto registered_transport = svc->get_transport(dest_zone);
+                if (registered_transport && registered_transport.get() == this)
+                {
+                    svc->remove_transport(dest_zone);
+                    RPC_DEBUG(
+                        "inner_decrement_inbound_stub_count_by: All counts reached 0 for zone={}, removed transport",
+                        dest.get_subnet());
+                }
+                else
+                {
+                    RPC_DEBUG("inner_decrement_inbound_stub_count_by: All counts reached 0 for zone={}, "
+                              "but not registered transport, not removing from service (zone={}, adjacent={})",
+                        dest.get_subnet(),
+                        zone_id_.get_subnet(),
+                        adjacent_zone_id_.get_subnet());
+                }
+            }
+        }
+
+        return destination_count_ == 0 && get_status() == transport_status::CONNECTED;
+    }
+
+    void transport::decrement_inbound_stub_count_by(caller_zone dest, uint64_t count)
+    {
+        if (count == 0)
+            return;
+        bool trigger_shutdown = false;
+        {
+            std::unique_lock lock(destinations_mutex_);
+            trigger_shutdown = inner_decrement_inbound_stub_count_by(dest, count);
+        }
+        if (trigger_shutdown)
+        {
+            RPC_DEBUG("transport::decrement_inbound_stub_count_by: destination_count reached 0, "
+                      "triggering shutdown for zone={}",
+                zone_id_.get_subnet());
+            on_destination_count_zero();
+        }
+    }
+
     void transport::remove_passthrough(destination_zone outbound_dest, destination_zone inbound_source)
     {
         std::unique_lock lock(destinations_mutex_);
@@ -1007,11 +1091,11 @@ namespace rpc
                     {
                         caller_transport = svc->get_transport(requesting_zone_id);
                     }
-                    if (!dest_transport && caller_zone_id != requesting_zone_id)
+                    if (!caller_transport && caller_zone_id != requesting_zone_id)
                     {
                         caller_transport = inner_get_transport_from_passthroughs(requesting_zone_id);
                     }
-                    if (!dest_transport)
+                    if (!caller_transport)
                     {
                         CO_RETURN error::ZONE_NOT_FOUND();
                     }

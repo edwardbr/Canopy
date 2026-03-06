@@ -37,20 +37,6 @@
 namespace rpc
 {
 
-    /**
-     * @brief Passthrough connection status
-     *
-     * Status transitions:
-     * CONNECTED → DISCONNECTED (when transport fails)
-     *
-     * Cleanup occurs when status is DISCONNECTED and function_count_ reaches 0.
-     */
-    enum class pass_through_status
-    {
-        CONNECTED,   // Fully operational
-        DISCONNECTED // Disconnected, cleanup pending when function_count_ reaches 0
-    };
-
     // Forward declarations
     class service;
     class transport;
@@ -76,18 +62,18 @@ namespace rpc
      * - Holds strong references to both transports (keeps routing path alive)
      * - Holds strong reference to service (keeps intermediary zone alive)
      * - Self-reference (self_ref_) prevents deletion during active calls
-     * - function_count_ tracks active RPC calls passing through
+     * - combined_ tracks both active calls and shutdown state atomically
      *
      * Active Call Protection:
-     * - function_count_ incremented at call start
-     * - function_count_ decremented at call completion
-     * - Deletion deferred until function_count_ reaches zero
+     * - combined_ low 63 bits count active in-flight calls
+     * - begin_call() atomically checks-and-increments; rejects if shutting down
+     * - end_call() decrements and triggers cleanup when last call finishes
      * - Prevents use-after-free during routing
      *
      * Disconnection Handling:
-     * - Status set to DISCONNECTED when transport fails
-     * - New calls rejected when DISCONNECTED
-     * - Cleanup occurs when function_count_ reaches 0
+     * - combined_ bit 63 (SHUTDOWN_BIT) set when transport fails
+     * - New calls atomically rejected when SHUTDOWN_BIT is set
+     * - Cleanup occurs when SHUTDOWN_BIT is set and active call count reaches 0
      * - Self-reference cleared, allowing natural deletion
      *
      * Thread Safety:
@@ -118,10 +104,25 @@ namespace rpc
         // Self-reference prevents deletion during active calls
         std::shared_ptr<pass_through> self_ref_;
 
-        std::atomic<pass_through_status> status_{pass_through_status::CONNECTED};
+        // Bit 63 = SHUTDOWN_BIT (set when disconnecting; rejects new calls atomically).
+        // Bits 0..62 = count of active in-flight calls.
+        // Combining both into one atomic eliminates the TOCTOU between "am I shutting
+        // down?" and "can I safely start a new call?".
+        static constexpr uint64_t SHUTDOWN_BIT = uint64_t(1) << 63;
+        std::atomic<uint64_t> combined_{0};
 
-        // Tracks active RPC calls passing through (prevents deletion during calls)
-        std::atomic<uint64_t> function_count_{0};
+        // Returns false (and does NOT increment) when SHUTDOWN_BIT is already set.
+        bool begin_call();
+        // Decrements the active call count. Calls do_cleanup() if SHUTDOWN_BIT is set
+        // and we were the last active call.
+        void end_call();
+        // Atomically sets SHUTDOWN_BIT. Calls do_cleanup() immediately when there are
+        // no active calls; otherwise end_call() will call it when the last call exits.
+        // Safe to call multiple times — only the first caller performs cleanup.
+        void trigger_self_destruction();
+        // Performs the one-time teardown: removes passthrough from both transports and
+        // releases all held strong references.
+        void do_cleanup();
 
         rpc::zone zone_id_;
 
@@ -228,9 +229,6 @@ namespace rpc
         } // Zone reached via reverse_transport
 
         std::shared_ptr<transport> get_directional_transport(destination_zone dest);
-
-    private:
-        void trigger_self_destruction();
 
         friend transport;
     };
