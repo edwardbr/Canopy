@@ -71,28 +71,22 @@ namespace rpc
         if (transport)
             transport->decrement_outbound_proxy_count(destination_zone_id_);
 
-        RPC_ASSERT(proxies_.empty());
-        service->remove_zone_proxy(destination_zone_id_);
-
         if (!proxies_.empty())
         {
-#ifdef USE_CANOPY_LOGGING
             RPC_WARNING("service_proxy destructor: {} proxies still in map for destination_zone={}",
                 proxies_.size(),
                 destination_zone_id_.get_subnet());
 
-            // Log details of remaining proxies
             for (const auto& proxy_entry : proxies_)
             {
                 auto proxy = proxy_entry.second.lock();
-                RPC_WARNING("  Remaining proxy: object_id={}, valid={}",
-                    proxy_entry.first.get_subnet(),
-                    (proxy ? "true" : "false"));
+                RPC_WARNING(
+                    "  Remaining proxy: object_id={}, valid={}", proxy_entry.first.get_val(), (proxy ? "true" : "false"));
             }
-#endif
         }
 
         RPC_ASSERT(proxies_.empty());
+        service->remove_zone_proxy(destination_zone_id_);
     }
 
     void service_proxy::update_remote_rpc_version(uint64_t version)

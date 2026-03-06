@@ -308,17 +308,14 @@ namespace rpc
                 id_.get_val());
         }
 
-        // Decrement transport counts
-        if (shared_refs_to_release + optimistic_refs_to_release > 0)
+        // Decrement transport counts in a single lock acquisition
+        const uint64_t total_refs = shared_refs_to_release + optimistic_refs_to_release;
+        if (total_refs > 0)
         {
             auto transport = zone_->get_transport(caller_zone_id);
             if (transport)
             {
-                // Decrement once for each reference released
-                for (uint64_t i = 0; i < shared_refs_to_release + optimistic_refs_to_release; ++i)
-                {
-                    transport->decrement_inbound_stub_count(caller_zone_id);
-                }
+                transport->decrement_inbound_stub_count_by(caller_zone_id, total_refs);
             }
         }
 

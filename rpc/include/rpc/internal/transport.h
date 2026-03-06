@@ -203,6 +203,7 @@ namespace rpc
 
         void inner_increment_inbound_stub_count(caller_zone dest);
         void inner_decrement_inbound_stub_count(caller_zone dest);
+        bool inner_decrement_inbound_stub_count_by(caller_zone dest, uint64_t count);
 
         /**
          * @brief Called when destination_count_ drops to zero
@@ -267,6 +268,18 @@ namespace rpc
          * Thread-Safety: Uses atomic operations
          */
         void decrement_inbound_stub_count(caller_zone dest);
+
+        /**
+         * @brief Bulk-decrement reference count for stubs referenced by caller zone
+         * @param dest  The caller zone releasing the references
+         * @param count Number of references to release in a single lock acquisition
+         *
+         * Equivalent to calling decrement_inbound_stub_count() count times but
+         * acquires destinations_mutex_ only once.
+         *
+         * Thread-Safety: Uses destinations_mutex_
+         */
+        void decrement_inbound_stub_count_by(caller_zone dest, uint64_t count);
 
         /**
          * @brief Get total count of destinations reachable through this transport
