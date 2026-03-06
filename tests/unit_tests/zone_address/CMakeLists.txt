@@ -7,11 +7,7 @@ include_directories(${PROJECT_SOURCE_DIR}/rpc/include)
 if(NOT CANOPY_BUILD_COROUTINE)
   add_executable(zone_address_test zone_address_test.cpp)
 
-  target_link_libraries(
-    zone_address_test
-    GTest::gtest_main
-    rpc::rpc
-    rpc_types_idl)
+  target_link_libraries(zone_address_test GTest::gtest_main rpc::rpc rpc_types_idl)
 
   target_include_directories(
     zone_address_test PRIVATE ${PROJECT_SOURCE_DIR}/rpc/include ${PROJECT_SOURCE_DIR}/telemetry/include
