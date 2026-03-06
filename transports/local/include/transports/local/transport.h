@@ -160,11 +160,11 @@ namespace rpc::local
                 set_adjacent_zone_id(adjacent_zone_id);
             }
 
-            svc->add_transport(adjacent_zone_id.as_destination(), shared_from_this());
+            svc->add_transport(adjacent_zone_id, shared_from_this());
 
             if (stub)
             {
-                auto ret = CO_AWAIT stub->add_ref(false, false, adjacent_zone_id.as_caller());
+                auto ret = CO_AWAIT stub->add_ref(false, false, adjacent_zone_id);
                 if (ret != rpc::error::OK())
                 {
                     CO_RETURN ret;

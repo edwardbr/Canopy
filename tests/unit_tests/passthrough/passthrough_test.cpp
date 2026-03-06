@@ -142,8 +142,8 @@ template<class T> CORO_TASK(bool) coro_send_happy_path(T& lib)
     auto result = CO_AWAIT reverse_transport->inbound_send(rpc::get_version(),
         rpc::encoding::yas_binary,
         12345,
-        lib.get_forward_dest().as_caller(), // caller = zone 100
-        lib.get_reverse_dest(),             // destination = zone 200
+        lib.get_forward_dest(), // caller = zone 100
+        lib.get_reverse_dest(), // destination = zone 200
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
@@ -178,8 +178,8 @@ template<class T> CORO_TASK(bool) coro_send_to_reverse_destination(T& lib)
     auto result = CO_AWAIT reverse_transport->inbound_send(rpc::get_version(),
         rpc::encoding::yas_binary,
         12345,
-        lib.get_reverse_dest().as_caller(), // caller = zone 200
-        lib.get_forward_dest(),             // destination = zone 100
+        lib.get_reverse_dest(), // caller = zone 200
+        lib.get_forward_dest(), // destination = zone 100
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
@@ -212,8 +212,8 @@ template<class T> CORO_TASK(bool) coro_post_happy_path(T& lib)
     CO_AWAIT reverse_transport->inbound_post(rpc::get_version(),
         rpc::encoding::yas_binary,
         12345,
-        lib.get_reverse_dest().as_caller(),                // caller = zone 200
-        lib.get_service()->get_zone_id().as_destination(), // destination = zone 1 (local to service)
+        lib.get_reverse_dest(),           // caller = zone 200
+        lib.get_service()->get_zone_id(), // destination = zone 1 (local to service)
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
@@ -248,8 +248,8 @@ template<class T> CORO_TASK(bool) coro_try_cast_happy_path(T& lib)
     auto result = CO_AWAIT reverse_transport->inbound_send(rpc::get_version(),
         rpc::encoding::yas_binary,
         12345,
-        lib.get_reverse_dest().as_caller(), // caller = zone 200
-        lib.get_forward_dest(),             // destination = zone 100
+        lib.get_reverse_dest(), // caller = zone 200
+        lib.get_forward_dest(), // destination = zone 100
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
@@ -288,8 +288,8 @@ template<class T> CORO_TASK(bool) coro_add_ref_happy_path(T& lib)
     auto result = CO_AWAIT reverse_transport->inbound_add_ref(rpc::get_version(),
         lib.get_reverse_dest(),
         rpc::object{42},
-        lib.get_forward_dest().as_caller(),
-        lib.get_reverse_dest().as_caller().as_requesting_zone(),
+        lib.get_forward_dest(),
+        lib.get_reverse_dest(),
         rpc::add_ref_options::normal,
         in_back_channel,
         out_back_channel);
@@ -325,8 +325,8 @@ template<class T> CORO_TASK(bool) coro_add_ref_optimistic(T& lib)
     auto result = CO_AWAIT reverse_transport->inbound_add_ref(rpc::get_version(),
         lib.get_reverse_dest(),
         rpc::object{42},
-        lib.get_forward_dest().as_caller(),
-        lib.get_reverse_dest().as_caller().as_requesting_zone(),
+        lib.get_forward_dest(),
+        lib.get_reverse_dest(),
         rpc::add_ref_options::optimistic,
         in_back_channel,
         out_back_channel);
@@ -363,8 +363,8 @@ template<class T> CORO_TASK(bool) coro_release_happy_path(T& lib)
     CO_AWAIT reverse_transport->inbound_add_ref(rpc::get_version(),
         lib.get_reverse_dest(),
         rpc::object{42},
-        lib.get_forward_dest().as_caller(),
-        lib.get_reverse_dest().as_caller().as_requesting_zone(),
+        lib.get_forward_dest(),
+        lib.get_reverse_dest(),
         rpc::add_ref_options::normal,
         in_back_channel,
         out_back_channel);
@@ -377,7 +377,7 @@ template<class T> CORO_TASK(bool) coro_release_happy_path(T& lib)
     auto result = CO_AWAIT reverse_transport->inbound_release(rpc::get_version(),
         lib.get_forward_dest(),
         rpc::object{42},
-        lib.get_reverse_dest().as_caller(), // caller = zone 100
+        lib.get_reverse_dest(), // caller = zone 100
         rpc::release_options::normal,
         in_back_channel,
         out_back_channel);
@@ -489,8 +489,8 @@ template<class T> CORO_TASK(bool) coro_add_ref_with_transport_down(T& lib)
     auto result = CO_AWAIT reverse_transport->inbound_add_ref(rpc::get_version(),
         lib.get_reverse_dest(),
         rpc::object{42},
-        lib.get_forward_dest().as_caller(),
-        lib.get_reverse_dest().as_caller().as_requesting_zone(),
+        lib.get_forward_dest(),
+        lib.get_reverse_dest(),
         rpc::add_ref_options::normal,
         in_back_channel,
         out_back_channel);
@@ -526,8 +526,8 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
     CO_AWAIT reverse_transport->inbound_add_ref(rpc::get_version(),
         lib.get_reverse_dest(),
         rpc::object{42},
-        lib.get_forward_dest().as_caller(),
-        lib.get_reverse_dest().as_caller().as_requesting_zone(),
+        lib.get_forward_dest(),
+        lib.get_reverse_dest(),
         rpc::add_ref_options::normal,
         ref1,
         in_back_channel,
@@ -538,8 +538,8 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
     CO_AWAIT reverse_transport->inbound_add_ref(rpc::get_version(),
         lib.get_reverse_dest(),
         rpc::object{43},
-        lib.get_forward_dest().as_caller(),
-        lib.get_reverse_dest().as_caller().as_requesting_zone(),
+        lib.get_forward_dest(),
+        lib.get_reverse_dest(),
         rpc::add_ref_options::optimistic,
         ref2,
         in_back_channel,
@@ -602,8 +602,8 @@ template<class T> CORO_TASK(bool) coro_cleanup_verification(T& lib)
     CO_AWAIT reverse_transport->inbound_add_ref(rpc::get_version(),
         lib.get_reverse_dest(),
         rpc::object{42},
-        lib.get_forward_dest().as_caller(),
-        lib.get_reverse_dest().as_caller().as_requesting_zone(),
+        lib.get_forward_dest(),
+        lib.get_reverse_dest(),
         rpc::add_ref_options::normal,
         ref,
         in_back_channel,

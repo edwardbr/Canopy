@@ -123,8 +123,8 @@ namespace websocket_demo
                         rpc::connection_settings cs;
                         cs.inbound_interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version());
                         cs.outbound_interface_id = websocket_demo::v1::i_calculator::get_id(rpc::get_version());
-                        cs.input_zone_id = transport_->get_adjacent_zone_id().as_destination().with_object(
-                            inbound_remote_object_.get_object());
+                        cs.input_zone_id
+                            = transport_->get_adjacent_zone_id().with_object(inbound_remote_object_.get_object());
                         return cs;
                     }(),
                     output_descr,
@@ -153,7 +153,7 @@ namespace websocket_demo
 
             // Queue the connect_response so the client knows the zone/object IDs.
             websocket_demo::v1::connect_response connect_resp;
-            connect_resp.caller_zone_id = transport_->get_adjacent_zone_id().as_caller();
+            connect_resp.caller_zone_id = transport_->get_adjacent_zone_id();
             connect_resp.outbound_remote_object = output_descr.destination_zone_id;
 
             ws_->queue_message(rpc::to_protobuf<std::vector<uint8_t>>(connect_resp));

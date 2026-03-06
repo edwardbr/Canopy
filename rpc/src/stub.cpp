@@ -56,7 +56,7 @@ namespace rpc
                 enc,
                 0,
                 caller_zone_id,
-                zone_->get_zone_id().as_destination(),
+                zone_->get_zone_id(),
                 id_,
                 interface_id,
                 method_id,
@@ -112,7 +112,7 @@ namespace rpc
         RPC_ASSERT(count != 0);
 
         uint64_t ret = error::OK();
-        auto transport = zone_->get_transport(caller_zone_id.as_destination());
+        auto transport = zone_->get_transport(caller_zone_id);
         if (transport)
         {
             transport->increment_inbound_stub_count(caller_zone_id);
@@ -121,9 +121,9 @@ namespace rpc
             {
                 std::vector<rpc::back_channel_entry> out_back_channel;
                 ret = CO_AWAIT transport->add_ref(rpc::get_version(),
-                    get_zone()->get_zone_id().as_destination().with_object(id_),
+                    get_zone()->get_zone_id().with_object(id_),
                     caller_zone_id,
-                    get_zone()->get_zone_id().as_requesting_zone(),
+                    get_zone()->get_zone_id(),
                     rpc::add_ref_options::build_caller_route,
                     {},
                     out_back_channel);
@@ -207,7 +207,7 @@ namespace rpc
             telemetry_service->on_stub_release(zone_->get_zone_id(), id_, {}, count, {});
 #endif
         RPC_ASSERT(count != std::numeric_limits<uint64_t>::max());
-        auto transport = zone_->get_transport(caller_zone_id.as_destination());
+        auto transport = zone_->get_transport(caller_zone_id);
         if (transport)
         {
             transport->decrement_inbound_stub_count(caller_zone_id);
@@ -311,7 +311,7 @@ namespace rpc
         // Decrement transport counts
         if (shared_refs_to_release + optimistic_refs_to_release > 0)
         {
-            auto transport = zone_->get_transport(caller_zone_id.as_destination());
+            auto transport = zone_->get_transport(caller_zone_id);
             if (transport)
             {
                 // Decrement once for each reference released

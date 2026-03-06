@@ -262,7 +262,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -271,7 +271,7 @@ namespace rpc
         std::ignore = interface_id;
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
-        if (zone_id.as_destination() == destination_zone_id)
+        if (zone_id == destination_zone_id)
             fmt::println(output_,
                 "{} -> {} : try_cast {}",
                 service_alias(zone_id),
@@ -292,7 +292,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -302,7 +302,7 @@ namespace rpc
         std::ignore = options;
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
-        auto dest = destination_zone_id.as_zone();
+        auto dest = destination_zone_id;
 
         if (rpc::add_ref_options::normal == options)
         {
@@ -350,7 +350,7 @@ namespace rpc
                     fmt::println(output_,
                         "{} -[#green]>o {} : add_ref build destination",
                         service_alias(zone_id),
-                        service_alias(destination_zone_id.as_zone()));
+                        service_alias(destination_zone_id));
                 }
                 else
                 {
@@ -388,7 +388,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -397,14 +397,12 @@ namespace rpc
         std::ignore = options;
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
-        auto dest = destination_zone_id.as_zone();
+        auto dest = destination_zone_id;
 
         if (zone_id != dest)
         {
-            fmt::println(output_,
-                "{} -> {} : release",
-                service_alias(zone_id),
-                service_proxy_alias(zone_id, dest.as_destination(), caller_zone_id));
+            fmt::println(
+                output_, "{} -> {} : release", service_alias(zone_id), service_proxy_alias(zone_id, dest, caller_zone_id));
         }
         else if (object_id != rpc::dummy_object_id)
         {
@@ -433,13 +431,13 @@ namespace rpc
         std::string route_name;
         std::string destination_name;
 
-        auto search = services.find(destination_zone_id.as_zone());
+        auto search = services.find(destination_zone_id);
         if (search != services.end())
             destination_name = search->second.name;
         else
             destination_name = std::to_string(destination_zone_id);
 
-        if (zone_id.as_caller() == caller_zone_id)
+        if (zone_id == caller_zone_id)
         {
             route_name = "To:"s + destination_name;
         }
@@ -463,7 +461,7 @@ namespace rpc
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
             service_proxy_order(zone_id, destination_zone_id));
         // fmt::println(output_, "{} --> {} : links to", service_proxy_alias(zone_id, destination_zone_id,
-        // caller_zone_id), service_alias(destination_zone_id.as_zone()));
+        // caller_zone_id), service_alias(destination_zone_id));
         fmt::println(output_, "activate {} #cyan", service_proxy_alias(zone_id, destination_zone_id, caller_zone_id));
         std::lock_guard g(mux);
         auto found = service_proxies.find(orig_zone{zone_id, destination_zone_id, caller_zone_id});
@@ -491,13 +489,13 @@ namespace rpc
         std::string route_name;
         std::string destination_name;
 
-        auto search = services.find(destination_zone_id.as_zone());
+        auto search = services.find(destination_zone_id);
         if (search != services.end())
             destination_name = search->second.name;
         else
             destination_name = std::to_string(destination_zone_id);
 
-        if (zone_id.as_caller() == caller_zone_id)
+        if (zone_id == caller_zone_id)
         {
             route_name = "To:"s + destination_name;
         }
@@ -521,7 +519,7 @@ namespace rpc
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
             service_proxy_order(zone_id, destination_zone_id));
         // fmt::println(output_, "{} --> {} : links to", service_proxy_alias(zone_id, destination_zone_id,
-        // caller_zone_id), service_alias(destination_zone_id.as_zone()));
+        // caller_zone_id), service_alias(destination_zone_id));
         fmt::println(output_, "activate {} #cyan", service_proxy_alias(zone_id, destination_zone_id, caller_zone_id));
         std::lock_guard g(mux);
         auto found = service_proxies.find(orig_zone{zone_id, destination_zone_id, caller_zone_id});
@@ -587,7 +585,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -611,7 +609,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -658,7 +656,7 @@ namespace rpc
             fmt::println(output_,
                 "{} -> {} : dummy add_ref {} {}",
                 service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
-                service_alias(destination_zone_id.as_zone()),
+                service_alias(destination_zone_id),
                 type,
                 get_thread_id());
         }
@@ -667,7 +665,7 @@ namespace rpc
             fmt::println(output_,
                 "{} -> {} : add_ref {} {}",
                 service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
-                service_alias(destination_zone_id.as_zone()),
+                service_alias(destination_zone_id),
                 type,
                 get_thread_id());
         }
@@ -680,7 +678,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -689,7 +687,7 @@ namespace rpc
         std::ignore = options;
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
-        auto dest = destination_zone_id.as_zone();
+        auto dest = destination_zone_id;
 
         if (object_id == rpc::dummy_object_id)
         {
@@ -734,16 +732,16 @@ namespace rpc
             ++found->second.count;
         }
 
-        auto entry = services.find(destination_zone_id.as_zone());
+        auto entry = services.find(destination_zone_id);
         if (entry == services.end())
         {
-            services.emplace(destination_zone_id.as_zone(), name_count{"", 1});
+            services.emplace(destination_zone_id, name_count{"", 1});
             fmt::println(output_,
                 "participant \"zone {}\" as {} order {} #Moccasin",
-                destination_zone_id.as_zone().get_subnet(),
-                service_alias(destination_zone_id.as_zone()),
-                service_order(destination_zone_id.as_zone()));
-            fmt::println(output_, "activate {} #Moccasin", service_alias(destination_zone_id.as_zone()));
+                destination_zone_id.get_subnet(),
+                service_alias(destination_zone_id),
+                service_order(destination_zone_id));
+            fmt::println(output_, "activate {} #Moccasin", service_alias(destination_zone_id));
         }
         fmt::println(output_,
             "hnote over {} : add_external_ref {}",
@@ -994,20 +992,20 @@ namespace rpc
         fmt::println(output_,
             "{} --> {} : links to",
             object_proxy_alias(zone_id, destination_zone_id, object_id),
-            object_stub_alias(destination_zone_id.as_zone(), object_id));
+            object_stub_alias(destination_zone_id, object_id));
         if (add_ref_done)
         {
             fmt::println(output_,
                 "{} -> {} : complete_add_ref",
                 object_proxy_alias(zone_id, destination_zone_id, object_id),
-                service_proxy_alias(zone_id, destination_zone_id, zone_id.as_caller()));
+                service_proxy_alias(zone_id, destination_zone_id, zone_id));
         }
         else
         {
             fmt::println(output_,
                 "{} -> {} : add_ref",
                 object_proxy_alias(zone_id, destination_zone_id, object_id),
-                service_proxy_alias(zone_id, destination_zone_id, zone_id.as_caller()));
+                service_proxy_alias(zone_id, destination_zone_id, zone_id));
         }
         fflush(output_);
 #endif
@@ -1039,7 +1037,7 @@ namespace rpc
                 fmt::println(output_,
                     "{} -> {} : release",
                     object_proxy_alias(zone_id, destination_zone_id, object_id),
-                    service_proxy_alias(zone_id, destination_zone_id, zone_id.as_caller()));
+                    service_proxy_alias(zone_id, destination_zone_id, zone_id));
             }
             else
             {
@@ -1145,18 +1143,17 @@ namespace rpc
         fmt::println(output_,
             "{} -> {} : {}",
             object_proxy_alias(zone_id, destination_zone_id, object_id),
-            object_stub_alias(destination_zone_id.as_zone(), object_id),
+            object_stub_alias(destination_zone_id, object_id),
             method_name);
 #else
-        auto ob = stubs.find({destination_zone_id.as_zone(), object_id});
+        auto ob = stubs.find({destination_zone_id, object_id});
         if (ob != stubs.end())
         {
             fmt::println(output_, "{} -> {} : {}", service_alias(zone_id), object_alias(ob->second.address), method_name);
         }
         else
         {
-            fmt::println(
-                output_, "{} -> {} : {}", service_alias(zone_id), service_alias(destination_zone_id.as_zone()), method_name);
+            fmt::println(output_, "{} -> {} : {}", service_alias(zone_id), service_alias(destination_zone_id), method_name);
         }
 #endif
         fflush(output_);
@@ -1354,14 +1351,14 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = caller_zone_id;
 
         fmt::println(output_,
             "{} -> {} : send obj={} iface={} method={} {}",
             service_alias(zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1375,14 +1372,14 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = caller_zone_id;
 
         fmt::println(output_,
             "{} ->> {} : post obj={} iface={} method={} {}",
             service_alias(zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1393,14 +1390,14 @@ namespace rpc
     void sequence_diagram_telemetry_service::on_service_object_released(
         rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         std::ignore = caller_zone_id;
 
         fmt::println(output_,
             "{} -> {} : object_released obj={} {}",
             service_alias(zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             object_id.get_val(),
             get_thread_id());
         fflush(output_);
@@ -1414,7 +1411,7 @@ namespace rpc
         fmt::println(output_,
             "{} -X {} : transport_down {}",
             service_alias(zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             get_thread_id());
         fflush(output_);
     }
@@ -1426,12 +1423,12 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "{} -> {} : send obj={} iface={} method={} {}",
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1445,12 +1442,12 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "{} ->> {} : post obj={} iface={} method={} {}",
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             object_id.get_val(),
             interface_id.get_val(),
             method_id.get_val(),
@@ -1461,12 +1458,12 @@ namespace rpc
     void sequence_diagram_telemetry_service::on_service_proxy_object_released(
         rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "{} -> {} : object_released obj={} {}",
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             object_id.get_val(),
             get_thread_id());
         fflush(output_);
@@ -1478,7 +1475,7 @@ namespace rpc
         fmt::println(output_,
             "{} -X {} : transport_down {}",
             service_proxy_alias(zone_id, destination_zone_id, caller_zone_id),
-            service_alias(destination_zone_id.as_zone()),
+            service_alias(destination_zone_id),
             get_thread_id());
         fflush(output_);
     }
@@ -1491,7 +1488,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_send: adjacent={} dest={} caller={} obj={} iface={} method={}",
@@ -1512,7 +1509,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_post: adjacent={} dest={} caller={} obj={} iface={} method={} ",
@@ -1532,7 +1529,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_try_cast: adjacent={} dest={} caller={} obj={} iface={}",
@@ -1552,7 +1549,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_add_ref: adjacent={} dest={} caller={} obj={} "
@@ -1573,7 +1570,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_release: adjacent={} dest={} caller={} obj={} opts={}",
@@ -1591,7 +1588,7 @@ namespace rpc
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_outbound_object_released: adjacent={} dest={} caller={} obj={}",
@@ -1625,7 +1622,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_send: adjacent={} dest={} caller={} obj={} iface={} method={}",
@@ -1646,7 +1643,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_post: adjacent={} dest={} caller={} obj={} iface={} method={} ",
@@ -1666,7 +1663,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_try_cast: adjacent={} dest={} caller={} obj={} iface={}",
@@ -1686,7 +1683,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_add_ref: adjacent={} dest={} caller={} obj={} "
@@ -1707,7 +1704,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_release: adjacent={} dest={} caller={} obj={} opts={}",
@@ -1725,7 +1722,7 @@ namespace rpc
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id) const
     {
-        auto destination_zone_id = remote_object_id.as_destination_zone();
+        auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object();
         fmt::println(output_,
             "note over zone_{}: transport_inbound_object_released: adjacent={} dest={} caller={} obj={}",

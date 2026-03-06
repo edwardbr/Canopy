@@ -172,6 +172,80 @@ namespace json_schema
         }
         return nullptr;
     }
+
+    bool try_parse_integer_literal(const std::string& expr, long long& value)
+    {
+        if (expr.empty())
+            return false;
+
+        std::string cleaned = rpc_generator::clean_type_name(expr);
+        while (!cleaned.empty()
+               && (cleaned.back() == 'u' || cleaned.back() == 'U' || cleaned.back() == 'l' || cleaned.back() == 'L'))
+        {
+            cleaned.pop_back();
+        }
+
+        if (cleaned.empty())
+            return false;
+
+        size_t start = (cleaned[0] == '+' || cleaned[0] == '-') ? 1u : 0u;
+        if (start >= cleaned.size()
+            || !std::all_of(cleaned.begin() + static_cast<std::ptrdiff_t>(start),
+                cleaned.end(),
+                [](unsigned char c) { return std::isdigit(c); }))
+        {
+            return false;
+        }
+
+        value = std::stoll(cleaned);
+        return true;
+    }
+
+    const function_entity* find_constexpr_entity_upwards(const class_entity* start_scope, const std::string& name_cleaned)
+    {
+        const class_entity* current_scope = start_scope;
+        while (current_scope != nullptr)
+        {
+            for (const auto& element_ptr : current_scope->get_elements(entity_type::CONSTEXPR))
+            {
+                if (!element_ptr || rpc_generator::clean_type_name(element_ptr->get_name()) != name_cleaned)
+                    continue;
+
+                if (auto constexpr_entity = dynamic_cast<const function_entity*>(element_ptr.get()); constexpr_entity)
+                    return constexpr_entity;
+            }
+            current_scope = current_scope->get_owner();
+        }
+        return nullptr;
+    }
+
+    bool try_resolve_integer_constant(
+        const class_entity* current_context, const std::string& expr, long long& value, int depth = 0)
+    {
+        if (depth > 16)
+            return false;
+
+        if (try_parse_integer_literal(expr, value))
+            return true;
+
+        if (current_context == nullptr)
+            return false;
+
+        auto expr_cleaned = rpc_generator::clean_type_name(expr);
+        if (expr_cleaned.empty())
+            return false;
+
+        if (auto constexpr_entity = find_constexpr_entity_upwards(current_context, expr_cleaned); constexpr_entity)
+        {
+            auto default_value = rpc_generator::clean_type_name(constexpr_entity->get_default_value());
+            if (default_value.empty() || default_value == expr_cleaned)
+                return false;
+            return try_resolve_integer_constant(current_context, default_value, value, depth + 1);
+        }
+
+        return false;
+    }
+
     bool find_class_in_map(const std::string& type_name_cleaned,
         const std::map<std::string, DefinitionInfoVariant>& definition_info_map,
         const class_entity*& found_entity)
@@ -534,19 +608,17 @@ namespace json_schema
                     writer.write_string_property("description", description);
                 if (attribs.has_value("deprecated"))
                     writer.write_raw_property("deprecated", "true");
-                try
+                long long array_size = 0;
+                if (try_resolve_integer_constant(current_context, template_args[1], array_size))
                 {
-                    long long array_size = std::stoll(template_args[1]);
                     if (array_size >= 0)
                     {
                         writer.write_raw_property("minItems", std::to_string(array_size));
                         writer.write_raw_property("maxItems", std::to_string(array_size));
                     }
                 }
-                catch (const std::exception& e)
+                else
                 {
-                    std::cerr << "exception has occurred std::stoll(template_args[1]) has value " << template_args[1]
-                              << " resulting in this error: " << e.what() << "\n";
                     std::string current_desc = attribs.get_value("description");
                     std::string size_note = "[Note: Array size is non-literal: " + template_args[1] + "]";
                     writer.write_string_property(

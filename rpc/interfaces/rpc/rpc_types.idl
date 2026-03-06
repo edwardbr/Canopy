@@ -449,11 +449,7 @@ namespace rpc
 
 #cpp_quote(R^__(
     struct zone;
-    struct destination_zone;
     struct remote_object;
-    struct operating_zone;
-    struct caller_zone;
-    struct requesting_zone;
     struct object;
     )__^)
 
@@ -494,143 +490,15 @@ namespace rpc
 
         bool is_set() const noexcept { return addr_.is_set(); }
 
-        inline destination_zone as_destination() const;
-        inline caller_zone as_caller() const;
-        inline requesting_zone as_requesting_zone() const;
-            )__^)
-    };
-
-    struct destination_zone
-    {
-    private:
-        zone_address addr_;
-
-    public:
-#cpp_quote(R^__(
-        destination_zone() = default;
-        destination_zone(const destination_zone&) = default;
-        destination_zone(destination_zone&&) noexcept = default;
-        destination_zone(const zone_address& addr)
-            : addr_(addr.zone_only())
-        {
-        }
-        destination_zone& operator=(const destination_zone&) = default;
-        destination_zone& operator=(destination_zone&&) noexcept = default;
-
-        uint64_t get_subnet() const { return addr_.get_subnet(); }
-        const zone_address& get_address() const { return addr_; }
-
-        // compare
-        friend inline bool operator==(const destination_zone& lhs, const destination_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
-        {
-            return addr_.get_subnet() == static_cast<uint64_t>(val);
-        }
-        friend inline bool operator!=(const destination_zone& lhs, const destination_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
-        {
-            return addr_.get_subnet() != static_cast<uint64_t>(val);
-        }
-
-        bool operator<(const destination_zone& val) const { return addr_ < val.addr_; }
-
-        bool is_set() const noexcept { return addr_.is_set(); }
-
         // create a remote_object from this zone and the given object_id
         inline remote_object with_object(object obj) const;
-
-        inline zone as_zone() const;
-        inline caller_zone as_caller() const;
             )__^)
     };
 
-    // the zone that initiated the call
-    struct caller_zone
-    {
-    private:
-        zone_address addr_;
+    typedef zone destination_zone;
+    typedef zone caller_zone;
+    typedef zone requesting_zone;
 
-    public:
-#cpp_quote(R^__(
-        caller_zone() = default;
-        caller_zone(const caller_zone&) = default;
-        caller_zone(caller_zone&&) noexcept = default;
-        caller_zone(const zone_address& addr)
-            : addr_(addr.zone_only())
-        {
-        }
-        caller_zone& operator=(const caller_zone&) = default;
-        caller_zone& operator=(caller_zone&&) noexcept = default;
-
-        uint64_t get_subnet() const { return addr_.get_subnet(); }
-        const zone_address& get_address() const { return addr_; }
-
-        // compare
-        friend inline bool operator==(const caller_zone& lhs, const caller_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
-        {
-            return addr_.get_subnet() == static_cast<uint64_t>(val);
-        }
-        friend inline bool operator!=(const caller_zone& lhs, const caller_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
-        {
-            return addr_.get_subnet() != static_cast<uint64_t>(val);
-        }
-
-        // less
-        bool operator<(const caller_zone& val) const { return addr_ < val.addr_; }
-
-        bool is_set() const noexcept { return addr_.is_set(); }
-
-        inline destination_zone as_destination() const;
-        inline requesting_zone as_requesting_zone() const;
-            )__^)
-    };
-
-    struct requesting_zone
-    {
-    private:
-        zone_address addr_;
-
-    public:
-#cpp_quote(R^__(
-        requesting_zone() = default;
-        requesting_zone(const requesting_zone&) = default;
-        requesting_zone(requesting_zone&&) noexcept = default;
-        requesting_zone(zone z) noexcept
-            : addr_(z.get_address().zone_only())
-        {
-        }
-        requesting_zone(const zone_address& addr)
-            : addr_(addr.zone_only())
-        {
-        }
-        requesting_zone& operator=(const requesting_zone&) = default;
-        requesting_zone& operator=(requesting_zone&&) noexcept = default;
-
-        uint64_t get_subnet() const { return addr_.get_subnet(); }
-        const zone_address& get_address() const { return addr_; }
-
-        // compare
-        friend inline bool operator==(const requesting_zone& lhs, const requesting_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
-        {
-            return addr_.get_subnet() == static_cast<uint64_t>(val);
-        }
-        friend inline bool operator!=(const requesting_zone& lhs, const requesting_zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
-        {
-            return addr_.get_subnet() != static_cast<uint64_t>(val);
-        }
-
-        // less
-        bool operator<(const requesting_zone& val) const { return addr_ < val.addr_; }
-
-        bool is_set() const noexcept { return addr_.is_set(); }
-
-        inline destination_zone as_destination() const;
-            )__^)
-    };
 
     // an id for objects unique to each zone
     struct object
@@ -723,9 +591,6 @@ namespace rpc
 
         // zone conversion methods
         inline zone as_zone() const;
-        inline caller_zone as_caller() const;
-        inline destination_zone as_destination_zone() const;
-        operator destination_zone() const;
             )__^)
     };
 
@@ -825,51 +690,13 @@ namespace rpc
 
 #cpp_quote(R^__(
     // converters
-    destination_zone zone::as_destination() const
-    {
-        return destination_zone(addr_);
-    }
-    caller_zone zone::as_caller() const
-    {
-        return caller_zone(addr_);
-    }
-
-    requesting_zone zone::as_requesting_zone() const
-    {
-        return requesting_zone(addr_);
-    }
-
-    zone destination_zone::as_zone() const
-    {
-        return zone(addr_);
-    }
-
-    caller_zone destination_zone::as_caller() const
-    {
-        return caller_zone(addr_);
-    }
-
-    destination_zone caller_zone::as_destination() const
-    {
-        return destination_zone(addr_);
-    }
-
-    requesting_zone caller_zone::as_requesting_zone() const
-    {
-        return requesting_zone(addr_);
-    }
-
-    destination_zone requesting_zone::as_destination() const
-    {
-        return destination_zone(addr_);
-    }
-
-    inline remote_object destination_zone::with_object(object obj) const
+    
+    inline remote_object zone::with_object(object obj) const
     {
         return remote_object(addr_.with_object(obj.get_val()));
     }
 
-    // remote_object implementations
+// remote_object implementations
     inline object remote_object::get_object() const
     {
         return object(addr_.get_object_id());
@@ -885,20 +712,6 @@ namespace rpc
         return zone(addr_);
     }
 
-    inline caller_zone remote_object::as_caller() const
-    {
-        return caller_zone(addr_);
-    }
-
-    inline destination_zone remote_object::as_destination_zone() const
-    {
-        return destination_zone(addr_);
-    }
-
-    inline remote_object::operator destination_zone() const
-    {
-        return destination_zone(addr_);
-    }
 
     inline remote_object::remote_object(const destination_zone& d)
         : addr_(d.get_address())

@@ -49,7 +49,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_creation(
-                service->get_name(), name, service->get_zone_id(), destination_zone_id, service->get_zone_id().as_caller());
+                service->get_name(), name, service->get_zone_id(), destination_zone_id, service->get_zone_id());
         }
 #endif
         return ret;
@@ -60,7 +60,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_proxy_deletion(get_zone_id(), destination_zone_id_, zone_id_.as_caller());
+            telemetry_service->on_service_proxy_deletion(get_zone_id(), destination_zone_id_, zone_id_);
         }
 #endif
 
@@ -142,14 +142,14 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_send(
-                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id().as_caller(), interface_id, method_id);
+                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id(), interface_id, method_id);
         }
 #endif
         auto dest_with_obj = destination_zone_id_.with_object(object_id);
         CO_RETURN CO_AWAIT service_->outbound_send(protocol_version,
             encoding,
             tag,
-            get_zone_id().as_caller(),
+            get_zone_id(),
             dest_with_obj,
             interface_id,
             method_id,
@@ -199,20 +199,12 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_post(
-                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id().as_caller(), interface_id, method_id);
+                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id(), interface_id, method_id);
         }
 #endif
         auto dest_with_obj = destination_zone_id_.with_object(object_id);
-        CO_AWAIT service_->outbound_post(protocol_version,
-            encoding,
-            tag,
-            get_zone_id().as_caller(),
-            dest_with_obj,
-            interface_id,
-            method_id,
-            in_data,
-            empty_in,
-            transport);
+        CO_AWAIT service_->outbound_post(
+            protocol_version, encoding, tag, get_zone_id(), dest_with_obj, interface_id, method_id, in_data, empty_in, transport);
 
         CO_RETURN rpc::error::OK();
     }
@@ -239,7 +231,7 @@ namespace rpc
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->on_service_proxy_try_cast(
-                    get_zone_id(), destination_zone_id.with_object(object_id), get_zone_id().as_caller(), if_id);
+                    get_zone_id(), destination_zone_id.with_object(object_id), get_zone_id(), if_id);
             }
 #endif
 
@@ -249,7 +241,7 @@ namespace rpc
             // such as processing back_channel data
             auto dest_with_obj = destination_zone_id.with_object(object_id);
             auto ret = CO_AWAIT service_->outbound_try_cast(
-                version, get_zone_id().as_caller(), dest_with_obj, if_id, empty_in, empty_out, transport);
+                version, get_zone_id(), dest_with_obj, if_id, empty_in, empty_out, transport);
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
                 if (original_version != version)
@@ -290,14 +282,8 @@ namespace rpc
             // such as processing back_channel data
 
             auto dest_with_obj = destination_zone_id_.with_object(object_id);
-            auto attempt = CO_AWAIT service_->outbound_add_ref(version,
-                dest_with_obj,
-                zone_id_.as_caller(),
-                requesting_zone_id,
-                build_out_param_channel,
-                empty_in,
-                empty_out,
-                transport);
+            auto attempt = CO_AWAIT service_->outbound_add_ref(
+                version, dest_with_obj, zone_id_, requesting_zone_id, build_out_param_channel, empty_in, empty_out, transport);
             if (attempt != rpc::error::INVALID_VERSION() && attempt != rpc::error::INCOMPATIBLE_SERVICE())
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -305,7 +291,7 @@ namespace rpc
                 {
                     telemetry_service->on_service_proxy_add_ref(get_zone_id(),
                         destination_zone_id_.with_object(object_id),
-                        zone_id_.as_caller(),
+                        zone_id_,
                         requesting_zone_id,
                         build_out_param_channel);
                 }
@@ -348,14 +334,14 @@ namespace rpc
             // such as processing back_channel data
             auto dest_with_obj = destination_zone_id_.with_object(object_id);
             auto ret = CO_AWAIT service_->outbound_release(
-                version, dest_with_obj, zone_id_.as_caller(), options, empty_in, empty_out, transport);
+                version, dest_with_obj, zone_id_, options, empty_in, empty_out, transport);
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
                     telemetry_service->on_service_proxy_release(
-                        get_zone_id(), destination_zone_id_.with_object(object_id), zone_id_.as_caller(), options);
+                        get_zone_id(), destination_zone_id_.with_object(object_id), zone_id_, options);
                 }
 #endif
                 if (original_version != version)
@@ -385,7 +371,7 @@ namespace rpc
     {
         RPC_DEBUG("send_object_release starting release for object {}", object_id.get_val());
 
-        auto caller_id = svc->get_zone_id().as_caller();
+        auto caller_id = svc->get_zone_id();
         // Release our reference to the service, allowing it to be destroyed if no longer needed
         // if service is released then the last thing standing is the transport which may then tell its counterpart
         // to begin cleanup too
@@ -408,7 +394,7 @@ namespace rpc
         {
             telemetry_service->on_service_proxy_release(svc->get_zone_id(),
                 destination_zone_id.with_object(object_id),
-                svc->get_zone_id().as_caller(),
+                svc->get_zone_id(),
                 is_optimistic ? release_options::optimistic : release_options::normal);
         }
 #endif
@@ -460,7 +446,7 @@ namespace rpc
             RPC_ASSERT(transport);
             telemetry_service->on_service_proxy_release(get_zone_id(),
                 destination_zone_id_.with_object(object_id),
-                zone_id_.as_caller(),
+                zone_id_,
                 is_optimistic ? release_options::optimistic : release_options::normal);
         }
 #endif
@@ -524,7 +510,7 @@ namespace rpc
         RPC_DEBUG("get_or_create_object_proxy service zone: {} destination_zone={}, caller_zone={}, object_id = {}",
             zone_id_.get_subnet(),
             destination_zone_id_.get_subnet(),
-            zone_id_.as_caller().get_subnet(),
+            zone_id_.get_subnet(),
             object_id.get_val());
 
         std::shared_ptr<rpc::object_proxy> tmp;

@@ -60,7 +60,7 @@ namespace websocket_demo
             request.encoding = encoding;
             request.tag = tag;
             request.caller_zone_id = caller_zone_id;
-            request.destination_zone_id = remote_object_id;
+            request.destination_zone_id = remote_object_id.as_zone();
             request.interface_id = interface_id;
             request.method_id = method_id;
             request.data = std::vector<char>{(const char*)in_data.begin, (const char*)in_data.end};
@@ -195,7 +195,7 @@ namespace websocket_demo
             auto ret = CO_AWAIT inbound_send(rpc::get_version(),
                 rpc::encoding::protocol_buffers,
                 request.tag,
-                get_adjacent_zone_id().as_caller(),
+                get_adjacent_zone_id(),
                 request.destination_zone_id,
                 request.interface_id,
                 request.method_id,
