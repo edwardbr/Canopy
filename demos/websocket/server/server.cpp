@@ -229,8 +229,6 @@ auto main(int argc, char* argv[]) -> int
                 co_return;
             }
         }
-
-        co_return;
     };
 
     coro::sync_wait(coro::when_all(make_websocket_server(scheduler, root_service, tls_ctx, port)));
