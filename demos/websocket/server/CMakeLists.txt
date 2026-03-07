@@ -12,14 +12,11 @@ add_executable(
   server.cpp
   demo.cpp
   http_client_connection.cpp
-  ws_stream.cpp
   ws_client_connection.cpp
   websocket_handshake.cpp
   websocket_service.cpp
   llama_server_engine.cpp
-  transport.cpp
-  tcp_stream.cpp
-  tls_stream.cpp)
+  transport.cpp)
 target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES})
 
 target_include_directories(
@@ -29,10 +26,7 @@ target_include_directories(
 
 target_link_libraries(
   websocket_server
-  PUBLIC libcoro
-         OpenSSL::Crypto
-         OpenSSL::SSL
-         wslay
+  PUBLIC streaming
          llhttp_static
          websocket_demo_idl
          secret_llama_idl

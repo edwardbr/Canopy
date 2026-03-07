@@ -11,15 +11,15 @@
 #include <rpc/rpc.h>
 #include "websocket_service.h"
 #include "http_client_connection.h"
-#include "tcp_stream.h"
-#include "tls_stream.h"
+#include <streaming/tcp_stream.h>
+#include <streaming/tls_stream.h>
 #include "demo.h"
 
 // Handle a plain TCP client connection
 auto handle_client(coro::net::tcp::client client, std::shared_ptr<websocket_demo::v1::websocket_service> service)
     -> coro::task<void>
 {
-    auto stream = std::make_shared<websocket_demo::v1::tcp_stream>(std::move(client), service->get_scheduler());
+    auto stream = std::make_shared<streaming::tcp_stream>(std::move(client), service->get_scheduler());
     websocket_demo::v1::http_client_connection connection(stream, service);
     co_await connection.handle();
     co_return;
@@ -27,11 +27,11 @@ auto handle_client(coro::net::tcp::client client, std::shared_ptr<websocket_demo
 
 // Handle a TLS client connection
 auto handle_tls_client(coro::net::tcp::client client,
-    std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx,
+    std::shared_ptr<streaming::tls_context> tls_ctx,
     std::shared_ptr<websocket_demo::v1::websocket_service> service) -> coro::task<void>
 {
-    auto tcp = std::make_shared<websocket_demo::v1::tcp_stream>(std::move(client), service->get_scheduler());
-    auto stream = std::make_shared<websocket_demo::v1::tls_stream>(tcp, tls_ctx);
+    auto tcp = std::make_shared<streaming::tcp_stream>(std::move(client), service->get_scheduler());
+    auto stream = std::make_shared<streaming::tls_stream>(tcp, tls_ctx);
 
     // Perform TLS handshake
     bool handshake_ok = co_await stream->handshake();
@@ -136,11 +136,11 @@ auto main(int argc, char* argv[]) -> int
     }
 
     // Create TLS context if certificates are provided
-    std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx;
+    std::shared_ptr<streaming::tls_context> tls_ctx;
 
     if (!cert_file.empty() && !key_file.empty())
     {
-        tls_ctx = std::make_shared<websocket_demo::v1::tls_context>(cert_file, key_file);
+        tls_ctx = std::make_shared<streaming::tls_context>(cert_file, key_file);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Failed to initialize TLS context, exiting");
@@ -192,7 +192,7 @@ auto main(int argc, char* argv[]) -> int
 
     auto make_websocket_server = [](std::shared_ptr<coro::scheduler> scheduler,
                                      std::shared_ptr<websocket_demo::v1::websocket_service> service,
-                                     std::shared_ptr<websocket_demo::v1::tls_context> tls_ctx,
+                                     std::shared_ptr<streaming::tls_context> tls_ctx,
                                      uint16_t port) -> coro::task<void>
     {
         co_await scheduler->schedule();

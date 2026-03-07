@@ -9,7 +9,7 @@
 
 #include <rpc/rpc.h>
 #include "websocket_demo/websocket_demo.h"
-#include "ws_stream.h"
+#include <streaming/ws_stream.h>
 
 namespace websocket_demo
 {
@@ -23,7 +23,7 @@ namespace websocket_demo
         public:
             transport(std::string name, std::shared_ptr<rpc::service> service);
             transport(std::string name, rpc::zone zone_id);
-            transport(std::shared_ptr<ws_stream> ws, std::shared_ptr<rpc::service> service);
+            transport(std::shared_ptr<streaming::ws_stream> ws, std::shared_ptr<rpc::service> service);
 
             virtual ~transport() CANOPY_DEFAULT_DESTRUCTOR;
 
@@ -116,7 +116,7 @@ namespace websocket_demo
             void set_local_object_id(rpc::object id) { local_object_id_ = id; }
 
         private:
-            std::shared_ptr<ws_stream> ws_;
+            std::shared_ptr<streaming::ws_stream> ws_;
             rpc::object local_object_id_{0};
         };
     }
