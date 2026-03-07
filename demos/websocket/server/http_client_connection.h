@@ -11,7 +11,7 @@
 #include <rpc/rpc.h>
 #include <llhttp.h>
 #include "websocket_service.h"
-#include "stream.h"
+#include <streaming/stream.h>
 
 // Forward declarations
 namespace websocket_demo
@@ -24,7 +24,8 @@ namespace websocket_demo
         {
         public:
             // Constructor takes a stream (can be plain TCP or TLS)
-            explicit http_client_connection(std::shared_ptr<stream> stream, std::shared_ptr<websocket_service> service);
+            explicit http_client_connection(
+                std::shared_ptr<streaming::stream> stream, std::shared_ptr<websocket_service> service);
 
             // Main coroutine that handles the connection
             auto handle() -> coro::task<void>;
@@ -76,7 +77,7 @@ namespace websocket_demo
             std::string create_success_response(const std::string& data);
 
             // Member data
-            std::shared_ptr<stream> stream_;
+            std::shared_ptr<streaming::stream> stream_;
             std::shared_ptr<websocket_service> service_;
         };
     }

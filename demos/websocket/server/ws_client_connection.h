@@ -12,7 +12,7 @@
 #include <websocket_demo/websocket_demo.h>
 
 #include "websocket_service.h"
-#include "ws_stream.h"
+#include <streaming/ws_stream.h>
 #include "transport.h"
 
 #include <canopy/network_config/network_args.h>
@@ -34,7 +34,8 @@ namespace websocket_demo
         {
         public:
             // Constructor takes a WebSocket stream and the shared service
-            explicit ws_client_connection(std::shared_ptr<ws_stream> ws, std::shared_ptr<websocket_service> service);
+            explicit ws_client_connection(
+                std::shared_ptr<streaming::ws_stream> ws, std::shared_ptr<websocket_service> service);
 
             ~ws_client_connection() = default;
 
@@ -55,7 +56,7 @@ namespace websocket_demo
             void handle_envelope(const std::span<const char> payload);
 
             // Member data
-            std::shared_ptr<ws_stream> ws_;
+            std::shared_ptr<streaming::ws_stream> ws_;
             std::shared_ptr<websocket_service> service_;
             std::string msg_buffer_;
             std::shared_ptr<websocket_demo::v1::transport> transport_;

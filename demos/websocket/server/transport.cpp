@@ -27,7 +27,7 @@ namespace websocket_demo
             set_status(rpc::transport_status::CONNECTED);
         }
 
-        transport::transport(std::shared_ptr<ws_stream> ws, std::shared_ptr<rpc::service> service)
+        transport::transport(std::shared_ptr<streaming::ws_stream> ws, std::shared_ptr<rpc::service> service)
             : rpc::transport("websocket", service)
             , ws_(std::move(ws))
         {

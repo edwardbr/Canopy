@@ -35,7 +35,8 @@ namespace websocket_demo
             }
         } // namespace
 
-        ws_client_connection::ws_client_connection(std::shared_ptr<ws_stream> ws, std::shared_ptr<websocket_service> service)
+        ws_client_connection::ws_client_connection(
+            std::shared_ptr<streaming::ws_stream> ws, std::shared_ptr<websocket_service> service)
             : ws_(std::move(ws))
             , service_(std::move(service))
             , msg_buffer_(1024 * 1024, '\0')

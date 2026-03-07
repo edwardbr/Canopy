@@ -4,7 +4,7 @@
 // http_client_connection.cpp
 #include "http_client_connection.h"
 #include "websocket_handshake.h"
-#include "ws_stream.h"
+#include <streaming/ws_stream.h>
 #include "ws_client_connection.h"
 // #include <websocket_demo/websocket_demo.h>
 
@@ -20,7 +20,7 @@ namespace websocket_demo
     namespace v1
     {
         http_client_connection::http_client_connection(
-            std::shared_ptr<stream> stream, std::shared_ptr<websocket_service> service)
+            std::shared_ptr<streaming::stream> stream, std::shared_ptr<websocket_service> service)
             : stream_(std::move(stream))
             , service_(std::move(service))
         {
@@ -225,7 +225,7 @@ namespace websocket_demo
                     RPC_INFO("WebSocket handshake completed");
 
                     // Wrap the stream in a WebSocket framing layer, then drive the session
-                    auto ws = std::make_shared<websocket_demo::v1::ws_stream>(stream_);
+                    auto ws = std::make_shared<streaming::ws_stream>(stream_);
                     ws_client_connection connection(ws, service_);
                     co_await connection.run();
                     co_return;
