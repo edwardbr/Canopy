@@ -242,6 +242,19 @@ This project uses `cmake-format` for CMake files and `clang-format` for C++ file
 pip install cmake-format==0.6.13
 ```
 
+## install cmake where ????? is a version >= 4
+sudo dnf groupinstall "Development Tools"
+sudo dnf install gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja node
+
+
+wget https://github.com/Kitware/CMake/releases/?????.tar.gz
+tar -zxvf ?????.tar.gz
+cd cmake-*/
+
+./bootstrap
+make -j$(nproc)
+sudo make install
+
 **VSCode Setup:**
 1. Open the project in VSCode
 2. Install recommended extensions when prompted (or manually install `cheshirekow.cmake-format`)
