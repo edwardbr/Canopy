@@ -5,6 +5,7 @@
 #include <streaming/tcp_stream.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <errno.h>
 #include <cstring>
 
@@ -14,6 +15,12 @@ namespace streaming
         : client_(std::move(client))
         , scheduler_(std::move(scheduler))
     {
+        // Disable Nagle's algorithm so small RPC packets are sent immediately.
+        // Without this, Nagle + delayed-ACK interaction causes ~40-80ms stalls per
+        // round-trip for payloads smaller than one TCP segment.
+        int flag = 1;
+        ::setsockopt(
+            client_.socket().native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
     }
 
     auto tcp_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
