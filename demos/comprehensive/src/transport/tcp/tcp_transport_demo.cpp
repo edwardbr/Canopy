@@ -40,9 +40,9 @@
 #include <iostream> // kept for args help/error output only
 #include <chrono>
 
-#include <transports/tcp/transport.h>
 #include <transports/tcp/listener.h>
 #include <streaming/tcp_stream.h>
+#include <transports/streaming/transport.h>
 #include <comprehensive/comprehensive_stub.h>
 
 #include <canopy/network_config/network_args.h>
@@ -83,7 +83,7 @@ namespace comprehensive
                 [](const rpc::connection_settings& input_descr,
                     rpc::interface_descriptor& output_interface,
                     std::shared_ptr<rpc::service> child_service_ptr,
-                    std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
+                    std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
                 {
                     RPC_INFO("Server: Accepting connection from zone {}", input_descr.input_zone_id.get_subnet());
 
@@ -184,8 +184,8 @@ namespace comprehensive
 
                 // Create TCP transport — server_zone identifies the remote zone.
                 auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
-                auto client_transport
-                    = rpc::tcp::tcp_transport::create("client_transport", client_service, std::move(tcp_stm), nullptr);
+                auto client_transport = rpc::stream_transport::streaming_transport::create(
+                    "client_transport", client_service, std::move(tcp_stm), nullptr);
 
                 RPC_INFO("Client: Starting RPC connection...");
 

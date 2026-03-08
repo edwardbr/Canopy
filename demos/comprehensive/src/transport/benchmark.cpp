@@ -36,11 +36,10 @@
 #include <fmt/format.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <transports/spsc/transport.h>
 #include <transports/tcp/listener.h>
-#include <transports/tcp/transport.h>
 #include <streaming/spsc_queue_stream.h>
 #include <streaming/tcp_stream.h>
+#include <transports/streaming/transport.h>
 #endif
 
 namespace comprehensive
@@ -262,8 +261,8 @@ namespace comprehensive
 
         struct spsc_queues
         {
-            rpc::spsc::queue_type to_process_2;
-            rpc::spsc::queue_type to_process_1;
+            streaming::spsc_raw_queue to_process_2;
+            streaming::spsc_raw_queue to_process_1;
         };
 
         CORO_TASK(void)
@@ -283,8 +282,8 @@ namespace comprehensive
 
             auto stream_1
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_1, &queues->to_process_2, scheduler);
-            auto transport_1
-                = rpc::spsc::spsc_transport::create("spsc_transport_1", service_1, std::move(stream_1), nullptr);
+            auto transport_1 = rpc::stream_transport::streaming_transport::create(
+                "spsc_transport_1", service_1, std::move(stream_1), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -334,7 +333,7 @@ namespace comprehensive
             auto handler = [&, enc](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
-                               std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)
+                               std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT service->attach_remote_zone<i_data_processor, i_data_processor>("spsc_client_proxy",
                     transport,
@@ -355,8 +354,8 @@ namespace comprehensive
 
             auto stream_2
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2
-                = rpc::spsc::spsc_transport::create("spsc_transport_2", service_2, std::move(stream_2), handler);
+            auto transport_2 = rpc::stream_transport::streaming_transport::create(
+                "spsc_transport_2", service_2, std::move(stream_2), handler);
 
             co_await transport_2->accept();
             server_ready.set();
@@ -417,7 +416,7 @@ namespace comprehensive
                 [enc](const rpc::connection_settings& input_descr,
                     rpc::interface_descriptor& output_interface,
                     std::shared_ptr<rpc::service> child_service_ptr,
-                    std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
+                    std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
                 {
                     auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
                         "tcp_client_proxy",
@@ -480,8 +479,8 @@ namespace comprehensive
             }
 
             auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
-            auto client_transport
-                = rpc::tcp::tcp_transport::create("client_transport", client_service, std::move(tcp_stm), nullptr);
+            auto client_transport = rpc::stream_transport::streaming_transport::create(
+                "client_transport", client_service, std::move(tcp_stm), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;

@@ -11,8 +11,8 @@
 #include <gtest/gtest.h>
 #include <common/foo_impl.h>
 #include <common/tests.h>
-#include <transports/spsc/transport.h>
 #include <streaming/spsc_queue_stream.h>
+#include <transports/streaming/transport.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
@@ -26,8 +26,8 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     std::shared_ptr<rpc::root_service> root_service_;
     std::shared_ptr<rpc::root_service> peer_service_;
 
-    rpc::spsc::queue_type send_spsc_queue_;
-    rpc::spsc::queue_type receive_spsc_queue_;
+    streaming::spsc_raw_queue send_spsc_queue_;
+    streaming::spsc_raw_queue receive_spsc_queue_;
 
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
     rpc::weak_ptr<yyy::i_host> local_host_ptr_;
@@ -86,11 +86,11 @@ public:
         peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, io_scheduler_);
 
         // Create server-side transport (receives connections)
-        rpc::spsc::spsc_transport::connection_handler handler
+        rpc::stream_transport::streaming_transport::connection_handler handler
             = [use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_interface,
                   rpc::interface_descriptor& output_interface,
                   std::shared_ptr<rpc::service> service,
-                  std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)
+                  std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
         {
             auto ret = CO_AWAIT service->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
                 transport,
@@ -113,8 +113,8 @@ public:
         auto peer_stream = std::make_shared<streaming::spsc_queue_stream>(&receive_spsc_queue_, // reversed for receiver
             &send_spsc_queue_,                                                                  // reversed for receiver
             io_sched);
-        auto peer_transport
-            = rpc::spsc::spsc_transport::create("peer_transport", peer_service_, std::move(peer_stream), handler);
+        auto peer_transport = rpc::stream_transport::streaming_transport::create(
+            "peer_transport", peer_service_, std::move(peer_stream), handler);
 
         CO_AWAIT peer_transport->accept();
 
@@ -124,7 +124,7 @@ public:
 
         auto client_stream
             = std::make_shared<streaming::spsc_queue_stream>(&send_spsc_queue_, &receive_spsc_queue_, io_sched);
-        auto client_transport = rpc::spsc::spsc_transport::create("client_transport",
+        auto client_transport = rpc::stream_transport::streaming_transport::create("client_transport",
             root_service_,
             std::move(client_stream),
             nullptr); // client doesn't need handler

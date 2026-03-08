@@ -11,11 +11,7 @@
 
 #include "stream.h"
 
-// Forward declaration of the SPSC queue template
-namespace spsc
-{
-    template<typename T, std::size_t Size> class queue;
-}
+#include <transports/spsc/queue.h>
 
 namespace streaming
 {

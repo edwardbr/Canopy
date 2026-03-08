@@ -22,8 +22,8 @@ endif()
 target_include_directories(
   streaming
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  PRIVATE ${CANOPY_INCLUDES}
-          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/spsc/include>")
+         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/spsc/include>"
+  PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(streaming PRIVATE ${CANOPY_DEFINES})
 if(CANOPY_IO_URING_SQPOLL)
