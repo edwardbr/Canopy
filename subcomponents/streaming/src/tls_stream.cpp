@@ -264,11 +264,46 @@ namespace streaming
             return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
         }
 
-        // Push the encrypted bytes out to the underlying stream.
+        // Push the encrypted bytes out to the underlying stream (sync path for wslay compat).
         flush_wbio();
 
         return {coro::net::io_status{coro::net::io_status::kind::ok},
             std::span<const char>{buffer.data() + bytes_written, buffer.size() - static_cast<size_t>(bytes_written)}};
+    }
+
+    auto tls_stream::write(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    {
+        if (!ssl_ || !handshake_complete_ || closed_)
+            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+
+        int bytes_written = SSL_write(ssl_, buffer.data(), static_cast<int>(buffer.size()));
+        if (bytes_written <= 0)
+        {
+            int ssl_error = SSL_get_error(ssl_, bytes_written);
+            if (ssl_error == SSL_ERROR_WANT_WRITE || ssl_error == SSL_ERROR_WANT_READ)
+                co_return coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again};
+            closed_ = true;
+            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+        }
+
+        // Flush encrypted output asynchronously using the async write path.
+        if (!co_await flush())
+            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+
+        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+    }
+
+    auto tls_stream::flush() -> coro::task<bool>
+    {
+        std::array<char, 4096> buf;
+        int len;
+        while ((len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()))) > 0)
+        {
+            auto io_status = co_await underlying_->write(std::span<const char>{buf.data(), static_cast<size_t>(len)});
+            if (!io_status.is_ok())
+                co_return false;
+        }
+        co_return true;
     }
 
 } // namespace streaming

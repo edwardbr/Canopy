@@ -10,9 +10,9 @@
 #include <unordered_map>
 
 #include <coro/coro.hpp>
-#include <coro/net/tcp/client.hpp>
 #include <rpc/rpc.h>
 #include <tcp/tcp.h>
+#include <streaming/stream.h>
 
 namespace rpc::tcp
 {
@@ -34,7 +34,7 @@ namespace rpc::tcp
             std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
         };
 
-        coro::net::tcp::client client_;
+        std::shared_ptr<streaming::stream> stream_;
         // std::chrono::milliseconds timeout_;
 
         std::atomic<uint64_t> sequence_number_ = 0;
@@ -74,7 +74,7 @@ namespace rpc::tcp
         tcp_transport(std::string name,
             std::shared_ptr<rpc::service> service,
             // std::chrono::milliseconds timeout,
-            coro::net::tcp::client client,
+            std::shared_ptr<streaming::stream> stream,
             connection_handler handler);
 
         // Producer/consumer coroutines
@@ -214,7 +214,7 @@ namespace rpc::tcp
         static std::shared_ptr<tcp_transport> create(std::string name,
             std::shared_ptr<rpc::service> service,
             // std::chrono::milliseconds timeout,
-            coro::net::tcp::client client,
+            std::shared_ptr<streaming::stream> stream,
             connection_handler handler);
 
         virtual ~tcp_transport() { };

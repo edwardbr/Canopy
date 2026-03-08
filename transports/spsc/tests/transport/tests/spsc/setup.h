@@ -12,6 +12,7 @@
 #include <common/foo_impl.h>
 #include <common/tests.h>
 #include <transports/spsc/transport.h>
+#include <streaming/spsc_queue_stream.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #include <rpc/telemetry/i_telemetry_service.h>
@@ -108,11 +109,12 @@ public:
             CO_RETURN ret;
         };
 
-        auto peer_transport = rpc::spsc::spsc_transport::create("peer_transport",
-            peer_service_,
-            &receive_spsc_queue_, // reversed for receiver
-            &send_spsc_queue_,    // reversed for receiver
-            handler);
+        auto io_sched = io_scheduler_;
+        auto peer_stream = std::make_shared<streaming::spsc_queue_stream>(&receive_spsc_queue_, // reversed for receiver
+            &send_spsc_queue_,                                                                  // reversed for receiver
+            io_sched);
+        auto peer_transport
+            = rpc::spsc::spsc_transport::create("peer_transport", peer_service_, std::move(peer_stream), handler);
 
         CO_AWAIT peer_transport->accept();
 
@@ -120,10 +122,11 @@ public:
         rpc::shared_ptr<yyy::i_host> hst(new host());
         local_host_ptr_ = hst;
 
+        auto client_stream
+            = std::make_shared<streaming::spsc_queue_stream>(&send_spsc_queue_, &receive_spsc_queue_, io_sched);
         auto client_transport = rpc::spsc::spsc_transport::create("client_transport",
             root_service_,
-            &send_spsc_queue_,
-            &receive_spsc_queue_,
+            std::move(client_stream),
             nullptr); // client doesn't need handler
 
         auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport, hst, i_example_ptr_);

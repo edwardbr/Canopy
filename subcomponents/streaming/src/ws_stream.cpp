@@ -105,6 +105,22 @@ namespace streaming
         return {coro::net::io_status{coro::net::io_status::kind::ok}, {}};
     }
 
+    auto ws_stream::write(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    {
+        if (closed_)
+            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+        queue_message(std::vector<uint8_t>(buffer.begin(), buffer.end()));
+        if (!co_await flush())
+            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+    }
+
+    auto ws_stream::flush() -> coro::task<bool>
+    {
+        drain_pending();
+        co_return co_await do_send();
+    }
+
     bool ws_stream::is_closed() const
     {
         return closed_;

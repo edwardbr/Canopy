@@ -12,6 +12,7 @@
 
 #include <transports/tcp/transport.h>
 #include <transports/tcp/listener.h>
+#include <streaming/tcp_stream.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class tcp_setup
 {
@@ -139,10 +140,11 @@ public:
         }
 
         // Create the client transport
+        auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
         client_transport_ = rpc::tcp::tcp_transport::create("client_transport",
             root_service_,
             // std::chrono::milliseconds(100000),
-            std::move(client),
+            std::move(tcp_stm),
             nullptr); // client doesn't need handler
 
         // Connect using the client transport

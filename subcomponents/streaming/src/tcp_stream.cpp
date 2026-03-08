@@ -30,6 +30,21 @@ namespace streaming
         co_return {status, span};
     }
 
+    auto tcp_stream::write(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    {
+        while (!buffer.empty())
+        {
+            auto [status, remaining] = co_await client_.write_some(buffer);
+            if (!status.is_ok())
+            {
+                closed_ = true;
+                co_return status;
+            }
+            buffer = remaining;
+        }
+        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+    }
+
     auto tcp_stream::send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>>
     {
         if (closed_)
@@ -58,6 +73,12 @@ namespace streaming
     void tcp_stream::set_closed()
     {
         closed_ = true;
+        if (!socket_closed_)
+        {
+            socket_closed_ = true;
+            client_.socket().shutdown();
+            client_.socket().close();
+        }
     }
 
     coro::net::tcp::client& tcp_stream::client()

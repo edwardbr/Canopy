@@ -16,6 +16,7 @@
 #include <rpc/rpc.h>
 #include <spsc/spsc.h>
 #include <transports/spsc/queue.h>
+#include <streaming/spsc_queue_stream.h>
 
 namespace rpc::spsc
 {
@@ -44,8 +45,7 @@ namespace rpc::spsc
         std::unordered_map<uint64_t, result_listener*> pending_transmits_;
         std::mutex pending_transmits_mtx_;
 
-        queue_type* send_spsc_queue_;
-        queue_type* receive_spsc_queue_;
+        std::shared_ptr<streaming::spsc_queue_stream> stream_;
 
         std::atomic<uint64_t> sequence_number_ = 0;
 
@@ -74,21 +74,13 @@ namespace rpc::spsc
 
         spsc_transport(std::string name,
             std::shared_ptr<rpc::service> service,
-            queue_type* send_spsc_queue,
-            queue_type* receive_spsc_queue,
+            std::shared_ptr<streaming::spsc_queue_stream> stream,
             connection_handler handler);
 
         // Producer/consumer coroutines
         CORO_TASK(void) receive_consumer_loop(std::shared_ptr<activity_tracker> tracker);
         CORO_TASK(void) send_producer_loop(std::shared_ptr<activity_tracker> tracker);
-
-        enum send_queue_status
-        {
-            SEND_QUEUE_EMPTY,
-            SEND_QUEUE_NOT_EMPTY,
-            SPSC_QUEUE_FULL
-        };
-        send_queue_status push_message(std::span<uint8_t>& send_data);
+        CORO_TASK(void) flush_send_queue();
 
         // Stub handlers (called when receiving messages)
         CORO_TASK(void)
@@ -217,8 +209,7 @@ namespace rpc::spsc
     public:
         static std::shared_ptr<spsc_transport> create(std::string name,
             std::shared_ptr<rpc::service> service,
-            queue_type* send_spsc_queue,
-            queue_type* receive_spsc_queue,
+            std::shared_ptr<streaming::spsc_queue_stream> stream,
             connection_handler handler);
 
         virtual ~spsc_transport() { };

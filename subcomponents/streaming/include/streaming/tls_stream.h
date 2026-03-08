@@ -60,6 +60,10 @@ namespace streaming
 
         auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
 
+        auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+
+        auto flush() -> coro::task<bool> override;
+
         bool is_closed() const override { return closed_; }
 
         void set_closed() override { closed_ = true; }
