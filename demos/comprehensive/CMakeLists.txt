@@ -41,7 +41,7 @@ if(CANOPY_BUILD_COROUTINE)
   target_include_directories(
     tcp_transport_demo
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-    PRIVATE ${CANOPY_INCLUDES} transport_tcp)
+    PRIVATE ${CANOPY_INCLUDES})
   target_link_libraries(
     tcp_transport_demo
     PUBLIC comprehensive_idl
@@ -61,12 +61,12 @@ if(CANOPY_BUILD_COROUTINE)
   target_include_directories(
     spsc_transport_demo
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-    PRIVATE ${CANOPY_INCLUDES} transport_spsc)
+    PRIVATE ${CANOPY_INCLUDES})
   target_link_libraries(
     spsc_transport_demo
     PUBLIC comprehensive_idl
            transport_local
-           transport_spsc
+           transport_streaming
            rpc
            ${CANOPY_LIBRARIES})
   target_compile_options(spsc_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
@@ -80,13 +80,12 @@ if(CANOPY_BUILD_COROUTINE)
   target_include_directories(
     benchmark
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-    PRIVATE ${CANOPY_INCLUDES} transport_tcp transport_spsc)
+    PRIVATE ${CANOPY_INCLUDES})
   target_link_libraries(
     benchmark
     PUBLIC comprehensive_idl
            transport_local
            transport_tcp
-           transport_spsc
            rpc
            ${CANOPY_LIBRARIES})
   target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

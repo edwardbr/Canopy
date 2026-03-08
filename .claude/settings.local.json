@@ -59,7 +59,8 @@
       "Bash(xargs -I {} git show main:{}:*)",
       "Bash(xargs -I{} date -d @{})",
       "Bash(xargs cat:*)",
-      "Bash(xargs cmake-format:*)"
+      "Bash(xargs cmake-format:*)",
+      "Bash(./build_coroutine_debug/output/rpc_test:*)"
     ]
   },
   "enabledPlugins": {}

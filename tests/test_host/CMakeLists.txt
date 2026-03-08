@@ -28,7 +28,7 @@ if(CANOPY_BUILD_ENCLAVE)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  set(SPSC_TRANSPORT_LIB transport_spsc)
+  set(SPSC_TRANSPORT_LIB transport_streaming)
   set(SPSC_TRANSPORT_TEST_LIB transport_spsc_test)
 
   set(TCP_TRANSPORT_LIB transport_tcp)

@@ -10,17 +10,17 @@
 #include <rpc/telemetry/multiplexing_telemetry_service.h>
 #endif
 
-#include <transports/tcp/transport.h>
 #include <transports/tcp/listener.h>
 #include <streaming/tcp_stream.h>
+#include <transports/streaming/transport.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class tcp_setup
 {
     std::shared_ptr<rpc::root_service> root_service_;
     std::shared_ptr<rpc::root_service> peer_service_;
 
-    std::shared_ptr<rpc::tcp::tcp_transport> server_transport_;
-    std::shared_ptr<rpc::tcp::tcp_transport> client_transport_;
+    std::shared_ptr<rpc::stream_transport::streaming_transport> server_transport_;
+    std::shared_ptr<rpc::stream_transport::streaming_transport> client_transport_;
     std::unique_ptr<rpc::tcp::listener> listener_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
     rpc::weak_ptr<yyy::i_host> local_host_ptr_;
@@ -42,7 +42,7 @@ public:
     virtual ~tcp_setup() = default;
 
     std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
-    std::shared_ptr<rpc::tcp::tcp_transport> get_server_transport() const { return server_transport_; };
+    std::shared_ptr<rpc::stream_transport::streaming_transport> get_server_transport() const { return server_transport_; };
     bool get_has_enclave() const { return has_enclave_; }
     bool is_sgx_setup() const { return false; }
     rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
@@ -95,7 +95,7 @@ public:
             [this, use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_descr,
                 rpc::interface_descriptor& output_interface,
                 std::shared_ptr<rpc::service> child_service_ptr,
-                std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
+                std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
             {
                 // Server-side connection handler
                 // Store the transport for later use
@@ -141,9 +141,8 @@ public:
 
         // Create the client transport
         auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
-        client_transport_ = rpc::tcp::tcp_transport::create("client_transport",
+        client_transport_ = rpc::stream_transport::streaming_transport::create("client_transport",
             root_service_,
-            // std::chrono::milliseconds(100000),
             std::move(tcp_stm),
             nullptr); // client doesn't need handler
 

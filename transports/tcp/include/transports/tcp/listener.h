@@ -11,17 +11,17 @@
 #include <rpc/rpc.h>
 #include <coro/coro.hpp>
 #include <coro/net/tcp/server.hpp>
-#include <transports/tcp/transport.h>
 #include <streaming/tcp_stream.h>
+#include <transports/streaming/transport.h>
 
 namespace rpc::tcp
 {
     /**
-     * @brief TCP listener that accepts incoming connections and creates tcp_transport instances
+     * @brief TCP listener that accepts incoming connections and creates streaming_transport instances
      *
      * This class provides separation of concerns by handling the server-side TCP listening
      * logic separately from the transport implementation. It creates a TCP server, accepts
-     * incoming connections, and for each connection creates a tcp_transport instance.
+     * incoming connections, and for each connection creates a streaming_transport instance.
      */
     class listener
     {
@@ -33,7 +33,7 @@ namespace rpc::tcp
         using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
             rpc::interface_descriptor& output_interface,
             std::shared_ptr<rpc::service> child_service_ptr,
-            std::shared_ptr<tcp_transport> transport)>;
+            std::shared_ptr<rpc::stream_transport::streaming_transport> transport)>;
 
         connection_handler connection_handler_;
         std::shared_ptr<coro::net::tcp::server> server_;
@@ -103,15 +103,15 @@ namespace rpc::tcp
 
             // Wrap the raw TCP client in a stream and create the transport.
             auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), service->get_scheduler());
-            auto transport = tcp_transport::create("server_transport",
+            auto transport = rpc::stream_transport::streaming_transport::create("server_transport",
                 service,
-                // timeout_,
                 std::move(tcp_stm),
                 connection_handler_);
 
-            // Start the pump to handle send/receive for this connection
-            // This will also handle the initial handshake via create_stub
-            service->spawn(transport->pump_send_and_receive());
+            // Start the pump to handle send/receive for this connection.
+            // pump_send_and_receive() is a void function that internally spawns the two
+            // producer/consumer coroutine loops on the service's scheduler.
+            transport->pump_send_and_receive();
 
             CO_RETURN;
         }

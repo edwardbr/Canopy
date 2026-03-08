@@ -12,11 +12,9 @@ add_executable(
   server.cpp
   demo.cpp
   http_client_connection.cpp
-  ws_client_connection.cpp
   websocket_handshake.cpp
   websocket_service.cpp
-  llama_server_engine.cpp
-  transport.cpp)
+  llama_server_engine.cpp)
 target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES})
 
 target_include_directories(
@@ -27,6 +25,8 @@ target_include_directories(
 target_link_libraries(
   websocket_server
   PUBLIC streaming
+         transport_streaming
+         streaming_transport_idl
          llhttp_static
          websocket_demo_idl
          secret_llama_idl

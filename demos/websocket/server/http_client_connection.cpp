@@ -5,8 +5,8 @@
 #include "http_client_connection.h"
 #include "websocket_handshake.h"
 #include <streaming/ws_stream.h>
-#include "ws_client_connection.h"
-// #include <websocket_demo/websocket_demo.h>
+#include <transports/streaming/transport.h>
+#include <websocket_demo/websocket_demo.h>
 
 #include <fstream>
 #include <sstream>
@@ -221,10 +221,45 @@ namespace websocket_demo
                     }
                     RPC_INFO("WebSocket handshake completed");
 
-                    // Wrap the stream in a WebSocket framing layer, then drive the session
+                    // Wrap the stream in a WebSocket framing layer, then hand off to the
+                    // unified streaming_transport which runs concurrent send/receive loops.
                     auto ws = std::make_shared<streaming::ws_stream>(stream_);
-                    ws_client_connection connection(ws, service_);
-                    co_await connection.run();
+                    auto wsrvc = std::static_pointer_cast<websocket_service>(service_);
+                    auto transport = rpc::stream_transport::streaming_transport::create("websocket",
+                        service_,
+                        ws,
+                        [wsrvc](const rpc::connection_settings& input_descr,
+                            rpc::interface_descriptor& output_descr,
+                            std::shared_ptr<rpc::service> svc,
+                            std::shared_ptr<rpc::stream_transport::streaming_transport> self_transport) -> coro::task<int>
+                        {
+                            RPC_INFO("[WS] Client connecting, zone={}", input_descr.input_zone_id.get_subnet());
+                            co_return CO_AWAIT svc->attach_remote_zone<websocket_demo::v1::i_context_event,
+                                websocket_demo::v1::i_calculator>("websocket",
+                                self_transport,
+                                input_descr,
+                                output_descr,
+                                [wsrvc](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
+                                    rpc::shared_ptr<websocket_demo::v1::i_calculator>& local,
+                                    const std::shared_ptr<rpc::service>&) -> coro::task<int>
+                                {
+                                    local = wsrvc->get_demo_instance();
+                                    if (!local)
+                                    {
+                                        RPC_ERROR("[WS] get_demo_instance returned null");
+                                        co_return rpc::error::OBJECT_NOT_FOUND();
+                                    }
+                                    if (sink)
+                                    {
+                                        RPC_INFO("[WS] Calling set_callback");
+                                        CO_AWAIT local->set_callback(sink);
+                                        RPC_INFO("[WS] set_callback completed");
+                                    }
+                                    co_return rpc::error::OK();
+                                });
+                        });
+                    co_await transport->inner_accept();
+                    // transport is self-owned via keep_alive_ — safe to return here
                     co_return;
                 }
 
