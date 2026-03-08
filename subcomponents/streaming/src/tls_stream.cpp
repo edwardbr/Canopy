@@ -96,8 +96,10 @@ namespace streaming
         {
             if (handshake_complete_ && !closed_)
             {
+                // Queue the TLS close_notify alert into wbio; the bytes are
+                // dropped here since we cannot await in a destructor. The
+                // underlying socket close signals connection termination.
                 SSL_shutdown(ssl_);
-                flush_wbio();
             }
             SSL_free(ssl_); // also frees rbio_ and wbio_
         }
@@ -107,35 +109,26 @@ namespace streaming
     // Private helpers
     // -----------------------------------------------------------------------
 
-    // Read one chunk of raw bytes from the underlying stream and push them
-    // into rbio so OpenSSL can process them.
-    auto tls_stream::feed_rbio(std::chrono::milliseconds timeout) -> coro::task<bool>
+    auto tls_stream::feed_rbio(std::chrono::milliseconds timeout) -> coro::task<coro::net::io_status>
     {
         std::array<char, 4096> buf;
-        auto [status, span] = co_await underlying_->recv(std::span<char>{buf}, timeout);
-        if (!status.is_ok() || span.empty())
-            co_return false;
-        BIO_write(rbio_, span.data(), static_cast<int>(span.size()));
-        co_return true;
+        auto [status, span] = co_await underlying_->receive(std::span<char>{buf}, timeout);
+        if (status.is_ok() && !span.empty())
+            BIO_write(rbio_, span.data(), static_cast<int>(span.size()));
+        co_return status;
     }
 
-    // Drain all pending SSL output from wbio to the underlying stream.
-    bool tls_stream::flush_wbio()
+    auto tls_stream::drain_wbio() -> coro::task<bool>
     {
         std::array<char, 4096> buf;
         int len;
         while ((len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()))) > 0)
         {
-            std::span<const char> remaining(buf.data(), static_cast<size_t>(len));
-            while (!remaining.empty())
-            {
-                auto [status, unsent] = underlying_->send(remaining);
-                if (!status.is_ok() && !status.try_again())
-                    return false;
-                remaining = unsent;
-            }
+            auto status = co_await underlying_->send(std::span<const char>{buf.data(), static_cast<size_t>(len)});
+            if (!status.is_ok())
+                co_return false;
         }
-        return true;
+        co_return true;
     }
 
     // -----------------------------------------------------------------------
@@ -155,9 +148,9 @@ namespace streaming
             int result = SSL_accept(ssl_);
 
             // Always flush any handshake data SSL wants to send to the peer.
-            if (!flush_wbio())
+            if (!co_await drain_wbio())
             {
-                RPC_ERROR("TLS handshake: flush_wbio failed");
+                RPC_ERROR("TLS handshake: drain_wbio failed");
                 co_return false;
             }
 
@@ -172,7 +165,8 @@ namespace streaming
             if (ssl_error == SSL_ERROR_WANT_READ)
             {
                 // Need more bytes from the peer — fetch them with no timeout during handshake.
-                if (!co_await feed_rbio(std::chrono::milliseconds{0}))
+                auto feed_status = co_await feed_rbio(std::chrono::milliseconds{0});
+                if (!feed_status.is_ok())
                 {
                     RPC_WARNING("TLS handshake: peer closed or error while reading");
                     co_return false;
@@ -180,8 +174,7 @@ namespace streaming
             }
             else if (ssl_error == SSL_ERROR_WANT_WRITE)
             {
-                // Data already flushed above; wait for the socket to drain.
-                co_await underlying_->poll(coro::poll_op::write);
+                // Data already flushed above via drain_wbio(); nothing more to do.
             }
             else
             {
@@ -196,16 +189,7 @@ namespace streaming
     // Stream interface
     // -----------------------------------------------------------------------
 
-    auto tls_stream::poll(coro::poll_op op, std::chrono::milliseconds timeout) -> coro::task<coro::poll_status>
-    {
-        // If decrypted data is already buffered by OpenSSL, report read-ready immediately.
-        if (op == coro::poll_op::read && ssl_ && SSL_pending(ssl_) > 0)
-            co_return coro::poll_status::read;
-
-        co_return co_await underlying_->poll(op, timeout);
-    }
-
-    auto tls_stream::recv(std::span<char> buffer, std::chrono::milliseconds timeout)
+    auto tls_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
         -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
     {
         if (!ssl_ || !handshake_complete_ || closed_)
@@ -232,46 +216,17 @@ namespace streaming
             }
 
             // Need more raw bytes — wait on the underlying stream with the caller's timeout.
-            auto poll_status = co_await underlying_->poll(coro::poll_op::read, timeout);
-            if (poll_status == coro::poll_status::timeout)
-                co_return {coro::net::io_status{coro::net::io_status::kind::timeout}, {}};
-            if (poll_status != coro::poll_status::read)
+            auto feed_status = co_await feed_rbio(timeout);
+            if (!feed_status.is_ok())
             {
-                closed_ = true;
-                co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
-            }
-
-            if (!co_await feed_rbio(std::chrono::milliseconds{0}))
-            {
-                closed_ = true;
-                co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                if (feed_status.is_closed())
+                    closed_ = true;
+                co_return {feed_status, {}};
             }
         }
     }
 
-    auto tls_stream::send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>>
-    {
-        if (!ssl_ || !handshake_complete_ || closed_)
-            return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
-
-        int bytes_written = SSL_write(ssl_, buffer.data(), static_cast<int>(buffer.size()));
-        if (bytes_written <= 0)
-        {
-            int ssl_error = SSL_get_error(ssl_, bytes_written);
-            if (ssl_error == SSL_ERROR_WANT_WRITE || ssl_error == SSL_ERROR_WANT_READ)
-                return {coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again}, buffer};
-            closed_ = true;
-            return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
-        }
-
-        // Push the encrypted bytes out to the underlying stream (sync path for wslay compat).
-        flush_wbio();
-
-        return {coro::net::io_status{coro::net::io_status::kind::ok},
-            std::span<const char>{buffer.data() + bytes_written, buffer.size() - static_cast<size_t>(bytes_written)}};
-    }
-
-    auto tls_stream::write(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto tls_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
     {
         if (!ssl_ || !handshake_complete_ || closed_)
             co_return coro::net::io_status{coro::net::io_status::kind::closed};
@@ -286,24 +241,10 @@ namespace streaming
             co_return coro::net::io_status{coro::net::io_status::kind::closed};
         }
 
-        // Flush encrypted output asynchronously using the async write path.
-        if (!co_await flush())
+        if (!co_await drain_wbio())
             co_return coro::net::io_status{coro::net::io_status::kind::closed};
 
         co_return coro::net::io_status{coro::net::io_status::kind::ok};
-    }
-
-    auto tls_stream::flush() -> coro::task<bool>
-    {
-        std::array<char, 4096> buf;
-        int len;
-        while ((len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()))) > 0)
-        {
-            auto io_status = co_await underlying_->write(std::span<const char>{buf.data(), static_cast<size_t>(len)});
-            if (!io_status.is_ok())
-                co_return false;
-        }
-        co_return true;
     }
 
 } // namespace streaming

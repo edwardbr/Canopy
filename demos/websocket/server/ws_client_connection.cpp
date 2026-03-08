@@ -52,7 +52,7 @@ namespace websocket_demo
         coro::task<bool> ws_client_connection::wait_for_handshake()
         {
             RPC_INFO("[WS] Waiting for connect_request handshake");
-            auto [status, span] = co_await ws_->recv(msg_buffer_, std::chrono::seconds{5});
+            auto [status, span] = co_await ws_->receive(msg_buffer_, std::chrono::seconds{5});
             if (!status.is_ok() || span.empty())
             {
                 state_ = connection_state::closed;
@@ -234,7 +234,7 @@ namespace websocket_demo
 
                     if (want_read)
                     {
-                        auto [status, span] = co_await ws_->recv(msg_buffer_, std::chrono::milliseconds{5});
+                        auto [status, span] = co_await ws_->receive(msg_buffer_, std::chrono::milliseconds{5});
                         if (status.is_closed())
                         {
                             RPC_INFO("Client disconnected");

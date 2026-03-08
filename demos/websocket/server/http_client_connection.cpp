@@ -159,8 +159,7 @@ namespace websocket_demo
                 do
                 {
                     // 2. Read the HTTP request
-                    co_await stream_->poll(coro::poll_op::read);
-                    auto [rstatus, rspan] = co_await stream_->recv(buffer);
+                    auto [rstatus, rspan] = co_await stream_->receive(buffer);
 
                     if (!rstatus.is_ok() || rspan.empty())
                     {
@@ -195,8 +194,7 @@ namespace websocket_demo
                     {
                         RPC_ERROR("HTTP parse error: {}", llhttp_errno_name(err));
                         std::string response = create_error_response(400, "Bad Request");
-                        co_await stream_->poll(coro::poll_op::write);
-                        stream_->send(std::span<const char>{response});
+                        co_await stream_->send(std::span<const char>{response});
                         co_return;
                     }
                 } while (!ctx.message_complete);
@@ -215,9 +213,8 @@ namespace websocket_demo
                     std::string accept_key = calculate_ws_accept(key_it->second);
                     std::string handshake_response = build_websocket_handshake_response(accept_key);
 
-                    co_await stream_->poll(coro::poll_op::write);
-                    auto [wsstatus, remaining] = stream_->send(std::span<const char>{handshake_response});
-                    if (!wsstatus.is_ok() || !remaining.empty())
+                    auto wsstatus = co_await stream_->send(std::span<const char>{handshake_response});
+                    if (!wsstatus.is_ok())
                     {
                         RPC_ERROR("Failed to send WebSocket handshake response");
                         co_return;
@@ -264,8 +261,7 @@ namespace websocket_demo
                     }
                 }
 
-                co_await stream_->poll(coro::poll_op::write);
-                auto [httpstatus, remaining2] = stream_->send(std::span<const char>{response});
+                auto httpstatus = co_await stream_->send(std::span<const char>{response});
                 if (!httpstatus.is_ok())
                 {
                     RPC_ERROR("Failed to send HTTP response for: {}", path);

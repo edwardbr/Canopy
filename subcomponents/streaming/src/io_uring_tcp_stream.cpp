@@ -534,7 +534,7 @@ namespace streaming
         co_return co_await scheduler_->poll(client_.socket(), op, timeout);
     }
 
-    auto io_uring_tcp_stream::recv(std::span<char> buffer, std::chrono::milliseconds timeout)
+    auto io_uring_tcp_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
         -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
     {
         if (closed_)
@@ -579,30 +579,7 @@ namespace streaming
         }
     }
 
-    auto io_uring_tcp_stream::send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>>
-    {
-        if (closed_)
-        {
-            return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
-        }
-
-        auto bytes = ::send(client_.socket().native_handle(), buffer.data(), buffer.size(), MSG_NOSIGNAL);
-        if (bytes >= 0)
-        {
-            return {coro::net::io_status{coro::net::io_status::kind::ok},
-                std::span<const char>{buffer.data() + bytes, buffer.size() - static_cast<size_t>(bytes)}};
-        }
-
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            return {coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again}, buffer};
-        }
-
-        closed_ = true;
-        return {coro::net::io_status{coro::net::io_status::kind::native, errno}, buffer};
-    }
-
-    auto io_uring_tcp_stream::write(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto io_uring_tcp_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
         {

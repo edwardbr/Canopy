@@ -39,18 +39,11 @@ namespace streaming
         // recv_q: queue this side reads from  (the other side writes into)
         spsc_queue_stream(spsc_raw_queue* send_q, spsc_raw_queue* recv_q, std::shared_ptr<coro::scheduler> scheduler);
 
-        auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<coro::poll_status> override;
-
-        auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
 
-        // Non-blocking send: pushes one blob worth of data into the send queue.
-        // Returns (ok, remaining) if a blob was pushed, (try_again, buffer) if the queue is full.
-        auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
-
-        // Async write-all: yields via the scheduler when the send queue is full.
-        auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+        // Async send-all: yields via the scheduler when the send queue is full.
+        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override;
         void set_closed() override;

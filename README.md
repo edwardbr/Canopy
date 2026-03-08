@@ -244,7 +244,7 @@ pip install cmake-format==0.6.13
 
 ## install cmake where ????? is a version >= 4
 sudo dnf groupinstall "Development Tools"
-sudo dnf install gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja node
+sudo dnf install gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja node clang-tools-extra
 
 
 wget https://github.com/Kitware/CMake/releases/?????.tar.gz

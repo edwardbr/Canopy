@@ -389,7 +389,7 @@ namespace rpc::spsc
             if (receiving_prefix && remaining.empty())
                 remaining = prefix_buf;
 
-            auto [recv_status, recv_bytes] = CO_AWAIT stream_->recv(remaining, std::chrono::milliseconds(1));
+            auto [recv_status, recv_bytes] = CO_AWAIT stream_->receive(remaining, std::chrono::milliseconds(1));
 
             if (recv_status.is_closed())
             {
@@ -625,7 +625,7 @@ namespace rpc::spsc
                 item = std::move(send_queue_.front());
                 send_queue_.pop();
             }
-            CO_AWAIT stream_->write(std::span<const char>{(const char*)item.data(), item.size()});
+            CO_AWAIT stream_->send(std::span<const char>{(const char*)item.data(), item.size()});
         }
     }
 
@@ -654,7 +654,7 @@ namespace rpc::spsc
 
             if (had_item)
             {
-                CO_AWAIT stream_->write(std::span<const char>{(const char*)item.data(), item.size()});
+                CO_AWAIT stream_->send(std::span<const char>{(const char*)item.data(), item.size()});
             }
             else
             {

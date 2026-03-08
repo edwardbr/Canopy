@@ -19,13 +19,7 @@ namespace streaming
     {
     }
 
-    auto spsc_queue_stream::poll(coro::poll_op, std::chrono::milliseconds) -> coro::task<coro::poll_status>
-    {
-        co_await scheduler_->schedule();
-        co_return coro::poll_status::write;
-    }
-
-    auto spsc_queue_stream::recv(std::span<char> buffer, std::chrono::milliseconds)
+    auto spsc_queue_stream::receive(std::span<char> buffer, std::chrono::milliseconds)
         -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
     {
         if (closed_)
@@ -69,44 +63,30 @@ namespace streaming
         co_return {coro::net::io_status{coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
     }
 
-    auto spsc_queue_stream::send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>>
+    auto spsc_queue_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
-            return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
+            co_return coro::net::io_status{coro::net::io_status::kind::closed};
 
-        size_t to_send = std::min(buffer.size(), spsc_max_payload);
-
-        spsc_blob blob{};
-        uint32_t len = static_cast<uint32_t>(to_send);
-        std::memcpy(blob.data(), &len, spsc_header_size);
-        std::memcpy(blob.data() + spsc_header_size, buffer.data(), to_send);
-
-        if (!send_queue_->push(blob))
-        {
-            return {coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again}, buffer};
-        }
-
-        return {coro::net::io_status{coro::net::io_status::kind::ok}, buffer.subspan(to_send)};
-    }
-
-    auto spsc_queue_stream::write(std::span<const char> buffer) -> coro::task<coro::net::io_status>
-    {
         while (!buffer.empty())
         {
-            auto [status, remaining] = send(buffer);
-            if (status.is_ok())
+            size_t to_send = std::min(buffer.size(), spsc_max_payload);
+
+            spsc_blob blob{};
+            uint32_t len = static_cast<uint32_t>(to_send);
+            std::memcpy(blob.data(), &len, spsc_header_size);
+            std::memcpy(blob.data() + spsc_header_size, buffer.data(), to_send);
+
+            if (!send_queue_->push(blob))
             {
-                buffer = remaining;
-            }
-            else if (status.try_again())
-            {
+                // Queue full — yield and retry
                 co_await scheduler_->schedule();
+                continue;
             }
-            else
-            {
-                co_return status;
-            }
+
+            buffer = buffer.subspan(to_send);
         }
+
         co_return coro::net::io_status{coro::net::io_status::kind::ok};
     }
 
