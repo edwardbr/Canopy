@@ -38,7 +38,10 @@ namespace rpc::stream_transport
         RPC_DEBUG("streaming_transport::inner_connect zone={}", get_zone_id().get_subnet());
         stub_ = stub;
 
-        pump_send_and_receive();
+        auto service = get_service();
+        RPC_DEBUG("inner_connect: spawning pump for zone {}", get_zone_id().get_subnet());
+        service->spawn(pump_send_and_receive());
+        RPC_DEBUG("inner_connect: pump spawned, calling call_peer for zone {}", get_zone_id().get_subnet());
 
         if (!connection_handler_)
         {
@@ -73,7 +76,8 @@ namespace rpc::stream_transport
 
     CORO_TASK(int) streaming_transport::inner_accept()
     {
-        pump_send_and_receive();
+        auto service = get_service();
+        service->spawn(pump_send_and_receive());
         CO_RETURN rpc::error::OK();
     }
 
@@ -307,7 +311,7 @@ namespace rpc::stream_transport
         RPC_DEBUG("streaming_transport::outbound_transport_down complete zone={}", get_zone_id().get_subnet());
     }
 
-    void streaming_transport::pump_send_and_receive()
+    CORO_TASK(void) streaming_transport::pump_send_and_receive()
     {
         auto self = shared_from_this();
         RPC_DEBUG("pump_send_and_receive zone={}", get_zone_id().get_subnet());
@@ -316,7 +320,7 @@ namespace rpc::stream_transport
         if (!pumps_started_.compare_exchange_strong(expected, true))
         {
             RPC_ERROR("pump_send_and_receive called MULTIPLE TIMES on zone {} - BUG!", get_zone_id().get_subnet());
-            return;
+            CO_RETURN;
         }
 
         auto svc = get_service();

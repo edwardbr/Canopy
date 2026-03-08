@@ -103,15 +103,13 @@ namespace rpc::tcp
 
             // Wrap the raw TCP client in a stream and create the transport.
             auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), service->get_scheduler());
-            auto transport = rpc::stream_transport::streaming_transport::create("server_transport",
-                service,
-                std::move(tcp_stm),
-                connection_handler_);
+            auto transport = rpc::stream_transport::streaming_transport::create(
+                "server_transport", service, std::move(tcp_stm), connection_handler_);
 
             // Start the pump to handle send/receive for this connection.
-            // pump_send_and_receive() is a void function that internally spawns the two
+            // pump_send_and_receive() is a coroutine that internally spawns the two
             // producer/consumer coroutine loops on the service's scheduler.
-            transport->pump_send_and_receive();
+            service->spawn(transport->pump_send_and_receive());
 
             CO_RETURN;
         }

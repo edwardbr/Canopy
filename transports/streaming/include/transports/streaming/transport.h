@@ -202,7 +202,7 @@ namespace rpc::stream_transport
 
         virtual ~streaming_transport() { }
 
-        void pump_send_and_receive();
+        CORO_TASK(void) pump_send_and_receive();
 
         CORO_TASK(int)
         inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
