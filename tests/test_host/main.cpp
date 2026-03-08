@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
     args::ValueFlag<std::string> animation_path(
         parser, "animation-path", "Animation diagram output path", {"animation-path"}, "../../telemetry/reports/");
 
-    args::Flag help(parser, "help", "Display this help menu", {'h', "help"});
+    // args::Flag help(parser, "help", "Display this help menu", {'h', "help"});
 
     try
     {
@@ -82,17 +82,17 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    if (help.HasFlag())
-    {
-        std::cout << parser;
-        std::cout << "\nGoogle Test Integration:\n";
-        std::cout << "  All Google Test flags are supported and will be passed through.\n";
-        std::cout << "  Use --gtest_help to see Google Test specific options.\n\n";
-        std::cout << "Examples:\n";
-        std::cout << "  ./rpc_test --telemetry-console\n";
-        std::cout << "  ./rpc_test --telemetry-console --telemetry-sequence\n";
-        std::cout << "  ./rpc_test --telemetry-console --gtest_filter=\"*standard_tests*\"\n";
-    }
+    // if (help)
+    // {
+    //     std::cout << parser;
+    //     std::cout << "\nGoogle Test Integration:\n";
+    //     std::cout << "  All Google Test flags are supported and will be passed through.\n";
+    //     std::cout << "  Use --gtest_help to see Google Test specific options.\n\n";
+    //     std::cout << "Examples:\n";
+    //     std::cout << "  ./rpc_test --telemetry-console\n";
+    //     std::cout << "  ./rpc_test --telemetry-console --telemetry-sequence\n";
+    //     std::cout << "  ./rpc_test --telemetry-console --gtest_filter=\"*standard_tests*\"\n";
+    // }
 
     // Extract parsed values
     enable_multithreaded_tests = args::get(enable_multithreaded_flag);
@@ -136,67 +136,67 @@ int main(int argc, char* argv[])
     }
 #endif
 
-#ifndef _WIN32
-    // Initialize comprehensive crash handler with multi-threaded support
-    // (Only available on POSIX systems - Windows not supported)
-    crash_handler::crash_handler::Config crash_config;
-    crash_config.enable_multithreaded_traces = true;
-    crash_config.enable_symbol_resolution = true;
-    crash_config.enable_threading_debug_info = true;
-    crash_config.enable_pattern_detection = true;
-    crash_config.max_stack_frames = 64;
-    crash_config.max_threads = 50;
-    crash_config.save_crash_dump = true;
-    crash_config.crash_dump_path = "./build/crash";
+    // #ifndef _WIN32
+    //     // Initialize comprehensive crash handler with multi-threaded support
+    //     // (Only available on POSIX systems - Windows not supported)
+    //     crash_handler::crash_handler::Config crash_config;
+    //     crash_config.enable_multithreaded_traces = true;
+    //     crash_config.enable_symbol_resolution = true;
+    //     crash_config.enable_threading_debug_info = true;
+    //     crash_config.enable_pattern_detection = true;
+    //     crash_config.max_stack_frames = 64;
+    //     crash_config.max_threads = 50;
+    //     crash_config.save_crash_dump = true;
+    //     crash_config.crash_dump_path = "./build/crash";
 
-    // Set up custom crash analysis callback
-    crash_handler::crash_handler::set_analysis_callback(
-        [](const crash_handler::crash_handler::crash_report& report)
-        {
-            std::cout << "\n=== CUSTOM CRASH ANALYSIS ===" << std::endl;
-            std::cout << "Crash occurred at: "
-                      << std::chrono::duration_cast<std::chrono::seconds>(report.crash_time.time_since_epoch()).count()
-                      << std::endl;
+    //     // Set up custom crash analysis callback
+    //     crash_handler::crash_handler::set_analysis_callback(
+    //         [](const crash_handler::crash_handler::crash_report& report)
+    //         {
+    //             std::cout << "\n=== CUSTOM CRASH ANALYSIS ===" << std::endl;
+    //             std::cout << "Crash occurred at: "
+    //                       << std::chrono::duration_cast<std::chrono::seconds>(report.crash_time.time_since_epoch()).count()
+    //                       << std::endl;
 
-            // Check for threading debug patterns
-            bool threading_bug_detected = false;
-            for (const auto& pattern : report.detected_patterns)
-            {
-                if (pattern.find("THREADING") != std::string::npos || pattern.find("ZONE PROXY") != std::string::npos)
-                {
-                    threading_bug_detected = true;
-                    break;
-                }
-            }
+    //             // Check for threading debug patterns
+    //             bool threading_bug_detected = false;
+    //             for (const auto& pattern : report.detected_patterns)
+    //             {
+    //                 if (pattern.find("THREADING") != std::string::npos || pattern.find("ZONE PROXY") != std::string::npos)
+    //                 {
+    //                     threading_bug_detected = true;
+    //                     break;
+    //                 }
+    //             }
 
-            if (threading_bug_detected)
-            {
-                std::cout << "🐛 THREADING BUG CONFIRMED: This crash was caused by a race condition!" << std::endl;
-                std::cout << "   The threading debug system successfully detected the issue." << std::endl;
-            }
-            else
-            {
-                std::cout << "ℹ️  Standard crash - not detected as threading-related." << std::endl;
-            }
+    //             if (threading_bug_detected)
+    //             {
+    //                 std::cout << "🐛 THREADING BUG CONFIRMED: This crash was caused by a race condition!" << std::endl;
+    //                 std::cout << "   The threading debug system successfully detected the issue." << std::endl;
+    //             }
+    //             else
+    //             {
+    //                 std::cout << "ℹ️  Standard crash - not detected as threading-related." << std::endl;
+    //             }
 
-            std::cout << "=== END CUSTOM ANALYSIS ===" << std::endl;
-        });
+    //             std::cout << "=== END CUSTOM ANALYSIS ===" << std::endl;
+    //         });
 
-    if (!crash_handler::crash_handler::initialize(crash_config))
-    {
-        std::cerr << "Failed to initialize crash handler" << std::endl;
-        return 1;
-    }
+    //     if (!crash_handler::crash_handler::initialize(crash_config))
+    //     {
+    //         std::cerr << "Failed to initialize crash handler" << std::endl;
+    //         return 1;
+    //     }
 
-    std::cout << "[Main] Comprehensive crash handler initialized" << std::endl;
-    std::cout << "[Main] - Multi-threaded stack traces: ENABLED" << std::endl;
-    std::cout << "[Main] - Symbol resolution: ENABLED" << std::endl;
-    std::cout << "[Main] - Threading debug integration: ENABLED" << std::endl;
-    std::cout << "[Main] - Pattern detection: ENABLED" << std::endl;
-    std::cout << "[Main] - Crash dumps will be saved to: " << crash_config.crash_dump_path << std::endl;
-#else
-    std::cout << "[Main] Crash handler not available on Windows" << std::endl;
-#endif
+    //     std::cout << "[Main] Comprehensive crash handler initialized" << std::endl;
+    //     std::cout << "[Main] - Multi-threaded stack traces: ENABLED" << std::endl;
+    //     std::cout << "[Main] - Symbol resolution: ENABLED" << std::endl;
+    //     std::cout << "[Main] - Threading debug integration: ENABLED" << std::endl;
+    //     std::cout << "[Main] - Pattern detection: ENABLED" << std::endl;
+    //     std::cout << "[Main] - Crash dumps will be saved to: " << crash_config.crash_dump_path << std::endl;
+    // #else
+    //     std::cout << "[Main] Crash handler not available on Windows" << std::endl;
+    // #endif
 
     int ret = 0;
     try
@@ -220,10 +220,10 @@ int main(int argc, char* argv[])
     }
 
     // Cleanup crash handler
-#ifndef _WIN32
-    crash_handler::crash_handler::shutdown();
-    // std::cout << "[Main] test shutdown complete" << std::endl;
-#endif
+    // #ifndef _WIN32
+    //     crash_handler::crash_handler::shutdown();
+    //     // std::cout << "[Main] test shutdown complete" << std::endl;
+    // #endif
 
     return ret;
 }
