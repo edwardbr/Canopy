@@ -46,6 +46,10 @@ namespace streaming
         // Actual transmission happens when do_send() is called.
         auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
 
+        auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+
+        auto flush() -> coro::task<bool> override;
+
         bool is_closed() const override;
         void set_closed() override;
         peer_info get_peer_info() const override;
@@ -56,14 +60,14 @@ namespace streaming
         // Queue a WebSocket close frame
         void queue_close(uint16_t code, const std::string& reason);
 
+        bool wants_read() const;
+        bool wants_write() const;
+
         // Move queued outgoing messages into wslay (call before do_send)
         void drain_pending();
 
         // Poll for write readiness and flush wslay output to the underlying stream
         auto do_send() -> coro::task<bool>;
-
-        bool wants_read() const;
-        bool wants_write() const;
 
     private:
         static ssize_t send_callback(

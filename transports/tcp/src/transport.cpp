@@ -13,10 +13,10 @@ namespace rpc::tcp
     tcp_transport::tcp_transport(std::string name,
         std::shared_ptr<rpc::service> service,
         // std::chrono::milliseconds timeout,
-        coro::net::tcp::client client,
+        std::shared_ptr<streaming::stream> stream,
         connection_handler handler)
         : rpc::transport(name, service)
-        , client_(std::move(client))
+        , stream_(std::move(stream))
         // , timeout_(timeout)
         , connection_handler_(std::move(handler))
     {
@@ -25,11 +25,11 @@ namespace rpc::tcp
     std::shared_ptr<tcp_transport> tcp_transport::create(std::string name,
         std::shared_ptr<rpc::service> service,
         // std::chrono::milliseconds timeout,
-        coro::net::tcp::client client,
+        std::shared_ptr<streaming::stream> stream,
         connection_handler handler)
     {
         auto transport = std::shared_ptr<tcp_transport>(
-            new tcp_transport(name, service, /*timeout,*/ std::move(client), std::move(handler)));
+            new tcp_transport(name, service, /*timeout,*/ std::move(stream), std::move(handler)));
 
         // Set up the keep alive using member_ptr assignment
         transport->keep_alive_ = transport;
@@ -401,7 +401,7 @@ namespace rpc::tcp
         auto self = shared_from_this();
 
         RPC_TRACE("pump_send_and_receive zone={}", get_service()->get_zone_id().get_subnet());
-        assert(client_.socket().is_ok());
+        assert(!stream_->is_closed());
 
         // Guard against multiple calls
         bool expected = false;
@@ -426,11 +426,10 @@ namespace rpc::tcp
 
         CO_AWAIT pump_messages(tracker);
 
-        // Close the socket now that pump_messages has fully exited — it is safe to do so
-        // here because no code path in pump_messages can race with this close.
-        RPC_TRACE("Transport disconnected, closing socket for zone {}", service->get_zone_id().get_subnet());
-        client_.socket().shutdown();
-        client_.socket().close();
+        // Close the stream now that pump_messages has fully exited — safe because no
+        // code path in pump_messages can race with this close.
+        RPC_TRACE("Transport disconnected, closing stream for zone {}", service->get_zone_id().get_subnet());
+        stream_->set_closed();
 
         // Ensure DISCONNECTED (idempotent)
         set_status(transport_status::DISCONNECTED);
@@ -578,16 +577,10 @@ namespace rpc::tcp
                 while (!send_queue_.empty() && !failed)
                 {
                     auto& item = send_queue_.front();
-                    auto marshal_status = co_await client_.write_some(std::span{(const char*)item.data(), item.size()});
-                    if (marshal_status.first.is_timeout())
+                    auto io_status = co_await stream_->write(std::span<const char>{(const char*)item.data(), item.size()});
+                    if (!io_status.is_ok())
                     {
-                        RPC_TRACE("pump_messages: timed out zone={}", service->get_zone_id().get_subnet());
-                        failed = true;
-                        break;
-                    }
-                    else if (!marshal_status.first.is_ok())
-                    {
-                        RPC_TRACE("pump_messages: failed zone={}", service->get_zone_id().get_subnet());
+                        RPC_TRACE("pump_messages: write failed zone={}", service->get_zone_id().get_subnet());
                         failed = true;
                         break;
                     }
@@ -610,7 +603,7 @@ namespace rpc::tcp
             }
 
             {
-                auto [recv_status, recv_bytes] = co_await client_.read_some(remaining_span, std::chrono::milliseconds(1));
+                auto [recv_status, recv_bytes] = co_await stream_->recv(remaining_span, std::chrono::milliseconds(1));
                 if (recv_status.is_timeout())
                 {
                     CO_AWAIT service->schedule();

@@ -42,6 +42,7 @@
 
 #include <transports/tcp/transport.h>
 #include <transports/tcp/listener.h>
+#include <streaming/tcp_stream.h>
 #include <comprehensive/comprehensive_stub.h>
 
 #include <canopy/network_config/network_args.h>
@@ -182,11 +183,9 @@ namespace comprehensive
                 RPC_INFO("Client: TCP connection established");
 
                 // Create TCP transport — server_zone identifies the remote zone.
-                auto client_transport = rpc::tcp::tcp_transport::create("client_transport",
-                    client_service,
-                    // std::chrono::milliseconds(100000),
-                    std::move(client),
-                    nullptr);
+                auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
+                auto client_transport
+                    = rpc::tcp::tcp_transport::create("client_transport", client_service, std::move(tcp_stm), nullptr);
 
                 RPC_INFO("Client: Starting RPC connection...");
 

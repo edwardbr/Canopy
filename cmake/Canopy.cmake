@@ -41,6 +41,7 @@ if(NOT DEPENDENCIES_LOADED)
 
   # SGX Enclave support (disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
+  option(CANOPY_IO_URING_SQPOLL "Use io_uring SQPOLL mode for streaming io_uring TCP streams on Linux" OFF)
 
   # ####################################################################################################################
   # Debug Options

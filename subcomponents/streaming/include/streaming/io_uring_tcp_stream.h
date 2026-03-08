@@ -1,18 +1,27 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// tcp_stream.h - Plain TCP stream wrapper
+// io_uring_tcp_stream.h - Linux io_uring-backed TCP stream wrapper
 #pragma once
 
-#include "stream.h"
+#include "tcp_stream.h"
+
+#if defined(__linux__)
+
+#include <memory>
 
 namespace streaming
 {
-    // Plain TCP stream wrapper
-    class tcp_stream : public stream
+    class io_uring_tcp_stream : public stream
     {
     public:
-        explicit tcp_stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler);
+        explicit io_uring_tcp_stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler);
+        ~io_uring_tcp_stream() override;
+
+        io_uring_tcp_stream(const io_uring_tcp_stream&) = delete;
+        auto operator=(const io_uring_tcp_stream&) -> io_uring_tcp_stream& = delete;
+        io_uring_tcp_stream(io_uring_tcp_stream&&) = delete;
+        auto operator=(io_uring_tcp_stream&&) -> io_uring_tcp_stream& = delete;
 
         auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<coro::poll_status> override;
@@ -25,19 +34,31 @@ namespace streaming
         auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override;
-
         void set_closed() override;
-
         peer_info get_peer_info() const override;
 
-        // Access to underlying client for operations that need it
         coro::net::tcp::client& client();
 
+        struct ring_state;
+
     private:
+        static auto completion_pump(std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler)
+            -> coro::task<void>;
+
         coro::net::tcp::client client_;
         std::shared_ptr<coro::scheduler> scheduler_;
+        std::shared_ptr<ring_state> state_;
         bool closed_{false};
         bool socket_closed_{false};
     };
 
 } // namespace streaming
+
+#else
+
+namespace streaming
+{
+    using io_uring_tcp_stream = tcp_stream;
+}
+
+#endif

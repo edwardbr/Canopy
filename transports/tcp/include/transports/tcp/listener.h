@@ -12,6 +12,7 @@
 #include <coro/coro.hpp>
 #include <coro/net/tcp/server.hpp>
 #include <transports/tcp/transport.h>
+#include <streaming/tcp_stream.h>
 
 namespace rpc::tcp
 {
@@ -100,12 +101,12 @@ namespace rpc::tcp
         {
             assert(client.socket().is_ok());
 
-            // Create a transport for this incoming connection
-            // We don't know the remote zone ID yet - it will be provided in the handshake
+            // Wrap the raw TCP client in a stream and create the transport.
+            auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), service->get_scheduler());
             auto transport = tcp_transport::create("server_transport",
                 service,
                 // timeout_,
-                std::move(client),
+                std::move(tcp_stm),
                 connection_handler_);
 
             // Start the pump to handle send/receive for this connection

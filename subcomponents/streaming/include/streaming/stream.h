@@ -37,6 +37,14 @@ namespace streaming
         // Send data from buffer (synchronous — must remain non-coroutine for wslay callbacks)
         virtual auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> = 0;
 
+        // Async write-all: keeps writing until entire span is consumed or error.
+        // Default implementation loops on send(), yielding via poll() on try_again.
+        virtual auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status>;
+
+        // Flush any buffered data to the underlying layer.
+        // Default is a no-op; ws_stream overrides to drain wslay output.
+        virtual auto flush() -> coro::task<bool> { co_return true; }
+
         // Check if connection is closed
         virtual bool is_closed() const = 0;
 

@@ -9,16 +9,26 @@ find_package(OpenSSL REQUIRED)
 
 add_library(
   streaming SHARED
+  src/stream.cpp
   src/tcp_stream.cpp
   src/tls_stream.cpp
-  src/ws_stream.cpp)
+  src/ws_stream.cpp
+  src/spsc_queue_stream.cpp)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(streaming PRIVATE src/io_uring_tcp_stream.cpp)
+endif()
 
 target_include_directories(
   streaming
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  PRIVATE ${CANOPY_INCLUDES})
+  PRIVATE ${CANOPY_INCLUDES}
+          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/spsc/include>")
 
 target_compile_definitions(streaming PRIVATE ${CANOPY_DEFINES})
+if(CANOPY_IO_URING_SQPOLL)
+  target_compile_definitions(streaming PRIVATE CANOPY_IO_URING_SQPOLL)
+endif()
 target_compile_options(streaming PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(streaming PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 

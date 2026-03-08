@@ -39,6 +39,8 @@
 #include <transports/spsc/transport.h>
 #include <transports/tcp/listener.h>
 #include <transports/tcp/transport.h>
+#include <streaming/spsc_queue_stream.h>
+#include <streaming/tcp_stream.h>
 #endif
 
 namespace comprehensive
@@ -279,8 +281,10 @@ namespace comprehensive
             auto on_shutdown_event = std::make_shared<rpc::event>();
             service_1->set_shutdown_event(on_shutdown_event);
 
-            auto transport_1 = rpc::spsc::spsc_transport::create(
-                "spsc_transport_1", service_1, &queues->to_process_1, &queues->to_process_2, nullptr);
+            auto stream_1
+                = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_1, &queues->to_process_2, scheduler);
+            auto transport_1
+                = rpc::spsc::spsc_transport::create("spsc_transport_1", service_1, std::move(stream_1), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -349,8 +353,10 @@ namespace comprehensive
                 CO_RETURN ret;
             };
 
-            auto transport_2 = rpc::spsc::spsc_transport::create(
-                "spsc_transport_2", service_2, &queues->to_process_2, &queues->to_process_1, handler);
+            auto stream_2
+                = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_2, &queues->to_process_1, scheduler);
+            auto transport_2
+                = rpc::spsc::spsc_transport::create("spsc_transport_2", service_2, std::move(stream_2), handler);
 
             co_await transport_2->accept();
             server_ready.set();
@@ -473,8 +479,9 @@ namespace comprehensive
                 CO_RETURN;
             }
 
-            auto client_transport = rpc::tcp::tcp_transport::create(
-                "client_transport", client_service, /*std::chrono::milliseconds(100000),*/ std::move(client), nullptr);
+            auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
+            auto client_transport
+                = rpc::tcp::tcp_transport::create("client_transport", client_service, std::move(tcp_stm), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
