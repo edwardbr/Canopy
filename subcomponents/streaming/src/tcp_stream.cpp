@@ -27,15 +27,36 @@ namespace streaming
 
     auto tcp_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
     {
+        // Use direct ::send() syscalls rather than libcoro's poll-based write path.
+        // libcoro's write_some() uses epoll (EPOLL_CTL_ADD) to wait for write-readiness,
+        // but the same socket fd is already registered in epoll by receive_consumer_loop for
+        // reads. A second EPOLL_CTL_ADD for the same fd fails with EEXIST, which would leave
+        // send_producer_loop permanently stuck. Bypassing libcoro's poll for writes avoids
+        // this concurrent-registration conflict entirely. When the send buffer is full
+        // (EAGAIN/EWOULDBLOCK), we yield via schedule() and retry.
         while (!buffer.empty())
         {
-            auto [status, remaining] = co_await client_.write_some(buffer);
-            if (!status.is_ok())
+            ssize_t bytes_sent
+                = ::send(client_.socket().native_handle(), buffer.data(), buffer.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+            if (bytes_sent > 0)
+            {
+                buffer = buffer.subspan(bytes_sent);
+            }
+            else if (bytes_sent == 0)
             {
                 closed_ = true;
-                co_return status;
+                co_return coro::net::io_status{coro::net::io_status::kind::closed};
             }
-            buffer = remaining;
+            else
+            {
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                {
+                    co_await scheduler_->schedule();
+                    continue;
+                }
+                closed_ = true;
+                co_return coro::net::io_status{coro::net::io_status::kind::native, errno};
+            }
         }
         co_return coro::net::io_status{coro::net::io_status::kind::ok};
     }
