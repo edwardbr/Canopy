@@ -24,26 +24,13 @@ namespace streaming
     public:
         virtual ~stream() = default;
 
-        // Poll for read or write readiness
-        virtual auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<coro::poll_status>
-            = 0;
-
         // Receive data into buffer
-        virtual auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+        virtual auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
             = 0;
 
-        // Send data from buffer (synchronous — must remain non-coroutine for wslay callbacks)
-        virtual auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> = 0;
-
-        // Async write-all: keeps writing until entire span is consumed or error.
-        // Default implementation loops on send(), yielding via poll() on try_again.
-        virtual auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status>;
-
-        // Flush any buffered data to the underlying layer.
-        // Default is a no-op; ws_stream overrides to drain wslay output.
-        virtual auto flush() -> coro::task<bool> { co_return true; }
+        // Async send-all: keeps sending until entire span is consumed or error.
+        virtual auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> = 0;
 
         // Check if connection is closed
         virtual bool is_closed() const = 0;

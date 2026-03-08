@@ -52,17 +52,10 @@ namespace streaming
         auto handshake() -> coro::task<bool>;
 
         // Stream interface
-        auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<coro::poll_status> override;
-
-        auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
 
-        auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
-
-        auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
-
-        auto flush() -> coro::task<bool> override;
+        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override { return closed_; }
 
@@ -75,16 +68,17 @@ namespace streaming
         std::shared_ptr<tls_context> tls_ctx_;
         SSL* ssl_{nullptr};
         BIO* rbio_{nullptr}; // network → SSL (we write raw bytes here)
-        BIO* wbio_{nullptr}; // SSL → network (we drain this to underlying_->send)
+        BIO* wbio_{nullptr}; // SSL → network (we drain this via underlying_->send)
         bool closed_{false};
         bool handshake_complete_{false};
 
         // Read raw bytes from underlying stream and feed them into rbio.
-        auto feed_rbio(std::chrono::milliseconds timeout) -> coro::task<bool>;
+        // Returns the underlying io_status so callers can distinguish timeout from close.
+        auto feed_rbio(std::chrono::milliseconds timeout) -> coro::task<coro::net::io_status>;
 
         // Drain any pending SSL output from wbio to the underlying stream.
         // Returns false if the underlying stream errored.
-        bool flush_wbio();
+        auto drain_wbio() -> coro::task<bool>;
     };
 
 } // namespace streaming

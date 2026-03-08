@@ -577,7 +577,7 @@ namespace rpc::tcp
                 while (!send_queue_.empty() && !failed)
                 {
                     auto& item = send_queue_.front();
-                    auto io_status = co_await stream_->write(std::span<const char>{(const char*)item.data(), item.size()});
+                    auto io_status = co_await stream_->send(std::span<const char>{(const char*)item.data(), item.size()});
                     if (!io_status.is_ok())
                     {
                         RPC_TRACE("pump_messages: write failed zone={}", service->get_zone_id().get_subnet());
@@ -603,7 +603,7 @@ namespace rpc::tcp
             }
 
             {
-                auto [recv_status, recv_bytes] = co_await stream_->recv(remaining_span, std::chrono::milliseconds(1));
+                auto [recv_status, recv_bytes] = co_await stream_->receive(remaining_span, std::chrono::milliseconds(1));
                 if (recv_status.is_timeout())
                 {
                     CO_AWAIT service->schedule();

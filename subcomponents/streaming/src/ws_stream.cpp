@@ -37,12 +37,7 @@ namespace streaming
         }
     }
 
-    auto ws_stream::poll(coro::poll_op op, std::chrono::milliseconds timeout) -> coro::task<coro::poll_status>
-    {
-        co_return co_await underlying_->poll(op, timeout);
-    }
-
-    auto ws_stream::recv(std::span<char> buffer, std::chrono::milliseconds timeout)
+    auto ws_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
         -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
     {
         // Return any already-decoded message first (supports partial reads too)
@@ -62,7 +57,7 @@ namespace streaming
         }
 
         // No buffered message — read raw data from the underlying stream
-        auto [status, span] = co_await underlying_->recv(raw_recv_buffer_, timeout);
+        auto [status, span] = co_await underlying_->receive(raw_recv_buffer_, timeout);
         if (status.is_closed())
         {
             closed_ = true;
@@ -96,29 +91,14 @@ namespace streaming
         co_return {status, {}};
     }
 
-    auto ws_stream::send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>>
-    {
-        if (closed_)
-            return {coro::net::io_status{coro::net::io_status::kind::closed}, buffer};
-        queue_message(std::vector<uint8_t>(buffer.begin(), buffer.end()));
-        // The empty remaining span signals that all data has been accepted
-        return {coro::net::io_status{coro::net::io_status::kind::ok}, {}};
-    }
-
-    auto ws_stream::write(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto ws_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
             co_return coro::net::io_status{coro::net::io_status::kind::closed};
         queue_message(std::vector<uint8_t>(buffer.begin(), buffer.end()));
-        if (!co_await flush())
+        if (!co_await do_send())
             co_return coro::net::io_status{coro::net::io_status::kind::closed};
         co_return coro::net::io_status{coro::net::io_status::kind::ok};
-    }
-
-    auto ws_stream::flush() -> coro::task<bool>
-    {
-        drain_pending();
-        co_return co_await do_send();
     }
 
     bool ws_stream::is_closed() const
@@ -175,14 +155,31 @@ namespace streaming
 
     auto ws_stream::do_send() -> coro::task<bool>
     {
-        co_await underlying_->poll(coro::poll_op::write);
-        std::lock_guard<std::mutex> lock(wslay_mutex_);
-        int r = wslay_event_send(wslay_ctx_);
-        if (r != 0)
+        drain_pending();
+
+        // Let wslay encode frames into outgoing_raw_ via send_callback.
+        // Capture the staged bytes while holding the lock, then write without it.
+        std::vector<uint8_t> to_write;
         {
-            RPC_ERROR("wslay_event_send error: {}", r);
-            co_return false;
+            std::lock_guard<std::mutex> lock(wslay_mutex_);
+            int r = wslay_event_send(wslay_ctx_);
+            if (r != 0)
+            {
+                RPC_ERROR("wslay_event_send error: {}", r);
+                co_return false;
+            }
+            to_write = std::move(outgoing_raw_);
+            outgoing_raw_ = {};
         }
+
+        if (!to_write.empty())
+        {
+            auto status = co_await underlying_->send(
+                std::span<const char>(reinterpret_cast<const char*>(to_write.data()), to_write.size()));
+            if (!status.is_ok())
+                co_return false;
+        }
+
         co_return true;
     }
 
@@ -212,21 +209,9 @@ namespace streaming
             return -1;
         }
 
-        auto [status, remaining]
-            = self->underlying_->send(std::span<const char>(reinterpret_cast<const char*>(data), len));
-
-        if (status.is_ok())
-            return static_cast<ssize_t>(len - remaining.size());
-
-        if (status.try_again())
-        {
-            wslay_event_set_error(ctx, WSLAY_ERR_WOULDBLOCK);
-            return -1;
-        }
-
-        self->closed_ = true;
-        wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
-        return -1;
+        // Buffer the encoded frame bytes; do_send() will write them asynchronously.
+        self->outgoing_raw_.insert(self->outgoing_raw_.end(), data, data + len);
+        return static_cast<ssize_t>(len);
     }
 
     ssize_t ws_stream::recv_callback(wslay_event_context_ptr ctx, uint8_t* buf, size_t len, int flags, void* user_data)

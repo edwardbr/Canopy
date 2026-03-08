@@ -17,8 +17,8 @@
 namespace streaming
 {
     // WebSocket framing stream that wraps any stream using wslay.
-    // recv() returns the payload of one complete WebSocket binary message.
-    // send() / queue_message() enqueue binary frames; do_send() flushes them.
+    // receive() returns the payload of one complete WebSocket binary message.
+    // send() enqueues a binary frame and flushes it to the underlying stream.
     class ws_stream : public stream
     {
     public:
@@ -32,23 +32,13 @@ namespace streaming
         ws_stream& operator=(ws_stream&&) = delete;
 
         // stream interface
-        auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<coro::poll_status> override;
-
         // Returns the payload of the next complete WebSocket binary message.
         // Partial reads are supported: if the message is larger than buffer,
         // subsequent calls return the remaining bytes of the same message.
-        auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
 
-        // Queues data as a WebSocket binary frame (non-blocking).
-        // The empty remaining span indicates the data has been accepted.
-        // Actual transmission happens when do_send() is called.
-        auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
-
-        auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
-
-        auto flush() -> coro::task<bool> override;
+        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override;
         void set_closed() override;
@@ -66,7 +56,7 @@ namespace streaming
         // Move queued outgoing messages into wslay (call before do_send)
         void drain_pending();
 
-        // Poll for write readiness and flush wslay output to the underlying stream
+        // Flush wslay output to the underlying stream
         auto do_send() -> coro::task<bool>;
 
     private:
@@ -94,6 +84,9 @@ namespace streaming
         // Outgoing message queue — written by transport threads, drained by drain_pending()
         std::queue<std::vector<uint8_t>> pending_outgoing_;
         std::mutex pending_outgoing_mutex_;
+
+        // Staging buffer: send_callback writes here; do_send() drains to underlying_->send()
+        std::vector<uint8_t> outgoing_raw_;
 
         bool closed_{false};
     };

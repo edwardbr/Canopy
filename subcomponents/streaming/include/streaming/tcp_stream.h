@@ -14,15 +14,10 @@ namespace streaming
     public:
         explicit tcp_stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler);
 
-        auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<coro::poll_status> override;
-
-        auto recv(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
 
-        auto send(std::span<const char> buffer) -> std::pair<coro::net::io_status, std::span<const char>> override;
-
-        auto write(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override;
 
