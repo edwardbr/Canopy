@@ -53,11 +53,7 @@ target_include_directories(
 target_compile_options(common_tests PRIVATE ${CANOPY_COMPILE_OPTIONS})
 target_link_options(common_tests PRIVATE ${CANOPY_LINK_OPTIONS})
 
-if(${CANOPY_BUILD_COROUTINE})
-  set(CORO_IDL tcp_idl spsc_idl)
-else()
-  set(CORO_IDL)
-endif()
+set(CORO_IDL)
 
 target_link_libraries(
   common_tests

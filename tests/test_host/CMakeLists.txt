@@ -28,7 +28,6 @@ if(CANOPY_BUILD_ENCLAVE)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  set(TCP_TRANSPORT_LIB transport_tcp)
   set(STREAMING_TRANSPORT_LIB transport_streaming)
   set(STREAMING_TRANSPORT_TEST_LIB transport_streaming_test)
 endif()
@@ -49,7 +48,6 @@ target_link_libraries(
          transport_local_test
          ${SGX_TRANSPORT_TEST_LIB}
          ${STREAMING_TRANSPORT_LIB}
-         ${TCP_TRANSPORT_LIB}
          ${STREAMING_TRANSPORT_TEST_LIB}
          yas_common
          args::args
