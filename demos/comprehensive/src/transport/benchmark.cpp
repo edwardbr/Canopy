@@ -787,7 +787,6 @@ int main()
         }
     }
 
-#if defined(__linux__)
     fmt::print("run_io_uring_benchmark\n");
     uint16_t io_uring_port = 18800;
     for (const auto& enc : encodings)
@@ -803,7 +802,6 @@ int main()
             print_stats("io_uring", enc.name, blob_size, result.stats);
         }
     }
-#endif
 
     print_footer();
     return 0;

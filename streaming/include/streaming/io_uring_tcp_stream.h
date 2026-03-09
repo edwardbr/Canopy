@@ -6,8 +6,6 @@
 
 #include "tcp_stream.h"
 
-#if defined(__linux__)
-
 #include <memory>
 
 namespace streaming
@@ -48,12 +46,3 @@ namespace streaming
     };
 
 } // namespace streaming
-
-#else
-
-namespace streaming
-{
-    using io_uring_tcp_stream = tcp_stream;
-}
-
-#endif

@@ -4,8 +4,6 @@
  */
 #pragma once
 
-#if defined(__linux__)
-
 #include <rpc/rpc.h>
 #include <coro/coro.hpp>
 #include <coro/net/tcp/server.hpp>
@@ -127,5 +125,3 @@ namespace rpc::io_uring
         }
     };
 }
-
-#endif // defined(__linux__)

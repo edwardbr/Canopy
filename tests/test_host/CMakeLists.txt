@@ -28,11 +28,9 @@ if(CANOPY_BUILD_ENCLAVE)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  set(SPSC_TRANSPORT_LIB transport_streaming)
-  set(SPSC_TRANSPORT_TEST_LIB transport_spsc_test)
-
   set(TCP_TRANSPORT_LIB transport_tcp)
-  set(TCP_TRANSPORT_TEST_LIB transport_tcp_test)
+  set(STREAMING_TRANSPORT_LIB transport_streaming)
+  set(STREAMING_TRANSPORT_TEST_LIB transport_streaming_test)
 endif()
 
 target_link_libraries(
@@ -50,10 +48,9 @@ target_link_libraries(
          transport_local
          transport_local_test
          ${SGX_TRANSPORT_TEST_LIB}
-         ${SPSC_TRANSPORT_LIB}
+         ${STREAMING_TRANSPORT_LIB}
          ${TCP_TRANSPORT_LIB}
-         ${SPSC_TRANSPORT_TEST_LIB}
-         ${TCP_TRANSPORT_TEST_LIB}
+         ${STREAMING_TRANSPORT_TEST_LIB}
          yas_common
          args::args
          fmt::fmt-header-only

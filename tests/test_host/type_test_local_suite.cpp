@@ -53,8 +53,9 @@
 #include <transport/tests/sgx/setup.h>
 #endif
 #ifdef CANOPY_BUILD_COROUTINE
-#include <transport/tests/tcp/setup.h>
-#include <transport/tests/spsc/setup.h>
+#include <transport/tests/streaming_tcp/setup.h>
+#include <transport/tests/streaming_spsc/setup.h>
+#include <transport/tests/streaming_io_uring/setup.h>
 #endif
 
 #include "crash_handler.h"
@@ -108,22 +109,30 @@ using local_implementations = ::testing::Types<in_memory_setup<false>,
     inproc_setup<true, true, true>
 #ifdef CANOPY_BUILD_COROUTINE
     ,
-    tcp_setup<false, false, false>,
-    tcp_setup<false, false, true>,
-    tcp_setup<false, true, false>,
-    tcp_setup<false, true, true>,
-    tcp_setup<true, false, false>,
-    tcp_setup<true, false, true>,
-    tcp_setup<true, true, false>,
-    tcp_setup<true, true, true>,
-    spsc_setup<false, false, false>,
-    spsc_setup<false, false, true>,
-    spsc_setup<false, true, false>,
-    spsc_setup<false, true, true>,
-    spsc_setup<true, false, false>,
-    spsc_setup<true, false, true>,
-    spsc_setup<true, true, false>,
-    spsc_setup<true, true, true>
+    streaming_tcp_setup<false, false, false>,
+    streaming_tcp_setup<false, false, true>,
+    streaming_tcp_setup<false, true, false>,
+    streaming_tcp_setup<false, true, true>,
+    streaming_tcp_setup<true, false, false>,
+    streaming_tcp_setup<true, false, true>,
+    streaming_tcp_setup<true, true, false>,
+    streaming_tcp_setup<true, true, true>,
+    streaming_spsc_setup<false, false, false>,
+    streaming_spsc_setup<false, false, true>,
+    streaming_spsc_setup<false, true, false>,
+    streaming_spsc_setup<false, true, true>,
+    streaming_spsc_setup<true, false, false>,
+    streaming_spsc_setup<true, false, true>,
+    streaming_spsc_setup<true, true, false>,
+    streaming_spsc_setup<true, true, true>,
+    streaming_io_uring_setup<false, false, false>,
+    streaming_io_uring_setup<false, false, true>,
+    streaming_io_uring_setup<false, true, false>,
+    streaming_io_uring_setup<false, true, true>,
+    streaming_io_uring_setup<true, false, false>,
+    streaming_io_uring_setup<true, false, true>,
+    streaming_io_uring_setup<true, true, false>,
+    streaming_io_uring_setup<true, true, true>
 #endif
 
 #ifdef CANOPY_BUILD_ENCLAVE

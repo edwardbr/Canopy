@@ -4,8 +4,6 @@
 // io_uring_tcp_stream.cpp - Linux io_uring-backed TCP stream implementation
 #include <streaming/io_uring_tcp_stream.h>
 
-#if defined(__linux__)
-
 #include <atomic>
 #include <cerrno>
 #include <coroutine>
@@ -763,5 +761,3 @@ namespace streaming
     }
 
 } // namespace streaming
-
-#endif

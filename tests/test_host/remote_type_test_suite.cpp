@@ -53,8 +53,9 @@
 #include <transport/tests/sgx/setup.h>
 #endif
 #ifdef CANOPY_BUILD_COROUTINE
-#include <transport/tests/tcp/setup.h>
-#include <transport/tests/spsc/setup.h>
+#include <transport/tests/streaming_tcp/setup.h>
+#include <transport/tests/streaming_spsc/setup.h>
+#include <transport/tests/streaming_io_uring/setup.h>
 #endif
 #include "crash_handler.h"
 #include "type_test_fixture.h"
@@ -108,14 +109,18 @@ using remote_implementations = ::testing::Types<
     inproc_setup<true, true, true>
 #ifdef CANOPY_BUILD_COROUTINE
     ,
-    tcp_setup<true, false, false>,
-    tcp_setup<true, false, true>,
-    tcp_setup<true, true, false>,
-    tcp_setup<true, true, true>,
-    spsc_setup<true, false, false>,
-    spsc_setup<true, false, true>,
-    spsc_setup<true, true, false>,
-    spsc_setup<true, true, true>
+    streaming_tcp_setup<true, false, false>,
+    streaming_tcp_setup<true, false, true>,
+    streaming_tcp_setup<true, true, false>,
+    streaming_tcp_setup<true, true, true>,
+    streaming_spsc_setup<true, false, false>,
+    streaming_spsc_setup<true, false, true>,
+    streaming_spsc_setup<true, true, false>,
+    streaming_spsc_setup<true, true, true>,
+    streaming_io_uring_setup<true, false, false>,
+    streaming_io_uring_setup<true, false, true>,
+    streaming_io_uring_setup<true, true, false>,
+    streaming_io_uring_setup<true, true, true>
 #endif
 
 #ifdef CANOPY_BUILD_ENCLAVE
