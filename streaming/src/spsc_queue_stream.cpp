@@ -7,7 +7,7 @@
 #include <cstring>
 
 // Include the SPSC queue template definition
-#include <transports/spsc/queue.h>
+#include <spsc/queue.h>
 
 namespace streaming
 {

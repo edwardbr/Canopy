@@ -11,7 +11,7 @@
 
 #include "stream.h"
 
-#include <transports/spsc/queue.h>
+#include <spsc/queue.h>
 
 namespace streaming
 {

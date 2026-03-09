@@ -22,7 +22,6 @@ endif()
 target_include_directories(
   streaming
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/spsc/include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(streaming PRIVATE ${CANOPY_DEFINES})
@@ -39,7 +38,8 @@ target_link_libraries(
          OpenSSL::SSL
          wslay
          rpc
-         canopy_network_config)
+         canopy_network_config
+         spsc_queue)
 
 set_property(TARGET streaming PROPERTY COMPILE_PDB_NAME streaming)
 

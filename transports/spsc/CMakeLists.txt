@@ -23,7 +23,7 @@ if(CANOPY_BUILD_COROUTINE)
 
   target_link_libraries(
     transport_spsc
-    PUBLIC streaming
+    PUBLIC streaming spsc_queue
     PRIVATE yas_common rpc_types_idl libcoro ${CANOPY_LIBRARIES})
 
   target_compile_options(transport_spsc PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
