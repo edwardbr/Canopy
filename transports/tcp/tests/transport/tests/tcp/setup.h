@@ -10,8 +10,8 @@
 #include <rpc/telemetry/multiplexing_telemetry_service.h>
 #endif
 
-#include <transports/tcp/listener.h>
-#include <streaming/tcp_stream.h>
+#include <streaming/listener.h>
+#include <streaming/tcp_stream_acceptor.h>
 #include <transports/streaming/transport.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class tcp_setup
@@ -21,7 +21,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 
     std::shared_ptr<rpc::stream_transport::streaming_transport> server_transport_;
     std::shared_ptr<rpc::stream_transport::streaming_transport> client_transport_;
-    std::unique_ptr<rpc::tcp::listener> listener_;
+    std::unique_ptr<streaming::listener> listener_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
     rpc::weak_ptr<yyy::i_host> local_host_ptr_;
     rpc::shared_ptr<yyy::i_example> i_example_ptr_;
@@ -93,39 +93,38 @@ public:
         local_host_ptr_ = hst; // assign to weak ptr
 
         // Create the listener for the server side
-        // The connection handler will be called when a client connects
-        listener_ = std::make_unique<rpc::tcp::listener>(
-            [this, use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_descr,
-                rpc::interface_descriptor& output_interface,
-                std::shared_ptr<rpc::service> child_service_ptr,
-                std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+        auto rpc_handler = [use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_descr,
+                               rpc::interface_descriptor& output_interface,
+                               std::shared_ptr<rpc::service> child_service_ptr,
+                               std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+        {
+            auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
+                transport,
+                input_descr,
+                output_interface,
+                [&](const rpc::shared_ptr<yyy::i_host>& host,
+                    rpc::shared_ptr<yyy::i_example>& new_example,
+                    const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
+                {
+                    new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(service_ptr, host));
+
+                    if (use_host_in_child)
+                        CO_AWAIT new_example->set_host(host);
+                    CO_RETURN rpc::error::OK();
+                });
+            CO_RETURN ret;
+        };
+
+        listener_ = std::make_unique<streaming::listener>(
+            std::make_shared<streaming::tcp_stream_acceptor>(coro::net::socket_address{"127.0.0.1", 8080}),
+            [this, peer_service = peer_service_, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
             {
-                // Server-side connection handler
-                // Store the transport for later use
-                server_transport_ = transport;
+                server_transport_ = rpc::stream_transport::streaming_transport::create(
+                    "server_transport", peer_service, std::move(stream), rpc_handler);
+                CO_RETURN;
+            });
 
-                // Use attach_remote_zone to properly manage object lifetime, like SPSC does
-                auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
-                    transport,
-                    input_descr,
-                    output_interface,
-                    [&](const rpc::shared_ptr<yyy::i_host>& host,
-                        rpc::shared_ptr<yyy::i_example>& new_example,
-                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                    {
-                        new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(service_ptr, host));
-
-                        if (use_host_in_child)
-                            CO_AWAIT new_example->set_host(host);
-                        CO_RETURN rpc::error::OK();
-                    });
-                CO_RETURN ret;
-            }
-            // ,            std::chrono::milliseconds(100000)
-        );
-
-        // Start the listener on the peer service
-        if (!listener_->start_listening(peer_service_, coro::net::socket_address{"127.0.0.1", 8080}))
+        if (!listener_->start_listening(peer_service_))
         {
             RPC_ERROR("Failed to start TCP listener");
             CO_RETURN false;
