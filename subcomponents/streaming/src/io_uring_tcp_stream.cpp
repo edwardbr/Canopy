@@ -11,8 +11,10 @@
 #include <coroutine>
 #include <cstring>
 #include <linux/io_uring.h>
+#include <linux/time_types.h>
 #include <mutex>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <rpc/rpc.h>
 #include <stdexcept>
 #include <sys/eventfd.h>
@@ -34,6 +36,9 @@ namespace streaming
             bool completed{false};
             bool cancel_requested{false};
             std::coroutine_handle<> waiter{};
+            // Storage for linked-timeout SQE. The kernel reads this at io_uring_enter
+            // time, so it only needs to be valid until io_uring_enter returns.
+            __kernel_timespec timeout_ts{0, 0};
         };
 
         int ring_fd{-1};
@@ -71,6 +76,9 @@ namespace streaming
 
         constexpr uint32_t queue_depth = 256;
         constexpr uint64_t cancel_user_data_base = 1ULL << 63;
+        // op IDs start from 1, so 0 is safe as a sentinel for linked-timeout CQEs,
+        // which drain_cq skips when not found in in_flight_.
+        constexpr uint64_t linked_timeout_user_data = 0;
 
         auto io_uring_setup(unsigned entries, io_uring_params* params) -> int
         {
@@ -294,28 +302,98 @@ namespace streaming
             return io_uring_enter(static_cast<unsigned>(state->ring_fd), 1, 0, flags) >= 0;
         }
 
-        auto submit_recv(const std::shared_ptr<io_uring_tcp_stream::ring_state>& state, int fd, std::span<char> buffer)
-            -> std::shared_ptr<io_uring_tcp_stream::ring_state::pending_op>
+        auto submit_recv(const std::shared_ptr<io_uring_tcp_stream::ring_state>& state,
+            int fd,
+            std::span<char> buffer,
+            std::chrono::milliseconds timeout) -> std::shared_ptr<io_uring_tcp_stream::ring_state::pending_op>
         {
             auto op = std::make_shared<io_uring_tcp_stream::ring_state::pending_op>();
-            op->id = next_user_data(state);
+            bool submitted = false;
 
+            std::lock_guard<std::mutex> lock(state->mutex_);
+            if (state->stopping.load(std::memory_order_acquire))
             {
-                std::lock_guard<std::mutex> lock(state->mutex_);
-                state->in_flight_.emplace(op->id, op);
+                op->result = -ECANCELED;
+                op->completed = true;
+                return op;
             }
 
-            if (!submit_sqe(state,
-                    [fd, buffer, id = op->id](io_uring_sqe& sqe)
-                    {
-                        sqe.opcode = IORING_OP_RECV;
-                        sqe.fd = fd;
-                        sqe.addr = reinterpret_cast<uint64_t>(buffer.data());
-                        sqe.len = static_cast<uint32_t>(buffer.size());
-                        sqe.user_data = id;
-                    }))
+            op->id = state->next_id++;
+            state->in_flight_.emplace(op->id, op);
+
+            if (timeout.count() > 0)
             {
-                std::lock_guard<std::mutex> lock(state->mutex_);
+                // Submit RECV linked to IORING_OP_LINK_TIMEOUT as a pair.
+                // If the timeout fires first the RECV CQE returns -ECANCELED.
+                // If the RECV completes first the LINK_TIMEOUT CQE returns -ECANCELED
+                // with user_data = linked_timeout_user_data (0), which drain_cq skips.
+                // The kernel reads timeout_ts at io_uring_enter time (inside this lock),
+                // so it is safe to store it in pending_op and free the op later.
+                op->timeout_ts.tv_sec = timeout.count() / 1000;
+                op->timeout_ts.tv_nsec = (timeout.count() % 1000) * 1'000'000LL;
+
+                if ((*state->sq_tail - *state->sq_head + 2) <= *state->sq_ring_entries)
+                {
+                    uint32_t tail = *state->sq_tail;
+
+                    uint32_t i0 = tail & *state->sq_ring_mask;
+                    auto& s0 = state->sqes[i0];
+                    std::memset(&s0, 0, sizeof(s0));
+                    s0.opcode = IORING_OP_RECV;
+                    s0.flags = IOSQE_IO_LINK;
+                    s0.fd = fd;
+                    s0.addr = reinterpret_cast<uint64_t>(buffer.data());
+                    s0.len = static_cast<uint32_t>(buffer.size());
+                    s0.user_data = op->id;
+                    state->sq_array[i0] = i0;
+
+                    uint32_t i1 = (tail + 1) & *state->sq_ring_mask;
+                    auto& s1 = state->sqes[i1];
+                    std::memset(&s1, 0, sizeof(s1));
+                    s1.opcode = IORING_OP_LINK_TIMEOUT;
+                    s1.addr = reinterpret_cast<uint64_t>(&op->timeout_ts);
+                    s1.len = 1;
+                    s1.user_data = linked_timeout_user_data;
+                    state->sq_array[i1] = i1;
+
+                    std::atomic_thread_fence(std::memory_order_release);
+                    *state->sq_tail = tail + 2;
+
+                    unsigned flags = 0;
+                    if (state->sq_flags && (*state->sq_flags & IORING_SQ_NEED_WAKEUP))
+                        flags |= IORING_ENTER_SQ_WAKEUP;
+
+                    submitted = io_uring_enter(static_cast<unsigned>(state->ring_fd), 2, 0, flags) >= 0;
+                }
+            }
+            else
+            {
+                if ((*state->sq_tail - *state->sq_head) < *state->sq_ring_entries)
+                {
+                    uint32_t tail = *state->sq_tail;
+                    uint32_t index = tail & *state->sq_ring_mask;
+                    auto& sqe = state->sqes[index];
+                    std::memset(&sqe, 0, sizeof(sqe));
+                    sqe.opcode = IORING_OP_RECV;
+                    sqe.fd = fd;
+                    sqe.addr = reinterpret_cast<uint64_t>(buffer.data());
+                    sqe.len = static_cast<uint32_t>(buffer.size());
+                    sqe.user_data = op->id;
+                    state->sq_array[index] = index;
+
+                    std::atomic_thread_fence(std::memory_order_release);
+                    *state->sq_tail = tail + 1;
+
+                    unsigned flags = 0;
+                    if (state->sq_flags && (*state->sq_flags & IORING_SQ_NEED_WAKEUP))
+                        flags |= IORING_ENTER_SQ_WAKEUP;
+
+                    submitted = io_uring_enter(static_cast<unsigned>(state->ring_fd), 1, 0, flags) >= 0;
+                }
+            }
+
+            if (!submitted)
+            {
                 state->in_flight_.erase(op->id);
                 op->result = -EAGAIN;
                 op->completed = true;
@@ -473,6 +551,13 @@ namespace streaming
         , scheduler_(std::move(scheduler))
         , state_(std::make_shared<ring_state>())
     {
+        // Disable Nagle's algorithm so small RPC packets are sent immediately.
+        // Without this, Nagle + delayed-ACK interaction causes ~40-80ms stalls per
+        // round-trip for payloads smaller than one TCP segment.
+        int flag = 1;
+        ::setsockopt(
+            client_.socket().native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
+
         try
         {
             setup_ring(state_);
@@ -529,11 +614,6 @@ namespace streaming
         teardown_ring(state);
     }
 
-    auto io_uring_tcp_stream::poll(coro::poll_op op, std::chrono::milliseconds timeout) -> coro::task<coro::poll_status>
-    {
-        co_return co_await scheduler_->poll(client_.socket(), op, timeout);
-    }
-
     auto io_uring_tcp_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
         -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
     {
@@ -544,19 +624,13 @@ namespace streaming
 
         while (true)
         {
-            auto ready = co_await poll(coro::poll_op::read, timeout);
-            if (ready == coro::poll_status::timeout)
-            {
-                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::timeout}, std::span<char>{}};
-            }
-            if (ready != coro::poll_status::read)
-            {
-                closed_ = true;
-                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, std::span<char>{}};
-            }
-
-            auto op = submit_recv(state_, client_.socket().native_handle(), buffer);
+            // Submit IORING_OP_RECV directly — io_uring waits for data asynchronously,
+            // so no prior epoll poll() on the socket fd is needed or wanted. When a
+            // timeout is provided we link an IORING_OP_LINK_TIMEOUT so the kernel
+            // cancels the RECV and returns -ECANCELED if no data arrives in time.
+            auto op = submit_recv(state_, client_.socket().native_handle(), buffer, timeout);
             auto result = co_await operation_awaitable(state_, op);
+
             if (result > 0)
             {
                 co_return std::pair{coro::net::io_status{coro::net::io_status::kind::ok},
@@ -572,6 +646,17 @@ namespace streaming
             if (native_error == EAGAIN || native_error == EWOULDBLOCK || native_error == EINTR)
             {
                 continue;
+            }
+            if (native_error == ECANCELED || native_error == ETIME)
+            {
+                // -ECANCELED: either the linked timeout fired, or set_closed() called
+                //             cancel_all_ops(). Distinguish by checking stopping flag.
+                // -ETIME:     linked timeout CQE (shouldn't reach here, but defensive).
+                if (closed_ || state_->stopping.load(std::memory_order_acquire))
+                {
+                    co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, std::span<char>{}};
+                }
+                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::timeout}, std::span<char>{}};
             }
 
             closed_ = true;
@@ -604,16 +689,10 @@ namespace streaming
             int native_error = static_cast<int>(-result);
             if (native_error == EAGAIN || native_error == EWOULDBLOCK || native_error == EINTR)
             {
-                auto ready = co_await poll(coro::poll_op::write, std::chrono::milliseconds{0});
-                if (ready == coro::poll_status::timeout)
-                {
-                    continue;
-                }
-                if (ready != coro::poll_status::write)
-                {
-                    closed_ = true;
-                    co_return coro::net::io_status{coro::net::io_status::kind::closed};
-                }
+                // Yield to the scheduler and retry rather than epoll-polling the socket
+                // fd for write-readiness. Polling the fd while receive() may have it
+                // registered for reads causes an EPOLL_CTL_ADD EEXIST conflict.
+                co_await scheduler_->schedule();
                 continue;
             }
 

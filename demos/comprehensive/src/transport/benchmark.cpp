@@ -39,6 +39,8 @@
 #include <transports/tcp/listener.h>
 #include <streaming/spsc_queue_stream.h>
 #include <streaming/tcp_stream.h>
+#include <streaming/io_uring_tcp_stream.h>
+#include <streaming/io_uring_listener.h>
 #include <transports/streaming/transport.h>
 #endif
 
@@ -537,12 +539,143 @@ namespace comprehensive
 
             return result;
         }
+
+        CORO_TASK(void)
+        io_uring_server_task(std::shared_ptr<coro::scheduler> scheduler,
+            rpc::event& server_ready,
+            const rpc::event& client_finished,
+            rpc::encoding enc,
+            uint16_t port)
+        {
+            auto on_shutdown_event = std::make_shared<rpc::event>();
+
+            auto service = std::make_shared<rpc::root_service>("io_uring_server", rpc::DEFAULT_PREFIX, scheduler);
+            service->set_default_encoding(enc);
+            service->set_shutdown_event(on_shutdown_event);
+
+            auto connection_handler
+                = [enc](const rpc::connection_settings& input_descr,
+                      rpc::interface_descriptor& output_interface,
+                      std::shared_ptr<rpc::service> child_service_ptr,
+                      std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+            {
+                auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
+                    "io_uring_client_proxy",
+                    transport,
+                    input_descr,
+                    output_interface,
+                    [enc](const rpc::shared_ptr<i_data_processor>& parent,
+                        rpc::shared_ptr<i_data_processor>& local_service,
+                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
+                    {
+                        (void)parent;
+                        service_ptr->set_default_encoding(enc);
+                        local_service = create_data_processor();
+                        CO_RETURN rpc::error::OK();
+                    });
+                CO_RETURN ret;
+            };
+
+            rpc::io_uring::listener io_uring_listener(connection_handler);
+            io_uring_listener.start_listening(service, coro::net::socket_address{"127.0.0.1", port});
+            service.reset();
+            server_ready.set();
+
+            co_await client_finished.wait();
+            CO_AWAIT io_uring_listener.stop_listening();
+            co_await on_shutdown_event->wait();
+        }
+
+        CORO_TASK(void)
+        io_uring_client_task(std::shared_ptr<coro::scheduler> scheduler,
+            const rpc::event& server_ready,
+            rpc::event& client_finished,
+            rpc::encoding enc,
+            size_t blob_size,
+            uint16_t port,
+            benchmark_result& result)
+        {
+            co_await server_ready.wait();
+
+            auto client_service
+                = std::make_shared<rpc::root_service>("io_uring_client", rpc::zone_address(2, 1), scheduler);
+            client_service->set_default_encoding(enc);
+
+            coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", port});
+
+            const auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
+            if (connection_status != coro::net::connect_status::connected)
+            {
+                result.error = rpc::error::ZONE_NOT_FOUND();
+                client_finished.set();
+                CO_RETURN;
+            }
+
+            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
+            auto client_transport = rpc::stream_transport::streaming_transport::create(
+                "io_uring_client_transport", client_service, std::move(stm), nullptr);
+
+            rpc::shared_ptr<i_data_processor> remote_service;
+            rpc::shared_ptr<i_data_processor> input_service;
+
+            const auto error = CO_AWAIT client_service->connect_to_zone(
+                "io_uring_server", client_transport, input_service, remote_service);
+
+            if (error != rpc::error::OK())
+            {
+                result.error = error;
+                client_finished.set();
+                CO_RETURN;
+            }
+
+            client_finished.set();
+
+            const auto payload = make_blob(blob_size);
+            std::vector<int64_t> durations_us;
+            constexpr size_t io_uring_warmup_calls = 100;
+            result.error = CO_AWAIT run_benchmark_calls(remote_service, payload, durations_us, io_uring_warmup_calls);
+            if (result.error == rpc::error::OK())
+            {
+                result.stats = compute_stats(durations_us);
+            }
+
+            remote_service.reset();
+            client_transport.reset();
+            client_service.reset();
+        }
+
+        benchmark_result run_io_uring_benchmark(rpc::encoding enc, size_t blob_size, uint16_t port)
+        {
+            benchmark_result result{};
+
+            auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+                    .pool = coro::thread_pool::options{.thread_count = 2},
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+
+            auto scheduler_2 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+                coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+                    .pool = coro::thread_pool::options{.thread_count = 2},
+                    .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+
+            rpc::event server_ready;
+            rpc::event client_finished;
+
+            coro::sync_wait(coro::when_all(io_uring_server_task(scheduler_1, server_ready, client_finished, enc, port),
+                io_uring_client_task(scheduler_2, server_ready, client_finished, enc, blob_size, port, result)));
+
+            scheduler_1->shutdown();
+            scheduler_2->shutdown();
+
+            return result;
+        }
 #endif
 
         void print_header()
         {
             fmt::print("Benchmark: 1000 RPC calls per test, middle 80% (drop first/last 10%)\n");
-            fmt::print("Warmup: local=10 calls, spsc=20 calls, tcp=100 calls (not included in timing)\n");
+            fmt::print(
+                "Warmup: local=10 calls, spsc=20 calls, io_uring=100 calls, tcp=100 calls (not included in timing)\n");
             fmt::print("Note: Throughput shown as 'N/A' when avg time < 0.5us (insufficient timing precision)\n");
             fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");
             fmt::print("-----------------------------------------------------------------------------------------------"
@@ -653,6 +786,24 @@ int main()
             print_stats("tcp", enc.name, blob_size, result.stats);
         }
     }
+
+#if defined(__linux__)
+    fmt::print("run_io_uring_benchmark\n");
+    uint16_t io_uring_port = 18800;
+    for (const auto& enc : encodings)
+    {
+        for (size_t blob_size : blob_sizes)
+        {
+            auto result = run_io_uring_benchmark(enc.enc, blob_size, io_uring_port++);
+            if (result.error != rpc::error::OK())
+            {
+                fmt::print("io_uring | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+                continue;
+            }
+            print_stats("io_uring", enc.name, blob_size, result.stats);
+        }
+    }
+#endif
 
     print_footer();
     return 0;
