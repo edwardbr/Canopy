@@ -46,7 +46,7 @@ if(CANOPY_BUILD_COROUTINE)
     tcp_transport_demo
     PUBLIC comprehensive_idl
            transport_local
-           transport_tcp
+           transport_streaming
            rpc
            canopy_network_config
            ${CANOPY_LIBRARIES})
@@ -85,8 +85,7 @@ if(CANOPY_BUILD_COROUTINE)
     benchmark
     PUBLIC comprehensive_idl
            transport_local
-           transport_tcp
-           streaming
+           transport_streaming
            rpc
            ${CANOPY_LIBRARIES})
   target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
