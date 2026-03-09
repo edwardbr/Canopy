@@ -11,104 +11,65 @@
 #include <gtest/gtest.h>
 
 #include <rpc/rpc.h>
-#ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
-#include <rpc/telemetry/multiplexing_telemetry_service.h>
-#endif
-
-#include <common/foo_impl.h>
 #include <common/tests.h>
+#include <common/transport_setup_base.h>
 #include <transports/local/transport.h>
 
-template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class inproc_setup
+template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
+class inproc_setup
+    : public transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-#ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::scheduler> io_scheduler_;
-#endif
-    std::shared_ptr<rpc::root_service> root_service_;
     std::shared_ptr<rpc::child_service> child_service_;
     std::weak_ptr<rpc::child_service> child_service_weak_;
-    rpc::shared_ptr<yyy::i_host> i_host_ptr_;
-    rpc::weak_ptr<yyy::i_host> local_host_ptr_;
-    rpc::shared_ptr<yyy::i_example> i_example_ptr_;
-
-    const bool has_enclave_ = true;
-    bool use_host_in_child_ = UseHostInChild;
-    bool run_standard_tests_ = RunStandardTests;
-
-    bool error_has_occurred_ = false;
 
     bool startup_complete_ = false;
     bool shutdown_complete_ = false;
 
 public:
-#ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
-#endif
-    bool error_has_occurred() const { return error_has_occurred_; }
-    bool has_service() { return true; }
-
     virtual ~inproc_setup() = default;
-
-    std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
-    bool get_has_enclave() const { return has_enclave_; }
-    bool is_sgx_setup() const { return false; }
-    rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
-    void set_example(const rpc::shared_ptr<yyy::i_example>& example) { i_example_ptr_ = example; }
-    rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }
-    void set_host(const rpc::shared_ptr<yyy::i_host>& host) { i_host_ptr_ = host; }
-    rpc::shared_ptr<yyy::i_host> get_local_host_ptr() { return local_host_ptr_.lock(); }
-    bool get_use_host_in_child() const { return use_host_in_child_; }
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
     {
         auto ret = CO_AWAIT task;
         if (!ret)
         {
-            error_has_occurred_ = true;
+            this->error_has_occurred_ = true;
         }
         CO_RETURN;
     }
 
     CORO_TASK(bool) CoroSetUp()
     {
-#ifdef CANOPY_USE_TELEMETRY
-        auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
-        }
-#endif
+        this->start_telemetry_test();
 
-        root_service_ = std::make_shared<rpc::root_service>("host",
+        this->root_service_ = std::make_shared<rpc::root_service>("host",
             rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
             ,
-            io_scheduler_
+            this->io_scheduler_
 #endif
         );
-        current_host_service = root_service_;
+        current_host_service = this->root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());
-        local_host_ptr_ = hst; // assign to weak ptr
+        this->local_host_ptr_ = hst;
 
-        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", root_service_);
-        child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
+        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
+        child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
             [&](const rpc::shared_ptr<yyy::i_host>& host,
                 rpc::shared_ptr<yyy::i_example>& new_example,
                 const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
             {
-                i_host_ptr_ = host;
+                this->i_host_ptr_ = host;
                 child_service_ = child_service_ptr;
                 child_service_weak_ = child_service_ptr;
                 new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
-                if (use_host_in_child_)
+                if (this->use_host_in_child_)
                     CO_AWAIT new_example->set_host(host);
                 CO_RETURN rpc::error::OK();
             });
 
-        auto ret = CO_AWAIT root_service_->connect_to_zone("main child", child_transport, hst, i_example_ptr_);
+        auto ret = CO_AWAIT this->root_service_->connect_to_zone("main child", child_transport, hst, this->i_example_ptr_);
         startup_complete_ = true;
         if (ret != rpc::error::OK())
         {
@@ -119,20 +80,18 @@ public:
 
     virtual void set_up()
     {
-
 #ifdef CANOPY_BUILD_COROUTINE
-        io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
-                .pool = coro::thread_pool::options{
-                    .thread_count = 1,
-                }}));
+        this->io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(coro::scheduler::options{
+            .thread_strategy = coro::scheduler::thread_strategy_t::manual, .pool = coro::thread_pool::options {
+                .thread_count = 1,
+            }}));
 
-        RPC_ASSERT(io_scheduler_->spawn_detached(check_for_error(CoroSetUp())));
+        RPC_ASSERT(this->io_scheduler_->spawn_detached(check_for_error(CoroSetUp())));
         while (startup_complete_ == false)
         {
-            io_scheduler_->process_events(std::chrono::milliseconds(1));
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
-        while (io_scheduler_->process_events(std::chrono::milliseconds(1)) > 0)
+        while (this->io_scheduler_->process_events(std::chrono::milliseconds(1)) > 0)
         {
             // Keep processing while there are scheduled tasks
         }
@@ -141,25 +100,16 @@ public:
         ASSERT_EQ(startup_complete_, true);
 #endif
 
-        // auto err_code = SYNC_WAIT();
-
-        ASSERT_EQ(error_has_occurred_, false);
+        ASSERT_EQ(this->error_has_occurred_, false);
     }
 
     CORO_TASK(void) CoroTearDown()
     {
-        // relese child service
         child_service_ = nullptr;
-
-        // release childs reference to host
-        i_host_ptr_ = nullptr;
-
-        // release parents reference to child
-        i_example_ptr_ = nullptr;
-
-        root_service_ = nullptr;
+        this->i_host_ptr_ = nullptr;
+        this->i_example_ptr_ = nullptr;
+        this->root_service_ = nullptr;
         current_host_service.reset();
-
         shutdown_complete_ = true;
         CO_RETURN;
     }
@@ -167,16 +117,12 @@ public:
     virtual void tear_down()
     {
 #ifdef CANOPY_BUILD_COROUTINE
-        RPC_ASSERT(io_scheduler_->spawn_detached(CoroTearDown()));
-        // Process events until CoroTearDown completes and all scheduled cleanup tasks finish
-        // Note: We can't reliably wait for child_service_weak_ to be null because cleanup
-        // operations are async and may have complex reference patterns in nested hierarchies
+        RPC_ASSERT(this->io_scheduler_->spawn_detached(CoroTearDown()));
         while (shutdown_complete_ == false)
         {
-            io_scheduler_->process_events(std::chrono::milliseconds(1));
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
-        // Continue processing to allow async cleanup operations to complete
-        while (io_scheduler_->process_events(std::chrono::milliseconds(1)) > 0)
+        while (this->io_scheduler_->process_events(std::chrono::milliseconds(1)) > 0)
         {
             // Keep processing while there are scheduled tasks
         }
@@ -184,43 +130,37 @@ public:
         CoroTearDown();
 #endif
 
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->reset_for_test();
-        }
-#endif
-        // SYNC_WAIT(CoroTearDown());P
+        this->reset_telemetry_for_test();
     }
 
     CORO_TASK(rpc::shared_ptr<yyy::i_example>) create_new_zone()
     {
         rpc::shared_ptr<yyy::i_host> hst;
-        if (use_host_in_child_)
-            hst = local_host_ptr_.lock();
+        if (this->use_host_in_child_)
+            hst = this->local_host_ptr_.lock();
 
         rpc::shared_ptr<yyy::i_example> example_relay_ptr;
 
-        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", root_service_);
-        child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
+        auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
+        child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
             [&](const rpc::shared_ptr<yyy::i_host>& host,
                 rpc::shared_ptr<yyy::i_example>& new_example,
                 const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
             {
                 new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
-                if (use_host_in_child_)
+                if (this->use_host_in_child_)
                     CO_AWAIT new_example->set_host(host);
                 CO_RETURN rpc::error::OK();
             });
 
-        auto err_code = CO_AWAIT root_service_->connect_to_zone("main child", child_transport, hst, example_relay_ptr);
+        auto err_code
+            = CO_AWAIT this->root_service_->connect_to_zone("main child", child_transport, hst, example_relay_ptr);
 
         if (CreateNewZoneThenCreateSubordinatedZone)
         {
             rpc::shared_ptr<yyy::i_example> new_ptr;
             auto err = CO_AWAIT example_relay_ptr->create_example_in_subordinate_zone(
-                new_ptr, use_host_in_child_ ? hst : nullptr);
+                new_ptr, this->use_host_in_child_ ? hst : nullptr);
             if (err == rpc::error::OK())
             {
                 CO_AWAIT example_relay_ptr->set_host(nullptr);

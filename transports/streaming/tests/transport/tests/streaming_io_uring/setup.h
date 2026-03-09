@@ -4,131 +4,46 @@
  */
 #pragma once
 
-#include <common/foo_impl.h>
-
-#ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
-#include <rpc/telemetry/multiplexing_telemetry_service.h>
-#endif
-
-#include <streaming/listener.h>
 #include <streaming/io_uring_stream_acceptor.h>
-#include <transports/streaming/transport.h>
+#include <transport/tests/streaming_setup_base.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
 class streaming_io_uring_setup
+    : public streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-    std::shared_ptr<rpc::root_service> root_service_;
-    std::shared_ptr<rpc::root_service> peer_service_;
-
-    std::shared_ptr<rpc::stream_transport::streaming_transport> server_transport_;
-    std::shared_ptr<rpc::stream_transport::streaming_transport> client_transport_;
-    std::unique_ptr<streaming::listener> listener_;
-    rpc::shared_ptr<yyy::i_host> i_host_ptr_;
-    rpc::weak_ptr<yyy::i_host> local_host_ptr_;
-    rpc::shared_ptr<yyy::i_example> i_example_ptr_;
-
-    const bool has_enclave_ = true;
-    bool use_host_in_child_ = UseHostInChild;
-    bool run_standard_tests_ = RunStandardTests;
-
-    std::shared_ptr<coro::scheduler> io_scheduler_;
-    bool error_has_occurred_ = false;
-    bool setup_complete_ = false;
-
-public:
-    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
-    bool error_has_occurred() const { return error_has_occurred_; }
-    bool has_service() { return true; }
-
-    virtual ~streaming_io_uring_setup() = default;
-
-    std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
-    std::shared_ptr<rpc::stream_transport::streaming_transport> get_server_transport() const
+protected:
+    CORO_TASK(bool) do_coro_setup() override
     {
-        return server_transport_;
-    };
-    bool get_has_enclave() const { return has_enclave_; }
-    bool is_sgx_setup() const { return false; }
-    rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
-    void set_example(const rpc::shared_ptr<yyy::i_example>& example) { i_example_ptr_ = example; }
-    rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }
-    void set_host(const rpc::shared_ptr<yyy::i_host>& host) { i_host_ptr_ = host; }
-    rpc::shared_ptr<yyy::i_host> get_local_host_ptr() { return local_host_ptr_.lock(); }
-    bool get_use_host_in_child() const { return use_host_in_child_; }
-
-    CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
-    {
-        auto ret = CO_AWAIT task;
-        if (!ret)
-        {
-            RPC_ASSERT(false);
-            error_has_occurred_ = true;
-        }
-        CO_RETURN;
-    }
-
-    CORO_TASK(bool) CoroSetUp()
-    {
-#ifdef CANOPY_USE_TELEMETRY
-        auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
-        }
-#endif
-
         auto root_zone_id = rpc::DEFAULT_PREFIX;
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, io_scheduler_);
-        root_service_ = std::make_shared<rpc::root_service>("host", root_zone_id, io_scheduler_);
-
-        current_host_service = root_service_;
+        this->peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, this->io_scheduler_);
+        this->root_service_ = std::make_shared<rpc::root_service>("host", root_zone_id, this->io_scheduler_);
+        current_host_service = this->root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());
-        local_host_ptr_ = hst;
+        this->local_host_ptr_ = hst;
 
-        auto rpc_handler = [use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_descr,
-                               rpc::interface_descriptor& output_interface,
-                               std::shared_ptr<rpc::service> child_service_ptr,
-                               std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
-        {
-            auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
-                transport,
-                input_descr,
-                output_interface,
-                [&](const rpc::shared_ptr<yyy::i_host>& host,
-                    rpc::shared_ptr<yyy::i_example>& new_example,
-                    const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                {
-                    new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(service_ptr, host));
+        auto rpc_handler = this->make_connection_handler();
 
-                    if (use_host_in_child)
-                        CO_AWAIT new_example->set_host(host);
-                    CO_RETURN rpc::error::OK();
-                });
-            CO_RETURN ret;
-        };
-
-        listener_ = std::make_unique<streaming::listener>(
+        this->listener_ = std::make_unique<streaming::listener>(
             std::make_shared<streaming::io_uring_stream_acceptor>(coro::net::socket_address{"127.0.0.1", 8082}),
-            [this, peer_service = peer_service_, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
+            [this, peer_service = this->peer_service_, rpc_handler](
+                std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
             {
-                server_transport_ = rpc::stream_transport::streaming_transport::create(
-                    "server_transport", peer_service, std::move(stream), rpc_handler);
+                this->responder_transport_ = rpc::stream_transport::streaming_transport::create(
+                    "responder_transport", peer_service, std::move(stream), rpc_handler);
                 CO_RETURN;
             });
 
-        if (!listener_->start_listening(peer_service_))
+        if (!this->listener_->start_listening(this->peer_service_))
         {
             RPC_ERROR("Failed to start io_uring listener");
             CO_RETURN false;
         }
 
-        auto scheduler = root_service_->get_scheduler();
+        auto scheduler = this->root_service_->get_scheduler();
         coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8082});
 
         auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
@@ -139,10 +54,11 @@ public:
         }
 
         auto io_uring_stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
-        client_transport_ = rpc::stream_transport::streaming_transport::create(
-            "client_transport", root_service_, std::move(io_uring_stm), nullptr);
+        this->initiator_transport_ = rpc::stream_transport::streaming_transport::create(
+            "initiator_transport", this->root_service_, std::move(io_uring_stm), nullptr);
 
-        auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport_, hst, i_example_ptr_);
+        auto ret = CO_AWAIT this->root_service_->connect_to_zone(
+            "main child", this->initiator_transport_, hst, this->i_example_ptr_);
 
         if (ret != rpc::error::OK())
         {
@@ -153,103 +69,16 @@ public:
         CO_RETURN true;
     }
 
-    virtual void set_up()
+    CORO_TASK(void) do_coro_teardown() override
     {
-        setup_complete_ = false;
-        io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
-                .pool = coro::thread_pool::options{
-                    .thread_count = 1,
-                }}));
-
-        auto setup_task = [this]() -> coro::task<void>
+        if (this->listener_)
         {
-            CO_AWAIT check_for_error(CoroSetUp());
-            setup_complete_ = true;
-            CO_RETURN;
-        };
-
-        io_scheduler_->spawn_detached(setup_task());
-
-        while (!setup_complete_)
-        {
-            io_scheduler_->process_events(std::chrono::milliseconds(1));
+            CO_AWAIT this->listener_->stop_listening();
+            this->listener_.reset();
         }
-
-        ASSERT_EQ(error_has_occurred_, false);
-    }
-
-    CORO_TASK(void) CoroTearDown()
-    {
-        i_example_ptr_ = nullptr;
-        i_host_ptr_ = nullptr;
-        local_host_ptr_.reset();
-
-        if (listener_)
-        {
-            CO_AWAIT listener_->stop_listening();
-            listener_.reset();
-        }
-
         CO_RETURN;
     }
 
-    virtual void tear_down()
-    {
-        bool shutdown_complete = false;
-        auto shutdown_task = [&]() -> coro::task<void>
-        {
-            CO_AWAIT CoroTearDown();
-            CO_AWAIT io_scheduler_->schedule();
-            CO_AWAIT io_scheduler_->schedule();
-            shutdown_complete = true;
-            CO_RETURN;
-        };
-
-        RPC_ASSERT(io_scheduler_->spawn_detached(shutdown_task()));
-
-        while (!shutdown_complete)
-        {
-            io_scheduler_->process_events(std::chrono::milliseconds(1));
-        }
-
-        const int max_iterations = 1000;
-        int iteration = 0;
-        int disconnected_iterations = 0;
-        while (iteration < max_iterations)
-        {
-            bool all_disconnected = true;
-
-            if (client_transport_ && client_transport_->get_status() != rpc::transport_status::DISCONNECTED)
-                all_disconnected = false;
-            if (server_transport_ && server_transport_->get_status() != rpc::transport_status::DISCONNECTED)
-                all_disconnected = false;
-
-            if (all_disconnected)
-            {
-                ++disconnected_iterations;
-                if (disconnected_iterations > 50)
-                    break;
-            }
-
-            io_scheduler_->process_events(std::chrono::milliseconds(1));
-            ++iteration;
-        }
-
-        peer_service_.reset();
-        root_service_.reset();
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->reset_for_test();
-        }
-#endif
-    }
-
-    CORO_TASK(rpc::shared_ptr<yyy::i_example>) create_new_zone()
-    {
-        RPC_INFO("create_new_zone is not implemented for streaming_io_uring_setup");
-        CO_RETURN nullptr;
-    }
+public:
+    virtual ~streaming_io_uring_setup() = default;
 };
