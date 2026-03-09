@@ -27,6 +27,13 @@ namespace rpc::stream_transport
 
         transport->keep_alive_ = transport;
         transport->set_status(rpc::transport_status::CONNECTED);
+
+        // Server-side transports (those with a connection_handler) start the pump immediately
+        // so they can receive the client's init message.  Client-side transports have no
+        // connection_handler and their pump is started inside inner_connect().
+        if (transport->connection_handler_)
+            service->spawn(transport->pump_send_and_receive());
+
         return transport;
     }
 
@@ -76,8 +83,7 @@ namespace rpc::stream_transport
 
     CORO_TASK(int) streaming_transport::inner_accept()
     {
-        auto service = get_service();
-        service->spawn(pump_send_and_receive());
+        // Pump is already running — started by create() when connection_handler was provided.
         CO_RETURN rpc::error::OK();
     }
 

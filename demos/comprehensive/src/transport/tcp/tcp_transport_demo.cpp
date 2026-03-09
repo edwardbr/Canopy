@@ -40,8 +40,8 @@
 #include <iostream> // kept for args help/error output only
 #include <chrono>
 
-#include <transports/tcp/listener.h>
-#include <streaming/tcp_stream.h>
+#include <streaming/listener.h>
+#include <streaming/tcp_stream_acceptor.h>
 #include <transports/streaming/transport.h>
 #include <comprehensive/comprehensive_stub.h>
 
@@ -79,44 +79,50 @@ namespace comprehensive
             RPC_INFO("Server zone ID (address): {}", rpc::to_yas_json<std::string>(service->get_zone_id().get_address()));
 
             // Create TCP listener with connection handler.
-            auto listener = std::make_shared<rpc::tcp::listener>(
-                [](const rpc::connection_settings& input_descr,
-                    rpc::interface_descriptor& output_interface,
-                    std::shared_ptr<rpc::service> child_service_ptr,
-                    std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
-                {
-                    RPC_INFO("Server: Accepting connection from zone {}", input_descr.input_zone_id.get_subnet());
+            auto rpc_handler = [](const rpc::connection_settings& input_descr,
+                                   rpc::interface_descriptor& output_interface,
+                                   std::shared_ptr<rpc::service> child_service_ptr,
+                                   std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+            {
+                RPC_INFO("Server: Accepting connection from zone {}", input_descr.input_zone_id.get_subnet());
 
-                    auto ret
-                        = CO_AWAIT child_service_ptr->attach_remote_zone<i_calculator, i_calculator>("tcp_client_proxy",
-                            transport,
-                            input_descr,
-                            output_interface,
-                            [](const rpc::shared_ptr<i_calculator>& remote_calc,
-                                rpc::shared_ptr<i_calculator>& local_calc,
-                                const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                            {
-                                local_calc = rpc::shared_ptr<i_calculator>(new calculator_impl(service_ptr));
-                                RPC_INFO("Server: Created calculator service");
-                                CO_RETURN rpc::error::OK();
-                            });
+                auto ret
+                    = CO_AWAIT child_service_ptr->attach_remote_zone<i_calculator, i_calculator>("tcp_client_proxy",
+                        transport,
+                        input_descr,
+                        output_interface,
+                        [](const rpc::shared_ptr<i_calculator>& remote_calc,
+                            rpc::shared_ptr<i_calculator>& local_calc,
+                            const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
+                        {
+                            local_calc = rpc::shared_ptr<i_calculator>(new calculator_impl(service_ptr));
+                            RPC_INFO("Server: Created calculator service");
+                            CO_RETURN rpc::error::OK();
+                        });
 
-                    if (ret == rpc::error::OK())
-                        RPC_INFO("Server: Client connected successfully");
-                    else
-                        RPC_ERROR("Server: Client connection failed: {}", static_cast<int>(ret));
+                if (ret == rpc::error::OK())
+                    RPC_INFO("Server: Client connected successfully");
+                else
+                    RPC_ERROR("Server: Client connection failed: {}", static_cast<int>(ret));
 
-                    CO_RETURN ret;
-                }
-                // , std::chrono::milliseconds(100000)
-            );
+                CO_RETURN ret;
+            };
 
             const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
                                     ? coro::net::domain_t::ipv6
                                     : coro::net::domain_t::ipv4;
+            const coro::net::socket_address endpoint{coro::net::ip_address::from_string(host, domain), port};
 
-            if (!listener->start_listening(
-                    service, coro::net::socket_address{coro::net::ip_address::from_string(host, domain), port}))
+            auto listener
+                = std::make_shared<streaming::listener>(std::make_shared<streaming::tcp_stream_acceptor>(endpoint),
+                    [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
+                    {
+                        rpc::stream_transport::streaming_transport::create(
+                            "server_transport", svc, std::move(stream), rpc_handler);
+                        CO_RETURN;
+                    });
+
+            if (!listener->start_listening(service))
             {
                 RPC_ERROR("Server: Failed to start listening");
                 CO_RETURN false;
