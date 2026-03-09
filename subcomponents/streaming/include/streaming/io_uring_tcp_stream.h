@@ -37,10 +37,6 @@ namespace streaming
         struct ring_state;
 
     private:
-        // Internal readiness polling used by receive() and send(); not part of the stream interface.
-        auto poll(coro::poll_op op, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<coro::poll_status>;
-
         static auto completion_pump(std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler)
             -> coro::task<void>;
 

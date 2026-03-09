@@ -86,6 +86,7 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC comprehensive_idl
            transport_local
            transport_tcp
+           streaming
            rpc
            ${CANOPY_LIBRARIES})
   target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
