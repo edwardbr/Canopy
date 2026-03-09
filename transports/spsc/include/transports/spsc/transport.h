@@ -15,7 +15,7 @@
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
 #include <spsc/spsc.h>
-#include <transports/spsc/queue.h>
+#include <spsc/queue.h>
 #include <streaming/spsc_queue_stream.h>
 
 namespace rpc::spsc
