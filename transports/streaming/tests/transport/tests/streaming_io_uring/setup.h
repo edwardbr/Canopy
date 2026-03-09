@@ -2,6 +2,7 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
+#pragma once
 
 #include <common/foo_impl.h>
 
@@ -10,18 +11,19 @@
 #include <rpc/telemetry/multiplexing_telemetry_service.h>
 #endif
 
-#include <transports/tcp/listener.h>
-#include <streaming/tcp_stream.h>
+#include <streaming/io_uring_listener.h>
+#include <streaming/io_uring_tcp_stream.h>
 #include <transports/streaming/transport.h>
 
-template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class tcp_setup
+template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
+class streaming_io_uring_setup
 {
     std::shared_ptr<rpc::root_service> root_service_;
     std::shared_ptr<rpc::root_service> peer_service_;
 
     std::shared_ptr<rpc::stream_transport::streaming_transport> server_transport_;
     std::shared_ptr<rpc::stream_transport::streaming_transport> client_transport_;
-    std::unique_ptr<rpc::tcp::listener> listener_;
+    std::unique_ptr<rpc::io_uring::listener> listener_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
     rpc::weak_ptr<yyy::i_host> local_host_ptr_;
     rpc::shared_ptr<yyy::i_example> i_example_ptr_;
@@ -39,7 +41,7 @@ public:
     bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return true; }
 
-    virtual ~tcp_setup() = default;
+    virtual ~streaming_io_uring_setup() = default;
 
     std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
     std::shared_ptr<rpc::stream_transport::streaming_transport> get_server_transport() const
@@ -81,30 +83,22 @@ public:
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        // Create the peer service (server side)
         peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, io_scheduler_);
-
-        // Create the root service (client side)
         root_service_ = std::make_shared<rpc::root_service>("host", root_zone_id, io_scheduler_);
 
         current_host_service = root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());
-        local_host_ptr_ = hst; // assign to weak ptr
+        local_host_ptr_ = hst;
 
-        // Create the listener for the server side
-        // The connection handler will be called when a client connects
-        listener_ = std::make_unique<rpc::tcp::listener>(
+        listener_ = std::make_unique<rpc::io_uring::listener>(
             [this, use_host_in_child = use_host_in_child_](const rpc::connection_settings& input_descr,
                 rpc::interface_descriptor& output_interface,
                 std::shared_ptr<rpc::service> child_service_ptr,
                 std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
             {
-                // Server-side connection handler
-                // Store the transport for later use
                 server_transport_ = transport;
 
-                // Use attach_remote_zone to properly manage object lifetime, like SPSC does
                 auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
                     transport,
                     input_descr,
@@ -120,36 +114,28 @@ public:
                         CO_RETURN rpc::error::OK();
                     });
                 CO_RETURN ret;
-            }
-            // ,            std::chrono::milliseconds(100000)
-        );
+            });
 
-        // Start the listener on the peer service
-        if (!listener_->start_listening(peer_service_, coro::net::socket_address{"127.0.0.1", 8080}))
+        if (!listener_->start_listening(peer_service_, coro::net::socket_address{"127.0.0.1", 8082}))
         {
-            RPC_ERROR("Failed to start TCP listener");
+            RPC_ERROR("Failed to start io_uring listener");
             CO_RETURN false;
         }
 
-        // Create a TCP client and connect to the server.
         auto scheduler = root_service_->get_scheduler();
-        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8080});
+        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8082});
 
         auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
         if (connection_status != coro::net::connect_status::connected)
         {
-            RPC_ERROR("Failed to connect TCP client to server (status: {})", static_cast<int>(connection_status));
+            RPC_ERROR("Failed to connect io_uring client to server (status: {})", static_cast<int>(connection_status));
             CO_RETURN false;
         }
 
-        // Create the client transport
-        auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
-        client_transport_ = rpc::stream_transport::streaming_transport::create("client_transport",
-            root_service_,
-            std::move(tcp_stm),
-            nullptr); // client doesn't need handler
+        auto io_uring_stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
+        client_transport_ = rpc::stream_transport::streaming_transport::create(
+            "client_transport", root_service_, std::move(io_uring_stm), nullptr);
 
-        // Connect using the client transport
         auto ret = CO_AWAIT root_service_->connect_to_zone("main child", client_transport_, hst, i_example_ptr_);
 
         if (ret != rpc::error::OK())
@@ -179,8 +165,6 @@ public:
 
         io_scheduler_->spawn_detached(setup_task());
 
-        // Process events until setup completes
-        // Note: pump_send_and_receive tasks keep running, so scheduler never empties
         while (!setup_complete_)
         {
             io_scheduler_->process_events(std::chrono::milliseconds(1));
@@ -195,7 +179,6 @@ public:
         i_host_ptr_ = nullptr;
         local_host_ptr_.reset();
 
-        // Stop the listener first
         if (listener_)
         {
             CO_AWAIT listener_->stop_listening();
@@ -211,7 +194,6 @@ public:
         auto shutdown_task = [&]() -> coro::task<void>
         {
             CO_AWAIT CoroTearDown();
-            // Give time for transport destructors to schedule detach coroutines
             CO_AWAIT io_scheduler_->schedule();
             CO_AWAIT io_scheduler_->schedule();
             shutdown_complete = true;
@@ -220,14 +202,11 @@ public:
 
         RPC_ASSERT(io_scheduler_->spawn_detached(shutdown_task()));
 
-        // Process events until shutdown completes
         while (!shutdown_complete)
         {
             io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
 
-        // Wait for transports to fully disconnect before destroying services
-        // The pump_send_and_receive coroutines must complete before scheduler destruction
         const int max_iterations = 1000;
         int iteration = 0;
         int disconnected_iterations = 0;
@@ -235,7 +214,6 @@ public:
         {
             bool all_disconnected = true;
 
-            // Check if both transports are disconnected
             if (client_transport_ && client_transport_->get_status() != rpc::transport_status::DISCONNECTED)
                 all_disconnected = false;
             if (server_transport_ && server_transport_->get_status() != rpc::transport_status::DISCONNECTED)
@@ -243,13 +221,9 @@ public:
 
             if (all_disconnected)
             {
-                // Once disconnected, continue processing for additional iterations
-                // to ensure pump coroutines have fully exited (not just set DISCONNECTED status)
                 ++disconnected_iterations;
                 if (disconnected_iterations > 50)
-                {
                     break;
-                }
             }
 
             io_scheduler_->process_events(std::chrono::milliseconds(1));
@@ -269,10 +243,7 @@ public:
 
     CORO_TASK(rpc::shared_ptr<yyy::i_example>) create_new_zone()
     {
-        // TCP setup doesn't support creating local child zones via connect_to_zone
-        // Instead, TCP is for connecting to remote services over network
-        // For local child zones, use inproc_setup instead
-        RPC_INFO("create_new_zone is not implemented for tcp_setup - use inproc_setup for local child zones");
+        RPC_INFO("create_new_zone is not implemented for streaming_io_uring_setup");
         CO_RETURN nullptr;
     }
 };

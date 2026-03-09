@@ -6,8 +6,6 @@
 
 #include <gtest/gtest.h>
 
-#if defined(__linux__)
-
 #include <streaming/io_uring_tcp_stream.h>
 #include <coro/coro.hpp>
 
@@ -254,8 +252,6 @@ TEST(IoUringStream, LargePayload)
     EXPECT_TRUE(send_ok);
     EXPECT_TRUE(recv_ok);
 }
-
-#endif // defined(__linux__)
 
 // libstreaming.so uses rpc_log via the RPC macro infrastructure. Tests that
 // do not link against the full RPC stack must provide this stub.

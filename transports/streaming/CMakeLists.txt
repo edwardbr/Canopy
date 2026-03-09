@@ -21,7 +21,14 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     PRIVATE ${CANOPY_INCLUDES})
 
-  target_link_libraries(transport_streaming PUBLIC streaming PRIVATE yas_common streaming_transport_idl rpc_types_idl libcoro ${CANOPY_LIBRARIES})
+  target_link_libraries(
+    transport_streaming
+    PUBLIC streaming
+    PRIVATE yas_common
+            streaming_transport_idl
+            rpc_types_idl
+            libcoro
+            ${CANOPY_LIBRARIES})
 
   target_compile_options(transport_streaming PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(transport_streaming PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

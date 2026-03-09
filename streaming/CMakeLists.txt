@@ -47,7 +47,9 @@ if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
 
-if(CANOPY_BUILD_TEST AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CANOPY_BUILD_COROUTINE)
+if(CANOPY_BUILD_TEST
+   AND CMAKE_SYSTEM_NAME STREQUAL "Linux"
+   AND CANOPY_BUILD_COROUTINE)
   add_executable(io_uring_stream_test tests/io_uring_stream_test.cpp)
   target_include_directories(io_uring_stream_test PRIVATE ${CANOPY_INCLUDES})
   target_compile_definitions(io_uring_stream_test PRIVATE ${CANOPY_DEFINES})

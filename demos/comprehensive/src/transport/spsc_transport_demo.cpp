@@ -58,8 +58,8 @@ namespace comprehensive
 
             auto stream_1
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_1, &queues->to_process_2, scheduler);
-            auto transport_1
-                = rpc::stream_transport::streaming_transport::create("transport_1", service_1, std::move(stream_1), nullptr);
+            auto transport_1 = rpc::stream_transport::streaming_transport::create(
+                "transport_1", service_1, std::move(stream_1), nullptr);
 
             rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
 
@@ -147,8 +147,8 @@ namespace comprehensive
 
             auto stream_2
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2
-                = rpc::stream_transport::streaming_transport::create("transport_2", service_2, std::move(stream_2), handler);
+            auto transport_2 = rpc::stream_transport::streaming_transport::create(
+                "transport_2", service_2, std::move(stream_2), handler);
 
             co_await transport_2->accept();
 

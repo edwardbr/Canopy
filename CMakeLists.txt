@@ -66,7 +66,7 @@ add_subdirectory(types)
 add_subdirectory(subcomponents/network_config)
 
 if(CANOPY_BUILD_COROUTINE)
-  add_subdirectory(subcomponents/streaming)
+  add_subdirectory(streaming)
 endif()
 
 if(CANOPY_BUILD_TEST)
