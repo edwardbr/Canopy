@@ -13,7 +13,8 @@ add_library(
   src/tcp_stream.cpp
   src/tls_stream.cpp
   src/ws_stream.cpp
-  src/spsc_queue_stream.cpp)
+  src/spsc_queue_stream.cpp
+  src/spsc_wrapping_stream.cpp)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(streaming PRIVATE src/io_uring_tcp_stream.cpp)

@@ -720,10 +720,10 @@ int main()
     using namespace comprehensive::v1;
 
     const std::vector<encoding_info> encodings = {
+        {rpc::encoding::yas_json, "yas_json"},
         {rpc::encoding::yas_binary, "yas_binary"},
         {rpc::encoding::yas_compressed_binary, "yas_compressed"},
         {rpc::encoding::protocol_buffers, "protocol_buffers"},
-        // {rpc::encoding::yas_json, "yas_json"},
     };
 
     // Test sizes from 64 bytes to 1 MB to investigate throughput scaling
