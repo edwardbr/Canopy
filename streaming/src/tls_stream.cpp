@@ -70,6 +70,31 @@ namespace streaming
         }
     }
 
+    // TLS client context implementation
+    tls_client_context::tls_client_context(bool verify_peer)
+    {
+        ctx_ = SSL_CTX_new(TLS_client_method());
+        if (!ctx_)
+        {
+            RPC_ERROR("Failed to create TLS client context");
+            log_ssl_errors();
+            return;
+        }
+
+        SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
+
+        if (!verify_peer)
+            SSL_CTX_set_verify(ctx_, SSL_VERIFY_NONE, nullptr);
+
+        RPC_INFO("TLS client context initialized (verify_peer={})", verify_peer);
+    }
+
+    tls_client_context::~tls_client_context()
+    {
+        if (ctx_)
+            SSL_CTX_free(ctx_);
+    }
+
     // TLS stream implementation
     tls_stream::tls_stream(std::shared_ptr<stream> underlying, std::shared_ptr<tls_context> tls_ctx)
         : underlying_(std::move(underlying))
@@ -90,6 +115,22 @@ namespace streaming
         }
     }
 
+    tls_stream::tls_stream(std::shared_ptr<stream> underlying, std::shared_ptr<tls_client_context> client_ctx)
+        : underlying_(std::move(underlying))
+        , tls_client_ctx_(std::move(client_ctx))
+    {
+        if (tls_client_ctx_ && tls_client_ctx_->is_valid())
+        {
+            ssl_ = SSL_new(tls_client_ctx_->get());
+            if (ssl_)
+            {
+                rbio_ = BIO_new(BIO_s_mem());
+                wbio_ = BIO_new(BIO_s_mem());
+                SSL_set_bio(ssl_, rbio_, wbio_);
+            }
+        }
+    }
+
     tls_stream::~tls_stream()
     {
         if (ssl_)
@@ -103,6 +144,11 @@ namespace streaming
             }
             SSL_free(ssl_); // also frees rbio_ and wbio_
         }
+        // Propagate closure to the underlying stream so that any proxy loops
+        // (e.g. spsc_wrapping_stream's recv_proxy_loop / send_proxy_loop) detect
+        // the closed_ flag and exit cleanly.
+        if (underlying_)
+            underlying_->set_closed();
     }
 
     // -----------------------------------------------------------------------
@@ -164,10 +210,16 @@ namespace streaming
             int ssl_error = SSL_get_error(ssl_, result);
             if (ssl_error == SSL_ERROR_WANT_READ)
             {
-                // Need more bytes from the peer — fetch them with no timeout during handshake.
-                auto feed_status = co_await feed_rbio(std::chrono::milliseconds{0});
-                if (!feed_status.is_ok())
+                // Need more bytes from the peer. Retry until data arrives or the peer
+                // closes — underlying streams (SPSC etc.) may return timeout when
+                // temporarily empty, so loop on timeout rather than treating it as an error.
+                while (true)
                 {
+                    auto feed_status = co_await feed_rbio(std::chrono::milliseconds{1});
+                    if (feed_status.is_ok())
+                        break; // data fed — let SSL have another go
+                    if (feed_status.is_timeout())
+                        continue; // SPSC queue temporarily empty — spin
                     RPC_WARNING("TLS handshake: peer closed or error while reading");
                     co_return false;
                 }
@@ -179,6 +231,59 @@ namespace streaming
             else
             {
                 RPC_WARNING("TLS handshake rejected by peer (ssl_error={})", ssl_error);
+                log_ssl_errors();
+                co_return false;
+            }
+        }
+    }
+
+    auto tls_stream::client_handshake() -> coro::task<bool>
+    {
+        if (!ssl_)
+        {
+            RPC_ERROR("TLS client handshake failed: SSL not initialized");
+            co_return false;
+        }
+
+        while (true)
+        {
+            int result = SSL_connect(ssl_);
+
+            // Always flush any handshake data SSL wants to send to the peer.
+            if (!co_await drain_wbio())
+            {
+                RPC_ERROR("TLS client handshake: drain_wbio failed");
+                co_return false;
+            }
+
+            if (result == 1)
+            {
+                handshake_complete_ = true;
+                RPC_INFO("TLS client handshake completed successfully");
+                co_return true;
+            }
+
+            int ssl_error = SSL_get_error(ssl_, result);
+            if (ssl_error == SSL_ERROR_WANT_READ)
+            {
+                while (true)
+                {
+                    auto feed_status = co_await feed_rbio(std::chrono::milliseconds{1});
+                    if (feed_status.is_ok())
+                        break;
+                    if (feed_status.is_timeout())
+                        continue;
+                    RPC_WARNING("TLS client handshake: peer closed or error while reading");
+                    co_return false;
+                }
+            }
+            else if (ssl_error == SSL_ERROR_WANT_WRITE)
+            {
+                // Already flushed above via drain_wbio().
+            }
+            else
+            {
+                RPC_WARNING("TLS client handshake failed (ssl_error={})", ssl_error);
                 log_ssl_errors();
                 co_return false;
             }

@@ -17,7 +17,7 @@
 
 namespace streaming
 {
-    // TLS context holder (shared across connections)
+    // TLS server context holder (shared across connections)
     class tls_context
     {
     public:
@@ -36,20 +36,48 @@ namespace streaming
         SSL_CTX* ctx_{nullptr};
     };
 
+    // TLS client context holder — no certificate required, peer verification optional
+    class tls_client_context
+    {
+    public:
+        // verify_peer: set to false (SSL_VERIFY_NONE) for self-signed / demo certs
+        explicit tls_client_context(bool verify_peer = false);
+        ~tls_client_context();
+
+        // Non-copyable
+        tls_client_context(const tls_client_context&) = delete;
+        tls_client_context& operator=(const tls_client_context&) = delete;
+
+        SSL_CTX* get() const { return ctx_; }
+
+        bool is_valid() const { return ctx_ != nullptr; }
+
+    private:
+        SSL_CTX* ctx_{nullptr};
+    };
+
     // TLS stream that wraps any stream using OpenSSL memory BIOs.
     // Has no knowledge of sockets — all I/O is delegated to the underlying stream.
     class tls_stream : public stream
     {
     public:
+        // Server-side constructor: uses a tls_context (TLS_server_method)
         tls_stream(std::shared_ptr<stream> underlying, std::shared_ptr<tls_context> tls_ctx);
+
+        // Client-side constructor: uses a tls_client_context (TLS_client_method)
+        tls_stream(std::shared_ptr<stream> underlying, std::shared_ptr<tls_client_context> client_ctx);
+
         ~tls_stream();
 
         // Non-copyable
         tls_stream(const tls_stream&) = delete;
         tls_stream& operator=(const tls_stream&) = delete;
 
-        // Perform TLS handshake
+        // Server-side TLS handshake (SSL_accept)
         auto handshake() -> coro::task<bool>;
+
+        // Client-side TLS handshake (SSL_connect)
+        auto client_handshake() -> coro::task<bool>;
 
         // Stream interface
         auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
@@ -59,13 +87,19 @@ namespace streaming
 
         bool is_closed() const override { return closed_; }
 
-        void set_closed() override { closed_ = true; }
+        void set_closed() override
+        {
+            closed_ = true;
+            if (underlying_)
+                underlying_->set_closed();
+        }
 
         peer_info get_peer_info() const override { return underlying_->get_peer_info(); }
 
     private:
         std::shared_ptr<stream> underlying_;
-        std::shared_ptr<tls_context> tls_ctx_;
+        std::shared_ptr<tls_context> tls_ctx_;         // set for server-side connections
+        std::shared_ptr<tls_client_context> tls_client_ctx_; // set for client-side connections
         SSL* ssl_{nullptr};
         BIO* rbio_{nullptr}; // network → SSL (we write raw bytes here)
         BIO* wbio_{nullptr}; // SSL → network (we drain this via underlying_->send)

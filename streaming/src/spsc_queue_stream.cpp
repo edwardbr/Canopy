@@ -38,6 +38,9 @@ namespace streaming
         spsc_blob blob;
         if (!recv_queue_->pop(blob))
         {
+            // Yield once so that other coroutines (e.g. relay pumps that fill this
+            // queue) get a chance to run before we report the timeout to the caller.
+            co_await scheduler_->schedule();
             co_return {coro::net::io_status{coro::net::io_status::kind::timeout}, {}};
         }
 

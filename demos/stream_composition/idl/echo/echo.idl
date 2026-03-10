@@ -1,0 +1,18 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+/*
+ *   Stream Composition Demo IDL
+ *   Defines the i_echo interface used to demonstrate composable stream stacks.
+ */
+
+namespace stream_composition
+{
+    interface i_echo
+    {
+        [description="Echo a message back to the caller"]
+        int echo([in] const std::string& message, [out] std::string& response);
+    };
+}
