@@ -2,8 +2,6 @@
 // All rights reserved.
 
 #include <rpc/rpc.h>
-// #include <websocket_demo/websocket_demo.h>
-#include "demo.h"
 
 #include "secret_llama/secret_llama.h"
 // #include "secret_llama/llm_engine.h"

@@ -268,7 +268,7 @@ CORO_TASK(error_code) my_operation()
 ## Troubleshooting
 
 ### Build Errors
-- **"demo.h not found"**: Generate IDL code first with `cmake --build build --target demo_idl`
+- **"websocket_demo.h not found"**: Generate IDL code first with `cmake --build build --target demo_idl`
 - **"TCP/SPSC requires coroutines"**: Use `Coroutine_Debug` preset
 
 ### Runtime Errors

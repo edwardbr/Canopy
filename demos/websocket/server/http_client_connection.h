@@ -63,6 +63,7 @@ namespace websocket_demo
             // HTTP helper functions
             std::string get_content_type(const std::string& path);
             std::string serve_file(const std::string& path);
+            std::string handle_browser_request(const std::string& method, const std::string& path);
 
             // REST API handlers
             std::string handle_rest_request(const std::string& method, const std::string& path, const std::string& body);
@@ -70,6 +71,8 @@ namespace websocket_demo
             std::string handle_post(const std::string& path, const std::string& body);
             std::string handle_put(const std::string& path, const std::string& body);
             std::string handle_delete(const std::string& path);
+
+            auto handle_websocket_upgrade(const http_request_context& ctx) -> coro::task<bool>;
 
             // JSON response helpers
             std::string create_json_response(int status_code, const std::string& status_text, const std::string& json_body);

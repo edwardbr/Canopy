@@ -5,7 +5,6 @@
 
 #include <rpc/rpc.h>
 #include <websocket_demo/websocket_demo.h>
-#include "demo.h"
 
 namespace websocket_demo
 {
