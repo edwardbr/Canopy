@@ -419,6 +419,15 @@ namespace rpc::stream_transport
                 continue;
             }
 
+            if (!recv_status.is_ok())
+            {
+                RPC_WARNING("receive_consumer_loop: stream receive failed for zone {} status={} native={}",
+                    get_zone_id().get_subnet(),
+                    static_cast<int>(recv_status.type),
+                    recv_status.native_code);
+                break;
+            }
+
             remaining = remaining.subspan(recv_bytes.size());
 
             if (!remaining.empty())

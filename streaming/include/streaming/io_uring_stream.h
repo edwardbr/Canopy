@@ -7,6 +7,8 @@
 
 #include <streaming/stream.h>
 
+#include <coro/net/tcp/client.hpp>
+
 #include <arpa/inet.h>
 #include <coroutine>
 #include <chrono>
@@ -18,6 +20,7 @@
 #include <mutex>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <optional>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <thread>
@@ -26,6 +29,9 @@
 
 namespace streaming
 {
+    class iouring_acceptor;
+    class io_uring_stream_acceptor;
+
     namespace detail
     {
         inline auto translate_status(int error_code) -> coro::net::io_status
@@ -37,26 +43,13 @@ namespace streaming
     class iouring_stream : public stream
     {
     public:
-        iouring_stream(int fd, std::shared_ptr<coro::scheduler> scheduler)
-            : fd_(fd)
+        iouring_stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler)
+            : fd_(client.socket().native_handle())
             , scheduler_(std::move(scheduler))
             , state_(std::make_shared<ring_state>())
+            , client_(std::move(client))
         {
-            if (fd_ < 0)
-            {
-                throw std::runtime_error("iouring_stream requires a valid socket");
-            }
-
-            int flag = 1;
-            ::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
-
-            setup_ring();
-
-            if (!scheduler_ || !scheduler_->spawn_detached(completion_pump(state_, scheduler_)))
-            {
-                teardown_ring();
-                throw std::runtime_error("failed to start iouring_stream completion pump");
-            }
+            initialise_stream();
         }
 
         ~iouring_stream() override
@@ -75,12 +68,7 @@ namespace streaming
             }
 
             teardown_ring();
-
-            if (fd_ != -1)
-            {
-                ::close(fd_);
-                fd_ = -1;
-            }
+            close_owned_socket();
         }
 
         auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
@@ -188,7 +176,14 @@ namespace streaming
 
             if (!was_closed && fd_ != -1)
             {
-                ::shutdown(fd_, SHUT_RDWR);
+                if (client_)
+                {
+                    client_->socket().shutdown();
+                }
+                else
+                {
+                    ::shutdown(fd_, SHUT_RDWR);
+                }
             }
         }
 
@@ -225,11 +220,69 @@ namespace streaming
         }
 
     private:
+        struct accepted_socket_tag
+        {
+        };
+
+        iouring_stream(accepted_socket_tag, int fd, std::shared_ptr<coro::scheduler> scheduler)
+            : fd_(fd)
+            , scheduler_(std::move(scheduler))
+            , state_(std::make_shared<ring_state>())
+        {
+            initialise_stream();
+        }
+
+        static auto create_from_accepted_socket(int fd, std::shared_ptr<coro::scheduler> scheduler)
+            -> std::shared_ptr<iouring_stream>
+        {
+            return std::shared_ptr<iouring_stream>(new iouring_stream(accepted_socket_tag{}, fd, std::move(scheduler)));
+        }
+
+        friend class iouring_acceptor;
+        friend class io_uring_stream_acceptor;
+
+        void initialise_stream()
+        {
+            if (fd_ < 0)
+            {
+                throw std::runtime_error("iouring_stream requires a valid socket");
+            }
+
+            int flag = 1;
+            ::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
+
+            setup_ring();
+
+            if (!scheduler_ || !scheduler_->spawn_detached(completion_pump(state_, scheduler_)))
+            {
+                teardown_ring();
+                throw std::runtime_error("failed to start iouring_stream completion pump");
+            }
+        }
+
+        void close_owned_socket()
+        {
+            if (client_)
+            {
+                client_->socket().close();
+                client_.reset();
+                fd_ = -1;
+                return;
+            }
+
+            if (fd_ != -1)
+            {
+                ::close(fd_);
+                fd_ = -1;
+            }
+        }
+
         struct pending_op
         {
             uint64_t id{0};
             int result{-ECANCELED};
             bool done{false};
+            std::optional<__kernel_timespec> timeout_spec;
             std::coroutine_handle<> continuation{};
             std::mutex mutex;
         };
@@ -409,10 +462,10 @@ namespace streaming
 
                 recv_sqe->flags |= IOSQE_IO_LINK;
 
-                __kernel_timespec ts{};
-                ts.tv_sec = static_cast<__kernel_time64_t>(timeout.count() / 1000);
-                ts.tv_nsec = static_cast<long>((timeout.count() % 1000) * 1000000LL);
-                io_uring_prep_link_timeout(timeout_sqe, &ts, 0);
+                op->timeout_spec = __kernel_timespec{};
+                op->timeout_spec->tv_sec = static_cast<__kernel_time64_t>(timeout.count() / 1000);
+                op->timeout_spec->tv_nsec = static_cast<long>((timeout.count() % 1000) * 1000000LL);
+                io_uring_prep_link_timeout(timeout_sqe, &*op->timeout_spec, 0);
                 io_uring_sqe_set_data64(timeout_sqe, 0);
             }
 
@@ -537,6 +590,7 @@ namespace streaming
         int fd_{-1};
         std::shared_ptr<coro::scheduler> scheduler_;
         std::shared_ptr<ring_state> state_;
+        std::optional<coro::net::tcp::client> client_;
         std::atomic<bool> closed_{false};
     };
 

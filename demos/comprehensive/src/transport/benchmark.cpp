@@ -589,19 +589,21 @@ namespace comprehensive
             addr[2] = 0;
             addr[3] = 1;
 
-            streaming::listener io_uring_listener(std::make_shared<streaming::iouring_acceptor>(addr, port),
-                [svc = service, connection_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
-                {
-                    rpc::stream_transport::streaming_transport::create(
-                        "io_uring_server_transport", svc, std::move(stream), connection_handler);
-                    CO_RETURN;
-                });
-            io_uring_listener.start_listening(service);
+            auto io_uring_listener
+                = std::make_shared<streaming::listener>(std::make_shared<streaming::iouring_acceptor>(addr, port),
+                    [svc = service, connection_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
+                    {
+                        rpc::stream_transport::streaming_transport::create(
+                            "io_uring_server_transport", svc, std::move(stream), connection_handler);
+                        CO_RETURN;
+                    });
+            io_uring_listener->start_listening(service);
             service.reset();
             server_ready.set();
 
             co_await client_finished.wait();
-            CO_AWAIT io_uring_listener.stop_listening();
+            CO_AWAIT io_uring_listener->stop_listening();
+            io_uring_listener.reset();
             co_await on_shutdown_event->wait();
         }
 
@@ -630,7 +632,7 @@ namespace comprehensive
                 CO_RETURN;
             }
 
-            auto stm = std::make_shared<streaming::iouring_stream>(::dup(client.socket().native_handle()), scheduler);
+            auto stm = std::make_shared<streaming::iouring_stream>(std::move(client), scheduler);
             auto client_transport = rpc::stream_transport::streaming_transport::create(
                 "io_uring_client_transport", client_service, std::move(stm), nullptr);
 
@@ -727,7 +729,7 @@ int main()
     using namespace comprehensive::v1;
 
     const std::vector<encoding_info> encodings = {
-        {rpc::encoding::yas_json, "yas_json"},
+        // {rpc::encoding::yas_json, "yas_json"},
         {rpc::encoding::yas_binary, "yas_binary"},
         {rpc::encoding::yas_compressed_binary, "yas_compressed"},
         {rpc::encoding::protocol_buffers, "protocol_buffers"},
@@ -754,57 +756,57 @@ int main()
 
     print_header();
 
-    auto local_scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-            .pool = coro::thread_pool::options{.thread_count = 2},
-            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+    // auto local_scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+    //     coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+    //         .pool = coro::thread_pool::options{.thread_count = 2},
+    //         .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-    for (const auto& enc : encodings)
-    {
-        for (size_t blob_size : blob_sizes)
-        {
-            auto result = coro::sync_wait(run_local_benchmark(local_scheduler, enc.enc, blob_size));
-            if (result.error != rpc::error::OK())
-            {
-                fmt::print("local  | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-                continue;
-            }
-            print_stats("local", enc.name, blob_size, result.stats);
-        }
-    }
+    // for (const auto& enc : encodings)
+    // {
+    //     for (size_t blob_size : blob_sizes)
+    //     {
+    //         auto result = coro::sync_wait(run_local_benchmark(local_scheduler, enc.enc, blob_size));
+    //         if (result.error != rpc::error::OK())
+    //         {
+    //             fmt::print("local  | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+    //             continue;
+    //         }
+    //         print_stats("local", enc.name, blob_size, result.stats);
+    //     }
+    // }
 
-    local_scheduler->shutdown();
+    // local_scheduler->shutdown();
 
-    fmt::print("run_spsc_benchmark\n");
-    for (const auto& enc : encodings)
-    {
-        for (size_t blob_size : blob_sizes)
-        {
-            auto result = run_spsc_benchmark(enc.enc, blob_size);
-            if (result.error != rpc::error::OK())
-            {
-                fmt::print("spsc   | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-                continue;
-            }
-            print_stats("spsc", enc.name, blob_size, result.stats);
-        }
-    }
+    // fmt::print("run_spsc_benchmark\n");
+    // for (const auto& enc : encodings)
+    // {
+    //     for (size_t blob_size : blob_sizes)
+    //     {
+    //         auto result = run_spsc_benchmark(enc.enc, blob_size);
+    //         if (result.error != rpc::error::OK())
+    //         {
+    //             fmt::print("spsc   | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+    //             continue;
+    //         }
+    //         print_stats("spsc", enc.name, blob_size, result.stats);
+    //     }
+    // }
 
-    fmt::print("run_tcp_benchmark\n");
-    uint16_t tcp_port = 18900;
-    for (const auto& enc : encodings)
-    {
-        for (size_t blob_size : blob_sizes)
-        {
-            auto result = run_tcp_benchmark(enc.enc, blob_size, tcp_port++);
-            if (result.error != rpc::error::OK())
-            {
-                fmt::print("tcp    | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-                continue;
-            }
-            print_stats("tcp", enc.name, blob_size, result.stats);
-        }
-    }
+    // fmt::print("run_tcp_benchmark\n");
+    // uint16_t tcp_port = 18900;
+    // for (const auto& enc : encodings)
+    // {
+    //     for (size_t blob_size : blob_sizes)
+    //     {
+    //         auto result = run_tcp_benchmark(enc.enc, blob_size, tcp_port++);
+    //         if (result.error != rpc::error::OK())
+    //         {
+    //             fmt::print("tcp    | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+    //             continue;
+    //         }
+    //         print_stats("tcp", enc.name, blob_size, result.stats);
+    //     }
+    // }
 
     fmt::print("run_io_uring_benchmark\n");
     uint16_t io_uring_port = 18800;
