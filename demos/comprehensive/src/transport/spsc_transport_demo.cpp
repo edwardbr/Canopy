@@ -58,8 +58,8 @@ namespace comprehensive
 
             auto stream_1
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_1, &queues->to_process_2, scheduler);
-            auto transport_1 = rpc::stream_transport::streaming_transport::create(
-                "transport_1", service_1, std::move(stream_1), nullptr);
+            auto transport_1
+                = rpc::stream_transport::transport::create("transport_1", service_1, std::move(stream_1), nullptr);
 
             rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
 
@@ -127,7 +127,7 @@ namespace comprehensive
             auto handler = [&](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
-                               std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+                               std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT service->attach_remote_zone<i_calculator, i_calculator>("process_1_proxy",
                     transport,
@@ -147,8 +147,8 @@ namespace comprehensive
 
             auto stream_2
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2 = rpc::stream_transport::streaming_transport::create(
-                "transport_2", service_2, std::move(stream_2), handler);
+            auto transport_2
+                = rpc::stream_transport::transport::create("transport_2", service_2, std::move(stream_2), handler);
 
             co_await transport_2->accept();
 

@@ -82,7 +82,7 @@ namespace comprehensive
             auto rpc_handler = [](const rpc::connection_settings& input_descr,
                                    rpc::interface_descriptor& output_interface,
                                    std::shared_ptr<rpc::service> child_service_ptr,
-                                   std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+                                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
             {
                 RPC_INFO("Server: Accepting connection from zone {}", input_descr.input_zone_id.get_subnet());
 
@@ -117,8 +117,7 @@ namespace comprehensive
                 = std::make_shared<streaming::listener>(std::make_shared<streaming::tcp_stream_acceptor>(endpoint),
                     [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                     {
-                        rpc::stream_transport::streaming_transport::create(
-                            "server_transport", svc, std::move(stream), rpc_handler);
+                        rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
                         CO_RETURN;
                     });
 
@@ -190,7 +189,7 @@ namespace comprehensive
 
                 // Create TCP transport — server_zone identifies the remote zone.
                 auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
-                auto client_transport = rpc::stream_transport::streaming_transport::create(
+                auto client_transport = rpc::stream_transport::transport::create(
                     "client_transport", client_service, std::move(tcp_stm), nullptr);
 
                 RPC_INFO("Client: Starting RPC connection...");

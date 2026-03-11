@@ -32,7 +32,7 @@ protected:
             [this, peer_service = this->peer_service_, rpc_handler](
                 std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
             {
-                this->responder_transport_ = rpc::stream_transport::streaming_transport::create(
+                this->responder_transport_ = rpc::stream_transport::transport::create(
                     "responder_transport", peer_service, std::move(stream), rpc_handler);
                 CO_RETURN;
             });
@@ -54,7 +54,7 @@ protected:
         }
 
         auto io_uring_stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
-        this->initiator_transport_ = rpc::stream_transport::streaming_transport::create(
+        this->initiator_transport_ = rpc::stream_transport::transport::create(
             "initiator_transport", this->root_service_, std::move(io_uring_stm), nullptr);
 
         auto ret = CO_AWAIT this->root_service_->connect_to_zone(
