@@ -1,18 +1,25 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// Direct io_uring_tcp_stream test — no transport layer, no RPC stack.
-// Just: TCP accept/connect, wrap in io_uring_tcp_stream, send/receive raw bytes.
+// Direct iouring_stream test — no transport layer, no RPC stack.
+// Just: TCP accept/connect, wrap in iouring_stream, send/receive raw bytes.
 
 #include <gtest/gtest.h>
 
-#include <streaming/io_uring_tcp_stream.h>
+#include <streaming/io_uring_acceptor.h>
+#include <streaming/io_uring_stream.h>
 #include <coro/coro.hpp>
 
 #include <array>
+#include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <memory>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 
 using namespace std::chrono_literals;
 using io_kind = coro::net::io_status::kind;
@@ -31,8 +38,7 @@ namespace
 
     // Receive exactly buf.size() bytes, looping on partial reads.
     // Returns false on timeout or error.
-    auto recv_exact(streaming::io_uring_tcp_stream& stm, std::span<char> buf, std::chrono::milliseconds timeout)
-        -> coro::task<bool>
+    auto recv_exact(streaming::stream& stm, std::span<char> buf, std::chrono::milliseconds timeout) -> coro::task<bool>
     {
         size_t received = 0;
         while (received < buf.size())
@@ -49,24 +55,78 @@ namespace
         }
         co_return true;
     }
+
+    auto make_loopback_address() -> canopy::network_config::ip_address
+    {
+        canopy::network_config::ip_address addr{};
+        addr[0] = 127;
+        addr[1] = 0;
+        addr[2] = 0;
+        addr[3] = 1;
+        return addr;
+    }
+
+    auto connect_iouring_stream(const std::shared_ptr<coro::scheduler>& scheduler, uint16_t port)
+        -> coro::task<std::shared_ptr<streaming::iouring_stream>>
+    {
+        int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+        if (fd < 0)
+            co_return nullptr;
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+        if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+        {
+            if (errno != EINPROGRESS)
+            {
+                ::close(fd);
+                co_return nullptr;
+            }
+
+            auto poll_status = co_await scheduler->poll(fd, coro::poll_op::write, 5000ms);
+            if (poll_status != coro::poll_status::write)
+            {
+                ::close(fd);
+                co_return nullptr;
+            }
+
+            int socket_error = 0;
+            socklen_t socket_error_size = sizeof(socket_error);
+            if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_size) != 0 || socket_error != 0)
+            {
+                ::close(fd);
+                co_return nullptr;
+            }
+        }
+
+        co_return std::make_shared<streaming::iouring_stream>(fd, scheduler);
+    }
 } // namespace
 
 // ── Test 1: single ping-pong ──────────────────────────────────────────────────
 
 TEST(IoUringStream, PingPong)
 {
-    auto scheduler = make_scheduler();
+    auto server_scheduler = make_scheduler();
+    auto client_scheduler = make_scheduler();
     bool server_ok = false;
     bool client_ok = false;
+    std::atomic_bool server_ready = false;
 
     coro::sync_wait(coro::when_all(
         [&]() -> coro::task<void>
         {
-            coro::net::tcp::server server(scheduler, coro::net::socket_address{"127.0.0.1", test_port});
-            auto conn = co_await server.accept(5000ms);
+            streaming::iouring_acceptor acceptor(make_loopback_address(), test_port);
+            if (!acceptor.init(server_scheduler))
+                co_return;
+            server_ready = true;
+            auto conn = co_await acceptor.accept();
             if (!conn.has_value())
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(*conn), scheduler);
+            auto stm = *conn;
 
             std::array<char, 64> buf{};
             bool got = co_await recv_exact(*stm, std::span(buf.data(), 4), 2000ms);
@@ -78,15 +138,17 @@ TEST(IoUringStream, PingPong)
             EXPECT_EQ(st.type, io_kind::ok);
 
             stm->set_closed();
+            acceptor.stop();
             server_ok = true;
         }(),
         [&]() -> coro::task<void>
         {
-            coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", test_port});
-            auto cs = co_await client.connect(5000ms);
-            if (cs != coro::net::connect_status::connected)
+            while (!server_ready.load())
+                co_await client_scheduler->yield_for(1ms);
+
+            auto stm = co_await connect_iouring_stream(client_scheduler, test_port);
+            if (!stm)
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
 
             std::string_view msg = "ping";
             auto st = co_await stm->send(std::span<const char>(msg.data(), msg.size()));
@@ -101,7 +163,8 @@ TEST(IoUringStream, PingPong)
             client_ok = true;
         }()));
 
-    scheduler->shutdown();
+    server_scheduler->shutdown();
+    client_scheduler->shutdown();
     EXPECT_TRUE(server_ok);
     EXPECT_TRUE(client_ok);
 }
@@ -110,20 +173,24 @@ TEST(IoUringStream, PingPong)
 
 TEST(IoUringStream, ManyRoundTrips)
 {
-    auto scheduler = make_scheduler();
+    auto server_scheduler = make_scheduler();
+    auto client_scheduler = make_scheduler();
     constexpr int rounds = 500;
     int server_rounds = 0;
     int client_rounds = 0;
+    std::atomic_bool server_ready = false;
 
     coro::sync_wait(coro::when_all(
         [&]() -> coro::task<void>
         {
-            coro::net::tcp::server server(
-                scheduler, coro::net::socket_address{"127.0.0.1", static_cast<uint16_t>(test_port + 1)});
-            auto conn = co_await server.accept(5000ms);
+            streaming::iouring_acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 1));
+            if (!acceptor.init(server_scheduler))
+                co_return;
+            server_ready = true;
+            auto conn = co_await acceptor.accept();
             if (!conn.has_value())
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(*conn), scheduler);
+            auto stm = *conn;
 
             std::array<char, 8> buf{};
             for (int i = 0; i < rounds; ++i)
@@ -136,14 +203,16 @@ TEST(IoUringStream, ManyRoundTrips)
                 ++server_rounds;
             }
             stm->set_closed();
+            acceptor.stop();
         }(),
         [&]() -> coro::task<void>
         {
-            coro::net::tcp::client client(
-                scheduler, coro::net::socket_address{"127.0.0.1", static_cast<uint16_t>(test_port + 1)});
-            if (co_await client.connect(5000ms) != coro::net::connect_status::connected)
+            while (!server_ready.load())
+                co_await client_scheduler->yield_for(1ms);
+
+            auto stm = co_await connect_iouring_stream(client_scheduler, static_cast<uint16_t>(test_port + 1));
+            if (!stm)
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
 
             std::array<char, 8> buf{};
             for (int i = 0; i < rounds; ++i)
@@ -162,7 +231,8 @@ TEST(IoUringStream, ManyRoundTrips)
             stm->set_closed();
         }()));
 
-    scheduler->shutdown();
+    server_scheduler->shutdown();
+    client_scheduler->shutdown();
     EXPECT_EQ(server_rounds, rounds);
     EXPECT_EQ(client_rounds, rounds);
 }
@@ -171,29 +241,35 @@ TEST(IoUringStream, ManyRoundTrips)
 
 TEST(IoUringStream, ReceiveTimeout)
 {
-    auto scheduler = make_scheduler();
+    auto server_scheduler = make_scheduler();
+    auto client_scheduler = make_scheduler();
     bool timed_out = false;
+    std::atomic_bool server_ready = false;
 
     coro::sync_wait(coro::when_all(
         [&]() -> coro::task<void>
         {
             // Server accepts but never sends — client should time out on receive.
-            coro::net::tcp::server server(
-                scheduler, coro::net::socket_address{"127.0.0.1", static_cast<uint16_t>(test_port + 2)});
-            auto conn = co_await server.accept(5000ms);
+            streaming::iouring_acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 2));
+            if (!acceptor.init(server_scheduler))
+                co_return;
+            server_ready = true;
+            auto conn = co_await acceptor.accept();
             if (!conn.has_value())
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(*conn), scheduler);
-            co_await scheduler->yield_for(std::chrono::milliseconds{500});
+            auto stm = *conn;
+            co_await server_scheduler->yield_for(std::chrono::milliseconds{500});
             stm->set_closed();
+            acceptor.stop();
         }(),
         [&]() -> coro::task<void>
         {
-            coro::net::tcp::client client(
-                scheduler, coro::net::socket_address{"127.0.0.1", static_cast<uint16_t>(test_port + 2)});
-            if (co_await client.connect(5000ms) != coro::net::connect_status::connected)
+            while (!server_ready.load())
+                co_await client_scheduler->yield_for(1ms);
+
+            auto stm = co_await connect_iouring_stream(client_scheduler, static_cast<uint16_t>(test_port + 2));
+            if (!stm)
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
 
             std::array<char, 64> buf{};
             auto [status, data] = co_await stm->receive(buf, 100ms);
@@ -201,7 +277,8 @@ TEST(IoUringStream, ReceiveTimeout)
             stm->set_closed();
         }()));
 
-    scheduler->shutdown();
+    server_scheduler->shutdown();
+    client_scheduler->shutdown();
     EXPECT_TRUE(timed_out);
 }
 
@@ -209,10 +286,12 @@ TEST(IoUringStream, ReceiveTimeout)
 
 TEST(IoUringStream, LargePayload)
 {
-    auto scheduler = make_scheduler();
+    auto server_scheduler = make_scheduler();
+    auto client_scheduler = make_scheduler();
     constexpr size_t payload_size = 256 * 1024;
     bool send_ok = false;
     bool recv_ok = false;
+    std::atomic_bool server_ready = false;
 
     std::vector<char> send_buf(payload_size);
     for (size_t i = 0; i < payload_size; ++i)
@@ -221,12 +300,14 @@ TEST(IoUringStream, LargePayload)
     coro::sync_wait(coro::when_all(
         [&]() -> coro::task<void>
         {
-            coro::net::tcp::server server(
-                scheduler, coro::net::socket_address{"127.0.0.1", static_cast<uint16_t>(test_port + 3)});
-            auto conn = co_await server.accept(5000ms);
+            streaming::iouring_acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 3));
+            if (!acceptor.init(server_scheduler))
+                co_return;
+            server_ready = true;
+            auto conn = co_await acceptor.accept();
             if (!conn.has_value())
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(*conn), scheduler);
+            auto stm = *conn;
 
             std::vector<char> recv_buf(payload_size);
             if (co_await recv_exact(*stm, recv_buf, 5000ms))
@@ -234,21 +315,24 @@ TEST(IoUringStream, LargePayload)
                 recv_ok = (recv_buf == send_buf);
             }
             stm->set_closed();
+            acceptor.stop();
         }(),
         [&]() -> coro::task<void>
         {
-            coro::net::tcp::client client(
-                scheduler, coro::net::socket_address{"127.0.0.1", static_cast<uint16_t>(test_port + 3)});
-            if (co_await client.connect(5000ms) != coro::net::connect_status::connected)
+            while (!server_ready.load())
+                co_await client_scheduler->yield_for(1ms);
+
+            auto stm = co_await connect_iouring_stream(client_scheduler, static_cast<uint16_t>(test_port + 3));
+            if (!stm)
                 co_return;
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
 
             auto st = co_await stm->send(send_buf);
             send_ok = (st.type == io_kind::ok);
             stm->set_closed();
         }()));
 
-    scheduler->shutdown();
+    server_scheduler->shutdown();
+    client_scheduler->shutdown();
     EXPECT_TRUE(send_ok);
     EXPECT_TRUE(recv_ok);
 }
