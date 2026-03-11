@@ -71,7 +71,7 @@ namespace streaming
             {
                 auto client_fd = ::accept4(listen_fd_, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
                 if (client_fd >= 0)
-                    CO_RETURN std::make_shared<iouring_stream>(client_fd, scheduler_);
+                    CO_RETURN iouring_stream::create_from_accepted_socket(client_fd, scheduler_);
                 if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
                     break;
                 CO_AWAIT scheduler_->yield_for(std::chrono::milliseconds{1});

@@ -9,6 +9,8 @@
 #include <streaming/io_uring_acceptor.h>
 #include <streaming/io_uring_stream.h>
 #include <coro/coro.hpp>
+#include <coro/net/socket_address.hpp>
+#include <coro/net/tcp/client.hpp>
 
 #include <array>
 #include <atomic>
@@ -66,43 +68,16 @@ namespace
         return addr;
     }
 
-    auto connect_iouring_stream(const std::shared_ptr<coro::scheduler>& scheduler, uint16_t port)
+    auto connect_iouring_stream(std::shared_ptr<coro::scheduler> scheduler, uint16_t port)
         -> coro::task<std::shared_ptr<streaming::iouring_stream>>
     {
-        int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-        if (fd < 0)
-            co_return nullptr;
-
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(port);
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-        if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", port});
+        if (CO_AWAIT client.connect(5000ms) != coro::net::connect_status::connected)
         {
-            if (errno != EINPROGRESS)
-            {
-                ::close(fd);
-                co_return nullptr;
-            }
-
-            auto poll_status = co_await scheduler->poll(fd, coro::poll_op::write, 5000ms);
-            if (poll_status != coro::poll_status::write)
-            {
-                ::close(fd);
-                co_return nullptr;
-            }
-
-            int socket_error = 0;
-            socklen_t socket_error_size = sizeof(socket_error);
-            if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_size) != 0 || socket_error != 0)
-            {
-                ::close(fd);
-                co_return nullptr;
-            }
+            co_return nullptr;
         }
 
-        co_return std::make_shared<streaming::iouring_stream>(fd, scheduler);
+        co_return std::make_shared<streaming::iouring_stream>(std::move(client), scheduler);
     }
 } // namespace
 

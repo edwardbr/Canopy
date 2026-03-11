@@ -112,7 +112,7 @@ namespace streaming
 
                     if (*completion >= 0)
                     {
-                        CO_RETURN std::make_shared<iouring_stream>(*completion, scheduler_);
+                        CO_RETURN iouring_stream::create_from_accepted_socket(*completion, scheduler_);
                     }
 
                     int native_error = -*completion;
