@@ -119,6 +119,140 @@ Some advanced features may require library-specific extensions:
 - **Network primitives** - TCP client/server abstractions are libcoro-specific
 - **Channel/back-channel support** - May require adaptation for sender/receiver models
 
+## Migration Plan
+
+The current macro layer around `CORO_TASK`, `CO_AWAIT`, and `SYNC_WAIT` is enough to swap the coroutine syntax, but it is not yet enough to make Canopy independent from a specific async runtime. The next step is to move the ownership boundary up so that coroutine scheduling, networking, timers, and socket status are Canopy abstractions rather than direct `libcoro` types.
+
+### Target Architecture
+
+Canopy should own the public async surface used by transports and streams:
+
+- `canopy::task<T>`
+- `canopy::sync_wait()`
+- `canopy::scheduler`
+- `canopy::io_status`
+- `canopy::tcp_client`
+- `canopy::tcp_listener`
+- `canopy::stream_socket`
+- `canopy::timer` or equivalent timeout primitive
+
+Transport and stream code should depend only on these Canopy abstractions. Backend-specific code should live behind an adapter layer.
+
+### Backend Model
+
+The preferred model is:
+
+1. Canopy defines runtime-facing interfaces and value types.
+2. A backend adapter implements those interfaces for a concrete coroutine library.
+3. `libcoro` becomes one backend rather than the type system used directly by `streaming`, transports, and demos.
+
+This keeps the rest of Canopy insulated from:
+
+- `coro::scheduler`
+- `coro::task`
+- `coro::net::tcp::client/server`
+- `coro::net::io_status`
+- backend-specific timeout and polling mechanics
+
+### Recommended Phases
+
+#### Phase 1: Create a Canopy Async Facade
+
+Add a Canopy-owned header set that defines:
+
+- coroutine task aliases or wrappers
+- scheduler abstraction
+- I/O result/status types
+- socket and listener interfaces
+- timeout and timer abstractions
+
+At this phase the implementation can still delegate entirely to `libcoro`, but direct `libcoro` types should stop appearing in transport-facing public headers.
+
+#### Phase 2: Move Streaming Public Headers to Canopy Types
+
+Refactor:
+
+- `stream`
+- `stream_acceptor`
+- TCP stream classes
+- io_uring stream classes
+- listener classes
+
+so their public APIs use Canopy types rather than `coro::*` and `coro::net::*`.
+
+This is the point where `streaming` stops leaking the backend choice into the wider codebase.
+
+#### Phase 3: Isolate Backend Implementations
+
+Move backend-specific code into implementation-specific areas, for example:
+
+- `streaming/backends/libcoro/...`
+- `streaming/backends/io_uring/...`
+
+The `libcoro` backend would adapt:
+
+- task execution
+- scheduler integration
+- TCP connect/accept
+- polling and timeouts
+
+The io_uring path can then be treated as a Canopy backend implementation decision rather than a transport class that is hardwired to `libcoro` scheduling semantics.
+
+#### Phase 4: Introduce Canopy-Owned I/O Execution
+
+Once the facade is in place, Canopy can choose a backend-specific execution strategy without changing the transport API:
+
+- shared io_uring ring per runtime or per worker
+- dedicated Canopy I/O thread or I/O executor
+- backend-specific timeout strategy
+- backend-specific accept/connect implementation
+
+This is the point where io_uring can be tuned for Canopy rather than shaped around a generic external scheduler.
+
+#### Phase 5: Add Alternate Backends
+
+After `libcoro` is behind the facade, other backends can be introduced incrementally:
+
+- Asio
+- cppcoro
+- libunifex
+- a Canopy-owned runtime
+
+### Why a Scheduler Wrapper Alone Is Not Enough
+
+Wrapping only `coro::scheduler` does not fully decouple the codebase. The following also need to move behind Canopy abstractions:
+
+- task type
+- blocking wait
+- I/O status values
+- TCP client and listener types
+- stream/socket ownership
+- timer and timeout support
+
+If these remain as `libcoro` types in public APIs, the dependency still leaks through the entire transport layer.
+
+### io_uring Implications
+
+This separation is especially important for io_uring. A direct io_uring implementation often benefits from a different execution model than a generic TCP scheduler, for example:
+
+- shared rings instead of one ring per connection
+- dedicated completion processing
+- batching submits and completions
+- transport-aware timeout policies
+
+Keeping io_uring behind a Canopy backend makes those choices local to the backend implementation and avoids coupling transport classes to a specific coroutine library.
+
+### Initial Deliverables
+
+The first useful implementation milestone is:
+
+1. Introduce Canopy async facade headers.
+2. Convert `stream` and `stream_acceptor` APIs to Canopy-owned async and I/O types.
+3. Provide a `libcoro` adapter that preserves current behaviour.
+4. Move TCP and io_uring stream implementations behind that adapter boundary.
+
+At that point Canopy remains functional with the current runtime, while the dependency surface is narrow enough to support alternative backends and a Canopy-owned I/O runtime later.
+
 ## Testing
 
 After porting, ensure all tests pass in both blocking and coroutine modes:
