@@ -45,7 +45,7 @@ protected:
 
         if (!this->listener_->start_listening(this->peer_service_))
         {
-            RPC_ERROR("Failed to start iouring listener");
+            RPC_ERROR("Failed to start io_uring listener");
             CO_RETURN false;
         }
 

@@ -1,12 +1,16 @@
+// Copyright (c) 2026 Edward Boggis-Rolfe
+// All rights reserved.
+
 #pragma once
 
 #include <streaming/stream.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <errno.h>
 #include <chrono>
+#include <cerrno>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace streaming
 {
@@ -19,17 +23,21 @@ namespace streaming
         {
         }
 
-        virtual ~iouring_stream()
+        ~iouring_stream() override
         {
             if (fd_ != -1)
+            {
                 ::close(fd_);
+            }
         }
 
         auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override
         {
             if (closed_)
+            {
                 co_return {coro::net::io_status{coro::net::io_status::kind::native, EBADF}, {}};
+            }
 
             auto deadline = std::chrono::steady_clock::now() + timeout;
             while (true)
@@ -48,32 +56,32 @@ namespace streaming
                 }
 
                 if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+                {
                     co_return {coro::net::io_status{coro::net::io_status::kind::native, errno}, {}};
+                }
 
                 if (timeout <= std::chrono::milliseconds::zero())
+                {
                     co_return {coro::net::io_status{coro::net::io_status::kind::timeout, 0}, {}};
+                }
 
                 auto now = std::chrono::steady_clock::now();
                 if (now >= deadline)
+                {
                     co_return {coro::net::io_status{coro::net::io_status::kind::timeout, 0}, {}};
+                }
 
                 auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
-                auto poll_status = co_await scheduler_->poll(fd_, coro::poll_op::read, remaining);
-                if (poll_status == coro::poll_status::timeout)
-                    co_return {coro::net::io_status{coro::net::io_status::kind::timeout, 0}, {}};
-
-                if (poll_status != coro::poll_status::read)
-                {
-                    closed_ = true;
-                    co_return {coro::net::io_status{coro::net::io_status::kind::closed, 0}, {}};
-                }
+                co_await scheduler_->yield_for(std::min(remaining, std::chrono::milliseconds{1}));
             }
         }
 
         auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override
         {
             if (closed_)
+            {
                 co_return coro::net::io_status{coro::net::io_status::kind::native, EBADF};
+            }
 
             size_t total_sent = 0;
             while (total_sent < buffer.size())
@@ -84,27 +92,20 @@ namespace streaming
                 {
                     if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
                     {
-                        auto poll_status
-                            = co_await scheduler_->poll(fd_, coro::poll_op::write, std::chrono::milliseconds{10});
-                        if (poll_status == coro::poll_status::timeout)
-                            continue;
-                        if (poll_status != coro::poll_status::write)
-                        {
-                            closed_ = true;
-                            co_return coro::net::io_status{coro::net::io_status::kind::closed, 0};
-                        }
+                        co_await scheduler_->yield_for(std::chrono::milliseconds{1});
                         continue;
                     }
                     closed_ = true;
                     co_return coro::net::io_status{
                         n < 0 ? coro::net::io_status::kind::native : coro::net::io_status::kind::closed, n < 0 ? errno : 0};
                 }
-                total_sent += n;
+                total_sent += static_cast<size_t>(n);
             }
             co_return coro::net::io_status{coro::net::io_status::kind::ok, 0};
         }
 
         bool is_closed() const override { return closed_; }
+
         void set_closed() override
         {
             closed_ = true;
@@ -113,6 +114,7 @@ namespace streaming
                 ::shutdown(fd_, SHUT_RDWR);
             }
         }
+
         peer_info get_peer_info() const override { return {}; }
 
     private:
@@ -120,4 +122,5 @@ namespace streaming
         std::shared_ptr<coro::scheduler> scheduler_;
         bool closed_ = false;
     };
-}
+
+} // namespace streaming

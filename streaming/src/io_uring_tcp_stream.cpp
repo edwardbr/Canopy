@@ -7,7 +7,6 @@
 #include <atomic>
 #include <cerrno>
 #include <coroutine>
-#include <cstdio>
 #include <cstring>
 #include <linux/io_uring.h>
 #include <linux/time_types.h>
@@ -568,7 +567,7 @@ namespace streaming
         try
         {
             setup_ring(state_);
-            fprintf(stderr, "io_uring_tcp_stream constructor ring_fd=%d\n", state_->ring_fd);
+            RPC_TRACE("io_uring_tcp_stream constructor ring_fd={}", state_->ring_fd);
         }
         catch (...)
         {
@@ -585,7 +584,7 @@ namespace streaming
 
     io_uring_tcp_stream::~io_uring_tcp_stream()
     {
-        fprintf(stderr, "io_uring_tcp_stream destructor ring_fd=%d\n", state_ ? state_->ring_fd : -1);
+        RPC_TRACE("io_uring_tcp_stream destructor ring_fd={}", state_ ? state_->ring_fd : -1);
         if (shutting_down_.exchange(true))
             return;
 
@@ -596,8 +595,7 @@ namespace streaming
         {
             constexpr auto shutdown_timeout = std::chrono::milliseconds(500);
             auto shutdown_start = std::chrono::steady_clock::now();
-            fprintf(stderr,
-                "io_uring destructor waiting for cleanup, inflight=%zu pump_running=%d\n",
+            RPC_TRACE("io_uring destructor waiting for cleanup, inflight={} pump_running={}",
                 in_flight_count(state_),
                 state_->pump_running.load(std::memory_order_acquire));
             // Wait for inflight operations to complete
@@ -611,8 +609,7 @@ namespace streaming
             {
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
-            fprintf(stderr,
-                "io_uring destructor cleanup done, inflight=%zu pump_running=%d\n",
+            RPC_TRACE("io_uring destructor cleanup done, inflight={} pump_running={}",
                 in_flight_count(state_),
                 state_->pump_running.load(std::memory_order_acquire));
         }
@@ -622,7 +619,7 @@ namespace streaming
         std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler) -> coro::task<void>
     {
         state->pump_running.store(true, std::memory_order_release);
-        fprintf(stderr, "io_uring completion_pump start ring_fd=%d\n", state->ring_fd);
+        RPC_TRACE("io_uring completion_pump start ring_fd={}", state->ring_fd);
 
         // Use a simple loop that doesn't depend on scheduler->poll which can hang
         // during scheduler shutdown
@@ -637,8 +634,7 @@ namespace streaming
                 ++iter;
                 if (iter % 100 == 0)
                 {
-                    fprintf(stderr,
-                        "io_uring completion_pump iteration %zu ring_fd=%d stopping=%d\n",
+                    RPC_TRACE("io_uring completion_pump iteration {} ring_fd={} stopping={}",
                         iter,
                         state->ring_fd,
                         state->stopping.load());
@@ -646,7 +642,7 @@ namespace streaming
                 // Check if we should stop
                 if (state->stopping.load(std::memory_order_acquire))
                 {
-                    fprintf(stderr, "io_uring completion_pump: shutdown detected, inflight=%zu\n", in_flight_count(state));
+                    RPC_TRACE("io_uring completion_pump: shutdown detected, inflight={}", in_flight_count(state));
                     cancel_all_ops(state);
                     auto shutdown_start = std::chrono::steady_clock::now();
 
@@ -668,14 +664,14 @@ namespace streaming
                         catch (...)
                         {
                             // Scheduler may be shutting down
-                            fprintf(stderr, "io_uring completion_pump: yield exception, breaking\n");
+                            RPC_TRACE("io_uring completion_pump: yield exception during shutdown, breaking");
                             break;
                         }
 
                         // Timeout check to prevent infinite hang
                         if (std::chrono::steady_clock::now() - shutdown_start > shutdown_timeout)
                         {
-                            fprintf(stderr, "io_uring completion_pump: shutdown timeout\n");
+                            RPC_ERROR("io_uring completion_pump: shutdown timeout");
                             break;
                         }
                     }
@@ -699,7 +695,7 @@ namespace streaming
                 else if (errno != EAGAIN && errno != EWOULDBLOCK)
                 {
                     // Eventfd error
-                    fprintf(stderr, "io_uring completion_pump: eventfd error %d\n", errno);
+                    RPC_ERROR("io_uring completion_pump: eventfd error {}", errno);
                     break;
                 }
                 else
@@ -707,9 +703,7 @@ namespace streaming
                     // No completions yet, yield briefly
                     if (state->stopping.load(std::memory_order_acquire))
                     {
-                        fprintf(stderr,
-                            "io_uring completion_pump: stopping flag true in normal loop ring_fd=%d\n",
-                            state->ring_fd);
+                        RPC_TRACE("io_uring completion_pump: stopping flag true in normal loop ring_fd={}", state->ring_fd);
                         // Stopping flag set, skip yield and let shutdown detection handle
                         continue;
                     }
@@ -728,7 +722,7 @@ namespace streaming
                         {
                             continue;
                         }
-                        fprintf(stderr, "io_uring completion_pump: yield exception, breaking\n");
+                        RPC_ERROR("io_uring completion_pump: yield exception, breaking");
                         break;
                     }
                 }
@@ -736,11 +730,11 @@ namespace streaming
         }
         catch (...)
         {
-            fprintf(stderr, "io_uring completion_pump: unhandled exception\n");
+            RPC_ERROR("io_uring completion_pump: unhandled exception");
         }
 
         state->pump_running.store(false, std::memory_order_release);
-        fprintf(stderr, "io_uring completion_pump end ring_fd=%d\n", state->ring_fd);
+        RPC_TRACE("io_uring completion_pump end ring_fd={}", state->ring_fd);
         teardown_ring(state);
     }
 
@@ -840,13 +834,13 @@ namespace streaming
 
     void io_uring_tcp_stream::set_closed()
     {
-        fprintf(stderr, "io_uring_tcp_stream set_closed ring_fd=%d\n", state_ ? state_->ring_fd : -1);
+        RPC_TRACE("io_uring_tcp_stream set_closed ring_fd={}", state_ ? state_->ring_fd : -1);
         closed_ = true;
         if (state_)
         {
             state_->stopping.store(true, std::memory_order_release);
             std::atomic_thread_fence(std::memory_order_seq_cst);
-            fprintf(stderr, "io_uring_tcp_stream set_closed stopping flag=%d\n", state_->stopping.load());
+            RPC_TRACE("io_uring_tcp_stream set_closed stopping flag={}", state_->stopping.load());
             eventfd_signal(state_->event_fd);
             cancel_all_ops(state_);
         }

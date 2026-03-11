@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <cerrno>
 #include <memory>
 #include <netinet/in.h>
 #include <optional>
@@ -68,16 +69,12 @@ namespace streaming
         {
             while (!stop_requested_)
             {
-                auto poll_status
-                    = CO_AWAIT scheduler_->poll(listen_fd_, coro::poll_op::read, std::chrono::milliseconds{10});
-                if (poll_status == coro::poll_status::timeout)
-                    continue;
-                if (poll_status != coro::poll_status::read)
-                    break;
-
                 auto client_fd = ::accept4(listen_fd_, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
                 if (client_fd >= 0)
                     CO_RETURN std::make_shared<iouring_stream>(client_fd, scheduler_);
+                if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+                    break;
+                CO_AWAIT scheduler_->yield_for(std::chrono::milliseconds{1});
             }
             CO_RETURN std::nullopt;
         }

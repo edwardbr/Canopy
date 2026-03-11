@@ -36,11 +36,13 @@
 #include <fmt/format.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
+#include <streaming/io_uring_acceptor.h>
+#include <streaming/io_uring_stream.h>
 #include <streaming/listener.h>
-#include <streaming/tcp_stream_acceptor.h>
-#include <streaming/io_uring_stream_acceptor.h>
 #include <streaming/spsc_queue_stream.h>
+#include <streaming/tcp_stream_acceptor.h>
 #include <transports/streaming/transport.h>
+#include <unistd.h>
 #endif
 
 namespace comprehensive
@@ -581,8 +583,13 @@ namespace comprehensive
                 CO_RETURN ret;
             };
 
-            streaming::listener io_uring_listener(
-                std::make_shared<streaming::io_uring_stream_acceptor>(coro::net::socket_address{"127.0.0.1", port}),
+            canopy::network_config::ip_address addr{};
+            addr[0] = 127;
+            addr[1] = 0;
+            addr[2] = 0;
+            addr[3] = 1;
+
+            streaming::listener io_uring_listener(std::make_shared<streaming::iouring_acceptor>(addr, port),
                 [svc = service, connection_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                 {
                     rpc::stream_transport::streaming_transport::create(
@@ -623,7 +630,7 @@ namespace comprehensive
                 CO_RETURN;
             }
 
-            auto stm = std::make_shared<streaming::io_uring_tcp_stream>(std::move(client), scheduler);
+            auto stm = std::make_shared<streaming::iouring_stream>(::dup(client.socket().native_handle()), scheduler);
             auto client_transport = rpc::stream_transport::streaming_transport::create(
                 "io_uring_client_transport", client_service, std::move(stm), nullptr);
 
