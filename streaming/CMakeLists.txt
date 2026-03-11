@@ -42,6 +42,10 @@ target_link_libraries(
          canopy_network_config
          spsc_queue)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(streaming PUBLIC uring)
+endif()
+
 set_property(TARGET streaming PROPERTY COMPILE_PDB_NAME streaming)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
