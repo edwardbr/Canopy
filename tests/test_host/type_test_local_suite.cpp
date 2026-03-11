@@ -55,7 +55,7 @@
 #ifdef CANOPY_BUILD_COROUTINE
 #include <transport/tests/streaming_tcp/setup.h>
 #include <transport/tests/streaming_spsc/setup.h>
-#include <transport/tests/streaming_io_uring/setup.h>
+#include <transport/tests/streaming_iouring/setup.h>
 #endif
 
 #include "crash_handler.h"
@@ -125,14 +125,14 @@ using local_implementations = ::testing::Types<in_memory_setup<false>,
     streaming_spsc_setup<true, false, true>,
     streaming_spsc_setup<true, true, false>,
     streaming_spsc_setup<true, true, true>,
-    streaming_io_uring_setup<false, false, false>,
-    streaming_io_uring_setup<false, false, true>,
-    streaming_io_uring_setup<false, true, false>,
-    streaming_io_uring_setup<false, true, true>,
-    streaming_io_uring_setup<true, false, false>,
-    streaming_io_uring_setup<true, false, true>,
-    streaming_io_uring_setup<true, true, false>,
-    streaming_io_uring_setup<true, true, true>
+    streaming_iouring_setup<false, false, false>,
+    streaming_iouring_setup<false, false, true>,
+    streaming_iouring_setup<false, true, false>,
+    streaming_iouring_setup<false, true, true>,
+    streaming_iouring_setup<true, false, false>,
+    streaming_iouring_setup<true, false, true>,
+    streaming_iouring_setup<true, true, false>,
+    streaming_iouring_setup<true, true, true>
 #endif
 
 #ifdef CANOPY_BUILD_ENCLAVE
