@@ -7,7 +7,7 @@
 
 namespace rpc::stream_transport
 {
-    streaming_transport::streaming_transport(std::string name,
+    transport::transport(std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         connection_handler handler)
@@ -17,13 +17,13 @@ namespace rpc::stream_transport
     {
     }
 
-    std::shared_ptr<streaming_transport> streaming_transport::create(std::string name,
+    std::shared_ptr<transport> transport::create(std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         connection_handler handler)
     {
-        auto transport = std::shared_ptr<streaming_transport>(
-            new streaming_transport(name, service, std::move(stream), std::move(handler)));
+        auto transport = std::shared_ptr<rpc::stream_transport::transport>(
+            new rpc::stream_transport::transport(name, service, std::move(stream), std::move(handler)));
 
         transport->keep_alive_ = transport;
         transport->set_status(rpc::transport_status::CONNECTED);
@@ -38,11 +38,11 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(int)
-    streaming_transport::inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
+    transport::inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
         connection_settings& input_descr,
         rpc::interface_descriptor& output_descr)
     {
-        RPC_DEBUG("streaming_transport::inner_connect zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::inner_connect zone={}", get_zone_id().get_subnet());
         stub_ = stub;
 
         auto service = get_service();
@@ -64,7 +64,7 @@ namespace rpc::stream_transport
             if (ret != rpc::error::OK())
             {
                 stub_.reset();
-                RPC_ERROR("streaming_transport::inner_connect call_peer failed {}", rpc::error::to_string(ret));
+                RPC_ERROR("stream_transport::transport::inner_connect call_peer failed {}", rpc::error::to_string(ret));
                 CO_RETURN ret;
             }
 
@@ -81,14 +81,14 @@ namespace rpc::stream_transport
         CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(int) streaming_transport::inner_accept()
+    CORO_TASK(int) transport::inner_accept()
     {
         // Pump is already running — started by create() when connection_handler was provided.
         CO_RETURN rpc::error::OK();
     }
 
     CORO_TASK(int)
-    streaming_transport::outbound_send(uint64_t protocol_version,
+    transport::outbound_send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -100,7 +100,7 @@ namespace rpc::stream_transport
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("streaming_transport::outbound_send zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_send zone={}", get_zone_id().get_subnet());
 
         call_receive response;
         int ret = CO_AWAIT call_peer(protocol_version,
@@ -116,19 +116,19 @@ namespace rpc::stream_transport
 
         if (rpc::error::is_error(ret))
         {
-            RPC_DEBUG("failed streaming_transport::outbound_send call_send");
+            RPC_DEBUG("failed stream_transport::transport::outbound_send call_send");
             CO_RETURN ret;
         }
 
         out_buf_.swap(response.payload);
         out_back_channel.swap(response.back_channel);
 
-        RPC_DEBUG("streaming_transport::outbound_send complete zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_send complete zone={}", get_zone_id().get_subnet());
         CO_RETURN response.err_code;
     }
 
     CORO_TASK(void)
-    streaming_transport::outbound_post(uint64_t protocol_version,
+    transport::outbound_post(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::caller_zone caller_zone_id,
@@ -138,11 +138,11 @@ namespace rpc::stream_transport
         const rpc::span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("streaming_transport::outbound_post zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_post zone={}", get_zone_id().get_subnet());
 
         if (get_status() != rpc::transport_status::CONNECTED)
         {
-            RPC_ERROR("streaming_transport::outbound_post: transport not connected");
+            RPC_ERROR("stream_transport::transport::outbound_post: transport not connected");
             CO_RETURN;
         }
 
@@ -162,14 +162,14 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(int)
-    streaming_transport::outbound_try_cast(uint64_t protocol_version,
+    transport::outbound_try_cast(uint64_t protocol_version,
         rpc::caller_zone caller_zone_id,
         rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("streaming_transport::outbound_try_cast zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_try_cast zone={}", get_zone_id().get_subnet());
 
         try_cast_receive response_data;
         int ret = CO_AWAIT call_peer(protocol_version,
@@ -189,7 +189,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(int)
-    streaming_transport::outbound_add_ref(uint64_t protocol_version,
+    transport::outbound_add_ref(uint64_t protocol_version,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::requesting_zone requesting_zone_id,
@@ -197,7 +197,7 @@ namespace rpc::stream_transport
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("streaming_transport::outbound_add_ref zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_add_ref zone={}", get_zone_id().get_subnet());
 
         addref_receive response_data;
         int ret = CO_AWAIT call_peer(protocol_version,
@@ -227,23 +227,23 @@ namespace rpc::stream_transport
             CO_RETURN response_data.err_code;
         }
 
-        RPC_DEBUG("streaming_transport::outbound_add_ref complete zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_add_ref complete zone={}", get_zone_id().get_subnet());
         CO_RETURN rpc::error::OK();
     }
 
     CORO_TASK(int)
-    streaming_transport::outbound_release(uint64_t protocol_version,
+    transport::outbound_release(uint64_t protocol_version,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         rpc::release_options options,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
     {
-        RPC_DEBUG("streaming_transport::outbound_release zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_release zone={}", get_zone_id().get_subnet());
 
         if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::DISCONNECTING)
         {
-            RPC_ERROR("failed streaming_transport::outbound_release - not connected, status = {}",
+            RPC_ERROR("failed stream_transport::transport::outbound_release - not connected, status = {}",
                 static_cast<int>(get_status()));
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
@@ -268,16 +268,16 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::outbound_object_released(uint64_t protocol_version,
+    transport::outbound_object_released(uint64_t protocol_version,
         rpc::remote_object remote_object_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("streaming_transport::outbound_object_released zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_object_released zone={}", get_zone_id().get_subnet());
 
         if (get_status() == rpc::transport_status::DISCONNECTED)
         {
-            RPC_ERROR("failed streaming_transport::outbound_object_released - transport disconnected");
+            RPC_ERROR("failed stream_transport::transport::outbound_object_released - transport disconnected");
             CO_RETURN;
         }
 
@@ -289,20 +289,20 @@ namespace rpc::stream_transport
                 .back_channel = in_back_channel},
             0);
 
-        RPC_DEBUG("streaming_transport::outbound_object_released complete zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_object_released complete zone={}", get_zone_id().get_subnet());
     }
 
     CORO_TASK(void)
-    streaming_transport::outbound_transport_down(uint64_t protocol_version,
+    transport::outbound_transport_down(uint64_t protocol_version,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
-        RPC_DEBUG("streaming_transport::outbound_transport_down zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_transport_down zone={}", get_zone_id().get_subnet());
 
         if (get_status() == rpc::transport_status::DISCONNECTED)
         {
-            RPC_ERROR("failed streaming_transport::outbound_transport_down - transport disconnected");
+            RPC_ERROR("failed stream_transport::transport::outbound_transport_down - transport disconnected");
             CO_RETURN;
         }
 
@@ -314,10 +314,121 @@ namespace rpc::stream_transport
                 .back_channel = in_back_channel},
             0);
 
-        RPC_DEBUG("streaming_transport::outbound_transport_down complete zone={}", get_zone_id().get_subnet());
+        RPC_DEBUG("stream_transport::transport::outbound_transport_down complete zone={}", get_zone_id().get_subnet());
     }
 
-    CORO_TASK(void) streaming_transport::pump_send_and_receive()
+    CORO_TASK(transport::message_hook_result)
+    transport::run_custom_message_handlers(
+        std::shared_ptr<activity_tracker> tracker, envelope_prefix& prefix, envelope_payload& payload)
+    {
+        for (auto& handler : custom_message_handlers_)
+        {
+            auto result = CO_AWAIT handler(tracker, prefix, payload);
+            if (result != message_hook_result::unhandled)
+                CO_RETURN result;
+        }
+
+        CO_RETURN message_hook_result::unhandled;
+    }
+
+    CORO_TASK(bool)
+    transport::dispatch_builtin_message(
+        std::shared_ptr<activity_tracker> tracker, envelope_prefix& prefix, envelope_payload& payload)
+    {
+        if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received init_client_channel_send seq={}", prefix.sequence_number);
+            get_service()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received call_send seq={}", prefix.sequence_number);
+            get_service()->spawn(stub_handle_send(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received post_send seq={}", prefix.sequence_number);
+            get_service()->spawn(stub_handle_post(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received try_cast_send seq={}", prefix.sequence_number);
+            get_service()->spawn(stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received addref_send seq={}", prefix.sequence_number);
+            get_service()->spawn(stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received release_send seq={}", prefix.sequence_number);
+            get_service()->spawn(stub_handle_release(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received object_released_send seq={}", prefix.sequence_number);
+            get_service()->spawn(stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received transport_down_send seq={}", prefix.sequence_number);
+            get_service()->spawn(stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<init_client_initial_channel_response>::get(prefix.version))
+        {
+            init_client_initial_channel_response early_response;
+            auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), early_response);
+            if (str_err.empty())
+            {
+                RPC_DEBUG("pump: received init_client_initial_channel_response, adjacent_zone={}",
+                    early_response.zone_id.get_subnet());
+                set_adjacent_zone_id(early_response.zone_id);
+                get_service()->add_transport(early_response.zone_id, shared_from_this());
+
+                if (stub_)
+                {
+                    auto ret = CO_AWAIT stub_->add_ref(false, false, early_response.zone_id);
+                    stub_.reset();
+                    if (ret != rpc::error::OK())
+                    {
+                        set_status(transport_status::DISCONNECTING);
+                    }
+                }
+            }
+            else
+            {
+                RPC_ERROR("failed to deserialize init_client_initial_channel_response");
+            }
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<close_connection_send>::get(prefix.version))
+        {
+            RPC_DEBUG(
+                "pump: received close_connection_send seq={} zone={}", prefix.sequence_number, get_zone_id().get_subnet());
+            set_status(rpc::transport_status::DISCONNECTING);
+            peer_requested_disconnection_ = true;
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<close_connection_ack>::get(prefix.version))
+        {
+            RPC_DEBUG("pump: received close_connection_ack - shutdown confirmed zone={}", get_zone_id().get_subnet());
+            set_status(rpc::transport_status::DISCONNECTED);
+            CO_RETURN true;
+        }
+
+        CO_RETURN false;
+    }
+
+    CORO_TASK(void) transport::pump_send_and_receive()
     {
         auto self = shared_from_this();
         RPC_DEBUG("pump_send_and_receive zone={}", get_zone_id().get_subnet());
@@ -330,8 +441,8 @@ namespace rpc::stream_transport
         }
 
         auto svc = get_service();
-        auto tracker = std::shared_ptr<activity_tracker>(
-            new activity_tracker{.transport = std::static_pointer_cast<streaming_transport>(self), .svc = svc});
+        auto tracker = std::shared_ptr<activity_tracker>(new activity_tracker{
+            .transport = std::static_pointer_cast<rpc::stream_transport::transport>(self), .svc = svc});
         svc->spawn(receive_consumer_loop(tracker));
         svc->spawn(send_producer_loop(tracker));
 
@@ -339,7 +450,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::receive_consumer_loop(std::shared_ptr<activity_tracker> tracker)
+    transport::receive_consumer_loop(std::shared_ptr<activity_tracker> tracker)
     {
         auto self = shared_from_this();
         auto svc = get_service();
@@ -458,86 +569,26 @@ namespace rpc::stream_transport
                     break;
                 }
 
-                if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
+                auto hook_result = CO_AWAIT run_custom_message_handlers(tracker, prefix, payload);
+                if (hook_result == message_hook_result::handled)
                 {
-                    RPC_DEBUG("pump: received init_client_channel_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
+                    receiving_prefix = true;
+                    remaining = std::span<char>{};
+                    continue;
                 }
-                else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
+                else if (hook_result == message_hook_result::rejected)
                 {
-                    RPC_DEBUG("pump: received call_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(stub_handle_send(tracker, std::move(prefix), std::move(payload)));
-                }
-                else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
-                {
-                    RPC_DEBUG("pump: received post_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(stub_handle_post(tracker, std::move(prefix), std::move(payload)));
-                }
-                else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
-                {
-                    RPC_DEBUG("pump: received try_cast_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
-                }
-                else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
-                {
-                    RPC_DEBUG("pump: received addref_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
-                }
-                else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
-                {
-                    RPC_DEBUG("pump: received release_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(stub_handle_release(tracker, std::move(prefix), std::move(payload)));
-                }
-                else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
-                {
-                    RPC_DEBUG("pump: received object_released_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
-                }
-                else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
-                {
-                    RPC_DEBUG("pump: received transport_down_send seq={}", prefix.sequence_number);
-                    get_service()->spawn(stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
-                }
-                else if (payload.payload_fingerprint == rpc::id<init_client_initial_channel_response>::get(prefix.version))
-                {
-                    init_client_initial_channel_response early_response;
-                    auto str_err2 = rpc::from_yas_binary(rpc::span(payload.payload), early_response);
-                    if (str_err2.empty())
-                    {
-                        RPC_DEBUG("pump: received init_client_initial_channel_response, adjacent_zone={}",
-                            early_response.zone_id.get_subnet());
-                        set_adjacent_zone_id(early_response.zone_id);
-                        get_service()->add_transport(early_response.zone_id, shared_from_this());
-
-                        if (stub_)
-                        {
-                            auto ret = CO_AWAIT stub_->add_ref(false, false, early_response.zone_id);
-                            stub_.reset();
-                            if (ret != rpc::error::OK())
-                            {
-                                set_status(transport_status::DISCONNECTING);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        RPC_ERROR("failed to deserialize init_client_initial_channel_response");
-                    }
-                }
-                else if (payload.payload_fingerprint == rpc::id<close_connection_send>::get(prefix.version))
-                {
-                    RPC_DEBUG("pump: received close_connection_send seq={} zone={}",
-                        prefix.sequence_number,
-                        get_zone_id().get_subnet());
+                    RPC_WARNING("message rejected fingerprint={}", payload.payload_fingerprint);
                     set_status(rpc::transport_status::DISCONNECTING);
-                    peer_requested_disconnection_ = true;
+                    break;
                 }
-                else if (payload.payload_fingerprint == rpc::id<close_connection_ack>::get(prefix.version))
+
+                if (CO_AWAIT dispatch_builtin_message(tracker, prefix, payload))
                 {
-                    RPC_DEBUG(
-                        "pump: received close_connection_ack — shutdown confirmed zone={}", get_zone_id().get_subnet());
-                    set_status(rpc::transport_status::DISCONNECTED);
-                    stop_loop = true;
+                    if (get_status() == rpc::transport_status::DISCONNECTED)
+                    {
+                        stop_loop = true;
+                    }
                 }
                 else
                 {
@@ -587,7 +638,7 @@ namespace rpc::stream_transport
         CO_RETURN;
     }
 
-    CORO_TASK(void) streaming_transport::flush_send_queue()
+    CORO_TASK(void) transport::flush_send_queue()
     {
         while (true)
         {
@@ -603,7 +654,7 @@ namespace rpc::stream_transport
         }
     }
 
-    CORO_TASK(void) streaming_transport::send_producer_loop(std::shared_ptr<activity_tracker> tracker)
+    CORO_TASK(void) transport::send_producer_loop(std::shared_ptr<activity_tracker> tracker)
     {
         auto self = shared_from_this();
         auto svc = get_service();
@@ -657,7 +708,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::cleanup(std::shared_ptr<streaming_transport> transport, std::shared_ptr<rpc::service> svc)
+    transport::cleanup(std::shared_ptr<rpc::stream_transport::transport> transport, std::shared_ptr<rpc::service> svc)
     {
         RPC_DEBUG("Both loops completed, finalising transport for zone {}", transport->get_zone_id().get_subnet());
         {
@@ -673,7 +724,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::stub_handle_send(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_send(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_send");
 
@@ -724,7 +775,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::stub_handle_post(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_post(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_post");
 
@@ -757,8 +808,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::stub_handle_try_cast(
-        std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_try_cast(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_try_cast");
 
@@ -798,8 +848,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::stub_handle_add_ref(
-        std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_add_ref(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_add_ref");
 
@@ -840,8 +889,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::stub_handle_release(
-        std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_release(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_release");
 
@@ -879,7 +927,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::stub_handle_object_released(
+    transport::stub_handle_object_released(
         std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_object_released");
@@ -901,8 +949,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::stub_handle_transport_down(
-        std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_transport_down(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_transport_down");
 
@@ -923,7 +970,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    streaming_transport::create_stub(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::create_stub(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
     {
         RPC_DEBUG("create_stub zone: {}", get_zone_id().get_subnet());
 

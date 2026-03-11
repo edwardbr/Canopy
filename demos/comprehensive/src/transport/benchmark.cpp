@@ -285,8 +285,8 @@ namespace comprehensive
 
             auto stream_1
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_1, &queues->to_process_2, scheduler);
-            auto transport_1 = rpc::stream_transport::streaming_transport::create(
-                "spsc_transport_1", service_1, std::move(stream_1), nullptr);
+            auto transport_1
+                = rpc::stream_transport::transport::create("spsc_transport_1", service_1, std::move(stream_1), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -336,7 +336,7 @@ namespace comprehensive
             auto handler = [&, enc](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
-                               std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+                               std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT service->attach_remote_zone<i_data_processor, i_data_processor>("spsc_client_proxy",
                     transport,
@@ -357,8 +357,8 @@ namespace comprehensive
 
             auto stream_2
                 = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2 = rpc::stream_transport::streaming_transport::create(
-                "spsc_transport_2", service_2, std::move(stream_2), handler);
+            auto transport_2
+                = rpc::stream_transport::transport::create("spsc_transport_2", service_2, std::move(stream_2), handler);
 
             co_await transport_2->accept();
             server_ready.set();
@@ -418,7 +418,7 @@ namespace comprehensive
             auto rpc_handler = [enc](const rpc::connection_settings& input_descr,
                                    rpc::interface_descriptor& output_interface,
                                    std::shared_ptr<rpc::service> child_service_ptr,
-                                   std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+                                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
                     "tcp_client_proxy",
@@ -441,8 +441,7 @@ namespace comprehensive
                 std::make_shared<streaming::tcp_stream_acceptor>(coro::net::socket_address{"127.0.0.1", port}),
                 [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                 {
-                    rpc::stream_transport::streaming_transport::create(
-                        "server_transport", svc, std::move(stream), rpc_handler);
+                    rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
                     CO_RETURN;
                 });
 
@@ -488,7 +487,7 @@ namespace comprehensive
             }
 
             auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
-            auto client_transport = rpc::stream_transport::streaming_transport::create(
+            auto client_transport = rpc::stream_transport::transport::create(
                 "client_transport", client_service, std::move(tcp_stm), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
@@ -560,11 +559,10 @@ namespace comprehensive
             service->set_default_encoding(enc);
             service->set_shutdown_event(on_shutdown_event);
 
-            auto connection_handler
-                = [enc](const rpc::connection_settings& input_descr,
-                      rpc::interface_descriptor& output_interface,
-                      std::shared_ptr<rpc::service> child_service_ptr,
-                      std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+            auto connection_handler = [enc](const rpc::connection_settings& input_descr,
+                                          rpc::interface_descriptor& output_interface,
+                                          std::shared_ptr<rpc::service> child_service_ptr,
+                                          std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
                     "io_uring_client_proxy",
@@ -593,7 +591,7 @@ namespace comprehensive
                 = std::make_shared<streaming::listener>(std::make_shared<streaming::iouring_acceptor>(addr, port),
                     [svc = service, connection_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                     {
-                        rpc::stream_transport::streaming_transport::create(
+                        rpc::stream_transport::transport::create(
                             "io_uring_server_transport", svc, std::move(stream), connection_handler);
                         CO_RETURN;
                     });
@@ -633,7 +631,7 @@ namespace comprehensive
             }
 
             auto stm = std::make_shared<streaming::iouring_stream>(std::move(client), scheduler);
-            auto client_transport = rpc::stream_transport::streaming_transport::create(
+            auto client_transport = rpc::stream_transport::transport::create(
                 "io_uring_client_transport", client_service, std::move(stm), nullptr);
 
             rpc::shared_ptr<i_data_processor> remote_service;
@@ -756,57 +754,57 @@ int main()
 
     print_header();
 
-    // auto local_scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-    //     coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-    //         .pool = coro::thread_pool::options{.thread_count = 2},
-    //         .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+    auto local_scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+            .pool = coro::thread_pool::options{.thread_count = 2},
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-    // for (const auto& enc : encodings)
-    // {
-    //     for (size_t blob_size : blob_sizes)
-    //     {
-    //         auto result = coro::sync_wait(run_local_benchmark(local_scheduler, enc.enc, blob_size));
-    //         if (result.error != rpc::error::OK())
-    //         {
-    //             fmt::print("local  | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-    //             continue;
-    //         }
-    //         print_stats("local", enc.name, blob_size, result.stats);
-    //     }
-    // }
+    for (const auto& enc : encodings)
+    {
+        for (size_t blob_size : blob_sizes)
+        {
+            auto result = coro::sync_wait(run_local_benchmark(local_scheduler, enc.enc, blob_size));
+            if (result.error != rpc::error::OK())
+            {
+                fmt::print("local  | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+                continue;
+            }
+            print_stats("local", enc.name, blob_size, result.stats);
+        }
+    }
 
-    // local_scheduler->shutdown();
+    local_scheduler->shutdown();
 
-    // fmt::print("run_spsc_benchmark\n");
-    // for (const auto& enc : encodings)
-    // {
-    //     for (size_t blob_size : blob_sizes)
-    //     {
-    //         auto result = run_spsc_benchmark(enc.enc, blob_size);
-    //         if (result.error != rpc::error::OK())
-    //         {
-    //             fmt::print("spsc   | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-    //             continue;
-    //         }
-    //         print_stats("spsc", enc.name, blob_size, result.stats);
-    //     }
-    // }
+    fmt::print("run_spsc_benchmark\n");
+    for (const auto& enc : encodings)
+    {
+        for (size_t blob_size : blob_sizes)
+        {
+            auto result = run_spsc_benchmark(enc.enc, blob_size);
+            if (result.error != rpc::error::OK())
+            {
+                fmt::print("spsc   | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+                continue;
+            }
+            print_stats("spsc", enc.name, blob_size, result.stats);
+        }
+    }
 
-    // fmt::print("run_tcp_benchmark\n");
-    // uint16_t tcp_port = 18900;
-    // for (const auto& enc : encodings)
-    // {
-    //     for (size_t blob_size : blob_sizes)
-    //     {
-    //         auto result = run_tcp_benchmark(enc.enc, blob_size, tcp_port++);
-    //         if (result.error != rpc::error::OK())
-    //         {
-    //             fmt::print("tcp    | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
-    //             continue;
-    //         }
-    //         print_stats("tcp", enc.name, blob_size, result.stats);
-    //     }
-    // }
+    fmt::print("run_tcp_benchmark\n");
+    uint16_t tcp_port = 18900;
+    for (const auto& enc : encodings)
+    {
+        for (size_t blob_size : blob_sizes)
+        {
+            auto result = run_tcp_benchmark(enc.enc, blob_size, tcp_port++);
+            if (result.error != rpc::error::OK())
+            {
+                fmt::print("tcp    | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+                continue;
+            }
+            print_stats("tcp", enc.name, blob_size, result.stats);
+        }
+    }
 
     fmt::print("run_io_uring_benchmark\n");
     uint16_t io_uring_port = 18800;

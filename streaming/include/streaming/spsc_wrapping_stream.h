@@ -24,7 +24,7 @@
 // Usage — create via the factory, never directly:
 //   auto spsc = spsc_wrapping_stream::create(tcp_stream, scheduler);
 //   auto tls  = std::make_shared<tls_stream>(spsc, tls_ctx);
-//   streaming_transport::create("name", service, tls, handler);
+//   transport::create("name", service, tls, handler);
 #pragma once
 
 #include <memory>

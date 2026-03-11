@@ -186,11 +186,10 @@ namespace stream_composition
 
                 // 4. Create the streaming_transport on top of the TLS stream.
                 //    connection_handler is called when the remote zone connects.
-                auto rpc_handler
-                    = [service](const rpc::connection_settings& input_descr,
-                          rpc::interface_descriptor& output_interface,
-                          std::shared_ptr<rpc::service> child_service_ptr,
-                          std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+                auto rpc_handler = [service](const rpc::connection_settings& input_descr,
+                                       rpc::interface_descriptor& output_interface,
+                                       std::shared_ptr<rpc::service> child_service_ptr,
+                                       std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
                 {
                     auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_echo, i_echo>("echo_client_proxy",
                         transport,
@@ -207,7 +206,7 @@ namespace stream_composition
                     CO_RETURN ret;
                 };
 
-                rpc::stream_transport::streaming_transport::create("server_transport", service, tls_stm, rpc_handler);
+                rpc::stream_transport::transport::create("server_transport", service, tls_stm, rpc_handler);
                 CO_RETURN;
             };
 
@@ -299,7 +298,7 @@ namespace stream_composition
 
         // 5. Create streaming_transport (client side — no connection_handler).
         auto client_transport
-            = rpc::stream_transport::streaming_transport::create("client_transport", client_service, tls_stm, nullptr);
+            = rpc::stream_transport::transport::create("client_transport", client_service, tls_stm, nullptr);
 
         // 6. Connect to the remote zone and obtain the i_echo proxy.
         rpc::shared_ptr<i_echo> local_echo;

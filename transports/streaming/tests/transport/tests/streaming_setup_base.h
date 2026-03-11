@@ -20,16 +20,16 @@ protected:
     std::shared_ptr<rpc::root_service> peer_service_;
 
     // The two sides of the transport: initiator (client) and responder (server/child)
-    std::shared_ptr<rpc::stream_transport::streaming_transport> initiator_transport_;
-    std::shared_ptr<rpc::stream_transport::streaming_transport> responder_transport_;
+    std::shared_ptr<rpc::stream_transport::transport> initiator_transport_;
+    std::shared_ptr<rpc::stream_transport::transport> responder_transport_;
     std::unique_ptr<streaming::listener> listener_;
 
-    rpc::stream_transport::streaming_transport::connection_handler make_connection_handler()
+    rpc::stream_transport::transport::connection_handler make_connection_handler()
     {
         return [use_host_in_child = this->use_host_in_child_](const rpc::connection_settings& input_descr,
                    rpc::interface_descriptor& output_interface,
                    std::shared_ptr<rpc::service> service,
-                   std::shared_ptr<rpc::stream_transport::streaming_transport> transport) -> CORO_TASK(int)
+                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
         {
             auto ret = CO_AWAIT service->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
                 transport,
@@ -55,10 +55,7 @@ protected:
 public:
     virtual ~streaming_setup_base() = default;
 
-    std::shared_ptr<rpc::stream_transport::streaming_transport> get_responder_transport() const
-    {
-        return responder_transport_;
-    }
+    std::shared_ptr<rpc::stream_transport::transport> get_responder_transport() const { return responder_transport_; }
 
     CORO_TASK(bool) CoroSetUp()
     {

@@ -17,13 +17,20 @@
 
 namespace rpc::stream_transport
 {
-    class streaming_transport : public rpc::transport
+    class transport : public rpc::transport
     {
     public:
+        enum class message_hook_result
+        {
+            unhandled,
+            handled,
+            rejected
+        };
+
         using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
             rpc::interface_descriptor& output_interface,
             std::shared_ptr<rpc::service> child_service_ptr,
-            std::shared_ptr<streaming_transport>)>;
+            std::shared_ptr<transport>)>;
 
     private:
         struct result_listener
@@ -36,6 +43,11 @@ namespace rpc::stream_transport
             bool post_only = false;
         };
 
+        struct activity_tracker;
+
+        using custom_message_handler = std::function<CORO_TASK(message_hook_result)(
+            std::shared_ptr<activity_tracker> tracker, envelope_prefix& prefix, envelope_payload& payload)>;
+
         std::unordered_map<uint64_t, result_listener*> pending_transmits_;
         std::mutex pending_transmits_mtx_;
 
@@ -47,7 +59,8 @@ namespace rpc::stream_transport
         std::mutex send_queue_mtx_;
 
         connection_handler connection_handler_;
-        stdex::member_ptr<streaming_transport> keep_alive_;
+        std::vector<custom_message_handler> custom_message_handlers_;
+        stdex::member_ptr<transport> keep_alive_;
 
         std::shared_ptr<rpc::object_stub> stub_;
 
@@ -61,12 +74,12 @@ namespace rpc::stream_transport
 
         struct activity_tracker
         {
-            std::shared_ptr<streaming_transport> transport;
+            std::shared_ptr<transport> transport;
             std::shared_ptr<rpc::service> svc; // kept here to keep the service alive
             ~activity_tracker() { svc->spawn(transport->cleanup(transport, svc)); }
         };
 
-        streaming_transport(std::string name,
+        transport(std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
             connection_handler handler);
@@ -95,6 +108,12 @@ namespace rpc::stream_transport
             std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
         CORO_TASK(void)
         create_stub(std::shared_ptr<activity_tracker> tracker, envelope_prefix prefix, envelope_payload payload);
+        CORO_TASK(message_hook_result)
+        run_custom_message_handlers(
+            std::shared_ptr<activity_tracker> tracker, envelope_prefix& prefix, envelope_payload& payload);
+        CORO_TASK(bool)
+        dispatch_builtin_message(
+            std::shared_ptr<activity_tracker> tracker, envelope_prefix& prefix, envelope_payload& payload);
 
         template<class SendPayload>
         void send_payload(
@@ -180,7 +199,7 @@ namespace rpc::stream_transport
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(void) cleanup(std::shared_ptr<streaming_transport> transport, std::shared_ptr<rpc::service> svc);
+        CORO_TASK(void) cleanup(std::shared_ptr<transport> transport, std::shared_ptr<rpc::service> svc);
 
     protected:
         void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
@@ -195,14 +214,97 @@ namespace rpc::stream_transport
         }
 
     public:
-        static std::shared_ptr<streaming_transport> create(std::string name,
+        static std::shared_ptr<transport> create(std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
             connection_handler handler);
 
-        virtual ~streaming_transport() { }
+        virtual ~transport() { }
+
+        void add_custom_message_handler(custom_message_handler handler)
+        {
+            custom_message_handlers_.push_back(std::move(handler));
+        }
+
+        template<class T, class Handler> void add_typed_message_handler(Handler&& handler)
+        {
+            custom_message_handlers_.push_back(
+                [fn = std::forward<Handler>(handler)](std::shared_ptr<activity_tracker> tracker,
+                    envelope_prefix& prefix,
+                    envelope_payload& payload) -> CORO_TASK(message_hook_result)
+                {
+                    if (payload.payload_fingerprint != rpc::id<T>::get(prefix.version))
+                        CO_RETURN message_hook_result::unhandled;
+
+                    T request;
+                    auto err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+                    if (!err.empty())
+                    {
+                        RPC_ERROR("failed custom message deserialisation");
+                        CO_RETURN message_hook_result::rejected;
+                    }
+
+                    CO_RETURN CO_AWAIT fn(tracker, prefix, payload, request);
+                });
+        }
+
+        template<class T> void reject_message_type()
+        {
+            custom_message_handlers_.push_back(
+                [](std::shared_ptr<activity_tracker>,
+                    envelope_prefix& prefix,
+                    envelope_payload& payload) -> CORO_TASK(message_hook_result)
+                {
+                    if (payload.payload_fingerprint == rpc::id<T>::get(prefix.version))
+                        CO_RETURN message_hook_result::rejected;
+
+                    CO_RETURN message_hook_result::unhandled;
+                });
+        }
 
         CORO_TASK(void) pump_send_and_receive();
+
+        CORO_TASK(int)
+        run_custom_connect(const rpc::remote_object& inbound_remote_object,
+            rpc::interface_ordinal inbound_interface_id,
+            rpc::interface_ordinal outbound_interface_id,
+            rpc::interface_descriptor& output_interface)
+        {
+            RPC_DEBUG("custom connect handler zone: {}", get_zone_id().get_subnet());
+
+            rpc::connection_settings input_descr;
+            input_descr.inbound_interface_id = inbound_interface_id;
+            input_descr.outbound_interface_id = outbound_interface_id;
+            input_descr.input_zone_id = inbound_remote_object;
+
+            set_adjacent_zone_id(inbound_remote_object.as_zone());
+
+            int ret
+                = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
+            connection_handler_ = nullptr;
+            if (ret != rpc::error::OK())
+            {
+                RPC_ERROR("failed custom connect to zone {}", ret);
+                set_status(rpc::transport_status::DISCONNECTING);
+            }
+
+            CO_RETURN ret;
+        }
+
+        template<class ResponsePayload>
+        void send_custom_connect_response(uint64_t protocol_version,
+            uint64_t sequence_number,
+            rpc::zone caller_zone_id,
+            rpc::remote_object outbound_remote_object)
+        {
+            send_payload(protocol_version,
+                message_direction::receive,
+                ResponsePayload{
+                    .caller_zone_id = caller_zone_id,
+                    .outbound_remote_object = outbound_remote_object,
+                },
+                sequence_number);
+        }
 
         CORO_TASK(int)
         inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
