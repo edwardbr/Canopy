@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cerrno>
 #include <coroutine>
+#include <cstdio>
 #include <cstring>
 #include <linux/io_uring.h>
 #include <linux/time_types.h>
@@ -22,6 +23,7 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
+#include <chrono>
 
 namespace streaming
 {
@@ -62,6 +64,7 @@ namespace streaming
         uint64_t next_id{1};
         std::atomic<bool> stopping{false};
         std::atomic<bool> cancel_all_requested{false};
+        std::atomic<bool> pump_running{false};
     };
 
     namespace
@@ -145,6 +148,12 @@ namespace streaming
             while (::read(event_fd, &counter, sizeof(counter)) == sizeof(counter))
             {
             }
+        }
+
+        auto eventfd_signal(int event_fd) -> void
+        {
+            uint64_t counter = 1;
+            ::write(event_fd, &counter, sizeof(counter));
         }
 
         auto teardown_ring(const std::shared_ptr<io_uring_tcp_stream::ring_state>& state) -> void
@@ -559,6 +568,7 @@ namespace streaming
         try
         {
             setup_ring(state_);
+            fprintf(stderr, "io_uring_tcp_stream constructor ring_fd=%d\n", state_->ring_fd);
         }
         catch (...)
         {
@@ -575,40 +585,162 @@ namespace streaming
 
     io_uring_tcp_stream::~io_uring_tcp_stream()
     {
+        fprintf(stderr, "io_uring_tcp_stream destructor ring_fd=%d\n", state_ ? state_->ring_fd : -1);
+        if (shutting_down_.exchange(true))
+            return;
+
         set_closed();
+
+        // Brief wait for cleanup to complete (avoid hanging)
+        if (state_ && state_->stopping.load(std::memory_order_acquire))
+        {
+            constexpr auto shutdown_timeout = std::chrono::milliseconds(500);
+            auto shutdown_start = std::chrono::steady_clock::now();
+            fprintf(stderr,
+                "io_uring destructor waiting for cleanup, inflight=%zu pump_running=%d\n",
+                in_flight_count(state_),
+                state_->pump_running.load(std::memory_order_acquire));
+            // Wait for inflight operations to complete
+            while (in_flight_count(state_) > 0 && std::chrono::steady_clock::now() - shutdown_start < shutdown_timeout)
+            {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+            // Wait for completion pump to exit
+            while (state_->pump_running.load(std::memory_order_acquire)
+                   && std::chrono::steady_clock::now() - shutdown_start < shutdown_timeout)
+            {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+            fprintf(stderr,
+                "io_uring destructor cleanup done, inflight=%zu pump_running=%d\n",
+                in_flight_count(state_),
+                state_->pump_running.load(std::memory_order_acquire));
+        }
     }
 
     auto io_uring_tcp_stream::completion_pump(
         std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler) -> coro::task<void>
     {
-        while (true)
+        state->pump_running.store(true, std::memory_order_release);
+        fprintf(stderr, "io_uring completion_pump start ring_fd=%d\n", state->ring_fd);
+
+        // Use a simple loop that doesn't depend on scheduler->poll which can hang
+        // during scheduler shutdown
+        constexpr auto yield_interval = std::chrono::milliseconds(1);
+        constexpr auto shutdown_timeout = std::chrono::milliseconds(500);
+
+        try
         {
-            if (state->stopping.load(std::memory_order_acquire))
+            size_t iter = 0;
+            while (true)
             {
-                cancel_all_ops(state);
-                drain_cq(state, scheduler);
-                if (in_flight_count(state) == 0)
+                ++iter;
+                if (iter % 100 == 0)
                 {
+                    fprintf(stderr,
+                        "io_uring completion_pump iteration %zu ring_fd=%d stopping=%d\n",
+                        iter,
+                        state->ring_fd,
+                        state->stopping.load());
+                }
+                // Check if we should stop
+                if (state->stopping.load(std::memory_order_acquire))
+                {
+                    fprintf(stderr, "io_uring completion_pump: shutdown detected, inflight=%zu\n", in_flight_count(state));
+                    cancel_all_ops(state);
+                    auto shutdown_start = std::chrono::steady_clock::now();
+
+                    // Wait for any remaining operations to complete
+                    while (in_flight_count(state) > 0)
+                    {
+                        // Check for completions (non-blocking)
+                        uint64_t counter = 0;
+                        if (::read(state->event_fd, &counter, sizeof(counter)) == sizeof(counter))
+                        {
+                            drain_cq(state, scheduler);
+                        }
+
+                        // Yield briefly to allow scheduler to process other tasks
+                        try
+                        {
+                            co_await scheduler->yield_for(yield_interval);
+                        }
+                        catch (...)
+                        {
+                            // Scheduler may be shutting down
+                            fprintf(stderr, "io_uring completion_pump: yield exception, breaking\n");
+                            break;
+                        }
+
+                        // Timeout check to prevent infinite hang
+                        if (std::chrono::steady_clock::now() - shutdown_start > shutdown_timeout)
+                        {
+                            fprintf(stderr, "io_uring completion_pump: shutdown timeout\n");
+                            break;
+                        }
+                    }
+
+                    // Mark any remaining operations as failed
+                    if (in_flight_count(state) > 0)
+                    {
+                        mark_all_failed(state, scheduler, ECANCELED);
+                    }
                     break;
                 }
-            }
 
-            auto poll_status
-                = co_await scheduler->poll(state->event_fd, coro::poll_op::read, std::chrono::milliseconds{50});
-            if (poll_status == coro::poll_status::read)
-            {
-                eventfd_drain(state->event_fd);
-                drain_cq(state, scheduler);
-                continue;
-            }
-
-            if (poll_status != coro::poll_status::timeout)
-            {
-                mark_all_failed(state, scheduler, ECANCELED);
-                break;
+                // Normal operation: check for completions with short yield
+                uint64_t counter = 0;
+                if (::read(state->event_fd, &counter, sizeof(counter)) == sizeof(counter))
+                {
+                    // We got a completion notification
+                    eventfd_drain(state->event_fd);
+                    drain_cq(state, scheduler);
+                }
+                else if (errno != EAGAIN && errno != EWOULDBLOCK)
+                {
+                    // Eventfd error
+                    fprintf(stderr, "io_uring completion_pump: eventfd error %d\n", errno);
+                    break;
+                }
+                else
+                {
+                    // No completions yet, yield briefly
+                    if (state->stopping.load(std::memory_order_acquire))
+                    {
+                        fprintf(stderr,
+                            "io_uring completion_pump: stopping flag true in normal loop ring_fd=%d\n",
+                            state->ring_fd);
+                        // Stopping flag set, skip yield and let shutdown detection handle
+                        continue;
+                    }
+                    try
+                    {
+                        co_await scheduler->yield_for(yield_interval);
+                        if (state->stopping.load(std::memory_order_acquire))
+                        {
+                            continue;
+                        }
+                    }
+                    catch (...)
+                    {
+                        // Scheduler may be shutting down, check stopping flag
+                        if (state->stopping.load(std::memory_order_acquire))
+                        {
+                            continue;
+                        }
+                        fprintf(stderr, "io_uring completion_pump: yield exception, breaking\n");
+                        break;
+                    }
+                }
             }
         }
+        catch (...)
+        {
+            fprintf(stderr, "io_uring completion_pump: unhandled exception\n");
+        }
 
+        state->pump_running.store(false, std::memory_order_release);
+        fprintf(stderr, "io_uring completion_pump end ring_fd=%d\n", state->ring_fd);
         teardown_ring(state);
     }
 
@@ -708,10 +840,14 @@ namespace streaming
 
     void io_uring_tcp_stream::set_closed()
     {
+        fprintf(stderr, "io_uring_tcp_stream set_closed ring_fd=%d\n", state_ ? state_->ring_fd : -1);
         closed_ = true;
         if (state_)
         {
             state_->stopping.store(true, std::memory_order_release);
+            std::atomic_thread_fence(std::memory_order_seq_cst);
+            fprintf(stderr, "io_uring_tcp_stream set_closed stopping flag=%d\n", state_->stopping.load());
+            eventfd_signal(state_->event_fd);
             cancel_all_ops(state_);
         }
 

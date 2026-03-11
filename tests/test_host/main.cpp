@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
     args::ValueFlag<std::string> animation_path(
         parser, "animation-path", "Animation diagram output path", {"animation-path"}, "../../telemetry/reports/");
 
-    // args::Flag help(parser, "help", "Display this help menu", {'h', "help"});
+    args::Flag help(parser, "help", "Display this help menu", {'h', "help"});
 
     try
     {
@@ -82,17 +82,17 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // if (help)
-    // {
-    //     std::cout << parser;
-    //     std::cout << "\nGoogle Test Integration:\n";
-    //     std::cout << "  All Google Test flags are supported and will be passed through.\n";
-    //     std::cout << "  Use --gtest_help to see Google Test specific options.\n\n";
-    //     std::cout << "Examples:\n";
-    //     std::cout << "  ./rpc_test --telemetry-console\n";
-    //     std::cout << "  ./rpc_test --telemetry-console --telemetry-sequence\n";
-    //     std::cout << "  ./rpc_test --telemetry-console --gtest_filter=\"*standard_tests*\"\n";
-    // }
+    if (help)
+    {
+        std::cout << parser;
+        std::cout << "\nGoogle Test Integration:\n";
+        std::cout << "  All Google Test flags are supported and will be passed through.\n";
+        std::cout << "  Use --gtest_help to see Google Test specific options.\n\n";
+        std::cout << "Examples:\n";
+        std::cout << "  ./rpc_test --telemetry-console\n";
+        std::cout << "  ./rpc_test --telemetry-console --telemetry-sequence\n";
+        std::cout << "  ./rpc_test --telemetry-console --gtest_filter=\"*standard_tests*\"\n";
+    }
 
     // Extract parsed values
     enable_multithreaded_tests = args::get(enable_multithreaded_flag);

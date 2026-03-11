@@ -43,6 +43,8 @@ namespace streaming
         std::shared_ptr<ring_state> state_;
         bool closed_{false};
         bool socket_closed_{false};
+        // Add a flag to track if we're in the process of shutting down
+        std::atomic<bool> shutting_down_{false};
     };
 
 } // namespace streaming
