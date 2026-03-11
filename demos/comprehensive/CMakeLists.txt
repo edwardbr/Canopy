@@ -20,8 +20,8 @@ add_subdirectory(idl)
 # Find all demo source files
 file(GLOB_RECURSE DEMO_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*/*.cpp)
 
-# Create executables for each demo category Note: These require the generated demo.h header which is created by
-# rpc_generator
+# Create executables for each demo category Note: These require the generated websocket_demo.h header which is created
+# by rpc_generator
 
 # Transport demos (require Coroutine_Debug for TCP and SPSC)
 add_executable(local_transport_demo src/transport/local_transport_demo.cpp)
