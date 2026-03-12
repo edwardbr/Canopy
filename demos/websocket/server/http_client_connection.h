@@ -12,6 +12,7 @@
 #include <llhttp.h>
 #include "websocket_service.h"
 #include <streaming/stream.h>
+#include <transports/streaming/transport.h>
 
 // Forward declarations
 namespace websocket_demo
@@ -27,8 +28,8 @@ namespace websocket_demo
             explicit http_client_connection(
                 std::shared_ptr<streaming::stream> stream, std::shared_ptr<websocket_service> service);
 
-            // Main coroutine that handles the connection
-            auto handle() -> coro::task<void>;
+            // Returns a websocket transport for upgraded connections, otherwise nullptr.
+            auto handle() -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>;
 
         private:
             // HTTP parsing context
@@ -72,7 +73,8 @@ namespace websocket_demo
             std::string handle_put(const std::string& path, const std::string& body);
             std::string handle_delete(const std::string& path);
 
-            auto handle_websocket_upgrade(const http_request_context& ctx) -> coro::task<bool>;
+            auto handle_websocket_upgrade(const http_request_context& ctx)
+                -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>;
 
             // JSON response helpers
             std::string create_json_response(int status_code, const std::string& status_text, const std::string& json_body);
@@ -82,6 +84,7 @@ namespace websocket_demo
             // Member data
             std::shared_ptr<streaming::stream> stream_;
             std::shared_ptr<websocket_service> service_;
+            bool keep_alive_{false};
         };
     }
 }

@@ -17,7 +17,6 @@ add_executable(
     http_client_connection_rest.cpp
     http_client_connection_browser.cpp
     http_client_connection_websocket.cpp
-    websocket_handshake.cpp
     websocket_service.cpp
     llama_server_engine.cpp)
 

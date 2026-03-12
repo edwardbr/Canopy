@@ -104,15 +104,15 @@ namespace websocket_demo
             return response;
         }
 
-        auto http_client_connection::handle() -> coro::task<void>
+        auto http_client_connection::handle() -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>
         {
-            std::string buffer(8192, '\0');
+            std::string receive_buffer(8192, '\0');
+            std::string pending_input;
 
             try
             {
                 llhttp_t parser;
                 llhttp_settings_t settings;
-                http_request_context ctx;
 
                 llhttp_settings_init(&settings);
                 settings.on_method = on_method;
@@ -124,82 +124,105 @@ namespace websocket_demo
                 settings.on_message_complete = on_message_complete;
 
                 llhttp_init(&parser, HTTP_REQUEST, &settings);
-                parser.data = &ctx;
 
-                bool is_websocket_upgrade = false;
-                do
+                while (true)
                 {
-                    auto [rstatus, rspan] = co_await stream_->receive(buffer);
+                    http_request_context ctx;
+                    llhttp_reset(&parser);
+                    parser.data = &ctx;
 
-                    if (!rstatus.is_ok() || rspan.empty())
+                    bool is_websocket_upgrade = false;
+                    while (!ctx.message_complete)
                     {
-                        RPC_ERROR("Failed to read HTTP request");
-                        co_return;
-                    }
-
-                    {
-                        std::string preview;
-                        for (size_t i = 0; i < std::min(size_t(100), rspan.size()); i++)
+                        if (pending_input.empty())
                         {
-                            unsigned char c = static_cast<unsigned char>(rspan.data()[i]);
-                            if (c >= 32 && c < 127)
+                            auto [rstatus, rspan] = co_await stream_->receive(receive_buffer);
+
+                            if (!rstatus.is_ok() || rspan.empty())
                             {
-                                preview += static_cast<char>(c);
+                                RPC_ERROR("Failed to read HTTP request");
+                                co_return nullptr;
                             }
-                            else
+
                             {
-                                preview += fmt::format("\\x{:02x}", static_cast<int>(c));
+                                std::string preview;
+                                for (size_t i = 0; i < std::min(size_t(100), rspan.size()); i++)
+                                {
+                                    unsigned char c = static_cast<unsigned char>(rspan.data()[i]);
+                                    if (c >= 32 && c < 127)
+                                    {
+                                        preview += static_cast<char>(c);
+                                    }
+                                    else
+                                    {
+                                        preview += fmt::format("\\x{:02x}", static_cast<int>(c));
+                                    }
+                                }
+                                RPC_DEBUG("Received {} bytes, first bytes: {}", rspan.size(), preview);
                             }
+
+                            pending_input.append(rspan.data(), rspan.size());
                         }
-                        RPC_DEBUG("Received {} bytes, first bytes: {}", rspan.size(), preview);
+
+                        enum llhttp_errno err = llhttp_execute(&parser, pending_input.data(), pending_input.size());
+                        const char* error_pos = llhttp_get_error_pos(&parser);
+                        size_t consumed = error_pos ? static_cast<size_t>(error_pos - pending_input.data()) : 0;
+
+                        if (err == HPE_PAUSED_UPGRADE)
+                        {
+                            is_websocket_upgrade = true;
+                            llhttp_resume_after_upgrade(&parser);
+                            pending_input.erase(0, consumed);
+                            break;
+                        }
+
+                        if (err != HPE_OK)
+                        {
+                            RPC_ERROR("HTTP parse error: {}", llhttp_errno_name(err));
+                            keep_alive_ = false;
+                            std::string response = create_error_response(400, "Bad Request");
+                            co_await stream_->send(std::span<const char>{response});
+                            co_return nullptr;
+                        }
+
+                        pending_input.erase(0, consumed);
                     }
 
-                    enum llhttp_errno err = llhttp_execute(&parser, rspan.data(), rspan.size());
-                    if (err == HPE_PAUSED_UPGRADE)
+                    if (is_websocket_upgrade)
                     {
-                        is_websocket_upgrade = true;
-                        llhttp_resume_after_upgrade(&parser);
-                        err = HPE_OK;
+                        co_return CO_AWAIT handle_websocket_upgrade(ctx);
                     }
-                    else if (err != HPE_OK)
+
+                    keep_alive_ = llhttp_should_keep_alive(&parser) != 0;
+
+                    std::string method = llhttp_method_name(static_cast<llhttp_method_t>(parser.method));
+                    std::string path = ctx.url;
+                    RPC_INFO("HTTP {} request for: {}", method, path);
+
+                    std::string response;
+
+                    if (path.starts_with("/api/"))
                     {
-                        RPC_ERROR("HTTP parse error: {}", llhttp_errno_name(err));
-                        std::string response = create_error_response(400, "Bad Request");
-                        co_await stream_->send(std::span<const char>{response});
-                        co_return;
+                        response = handle_rest_request(method, path, ctx.body);
+                        RPC_INFO("Handled REST API request: {} {}", method, path);
                     }
-                } while (!ctx.message_complete);
-
-                if (is_websocket_upgrade)
-                {
-                    if (!(co_await handle_websocket_upgrade(ctx)))
+                    else
                     {
-                        RPC_ERROR("WebSocket upgrade failed");
+                        response = handle_browser_request(method, path);
+                        RPC_INFO("Handled browser content request: {} {}", method, path);
                     }
-                    co_return;
-                }
 
-                std::string method = llhttp_method_name(static_cast<llhttp_method_t>(parser.method));
-                std::string path = ctx.url;
-                RPC_INFO("HTTP {} request for: {}", method, path);
+                    auto httpstatus = co_await stream_->send(std::span<const char>{response});
+                    if (!httpstatus.is_ok())
+                    {
+                        RPC_ERROR("Failed to send HTTP response for: {}", path);
+                        co_return nullptr;
+                    }
 
-                std::string response;
-
-                if (path.starts_with("/api/"))
-                {
-                    response = handle_rest_request(method, path, ctx.body);
-                    RPC_INFO("Handled REST API request: {} {}", method, path);
-                }
-                else
-                {
-                    response = handle_browser_request(method, path);
-                    RPC_INFO("Handled browser content request: {} {}", method, path);
-                }
-
-                auto httpstatus = co_await stream_->send(std::span<const char>{response});
-                if (!httpstatus.is_ok())
-                {
-                    RPC_ERROR("Failed to send HTTP response for: {}", path);
+                    if (!keep_alive_)
+                    {
+                        co_return nullptr;
+                    }
                 }
             }
             catch (const std::exception& e)
@@ -207,7 +230,7 @@ namespace websocket_demo
                 RPC_ERROR("Exception in http_client_connection::handle: {}", e.what());
             }
 
-            co_return;
+            co_return nullptr;
         }
     }
 }

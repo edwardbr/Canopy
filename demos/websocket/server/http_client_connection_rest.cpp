@@ -12,7 +12,8 @@ namespace websocket_demo
         std::string http_client_connection::create_json_response(
             int status_code, const std::string& status_text, const std::string& json_body)
         {
-            std::map<std::string, std::string> headers = {{"Content-Type", "application/json"}, {"Connection", "close"}};
+            std::map<std::string, std::string> headers
+                = {{"Content-Type", "application/json"}, {"Connection", keep_alive_ ? "keep-alive" : "close"}};
 
             return build_http_response(status_code, status_text, headers, json_body);
         }
