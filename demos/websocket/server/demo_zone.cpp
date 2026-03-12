@@ -4,7 +4,6 @@
 #include <rpc/rpc.h>
 
 #include "secret_llama/secret_llama.h"
-// #include "secret_llama/llm_engine.h"
 #include "llama_server_engine.h"
 
 #include "demo_zone.h"
@@ -22,7 +21,7 @@ namespace websocket_demo
 {
     namespace v1
     {
-        rpc::shared_ptr<v1::i_calculator> create_websocket_demo_instance(
+        rpc::shared_ptr<i_calculator> create_websocket_demo_instance(
             const std::shared_ptr<secret_llama::v1_0::llm_engine>& engine,
             const std::shared_ptr<secret_llama::v1_0::loaded_model>& loaded_model,
             const std::shared_ptr<rpc::service> service_);
