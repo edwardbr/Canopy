@@ -11,7 +11,6 @@ add_executable(
   websocket_server
   main.cpp
   demo.cpp
-  http_acceptor.cpp
   http_client_connection.cpp
   rest_handler.cpp
   websocket_handler.cpp

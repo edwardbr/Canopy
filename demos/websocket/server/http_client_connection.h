@@ -18,8 +18,6 @@ namespace websocket_demo
 {
     namespace v1
     {
-        class i_calculator;
-
         class http_client_connection
         {
         public:
@@ -29,6 +27,7 @@ namespace websocket_demo
             auto handle() -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>;
 
         private:
+            // in rest_handler
             auto handle_rest_request(const canopy::http_server::request& request)
                 -> std::optional<canopy::http_server::response>;
             auto handle_get(const std::string& path) -> canopy::http_server::response;
@@ -36,6 +35,7 @@ namespace websocket_demo
             auto handle_put(const std::string& path, const std::string& body) -> canopy::http_server::response;
             auto handle_delete(const std::string& path) -> canopy::http_server::response;
 
+            // in websocket_handler
             auto handle_websocket_upgrade(
                 const canopy::http_server::request& request, std::shared_ptr<streaming::stream> websocket_stream)
                 -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>;

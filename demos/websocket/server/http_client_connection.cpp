@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// http_client_connection.cpp
 #include "http_client_connection.h"
 
 #include <filesystem>
