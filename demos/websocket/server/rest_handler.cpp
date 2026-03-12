@@ -9,64 +9,37 @@ namespace websocket_demo
 {
     namespace v1
     {
-        std::string http_client_connection::create_json_response(
-            int status_code, const std::string& status_text, const std::string& json_body)
-        {
-            std::map<std::string, std::string> headers
-                = {{"Content-Type", "application/json"}, {"Connection", keep_alive_ ? "keep-alive" : "close"}};
-
-            return build_http_response(status_code, status_text, headers, json_body);
-        }
-
-        std::string http_client_connection::create_error_response(int status_code, const std::string& message)
+        auto http_client_connection::create_error_response(int status_code, const std::string& message)
+            -> canopy::http_server::response
         {
             std::string json_body = fmt::format(R"({{"error":"{}","status":{}}})", message, status_code);
-            std::string status_text;
-
-            switch (status_code)
-            {
-            case 400:
-                status_text = "Bad Request";
-                break;
-            case 404:
-                status_text = "Not Found";
-                break;
-            case 405:
-                status_text = "Method Not Allowed";
-                break;
-            case 500:
-                status_text = "Internal Server Error";
-                break;
-            default:
-                status_text = "Error";
-                break;
-            }
-
-            return create_json_response(status_code, status_text, json_body);
+            return canopy::http_server::make_json_response(status_code, json_body);
         }
 
-        std::string http_client_connection::create_success_response(const std::string& data)
+        auto http_client_connection::create_success_response(const std::string& data) -> canopy::http_server::response
         {
             std::string json_body = fmt::format(R"({{"success":true,"data":{}}})", data);
-            return create_json_response(200, "OK", json_body);
+            return canopy::http_server::make_json_response(200, json_body);
         }
 
-        std::string http_client_connection::handle_rest_request(
-            const std::string& method, const std::string& path, const std::string& body)
+        auto http_client_connection::handle_rest_request(const canopy::http_server::request& request)
+            -> std::optional<canopy::http_server::response>
         {
-            if (method == "GET")
+            const auto path = canopy::http_server::request_path(request.url);
+
+            if (request.method == "GET")
             {
                 return handle_get(path);
             }
-            if (method == "POST")
+            if (request.method == "POST")
             {
-                return handle_post(path, body);
+                return handle_post(path, request.body);
             }
-            if (method == "PUT")
+            if (request.method == "PUT")
             {
-                return handle_put(path, body);
+                return handle_put(path, request.body);
             }
-            if (method == "DELETE")
+            if (request.method == "DELETE")
             {
                 return handle_delete(path);
             }
@@ -74,7 +47,7 @@ namespace websocket_demo
             return create_error_response(405, "Method not allowed");
         }
 
-        std::string http_client_connection::handle_get(const std::string& path)
+        auto http_client_connection::handle_get(const std::string& path) -> canopy::http_server::response
         {
             if (path == "/api/status")
             {
@@ -89,7 +62,8 @@ namespace websocket_demo
             return create_error_response(404, "API endpoint not found");
         }
 
-        std::string http_client_connection::handle_post(const std::string& path, const std::string& body)
+        auto http_client_connection::handle_post(const std::string& path, const std::string& body)
+            -> canopy::http_server::response
         {
             if (path == "/api/resource")
             {
@@ -106,7 +80,8 @@ namespace websocket_demo
             return create_error_response(404, "API endpoint not found");
         }
 
-        std::string http_client_connection::handle_put(const std::string& path, const std::string& body)
+        auto http_client_connection::handle_put(const std::string& path, const std::string& body)
+            -> canopy::http_server::response
         {
             if (path.starts_with("/api/resource/"))
             {
@@ -123,7 +98,7 @@ namespace websocket_demo
             return create_error_response(404, "API endpoint not found");
         }
 
-        std::string http_client_connection::handle_delete(const std::string& path)
+        auto http_client_connection::handle_delete(const std::string& path) -> canopy::http_server::response
         {
             if (path.starts_with("/api/resource/"))
             {

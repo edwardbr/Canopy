@@ -7,7 +7,7 @@
 // #include "secret_llama/llm_engine.h"
 #include "llama_server_engine.h"
 
-#include "websocket_service.h"
+#include "demo_zone.h"
 
 namespace secret_llama
 {
