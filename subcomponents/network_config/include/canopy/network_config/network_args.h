@@ -142,6 +142,15 @@ namespace canopy::network_config
     //   all-zero addr: returns 0 (local-only mode)
     uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family);
 
+    inline rpc::zone_address get_zone_address(const network_config& cfg)
+    {
+#ifdef CANOPY_FIXED_ADDRESS_SIZE
+        return rpc::zone_address(ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family), 0);
+#else
+        return rpc::zone_address(cfg.routing_prefix_addr, cfg.object_offset, 0);
+#endif
+    }
+
     // Build a rpc::zone_id_allocator from a network_config.
     // Fixed layout:   converts routing_prefix_addr via ip_address_to_uint64().
     // Flexible layout: stores the full 16-byte host address and uses
@@ -149,12 +158,7 @@ namespace canopy::network_config
     // The subnet range is determined by the zone_address field width automatically.
     inline rpc::zone_id_allocator make_allocator(const network_config& cfg)
     {
-#ifdef CANOPY_FIXED_ADDRESS_SIZE
-        rpc::zone_address prefix(ip_address_to_uint64(cfg.routing_prefix_addr, cfg.routing_prefix_family), 0);
-#else
-        rpc::zone_address prefix(cfg.routing_prefix_addr, cfg.object_offset, 0);
-#endif
-        return rpc::zone_id_allocator{prefix};
+        return rpc::zone_id_allocator{get_zone_address(cfg)};
     }
 
     // Parse an IPv4 dotted-decimal string into the binary routing prefix layout.

@@ -85,6 +85,12 @@ namespace websocket_demo
         {
         }
 
+        websocket_service::websocket_service(
+            std::string name, const rpc::service_config& config, std::shared_ptr<coro::scheduler> scheduler)
+            : rpc::root_service(name.data(), config, std::move(scheduler))
+        {
+        }
+
         rpc::shared_ptr<i_calculator> websocket_service::get_demo_instance()
         {
             if (!demo_)

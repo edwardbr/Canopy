@@ -66,6 +66,11 @@ namespace rpc
 
     const object dummy_object_id = {std::numeric_limits<uint64_t>::max()};
 
+    struct service_config
+    {
+        zone initial_zone{DEFAULT_PREFIX};
+    };
+
     /**
      * @brief Callback interface for object lifecycle notifications
      *
@@ -710,8 +715,11 @@ namespace rpc
     public:
 #ifdef CANOPY_BUILD_COROUTINE
         explicit root_service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler);
+        explicit root_service(
+            const char* name, const service_config& config, const std::shared_ptr<coro::scheduler>& scheduler);
 #else
         explicit root_service(const char* name, zone zone_id);
+        explicit root_service(const char* name, const service_config& config);
 #endif
 
         virtual ~root_service() = default;

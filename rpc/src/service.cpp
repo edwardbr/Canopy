@@ -82,6 +82,12 @@ namespace rpc
             telemetry_service->on_service_creation(name, zone_id, destination_zone());
 #endif
     }
+
+    root_service::root_service(
+        const char* name, const service_config& config, const std::shared_ptr<coro::scheduler>& scheduler)
+        : root_service(name, config.initial_zone, scheduler)
+    {
+    }
 #else
     root_service::root_service(const char* name, zone zone_id)
         : service(name, zone_id)
@@ -91,6 +97,11 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_service_creation(name, zone_id, destination_zone());
 #endif
+    }
+
+    root_service::root_service(const char* name, const service_config& config)
+        : root_service(name, config.initial_zone)
+    {
     }
 #endif
 
