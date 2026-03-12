@@ -11,7 +11,7 @@
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
-#include <streaming/ws_stream.h>
+#include <streaming/websocket/stream.h>
 
 namespace canopy::http_server
 {
@@ -210,7 +210,7 @@ namespace canopy::http_server
         }
 
         RPC_INFO("WebSocket handshake completed");
-        auto ws_stream = std::make_shared<streaming::ws_stream>(stream_);
+        auto ws_stream = std::make_shared<streaming::websocket::stream>(stream_);
         co_return CO_AWAIT handlers_.websocket_upgrade_handler(request, ws_stream);
     }
 

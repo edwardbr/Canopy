@@ -41,7 +41,8 @@
 #include <chrono>
 
 #include <streaming/listener.h>
-#include <streaming/tcp_stream_acceptor.h>
+#include <streaming/tcp/acceptor.h>
+#include <streaming/tcp/stream.h>
 #include <transports/streaming/transport.h>
 #include <comprehensive/comprehensive_stub.h>
 
@@ -114,7 +115,7 @@ namespace comprehensive
             const coro::net::socket_address endpoint{coro::net::ip_address::from_string(host, domain), port};
 
             auto listener
-                = std::make_shared<streaming::listener>(std::make_shared<streaming::tcp_stream_acceptor>(endpoint),
+                = std::make_shared<streaming::listener>(std::make_shared<streaming::tcp::acceptor>(endpoint),
                     [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                     {
                         rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
@@ -188,7 +189,7 @@ namespace comprehensive
                 RPC_INFO("Client: TCP connection established");
 
                 // Create TCP transport — server_zone identifies the remote zone.
-                auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
+                auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
                 auto client_transport = rpc::stream_transport::transport::create(
                     "client_transport", client_service, std::move(tcp_stm), nullptr);
 

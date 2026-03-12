@@ -34,10 +34,10 @@
 #include <rpc/rpc.h>
 
 #include <streaming/listener.h>
-#include <streaming/spsc_wrapping_stream.h>
-#include <streaming/tcp_stream.h>
-#include <streaming/tcp_stream_acceptor.h>
-#include <streaming/tls_stream.h>
+#include <streaming/spsc_wrapping/stream.h>
+#include <streaming/tcp/acceptor.h>
+#include <streaming/tcp/stream.h>
+#include <streaming/tls/stream.h>
 #include <transports/streaming/transport.h>
 
 #include <canopy/network_config/network_args.h>
@@ -142,7 +142,7 @@ namespace stream_composition
         service->set_shutdown_event(shutdown_event);
         service->set_default_encoding(rpc::encoding::yas_binary);
 
-        auto tls_ctx = std::make_shared<streaming::tls_context>(cert_path, key_path);
+        auto tls_ctx = std::make_shared<streaming::tls::context>(cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Server: TLS context init failed");
@@ -171,10 +171,10 @@ namespace stream_composition
                 RPC_INFO("Server: new connection — building TCP → SPSC → TLS stack");
 
                 // 1. Wrap TCP in the SPSC buffering layer.
-                auto spsc_stm = streaming::spsc_wrapping_stream::create(tcp_stm, scheduler);
+                auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
 
                 // 2. Wrap the SPSC stream in TLS (server side).
-                auto tls_stm = std::make_shared<streaming::tls_stream>(spsc_stm, tls_ctx);
+                auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_ctx);
 
                 // 3. Perform the TLS handshake before starting RPC traffic.
                 if (!CO_AWAIT tls_stm->handshake())
@@ -211,7 +211,7 @@ namespace stream_composition
             };
 
             lst = std::make_shared<streaming::listener>(
-                std::make_shared<streaming::tcp_stream_acceptor>(endpoint), on_connection);
+                std::make_shared<streaming::tcp::acceptor>(endpoint), on_connection);
         } // on_connection destroyed here — service capture released
 
         if (!lst->start_listening(service))
@@ -270,13 +270,13 @@ namespace stream_composition
         }
         RPC_INFO("Client: TCP connected");
 
-        auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(tcp_client), scheduler);
+        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
 
         // 2. Wrap TCP in the SPSC buffering layer.
-        auto spsc_stm = streaming::spsc_wrapping_stream::create(tcp_stm, scheduler);
+        auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
 
         // 3. Wrap the SPSC stream in TLS (client side — SSL_VERIFY_NONE for demo).
-        auto tls_client_ctx = std::make_shared<streaming::tls_client_context>(/*verify_peer=*/false);
+        auto tls_client_ctx = std::make_shared<streaming::tls::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
         {
             RPC_ERROR("Client: TLS client context init failed");
@@ -284,7 +284,7 @@ namespace stream_composition
             client_finished.set();
             CO_RETURN;
         }
-        auto tls_stm = std::make_shared<streaming::tls_stream>(spsc_stm, tls_client_ctx);
+        auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_client_ctx);
 
         // 4. TLS client handshake.
         if (!CO_AWAIT tls_stm->client_handshake())

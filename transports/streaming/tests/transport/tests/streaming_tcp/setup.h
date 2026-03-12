@@ -4,7 +4,8 @@
  */
 #pragma once
 
-#include <streaming/tcp_stream_acceptor.h>
+#include <streaming/tcp/acceptor.h>
+#include <streaming/tcp/stream.h>
 #include <transport/tests/streaming_setup_base.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
@@ -28,7 +29,7 @@ protected:
         auto rpc_handler = this->make_connection_handler();
 
         this->listener_ = std::make_unique<streaming::listener>(
-            std::make_shared<streaming::tcp_stream_acceptor>(coro::net::socket_address{"127.0.0.1", 8080}),
+            std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8080}),
             [this, peer_service = this->peer_service_, rpc_handler](
                 std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
             {
@@ -53,7 +54,7 @@ protected:
             CO_RETURN false;
         }
 
-        auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
+        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
         this->initiator_transport_ = rpc::stream_transport::transport::create(
             "initiator_transport", this->root_service_, std::move(tcp_stm), nullptr);
 

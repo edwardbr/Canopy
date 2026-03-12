@@ -12,7 +12,7 @@
 #include <canopy/http_server/http_acceptor.h>
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
-#include <streaming/tls_stream.h>
+#include <streaming/tls/stream.h>
 
 extern "C" void rpc_log(int level, const char* str, size_t sz)
 {
@@ -70,7 +70,7 @@ auto run_http_server(std::shared_ptr<coro::scheduler> scheduler,
     coro::net::ip_address bind_address,
     uint16_t port,
     std::shared_ptr<websocket_demo::v1::websocket_service> service,
-    std::shared_ptr<streaming::tls_context> tls_ctx) -> coro::task<void>
+    std::shared_ptr<streaming::tls::context> tls_ctx) -> coro::task<void>
 {
     auto stream_handler
         = [service](std::shared_ptr<streaming::stream> stream) -> coro::task<std::shared_ptr<rpc::transport>>
@@ -79,8 +79,8 @@ auto run_http_server(std::shared_ptr<coro::scheduler> scheduler,
         co_return CO_AWAIT connection.handle();
     };
 
-    co_return CO_AWAIT canopy::http_server::run_server(
-        std::move(bind_address), port, scheduler, std::move(stream_handler), tls_ctx);
+    CO_AWAIT canopy::http_server::run_server(std::move(bind_address), port, scheduler, std::move(stream_handler), tls_ctx);
+    co_return;
 }
 
 auto main(int argc, char* argv[]) -> int
@@ -126,10 +126,10 @@ auto main(int argc, char* argv[]) -> int
 
     const auto cert_path = args::get(cert_file);
     const auto key_path = args::get(key_file);
-    std::shared_ptr<streaming::tls_context> tls_ctx;
+    std::shared_ptr<streaming::tls::context> tls_ctx;
     if (!cert_path.empty() && !key_path.empty())
     {
-        tls_ctx = std::make_shared<streaming::tls_context>(cert_path, key_path);
+        tls_ctx = std::make_shared<streaming::tls::context>(cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Failed to initialize TLS context, exiting");

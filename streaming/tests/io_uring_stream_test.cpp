@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// Direct iouring_stream test — no transport layer, no RPC stack.
-// Just: TCP accept/connect, wrap in iouring_stream, send/receive raw bytes.
+// Direct io_uring::stream test — no transport layer, no RPC stack.
+// Just: TCP accept/connect, wrap in io_uring::stream, send/receive raw bytes.
 
 #include <gtest/gtest.h>
 
-#include <streaming/io_uring_acceptor.h>
-#include <streaming/io_uring_stream.h>
+#include <streaming/io_uring/acceptor.h>
+#include <streaming/io_uring/stream.h>
 #include <coro/coro.hpp>
 #include <coro/net/socket_address.hpp>
 #include <coro/net/tcp/client.hpp>
@@ -71,7 +71,7 @@ namespace
     }
 
     auto connect_iouring_stream(std::shared_ptr<coro::scheduler> scheduler, uint16_t port)
-        -> coro::task<std::shared_ptr<streaming::iouring_stream>>
+        -> coro::task<std::shared_ptr<streaming::io_uring::stream>>
     {
         coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", port});
         if (CO_AWAIT client.connect(5000ms) != coro::net::connect_status::connected)
@@ -79,7 +79,7 @@ namespace
             co_return nullptr;
         }
 
-        co_return std::make_shared<streaming::iouring_stream>(std::move(client), scheduler);
+        co_return std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
     }
 } // namespace
 
@@ -96,7 +96,7 @@ TEST(IoUringStream, PingPong)
     coro::sync_wait(coro::when_all(
         [&]() -> coro::task<void>
         {
-            streaming::iouring_acceptor acceptor(make_loopback_address(), test_port);
+            streaming::io_uring::acceptor acceptor(make_loopback_address(), test_port);
             if (!acceptor.init(server_scheduler))
                 co_return;
             server_ready = true;
@@ -160,7 +160,7 @@ TEST(IoUringStream, ManyRoundTrips)
     coro::sync_wait(coro::when_all(
         [&]() -> coro::task<void>
         {
-            streaming::iouring_acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 1));
+            streaming::io_uring::acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 1));
             if (!acceptor.init(server_scheduler))
                 co_return;
             server_ready = true;
@@ -227,7 +227,7 @@ TEST(IoUringStream, ReceiveTimeout)
         [&]() -> coro::task<void>
         {
             // Server accepts but never sends — client should time out on receive.
-            streaming::iouring_acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 2));
+            streaming::io_uring::acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 2));
             if (!acceptor.init(server_scheduler))
                 co_return;
             server_ready = true;
@@ -277,7 +277,7 @@ TEST(IoUringStream, LargePayload)
     coro::sync_wait(coro::when_all(
         [&]() -> coro::task<void>
         {
-            streaming::iouring_acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 3));
+            streaming::io_uring::acceptor acceptor(make_loopback_address(), static_cast<uint16_t>(test_port + 3));
             if (!acceptor.init(server_scheduler))
                 co_return;
             server_ready = true;

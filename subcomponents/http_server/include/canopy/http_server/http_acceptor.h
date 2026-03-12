@@ -10,7 +10,8 @@
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
 #include <streaming/stream.h>
-#include <streaming/tls_stream.h>
+#include <streaming/tls/stream.h>
+#include <transports/streaming/transport.h>
 
 namespace canopy::http_server
 {
@@ -21,5 +22,5 @@ namespace canopy::http_server
         uint16_t port,
         std::shared_ptr<coro::scheduler> scheduler,
         accepted_stream_handler stream_handler,
-        std::shared_ptr<streaming::tls_context> tls_context) -> coro::task<void>;
+        std::shared_ptr<streaming::tls::context> tls_context) -> coro::task<void>;
 } // namespace canopy::http_server

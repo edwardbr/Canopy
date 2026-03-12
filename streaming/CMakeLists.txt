@@ -9,20 +9,28 @@ find_package(OpenSSL REQUIRED)
 
 add_library(
   streaming SHARED
-  src/stream.cpp
-  src/tcp_stream.cpp
-  src/tls_stream.cpp
-  src/ws_stream.cpp
-  src/spsc_queue_stream.cpp
-  src/spsc_wrapping_stream.cpp)
+  core/src/stream.cpp
+  tcp/src/stream.cpp
+  tls/src/stream.cpp
+  websocket/src/stream.cpp
+  spsc_queue/src/stream.cpp
+  spsc_wrapping/src/stream.cpp)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_sources(streaming PRIVATE src/io_uring_tcp_stream.cpp)
+  target_sources(streaming PRIVATE io_uring_tcp/src/stream.cpp)
 endif()
 
 target_include_directories(
   streaming
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tcp/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tls/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/websocket/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/spsc_queue/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/spsc_wrapping/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/io_uring/include>"
+         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/io_uring_tcp/include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(streaming PRIVATE ${CANOPY_DEFINES})
