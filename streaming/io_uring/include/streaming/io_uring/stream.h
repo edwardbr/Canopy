@@ -483,14 +483,18 @@ namespace streaming::io_uring
             -> coro::task<void>
         {
             state->pump_running.store(true, std::memory_order_release);
+            __kernel_timespec wait_timeout{
+                .tv_sec = 0,
+                .tv_nsec = 100'000,
+            };
 
             while (!state->stopping.load(std::memory_order_acquire))
             {
                 io_uring_cqe* cqe = nullptr;
-                int rc = io_uring_wait_cqe_timeout(&state->ring, &cqe, nullptr);
+                int rc = io_uring_wait_cqe_timeout(&state->ring, &cqe, &wait_timeout);
                 if (rc == -ETIME || rc == -EAGAIN)
                 {
-                    co_await scheduler->yield_for(std::chrono::milliseconds{1});
+                    co_await scheduler->schedule();
                     continue;
                 }
                 if (rc < 0 || cqe == nullptr)
