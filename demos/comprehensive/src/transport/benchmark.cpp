@@ -550,7 +550,7 @@ namespace comprehensive
         CORO_TASK(void)
         io_uring_server_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
-            const rpc::event& client_finished,
+            const rpc::event& client_connected,
             rpc::encoding enc,
             uint16_t port)
         {
@@ -600,7 +600,7 @@ namespace comprehensive
             service.reset();
             server_ready.set();
 
-            co_await client_finished.wait();
+            co_await client_connected.wait();
             CO_AWAIT io_uring_listener->stop_listening();
             io_uring_listener.reset();
             co_await on_shutdown_event->wait();
@@ -609,7 +609,7 @@ namespace comprehensive
         CORO_TASK(void)
         io_uring_client_task(std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
-            rpc::event& client_finished,
+            rpc::event& client_connected,
             rpc::encoding enc,
             size_t blob_size,
             uint16_t port,
@@ -627,7 +627,7 @@ namespace comprehensive
             if (connection_status != coro::net::connect_status::connected)
             {
                 result.error = rpc::error::ZONE_NOT_FOUND();
-                client_finished.set();
+                client_connected.set();
                 CO_RETURN;
             }
 
@@ -644,11 +644,11 @@ namespace comprehensive
             if (error != rpc::error::OK())
             {
                 result.error = error;
-                client_finished.set();
+                client_connected.set();
                 CO_RETURN;
             }
 
-            client_finished.set();
+            client_connected.set();
 
             const auto payload = make_blob(blob_size);
             std::vector<int64_t> durations_us;
@@ -679,10 +679,10 @@ namespace comprehensive
                     .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
             rpc::event server_ready;
-            rpc::event client_finished;
+            rpc::event client_connected;
 
-            coro::sync_wait(coro::when_all(io_uring_server_task(scheduler_1, server_ready, client_finished, enc, port),
-                io_uring_client_task(scheduler_2, server_ready, client_finished, enc, blob_size, port, result)));
+            coro::sync_wait(coro::when_all(io_uring_server_task(scheduler_1, server_ready, client_connected, enc, port),
+                io_uring_client_task(scheduler_2, server_ready, client_connected, enc, blob_size, port, result)));
 
             scheduler_1->shutdown();
             scheduler_2->shutdown();
@@ -728,7 +728,6 @@ int main()
     using namespace comprehensive::v1;
 
     const std::vector<encoding_info> encodings = {
-        // {rpc::encoding::yas_json, "yas_json"},
         {rpc::encoding::yas_binary, "yas_binary"},
         {rpc::encoding::yas_compressed_binary, "yas_compressed"},
         {rpc::encoding::protocol_buffers, "protocol_buffers"},
