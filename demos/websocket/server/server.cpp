@@ -14,8 +14,15 @@ namespace
         -> coro::task<void>
     {
         auto stream = std::make_shared<streaming::tcp_stream>(std::move(client), service->get_scheduler());
-        websocket_demo::v1::http_client_connection connection(stream, service);
-        co_await connection.handle();
+        std::shared_ptr<rpc::stream_transport::transport> transport;
+        {
+            websocket_demo::v1::http_client_connection connection(stream, service);
+            transport = co_await connection.handle();
+        }
+        if (transport)
+        {
+            co_await transport->inner_accept();
+        }
         co_return;
     }
 
@@ -33,8 +40,15 @@ namespace
             co_return;
         }
 
-        websocket_demo::v1::http_client_connection connection(stream, service);
-        co_await connection.handle();
+        std::shared_ptr<rpc::stream_transport::transport> transport;
+        {
+            websocket_demo::v1::http_client_connection connection(stream, service);
+            transport = co_await connection.handle();
+        }
+        if (transport)
+        {
+            co_await transport->inner_accept();
+        }
         co_return;
     }
 }

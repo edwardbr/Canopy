@@ -36,7 +36,8 @@ namespace websocket_demo
 
             if (path.find("..") != std::string::npos)
             {
-                std::map<std::string, std::string> headers = {{"Content-Type", "text/plain"}, {"Connection", "close"}};
+                std::map<std::string, std::string> headers
+                    = {{"Content-Type", "text/plain"}, {"Connection", keep_alive_ ? "keep-alive" : "close"}};
                 return build_http_response(403, "Forbidden", headers, "Forbidden");
             }
 
@@ -45,14 +46,16 @@ namespace websocket_demo
 
             if (!fs::exists(file_path) || !fs::is_regular_file(file_path))
             {
-                std::map<std::string, std::string> headers = {{"Content-Type", "text/plain"}, {"Connection", "close"}};
+                std::map<std::string, std::string> headers
+                    = {{"Content-Type", "text/plain"}, {"Connection", keep_alive_ ? "keep-alive" : "close"}};
                 return build_http_response(404, "Not Found", headers, "Not Found");
             }
 
             std::ifstream file(file_path, std::ios::binary);
             if (!file.is_open())
             {
-                std::map<std::string, std::string> headers = {{"Content-Type", "text/plain"}, {"Connection", "close"}};
+                std::map<std::string, std::string> headers
+                    = {{"Content-Type", "text/plain"}, {"Connection", keep_alive_ ? "keep-alive" : "close"}};
                 return build_http_response(500, "Internal Server Error", headers, "Internal Server Error");
             }
 
@@ -61,7 +64,8 @@ namespace websocket_demo
             std::string content = buffer.str();
 
             std::string content_type = get_content_type(path);
-            std::map<std::string, std::string> headers = {{"Content-Type", content_type}, {"Connection", "keep-alive"}};
+            std::map<std::string, std::string> headers
+                = {{"Content-Type", content_type}, {"Connection", keep_alive_ ? "keep-alive" : "close"}};
 
             return build_http_response(200, "OK", headers, content);
         }
