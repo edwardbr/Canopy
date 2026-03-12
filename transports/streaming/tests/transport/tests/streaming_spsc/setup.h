@@ -4,15 +4,15 @@
  */
 #pragma once
 
-#include <streaming/spsc_queue_stream.h>
+#include <streaming/spsc_queue/stream.h>
 #include <transport/tests/streaming_setup_base.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
 class streaming_spsc_setup
     : public streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-    streaming::spsc_raw_queue send_spsc_queue_;
-    streaming::spsc_raw_queue receive_spsc_queue_;
+    streaming::spsc_queue::queue_type send_spsc_queue_;
+    streaming::spsc_queue::queue_type receive_spsc_queue_;
 
 protected:
     CORO_TASK(bool) do_coro_setup() override
@@ -25,7 +25,7 @@ protected:
 
         auto io_sched = this->io_scheduler_;
         auto peer_stream
-            = std::make_shared<streaming::spsc_queue_stream>(&receive_spsc_queue_, &send_spsc_queue_, io_sched);
+            = std::make_shared<streaming::spsc_queue::stream>(&receive_spsc_queue_, &send_spsc_queue_, io_sched);
         this->responder_transport_ = rpc::stream_transport::transport::create(
             "responder_transport", this->peer_service_, std::move(peer_stream), this->make_connection_handler());
 
@@ -35,7 +35,7 @@ protected:
         this->local_host_ptr_ = hst;
 
         auto client_stream
-            = std::make_shared<streaming::spsc_queue_stream>(&send_spsc_queue_, &receive_spsc_queue_, io_sched);
+            = std::make_shared<streaming::spsc_queue::stream>(&send_spsc_queue_, &receive_spsc_queue_, io_sched);
         this->initiator_transport_ = rpc::stream_transport::transport::create(
             "initiator_transport", this->root_service_, std::move(client_stream), nullptr);
 

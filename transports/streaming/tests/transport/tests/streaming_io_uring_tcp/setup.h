@@ -9,7 +9,7 @@
 #include <transport/tests/streaming_setup_base.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
-class streaming_iouring_setup
+class streaming_io_uring_tcp_setup
     : public streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
 protected:
@@ -35,7 +35,7 @@ protected:
         addr[3] = 1;
 
         this->listener_
-            = std::make_unique<streaming::listener>(std::make_shared<streaming::io_uring::acceptor>(addr, 8083),
+            = std::make_unique<streaming::listener>(std::make_shared<streaming::io_uring::acceptor>(addr, 8082),
                 [this, peer_service = this->peer_service_, rpc_handler](
                     std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                 {
@@ -51,17 +51,16 @@ protected:
         }
 
         auto scheduler = this->root_service_->get_scheduler();
-
-        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8083});
+        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8082});
 
         auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
         if (connection_status != coro::net::connect_status::connected)
         {
-            RPC_ERROR("Failed to connect iouring client to server (status: {})", static_cast<int>(connection_status));
+            RPC_ERROR("Failed to connect io_uring client to server (status: {})", static_cast<int>(connection_status));
             CO_RETURN false;
         }
 
-        auto tcp_stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
+        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
         this->initiator_transport_ = rpc::stream_transport::transport::create(
             "initiator_transport", this->root_service_, std::move(tcp_stm), nullptr);
 
@@ -88,5 +87,5 @@ protected:
     }
 
 public:
-    virtual ~streaming_iouring_setup() = default;
+    virtual ~streaming_io_uring_tcp_setup() = default;
 };

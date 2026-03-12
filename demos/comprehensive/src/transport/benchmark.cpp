@@ -36,11 +36,12 @@
 #include <fmt/format.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <streaming/io_uring_acceptor.h>
-#include <streaming/io_uring_stream.h>
 #include <streaming/listener.h>
-#include <streaming/spsc_queue_stream.h>
-#include <streaming/tcp_stream_acceptor.h>
+#include <streaming/io_uring/acceptor.h>
+#include <streaming/io_uring/stream.h>
+#include <streaming/spsc_queue/stream.h>
+#include <streaming/tcp/acceptor.h>
+#include <streaming/tcp/stream.h>
 #include <transports/streaming/transport.h>
 #include <unistd.h>
 #endif
@@ -264,8 +265,8 @@ namespace comprehensive
 
         struct spsc_queues
         {
-            streaming::spsc_raw_queue to_process_2;
-            streaming::spsc_raw_queue to_process_1;
+            streaming::spsc_queue::queue_type to_process_2;
+            streaming::spsc_queue::queue_type to_process_1;
         };
 
         CORO_TASK(void)
@@ -283,8 +284,8 @@ namespace comprehensive
             auto on_shutdown_event = std::make_shared<rpc::event>();
             service_1->set_shutdown_event(on_shutdown_event);
 
-            auto stream_1
-                = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_1, &queues->to_process_2, scheduler);
+            auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
+                &queues->to_process_1, &queues->to_process_2, scheduler);
             auto transport_1
                 = rpc::stream_transport::transport::create("spsc_transport_1", service_1, std::move(stream_1), nullptr);
 
@@ -355,8 +356,8 @@ namespace comprehensive
                 CO_RETURN ret;
             };
 
-            auto stream_2
-                = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_2, &queues->to_process_1, scheduler);
+            auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
+                &queues->to_process_2, &queues->to_process_1, scheduler);
             auto transport_2
                 = rpc::stream_transport::transport::create("spsc_transport_2", service_2, std::move(stream_2), handler);
 
@@ -438,7 +439,7 @@ namespace comprehensive
             };
 
             auto listener = std::make_shared<streaming::listener>(
-                std::make_shared<streaming::tcp_stream_acceptor>(coro::net::socket_address{"127.0.0.1", port}),
+                std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", port}),
                 [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                 {
                     rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
@@ -486,7 +487,7 @@ namespace comprehensive
                 CO_RETURN;
             }
 
-            auto tcp_stm = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
+            auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
             auto client_transport = rpc::stream_transport::transport::create(
                 "client_transport", client_service, std::move(tcp_stm), nullptr);
 
@@ -588,7 +589,7 @@ namespace comprehensive
             addr[3] = 1;
 
             auto io_uring_listener
-                = std::make_shared<streaming::listener>(std::make_shared<streaming::iouring_acceptor>(addr, port),
+                = std::make_shared<streaming::listener>(std::make_shared<streaming::io_uring::acceptor>(addr, port),
                     [svc = service, connection_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
                     {
                         rpc::stream_transport::transport::create(
@@ -630,7 +631,7 @@ namespace comprehensive
                 CO_RETURN;
             }
 
-            auto stm = std::make_shared<streaming::iouring_stream>(std::move(client), scheduler);
+            auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
             auto client_transport = rpc::stream_transport::transport::create(
                 "io_uring_client_transport", client_service, std::move(stm), nullptr);
 

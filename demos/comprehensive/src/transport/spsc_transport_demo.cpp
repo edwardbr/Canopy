@@ -20,7 +20,7 @@
 #include <demo_impl.h>
 #include <rpc/rpc.h>
 #include <comprehensive/comprehensive_stub.h>
-#include <streaming/spsc_queue_stream.h>
+#include <streaming/spsc_queue/stream.h>
 #include <transports/streaming/transport.h>
 #include <iostream>
 #include <thread>
@@ -39,8 +39,8 @@ namespace comprehensive
 #ifdef CANOPY_BUILD_COROUTINE
         struct spsc_queues
         {
-            streaming::spsc_raw_queue to_process_2;
-            streaming::spsc_raw_queue to_process_1;
+            streaming::spsc_queue::queue_type to_process_2;
+            streaming::spsc_queue::queue_type to_process_1;
         };
 
         CORO_TASK(void)
@@ -56,8 +56,8 @@ namespace comprehensive
             auto on_shutdown_event = std::make_shared<rpc::event>();
             service_1->set_shutdown_event(on_shutdown_event);
 
-            auto stream_1
-                = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_1, &queues->to_process_2, scheduler);
+            auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
+                &queues->to_process_1, &queues->to_process_2, scheduler);
             auto transport_1
                 = rpc::stream_transport::transport::create("transport_1", service_1, std::move(stream_1), nullptr);
 
@@ -145,8 +145,8 @@ namespace comprehensive
                 CO_RETURN ret;
             };
 
-            auto stream_2
-                = std::make_shared<streaming::spsc_queue_stream>(&queues->to_process_2, &queues->to_process_1, scheduler);
+            auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
+                &queues->to_process_2, &queues->to_process_1, scheduler);
             auto transport_2
                 = rpc::stream_transport::transport::create("transport_2", service_2, std::move(stream_2), handler);
 

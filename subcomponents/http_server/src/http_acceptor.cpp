@@ -3,7 +3,7 @@
 
 #include <canopy/http_server/http_acceptor.h>
 
-#include <streaming/tcp_stream.h>
+#include <streaming/tcp/stream.h>
 
 namespace canopy::http_server
 {
@@ -13,7 +13,7 @@ namespace canopy::http_server
             std::shared_ptr<coro::scheduler> scheduler,
             accepted_stream_handler stream_handler) -> coro::task<void>
         {
-            auto stream = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
+            auto stream = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
             auto handler = co_await stream_handler(std::move(stream));
             if (handler)
             {
@@ -24,11 +24,11 @@ namespace canopy::http_server
 
         auto handle_tls_client(coro::net::tcp::client client,
             std::shared_ptr<coro::scheduler> scheduler,
-            std::shared_ptr<streaming::tls_context> tls_context,
+            std::shared_ptr<streaming::tls::context> tls_context,
             accepted_stream_handler stream_handler) -> coro::task<void>
         {
-            auto tcp_stream = std::make_shared<streaming::tcp_stream>(std::move(client), scheduler);
-            auto tls_stream = std::make_shared<streaming::tls_stream>(tcp_stream, tls_context);
+            auto tcp_stream = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
+            auto tls_stream = std::make_shared<streaming::tls::stream>(tcp_stream, tls_context);
 
             bool handshake_ok = co_await tls_stream->handshake();
             if (!handshake_ok)
@@ -50,7 +50,7 @@ namespace canopy::http_server
         uint16_t port,
         std::shared_ptr<coro::scheduler> scheduler,
         accepted_stream_handler stream_handler,
-        std::shared_ptr<streaming::tls_context> tls_context) -> coro::task<void>
+        std::shared_ptr<streaming::tls::context> tls_context) -> coro::task<void>
     {
         co_await scheduler->schedule();
         coro::net::tcp::server server{scheduler, coro::net::socket_address{bind_address, port}};
