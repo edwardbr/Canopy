@@ -120,8 +120,8 @@ namespace canopy::network_config
     // Register network args into parser. Returns a context that must be kept alive
     // until get_config() is called.
     //
-    //   -4                 --routing-prefix is an IPv4 dotted-decimal address (a.b.c.d)
-    //   -6                 --routing-prefix is an IPv6 colon-hex address (2001:db8::1)
+    //   -4, --ipv4         --routing-prefix is an IPv4 dotted-decimal address (a.b.c.d)
+    //   -6, --ipv6         --routing-prefix is an IPv6 colon-hex address (2001:db8::1)
     //   --routing-prefix   this node's routing prefix (auto-detected when omitted)
     //   --object-offset    bit offset where object_id begins in zone_address::local_address
     //                      (flexible layout, default 64)
@@ -176,6 +176,7 @@ namespace canopy::network_config
     // Fills addr (16 bytes) and family. Returns true on success; on failure fills
     // addr with 127.0.0.1 and sets family to ipv4.
     bool detect_host(ip_address& addr, ip_address_family& family);
+    bool detect_host(ip_address& addr, ip_address_family& family, ip_address_family preferred_family);
 
     // Parse an explicit host address string (dotted-decimal or colon-hex) into binary.
     // family selects the parser; pass ipv4 for a.b.c.d, ipv6 for colon-hex.
@@ -189,5 +190,6 @@ namespace canopy::network_config
     //   3. First private IPv4 (RFC 1918: 10.x, 172.16-31.x, 192.168.x)
     //   4. Returns false — local-only mode, addr left all-zero
     bool detect_routing_prefix(ip_address& addr, ip_address_family& family);
+    bool detect_routing_prefix(ip_address& addr, ip_address_family& family, ip_address_family preferred_family);
 
 } // namespace canopy::network_config

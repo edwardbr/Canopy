@@ -222,8 +222,10 @@ namespace canopy::network_config
 
     network_args_context::network_args_context(args::ArgumentParser& parser)
         : address_family_group_(parser, "Address family for --routing-prefix", args::Group::Validators::AtMostOne)
-        , flag_ipv4_(address_family_group_, "ipv4", "Interpret --routing-prefix as an IPv4 dotted-decimal address", {'4'})
-        , flag_ipv6_(address_family_group_, "ipv6", "Interpret --routing-prefix as an IPv6 colon-hex address", {'6'})
+        , flag_ipv4_(
+              address_family_group_, "ipv4", "Interpret --routing-prefix as an IPv4 dotted-decimal address", {'4', "ipv4"})
+        , flag_ipv6_(
+              address_family_group_, "ipv6", "Interpret --routing-prefix as an IPv6 colon-hex address", {'6', "ipv6"})
         , routing_prefix_(parser,
               "addr",
               "This node's routing prefix. Format determined by -4/-6. "
@@ -231,7 +233,7 @@ namespace canopy::network_config
               {"routing-prefix"},
               "")
         , host_(parser, "addr", "TCP address to bind/connect. \"detect\" derives it from --routing-prefix.", {"host"}, "detect")
-        , port_(parser, "n", "TCP port (0 = not specified)", {"port"}, uint32_t{0})
+        , port_(parser, "n", "TCP port (0 = not specified)", {"port"}, uint32_t{8000})
         , object_offset_(parser,
               "bits",
               "Bit offset where object_id begins in zone_address::local_address (flexible layout, default 64)",
@@ -243,18 +245,31 @@ namespace canopy::network_config
     network_config network_args_context::get_config() const
     {
         network_config cfg;
+        const bool prefer_ipv4 = args::get(flag_ipv4_);
+        const bool prefer_ipv6 = args::get(flag_ipv6_);
 
         const std::string& prefix_str = args::get(routing_prefix_);
         if (prefix_str.empty())
         {
-            detect_routing_prefix(cfg.routing_prefix_addr, cfg.routing_prefix_family);
+            if (prefer_ipv4)
+            {
+                detect_routing_prefix(cfg.routing_prefix_addr, cfg.routing_prefix_family, ip_address_family::ipv4);
+            }
+            else if (prefer_ipv6)
+            {
+                detect_routing_prefix(cfg.routing_prefix_addr, cfg.routing_prefix_family, ip_address_family::ipv6);
+            }
+            else
+            {
+                detect_routing_prefix(cfg.routing_prefix_addr, cfg.routing_prefix_family);
+            }
         }
-        else if (args::get(flag_ipv4_))
+        else if (prefer_ipv4)
         {
             ipv4_to_ip_address(prefix_str, cfg.routing_prefix_addr);
             cfg.routing_prefix_family = ip_address_family::ipv4;
         }
-        else if (args::get(flag_ipv6_))
+        else if (prefer_ipv6)
         {
             ipv6_to_ip_address(prefix_str, cfg.routing_prefix_addr);
             cfg.routing_prefix_family = ip_address_family::ipv6;
@@ -292,7 +307,18 @@ namespace canopy::network_config
         const std::string& host_str = args::get(host_);
         if (host_str == "detect")
         {
-            detect_host(cfg.host_addr, cfg.host_family);
+            if (prefer_ipv4)
+            {
+                detect_host(cfg.host_addr, cfg.host_family, ip_address_family::ipv4);
+            }
+            else if (prefer_ipv6)
+            {
+                detect_host(cfg.host_addr, cfg.host_family, ip_address_family::ipv6);
+            }
+            else
+            {
+                detect_host(cfg.host_addr, cfg.host_family);
+            }
         }
         else
         {
