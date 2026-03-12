@@ -297,13 +297,22 @@ namespace rpc::stream_transport
             rpc::zone caller_zone_id,
             rpc::remote_object outbound_remote_object)
         {
-            send_payload(protocol_version,
-                message_direction::receive,
-                ResponsePayload{
-                    .caller_zone_id = caller_zone_id,
-                    .outbound_remote_object = outbound_remote_object,
-                },
-                sequence_number);
+            ResponsePayload payload{};
+
+            if constexpr (requires(ResponsePayload response) { response.caller_zone_id = caller_zone_id; })
+                payload.caller_zone_id = caller_zone_id;
+
+            if constexpr (requires(
+                              ResponsePayload response) { response.outbound_remote_object = outbound_remote_object; })
+                payload.outbound_remote_object = outbound_remote_object;
+
+            if constexpr (requires(ResponsePayload response) { response.client_zone_id = caller_zone_id; })
+                payload.client_zone_id = caller_zone_id;
+
+            if constexpr (requires(ResponsePayload response) { response.server_remote_object = outbound_remote_object; })
+                payload.server_remote_object = outbound_remote_object;
+
+            send_payload(protocol_version, message_direction::receive, std::move(payload), sequence_number);
         }
 
         CORO_TASK(int)

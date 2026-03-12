@@ -27,6 +27,7 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
   set(CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../client")
   set(SERVER_WWW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../server/www")
   set(PROTO_SRC_DIR "${CMAKE_BINARY_DIR}/generated/src")
+  set(GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/generated/include")
   set(PBJS_EXECUTABLE "${CLIENT_DIR}/node_modules/.bin/pbjs")
 
   # Ensure npm dependencies are installed
@@ -62,9 +63,25 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
     WORKING_DIRECTORY "${CLIENT_DIR}"
     COMMENT "Generating Node.js protobuf JavaScript for WebSocket demo")
 
+  add_custom_command(
+    OUTPUT "${SERVER_WWW_DIR}/websocket_api.js"
+           "${CLIENT_DIR}/websocket_api.js"
+    COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/generate_websocket_support.js"
+            --header="${GENERATED_INCLUDE_DIR}/websocket_demo/websocket_demo.h"
+            --proto="${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"
+            --out-browser="${SERVER_WWW_DIR}/websocket_api.js"
+            --out-node="${CLIENT_DIR}/websocket_api.js"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/generate_websocket_support.js"
+            "${GENERATED_INCLUDE_DIR}/websocket_demo/websocket_demo.h"
+            "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"
+            websocket_demo_idl
+    COMMENT "Generating WebSocket helper JavaScript for WebSocket demo")
+
   # Create custom target that depends on both generated files
   add_custom_target(websocket_proto_js ALL DEPENDS "${SERVER_WWW_DIR}/websocket_proto.js"
-                                                   "${CLIENT_DIR}/websocket_proto.js")
+                                                   "${CLIENT_DIR}/websocket_proto.js"
+                                                   "${SERVER_WWW_DIR}/websocket_api.js"
+                                                   "${CLIENT_DIR}/websocket_api.js")
 
   # Make sure proto generation happens before JavaScript generation
   add_dependencies(websocket_proto_js websocket_demo_idl)

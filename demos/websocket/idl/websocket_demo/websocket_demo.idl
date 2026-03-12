@@ -11,16 +11,22 @@ namespace websocket_demo
     {
         struct connect_request
         {
-            // the caller's zone and callback object combined
+            // Legacy peer-to-peer handshake field. Web clients should prefer inbound_callback_object_id.
             rpc::remote_object inbound_remote_object;
+            // The object id that the browser wants the server to call back on once it assigns a client zone.
+            rpc::object inbound_callback_object_id;
         };
 
         struct connect_response
         {
-            // the zone id of the caller derived from the server
+            // Legacy field kept for older clients. Mirrors client_zone_id.
             rpc::zone caller_zone_id;
-            // the server's zone and callable object combined
+            // Legacy field kept for older clients. Mirrors server_remote_object.
             rpc::remote_object outbound_remote_object;
+            // The client zone assigned by the server for subsequent websocket RPC calls.
+            rpc::zone client_zone_id;
+            // The server's zone and callable object combined for subsequent websocket RPC calls.
+            rpc::remote_object server_remote_object;
         };
 
         struct envelope

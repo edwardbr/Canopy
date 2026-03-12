@@ -59,8 +59,30 @@ namespace websocket_demo
                     rpc::stream_transport::envelope_payload&,
                     websocket_demo::v1::connect_request& request) -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
                 {
+                    rpc::zone client_zone_id;
+                    std::vector<rpc::back_channel_entry> out_back_channel;
+                    auto zone_ret = CO_AWAIT transport->get_service()->get_new_zone_id(
+                        prefix.version, client_zone_id, {}, out_back_channel);
+                    if (zone_ret != rpc::error::OK())
+                    {
+                        RPC_ERROR("[WS] Failed to allocate client zone: {}", zone_ret);
+                        CO_RETURN rpc::stream_transport::transport::message_hook_result::rejected;
+                    }
+
+                    auto callback_object_id = request.inbound_callback_object_id;
+                    if (!callback_object_id.is_set())
+                    {
+                        callback_object_id = request.inbound_remote_object.get_object();
+                    }
+                    if (!callback_object_id.is_set())
+                    {
+                        RPC_ERROR("[WS] connect_request missing callback object id");
+                        CO_RETURN rpc::stream_transport::transport::message_hook_result::rejected;
+                    }
+
+                    const auto inbound_remote_object = client_zone_id.with_object(callback_object_id);
                     rpc::interface_descriptor output_descr;
-                    auto ret = CO_AWAIT transport->run_custom_connect(request.inbound_remote_object,
+                    auto ret = CO_AWAIT transport->run_custom_connect(inbound_remote_object,
                         websocket_demo::v1::i_context_event::get_id(prefix.version),
                         websocket_demo::v1::i_calculator::get_id(prefix.version),
                         output_descr);
@@ -69,10 +91,8 @@ namespace websocket_demo
                         CO_RETURN rpc::stream_transport::transport::message_hook_result::rejected;
                     }
 
-                    transport->send_custom_connect_response<websocket_demo::v1::connect_response>(prefix.version,
-                        prefix.sequence_number,
-                        request.inbound_remote_object.as_zone(),
-                        output_descr.destination_zone_id);
+                    transport->send_custom_connect_response<websocket_demo::v1::connect_response>(
+                        prefix.version, prefix.sequence_number, client_zone_id, output_descr.destination_zone_id);
 
                     CO_RETURN rpc::stream_transport::transport::message_hook_result::handled;
                 });
