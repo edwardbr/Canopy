@@ -71,162 +71,233 @@ namespace canopy::network_config
             out[2] = static_cast<uint8_t>(host_order >> 8);
             out[3] = static_cast<uint8_t>(host_order);
         }
-    } // anonymous namespace
 
-    bool detect_routing_prefix(ip_address& addr, ip_address_family& family)
-    {
+        bool detect_routing_prefix_impl(
+            ip_address& addr, ip_address_family& family, const ip_address_family* preferred_family)
+        {
 #ifndef _WIN32
-        ifaddrs* ifa_list = nullptr;
-        if (getifaddrs(&ifa_list) != 0)
-            return false;
+            ifaddrs* ifa_list = nullptr;
+            if (getifaddrs(&ifa_list) != 0)
+                return false;
 
-        ip_address best_ipv6 = {};
-        bool found_ipv6 = false;
-        ip_address best_public_ipv4 = {};
-        bool found_public_ipv4 = false;
-        ip_address best_private_ipv4 = {};
-        bool found_private_ipv4 = false;
+            ip_address best_ipv6 = {};
+            bool found_ipv6 = false;
+            ip_address best_public_ipv4 = {};
+            bool found_public_ipv4 = false;
+            ip_address best_private_ipv4 = {};
+            bool found_private_ipv4 = false;
 
-        for (ifaddrs* ifa = ifa_list; ifa != nullptr; ifa = ifa->ifa_next)
-        {
-            if (!ifa->ifa_addr)
-                continue;
-
-            if (ifa->ifa_addr->sa_family == AF_INET6 && !found_ipv6)
+            for (ifaddrs* ifa = ifa_list; ifa != nullptr; ifa = ifa->ifa_next)
             {
-                auto* sa6 = reinterpret_cast<sockaddr_in6*>(ifa->ifa_addr);
-                const uint8_t* a = sa6->sin6_addr.s6_addr;
-                if (ipv6_is_global(a))
+                if (!ifa->ifa_addr)
+                    continue;
+
+                if (ifa->ifa_addr->sa_family == AF_INET6 && !found_ipv6)
                 {
-                    // Store only the /64 network prefix; zero the interface identifier.
-                    best_ipv6 = {};
-                    std::memcpy(best_ipv6.data(), a, 8);
-                    found_ipv6 = true;
+                    auto* sa6 = reinterpret_cast<sockaddr_in6*>(ifa->ifa_addr);
+                    const uint8_t* a = sa6->sin6_addr.s6_addr;
+                    if (ipv6_is_global(a))
+                    {
+                        best_ipv6 = {};
+                        std::memcpy(best_ipv6.data(), a, 8);
+                        found_ipv6 = true;
+                    }
+                }
+                else if (ifa->ifa_addr->sa_family == AF_INET)
+                {
+                    auto* sa4 = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
+                    uint32_t a = ntohl(sa4->sin_addr.s_addr);
+
+                    if (!found_public_ipv4 && ipv4_is_public(a))
+                    {
+                        store_ipv4_bytes(a, best_public_ipv4);
+                        found_public_ipv4 = true;
+                    }
+                    else if (!found_private_ipv4 && ipv4_is_private_rfc1918(a))
+                    {
+                        store_ipv4_bytes(a, best_private_ipv4);
+                        found_private_ipv4 = true;
+                    }
                 }
             }
-            else if (ifa->ifa_addr->sa_family == AF_INET)
+
+            freeifaddrs(ifa_list);
+
+            if (preferred_family)
             {
-                auto* sa4 = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
-                uint32_t a = ntohl(sa4->sin_addr.s_addr);
-
-                if (!found_public_ipv4 && ipv4_is_public(a))
+                if (*preferred_family == ip_address_family::ipv6 && found_ipv6)
                 {
-                    store_ipv4_bytes(a, best_public_ipv4);
-                    found_public_ipv4 = true;
+                    addr = best_ipv6;
+                    family = ip_address_family::ipv6;
+                    return true;
                 }
-                else if (!found_private_ipv4 && ipv4_is_private_rfc1918(a))
+                if (*preferred_family == ip_address_family::ipv4)
                 {
-                    store_ipv4_bytes(a, best_private_ipv4);
-                    found_private_ipv4 = true;
+                    if (found_public_ipv4)
+                    {
+                        addr = best_public_ipv4;
+                        family = ip_address_family::ipv4;
+                        return true;
+                    }
+                    if (found_private_ipv4)
+                    {
+                        addr = best_private_ipv4;
+                        family = ip_address_family::ipv4;
+                        return true;
+                    }
                 }
+                return false;
             }
-        }
 
-        freeifaddrs(ifa_list);
-
-        if (found_ipv6)
-        {
-            addr = best_ipv6;
-            family = ip_address_family::ipv6;
-            return true;
-        }
-        if (found_public_ipv4)
-        {
-            addr = best_public_ipv4;
-            family = ip_address_family::ipv4;
-            return true;
-        }
-        if (found_private_ipv4)
-        {
-            addr = best_private_ipv4;
-            family = ip_address_family::ipv4;
-            return true;
-        }
+            if (found_ipv6)
+            {
+                addr = best_ipv6;
+                family = ip_address_family::ipv6;
+                return true;
+            }
+            if (found_public_ipv4)
+            {
+                addr = best_public_ipv4;
+                family = ip_address_family::ipv4;
+                return true;
+            }
+            if (found_private_ipv4)
+            {
+                addr = best_private_ipv4;
+                family = ip_address_family::ipv4;
+                return true;
+            }
 #endif
-        return false;
-    }
+            return false;
+        }
 
-    bool detect_host(ip_address& addr, ip_address_family& family)
-    {
-#ifndef _WIN32
-        ifaddrs* ifa_list = nullptr;
-        if (getifaddrs(&ifa_list) != 0)
+        bool detect_host_impl(ip_address& addr, ip_address_family& family, const ip_address_family* preferred_family)
         {
+#ifndef _WIN32
+            ifaddrs* ifa_list = nullptr;
+            if (getifaddrs(&ifa_list) != 0)
+            {
+                addr = {};
+                addr[0] = 127;
+                addr[3] = 1;
+                family = ip_address_family::ipv4;
+                return false;
+            }
+
+            ip_address best_ipv6 = {};
+            bool found_ipv6 = false;
+            ip_address best_public_ipv4 = {};
+            bool found_public_ipv4 = false;
+            ip_address best_private_ipv4 = {};
+            bool found_private_ipv4 = false;
+
+            for (ifaddrs* ifa = ifa_list; ifa != nullptr; ifa = ifa->ifa_next)
+            {
+                if (!ifa->ifa_addr)
+                    continue;
+
+                if (ifa->ifa_addr->sa_family == AF_INET6 && !found_ipv6)
+                {
+                    auto* sa6 = reinterpret_cast<sockaddr_in6*>(ifa->ifa_addr);
+                    const uint8_t* a = sa6->sin6_addr.s6_addr;
+                    if (ipv6_is_global(a))
+                    {
+                        std::memcpy(best_ipv6.data(), a, 16);
+                        found_ipv6 = true;
+                    }
+                }
+                else if (ifa->ifa_addr->sa_family == AF_INET)
+                {
+                    auto* sa4 = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
+                    uint32_t a = ntohl(sa4->sin_addr.s_addr);
+
+                    if (!found_public_ipv4 && ipv4_is_public(a))
+                    {
+                        store_ipv4_bytes(a, best_public_ipv4);
+                        found_public_ipv4 = true;
+                    }
+                    else if (!found_private_ipv4 && ipv4_is_private_rfc1918(a))
+                    {
+                        store_ipv4_bytes(a, best_private_ipv4);
+                        found_private_ipv4 = true;
+                    }
+                }
+            }
+
+            freeifaddrs(ifa_list);
+
+            if (preferred_family)
+            {
+                if (*preferred_family == ip_address_family::ipv6 && found_ipv6)
+                {
+                    addr = best_ipv6;
+                    family = ip_address_family::ipv6;
+                    return true;
+                }
+                if (*preferred_family == ip_address_family::ipv4)
+                {
+                    if (found_public_ipv4)
+                    {
+                        addr = best_public_ipv4;
+                        family = ip_address_family::ipv4;
+                        return true;
+                    }
+                    if (found_private_ipv4)
+                    {
+                        addr = best_private_ipv4;
+                        family = ip_address_family::ipv4;
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                if (found_ipv6)
+                {
+                    addr = best_ipv6;
+                    family = ip_address_family::ipv6;
+                    return true;
+                }
+                if (found_public_ipv4)
+                {
+                    addr = best_public_ipv4;
+                    family = ip_address_family::ipv4;
+                    return true;
+                }
+                if (found_private_ipv4)
+                {
+                    addr = best_private_ipv4;
+                    family = ip_address_family::ipv4;
+                    return true;
+                }
+            }
+#endif
             addr = {};
             addr[0] = 127;
             addr[3] = 1;
             family = ip_address_family::ipv4;
             return false;
         }
+    } // anonymous namespace
 
-        ip_address best_ipv6 = {};
-        bool found_ipv6 = false;
-        ip_address best_public_ipv4 = {};
-        bool found_public_ipv4 = false;
-        ip_address best_private_ipv4 = {};
-        bool found_private_ipv4 = false;
+    bool detect_routing_prefix(ip_address& addr, ip_address_family& family)
+    {
+        return detect_routing_prefix_impl(addr, family, nullptr);
+    }
 
-        for (ifaddrs* ifa = ifa_list; ifa != nullptr; ifa = ifa->ifa_next)
-        {
-            if (!ifa->ifa_addr)
-                continue;
+    bool detect_routing_prefix(ip_address& addr, ip_address_family& family, ip_address_family preferred_family)
+    {
+        return detect_routing_prefix_impl(addr, family, &preferred_family);
+    }
 
-            if (ifa->ifa_addr->sa_family == AF_INET6 && !found_ipv6)
-            {
-                auto* sa6 = reinterpret_cast<sockaddr_in6*>(ifa->ifa_addr);
-                const uint8_t* a = sa6->sin6_addr.s6_addr;
-                if (ipv6_is_global(a))
-                {
-                    // Store the full 16-byte address for host connectivity.
-                    std::memcpy(best_ipv6.data(), a, 16);
-                    found_ipv6 = true;
-                }
-            }
-            else if (ifa->ifa_addr->sa_family == AF_INET)
-            {
-                auto* sa4 = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
-                uint32_t a = ntohl(sa4->sin_addr.s_addr);
+    bool detect_host(ip_address& addr, ip_address_family& family)
+    {
+        return detect_host_impl(addr, family, nullptr);
+    }
 
-                if (!found_public_ipv4 && ipv4_is_public(a))
-                {
-                    store_ipv4_bytes(a, best_public_ipv4);
-                    found_public_ipv4 = true;
-                }
-                else if (!found_private_ipv4 && ipv4_is_private_rfc1918(a))
-                {
-                    store_ipv4_bytes(a, best_private_ipv4);
-                    found_private_ipv4 = true;
-                }
-            }
-        }
-
-        freeifaddrs(ifa_list);
-
-        if (found_ipv6)
-        {
-            addr = best_ipv6;
-            family = ip_address_family::ipv6;
-            return true;
-        }
-        if (found_public_ipv4)
-        {
-            addr = best_public_ipv4;
-            family = ip_address_family::ipv4;
-            return true;
-        }
-        if (found_private_ipv4)
-        {
-            addr = best_private_ipv4;
-            family = ip_address_family::ipv4;
-            return true;
-        }
-#endif
-        // fallback to loopback
-        addr = {};
-        addr[0] = 127;
-        addr[3] = 1;
-        family = ip_address_family::ipv4;
-        return false;
+    bool detect_host(ip_address& addr, ip_address_family& family, ip_address_family preferred_family)
+    {
+        return detect_host_impl(addr, family, &preferred_family);
     }
 
     bool parse_ip_address(const std::string& str, ip_address& addr, ip_address_family family)
