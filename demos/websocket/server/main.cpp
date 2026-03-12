@@ -128,7 +128,12 @@ auto main(int argc, char* argv[]) -> int
     std::signal(SIGPIPE, SIG_IGN);
 
     auto scheduler = make_scheduler();
-    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", cfg, scheduler);
+
+    rpc::service_config service_cfg{
+        .initial_zone = rpc::zone{canopy::network_config::get_zone_address(cfg)},
+    };
+
+    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", service_cfg, scheduler);
     const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6 ? coro::net::domain_t::ipv6
                                                                                            : coro::net::domain_t::ipv4;
     auto bind_address = coro::net::ip_address::from_string(cfg.get_host_string(), domain);
