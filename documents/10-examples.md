@@ -358,7 +358,7 @@ demos/websocket/
 ├── server/
 │   ├── server.cpp           # Main entry point
 │   ├── transport.h/cpp      # WebSocket transport
-│   ├── websocket_service.h  # RPC service
+│   ├── demo_zone.h  # RPC service
 │   └── demo.cpp             # Calculator implementation
 ├── client/
 │   ├── test_calculator.js   # Node.js RPC client

@@ -68,6 +68,7 @@ add_subdirectory(subcomponents/spsc_queue)
 
 if(CANOPY_BUILD_COROUTINE)
   add_subdirectory(streaming)
+  add_subdirectory(subcomponents/http_server)
 endif()
 
 if(CANOPY_BUILD_TEST)

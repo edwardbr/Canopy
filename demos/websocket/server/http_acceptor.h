@@ -8,10 +8,11 @@
 
 #include <coro/coro.hpp>
 
-#include "websocket_service.h"
+#include "demo_zone.h"
 #include <streaming/tls_stream.h>
 
-auto run_websocket_server(std::shared_ptr<coro::scheduler> scheduler,
+auto run_http_server(std::shared_ptr<coro::scheduler> scheduler,
+    coro::net::ip_address bind_address,
+    uint16_t port,
     std::shared_ptr<websocket_demo::v1::websocket_service> service,
-    std::shared_ptr<streaming::tls_context> tls_ctx,
-    uint16_t port) -> coro::task<void>;
+    std::shared_ptr<streaming::tls_context> tls_ctx) -> coro::task<void>;

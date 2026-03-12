@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-#include "server.h"
+#include "http_acceptor.h"
 
 #include <csignal>
 #include <iostream>
 #include <memory>
 #include <string>
 
+#include <canopy/network_config/network_args.h>
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
 #include <streaming/tls_stream.h>
@@ -43,31 +44,6 @@ extern "C" void rpc_log(int level, const char* str, size_t sz)
 
 namespace
 {
-    void print_usage(const char* program)
-    {
-        std::cout << "Usage: " << program << " [options]\n"
-                  << "Options:\n"
-                  << "  --cert <file>   Path to TLS certificate file (PEM format)\n"
-                  << "  --key <file>    Path to TLS private key file (PEM format)\n"
-                  << "  --port <port>   Port to listen on (default: 8888)\n"
-                  << "  --help          Show this help message\n"
-                  << "\n"
-                  << "If both --cert and --key are provided, the server will use TLS (HTTPS/WSS).\n"
-                  << "Otherwise, it will use plain HTTP/WS.\n"
-                  << "\n"
-                  << "Usage\n"
-                  << "\n"
-                  << "Plain HTTP/WS (no change):\n"
-                  << "./websocket_server\n"
-                  << "\n"
-                  << "With TLS (HTTPS/WSS):\n"
-                  << "./websocket_server --cert server.crt --key server.key --port 8443\n"
-                  << "\n"
-                  << "To generate a self-signed certificate for testing:\n"
-                  << "openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days "
-                     "365 -nodes -subj \"/CN=localhost\"\n";
-    }
-
     auto make_scheduler() -> std::shared_ptr<coro::scheduler>
     {
         return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -91,50 +67,59 @@ namespace
 
 auto main(int argc, char* argv[]) -> int
 {
-    std::string cert_file;
-    std::string key_file;
-    uint16_t port = 8888;
+    args::ArgumentParser parser("WebSocket demo server with static pages, REST endpoints, and websocket RPC.");
+    args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
+    auto net = canopy::network_config::add_network_args(parser);
+    args::ValueFlag<std::string> cert_file(parser, "file", "Path to TLS certificate file (PEM format)", {"cert"}, "");
+    args::ValueFlag<std::string> key_file(parser, "file", "Path to TLS private key file (PEM format)", {"key"}, "");
 
-    for (int i = 1; i < argc; ++i)
+    try
     {
-        std::string arg = argv[i];
-        if (arg == "--cert" && i + 1 < argc)
-        {
-            cert_file = argv[++i];
-        }
-        else if (arg == "--key" && i + 1 < argc)
-        {
-            key_file = argv[++i];
-        }
-        else if (arg == "--port" && i + 1 < argc)
-        {
-            port = static_cast<uint16_t>(std::stoi(argv[++i]));
-        }
-        else if (arg == "--help")
-        {
-            print_usage(argv[0]);
-            return 0;
-        }
-        else
-        {
-            RPC_ERROR("Unknown argument: {}", arg);
-            print_usage(argv[0]);
-            return 1;
-        }
+        parser.ParseCLI(argc, argv);
+    }
+    catch (const args::Help&)
+    {
+        std::cout << parser;
+        return 0;
+    }
+    catch (const args::ParseError& e)
+    {
+        std::cerr << e.what() << "\n" << parser;
+        return 1;
     }
 
-    std::shared_ptr<streaming::tls_context> tls_ctx;
-    if (!cert_file.empty() && !key_file.empty())
+    canopy::network_config::network_config cfg;
+    try
     {
-        tls_ctx = std::make_shared<streaming::tls_context>(cert_file, key_file);
+        cfg = net.get_config();
+    }
+    catch (const std::invalid_argument& e)
+    {
+        RPC_ERROR("Configuration error: {}", e.what());
+        return 1;
+    }
+
+    if (cfg.port == 0)
+    {
+        cfg.port = 8888;
+    }
+
+    cfg.log_values();
+
+    const auto cert_path = args::get(cert_file);
+    const auto key_path = args::get(key_file);
+    std::shared_ptr<streaming::tls_context> tls_ctx;
+    if (!cert_path.empty() && !key_path.empty())
+    {
+        tls_ctx = std::make_shared<streaming::tls_context>(cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Failed to initialize TLS context, exiting");
             return 1;
         }
-        RPC_INFO("TLS enabled with certificate: {}", cert_file);
+        RPC_INFO("TLS enabled with certificate: {}", cert_path);
     }
-    else if (!cert_file.empty() || !key_file.empty())
+    else if (!cert_path.empty() || !key_path.empty())
     {
         RPC_ERROR("Both --cert and --key must be provided for TLS");
         return 1;
@@ -143,7 +128,10 @@ auto main(int argc, char* argv[]) -> int
     std::signal(SIGPIPE, SIG_IGN);
 
     auto scheduler = make_scheduler();
-    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", rpc::DEFAULT_PREFIX, scheduler);
+    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", cfg, scheduler);
+    const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6 ? coro::net::domain_t::ipv6
+                                                                                           : coro::net::domain_t::ipv4;
+    auto bind_address = coro::net::ip_address::from_string(cfg.get_host_string(), domain);
 
-    coro::sync_wait(coro::when_all(run_websocket_server(scheduler, root_service, tls_ctx, port)));
+    coro::sync_wait(coro::when_all(run_http_server(scheduler, std::move(bind_address), cfg.port, root_service, tls_ctx)));
 }
