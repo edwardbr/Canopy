@@ -14,6 +14,7 @@ add_executable(
   http_client_connection.cpp
   rest_handler.cpp
   websocket_handler.cpp
+  websocket_compat_stream.cpp
   demo_zone.cpp
   llama_server_engine.cpp)
 

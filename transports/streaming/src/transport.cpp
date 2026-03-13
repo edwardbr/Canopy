@@ -199,6 +199,12 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stream_transport::transport::outbound_add_ref zone={}", get_zone_id().get_subnet());
 
+        if (!peer_reference_counting_enabled_)
+        {
+            out_back_channel.clear();
+            CO_RETURN rpc::error::OK();
+        }
+
         addref_receive response_data;
         int ret = CO_AWAIT call_peer(protocol_version,
             addref_send{.destination_zone_id = remote_object_id,
@@ -241,6 +247,12 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stream_transport::transport::outbound_release zone={}", get_zone_id().get_subnet());
 
+        if (!peer_reference_counting_enabled_)
+        {
+            out_back_channel.clear();
+            CO_RETURN rpc::error::OK();
+        }
+
         if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::DISCONNECTING)
         {
             RPC_ERROR("failed stream_transport::transport::outbound_release - not connected, status = {}",
@@ -275,6 +287,11 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stream_transport::transport::outbound_object_released zone={}", get_zone_id().get_subnet());
 
+        if (!peer_reference_counting_enabled_)
+        {
+            CO_RETURN;
+        }
+
         if (get_status() == rpc::transport_status::DISCONNECTED)
         {
             RPC_ERROR("failed stream_transport::transport::outbound_object_released - transport disconnected");
@@ -299,6 +316,11 @@ namespace rpc::stream_transport
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
         RPC_DEBUG("stream_transport::transport::outbound_transport_down zone={}", get_zone_id().get_subnet());
+
+        if (!peer_reference_counting_enabled_)
+        {
+            CO_RETURN;
+        }
 
         if (get_status() == rpc::transport_status::DISCONNECTED)
         {

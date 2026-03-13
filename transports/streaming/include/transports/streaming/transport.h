@@ -66,6 +66,7 @@ namespace rpc::stream_transport
 
         std::atomic<bool> peer_requested_disconnection_ = false;
         std::atomic<bool> pumps_started_ = false;
+        bool peer_reference_counting_enabled_ = true;
 
         // Two-phase close protocol state
         std::atomic<bool> send_cleanup_done_ = false;
@@ -220,6 +221,9 @@ namespace rpc::stream_transport
             connection_handler handler);
 
         virtual ~transport() { }
+
+        void set_peer_reference_counting_enabled(bool enabled) { peer_reference_counting_enabled_ = enabled; }
+        bool is_peer_reference_counting_enabled() const { return peer_reference_counting_enabled_; }
 
         void add_custom_message_handler(custom_message_handler handler)
         {

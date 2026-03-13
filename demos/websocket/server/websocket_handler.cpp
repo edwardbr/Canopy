@@ -2,6 +2,7 @@
 // All rights reserved.
 
 #include "http_client_connection.h"
+#include "websocket_compat_stream.h"
 
 #include <transports/streaming/transport.h>
 #include <websocket_demo/websocket_demo.h>
@@ -15,10 +16,11 @@ namespace websocket_demo
             -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>
         {
             auto wsrvc = std::static_pointer_cast<websocket_service>(service_);
+            auto compat_stream = std::make_shared<websocket_compat_stream>(std::move(websocket_stream));
 
             auto transport = rpc::stream_transport::transport::create("websocket",
                 service_,
-                websocket_stream,
+                compat_stream,
                 [wsrvc](const rpc::connection_settings& input_descr,
                     rpc::interface_descriptor& output_descr,
                     std::shared_ptr<rpc::service> svc,
@@ -50,6 +52,7 @@ namespace websocket_demo
                                 co_return rpc::error::OK();
                             });
                 });
+            transport->set_peer_reference_counting_enabled(false);
 
             transport->reject_message_type<rpc::stream_transport::init_client_channel_send>();
 
