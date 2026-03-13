@@ -18,7 +18,6 @@ namespace rpc::tcp
         connection_handler handler)
         : rpc::transport(name, service, adjacent_zone_id)
         , client_(std::move(client))
-        , timeout_(timeout)
         , connection_handler_(std::move(handler))
     {
     }

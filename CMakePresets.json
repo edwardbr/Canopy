@@ -34,7 +34,9 @@
         "LIBCORO_FEATURE_NETWORKING": "OFF",
         "CANOPY_HANG_ON_FAILED_ASSERT": "OFF",
         "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
-        "CANOPY_BUILD_DEMOS": "OFF"
+        "CANOPY_BUILD_DEMOS": "OFF",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
       }
     },
     {
@@ -110,7 +112,9 @@
         "CANOPY_USE_TELEMETRY": "ON",
         "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
         "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
-        "CANOPY_BUILD_DEMOS": "ON"
+        "CANOPY_BUILD_DEMOS": "ON",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
       }
     },
     {

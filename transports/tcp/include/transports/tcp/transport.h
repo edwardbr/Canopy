@@ -35,7 +35,6 @@ namespace rpc::tcp
         };
 
         coro::net::tcp::client client_;
-        std::chrono::milliseconds timeout_;
 
         std::atomic<uint64_t> sequence_number_ = 0;
 

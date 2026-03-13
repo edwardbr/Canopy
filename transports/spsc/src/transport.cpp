@@ -749,7 +749,7 @@ namespace rpc::spsc
             }
         }
         svc->get_scheduler()->spawn(
-            [this](std::shared_ptr<spsc_transport> transport, std::shared_ptr<rpc::service> svc) -> CORO_TASK(void)
+            [](std::shared_ptr<spsc_transport> transport, std::shared_ptr<rpc::service> svc) -> CORO_TASK(void)
             {
                 CO_AWAIT transport->notify_all_destinations_of_disconnect();
 

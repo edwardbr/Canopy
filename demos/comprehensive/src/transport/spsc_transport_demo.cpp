@@ -123,7 +123,7 @@ namespace comprehensive
             comprehensive_idl_register_stubs(service_2);
 
             rpc::event on_connected;
-            auto handler = [&, zone_1](const rpc::interface_descriptor& input_interface,
+            auto handler = [&](const rpc::interface_descriptor& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
                                std::shared_ptr<rpc::spsc::spsc_transport> transport) -> CORO_TASK(int)

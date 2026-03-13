@@ -1,0 +1,15 @@
+{
+  "version": 5,
+  "configurePresets": [
+    {
+      "name": "My_Coroutine_Coverage",
+      "inherits": "Coroutine_Debug_Coverage",
+      "binaryDir": "build_user/coroutine_coverage",
+      "cacheVariables": {
+        "CANOPY_COVERAGE_GTEST_FILTER": "type_test/*"
+      }
+    }
+  ],
+  "buildPresets": [],
+  "testPresets": []
+}
