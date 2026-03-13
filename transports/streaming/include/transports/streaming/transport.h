@@ -316,6 +316,18 @@ namespace rpc::stream_transport
             if constexpr (requires(ResponsePayload response) { response.server_remote_object = outbound_remote_object; })
                 payload.server_remote_object = outbound_remote_object;
 
+            if constexpr (requires(ResponsePayload response) { response.client_zone_id_text = std::string{}; })
+                payload.client_zone_id_text = std::to_string(caller_zone_id);
+
+            if constexpr (requires(ResponsePayload response) {
+                              response.server_remote_object_text.zone_id = std::string{};
+                              response.server_remote_object_text.object_id = uint64_t{};
+                          })
+            {
+                payload.server_remote_object_text.zone_id = std::to_string(outbound_remote_object.as_zone());
+                payload.server_remote_object_text.object_id = outbound_remote_object.get_object().get_val();
+            }
+
             send_payload(protocol_version, message_direction::receive, std::move(payload), sequence_number);
         }
 

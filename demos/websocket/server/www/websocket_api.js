@@ -39,9 +39,9 @@
     },
     "messageTypes": {
         "connect_request": "15612425605766251959",
-        "connect_response": "9813763101818227519",
+        "connect_response": "12015491270843263340",
         "envelope": "16354260729093401761",
-        "request": "8527327110998940659",
+        "request": "15404543496804859092",
         "response": "7977239416776051184"
     }
 };
@@ -112,12 +112,35 @@
         return ordinal;
     }
 
-    function getZoneAddress(subnetId, objectId) {
-        const zoneAddress = { subnetId: subnetId };
-        if (objectId !== undefined && objectId !== null) {
-            zoneAddress.objectId = objectId;
+    function zoneTextToDisplayId(zoneText) {
+        if (!zoneText) {
+            return 0;
         }
-        return RpcProto.zone_address.create(zoneAddress);
+
+        const text = String(zoneText);
+        const slash = text.indexOf('/');
+        const zoneOnly = slash >= 0 ? text.slice(0, slash) : text;
+        const colon = zoneOnly.indexOf(':');
+        const subnetText = colon >= 0 ? zoneOnly.slice(colon + 1) : zoneOnly;
+        const parsed = Number(subnetText);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function isHandshakeResponse(connectResponse) {
+        if (!connectResponse || typeof connectResponse !== 'object') {
+            return false;
+        }
+
+        if (connectResponse.clientZoneIdText) {
+            return true;
+        }
+
+        const serverRemoteText = connectResponse.serverRemoteObjectText;
+        if (serverRemoteText && (serverRemoteText.zoneId || serverRemoteText.objectId)) {
+            return true;
+        }
+
+        return false;
     }
 
     function createObjectId(objectId) {
@@ -174,6 +197,8 @@
             this.clientZoneId = 0;
             this.serverZoneId = 0;
             this.serverObjectId = 0;
+            this.clientZoneText = '';
+            this.serverZoneText = '';
             this.messageCounter = 0;
             this.pendingConnect = null;
             this.pendingRequests = new Map();
@@ -283,7 +308,7 @@
         sendHandshake(callbackObjectId) {
             const connectRequest = WebsocketProto.connect_request.create({
                 inboundRemoteObject: RpcProto.remote_object.create({
-                    addr_: getZoneAddress(undefined, callbackObjectId)
+                    addr_: RpcProto.zone_address.create({})
                 }),
                 inboundCallbackObjectId: createObjectId(callbackObjectId)
             });
@@ -314,12 +339,8 @@
             const wsRequest = WebsocketProto.request.create({
                 encoding: encoding,
                 tag: toUnsigned(messageId),
-                callerZoneId: callerZoneProto.create({
-                    addr_: getZoneAddress(this.clientZoneId)
-                }),
-                destinationZoneId: RpcProto.remote_object.create({
-                    addr_: getZoneAddress(this.serverZoneId, this.serverObjectId)
-                }),
+                callerZoneId: callerZoneProto.create({}),
+                destinationZoneId: RpcProto.remote_object.create({}),
                 interfaceId: RpcProto.interface_ordinal.create({
                     id: toUnsigned(interfaceId)
                 }),
@@ -327,7 +348,10 @@
                     id: toUnsigned(methodId)
                 }),
                 data: requestBytes,
-                backChannel: []
+                backChannel: [],
+                callerZoneIdText: this.clientZoneText,
+                destinationZoneIdText: this.serverZoneText,
+                destinationObjectId: toUnsigned(this.serverObjectId)
             });
 
             const envelope = WebsocketProto.envelope.create({
@@ -369,22 +393,26 @@
 
             if (!this.handshakeComplete) {
                 const connectResponse = WebsocketProto.connect_response.decode(bytes);
-                const clientZone = connectResponse.clientZoneId || connectResponse.callerZoneId;
-                const serverRemote = connectResponse.serverRemoteObject || connectResponse.outboundRemoteObject;
+                if (isHandshakeResponse(connectResponse)) {
+                    const clientZoneText = connectResponse.clientZoneIdText || '';
+                    const serverRemoteText = connectResponse.serverRemoteObjectText || null;
 
-                this.clientZoneId = clientZone && clientZone.addr_ ? Number(clientZone.addr_.subnetId || 0) : 0;
-                this.serverZoneId = serverRemote && serverRemote.addr_ ? Number(serverRemote.addr_.subnetId || 0) : 0;
-                this.serverObjectId = serverRemote && serverRemote.addr_ ? Number(serverRemote.addr_.objectId || 0) : 0;
-                this.handshakeComplete = true;
+                    this.clientZoneText = clientZoneText;
+                    this.serverZoneText = serverRemoteText && serverRemoteText.zoneId ? serverRemoteText.zoneId : '';
+                    this.clientZoneId = zoneTextToDisplayId(this.clientZoneText);
+                    this.serverZoneId = zoneTextToDisplayId(this.serverZoneText);
+                    this.serverObjectId = serverRemoteText ? Number(longToString(serverRemoteText.objectId || 0)) : 0;
+                    this.handshakeComplete = true;
 
-                if (this.pendingConnect) {
-                    this.pendingConnect.resolve(this.getState());
-                    this.pendingConnect = null;
+                    if (this.pendingConnect) {
+                        this.pendingConnect.resolve(this.getState());
+                        this.pendingConnect = null;
+                    }
+                    if (this.onHandshake) {
+                        this.onHandshake(this.getState(), connectResponse);
+                    }
+                    return;
                 }
-                if (this.onHandshake) {
-                    this.onHandshake(this.getState(), connectResponse);
-                }
-                return;
             }
 
             const envelope = WebsocketProto.envelope.decode(bytes);

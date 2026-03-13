@@ -9,6 +9,12 @@ namespace websocket_demo
 {
     namespace v1
     {
+        struct browser_remote_object
+        {
+            std::string zone_id;
+            uint64_t object_id;
+        };
+
         struct connect_request
         {
             // Legacy peer-to-peer handshake field. Web clients should prefer inbound_callback_object_id.
@@ -27,6 +33,10 @@ namespace websocket_demo
             rpc::zone client_zone_id;
             // The server's zone and callable object combined for subsequent websocket RPC calls.
             rpc::remote_object server_remote_object;
+            // Browser-friendly client zone identifier using zone_only() string formatting.
+            std::string client_zone_id_text;
+            // Browser-friendly server object using zone_only() plus a separate object id.
+            browser_remote_object server_remote_object_text;
         };
 
         struct envelope
@@ -46,6 +56,12 @@ namespace websocket_demo
             rpc::method method_id;
             std::vector<char> data;
             std::vector<rpc::back_channel_entry> back_channel;
+            // Browser-friendly caller zone identifier using zone_only() string formatting.
+            std::string caller_zone_id_text;
+            // Browser-friendly destination zone identifier using zone_only() string formatting.
+            std::string destination_zone_id_text;
+            // Browser-friendly destination object id.
+            uint64_t destination_object_id;
         };
 
         struct response
@@ -68,8 +84,8 @@ namespace websocket_demo
             [description="multiply"] int multiply(double first_val, double second_val, [out] double& response);
             [description="divide"] int divide(double first_val, double second_val, [out] double& response);
 
-            int add_prompt(const std::string& prompt);
-            // int get_piece([out] std::string& piece, [out] bool& complete);
+            // some llm fun thrown in
+            int add_prompt(const std::string& prompt);            
             int set_callback(const rpc::shared_ptr<i_context_event>& event);
         };
     }

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string_view>
 
 #include <rpc/rpc.h>
 
@@ -14,6 +15,40 @@ namespace websocket_demo
     {
         namespace
         {
+            auto parse_zone_string(std::string_view text) -> std::optional<rpc::zone>
+            {
+                if (text.empty())
+                {
+                    return std::nullopt;
+                }
+
+                const auto slash = text.find('/');
+                const auto zone_text = text.substr(0, slash);
+                const auto colon = zone_text.find(':');
+
+                uint64_t prefix = 0;
+                uint64_t subnet = 0;
+
+                try
+                {
+                    if (colon == std::string_view::npos)
+                    {
+                        subnet = static_cast<uint64_t>(std::stoull(std::string(zone_text)));
+                    }
+                    else
+                    {
+                        prefix = static_cast<uint64_t>(std::stoull(std::string(zone_text.substr(0, colon))));
+                        subnet = static_cast<uint64_t>(std::stoull(std::string(zone_text.substr(colon + 1))));
+                    }
+                }
+                catch (const std::exception&)
+                {
+                    return std::nullopt;
+                }
+
+                return rpc::zone(rpc::zone_address(prefix, static_cast<uint32_t>(subnet), 0));
+            }
+
             template<class T>
             auto make_transport_message(
                 uint64_t sequence_number, rpc::stream_transport::message_direction direction, const T& value)
@@ -218,6 +253,23 @@ namespace websocket_demo
                 .payload = request.data,
                 .back_channel = request.back_channel};
 
+            if (!request.caller_zone_id_text.empty())
+            {
+                if (auto caller_zone = parse_zone_string(request.caller_zone_id_text))
+                {
+                    transport_request.caller_zone_id = *caller_zone;
+                }
+            }
+
+            if (!request.destination_zone_id_text.empty())
+            {
+                if (auto destination_zone = parse_zone_string(request.destination_zone_id_text))
+                {
+                    transport_request.destination_zone_id
+                        = destination_zone->with_object(rpc::object(request.destination_object_id));
+                }
+            }
+
             queue_receive_bytes(make_transport_message(
                 envelope.message_id, rpc::stream_transport::message_direction::send, transport_request));
             return true;
@@ -370,6 +422,9 @@ namespace websocket_demo
                 ws_request.method_id = request.method_id;
                 ws_request.data = std::move(request.payload);
                 ws_request.back_channel = std::move(request.back_channel);
+                ws_request.caller_zone_id_text = std::to_string(request.caller_zone_id);
+                ws_request.destination_zone_id_text = std::to_string(request.destination_zone_id.as_zone());
+                ws_request.destination_object_id = request.destination_zone_id.get_object().get_val();
             }
             else
             {
@@ -389,6 +444,9 @@ namespace websocket_demo
                 ws_request.method_id = request.method_id;
                 ws_request.data = std::move(request.payload);
                 ws_request.back_channel = std::move(request.back_channel);
+                ws_request.caller_zone_id_text = std::to_string(request.caller_zone_id);
+                ws_request.destination_zone_id_text = std::to_string(request.destination_zone_id.as_zone());
+                ws_request.destination_object_id = request.destination_zone_id.get_object().get_val();
             }
 
             websocket_demo::v1::envelope envelope;

@@ -91,11 +91,16 @@ namespace websocket_demo
                         output_descr);
                     if (ret != rpc::error::OK())
                     {
+                        RPC_ERROR("[WS] run_custom_connect failed: {}", ret);
                         CO_RETURN rpc::stream_transport::transport::message_hook_result::rejected;
                     }
 
+                    RPC_INFO("[WS] Sending connect_response client_zone={} server_remote_object={}",
+                        client_zone_id.get_subnet(),
+                        output_descr.destination_zone_id.get_subnet());
                     transport->send_custom_connect_response<websocket_demo::v1::connect_response>(
                         prefix.version, prefix.sequence_number, client_zone_id, output_descr.destination_zone_id);
+                    RPC_INFO("[WS] connect_response queued");
 
                     CO_RETURN rpc::stream_transport::transport::message_hook_result::handled;
                 });

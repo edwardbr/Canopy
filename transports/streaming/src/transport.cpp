@@ -201,6 +201,8 @@ namespace rpc::stream_transport
 
         if (!peer_reference_counting_enabled_)
         {
+            RPC_DEBUG("stream_transport::transport::outbound_add_ref bypassed peer refcounting zone={}",
+                get_zone_id().get_subnet());
             out_back_channel.clear();
             CO_RETURN rpc::error::OK();
         }

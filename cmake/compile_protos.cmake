@@ -41,7 +41,7 @@ foreach(PROTO_NAME ${PROTO_FILE_NAMES})
     list(APPEND PROTO_FILES "${OUTPUT_DIR}/${PROTO_NAME}")
     # Convert example.proto -> example.pb.cc
     string(REGEX REPLACE "\\.proto$" ".pb.cc" PB_CC_NAME "${PROTO_NAME}")
-    set(pb_cc_file "${PROTO_DIR}/${PB_CC_NAME}")
+    set(pb_cc_file "${OUTPUT_DIR}/${PB_CC_NAME}")
     list(APPEND PROTO_PB_SOURCES "${pb_cc_file}")
     message("list(APPEND PROTO_PB_SOURCES ${pb_cc_file})")
   endif()
