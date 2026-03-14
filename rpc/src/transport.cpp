@@ -26,28 +26,12 @@ namespace rpc
         , zone_id_(service->get_zone_id())
         , service_(service)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_subnet() != 0)
-        {
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_transport_creation(
-                    name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire));
-        }
-#endif
     }
 
     transport::transport(std::string name, zone zone_id_)
         : name_(name)
         , zone_id_(zone_id_)
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_subnet() != 0)
-        {
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_transport_creation(
-                    name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire));
-        }
-#endif
     }
 
     transport::~transport()
@@ -69,6 +53,15 @@ namespace rpc
 
     void transport::set_adjacent_zone_id(zone new_adjacent_zone_id)
     {
+#ifdef CANOPY_USE_TELEMETRY
+        if (adjacent_zone_id_.get_subnet() != 0)
+        {
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                telemetry_service->on_transport_creation(
+                    name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire));
+        }
+#endif
+
         auto old_adjacent_zone_id = adjacent_zone_id_;
         if (old_adjacent_zone_id == new_adjacent_zone_id)
             return;
@@ -867,7 +860,7 @@ namespace rpc
         remote_object remote_object_id,
         interface_ordinal interface_id,
         method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         std::vector<char>& out_buf_,
         const std::vector<back_channel_entry>& in_back_channel,
         std::vector<back_channel_entry>& out_back_channel)
@@ -922,7 +915,7 @@ namespace rpc
         remote_object remote_object_id,
         interface_ordinal interface_id,
         method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         const std::vector<back_channel_entry>& in_back_channel)
     {
 #ifdef CANOPY_USE_TELEMETRY
@@ -1308,7 +1301,7 @@ namespace rpc
         remote_object remote_object_id,
         interface_ordinal interface_id,
         method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         std::vector<char>& out_buf_,
         const std::vector<back_channel_entry>& in_back_channel,
         std::vector<back_channel_entry>& out_back_channel)
@@ -1350,7 +1343,7 @@ namespace rpc
         remote_object remote_object_id,
         interface_ordinal interface_id,
         method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         const std::vector<back_channel_entry>& in_back_channel)
     {
         CO_AWAIT outbound_post(

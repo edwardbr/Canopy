@@ -310,7 +310,7 @@ namespace streaming
 
         auto submit_recv(const std::shared_ptr<io_uring_tcp_stream::ring_state>& state,
             int fd,
-            std::span<char> buffer,
+            rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout) -> std::shared_ptr<io_uring_tcp_stream::ring_state::pending_op>
         {
             auto op = std::make_shared<io_uring_tcp_stream::ring_state::pending_op>();
@@ -408,7 +408,7 @@ namespace streaming
             return op;
         }
 
-        auto submit_send(const std::shared_ptr<io_uring_tcp_stream::ring_state>& state, int fd, std::span<const char> buffer)
+        auto submit_send(const std::shared_ptr<io_uring_tcp_stream::ring_state>& state, int fd, rpc::byte_span buffer)
             -> std::shared_ptr<io_uring_tcp_stream::ring_state::pending_op>
         {
             auto op = std::make_shared<io_uring_tcp_stream::ring_state::pending_op>();
@@ -738,12 +738,12 @@ namespace streaming
         teardown_ring(state);
     }
 
-    auto io_uring_tcp_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+    auto io_uring_tcp_stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         if (closed_)
         {
-            co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, std::span<char>{}};
+            co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
         }
 
         while (true)
@@ -763,7 +763,7 @@ namespace streaming
             if (result == 0)
             {
                 closed_ = true;
-                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, std::span<char>{}};
+                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
             }
 
             int native_error = static_cast<int>(-result);
@@ -778,17 +778,17 @@ namespace streaming
                 // -ETIME:     linked timeout CQE (shouldn't reach here, but defensive).
                 if (closed_ || state_->stopping.load(std::memory_order_acquire))
                 {
-                    co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, std::span<char>{}};
+                    co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
                 }
-                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::timeout}, std::span<char>{}};
+                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::timeout}, rpc::mutable_byte_span{}};
             }
 
             closed_ = true;
-            co_return std::pair{translate_native_status(native_error), std::span<char>{}};
+            co_return std::pair{translate_native_status(native_error), rpc::mutable_byte_span{}};
         }
     }
 
-    auto io_uring_tcp_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto io_uring_tcp_stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
         {

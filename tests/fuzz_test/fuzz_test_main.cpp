@@ -1761,7 +1761,7 @@ test_scenario_config load_test_scenario(const std::string& scenario_file)
     {
         // Use YAS JSON deserialization
         test_scenario_config config;
-        rpc::span data{reinterpret_cast<const uint8_t*>(json_content.data()),
+        rpc::byte_span data{reinterpret_cast<const uint8_t*>(json_content.data()),
             reinterpret_cast<const uint8_t*>(json_content.data() + json_content.size())};
 
         std::string error = rpc::from_yas_json(data, config);

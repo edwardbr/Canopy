@@ -71,8 +71,8 @@ namespace streaming
             close_owned_socket();
         }
 
-        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override
+        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override
         {
             if (closed_.load(std::memory_order_acquire))
             {
@@ -118,7 +118,7 @@ namespace streaming
             co_return {detail::translate_status(native_error), {}};
         }
 
-        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override
+        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override
         {
             while (!buffer.empty())
             {
@@ -436,7 +436,7 @@ namespace streaming
             }
         }
 
-        auto submit_recv(std::span<char> buffer, std::chrono::milliseconds timeout) -> std::shared_ptr<pending_op>
+        auto submit_recv(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout) -> std::shared_ptr<pending_op>
         {
             auto op = std::make_shared<pending_op>();
             op->id = state_->next_id.fetch_add(1, std::memory_order_relaxed);
@@ -481,7 +481,7 @@ namespace streaming
             return op;
         }
 
-        auto submit_send(std::span<const char> buffer) -> std::shared_ptr<pending_op>
+        auto submit_send(rpc::byte_span buffer) -> std::shared_ptr<pending_op>
         {
             auto op = std::make_shared<pending_op>();
             op->id = state_->next_id.fetch_add(1, std::memory_order_relaxed);

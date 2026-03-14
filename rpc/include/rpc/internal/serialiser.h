@@ -13,6 +13,7 @@
 
 #include <rpc/internal/types.h>
 #include <rpc/internal/error_codes.h>
+#include <rpc/internal/span.h>
 
 namespace rpc
 {
@@ -53,58 +54,6 @@ namespace rpc
         {
         };
         // etc..
-    };
-
-    struct span
-    {
-        const uint8_t* begin;
-        const uint8_t* end;
-
-        span(const uint8_t* begin_, const uint8_t* end_)
-            : begin(begin_)
-            , end(end_)
-        {
-        }
-        span(const uint8_t* data_, size_t size_)
-            : begin(data_)
-            , end(data_ + size_)
-        {
-        }
-        span(const char* begin_, const char* end_)
-            : begin((const uint8_t*)begin_)
-            , end((const uint8_t*)end_)
-        {
-        }
-        span(const int8_t* begin_, const int8_t* end_)
-            : begin((const uint8_t*)begin_)
-            , end((const uint8_t*)end_)
-        {
-        }
-
-        span(const std::string& l)
-            : begin((const uint8_t*)l.data())
-            , end((const uint8_t*)(l.data() + l.size()))
-        {
-        }
-
-        template<class ByteType>
-        span(const std::vector<ByteType>& l)
-            : begin(reinterpret_cast<const uint8_t*>(l.data()))
-            , end(reinterpret_cast<const uint8_t*>(l.data() + l.size()))
-        {
-            static_assert(sizeof(ByteType) == 1, "Template parameter must be exactly one byte");
-        }
-
-        template<size_t size, class ByteType>
-        span(const std::array<ByteType, size>& l)
-            : begin(reinterpret_cast<const uint8_t*>(l.data()))
-            , end(reinterpret_cast<const uint8_t*>(l.data() + l.size()))
-        {
-            static_assert(sizeof(ByteType) == 1, "Template parameter must be exactly one byte");
-        }
-
-        const uint8_t* data() const { return begin; }
-        size_t size() const { return static_cast<size_t>(end - begin); }
     };
 
     // Size calculation functions (declared first for use in serialization)
@@ -257,13 +206,13 @@ namespace rpc
     }
 
     // deserialisation primatives
-    template<typename T> std::string from_yas_json(const span& data, T& obj)
+    template<typename T> std::string from_yas_json(const byte_span& data, T& obj)
     {
         try
         {
             YAS_WARNINGS_PUSH
             yas::load<yas::mem | yas::json | yas::no_header>(
-                yas::intrusive_buffer{(const char*)data.begin, (size_t)(data.end - data.begin)}, obj);
+                yas::intrusive_buffer{(const char*)data.data(), data.size()}, obj);
             YAS_WARNINGS_POP
             return "";
         }
@@ -281,13 +230,13 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string from_yas_binary(const span& data, T& obj)
+    template<typename T> std::string from_yas_binary(const byte_span& data, T& obj)
     {
         try
         {
             YAS_WARNINGS_PUSH
             yas::load<yas::mem | ::yas::binary | ::yas::no_header>(
-                yas::intrusive_buffer{(const char*)data.begin, (size_t)(data.end - data.begin)}, obj);
+                yas::intrusive_buffer{(const char*)data.data(), data.size()}, obj);
             YAS_WARNINGS_POP
             return "";
         }
@@ -305,13 +254,13 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string from_yas_compressed_binary(const span& data, T& obj)
+    template<typename T> std::string from_yas_compressed_binary(const byte_span& data, T& obj)
     {
         try
         {
             YAS_WARNINGS_PUSH
             yas::load<yas::mem | ::yas::binary | ::yas::compacted | ::yas::no_header>(
-                yas::intrusive_buffer{(const char*)data.begin, (size_t)(data.end - data.begin)}, obj);
+                yas::intrusive_buffer{(const char*)data.data(), data.size()}, obj);
             YAS_WARNINGS_POP
             return "";
         }
@@ -329,11 +278,11 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string from_protobuf(const span& data, T& obj)
+    template<typename T> std::string from_protobuf(const byte_span& data, T& obj)
     {
         try
         {
-            obj.protobuf_deserialise(std::vector<char>(data.begin, data.end));
+            obj.protobuf_deserialise(std::vector<char>((const char*)data.data(), (const char*)data.data() + data.size()));
             return "";
         }
         catch (const std::exception& ex)
@@ -350,7 +299,7 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string deserialise(encoding enc, const span& data, T& obj)
+    template<typename T> std::string deserialise(encoding enc, const byte_span& data, T& obj)
     {
         if (enc == encoding::yas_json)
             return from_yas_json(data, obj);

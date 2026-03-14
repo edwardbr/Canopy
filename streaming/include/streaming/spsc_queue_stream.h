@@ -35,11 +35,11 @@ namespace streaming
         // recv_q: queue this side reads from  (the other side writes into)
         spsc_queue_stream(spsc_raw_queue* send_q, spsc_raw_queue* recv_q, std::shared_ptr<coro::scheduler> scheduler);
 
-        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
+        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
 
         // Async send-all: yields via the scheduler when the send queue is full.
-        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override;
         void set_closed() override;

@@ -42,8 +42,8 @@ namespace streaming
 
         while (!self->closed_)
         {
-            auto [status, data]
-                = co_await self->underlying_->receive(std::span<char>{raw_buf}, std::chrono::milliseconds{10});
+            auto [status, data] = co_await self->underlying_->receive(
+                rpc::mutable_byte_span{raw_buf.data(), raw_buf.size()}, std::chrono::milliseconds{10});
 
             if (status.is_closed())
             {
@@ -101,7 +101,7 @@ namespace streaming
 
             // Send the blob even if closed_ is set — the queue must be drained.
             auto status = co_await self->underlying_->send(
-                std::span<const char>{reinterpret_cast<const char*>(blob.data() + spsc_header_size), len});
+                rpc::byte_span{reinterpret_cast<const char*>(blob.data() + spsc_header_size), len});
             if (!status.is_ok())
                 co_return;
         }
@@ -114,8 +114,8 @@ namespace streaming
 
     // Inbound: pop from recv_q_.  Yields once and returns timeout if the queue
     // is empty so the scheduler can run recv_proxy_loop to fill it.
-    auto spsc_wrapping_stream::receive(std::span<char> buffer, std::chrono::milliseconds /*timeout*/)
-        -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+    auto spsc_wrapping_stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds /*timeout*/)
+        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         if (closed_)
             co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
@@ -159,7 +159,7 @@ namespace streaming
 
     // Outbound: push to send_q_ and return immediately.
     // send_proxy_loop handles forwarding to the underlying stream.
-    auto spsc_wrapping_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto spsc_wrapping_stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
             co_return coro::net::io_status{coro::net::io_status::kind::closed};

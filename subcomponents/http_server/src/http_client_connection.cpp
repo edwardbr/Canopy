@@ -182,8 +182,7 @@ namespace canopy::http_server
         return make_text_response(404, "Not Found");
     }
 
-    auto client_connection::handle_websocket_upgrade(const request& request)
-        -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>
+    auto client_connection::handle_websocket_upgrade(const request& request) -> coro::task<std::shared_ptr<rpc::transport>>
     {
         auto key_it = request.headers.find("Sec-WebSocket-Key");
         if (key_it == request.headers.end())
@@ -196,14 +195,14 @@ namespace canopy::http_server
         {
             RPC_ERROR("No websocket upgrade handler configured");
             auto error_response = build_http_response(make_text_response(501, "Not Implemented"), false);
-            co_await stream_->send(std::span<const char>{error_response});
+            co_await stream_->send(rpc::byte_span{error_response});
             co_return nullptr;
         }
 
         std::string accept_key = calculate_ws_accept(key_it->second);
         auto handshake_response = build_websocket_handshake_response(accept_key);
 
-        auto wsstatus = co_await stream_->send(std::span<const char>{handshake_response});
+        auto wsstatus = co_await stream_->send(rpc::byte_span{handshake_response});
         if (!wsstatus.is_ok())
         {
             RPC_ERROR("Failed to send WebSocket handshake response");
@@ -215,7 +214,7 @@ namespace canopy::http_server
         co_return CO_AWAIT handlers_.websocket_upgrade_handler(request, ws_stream);
     }
 
-    auto client_connection::handle() -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>
+    auto client_connection::handle() -> coro::task<std::shared_ptr<rpc::transport>>
     {
         std::string receive_buffer(8192, '\0');
         std::string pending_input;
@@ -247,7 +246,8 @@ namespace canopy::http_server
                 {
                     if (pending_input.empty())
                     {
-                        auto [read_status, read_span] = co_await stream_->receive(receive_buffer);
+                        auto [read_status, read_span] = co_await stream_->receive(
+                            rpc::mutable_byte_span{receive_buffer.data(), receive_buffer.size()});
                         if (!read_status.is_ok() || read_span.empty())
                         {
                             RPC_ERROR("Failed to read HTTP request");
@@ -269,7 +269,7 @@ namespace canopy::http_server
                         }
                         RPC_DEBUG("Received {} bytes, first bytes: {}", read_span.size(), preview);
 
-                        pending_input.append(read_span.data(), read_span.size());
+                        pending_input.append(reinterpret_cast<const char*>(read_span.data()), read_span.size());
                     }
 
                     auto err = llhttp_execute(&parser, pending_input.data(), pending_input.size());
@@ -289,7 +289,7 @@ namespace canopy::http_server
                     {
                         RPC_ERROR("HTTP parse error: {}", llhttp_errno_name(err));
                         auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
-                        co_await stream_->send(std::span<const char>{error_response});
+                        co_await stream_->send(rpc::byte_span{error_response});
                         co_return nullptr;
                     }
 
@@ -315,7 +315,7 @@ namespace canopy::http_server
                 auto response = dispatch_request(ctx.parsed_request).value_or(make_text_response(404, "Not Found"));
                 auto wire_response = build_http_response(response, ctx.parsed_request.keep_alive);
 
-                auto send_status = co_await stream_->send(std::span<const char>{wire_response});
+                auto send_status = co_await stream_->send(rpc::byte_span{wire_response});
                 if (!send_status.is_ok())
                 {
                     RPC_ERROR("Failed to send HTTP response for: {}", path);

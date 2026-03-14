@@ -23,16 +23,16 @@ namespace streaming
             client_.socket().native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
     }
 
-    auto tcp_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+    auto tcp_stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
-        auto [status, span] = co_await client_.read_some(buffer, timeout);
+        auto [status, s] = co_await client_.read_some(buffer, timeout);
         if (status.is_closed())
             closed_ = true;
-        co_return {status, span};
+        co_return {status, rpc::mutable_byte_span(s.data(), s.size())};
     }
 
-    auto tcp_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto tcp_stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         // Use direct ::send() syscalls rather than libcoro's poll-based write path.
         // libcoro's write_some() uses epoll (EPOLL_CTL_ADD) to wait for write-readiness,

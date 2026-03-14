@@ -147,7 +147,7 @@ template<class T> CORO_TASK(bool) coro_send_happy_path(T& lib)
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
-        rpc::span(in_data),
+        rpc::byte_span(in_data),
         out_buf,
         in_back_channel,
         out_back_channel);
@@ -183,7 +183,7 @@ template<class T> CORO_TASK(bool) coro_send_to_reverse_destination(T& lib)
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
-        rpc::span(in_data),
+        rpc::byte_span(in_data),
         out_buf,
         in_back_channel,
         out_back_channel);
@@ -217,7 +217,7 @@ template<class T> CORO_TASK(bool) coro_post_happy_path(T& lib)
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
-        rpc::span(in_data),
+        rpc::byte_span(in_data),
         in_back_channel);
 
     // When using inbound_post with local destination, it routes to service
@@ -253,7 +253,7 @@ template<class T> CORO_TASK(bool) coro_try_cast_happy_path(T& lib)
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
-        rpc::span(std::vector<char>{}), // empty span for try_cast
+        rpc::byte_span(std::vector<char>{}), // empty span for try_cast
         out_buf,
         in_back_channel,
         out_back_channel);
@@ -421,7 +421,7 @@ template<class T> CORO_TASK(bool) coro_send_with_forward_transport_down(T& lib)
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
-        rpc::span(in_data),
+        rpc::byte_span(in_data),
         out_buf,
         in_back_channel,
         out_back_channel);
@@ -455,7 +455,7 @@ template<class T> CORO_TASK(bool) coro_send_with_invalid_destination(T& lib)
         rpc::object{42},
         rpc::interface_ordinal{1},
         rpc::method{1},
-        rpc::span(in_data),
+        rpc::byte_span(in_data),
         out_buf,
         in_back_channel,
         out_back_channel);

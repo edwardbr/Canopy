@@ -1669,7 +1669,7 @@ namespace synchronous_generator
         stub("CORO_TASK(int) {0}::stub_caller::call({0}* __rpc_target_, [[maybe_unused]] uint64_t protocol_version, "
              "rpc::encoding enc, [[maybe_unused]] uint64_t tag, [[maybe_unused]] rpc::caller_zone caller_zone_id, "
              "[[maybe_unused]] rpc::destination_zone destination_zone_id, [[maybe_unused]] rpc::object object_id, "
-             "rpc::method method_id, const rpc::span& in_data, std::vector<char>& __rpc_out_buf, "
+             "rpc::method method_id, const rpc::byte_span& in_data, std::vector<char>& __rpc_out_buf, "
              "[[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel, "
              "[[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)",
             interface_name);

@@ -158,7 +158,7 @@ namespace streaming
     auto tls_stream::feed_rbio(std::chrono::milliseconds timeout) -> coro::task<coro::net::io_status>
     {
         std::array<char, 4096> buf;
-        auto [status, span] = co_await underlying_->receive(std::span<char>{buf}, timeout);
+        auto [status, span] = co_await underlying_->receive(rpc::mutable_byte_span{buf.data(), buf.size()}, timeout);
         if (status.is_ok() && !span.empty())
             BIO_write(rbio_, span.data(), static_cast<int>(span.size()));
         co_return status;
@@ -170,7 +170,7 @@ namespace streaming
         int len;
         while ((len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()))) > 0)
         {
-            auto status = co_await underlying_->send(std::span<const char>{buf.data(), static_cast<size_t>(len)});
+            auto status = co_await underlying_->send(rpc::byte_span{buf.data(), static_cast<size_t>(len)});
             if (!status.is_ok())
                 co_return false;
         }
@@ -294,8 +294,8 @@ namespace streaming
     // Stream interface
     // -----------------------------------------------------------------------
 
-    auto tls_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+    auto tls_stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         if (!ssl_ || !handshake_complete_ || closed_)
             co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
@@ -306,7 +306,7 @@ namespace streaming
             int bytes_read = SSL_read(ssl_, buffer.data(), static_cast<int>(buffer.size()));
             if (bytes_read > 0)
                 co_return {coro::net::io_status{coro::net::io_status::kind::ok},
-                    std::span<char>{buffer.data(), static_cast<size_t>(bytes_read)}};
+                    rpc::mutable_byte_span{buffer.data(), static_cast<size_t>(bytes_read)}};
 
             int ssl_error = SSL_get_error(ssl_, bytes_read);
             if (ssl_error == SSL_ERROR_ZERO_RETURN)
@@ -331,7 +331,7 @@ namespace streaming
         }
     }
 
-    auto tls_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto tls_stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (!ssl_ || !handshake_complete_ || closed_)
             co_return coro::net::io_status{coro::net::io_status::kind::closed};

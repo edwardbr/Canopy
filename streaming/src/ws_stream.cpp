@@ -37,8 +37,8 @@ namespace streaming
         }
     }
 
-    auto ws_stream::receive(std::span<char> buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+    auto ws_stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         // Return any already-decoded message first (supports partial reads too)
         if (!decoded_messages_.empty())
@@ -57,7 +57,8 @@ namespace streaming
         }
 
         // No buffered message — read raw data from the underlying stream
-        auto [status, span] = co_await underlying_->receive(raw_recv_buffer_, timeout);
+        auto [status, span] = co_await underlying_->receive(
+            rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()), timeout);
         if (status.is_closed())
         {
             closed_ = true;
@@ -91,7 +92,7 @@ namespace streaming
         co_return {status, {}};
     }
 
-    auto ws_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto ws_stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
             co_return coro::net::io_status{coro::net::io_status::kind::closed};
@@ -175,7 +176,7 @@ namespace streaming
         if (!to_write.empty())
         {
             auto status = co_await underlying_->send(
-                std::span<const char>(reinterpret_cast<const char*>(to_write.data()), to_write.size()));
+                rpc::byte_span(reinterpret_cast<const char*>(to_write.data()), to_write.size()));
             if (!status.is_ok())
                 co_return false;
         }

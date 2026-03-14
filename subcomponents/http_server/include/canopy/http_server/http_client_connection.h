@@ -37,8 +37,8 @@ namespace canopy::http_server
     };
 
     using request_handler = std::function<std::optional<response>(const request&)>;
-    using websocket_handler = std::function<coro::task<std::shared_ptr<rpc::stream_transport::transport>>(
-        const request&, std::shared_ptr<streaming::stream>)>;
+    using websocket_handler
+        = std::function<coro::task<std::shared_ptr<rpc::transport>>(const request&, std::shared_ptr<streaming::stream>)>;
     using rest_request_selector = std::function<bool(const request&)>;
 
     struct handler_set
@@ -54,7 +54,7 @@ namespace canopy::http_server
     public:
         explicit client_connection(std::shared_ptr<streaming::stream> stream, handler_set handlers);
 
-        auto handle() -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>;
+        auto handle() -> coro::task<std::shared_ptr<rpc::transport>>;
 
     private:
         struct parser_request_context
@@ -80,8 +80,7 @@ namespace canopy::http_server
         static auto build_websocket_handshake_response(const std::string& accept_key) -> std::string;
 
         auto dispatch_request(const request& request) const -> std::optional<response>;
-        auto handle_websocket_upgrade(const request& request)
-            -> coro::task<std::shared_ptr<rpc::stream_transport::transport>>;
+        auto handle_websocket_upgrade(const request& request) -> coro::task<std::shared_ptr<rpc::transport>>;
 
         std::shared_ptr<streaming::stream> stream_;
         handler_set handlers_;

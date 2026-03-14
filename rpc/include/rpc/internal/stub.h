@@ -156,7 +156,7 @@ namespace rpc
             caller_zone caller_zone_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_);
 
         /**
