@@ -7,11 +7,8 @@ cmake_minimum_required(VERSION 3.24)
 
 find_package(OpenSSL REQUIRED)
 
-add_library(
-  canopy_http_server STATIC
-  src/http_acceptor.cpp
-  src/http_client_connection.cpp
-  src/static_webpage_delivery.cpp)
+add_library(canopy_http_server STATIC src/http_acceptor.cpp src/http_client_connection.cpp
+                                      src/static_webpage_delivery.cpp)
 
 target_include_directories(
   canopy_http_server

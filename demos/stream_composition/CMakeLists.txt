@@ -23,11 +23,7 @@ if(CANOPY_BUILD_COROUTINE)
 
   add_executable(tcp_spsc_tls_demo src/tcp_spsc_tls_demo.cpp)
 
-  target_compile_definitions(
-    tcp_spsc_tls_demo
-    PRIVATE
-      ${CANOPY_DEFINES}
-      DEMO_CERT_DIR="${DEMO_CERT_DIR}")
+  target_compile_definitions(tcp_spsc_tls_demo PRIVATE ${CANOPY_DEFINES} DEMO_CERT_DIR="${DEMO_CERT_DIR}")
 
   target_include_directories(
     tcp_spsc_tls_demo
@@ -36,15 +32,14 @@ if(CANOPY_BUILD_COROUTINE)
 
   target_link_libraries(
     tcp_spsc_tls_demo
-    PUBLIC
-      echo_idl
-      streaming
-      transport_streaming
-      rpc
-      canopy_network_config
-      OpenSSL::Crypto
-      OpenSSL::SSL
-      ${CANOPY_LIBRARIES})
+    PUBLIC echo_idl
+           streaming
+           transport_streaming
+           rpc
+           canopy_network_config
+           OpenSSL::Crypto
+           OpenSSL::SSL
+           ${CANOPY_LIBRARIES})
 
   target_compile_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
