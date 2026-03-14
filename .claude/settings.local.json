@@ -61,7 +61,8 @@
       "Bash(xargs cat:*)",
       "Bash(xargs cmake-format:*)",
       "Bash(./build_coroutine_debug/output/rpc_test:*)",
-      "Bash(./build_coroutine_debug/output/tcp_spsc_tls_demo:*)"
+      "Bash(./build_coroutine_debug/output/tcp_spsc_tls_demo:*)",
+      "Bash(which cmake-format:*)"
     ]
   },
   "enabledPlugins": {}
