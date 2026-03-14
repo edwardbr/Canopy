@@ -12,10 +12,9 @@ let pendingRequests = new Map(); // messageId -> {methodId}
 const WebsocketProto = $protobuf_websocket.protobuf.websocket_demo_v1;
 const RpcProto = $protobuf_websocket.protobuf.rpc;
 
-// Zone/object IDs populated from the server's connect_response
-let clientZoneId = null;   // callerZoneId (subnet) for all requests
-let serverZoneId = null;   // destinationZoneId (subnet) for all requests
-let serverObjectId = null; // destinationZoneId (objectId) for all requests
+// Object addresses populated from the server's connect_response
+let clientObject = null;  // local i_context_event back-channel (clientObject in connect_response)
+let serverObject = null;  // remote i_calculator instance (outboundRemoteObject in connect_response)
 let handshakeComplete = false;
 // SecretLlamaProto is loaded dynamically in index.html
 
@@ -162,15 +161,14 @@ function connect() {
 
         // Reset handshake state from any previous connection
         handshakeComplete = false;
-        clientZoneId = null;
-        serverZoneId = null;
-        serverObjectId = null;
+        clientObject = null;
+        serverObject = null;
 
         // The client picks object id 1 for its own back-channel (i_context_event) stub.
         // Zone is left as 0 — the server assigns it via generate_new_zone_id().
         const connectReq = WebsocketProto.connect_request.create({
-            inboundRemoteObject: RpcProto.remote_object.create({
-                addr_: RpcProto.zone_address.create({ objectId: 1 })
+            clientObject: WebsocketProto.object_address.create({
+                objectId: 1
             })
         });
         ws.send(WebsocketProto.connect_request.encode(connectReq).finish());
@@ -190,14 +188,8 @@ function connect() {
                 // First binary message from the server is always a raw connect_response.
                 if (!handshakeComplete) {
                     const connectResp = WebsocketProto.connect_response.decode(msgBytes);
-                    // callerZoneId carries the server's view of the client zone (subnetId only)
-                    clientZoneId = connectResp.callerZoneId && connectResp.callerZoneId.addr_
-                        ? connectResp.callerZoneId.addr_.subnetId : 0;
-                    // outboundRemoteObject carries the server's zone + object combined
-                    serverZoneId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
-                        ? connectResp.outboundRemoteObject.addr_.subnetId : 0;
-                    serverObjectId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
-                        ? connectResp.outboundRemoteObject.addr_.objectId : 0;
+                    clientObject = connectResp.clientObject || null;
+                    serverObject = connectResp.outboundRemoteObject || null;
                     handshakeComplete = true;
 
                     updateStatus('Connected', 'connected');
@@ -206,7 +198,7 @@ function connect() {
                     uptimeInterval = setInterval(updateUptime, 1000);
 
                     addMessage('system',
-                        `✓ Handshake complete — client_zone=${clientZoneId}, server_zone=${serverZoneId}, server_object=${serverObjectId}`);
+                        `✓ Handshake complete — client_zone=${clientObject && clientObject.subnet}, server_zone=${serverObject && serverObject.subnet}, server_object=${serverObject && serverObject.objectId}`);
                     return;
                 }
 
@@ -460,12 +452,8 @@ function calculate() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_UNSPECIFIED,
             tag: 0,
-            callerZoneId: RpcProto.caller_zone.create({
-                addr_: RpcProto.zone_address.create({ subnetId: clientZoneId })
-            }),
-            destinationZoneId: RpcProto.remote_object.create({
-                addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
-            }),
+            callerZoneId: RpcProto.zone.create({}),
+            destinationZoneId: serverObject,
             interfaceId: RpcProto.interface_ordinal.create({
                 id: Long.fromString("2180915978302953945", true) // i_calculator
             }),
@@ -480,7 +468,7 @@ function calculate() {
         // Create the envelope
         // Use the fingerprint ID for websocket::request as a Long (uint64)
         // JavaScript numbers lose precision above 2^53-1, so use protobuf.Long
-        const REQUEST_MESSAGE_TYPE = Long.fromString("3111821184188816472", true);
+        const REQUEST_MESSAGE_TYPE = Long.fromString("16109978911582071405", true);
         const envelope = WebsocketProto.envelope.create({
             messageId: Long.fromNumber(messageId, true),
             messageType: REQUEST_MESSAGE_TYPE,
@@ -559,12 +547,8 @@ function sendChatMessage() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_protocol_buffers,
             tag: 0,
-            callerZoneId: RpcProto.caller_zone.create({
-                addr_: RpcProto.zone_address.create({ subnetId: clientZoneId })
-            }),
-            destinationZoneId: RpcProto.remote_object.create({
-                addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
-            }),
+            callerZoneId: RpcProto.zone.create({}),
+            destinationZoneId: serverObject,
             interfaceId: RpcProto.interface_ordinal.create({
                 id: Long.fromString("2180915978302953945", true) // i_calculator
             }),
@@ -577,7 +561,7 @@ function sendChatMessage() {
         const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
 
         // Create the envelope
-        const REQUEST_MESSAGE_TYPE = Long.fromString("3111821184188816472", true);
+        const REQUEST_MESSAGE_TYPE = Long.fromString("16109978911582071405", true);
         const envelope = WebsocketProto.envelope.create({
             messageId: Long.fromNumber(messageId, true),
             messageType: REQUEST_MESSAGE_TYPE,

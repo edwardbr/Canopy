@@ -2105,7 +2105,7 @@ namespace protobuf_generator
 
         if (!first_param)
             signature += ", ";
-        signature += "const rpc::span& __rpc_data)";
+        signature += "const rpc::byte_span& __rpc_data)";
         cpp(signature);
         cpp("{{");
 
@@ -2293,7 +2293,7 @@ namespace protobuf_generator
 
         if (!first_param)
             signature += ", ";
-        signature += "const rpc::span& __rpc_data)";
+        signature += "const rpc::byte_span& __rpc_data)";
         cpp(signature);
         cpp("{{");
 

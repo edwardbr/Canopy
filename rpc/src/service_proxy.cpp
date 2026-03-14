@@ -102,7 +102,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         std::vector<char>& out_buf_)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
@@ -160,7 +160,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::span& in_data)
+        const rpc::byte_span& in_data)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
         const auto max_version = rpc::HIGHEST_SUPPORTED_VERSION;

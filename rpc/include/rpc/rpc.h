@@ -57,6 +57,9 @@
 // the deserialisation logic to an object
 #include <rpc/internal/stub.h>
 
+// byte-span type used throughout the RPC layer
+#include <rpc/internal/span.h>
+
 // the serialisation declarations
 #include <rpc/internal/serialiser.h>
 

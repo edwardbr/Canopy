@@ -19,8 +19,8 @@ namespace streaming
     {
     }
 
-    auto spsc_queue_stream::receive(std::span<char> buffer, std::chrono::milliseconds)
-        -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+    auto spsc_queue_stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds)
+        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         if (closed_)
             co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
@@ -66,7 +66,7 @@ namespace streaming
         co_return {coro::net::io_status{coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
     }
 
-    auto spsc_queue_stream::send(std::span<const char> buffer) -> coro::task<coro::net::io_status>
+    auto spsc_queue_stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
             co_return coro::net::io_status{coro::net::io_status::kind::closed};

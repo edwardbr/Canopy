@@ -1,17 +1,17 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// stream.h - Abstract stream interface for TCP and TLS connections
+// stream.h - Abstract coroutine-only stream interface (TCP, TLS, WebSocket, SPSC, etc.)
 #pragma once
 
 #include <coro/coro.hpp>
-#include <span>
+#include <rpc/rpc.h>
 
 #include <canopy/network_config/network_args.h>
 
 namespace streaming
 {
-    // Abstract stream interface that can be implemented by plain TCP or TLS
+    // Abstract stream interface — coroutine-only, protocol-agnostic
     struct peer_info
     {
         canopy::network_config::ip_address addr = {};
@@ -25,12 +25,13 @@ namespace streaming
         virtual ~stream() = default;
 
         // Receive data into buffer
-        virtual auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, std::span<char>>>
+        virtual auto receive(
+            rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
             = 0;
 
         // Async send-all: keeps sending until entire span is consumed or error.
-        virtual auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> = 0;
+        virtual auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> = 0;
 
         // Check if connection is closed
         virtual bool is_closed() const = 0;

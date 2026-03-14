@@ -432,7 +432,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
@@ -461,7 +461,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
         CORO_TASK(int)
         try_cast(uint64_t protocol_version,
@@ -521,7 +521,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel,
@@ -534,7 +534,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             const std::shared_ptr<transport>& transport);
 
@@ -930,10 +930,10 @@ namespace rpc
             // This ensures parent zone remains reachable while child exists
             child_svc->set_parent_transport(parent_transport);
 
-            child_svc->add_transport(input_descr.input_zone_id.as_zone(), parent_transport);
-            transport_keep_alive ka(parent_transport, input_descr.input_zone_id.as_zone());
+            child_svc->add_transport(input_descr.remote_object_id.as_zone(), parent_transport);
+            transport_keep_alive ka(parent_transport, input_descr.remote_object_id.as_zone());
             transport_keep_alive adjacent_ka;
-            if (input_descr.input_zone_id != parent_transport->get_adjacent_zone_id())
+            if (input_descr.remote_object_id != parent_transport->get_adjacent_zone_id())
             {
                 child_svc->add_transport(parent_transport->get_adjacent_zone_id(), parent_transport);
                 adjacent_ka = transport_keep_alive(parent_transport, parent_transport->get_adjacent_zone_id());
@@ -943,7 +943,7 @@ namespace rpc
             if (input_descr.get_object_id() != 0)
             {
                 auto parent_service_proxy = rpc::service_proxy::create(
-                    "parent", child_svc, parent_transport, input_descr.input_zone_id.as_zone());
+                    "parent", child_svc, parent_transport, input_descr.remote_object_id.as_zone());
 
                 child_svc->add_zone_proxy(parent_service_proxy);
 
@@ -1037,8 +1037,8 @@ namespace rpc
             if (!input_interface->__rpc_is_local()
                 && casting_interface::get_destination_zone(*input_interface) != get_zone_id())
             {
-                input_descr.input_zone_id = casting_interface::get_destination_zone(*input_interface)
-                                                .with_object(casting_interface::get_object_id(*input_interface));
+                input_descr.remote_object_id = casting_interface::get_destination_zone(*input_interface)
+                                                   .with_object(casting_interface::get_object_id(*input_interface));
             }
             else
             {
@@ -1059,12 +1059,12 @@ namespace rpc
                 {
                     CO_RETURN err_code;
                 }
-                input_descr.input_zone_id = zone_id_.with_object(input_stub->get_id());
+                input_descr.remote_object_id = zone_id_.with_object(input_stub->get_id());
             }
         }
         else
         {
-            input_descr.input_zone_id = child_transport->get_zone_id().get_address();
+            input_descr.remote_object_id = child_transport->get_zone_id().get_address();
         }
         input_descr.inbound_interface_id = in_param_type::get_id(rpc::get_version());
         input_descr.outbound_interface_id = out_param_type::get_id(rpc::get_version());
@@ -1141,10 +1141,10 @@ namespace rpc
         auto adjacent_zone_id = peer_transport->get_adjacent_zone_id();
 
         rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
-        add_transport(input_descr.input_zone_id.as_zone(), peer_transport);
-        transport_keep_alive ka(peer_transport, input_descr.input_zone_id.as_zone());
+        add_transport(input_descr.remote_object_id.as_zone(), peer_transport);
+        transport_keep_alive ka(peer_transport, input_descr.remote_object_id.as_zone());
         transport_keep_alive adjacent_ka;
-        if (input_descr.input_zone_id != adjacent_zone_id)
+        if (input_descr.remote_object_id != adjacent_zone_id)
         {
             add_transport(adjacent_zone_id, peer_transport);
             adjacent_ka = transport_keep_alive(peer_transport, adjacent_zone_id);
@@ -1153,7 +1153,7 @@ namespace rpc
         if (input_descr.get_object_id() != 0)
         {
             auto parent_service_proxy = rpc::service_proxy::create(
-                name, shared_from_this(), peer_transport, input_descr.input_zone_id.as_zone());
+                name, shared_from_this(), peer_transport, input_descr.remote_object_id.as_zone());
 
             add_zone_proxy(parent_service_proxy);
 

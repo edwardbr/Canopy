@@ -11,12 +11,11 @@
 #include <rpc/rpc.h>
 #include <streaming/stream.h>
 #include <streaming/tls_stream.h>
-#include <transports/streaming/transport.h>
 
 namespace canopy::http_server
 {
     using accepted_stream_handler
-        = std::function<coro::task<std::shared_ptr<rpc::stream_transport::transport>>(std::shared_ptr<streaming::stream>)>;
+        = std::function<coro::task<std::shared_ptr<rpc::transport>>(std::shared_ptr<streaming::stream>)>;
 
     auto run_server(coro::net::ip_address bind_address,
         uint16_t port,

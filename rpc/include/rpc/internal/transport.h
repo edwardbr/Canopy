@@ -396,7 +396,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel);
@@ -409,7 +409,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             const std::vector<back_channel_entry>& in_back_channel);
 
         CORO_TASK(int)
@@ -476,7 +476,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel) final;
@@ -489,7 +489,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             const std::vector<back_channel_entry>& in_back_channel) final;
 
         CORO_TASK(int)
@@ -588,7 +588,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_,
             const std::vector<back_channel_entry>& in_back_channel,
             std::vector<back_channel_entry>& out_back_channel)
@@ -601,7 +601,7 @@ namespace rpc
             remote_object remote_object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             const std::vector<back_channel_entry>& in_back_channel)
             = 0;
 

@@ -84,7 +84,7 @@ namespace comprehensive
                                    std::shared_ptr<rpc::service> child_service_ptr,
                                    std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
             {
-                RPC_INFO("Server: Accepting connection from zone {}", input_descr.input_zone_id.get_subnet());
+                RPC_INFO("Server: Accepting connection from zone {}", input_descr.remote_object_id.get_subnet());
 
                 auto ret
                     = CO_AWAIT child_service_ptr->attach_remote_zone<i_calculator, i_calculator>("tcp_client_proxy",
@@ -208,8 +208,6 @@ namespace comprehensive
 
                 RPC_INFO("Client: RPC connection established");
 
-                client_finished.set();
-
                 RPC_INFO("Client: Making remote RPC calls...");
 
                 int result;
@@ -224,6 +222,8 @@ namespace comprehensive
 
                 remote_calculator.reset();
                 RPC_INFO("Client: Released remote calculator");
+
+                client_finished.set();
             }
             print_separator("TCP CLIENT SHUTDOWN");
             CO_RETURN true;

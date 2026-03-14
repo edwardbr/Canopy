@@ -455,7 +455,7 @@ namespace interface_declaration_generator
             header.raw(", ");
             count++;
         }
-        header.raw("[[maybe_unused]] const rpc::span& __rpc_data");
+        header.raw("[[maybe_unused]] const rpc::byte_span& __rpc_data");
         header.raw(additional_params);
         if (include_variadics)
             header.raw(", __Args... __args");
@@ -493,7 +493,7 @@ namespace interface_declaration_generator
             header.raw(", ");
             count++;
         }
-        header.raw("[[maybe_unused]] const rpc::span& __rpc_data");
+        header.raw("[[maybe_unused]] const rpc::byte_span& __rpc_data");
         header.raw(additional_params);
         if (include_variadics)
             header.raw(", __Args... __args");
@@ -789,7 +789,7 @@ namespace interface_declaration_generator
         header("rpc::destination_zone destination_zone_id,");
         header("rpc::object object_id,");
         header("rpc::method method_id,");
-        header("const rpc::span& in_data,");
+        header("const rpc::byte_span& in_data,");
         header("std::vector<char>& out_buf_,");
         header("const std::vector<rpc::back_channel_entry>& in_back_channel,");
         header("std::vector<rpc::back_channel_entry>& out_back_channel);");

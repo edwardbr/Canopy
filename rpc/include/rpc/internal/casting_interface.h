@@ -48,7 +48,7 @@ namespace rpc
             [[maybe_unused]] object object_id,
             [[maybe_unused]] interface_ordinal interface_id,
             [[maybe_unused]] method method_id,
-            [[maybe_unused]] const rpc::span& in_data,
+            [[maybe_unused]] const rpc::byte_span& in_data,
             [[maybe_unused]] std::vector<char>& out_buf_,
             [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
             [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -106,7 +106,7 @@ namespace rpc
             [[maybe_unused]] object object_id,
             [[maybe_unused]] interface_ordinal interface_id,
             [[maybe_unused]] method method_id,
-            [[maybe_unused]] const rpc::span& in_data,
+            [[maybe_unused]] const rpc::byte_span& in_data,
             [[maybe_unused]] std::vector<char>& out_buf_,
             [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
             [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel) override

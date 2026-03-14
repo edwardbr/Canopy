@@ -48,7 +48,7 @@ namespace rpc
             object object_id,
             interface_ordinal interface_id,
             method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override

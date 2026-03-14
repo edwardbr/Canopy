@@ -158,7 +158,7 @@ namespace rpc
         uint64_t tag,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         std::vector<char>& out_buf_)
     {
         auto service_proxy = service_proxy_.get_nullable();
@@ -175,7 +175,7 @@ namespace rpc
         uint64_t tag,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::span& in_data)
+        const rpc::byte_span& in_data)
     {
         auto service_proxy = service_proxy_.get_nullable();
         RPC_ASSERT(service_proxy);

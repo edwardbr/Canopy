@@ -14,8 +14,9 @@ const WebsocketProto = proto.protobuf.websocket_demo_v1;
 const RpcProto = proto.protobuf.rpc;
 
 // Interface and message type IDs (uint64 as Long strings)
-const I_CALCULATOR_ID = Long.fromString('13570836582854900302', true);
-const REQUEST_MESSAGE_TYPE = Long.fromString('3111821184188816472', true);
+// These match the fingerprints generated in websocket_demo.h
+const I_CALCULATOR_ID = Long.fromString('2180915978302953945', true);
+const REQUEST_MESSAGE_TYPE = Long.fromString('16109978911582071405', true);
 
 // Test runner
 let testsPassed = 0;
@@ -47,8 +48,8 @@ function runCalculatorTest(operation, methodId, first, second, expected) {
                 // Zone is left as 0 — the server assigns it via generate_new_zone_id().
                 // Object id 1 is used as the client's back-channel (i_context_event) stub.
                 const connectReq = WebsocketProto.connect_request.create({
-                    inboundRemoteObject: RpcProto.remote_object.create({
-                        addr_: RpcProto.zone_address.create({ objectId: 1 })
+                    clientObject: WebsocketProto.object_address.create({
+                        objectId: Long.fromNumber(1, true)
                     })
                 });
                 ws.send(WebsocketProto.connect_request.encode(connectReq).finish());
@@ -65,12 +66,11 @@ function runCalculatorTest(operation, methodId, first, second, expected) {
                 if (!handshakeComplete) {
                     // First binary message is connect_response
                     const connectResp = WebsocketProto.connect_response.decode(data);
-                    clientZoneId = connectResp.callerZoneId && connectResp.callerZoneId.addr_
-                        ? connectResp.callerZoneId.addr_.subnetId : 0;
-                    serverZoneId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
-                        ? connectResp.outboundRemoteObject.addr_.subnetId : 0;
-                    serverObjectId = connectResp.outboundRemoteObject && connectResp.outboundRemoteObject.addr_
-                        ? connectResp.outboundRemoteObject.addr_.objectId : 0;
+                    const clientObject = connectResp.clientObject || null;
+                    const serverObject = connectResp.outboundRemoteObject || null;
+                    clientZoneId = clientObject ? clientObject.subnet : 0;
+                    serverZoneId = serverObject ? serverObject.subnet : 0;
+                    serverObjectId = serverObject ? serverObject.objectId : 0;
                     handshakeComplete = true;
 
                     // Now send the calculator request
@@ -104,12 +104,8 @@ function runCalculatorTest(operation, methodId, first, second, expected) {
                     const wsRequest = WebsocketProto.request.create({
                         encoding: RpcProto.encoding.encoding_protocol_buffers,
                         tag: Long.fromNumber(messageId, true),
-                        callerZoneId: RpcProto.caller_zone.create({
-                            addr_: RpcProto.zone_address.create({ subnetId: clientZoneId })
-                        }),
-                        destinationZoneId: RpcProto.remote_object.create({
-                            addr_: RpcProto.zone_address.create({ subnetId: serverZoneId, objectId: serverObjectId })
-                        }),
+                        callerZoneId: RpcProto.zone.create({}),
+                        destinationZoneId: serverObject,
                         interfaceId: RpcProto.interface_ordinal.create({ id: I_CALCULATOR_ID }),
                         methodId: RpcProto.method.create({ id: Long.fromNumber(methodId, true) }),
                         data: requestBytes,

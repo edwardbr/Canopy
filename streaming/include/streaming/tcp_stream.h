@@ -14,10 +14,10 @@ namespace streaming
     public:
         explicit tcp_stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler);
 
-        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
+        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
 
-        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override;
 

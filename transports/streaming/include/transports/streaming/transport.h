@@ -48,6 +48,9 @@ namespace rpc::stream_transport
         using custom_message_handler = std::function<CORO_TASK(message_hook_result)(
             std::shared_ptr<activity_tracker> tracker, envelope_prefix& prefix, envelope_payload& payload)>;
 
+        using custom_outgoing_handler = std::function<bool(
+            uint64_t protocol_version, message_direction direction, uint64_t sequence_number, uint64_t type_fingerprint, const void* typed_payload)>;
+
         std::unordered_map<uint64_t, result_listener*> pending_transmits_;
         std::mutex pending_transmits_mtx_;
 
@@ -60,6 +63,7 @@ namespace rpc::stream_transport
 
         connection_handler connection_handler_;
         std::vector<custom_message_handler> custom_message_handlers_;
+        std::vector<custom_outgoing_handler> custom_outgoing_handlers_;
         stdex::member_ptr<transport> keep_alive_;
 
         std::shared_ptr<rpc::object_stub> stub_;
@@ -189,7 +193,7 @@ namespace rpc::stream_transport
                 CO_RETURN res_payload.error_code;
             }
 
-            auto str_err = rpc::from_yas_binary(rpc::span(res_payload.payload.payload), receivePayload);
+            auto str_err = rpc::from_yas_binary(rpc::byte_span(res_payload.payload.payload), receivePayload);
             if (!str_err.empty())
             {
                 RPC_ERROR("failed call_peer send_payload from_yas_binary");
@@ -200,6 +204,19 @@ namespace rpc::stream_transport
         }
 
         CORO_TASK(void) cleanup(std::shared_ptr<transport> transport, std::shared_ptr<rpc::service> svc);
+
+        template<class T>
+        bool run_outgoing_handlers(
+            uint64_t protocol_version, message_direction direction, uint64_t sequence_number, const T& payload)
+        {
+            auto fingerprint = rpc::id<T>::get(protocol_version);
+            for (auto& handler : custom_outgoing_handlers_)
+            {
+                if (handler(protocol_version, direction, sequence_number, fingerprint, &payload))
+                    return true;
+            }
+            return false;
+        }
 
     protected:
         void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
@@ -212,6 +229,35 @@ namespace rpc::stream_transport
             }
             rpc::transport::set_status(new_status);
         }
+
+        virtual void send_payload_post_send(
+            uint64_t protocol_version, message_direction direction, post_send&& payload, uint64_t sequence_number);
+        virtual void send_payload_release_send(
+            uint64_t protocol_version, message_direction direction, release_send&& payload, uint64_t sequence_number);
+        virtual void send_payload_object_released_send(
+            uint64_t protocol_version, message_direction direction, object_released_send&& payload, uint64_t sequence_number);
+        virtual void send_payload_transport_down_send(
+            uint64_t protocol_version, message_direction direction, transport_down_send&& payload, uint64_t sequence_number);
+        virtual void send_payload_close_connection_ack(
+            uint64_t protocol_version, message_direction direction, close_connection_ack&& payload, uint64_t sequence_number);
+        virtual void send_payload_close_connection_send(uint64_t protocol_version,
+            message_direction direction,
+            close_connection_send&& payload,
+            uint64_t sequence_number);
+        virtual void send_payload_call_receive(
+            uint64_t protocol_version, message_direction direction, call_receive&& payload, uint64_t sequence_number);
+        virtual void send_payload_try_cast_receive(
+            uint64_t protocol_version, message_direction direction, try_cast_receive&& payload, uint64_t sequence_number);
+        virtual void send_payload_addref_receive(
+            uint64_t protocol_version, message_direction direction, addref_receive&& payload, uint64_t sequence_number);
+        virtual void send_payload_init_client_initial_channel_response(uint64_t protocol_version,
+            message_direction direction,
+            init_client_initial_channel_response&& payload,
+            uint64_t sequence_number);
+        virtual void send_payload_init_client_channel_response(uint64_t protocol_version,
+            message_direction direction,
+            init_client_channel_response&& payload,
+            uint64_t sequence_number);
 
     public:
         static std::shared_ptr<transport> create(std::string name,
@@ -237,7 +283,7 @@ namespace rpc::stream_transport
                         CO_RETURN message_hook_result::unhandled;
 
                     T request;
-                    auto err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+                    auto err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
                     if (!err.empty())
                     {
                         RPC_ERROR("failed custom message deserialisation");
@@ -245,6 +291,21 @@ namespace rpc::stream_transport
                     }
 
                     CO_RETURN CO_AWAIT fn(tracker, prefix, payload, request);
+                });
+        }
+
+        template<class T, class Handler> void add_typed_outgoing_message_handler(Handler&& handler)
+        {
+            custom_outgoing_handlers_.push_back(
+                [fn = std::forward<Handler>(handler)](uint64_t protocol_version,
+                    message_direction direction,
+                    uint64_t sequence_number,
+                    uint64_t type_fingerprint,
+                    const void* typed_payload) -> bool
+                {
+                    if (type_fingerprint != rpc::id<T>::get(protocol_version))
+                        return false;
+                    return fn(protocol_version, direction, sequence_number, *static_cast<const T*>(typed_payload));
                 });
         }
 
@@ -275,7 +336,7 @@ namespace rpc::stream_transport
             rpc::connection_settings input_descr;
             input_descr.inbound_interface_id = inbound_interface_id;
             input_descr.outbound_interface_id = outbound_interface_id;
-            input_descr.input_zone_id = inbound_remote_object;
+            input_descr.remote_object_id = inbound_remote_object;
 
             set_adjacent_zone_id(inbound_remote_object.as_zone());
 
@@ -321,7 +382,7 @@ namespace rpc::stream_transport
             rpc::remote_object remote_object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             std::vector<char>& out_buf_,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
@@ -334,7 +395,7 @@ namespace rpc::stream_transport
             rpc::remote_object remote_object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            const rpc::span& in_data,
+            const rpc::byte_span& in_data,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
 
         CORO_TASK(int)

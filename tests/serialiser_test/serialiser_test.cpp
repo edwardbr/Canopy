@@ -64,7 +64,7 @@ struct yas_binary_enc
 
     template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_yas_binary(obj); }
 
-    template<typename T> static std::string deserialise(const rpc::span& data, T& obj)
+    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
     {
         return rpc::from_yas_binary(data, obj);
     }
@@ -80,7 +80,7 @@ struct yas_compressed_binary_enc
         return rpc::to_compressed_yas_binary(obj);
     }
 
-    template<typename T> static std::string deserialise(const rpc::span& data, T& obj)
+    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
     {
         return rpc::from_yas_compressed_binary(data, obj);
     }
@@ -93,7 +93,7 @@ struct yas_json_enc
 
     template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_yas_json(obj); }
 
-    template<typename T> static std::string deserialise(const rpc::span& data, T& obj)
+    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
     {
         return rpc::from_yas_json(data, obj);
     }
@@ -106,7 +106,7 @@ struct protocol_buffers_enc
 
     template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_protobuf(obj); }
 
-    template<typename T> static std::string deserialise(const rpc::span& data, T& obj)
+    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
     {
         return rpc::from_protobuf(data, obj);
     }
@@ -135,7 +135,7 @@ protected:
         {
             ASSERT_FALSE(serialized.empty()) << EncodingTag::name << ": serialised data is empty";
         }
-        rpc::span data(serialized);
+        rpc::byte_span data(serialized);
         Wrapper deserialized{};
         auto error = EncodingTag::template deserialise<Wrapper>(data, deserialized);
         EXPECT_TRUE(error.empty()) << EncodingTag::name << ": deserialise error: " << error;
@@ -570,7 +570,7 @@ TEST_F(SerialiserTest, FromYasJson)
     obj.string_val = "test_string";
 
     auto serialized = rpc::to_yas_json(obj);
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
 
     scalar_test::something_complicated deserialized;
     auto error = rpc::from_yas_json(data_span, deserialized);
@@ -588,7 +588,7 @@ TEST_F(SerialiserTest, FromYasBinary)
     obj.string_val = "test_string";
 
     auto serialized = rpc::to_yas_binary(obj);
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
 
     scalar_test::something_complicated deserialized;
     auto error = rpc::from_yas_binary(data_span, deserialized);
@@ -606,7 +606,7 @@ TEST_F(SerialiserTest, FromYasCompressedBinary)
     obj.string_val = "test_string";
 
     auto serialized = rpc::to_compressed_yas_binary(obj);
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
 
     scalar_test::something_complicated deserialized;
     auto error = rpc::from_yas_compressed_binary(data_span, deserialized);
@@ -624,7 +624,7 @@ TEST_F(SerialiserTest, FromProtobuf)
     obj.string_val = "hello";
 
     auto serialized = rpc::to_protobuf(obj);
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
 
     scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
@@ -663,7 +663,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
 
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::yas_json);
-        rpc::span data_span(serialized);
+        rpc::byte_span data_span(serialized);
         scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::yas_json, data_span, deserialized);
         EXPECT_TRUE(error.empty());
@@ -673,7 +673,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
 
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::yas_binary);
-        rpc::span data_span(serialized);
+        rpc::byte_span data_span(serialized);
         scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::yas_binary, data_span, deserialized);
         EXPECT_TRUE(error.empty());
@@ -683,7 +683,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
 
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::yas_compressed_binary);
-        rpc::span data_span(serialized);
+        rpc::byte_span data_span(serialized);
         scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::yas_compressed_binary, data_span, deserialized);
         EXPECT_TRUE(error.empty());
@@ -693,7 +693,7 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
 
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
-        rpc::span data_span(serialized);
+        rpc::byte_span data_span(serialized);
         scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(rpc::encoding::protocol_buffers, data_span, deserialized);
         EXPECT_TRUE(error.empty());
@@ -741,7 +741,7 @@ TEST_F(SerialiserTest, ComplexStructProtobuf)
     auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(serialized.empty());
 
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
     scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
@@ -762,7 +762,7 @@ TEST_F(SerialiserTest, NestedStructProtobuf)
     auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(serialized.empty());
 
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
     scalar_test::something_more_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
@@ -788,7 +788,7 @@ TEST_F(SerialiserTest, RoundtripAllEncodings)
         auto serialized = rpc::serialise(original, enc);
         EXPECT_FALSE(serialized.empty()) << "Serialization failed for encoding: " << static_cast<int>(enc);
 
-        rpc::span data_span(serialized);
+        rpc::byte_span data_span(serialized);
         scalar_test::something_complicated deserialized;
         auto error = rpc::deserialise(enc, data_span, deserialized);
         EXPECT_TRUE(error.empty()) << "Deserialization failed for encoding: " << static_cast<int>(enc)
@@ -808,7 +808,7 @@ TEST_F(SerialiserTest, TemplateStructProtobuf)
     auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(serialized.empty());
 
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
     scalar_test::test_template<int> deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
 
@@ -838,7 +838,7 @@ TEST_F(SerialiserTest, EmptyStringProtobuf)
     obj.string_val = "";
 
     auto serialized = rpc::to_protobuf(obj);
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
 
     scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);
@@ -856,7 +856,7 @@ TEST_F(SerialiserTest, LargeValuesProtobuf)
     obj.string_val = std::string(1000, 'x');
 
     auto serialized = rpc::to_protobuf(obj);
-    rpc::span data_span(serialized);
+    rpc::byte_span data_span(serialized);
 
     scalar_test::something_complicated deserialized;
     auto error = rpc::from_protobuf(data_span, deserialized);

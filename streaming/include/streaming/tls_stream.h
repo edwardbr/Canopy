@@ -80,10 +80,10 @@ namespace streaming
         auto client_handshake() -> coro::task<bool>;
 
         // Stream interface
-        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
+        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
 
-        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
 
         bool is_closed() const override { return closed_; }
 
@@ -98,7 +98,7 @@ namespace streaming
 
     private:
         std::shared_ptr<stream> underlying_;
-        std::shared_ptr<tls_context> tls_ctx_;         // set for server-side connections
+        std::shared_ptr<tls_context> tls_ctx_;               // set for server-side connections
         std::shared_ptr<tls_client_context> tls_client_ctx_; // set for client-side connections
         SSL* ssl_{nullptr};
         BIO* rbio_{nullptr}; // network → SSL (we write raw bytes here)

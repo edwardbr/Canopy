@@ -95,7 +95,7 @@ namespace rpc::stream_transport
         rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         std::vector<char>& out_buf_,
         const std::vector<rpc::back_channel_entry>& in_back_channel,
         std::vector<rpc::back_channel_entry>& out_back_channel)
@@ -110,7 +110,7 @@ namespace rpc::stream_transport
                 .destination_zone_id = remote_object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
-                .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
+                .payload = std::vector<char>((const char*)in_data.begin(), (const char*)in_data.end()),
                 .back_channel = in_back_channel},
             response);
 
@@ -135,7 +135,7 @@ namespace rpc::stream_transport
         rpc::remote_object remote_object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         const std::vector<rpc::back_channel_entry>& in_back_channel)
     {
         RPC_DEBUG("stream_transport::transport::outbound_post zone={}", get_zone_id().get_subnet());
@@ -146,7 +146,7 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload(protocol_version,
+        send_payload_post_send(protocol_version,
             message_direction::one_way,
             post_send{.encoding = encoding,
                 .tag = tag,
@@ -154,7 +154,7 @@ namespace rpc::stream_transport
                 .destination_zone_id = remote_object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
-                .payload = std::vector<char>((const char*)in_data.begin, (const char*)in_data.end),
+                .payload = std::vector<char>((const char*)in_data.begin(), (const char*)in_data.end()),
                 .back_channel = in_back_channel},
             0);
 
@@ -248,7 +248,7 @@ namespace rpc::stream_transport
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
-        send_payload(protocol_version,
+        send_payload_release_send(protocol_version,
             message_direction::one_way,
             release_send{.destination_zone_id = remote_object_id,
                 .caller_zone_id = caller_zone_id,
@@ -281,7 +281,7 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload(protocol_version,
+        send_payload_object_released_send(protocol_version,
             message_direction::one_way,
             object_released_send{.encoding = encoding::yas_binary,
                 .destination_zone_id = remote_object_id,
@@ -306,7 +306,7 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload(protocol_version,
+        send_payload_transport_down_send(protocol_version,
             message_direction::one_way,
             transport_down_send{.encoding = encoding::yas_binary,
                 .destination_zone_id = destination_zone_id,
@@ -386,7 +386,7 @@ namespace rpc::stream_transport
         else if (payload.payload_fingerprint == rpc::id<init_client_initial_channel_response>::get(prefix.version))
         {
             init_client_initial_channel_response early_response;
-            auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), early_response);
+            auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), early_response);
             if (str_err.empty())
             {
                 RPC_DEBUG("pump: received init_client_initial_channel_response, adjacent_zone={}",
@@ -462,7 +462,7 @@ namespace rpc::stream_transport
         std::vector<char> payload_buf;
 
         bool receiving_prefix = true;
-        std::span<char> remaining;
+        rpc::mutable_byte_span remaining;
 
         RPC_DEBUG("receive_consumer_loop started for zone {}", get_zone_id().get_subnet());
 
@@ -492,7 +492,8 @@ namespace rpc::stream_transport
                         {
                             RPC_DEBUG("receive_consumer_loop: responder sending close_connection_ack for zone {}",
                                 get_zone_id().get_subnet());
-                            send_payload(rpc::get_version(), message_direction::one_way, close_connection_ack{}, 0);
+                            send_payload_close_connection_ack(
+                                rpc::get_version(), message_direction::one_way, close_connection_ack{}, 0);
                             CO_AWAIT flush_send_queue();
                             RPC_DEBUG("receive_consumer_loop: responder transition to DISCONNECTED zone {}",
                                 get_zone_id().get_subnet());
@@ -546,7 +547,7 @@ namespace rpc::stream_transport
 
             if (receiving_prefix)
             {
-                auto str_err = rpc::from_yas_binary(rpc::span(prefix_buf), prefix);
+                auto str_err = rpc::from_yas_binary(rpc::byte_span(prefix_buf), prefix);
                 if (!str_err.empty())
                 {
                     RPC_ERROR("Deserialization FAILED: {}", str_err);
@@ -562,7 +563,7 @@ namespace rpc::stream_transport
             // Full payload received — dispatch
             {
                 envelope_payload payload;
-                auto str_err = rpc::from_yas_binary(rpc::span(payload_buf), payload);
+                auto str_err = rpc::from_yas_binary(rpc::byte_span(payload_buf), payload);
                 if (!str_err.empty())
                 {
                     RPC_ERROR("failed bad payload format");
@@ -573,7 +574,7 @@ namespace rpc::stream_transport
                 if (hook_result == message_hook_result::handled)
                 {
                     receiving_prefix = true;
-                    remaining = std::span<char>{};
+                    remaining = rpc::mutable_byte_span{};
                     continue;
                 }
                 else if (hook_result == message_hook_result::rejected)
@@ -630,7 +631,7 @@ namespace rpc::stream_transport
                 }
 
                 receiving_prefix = true;
-                remaining = std::span<char>{};
+                remaining = rpc::mutable_byte_span{};
             }
         }
 
@@ -650,7 +651,7 @@ namespace rpc::stream_transport
                 item = std::move(send_queue_.front());
                 send_queue_.pop();
             }
-            CO_AWAIT stream_->send(std::span<const char>{(const char*)item.data(), item.size()});
+            CO_AWAIT stream_->send(rpc::byte_span{(const char*)item.data(), item.size()});
         }
     }
 
@@ -678,7 +679,7 @@ namespace rpc::stream_transport
 
             if (had_item)
             {
-                CO_AWAIT stream_->send(std::span<const char>{(const char*)item.data(), item.size()});
+                CO_AWAIT stream_->send(rpc::byte_span{(const char*)item.data(), item.size()});
             }
             else
             {
@@ -695,7 +696,7 @@ namespace rpc::stream_transport
         if (!peer_requested_disconnection_)
         {
             RPC_DEBUG("send_producer_loop: sending close_connection_send for zone {}", get_zone_id().get_subnet());
-            send_payload(rpc::get_version(), message_direction::one_way, close_connection_send{}, 0);
+            send_payload_close_connection_send(rpc::get_version(), message_direction::one_way, close_connection_send{}, 0);
         }
 
         CO_AWAIT flush_send_queue();
@@ -736,7 +737,7 @@ namespace rpc::stream_transport
         }
 
         call_send request;
-        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!str_err.empty())
         {
             RPC_ERROR("failed from_yas_binary call_send");
@@ -766,7 +767,7 @@ namespace rpc::stream_transport
         if (prefix.direction == message_direction::one_way)
             CO_RETURN;
 
-        send_payload(prefix.version,
+        send_payload_call_receive(prefix.version,
             message_direction::receive,
             call_receive{.payload = std::move(out_buf), .back_channel = std::move(out_back_channel), .err_code = ret},
             prefix.sequence_number);
@@ -785,7 +786,7 @@ namespace rpc::stream_transport
         }
 
         post_send request;
-        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!str_err.empty())
         {
             RPC_ERROR("failed post_send from_yas_binary");
@@ -818,7 +819,7 @@ namespace rpc::stream_transport
         }
 
         try_cast_send request;
-        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!str_err.empty())
         {
             RPC_ERROR("failed try_cast_send from_yas_binary");
@@ -839,7 +840,7 @@ namespace rpc::stream_transport
             RPC_DEBUG("inbound_try_cast error {}", ret);
         }
 
-        send_payload(prefix.version,
+        send_payload_try_cast_receive(prefix.version,
             message_direction::receive,
             try_cast_receive{.back_channel = std::move(out_back_channel), .err_code = ret},
             prefix.sequence_number);
@@ -858,7 +859,7 @@ namespace rpc::stream_transport
         }
 
         addref_send request;
-        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!str_err.empty())
         {
             RPC_ERROR("failed addref_send from_yas_binary");
@@ -880,7 +881,7 @@ namespace rpc::stream_transport
             RPC_DEBUG("inbound_add_ref error {}", ret);
         }
 
-        send_payload(prefix.version,
+        send_payload_addref_receive(prefix.version,
             message_direction::receive,
             addref_receive{.back_channel = std::move(out_back_channel), .err_code = ret},
             prefix.sequence_number);
@@ -894,7 +895,7 @@ namespace rpc::stream_transport
         RPC_DEBUG("stub_handle_release");
 
         release_send request;
-        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!str_err.empty())
         {
             RPC_ERROR("failed release_send from_yas_binary");
@@ -933,7 +934,7 @@ namespace rpc::stream_transport
         RPC_DEBUG("stub_handle_object_released");
 
         object_released_send request;
-        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!str_err.empty())
         {
             RPC_ERROR("failed object_released_send from_yas_binary");
@@ -954,7 +955,7 @@ namespace rpc::stream_transport
         RPC_DEBUG("stub_handle_transport_down");
 
         transport_down_send request;
-        auto str_err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!str_err.empty())
         {
             RPC_ERROR("failed transport_down_send from_yas_binary");
@@ -975,7 +976,7 @@ namespace rpc::stream_transport
         RPC_DEBUG("create_stub zone: {}", get_zone_id().get_subnet());
 
         init_client_channel_send request;
-        auto err = rpc::from_yas_binary(rpc::span(payload.payload), request);
+        auto err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!err.empty())
         {
             RPC_ERROR("failed create_stub init_client_channel_send deserialization");
@@ -985,13 +986,13 @@ namespace rpc::stream_transport
         rpc::connection_settings input_descr;
         input_descr.inbound_interface_id = request.inbound_interface_id;
         input_descr.outbound_interface_id = request.outbound_interface_id;
-        input_descr.input_zone_id = request.inbound_remote_object;
+        input_descr.remote_object_id = request.inbound_remote_object;
         rpc::interface_descriptor output_interface;
 
         set_adjacent_zone_id(request.adjacent_zone_id);
 
         // Immediately inform the peer of our zone_id before invoking connection_handler_
-        send_payload(
+        send_payload_init_client_initial_channel_response(
             prefix.version, message_direction::one_way, init_client_initial_channel_response{.zone_id = get_zone_id()}, 0);
 
         int ret = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
@@ -1002,13 +1003,105 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload(prefix.version,
+        send_payload_init_client_channel_response(prefix.version,
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .outbound_remote_object = output_interface.destination_zone_id,
-                .caller_zone_id = input_descr.input_zone_id.as_zone()},
+                .caller_zone_id = input_descr.remote_object_id.as_zone()},
             prefix.sequence_number);
 
         CO_RETURN;
+    }
+
+    void transport::send_payload_post_send(
+        uint64_t protocol_version, message_direction direction, post_send&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_release_send(
+        uint64_t protocol_version, message_direction direction, release_send&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_object_released_send(
+        uint64_t protocol_version, message_direction direction, object_released_send&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_transport_down_send(
+        uint64_t protocol_version, message_direction direction, transport_down_send&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_close_connection_ack(
+        uint64_t protocol_version, message_direction direction, close_connection_ack&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_close_connection_send(
+        uint64_t protocol_version, message_direction direction, close_connection_send&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_call_receive(
+        uint64_t protocol_version, message_direction direction, call_receive&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_try_cast_receive(
+        uint64_t protocol_version, message_direction direction, try_cast_receive&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_addref_receive(
+        uint64_t protocol_version, message_direction direction, addref_receive&& payload, uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_init_client_initial_channel_response(uint64_t protocol_version,
+        message_direction direction,
+        init_client_initial_channel_response&& payload,
+        uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+    }
+
+    void transport::send_payload_init_client_channel_response(uint64_t protocol_version,
+        message_direction direction,
+        init_client_channel_response&& payload,
+        uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number);
     }
 }

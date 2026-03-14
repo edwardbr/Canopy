@@ -801,7 +801,7 @@ namespace rpc
     {
         interface_ordinal inbound_interface_id;
         interface_ordinal outbound_interface_id;
-        remote_object input_zone_id;
+        remote_object remote_object_id;
 
     public:
 #cpp_quote(R^__(
@@ -811,8 +811,8 @@ namespace rpc
         connection_settings& operator=(const connection_settings&) = default;
         connection_settings& operator=(connection_settings&&) noexcept = default;
 
-        // accessor for the embedded object_id in input_zone_id
-        object get_object_id() const { return input_zone_id.get_object(); }
+        // accessor for the embedded object_id in remote_object_id
+        object get_object_id() const { return remote_object_id.get_object(); }
     )__^)
     };
 

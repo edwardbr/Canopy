@@ -45,7 +45,7 @@ namespace rpc
         caller_zone caller_zone_id,
         interface_ordinal interface_id,
         method method_id,
-        const rpc::span& in_data,
+        const rpc::byte_span& in_data,
         std::vector<char>& out_buf_)
     {
         if (target_)
@@ -145,6 +145,7 @@ namespace rpc
         if (is_optimistic)
         {
             // Update optimistic reference count for this caller zone
+            bool did_release = false;
             {
                 std::lock_guard<std::mutex> lock(references_mutex_);
                 auto it = optimistic_references_.find(caller_zone_id);
@@ -159,6 +160,7 @@ namespace rpc
                         {
                             optimistic_references_.erase(it);
                         }
+                        did_release = true;
                     }
                     else
                     {
@@ -167,14 +169,19 @@ namespace rpc
                 }
                 else
                 {
-                    RPC_ERROR("object stub does not know about this optimistic connection");
+                    // Already cleaned up by release_all_from_zone (concurrent transport teardown)
+                    RPC_WARNING("release: optimistic zone entry already removed (concurrent teardown), skipping decrement");
                 }
             }
-            count = --optimistic_count_;
+            if (did_release)
+                count = --optimistic_count_;
+            else
+                count = optimistic_count_.load(std::memory_order_acquire);
         }
         else
         {
             // Update shared reference count for this caller zone
+            bool did_release = false;
             {
                 std::lock_guard<std::mutex> lock(references_mutex_);
                 auto it = shared_references_.find(caller_zone_id);
@@ -189,6 +196,7 @@ namespace rpc
                         {
                             shared_references_.erase(it);
                         }
+                        did_release = true;
                     }
                     else
                     {
@@ -197,10 +205,17 @@ namespace rpc
                 }
                 else
                 {
-                    RPC_ERROR("object stub does not know about this shared connection");
+                    // Already cleaned up by release_all_from_zone (concurrent transport teardown)
+                    RPC_WARNING("release: shared zone entry already removed (concurrent teardown), skipping decrement");
                 }
             }
-            count = --shared_count_;
+            // Only decrement the global count if we actually consumed a per-zone reference.
+            // If release_all_from_zone already erased the entry and decremented the count,
+            // doing so again would underflow shared_count_ to uint64_t::max.
+            if (did_release)
+                count = --shared_count_;
+            else
+                count = shared_count_.load(std::memory_order_acquire);
         }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
