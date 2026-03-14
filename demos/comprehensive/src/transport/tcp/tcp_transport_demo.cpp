@@ -57,8 +57,6 @@ namespace comprehensive
 {
     namespace v1
     {
-
-#ifdef CANOPY_BUILD_COROUTINE
         CORO_TASK(bool)
         run_tcp_server(std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
@@ -98,6 +96,7 @@ namespace comprehensive
                         {
                             local_calc = rpc::shared_ptr<i_calculator>(new calculator_impl(service_ptr));
                             RPC_INFO("Server: Created calculator service");
+
                             CO_RETURN rpc::error::OK();
                         });
 
@@ -114,13 +113,12 @@ namespace comprehensive
                                     : coro::net::domain_t::ipv4;
             const coro::net::socket_address endpoint{coro::net::ip_address::from_string(host, domain), port};
 
-            auto listener
-                = std::make_shared<streaming::listener>(std::make_shared<streaming::tcp::acceptor>(endpoint),
-                    [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
-                    {
-                        rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
-                        CO_RETURN;
-                    });
+            auto listener = std::make_shared<streaming::listener>(std::make_shared<streaming::tcp::acceptor>(endpoint),
+                [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
+                {
+                    rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
+                    CO_RETURN;
+                });
 
             if (!listener->start_listening(service))
             {
@@ -159,19 +157,23 @@ namespace comprehensive
             std::string host = cfg.get_host_string();
             uint16_t port = cfg.port;
 
-            print_separator("TCP CLIENT (Coroutine Mode)");
+            // Create client service using the zone address provided by the allocator.
+            auto client_service = std::make_shared<rpc::root_service>("tcp_client", client_zone, scheduler);
+
+            rpc::shared_ptr<i_calculator> remote_calculator;
+
             {
                 // Wait for server to be ready before connecting.
                 co_await server_ready.wait();
-
-                // Create client service using the zone address provided by the allocator.
-                auto client_service = std::make_shared<rpc::root_service>("tcp_client", client_zone, scheduler);
 
                 RPC_INFO("Client zone ID (address): {}",
                     rpc::to_yas_json<std::string>(client_service->get_zone_id().get_address()));
 
                 RPC_INFO("Client: Connecting to {}:{}...", host, port);
+            }
 
+            // connect to remote zone
+            {
                 // Create TCP client.
                 const auto client_domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
                                                ? coro::net::domain_t::ipv6
@@ -188,18 +190,17 @@ namespace comprehensive
 
                 RPC_INFO("Client: TCP connection established");
 
-                // Create TCP transport — server_zone identifies the remote zone.
+                // Create TCP stream.
                 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
+
+                // Create TCP transport
                 auto client_transport = rpc::stream_transport::transport::create(
                     "client_transport", client_service, std::move(tcp_stm), nullptr);
 
                 RPC_INFO("Client: Starting RPC connection...");
 
-                rpc::shared_ptr<i_calculator> local_calculator;
-                rpc::shared_ptr<i_calculator> remote_calculator;
-
                 auto error = CO_AWAIT client_service->connect_to_zone(
-                    "tcp_server", client_transport, local_calculator, remote_calculator);
+                    "tcp_server", client_transport, rpc::shared_ptr<i_calculator>(), remote_calculator);
 
                 if (error != rpc::error::OK())
                 {
@@ -208,11 +209,13 @@ namespace comprehensive
                 }
 
                 RPC_INFO("Client: RPC connection established");
-
+            }
+            // now make rpc calls
+            {
                 RPC_INFO("Client: Making remote RPC calls...");
 
                 int result;
-                error = CO_AWAIT remote_calculator->add(100, 200, result);
+                auto error = CO_AWAIT remote_calculator->add(100, 200, result);
                 RPC_INFO("Client: add(100, 200) = {} (error: {})", result, static_cast<int>(error));
 
                 error = CO_AWAIT remote_calculator->multiply(7, 8, result);
@@ -226,10 +229,10 @@ namespace comprehensive
 
                 client_finished.set();
             }
+
             print_separator("TCP CLIENT SHUTDOWN");
             CO_RETURN true;
         }
-#endif
     }
 }
 
@@ -267,58 +270,56 @@ int main(int argc, char* argv[])
     RPC_INFO("RPC++ Comprehensive Demo - TCP Transport");
     RPC_INFO("========================================");
 
-    args::ArgumentParser parser("TCP transport demo: client/server RPC over TCP.");
-    args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
-
-    // All network options (including --host and --port) are registered by add_network_args.
-    auto net = canopy::network_config::add_network_args(parser);
-
-    try
-    {
-        parser.ParseCLI(argc, argv);
-    }
-    catch (const args::Help&)
-    {
-        std::cout << parser;
-        return 0;
-    }
-    catch (const args::ParseError& e)
-    {
-        std::cerr << e.what() << "\n" << parser; // to stderr before logging is running
-        return 1;
-    }
-
-    canopy::network_config::network_config cfg;
-    try
-    {
-        cfg = net.get_config();
-    }
-    catch (const std::invalid_argument& e)
-    {
-        RPC_ERROR("Configuration error: {}", e.what());
-        return 1;
-    }
-
-    // Require an explicit port for the demo; default to 18888 when not specified.
-    if (cfg.port == 0)
-        cfg.port = 18888;
-
-    cfg.log_values();
-
-    // Build the zone allocator for this process from the parsed network config.
-    auto allocator = canopy::network_config::make_allocator(cfg);
-
-    // Pre-allocate zone addresses for server and client so both sides can refer to
-    // stable zone IDs across all iterations.
     rpc::zone_address server_zone_addr;
     rpc::zone_address client_zone_addr;
-    allocator.allocate_zone(server_zone_addr);
-    allocator.allocate_zone(client_zone_addr);
+    canopy::network_config::network_config cfg;
 
-#ifndef CANOPY_BUILD_COROUTINE
-    RPC_ERROR("TCP transport requires coroutines. Please configure with: cmake --preset Coroutine_Debug");
-    return 1;
-#else
+    {
+        args::ArgumentParser parser("TCP transport demo: client/server RPC over TCP.");
+        args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
+
+        // All network options (including --host and --port) are registered by add_network_args.
+        auto net = canopy::network_config::add_network_args(parser);
+
+        try
+        {
+            parser.ParseCLI(argc, argv);
+        }
+        catch (const args::Help&)
+        {
+            std::cout << parser;
+            return 0;
+        }
+        catch (const args::ParseError& e)
+        {
+            std::cerr << e.what() << "\n" << parser; // to stderr before logging is running
+            return 1;
+        }
+
+        try
+        {
+            cfg = net.get_config();
+        }
+        catch (const std::invalid_argument& e)
+        {
+            RPC_ERROR("Configuration error: {}", e.what());
+            return 1;
+        }
+
+        // Require an explicit port for the demo; default to 18888 when not specified.
+        if (cfg.port == 0)
+            cfg.port = 18888;
+
+        cfg.log_values();
+
+        // Build the zone allocator for this process from the parsed network config.
+        auto allocator = canopy::network_config::make_allocator(cfg);
+
+        // Pre-allocate zone addresses for server and client so both sides can refer to
+        // stable zone IDs across all iterations.
+        allocator.allocate_zone(server_zone_addr);
+        allocator.allocate_zone(client_zone_addr);
+    }
 
     auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
         coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
@@ -337,8 +338,10 @@ int main(int argc, char* argv[])
         rpc::event server_ready;
         rpc::event client_finished;
 
-        coro::sync_wait(coro::when_all(comprehensive::v1::run_tcp_server(
-                                           scheduler_1, server_ready, client_finished, cfg, rpc::zone{server_zone_addr}),
+        coro::sync_wait(coro::when_all(
+            // the server
+            comprehensive::v1::run_tcp_server(scheduler_1, server_ready, client_finished, cfg, rpc::zone{server_zone_addr}),
+            // the client
             comprehensive::v1::run_tcp_client(
                 scheduler_2, server_ready, client_finished, cfg, rpc::zone{client_zone_addr})));
     }
@@ -347,5 +350,4 @@ int main(int argc, char* argv[])
     scheduler_1->shutdown();
     scheduler_2->shutdown();
     return 0;
-#endif
 }
