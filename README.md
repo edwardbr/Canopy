@@ -238,7 +238,6 @@ canopy/
 Install system dependencies:
 
 ```bash
-sudo dnf groupinstall "Development Tools"
 sudo dnf install gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja-build nodejs clang-tools-extra gdb python3-pip liburing-devel
 pip install --user cmakelang
 ```
