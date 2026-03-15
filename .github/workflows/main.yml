@@ -14,7 +14,6 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          dnf groupinstall -y "Development Tools"
           dnf install -y gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja-build nodejs clang-tools-extra gdb python3-pip liburing-devel git
           pip install --user cmakelang
       - name: Check out repository code
