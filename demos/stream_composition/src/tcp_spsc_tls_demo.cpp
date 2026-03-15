@@ -163,56 +163,28 @@ namespace stream_composition
         // is destroyed before the first co_await — otherwise the lambda would live in
         // the coroutine frame for the lifetime of run_server, keeping service alive and
         // preventing shutdown_event from firing.
-        std::shared_ptr<streaming::listener> lst;
+        // stream_transformer: TCP → SPSC buffering → TLS handshake
+        // Returns nullopt if the TLS handshake fails, rejecting the connection.
+        auto tls_transformer = [tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm)
+            -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
-            auto on_connection
-                = [service, tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm) -> CORO_TASK(void)
-            {
-                RPC_INFO("Server: new connection — building TCP → SPSC → TLS stack");
+            auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
+            auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_ctx);
+            if (!CO_AWAIT tls_stm->handshake())
+                CO_RETURN std::nullopt;
+            CO_RETURN tls_stm;
+        };
 
-                // 1. Wrap TCP in the SPSC buffering layer.
-                auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
-
-                // 2. Wrap the SPSC stream in TLS (server side).
-                auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_ctx);
-
-                // 3. Perform the TLS handshake before starting RPC traffic.
-                if (!CO_AWAIT tls_stm->handshake())
+        auto lst = std::make_shared<streaming::listener>("server_transport",
+            std::make_shared<streaming::tcp::acceptor>(endpoint),
+            rpc::stream_transport::transport::make_connection_callback<i_echo, i_echo>(
+                [](const rpc::shared_ptr<i_echo>&, rpc::shared_ptr<i_echo>& local, const std::shared_ptr<rpc::service>&)
+                    -> CORO_TASK(int)
                 {
-                    RPC_ERROR("Server: TLS handshake failed");
-                    CO_RETURN;
-                }
-                RPC_INFO("Server: TLS handshake complete");
-
-                // 4. Create the streaming_transport on top of the TLS stream.
-                //    connection_handler is called when the remote zone connects.
-                auto rpc_handler = [service](const rpc::connection_settings& input_descr,
-                                       rpc::interface_descriptor& output_interface,
-                                       std::shared_ptr<rpc::service> child_service_ptr,
-                                       std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
-                {
-                    auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_echo, i_echo>("echo_client_proxy",
-                        transport,
-                        input_descr,
-                        output_interface,
-                        [](const rpc::shared_ptr<i_echo>&,
-                            rpc::shared_ptr<i_echo>& local_echo,
-                            const std::shared_ptr<rpc::service>&) -> CORO_TASK(int)
-                        {
-                            local_echo = rpc::shared_ptr<i_echo>(new echo_impl());
-                            RPC_INFO("Server: echo service created");
-                            CO_RETURN rpc::error::OK();
-                        });
-                    CO_RETURN ret;
-                };
-
-                rpc::stream_transport::transport::create("server_transport", service, tls_stm, rpc_handler);
-                CO_RETURN;
-            };
-
-            lst = std::make_shared<streaming::listener>(
-                std::make_shared<streaming::tcp::acceptor>(endpoint), on_connection);
-        } // on_connection destroyed here — service capture released
+                    local = rpc::shared_ptr<i_echo>(new echo_impl());
+                    CO_RETURN rpc::error::OK();
+                }),
+            std::move(tls_transformer));
 
         if (!lst->start_listening(service))
         {
@@ -297,8 +269,7 @@ namespace stream_composition
         RPC_INFO("Client: TLS handshake complete");
 
         // 5. Create streaming_transport (client side — no connection_handler).
-        auto client_transport
-            = rpc::stream_transport::transport::create("client_transport", client_service, tls_stm, nullptr);
+        auto client_transport = rpc::stream_transport::transport::make_client("client_transport", client_service, tls_stm);
 
         // 6. Connect to the remote zone and obtain the i_echo proxy.
         rpc::shared_ptr<i_echo> local_echo;

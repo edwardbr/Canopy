@@ -22,12 +22,20 @@ namespace websocket_demo
         {
 
         public:
-            using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
-                rpc::interface_descriptor& output_interface,
-                std::shared_ptr<rpc::service> child_service_ptr,
-                std::shared_ptr<transport>)>;
+            using connection_handler = rpc::connection_handler;
 
-            static CORO_TASK(std::shared_ptr<transport>) create(const std::shared_ptr<rpc::service>& service,
+            // Server-side make_server: zone factory replaces the raw connection_handler.
+            template<class Remote, class Local>
+            static CORO_TASK(std::shared_ptr<transport>) make_server(const std::shared_ptr<rpc::service>& service,
+                const std::shared_ptr<streaming::stream>& stream,
+                std::function<CORO_TASK(int)(
+                    const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
+            {
+                CO_RETURN CO_AWAIT make_server(
+                    service, stream, rpc::make_zone_handler<Remote, Local>("websocket", std::move(factory)));
+            }
+
+            static CORO_TASK(std::shared_ptr<transport>) make_server(const std::shared_ptr<rpc::service>& service,
                 const std::shared_ptr<streaming::stream>& stream,
                 connection_handler&& handler);
 

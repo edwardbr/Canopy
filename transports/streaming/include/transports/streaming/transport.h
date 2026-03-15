@@ -27,10 +27,43 @@ namespace rpc::stream_transport
             rejected
         };
 
-        using connection_handler = std::function<CORO_TASK(int)(const rpc::connection_settings& input_descr,
-            rpc::interface_descriptor& output_interface,
-            std::shared_ptr<rpc::service> child_service_ptr,
-            std::shared_ptr<transport>)>;
+        using connection_handler = rpc::connection_handler;
+
+        // Server-side: creates a transport that waits for the client's init message.
+        // Internally wraps factory with make_zone_handler so connection protocol details
+        // stay hidden from user code.
+        template<class Remote, class Local>
+        static std::shared_ptr<transport> make_server(std::string name,
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<streaming::stream> stream,
+            std::function<CORO_TASK(int)(
+                const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
+        {
+            auto handler = rpc::make_zone_handler<Remote, Local>(name.c_str(), std::move(factory));
+            return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler));
+        }
+
+        // Client-side: creates a transport that sends the init message to the server.
+        static std::shared_ptr<transport> make_client(
+            std::string name, std::shared_ptr<rpc::service> service, std::shared_ptr<streaming::stream> stream)
+        {
+            return make_server(std::move(name), std::move(service), std::move(stream), nullptr);
+        }
+
+        // Returns a connection_callback compatible with streaming::listener.
+        // The zone factory is baked in — listener does not see connection_handler.
+        template<class Remote, class Local>
+        static auto make_connection_callback(std::function<CORO_TASK(int)(
+                const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
+        {
+            return [fn = std::move(factory)](const std::string& name,
+                       std::shared_ptr<rpc::service> svc,
+                       std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
+            {
+                transport::make_server<Remote, Local>(name, std::move(svc), std::move(stm), fn);
+                CO_RETURN;
+            };
+        }
 
     private:
         struct result_listener
@@ -260,7 +293,7 @@ namespace rpc::stream_transport
             uint64_t sequence_number);
 
     public:
-        static std::shared_ptr<transport> create(std::string name,
+        static std::shared_ptr<transport> make_server(std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
             connection_handler handler);

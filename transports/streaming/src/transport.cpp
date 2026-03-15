@@ -17,7 +17,7 @@ namespace rpc::stream_transport
     {
     }
 
-    std::shared_ptr<transport> transport::create(std::string name,
+    std::shared_ptr<transport> transport::make_server(std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         connection_handler handler)
