@@ -215,7 +215,7 @@ namespace comprehensive
                 RPC_INFO("Client: Making remote RPC calls...");
 
                 int result;
-                auto error = CO_AWAIT remote_calculator->add(100, 200, result);
+                [[maybe_unused]] auto error = CO_AWAIT remote_calculator->add(100, 200, result);
                 RPC_INFO("Client: add(100, 200) = {} (error: {})", result, static_cast<int>(error));
 
                 error = CO_AWAIT remote_calculator->multiply(7, 8, result);
