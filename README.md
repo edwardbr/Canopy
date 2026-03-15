@@ -245,13 +245,10 @@ pip install --user cmakelang
 Install CMake 4.x or later (the version in the Fedora repos may be too old):
 
 ```bash
-# Download the latest CMake source from https://cmake.org/download/
-wget https://github.com/Kitware/CMake/releases/download/v<version>/cmake-<version>.tar.gz
-tar -zxvf cmake-<version>.tar.gz
-cd cmake-<version>/
-./bootstrap
-make -j$(nproc)
-sudo make install
+# Download and install the CMake 4.3 binary
+wget https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-linux-x86_64.sh
+chmod +x cmake-4.3.0-linux-x86_64.sh
+sudo ./cmake-4.3.0-linux-x86_64.sh --skip-license --prefix=/usr/local
 ```
 
 ### Code Formatting
