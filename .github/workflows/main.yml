@@ -28,10 +28,14 @@ jobs:
         run: |
           if [ -n "${{github.event.pull_request.base.sha}}" ]
           then
-            if ! git clang-format --quiet --diff "${{github.event.pull_request.base.sha}}" HEAD
+            changed=$(git diff --name-only "${{github.event.pull_request.base.sha}}" HEAD | grep -E '\.(cpp|h|hpp|c)$' || true)
+            if [ -n "$changed" ]
             then
-              echo incorrect formatting
-              exit 1
+              if ! echo "$changed" | xargs clang-format --dry-run --Werror
+              then
+                echo "incorrect formatting"
+                exit 1
+              fi
             fi
           fi
       - name: CMake configure (Debug)
