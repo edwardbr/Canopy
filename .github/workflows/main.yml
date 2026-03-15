@@ -26,11 +26,11 @@ jobs:
           python3 -m venv /opt/venv
           /opt/venv/bin/pip install cmakelang --no-cache-dir
           echo "/opt/venv/bin" >> $GITHUB_PATH
-      - name: Install CMake 4.3
+      - name: Install CMake 4.2.3
         run: |
-          wget -q https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-linux-x86_64.sh
-          chmod +x cmake-4.3.0-linux-x86_64.sh
-          ./cmake-4.3.0-linux-x86_64.sh --skip-license --prefix=/usr/local
+          wget -q https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-linux-x86_64.tar.gz
+          tar -zxf cmake-4.2.3-linux-x86_64.tar.gz
+          cp -r cmake-4.2.3-linux-x86_64/* /usr/local/
       - name: Check out repository code
         uses: actions/checkout@v4
         with:
