@@ -31,8 +31,9 @@ namespace websocket_demo
                 std::function<CORO_TASK(int)(
                     const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
             {
-                CO_RETURN CO_AWAIT make_server(
-                    service, stream, rpc::make_zone_handler<Remote, Local>("websocket", std::move(factory)));
+                CO_RETURN CO_AWAIT make_server(service,
+                    stream,
+                    rpc::make_new_zone_connection_handler<Remote, Local>("websocket", std::move(factory)));
             }
 
             static CORO_TASK(std::shared_ptr<transport>) make_server(const std::shared_ptr<rpc::service>& service,

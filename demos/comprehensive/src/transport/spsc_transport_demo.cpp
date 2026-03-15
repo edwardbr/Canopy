@@ -127,9 +127,8 @@ namespace comprehensive
 
             auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2 = rpc::stream_transport::transport::make_server<i_calculator, i_calculator>("transport_2",
-                service_2,
-                std::move(stream_2),
+            auto transport_2 = CO_AWAIT service_2->make_acceptor<i_calculator, i_calculator>("transport_2",
+                rpc::stream_transport::stream_factory(std::move(stream_2)),
                 [&](const rpc::shared_ptr<i_calculator>&,
                     rpc::shared_ptr<i_calculator>& local,
                     const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)

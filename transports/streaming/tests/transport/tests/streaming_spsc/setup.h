@@ -26,8 +26,10 @@ protected:
         auto io_sched = this->io_scheduler_;
         auto peer_stream
             = std::make_shared<streaming::spsc_queue::stream>(&receive_spsc_queue_, &send_spsc_queue_, io_sched);
-        this->responder_transport_ = rpc::stream_transport::transport::make_server<yyy::i_host, yyy::i_example>(
-            "responder_transport", this->peer_service_, std::move(peer_stream), this->make_interface_setup_factory());
+        this->responder_transport_ = std::static_pointer_cast<rpc::stream_transport::transport>(
+            CO_AWAIT this->peer_service_->template make_acceptor<yyy::i_host, yyy::i_example>("responder_transport",
+                rpc::stream_transport::stream_factory(std::move(peer_stream)),
+                this->make_interface_setup_factory()));
 
         CO_AWAIT this->responder_transport_->accept();
 

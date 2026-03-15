@@ -338,19 +338,17 @@ namespace comprehensive
 
             auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2
-                = rpc::stream_transport::transport::make_server<i_data_processor, i_data_processor>("spsc_transport_2",
-                    service_2,
-                    std::move(stream_2),
-                    [&on_connected, enc](const rpc::shared_ptr<i_data_processor>&,
-                        rpc::shared_ptr<i_data_processor>& local,
-                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
-                    {
-                        svc->set_default_encoding(enc);
-                        local = create_data_processor();
-                        on_connected.set();
-                        CO_RETURN rpc::error::OK();
-                    });
+            auto transport_2 = CO_AWAIT service_2->make_acceptor<i_data_processor, i_data_processor>("spsc_transport_2",
+                rpc::stream_transport::stream_factory(std::move(stream_2)),
+                [&on_connected, enc](const rpc::shared_ptr<i_data_processor>&,
+                    rpc::shared_ptr<i_data_processor>& local,
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                {
+                    svc->set_default_encoding(enc);
+                    local = create_data_processor();
+                    on_connected.set();
+                    CO_RETURN rpc::error::OK();
+                });
 
             co_await transport_2->accept();
             server_ready.set();
