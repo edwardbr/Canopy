@@ -46,7 +46,7 @@ jobs:
         run: |
           if [ -n "${{github.event.pull_request.base.sha}}" ]
           then
-            changed=$(git diff --name-only "${{github.event.pull_request.base.sha}}" HEAD | grep -E '\.(cpp|h|hpp|c)$' || true)
+            changed=$(git diff --name-only "${{github.event.pull_request.base.sha}}" HEAD | grep -E '\.(cpp|h|hpp|c)$' | while read f; do [ -f "$f" ] && echo "$f"; done || true)
             if [ -n "$changed" ]
             then
               if ! echo "$changed" | xargs clang-format --dry-run --Werror
