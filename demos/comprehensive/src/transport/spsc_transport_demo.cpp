@@ -127,7 +127,7 @@ namespace comprehensive
             auto handler = [&](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
-                               std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
+                               std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT service->attach_remote_zone<i_calculator, i_calculator>("process_1_proxy",
                     transport,

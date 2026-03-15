@@ -189,7 +189,7 @@ namespace stream_composition
                 auto rpc_handler = [service](const rpc::connection_settings& input_descr,
                                        rpc::interface_descriptor& output_interface,
                                        std::shared_ptr<rpc::service> child_service_ptr,
-                                       std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
+                                       std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
                 {
                     auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_echo, i_echo>("echo_client_proxy",
                         transport,

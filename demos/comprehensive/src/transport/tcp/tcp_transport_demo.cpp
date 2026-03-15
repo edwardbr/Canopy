@@ -81,7 +81,7 @@ namespace comprehensive
             auto rpc_handler = [](const rpc::connection_settings& input_descr,
                                    rpc::interface_descriptor& output_interface,
                                    std::shared_ptr<rpc::service> child_service_ptr,
-                                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
+                                   std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
             {
                 RPC_INFO("Server: Accepting connection from zone {}", input_descr.remote_object_id.get_subnet());
 
