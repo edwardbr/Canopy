@@ -17,10 +17,10 @@ namespace streaming::spsc_wrapping
         static auto create(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<coro::scheduler> scheduler)
             -> std::shared_ptr<stream>;
 
-        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
+        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
 
-        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         bool is_closed() const override;
         void set_closed() override;
         auto get_peer_info() const -> peer_info override;

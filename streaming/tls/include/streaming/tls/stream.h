@@ -61,10 +61,10 @@ namespace streaming::tls
         auto handshake() -> coro::task<bool>;
         auto client_handshake() -> coro::task<bool>;
 
-        auto receive(std::span<char> buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, std::span<char>>> override;
+        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
 
-        auto send(std::span<const char> buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         auto is_closed() const -> bool override { return closed_; }
 
         void set_closed() override
