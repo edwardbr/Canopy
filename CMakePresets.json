@@ -311,6 +311,18 @@
             }
         },
         {
+            "name": "Coroutine_Release_with_Info_logging",
+            "inherits": "Coroutine_Debug",
+            "cacheVariables": {
+                "CANOPY_LOGGING_INFO": "2",
+                "CANOPY_BUILD_COROUTINE": "ON",
+                "CMAKE_BUILD_TYPE": "Release",
+                "CANOPY_USE_LOGGING": "ON",
+                "CANOPY_USE_TELEMETRY": "OFF",
+                "CANOPY_BUILD_DEMOS": "ON"
+            }
+        },
+        {
             "name": "Release_with_coroutines_GCC",
             "inherits": "Release",
             "binaryDir": "build_coroutine_release",
