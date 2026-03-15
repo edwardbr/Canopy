@@ -72,7 +72,7 @@ namespace rpc
 
     // A factory callable that receives a name, service, and connection handler,
     // and returns a configured transport. Different transport implementations
-    // provide factory helpers (e.g. rpc::stream_transport::stream_factory).
+    // provide factory helpers (e.g. rpc::stream_transport::transport_factory).
     // The factory is a coroutine to support transports that need async setup
     // (e.g. allocating a server-assigned zone ID before constructing the transport).
     using transport_factory
