@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           dnf install -y gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja-build nodejs clang-tools-extra gdb python3-pip liburing-devel git
-          pip install cmakelang
+          pip install cmakelang --root-user-action=ignore
           wget -q https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-linux-x86_64.sh
           chmod +x cmake-4.3.0-linux-x86_64.sh
           ./cmake-4.3.0-linux-x86_64.sh --skip-license --prefix=/usr/local
