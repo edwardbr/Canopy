@@ -2029,6 +2029,7 @@ namespace rpc
             [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel) override
         {
             RPC_ASSERT(false);
+            CO_RETURN error::TRANSPORT_ERROR();
         }
     };
 
