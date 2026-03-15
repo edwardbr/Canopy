@@ -233,27 +233,31 @@ canopy/
 
 ## Development Setup
 
-### Code Formatting
+### Linux Installation (Fedora 43+)
 
-This project uses `cmake-format` for CMake files and `clang-format` for C++ files.
+Install system dependencies:
 
-**Install cmake-format (version 0.6.13 required):**
 ```bash
-pip install cmake-format==0.6.13
+sudo dnf groupinstall "Development Tools"
+sudo dnf install gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja-build nodejs clang-tools-extra gdb python3-pip liburing-devel
+pip install --user cmakelang
 ```
 
-## install cmake where ????? is a version >= 4
-sudo dnf groupinstall "Development Tools"
-sudo dnf install gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja node clang-tools-extra gdb python3-pip clang-tools-extra liburing-devel   
-pip install --user cmakelang
+Install CMake 4.x or later (the version in the Fedora repos may be too old):
 
-wget https://github.com/Kitware/CMake/releases/?????.tar.gz
-tar -zxvf ?????.tar.gz
-cd cmake-*/
-
+```bash
+# Download the latest CMake source from https://cmake.org/download/
+wget https://github.com/Kitware/CMake/releases/download/v<version>/cmake-<version>.tar.gz
+tar -zxvf cmake-<version>.tar.gz
+cd cmake-<version>/
 ./bootstrap
 make -j$(nproc)
 sudo make install
+```
+
+### Code Formatting
+
+This project uses `cmake-format` for CMake files and `clang-format` for C++ files (both installed above).
 
 **VSCode Setup:**
 1. Open the project in VSCode
