@@ -26,23 +26,16 @@ protected:
         rpc::shared_ptr<yyy::i_host> hst(new host());
         this->local_host_ptr_ = hst;
 
-        auto rpc_handler = this->make_connection_handler();
-
         canopy::network_config::ip_address addr{};
         addr[0] = 127;
         addr[1] = 0;
         addr[2] = 0;
         addr[3] = 1;
 
-        this->listener_
-            = std::make_unique<streaming::listener>(std::make_shared<streaming::io_uring::acceptor>(addr, 8082),
-                [this, peer_service = this->peer_service_, rpc_handler](
-                    std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
-                {
-                    this->responder_transport_ = rpc::stream_transport::transport::create(
-                        "responder_transport", peer_service, std::move(stream), rpc_handler);
-                    CO_RETURN;
-                });
+        this->listener_ = std::make_unique<streaming::listener>("responder_transport",
+            std::make_shared<streaming::io_uring::acceptor>(addr, 8082),
+            rpc::stream_transport::transport::make_connection_callback<yyy::i_host, yyy::i_example>(
+                this->make_interface_setup_factory()));
 
         if (!this->listener_->start_listening(this->peer_service_))
         {
@@ -61,8 +54,8 @@ protected:
         }
 
         auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-        this->initiator_transport_ = rpc::stream_transport::transport::create(
-            "initiator_transport", this->root_service_, std::move(tcp_stm), nullptr);
+        this->initiator_transport_
+            = rpc::stream_transport::transport::make_client("initiator_transport", this->root_service_, std::move(tcp_stm));
 
         auto ret = CO_AWAIT this->root_service_->connect_to_zone(
             "main child", this->initiator_transport_, hst, this->i_example_ptr_);

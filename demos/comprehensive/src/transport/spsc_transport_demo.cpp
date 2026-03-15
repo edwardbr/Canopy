@@ -58,8 +58,7 @@ namespace comprehensive
 
             auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_1, &queues->to_process_2, scheduler);
-            auto transport_1
-                = rpc::stream_transport::transport::create("transport_1", service_1, std::move(stream_1), nullptr);
+            auto transport_1 = rpc::stream_transport::transport::make_client("transport_1", service_1, std::move(stream_1));
 
             rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
 
@@ -124,31 +123,21 @@ namespace comprehensive
             service_2->set_shutdown_event(on_shutdown_event);
 
             rpc::event on_connected;
-            auto handler = [&](const rpc::connection_settings& input_interface,
-                               rpc::interface_descriptor& output_interface,
-                               std::shared_ptr<rpc::service> service,
-                               std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
-            {
-                auto ret = CO_AWAIT service->attach_remote_zone<i_calculator, i_calculator>("process_1_proxy",
-                    transport,
-                    input_interface,
-                    output_interface,
-                    [&](const rpc::shared_ptr<i_calculator>& parent,
-                        rpc::shared_ptr<i_calculator>& new_service,
-                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                    {
-                        on_connected.set();
-                        new_service = rpc::shared_ptr<i_calculator>(new calculator_impl(service_ptr));
-                        std::cout << "Process 2: Created calculator service\n";
-                        CO_RETURN rpc::error::OK();
-                    });
-                CO_RETURN ret;
-            };
 
             auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2
-                = rpc::stream_transport::transport::create("transport_2", service_2, std::move(stream_2), handler);
+            auto transport_2 = rpc::stream_transport::transport::make_server<i_calculator, i_calculator>("transport_2",
+                service_2,
+                std::move(stream_2),
+                [&](const rpc::shared_ptr<i_calculator>&,
+                    rpc::shared_ptr<i_calculator>& local,
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                {
+                    on_connected.set();
+                    std::cout << "Process 2: Created calculator service\n";
+                    local = rpc::shared_ptr<i_calculator>(new calculator_impl(svc));
+                    CO_RETURN rpc::error::OK();
+                });
 
             co_await transport_2->accept();
 

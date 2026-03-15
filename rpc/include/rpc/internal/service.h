@@ -1363,4 +1363,38 @@ namespace rpc
         }
         ~current_service_tracker() { service::set_current_service(old_service_); }
     };
+
+    // The callback type all transports use when a remote zone initiates a connection.
+    // connection_settings and interface_descriptor are internal protocol details hidden
+    // from user code — use make_zone_handler<Remote, Local> to create one.
+    using connection_handler = std::function<CORO_TASK(int)(
+        const rpc::connection_settings&,
+        rpc::interface_descriptor&,
+        std::shared_ptr<rpc::service>,
+        std::shared_ptr<rpc::transport>)>;
+
+    // Converts a typed factory into a connection_handler, hiding the protocol
+    // machinery (connection_settings, interface_descriptor, attach_remote_zone).
+    //
+    // The factory signature matches the attach_remote_zone inner callback so that
+    // error codes from in-factory RPC calls (e.g. set_host, set_callback) propagate
+    // correctly back to the connection handshake.
+    template<class Remote, class Local>
+    connection_handler make_zone_handler(
+        const char* name,
+        std::function<CORO_TASK(int)(
+            const rpc::shared_ptr<Remote>&,
+            rpc::shared_ptr<Local>&,
+            const std::shared_ptr<rpc::service>&)> factory)
+    {
+        return [name_str = std::string(name), fn = std::move(factory)](
+                   const rpc::connection_settings& input,
+                   rpc::interface_descriptor& output,
+                   std::shared_ptr<rpc::service> svc,
+                   std::shared_ptr<rpc::transport> tp) -> CORO_TASK(int)
+        {
+            CO_RETURN CO_AWAIT svc->attach_remote_zone<Remote, Local>(
+                name_str.c_str(), tp, input, output, fn);
+        };
+    }
 }
