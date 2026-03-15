@@ -26,7 +26,7 @@ namespace streaming
     //   auto listener = std::make_shared<streaming::listener>(
     //       "my_connection",
     //       std::make_shared<streaming::tcp::acceptor>(endpoint),
-    //       rpc::stream_transport::transport::make_connection_callback<i_remote, i_local>(
+    //       rpc::stream_transport::make_connection_callback<i_remote, i_local>(
     //           [](const rpc::shared_ptr<i_remote>& remote,
     //               rpc::shared_ptr<i_local>& local,
     //               const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
@@ -46,7 +46,7 @@ namespace streaming
             = std::function<CORO_TASK(std::optional<std::shared_ptr<stream>>)(std::shared_ptr<stream>)>;
 
         // Called per accepted stream to create a transport.
-        // Obtain via transport::make_connection_callback<Remote, Local>(zone_factory) —
+        // Obtain via rpc::stream_transport::make_connection_callback<Remote, Local>(zone_factory) —
         // the zone factory and all connection protocol details are baked in.
         using connection_callback
             = std::function<CORO_TASK(void)(const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<stream>)>;

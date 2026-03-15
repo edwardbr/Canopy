@@ -84,7 +84,7 @@ namespace comprehensive
 
             auto listener = std::make_shared<streaming::listener>("server_transport",
                 std::make_shared<streaming::tcp::acceptor>(endpoint),
-                rpc::stream_transport::transport::make_connection_callback<i_calculator, i_calculator>(
+                rpc::stream_transport::make_connection_callback<i_calculator, i_calculator>(
                     [](const rpc::shared_ptr<i_calculator>&,
                         rpc::shared_ptr<i_calculator>& local,
                         const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
@@ -167,8 +167,8 @@ namespace comprehensive
                 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
 
                 // Create TCP transport
-                auto client_transport
-                    = rpc::stream_transport::transport::make_client("client_transport", client_service, std::move(tcp_stm));
+                auto client_transport = rpc::stream_transport::transport::make_client(
+                    "client_transport", client_service, std::move(tcp_stm));
 
                 RPC_INFO("Client: Starting RPC connection...");
 

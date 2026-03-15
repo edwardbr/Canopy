@@ -50,21 +50,6 @@ namespace rpc::stream_transport
             return make_server(std::move(name), std::move(service), std::move(stream), nullptr);
         }
 
-        // Returns a connection_callback compatible with streaming::listener.
-        // The zone factory is baked in — listener does not see connection_handler.
-        template<class Remote, class Local>
-        static auto make_connection_callback(std::function<CORO_TASK(int)(
-                const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
-        {
-            return [fn = std::move(factory)](const std::string& name,
-                       std::shared_ptr<rpc::service> svc,
-                       std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
-            {
-                transport::make_server<Remote, Local>(name, std::move(svc), std::move(stm), fn);
-                CO_RETURN;
-            };
-        }
-
     private:
         struct result_listener
         {
@@ -468,4 +453,21 @@ namespace rpc::stream_transport
             rpc::caller_zone caller_zone_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
     };
+
+    // Produces a connection_callback for use with streaming::listener.
+    // Wraps a typed zone factory so the listener does not need to know about
+    // connection_handler or make_zone_handler.
+    template<class Remote, class Local>
+    std::function<CORO_TASK(void)(const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<streaming::stream>)>
+    make_connection_callback(std::function<CORO_TASK(int)(
+            const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
+    {
+        return [fn = std::move(factory)](const std::string& name,
+                   std::shared_ptr<rpc::service> svc,
+                   std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
+        {
+            transport::make_server<Remote, Local>(name, std::move(svc), std::move(stm), fn);
+            CO_RETURN;
+        };
+    }
 }
