@@ -456,7 +456,7 @@ namespace rpc::stream_transport
 
     // Returns a transport_factory that creates a streaming server transport wrapping
     // the given stream. Pass the result to service::make_acceptor().
-    inline rpc::transport_factory stream_factory(std::shared_ptr<streaming::stream> stream)
+    inline rpc::transport_factory transport_factory(std::shared_ptr<streaming::stream> stream)
     {
         return [stream = std::move(stream)](std::string name,
                    std::shared_ptr<rpc::service> svc,
