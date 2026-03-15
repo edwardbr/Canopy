@@ -12,19 +12,25 @@ jobs:
     container:
       image: fedora:43
     steps:
-      - name: Install dependencies
+      - name: Install system and C++ dependencies
         run: |
-          dnf install -y gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja-build nodejs clang-tools-extra gdb python3-pip python3-virtualenv liburing-devel git
-          wget -q https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-linux-x86_64.sh
-          chmod +x cmake-4.3.0-linux-x86_64.sh
-          ./cmake-4.3.0-linux-x86_64.sh --skip-license --prefix=/usr/local
-      - name: Install Python tools
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs clang-tools-extra gdb liburing-devel git
+      - name: Install Perl dependencies
         run: |
+          dnf install -y perl-core
+      - name: Install Python dependencies
+        run: |
+          dnf install -y python3-pip python3-virtualenv
           echo "Python version: $(python3 --version)"
           echo "Pip version: $(pip3 --version)"
           python3 -m venv /opt/venv
           /opt/venv/bin/pip install cmakelang --no-cache-dir
           echo "/opt/venv/bin" >> $GITHUB_PATH
+      - name: Install CMake 4.3
+        run: |
+          wget -q https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-linux-x86_64.sh
+          chmod +x cmake-4.3.0-linux-x86_64.sh
+          ./cmake-4.3.0-linux-x86_64.sh --skip-license --prefix=/usr/local
       - name: Check out repository code
         uses: actions/checkout@v4
         with:
