@@ -337,7 +337,7 @@ namespace comprehensive
             auto handler = [&, enc](const rpc::connection_settings& input_interface,
                                rpc::interface_descriptor& output_interface,
                                std::shared_ptr<rpc::service> service,
-                               std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
+                               std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT service->attach_remote_zone<i_data_processor, i_data_processor>("spsc_client_proxy",
                     transport,
@@ -419,7 +419,7 @@ namespace comprehensive
             auto rpc_handler = [enc](const rpc::connection_settings& input_descr,
                                    rpc::interface_descriptor& output_interface,
                                    std::shared_ptr<rpc::service> child_service_ptr,
-                                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
+                                   std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
                     "tcp_client_proxy",
@@ -563,7 +563,7 @@ namespace comprehensive
             auto connection_handler = [enc](const rpc::connection_settings& input_descr,
                                           rpc::interface_descriptor& output_interface,
                                           std::shared_ptr<rpc::service> child_service_ptr,
-                                          std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
+                                          std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
             {
                 auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
                     "io_uring_client_proxy",
