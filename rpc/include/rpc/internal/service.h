@@ -64,6 +64,20 @@ namespace rpc
     class casting_interface;
     class transport;
 
+    // The callback type all transports use when a remote zone initiates a connection.
+    // connection_settings and interface_descriptor are internal protocol details hidden
+    // from user code — use make_new_zone_connection_handler<Remote, Local> to create one.
+    using connection_handler = std::function<CORO_TASK(int)(
+        const rpc::connection_settings&, rpc::interface_descriptor&, std::shared_ptr<rpc::service>, std::shared_ptr<rpc::transport>)>;
+
+    // A factory callable that receives a name, service, and connection handler,
+    // and returns a configured transport. Different transport implementations
+    // provide factory helpers (e.g. rpc::stream_transport::stream_factory).
+    // The factory is a coroutine to support transports that need async setup
+    // (e.g. allocating a server-assigned zone ID before constructing the transport).
+    using transport_factory
+        = std::function<CORO_TASK(std::shared_ptr<transport>)(std::string, std::shared_ptr<service>, connection_handler)>;
+
     const object dummy_object_id = {std::numeric_limits<uint64_t>::max()};
 
     struct service_config
@@ -395,6 +409,13 @@ namespace rpc
             std::function<CORO_TASK(int)(const rpc::shared_ptr<PARENT_INTERFACE>&,
                 rpc::shared_ptr<CHILD_INTERFACE>&,
                 const std::shared_ptr<rpc::service>&)> fn);
+
+        template<class Remote, class Local>
+        CORO_TASK(std::shared_ptr<transport>)
+        make_acceptor(std::string name,
+            transport_factory factory,
+            std::function<CORO_TASK(int)(
+                const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<service>&)> fn);
 
         // protected:
         /////////////////////////////////
@@ -1364,12 +1385,6 @@ namespace rpc
         ~current_service_tracker() { service::set_current_service(old_service_); }
     };
 
-    // The callback type all transports use when a remote zone initiates a connection.
-    // connection_settings and interface_descriptor are internal protocol details hidden
-    // from user code — use make_zone_handler<Remote, Local> to create one.
-    using connection_handler = std::function<CORO_TASK(int)(
-        const rpc::connection_settings&, rpc::interface_descriptor&, std::shared_ptr<rpc::service>, std::shared_ptr<rpc::transport>)>;
-
     // Converts a typed factory into a connection_handler, hiding the protocol
     // machinery (connection_settings, interface_descriptor, attach_remote_zone).
     //
@@ -1377,7 +1392,7 @@ namespace rpc
     // error codes from in-factory RPC calls (e.g. set_host, set_callback) propagate
     // correctly back to the connection handshake.
     template<class Remote, class Local>
-    connection_handler make_zone_handler(const char* name,
+    connection_handler make_new_zone_connection_handler(const char* name,
         std::function<CORO_TASK(int)(
             const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
     {
@@ -1389,5 +1404,15 @@ namespace rpc
             // forward to the service to bind the transport to its registerd transports proxies and stubs
             CO_RETURN CO_AWAIT svc->attach_remote_zone<Remote, Local>(name_str.c_str(), tp, input, output, fn);
         };
+    }
+
+    template<class Remote, class Local>
+    CORO_TASK(std::shared_ptr<transport>)
+    service::make_acceptor(std::string name,
+        transport_factory factory,
+        std::function<CORO_TASK(int)(const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<service>&)> fn)
+    {
+        auto handler = make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(fn));
+        CO_RETURN CO_AWAIT factory(std::move(name), shared_from_this(), std::move(handler));
     }
 }

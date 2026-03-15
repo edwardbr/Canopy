@@ -30,7 +30,7 @@ namespace rpc::stream_transport
         using connection_handler = rpc::connection_handler;
 
         // Server-side: creates a transport that waits for the client's init message.
-        // Internally wraps factory with make_zone_handler so connection protocol details
+        // Internally wraps factory with make_new_zone_connection_handler so connection protocol details
         // stay hidden from user code.
         template<class Remote, class Local>
         static std::shared_ptr<transport> make_server(std::string name,
@@ -39,7 +39,7 @@ namespace rpc::stream_transport
             std::function<CORO_TASK(int)(
                 const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
         {
-            auto handler = rpc::make_zone_handler<Remote, Local>(name.c_str(), std::move(factory));
+            auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
             return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler));
         }
 
@@ -454,9 +454,19 @@ namespace rpc::stream_transport
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
     };
 
+    // Returns a transport_factory that creates a streaming server transport wrapping
+    // the given stream. Pass the result to service::make_acceptor().
+    inline rpc::transport_factory stream_factory(std::shared_ptr<streaming::stream> stream)
+    {
+        return [stream = std::move(stream)](std::string name,
+                   std::shared_ptr<rpc::service> svc,
+                   rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
+        { CO_RETURN transport::make_server(std::move(name), std::move(svc), std::move(stream), std::move(handler)); };
+    }
+
     // Produces a connection_callback for use with streaming::listener.
     // Wraps a typed zone factory so the listener does not need to know about
-    // connection_handler or make_zone_handler.
+    // connection_handler or make_new_zone_connection_handler.
     template<class Remote, class Local>
     std::function<CORO_TASK(void)(const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<streaming::stream>)>
     make_connection_callback(std::function<CORO_TASK(int)(
