@@ -23,6 +23,7 @@
 #include <comprehensive/comprehensive_stub.h>
 
 #include <transports/local/transport.h>
+#include <streaming/listener.h>
 
 #include <algorithm>
 #include <atomic>
@@ -287,7 +288,7 @@ namespace comprehensive
             auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_1, &queues->to_process_2, scheduler);
             auto transport_1
-                = rpc::stream_transport::transport::create("spsc_transport_1", service_1, std::move(stream_1), nullptr);
+                = rpc::stream_transport::transport::make_client("spsc_transport_1", service_1, std::move(stream_1));
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -334,32 +335,20 @@ namespace comprehensive
             service_2->set_default_encoding(enc);
 
             rpc::event on_connected;
-            auto handler = [&, enc](const rpc::connection_settings& input_interface,
-                               rpc::interface_descriptor& output_interface,
-                               std::shared_ptr<rpc::service> service,
-                               std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
-            {
-                auto ret = CO_AWAIT service->attach_remote_zone<i_data_processor, i_data_processor>("spsc_client_proxy",
-                    transport,
-                    input_interface,
-                    output_interface,
-                    [&, enc](const rpc::shared_ptr<i_data_processor>& parent,
-                        rpc::shared_ptr<i_data_processor>& new_service,
-                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                    {
-                        (void)parent;
-                        service_ptr->set_default_encoding(enc);
-                        new_service = create_data_processor();
-                        on_connected.set();
-                        CO_RETURN rpc::error::OK();
-                    });
-                CO_RETURN ret;
-            };
 
             auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2
-                = rpc::stream_transport::transport::create("spsc_transport_2", service_2, std::move(stream_2), handler);
+            auto transport_2 = CO_AWAIT service_2->make_acceptor<i_data_processor, i_data_processor>("spsc_transport_2",
+                rpc::stream_transport::transport_factory(std::move(stream_2)),
+                [&on_connected, enc](const rpc::shared_ptr<i_data_processor>&,
+                    rpc::shared_ptr<i_data_processor>& local,
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                {
+                    svc->set_default_encoding(enc);
+                    local = create_data_processor();
+                    on_connected.set();
+                    CO_RETURN rpc::error::OK();
+                });
 
             co_await transport_2->accept();
             server_ready.set();
@@ -416,35 +405,17 @@ namespace comprehensive
             service->set_default_encoding(enc);
             service->set_shutdown_event(on_shutdown_event);
 
-            auto rpc_handler = [enc](const rpc::connection_settings& input_descr,
-                                   rpc::interface_descriptor& output_interface,
-                                   std::shared_ptr<rpc::service> child_service_ptr,
-                                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
-            {
-                auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
-                    "tcp_client_proxy",
-                    transport,
-                    input_descr,
-                    output_interface,
-                    [enc](const rpc::shared_ptr<i_data_processor>& parent,
-                        rpc::shared_ptr<i_data_processor>& local_service,
-                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                    {
-                        (void)parent;
-                        service_ptr->set_default_encoding(enc);
-                        local_service = create_data_processor();
-                        CO_RETURN rpc::error::OK();
-                    });
-                CO_RETURN ret;
-            };
-
-            auto listener = std::make_shared<streaming::listener>(
+            auto listener = std::make_shared<streaming::listener>("server_transport",
                 std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", port}),
-                [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
-                {
-                    rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
-                    CO_RETURN;
-                });
+                rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
+                    [enc](const rpc::shared_ptr<i_data_processor>&,
+                        rpc::shared_ptr<i_data_processor>& local,
+                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                    {
+                        svc->set_default_encoding(enc);
+                        local = create_data_processor();
+                        CO_RETURN rpc::error::OK();
+                    }));
 
             if (!listener->start_listening(service))
             {
@@ -488,8 +459,8 @@ namespace comprehensive
             }
 
             auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-            auto client_transport = rpc::stream_transport::transport::create(
-                "client_transport", client_service, std::move(tcp_stm), nullptr);
+            auto client_transport
+                = rpc::stream_transport::transport::make_client("client_transport", client_service, std::move(tcp_stm));
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -560,42 +531,23 @@ namespace comprehensive
             service->set_default_encoding(enc);
             service->set_shutdown_event(on_shutdown_event);
 
-            auto connection_handler = [enc](const rpc::connection_settings& input_descr,
-                                          rpc::interface_descriptor& output_interface,
-                                          std::shared_ptr<rpc::service> child_service_ptr,
-                                          std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
-            {
-                auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
-                    "io_uring_client_proxy",
-                    transport,
-                    input_descr,
-                    output_interface,
-                    [enc](const rpc::shared_ptr<i_data_processor>& parent,
-                        rpc::shared_ptr<i_data_processor>& local_service,
-                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                    {
-                        (void)parent;
-                        service_ptr->set_default_encoding(enc);
-                        local_service = create_data_processor();
-                        CO_RETURN rpc::error::OK();
-                    });
-                CO_RETURN ret;
-            };
-
             canopy::network_config::ip_address addr{};
             addr[0] = 127;
             addr[1] = 0;
             addr[2] = 0;
             addr[3] = 1;
 
-            auto io_uring_listener
-                = std::make_shared<streaming::listener>(std::make_shared<streaming::io_uring::acceptor>(addr, port),
-                    [svc = service, connection_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
+            auto io_uring_listener = std::make_shared<streaming::listener>("io_uring_server_transport",
+                std::make_shared<streaming::io_uring::acceptor>(addr, port),
+                rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
+                    [enc](const rpc::shared_ptr<i_data_processor>&,
+                        rpc::shared_ptr<i_data_processor>& local_service,
+                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
                     {
-                        rpc::stream_transport::transport::create(
-                            "io_uring_server_transport", svc, std::move(stream), connection_handler);
-                        CO_RETURN;
-                    });
+                        service_ptr->set_default_encoding(enc);
+                        local_service = create_data_processor();
+                        CO_RETURN rpc::error::OK();
+                    }));
             io_uring_listener->start_listening(service);
             service.reset();
             server_ready.set();
@@ -632,8 +584,8 @@ namespace comprehensive
             }
 
             auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
-            auto client_transport = rpc::stream_transport::transport::create(
-                "io_uring_client_transport", client_service, std::move(stm), nullptr);
+            auto client_transport = rpc::stream_transport::transport::make_client(
+                "io_uring_client_transport", client_service, std::move(stm));
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;

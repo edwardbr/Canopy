@@ -77,48 +77,21 @@ namespace comprehensive
 
             RPC_INFO("Server zone ID (address): {}", rpc::to_yas_json<std::string>(service->get_zone_id().get_address()));
 
-            // Create TCP listener with connection handler.
-            auto rpc_handler = [](const rpc::connection_settings& input_descr,
-                                   rpc::interface_descriptor& output_interface,
-                                   std::shared_ptr<rpc::service> child_service_ptr,
-                                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
-            {
-                RPC_INFO("Server: Accepting connection from zone {}", input_descr.remote_object_id.get_subnet());
-
-                auto ret
-                    = CO_AWAIT child_service_ptr->attach_remote_zone<i_calculator, i_calculator>("tcp_client_proxy",
-                        transport,
-                        input_descr,
-                        output_interface,
-                        [](const rpc::shared_ptr<i_calculator>& remote_calc,
-                            rpc::shared_ptr<i_calculator>& local_calc,
-                            const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                        {
-                            local_calc = rpc::shared_ptr<i_calculator>(new calculator_impl(service_ptr));
-                            RPC_INFO("Server: Created calculator service");
-
-                            CO_RETURN rpc::error::OK();
-                        });
-
-                if (ret == rpc::error::OK())
-                    RPC_INFO("Server: Client connected successfully");
-                else
-                    RPC_ERROR("Server: Client connection failed: {}", static_cast<int>(ret));
-
-                CO_RETURN ret;
-            };
-
             const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
                                     ? coro::net::domain_t::ipv6
                                     : coro::net::domain_t::ipv4;
             const coro::net::socket_address endpoint{coro::net::ip_address::from_string(host, domain), port};
 
-            auto listener = std::make_shared<streaming::listener>(std::make_shared<streaming::tcp::acceptor>(endpoint),
-                [svc = service, rpc_handler](std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
-                {
-                    rpc::stream_transport::transport::create("server_transport", svc, std::move(stream), rpc_handler);
-                    CO_RETURN;
-                });
+            auto listener = std::make_shared<streaming::listener>("server_transport",
+                std::make_shared<streaming::tcp::acceptor>(endpoint),
+                rpc::stream_transport::make_connection_callback<i_calculator, i_calculator>(
+                    [](const rpc::shared_ptr<i_calculator>&,
+                        rpc::shared_ptr<i_calculator>& local,
+                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                    {
+                        local = rpc::shared_ptr<i_calculator>(new calculator_impl(svc));
+                        CO_RETURN rpc::error::OK();
+                    }));
 
             if (!listener->start_listening(service))
             {
@@ -194,8 +167,8 @@ namespace comprehensive
                 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
 
                 // Create TCP transport
-                auto client_transport = rpc::stream_transport::transport::create(
-                    "client_transport", client_service, std::move(tcp_stm), nullptr);
+                auto client_transport = rpc::stream_transport::transport::make_client(
+                    "client_transport", client_service, std::move(tcp_stm));
 
                 RPC_INFO("Client: Starting RPC connection...");
 

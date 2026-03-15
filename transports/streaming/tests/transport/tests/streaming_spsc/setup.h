@@ -26,8 +26,10 @@ protected:
         auto io_sched = this->io_scheduler_;
         auto peer_stream
             = std::make_shared<streaming::spsc_queue::stream>(&receive_spsc_queue_, &send_spsc_queue_, io_sched);
-        this->responder_transport_ = rpc::stream_transport::transport::create(
-            "responder_transport", this->peer_service_, std::move(peer_stream), this->make_connection_handler());
+        this->responder_transport_ = std::static_pointer_cast<rpc::stream_transport::transport>(
+            CO_AWAIT this->peer_service_->template make_acceptor<yyy::i_host, yyy::i_example>("responder_transport",
+                rpc::stream_transport::transport_factory(std::move(peer_stream)),
+                this->make_interface_setup_factory()));
 
         CO_AWAIT this->responder_transport_->accept();
 
@@ -36,8 +38,8 @@ protected:
 
         auto client_stream
             = std::make_shared<streaming::spsc_queue::stream>(&send_spsc_queue_, &receive_spsc_queue_, io_sched);
-        this->initiator_transport_ = rpc::stream_transport::transport::create(
-            "initiator_transport", this->root_service_, std::move(client_stream), nullptr);
+        this->initiator_transport_ = rpc::stream_transport::transport::make_client(
+            "initiator_transport", this->root_service_, std::move(client_stream));
 
         auto ret = CO_AWAIT this->root_service_->connect_to_zone(
             "main child", this->initiator_transport_, hst, this->i_example_ptr_);

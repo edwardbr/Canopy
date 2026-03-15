@@ -24,27 +24,19 @@ protected:
     std::shared_ptr<rpc::stream_transport::transport> responder_transport_;
     std::unique_ptr<streaming::listener> listener_;
 
-    rpc::stream_transport::transport::connection_handler make_connection_handler()
+    auto make_interface_setup_factory()
     {
-        return [use_host_in_child = this->use_host_in_child_](const rpc::connection_settings& input_descr,
-                   rpc::interface_descriptor& output_interface,
-                   std::shared_ptr<rpc::service> service,
-                   std::shared_ptr<rpc::stream_transport::transport> transport) -> CORO_TASK(int)
+        return [use_host_in_child = this->use_host_in_child_](const rpc::shared_ptr<yyy::i_host>& host,
+                   rpc::shared_ptr<yyy::i_example>& example,
+                   const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
         {
-            auto ret = CO_AWAIT service->attach_remote_zone<yyy::i_host, yyy::i_example>("service_proxy",
-                transport,
-                input_descr,
-                output_interface,
-                [&](const rpc::shared_ptr<yyy::i_host>& host,
-                    rpc::shared_ptr<yyy::i_example>& new_example,
-                    const std::shared_ptr<rpc::service>& child_service_ptr) -> CORO_TASK(int)
-                {
-                    new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host));
-                    if (use_host_in_child)
-                        CO_AWAIT new_example->set_host(host);
-                    CO_RETURN rpc::error::OK();
-                });
-            CO_RETURN ret;
+            example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(svc, host));
+            if (use_host_in_child)
+            {
+                auto ret = CO_AWAIT example->set_host(host);
+                CO_RETURN ret;
+            }
+            CO_RETURN rpc::error::OK();
         };
     }
 

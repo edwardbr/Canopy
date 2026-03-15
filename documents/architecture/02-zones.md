@@ -200,7 +200,7 @@ auto listener = std::make_unique<rpc::tcp::listener>(
     [this](const rpc::interface_descriptor& input_descr,
         rpc::interface_descriptor& output_interface,
         std::shared_ptr<rpc::service> child_service_ptr,
-        std::shared_ptr<rpc::tcp::tcp_transport> transport) -> CORO_TASK(int)
+        std::shared_ptr<rpc::tcp_transport> transport) -> CORO_TASK(int)
     {
 
         // Use attach_remote_zone to properly manage object lifetime, like SPSC does
