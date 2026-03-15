@@ -177,7 +177,7 @@ namespace stream_composition
 
         auto lst = std::make_shared<streaming::listener>("server_transport",
             std::make_shared<streaming::tcp::acceptor>(endpoint),
-            rpc::stream_transport::transport::make_connection_callback<i_echo, i_echo>(
+            rpc::stream_transport::make_connection_callback<i_echo, i_echo>(
                 [](const rpc::shared_ptr<i_echo>&, rpc::shared_ptr<i_echo>& local, const std::shared_ptr<rpc::service>&)
                     -> CORO_TASK(int)
                 {

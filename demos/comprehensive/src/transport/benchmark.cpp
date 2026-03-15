@@ -409,7 +409,7 @@ namespace comprehensive
 
             auto listener = std::make_shared<streaming::listener>("server_transport",
                 std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", port}),
-                rpc::stream_transport::transport::make_connection_callback<i_data_processor, i_data_processor>(
+                rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
                     [enc](const rpc::shared_ptr<i_data_processor>&,
                         rpc::shared_ptr<i_data_processor>& local,
                         const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
@@ -533,28 +533,6 @@ namespace comprehensive
             service->set_default_encoding(enc);
             service->set_shutdown_event(on_shutdown_event);
 
-            auto connection_handler = [enc](const rpc::connection_settings& input_descr,
-                                          rpc::interface_descriptor& output_interface,
-                                          std::shared_ptr<rpc::service> child_service_ptr,
-                                          std::shared_ptr<rpc::transport> transport) -> CORO_TASK(int)
-            {
-                auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<i_data_processor, i_data_processor>(
-                    "io_uring_client_proxy",
-                    transport,
-                    input_descr,
-                    output_interface,
-                    [enc](const rpc::shared_ptr<i_data_processor>& parent,
-                        rpc::shared_ptr<i_data_processor>& local_service,
-                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-                    {
-                        (void)parent;
-                        service_ptr->set_default_encoding(enc);
-                        local_service = create_data_processor();
-                        CO_RETURN rpc::error::OK();
-                    });
-                CO_RETURN ret;
-            };
-
             canopy::network_config::ip_address addr{};
             addr[0] = 127;
             addr[1] = 0;
@@ -563,13 +541,15 @@ namespace comprehensive
 
             auto io_uring_listener = std::make_shared<streaming::listener>("io_uring_server_transport",
                 std::make_shared<streaming::io_uring::acceptor>(addr, port),
-                [svc = service, connection_handler](const std::string& name,
-                    std::shared_ptr<rpc::service>,
-                    std::shared_ptr<streaming::stream> stream) -> CORO_TASK(void)
-                {
-                    rpc::stream_transport::transport::make_server(name, svc, std::move(stream), connection_handler);
-                    CO_RETURN;
-                });
+                rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
+                    [enc](const rpc::shared_ptr<i_data_processor>&,
+                        rpc::shared_ptr<i_data_processor>& local_service,
+                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
+                    {
+                        service_ptr->set_default_encoding(enc);
+                        local_service = create_data_processor();
+                        CO_RETURN rpc::error::OK();
+                    }));
             io_uring_listener->start_listening(service);
             service.reset();
             server_ready.set();
@@ -606,8 +586,8 @@ namespace comprehensive
             }
 
             auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
-            auto client_transport
-                = rpc::stream_transport::transport::make_client("io_uring_client_transport", client_service, std::move(stm));
+            auto client_transport = rpc::stream_transport::transport::make_client(
+                "io_uring_client_transport", client_service, std::move(stm));
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
