@@ -88,7 +88,7 @@ namespace bench_helpers
                 throw std::runtime_error("ws_client_stream: wslay client init failed");
         }
 
-        ~ws_client_stream()
+        ~ws_client_stream() override
         {
             if (ctx_)
                 wslay_event_context_free(ctx_);
@@ -127,11 +127,11 @@ namespace bench_helpers
         auto send(rpc::byte_span buf) -> coro::task<coro::net::io_status> override
         {
             if (closed_)
-                co_return coro::net::io_status{coro::net::io_status::kind::closed};
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
             queue_message(std::vector<uint8_t>(buf.begin(), buf.end()));
             if (!co_await do_send())
-                co_return coro::net::io_status{coro::net::io_status::kind::closed};
-            co_return coro::net::io_status{coro::net::io_status::kind::ok};
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
         }
 
         bool is_closed() const override { return closed_; }
@@ -155,7 +155,7 @@ namespace bench_helpers
                 decoded_.pop();
                 msg_offset_ = 0;
             }
-            return {coro::net::io_status{coro::net::io_status::kind::ok}, buf.subspan(0, n)};
+            return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buf.subspan(0, n)};
         }
 
         void queue_message(std::vector<uint8_t> data)
@@ -621,6 +621,7 @@ namespace stream_bench
         // --- Unidirectional ---
         {
             std::atomic<bool> stop{false};
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
             coro::sync_wait(coro::when_all([&]() -> coro::task<void>
                 { out_unidirectional = co_await run_unidirectional_sender(side_a, payload, stop); }(),
                 run_drain(side_b, stop)));
@@ -629,6 +630,7 @@ namespace stream_bench
         // --- Send-Reply ---
         {
             std::atomic<bool> stop{false};
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
             coro::sync_wait(coro::when_all([&]() -> coro::task<void>
                 { out_send_reply = co_await run_send_reply(side_a, payload, stop); }(),
                 run_echo(side_b, stop)));
@@ -658,6 +660,7 @@ namespace stream_bench
             rpc::event server_ready;
             coro::sync_wait(coro::when_all(
                 // Server: accept, drain
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&]() -> coro::task<void>
                 {
                     auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
@@ -669,6 +672,7 @@ namespace stream_bench
                     co_await run_drain(stm, stop);
                 }(),
                 // Client: connect, send
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&]() -> coro::task<void>
                 {
                     co_await server_ready.wait();
@@ -685,6 +689,7 @@ namespace stream_bench
             std::atomic<bool> stop{false};
             rpc::event server_ready;
             coro::sync_wait(coro::when_all(
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&]() -> coro::task<void>
                 {
                     auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
@@ -695,6 +700,7 @@ namespace stream_bench
                     auto stm = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
                     co_await run_echo(stm, stop);
                 }(),
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&]() -> coro::task<void>
                 {
                     co_await server_ready.wait();
@@ -726,10 +732,12 @@ namespace stream_bench
 
         auto run_bench = [&](std::atomic<bool>& stop, rpc::event& server_ready, auto server_fn, auto client_fn)
         {
+            (void)stop;
             auto acc = std::make_shared<streaming::io_uring::acceptor>(addr, port);
             acc->init(sched_server);
 
             coro::sync_wait(coro::when_all(
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&]() -> coro::task<void>
                 {
                     server_ready.set();
@@ -739,6 +747,7 @@ namespace stream_bench
                     co_await server_fn(*maybe);
                     acc->stop();
                 }(),
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&]() -> coro::task<void>
                 {
                     co_await server_ready.wait();
@@ -756,7 +765,9 @@ namespace stream_bench
             run_bench(
                 stop,
                 ready,
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void> { co_await run_drain(stm, stop); },
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void>
                 { out_uni = co_await run_unidirectional_sender(stm, payload, stop); });
         }
@@ -767,7 +778,9 @@ namespace stream_bench
             run_bench(
                 stop,
                 ready,
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void> { co_await run_echo(stm, stop); },
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void>
                 { out_reply = co_await run_send_reply(stm, payload, stop); });
         }
@@ -788,6 +801,7 @@ namespace stream_bench
         std::vector<bench_stats>& unidirectional_results,
         std::vector<bench_stats>& send_reply_results)
     {
+        (void)name;
         for (size_t blob_size : blob_sizes)
         {
             bench_stats uni{};
@@ -890,12 +904,14 @@ int main()
                 std::shared_ptr<streaming::stream> tls_a;
                 std::shared_ptr<streaming::stream> tls_b;
                 coro::sync_wait(coro::when_all(
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                     [&]() -> coro::task<void>
                     {
                         auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
                         if (co_await s->handshake())
                             tls_a = s;
                     }(),
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                     [&]() -> coro::task<void>
                     {
                         auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
@@ -947,12 +963,14 @@ int main()
                 std::shared_ptr<streaming::stream> tls_a;
                 std::shared_ptr<streaming::stream> tls_b;
                 coro::sync_wait(coro::when_all(
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                     [&]() -> coro::task<void>
                     {
                         auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
                         if (co_await s->handshake())
                             tls_a = s;
                     }(),
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                     [&]() -> coro::task<void>
                     {
                         auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);

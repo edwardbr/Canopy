@@ -3,9 +3,8 @@
    All rights reserved.
 ]]
 #
-# Serialisation Benchmark CMakeLists.txt
-# Round-trip throughput for all scalar, vector, array and composite types
-# across all four encoding formats.
+# Serialisation Benchmark CMakeLists.txt Round-trip throughput for all scalar, vector, array and composite types across
+# all four encoding formats.
 #
 
 cmake_minimum_required(VERSION 3.24)
@@ -17,8 +16,8 @@ project(
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# test_types_idl is defined in tests/idls/ when CANOPY_BUILD_TEST=ON.
-# When building benchmarking without tests, generate it here.
+# test_types_idl is defined in tests/idls/ when CANOPY_BUILD_TEST=ON. When building benchmarking without tests, generate
+# it here.
 if(NOT TARGET test_types_idl)
   CanopyGenerate(
     test_types

@@ -97,6 +97,7 @@ namespace protobuf_generator
 
         // Add namespace parts in reverse order (from outer to inner)
         // Skip parts that duplicate the module name
+        // NOLINTNEXTLINE(modernize-loop-convert): reverse_view is not available in this toolchain configuration.
         for (auto it = namespace_parts.rbegin(); it != namespace_parts.rend(); ++it)
         {
             // Don't duplicate the module name
@@ -340,7 +341,8 @@ namespace protobuf_generator
             std::string inner_content;
             if (extract_template_content(type, template_start, inner_content) != std::string::npos)
             {
-                std::string key_type, value_type;
+                std::string key_type;
+                std::string value_type;
                 if (split_template_args(inner_content, key_type, value_type))
                 {
                     std::string proto_key_type = cpp_type_to_proto_type(key_type);
@@ -362,7 +364,8 @@ namespace protobuf_generator
                 if (container_prefix == "std::array<")
                 {
                     // For std::array<T, N>, extract just the T part (first template parameter)
-                    std::string element_type, size_param;
+                    std::string element_type;
+                    std::string size_param;
                     if (split_template_args(inner_content, element_type, size_param))
                     {
                         std::string inner_proto_type = cpp_type_to_proto_type(element_type);
@@ -2018,7 +2021,7 @@ namespace protobuf_generator
                 cpp("std::vector<char> param_buffer;");
                 cpp("{}.protobuf_serialise(param_buffer);", param_name);
                 cpp("auto* proto_param = __request.mutable_{}();", param_name);
-                cpp("(void)proto_param->ParseFromArray(param_buffer.data(), param_buffer.size());");
+                cpp("(void)proto_param->ParseFromArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("}}");
             }
         }
@@ -2026,7 +2029,7 @@ namespace protobuf_generator
         // Serialize to buffer
         cpp("__buffer.clear();");
         cpp("__buffer.resize(__request.ByteSizeLong());");
-        cpp("if (!__request.SerializeToArray(__buffer.data(), __buffer.size()))");
+        cpp("if (!__request.SerializeToArray(__buffer.data(), static_cast<int>(__buffer.size())))");
         cpp("{{");
         cpp("return rpc::error::PROXY_DESERIALISATION_ERROR();");
         cpp("}}");
@@ -2118,7 +2121,7 @@ namespace protobuf_generator
         else
             cpp("protobuf::{} __response;", response_message);
 
-        cpp("if (!__response.ParseFromArray(__rpc_data.data(), __rpc_data.size()))");
+        cpp("if (!__response.ParseFromArray(__rpc_data.data(), static_cast<int>(__rpc_data.size())))");
         cpp("{{");
         cpp("return rpc::error::PROXY_DESERIALISATION_ERROR();");
         cpp("}}");
@@ -2201,7 +2204,7 @@ namespace protobuf_generator
                 cpp("std::vector<char> param_buffer;");
                 cpp("const auto& proto_param = __response.{}();", param_name);
                 cpp("param_buffer.resize(proto_param.ByteSizeLong());");
-                cpp("(void)proto_param.SerializeToArray(param_buffer.data(), param_buffer.size());");
+                cpp("(void)proto_param.SerializeToArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("{}.protobuf_deserialise(param_buffer);", param_name);
                 cpp("}}");
             }
@@ -2306,7 +2309,7 @@ namespace protobuf_generator
         else
             cpp("protobuf::{} __request;", request_message);
 
-        cpp("if (!__request.ParseFromArray(__rpc_data.data(), __rpc_data.size()))");
+        cpp("if (!__request.ParseFromArray(__rpc_data.data(), static_cast<int>(__rpc_data.size())))");
         cpp("{{");
         cpp("return rpc::error::STUB_DESERIALISATION_ERROR();");
         cpp("}}");
@@ -2389,7 +2392,7 @@ namespace protobuf_generator
                 cpp("std::vector<char> param_buffer;");
                 cpp("const auto& proto_param = __request.{}();", param_name);
                 cpp("param_buffer.resize(proto_param.ByteSizeLong());");
-                cpp("(void)proto_param.SerializeToArray(param_buffer.data(), param_buffer.size());");
+                cpp("(void)proto_param.SerializeToArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("{}.protobuf_deserialise(param_buffer);", param_name);
                 cpp("}}");
             }
@@ -2567,7 +2570,7 @@ namespace protobuf_generator
                 cpp("std::vector<char> param_buffer;");
                 cpp("{}.protobuf_serialise(param_buffer);", param_name);
                 cpp("auto* proto_param = __response.mutable_{}();", param_name);
-                cpp("(void)proto_param->ParseFromArray(param_buffer.data(), param_buffer.size());");
+                cpp("(void)proto_param->ParseFromArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("}}");
             }
         }
@@ -2578,7 +2581,7 @@ namespace protobuf_generator
         // Serialize to buffer
         cpp("__buffer.clear();");
         cpp("__buffer.resize(__response.ByteSizeLong());");
-        cpp("if (!__response.SerializeToArray(__buffer.data(), __buffer.size()))");
+        cpp("if (!__response.SerializeToArray(__buffer.data(), static_cast<int>(__buffer.size())))");
         cpp("{{");
         cpp("return rpc::error::STUB_DESERIALISATION_ERROR();");
         cpp("}}");
@@ -2653,7 +2656,8 @@ namespace protobuf_generator
         std::string inner_content;
         if (extract_template_content(type_str, start, inner_content) == std::string::npos)
             return "";
-        std::string element_type, size_param;
+        std::string element_type;
+        std::string size_param;
         if (split_template_args(inner_content, element_type, size_param))
             return element_type;
         return "";
@@ -2869,6 +2873,7 @@ namespace protobuf_generator
             current = current->get_owner();
         }
         std::string result;
+        // NOLINTNEXTLINE(modernize-loop-convert): reverse_view is not available in this toolchain configuration.
         for (auto it = parts.rbegin(); it != parts.rend(); ++it)
         {
             result += "::";
@@ -3111,7 +3116,7 @@ namespace protobuf_generator
         // Serialize to buffer
         cpp("buffer.clear();");
         cpp("buffer.resize(msg.ByteSizeLong());");
-        cpp("if (!msg.SerializeToArray(buffer.data(), buffer.size()))");
+        cpp("if (!msg.SerializeToArray(buffer.data(), static_cast<int>(buffer.size())))");
         cpp("{{");
         cpp("throw std::runtime_error(\"Failed to serialize {} to protobuf\");", struct_name);
         cpp("}}");
@@ -3129,7 +3134,7 @@ namespace protobuf_generator
             cpp("protobuf::{} msg;", proto_message_name);
 
         // Parse from buffer
-        cpp("if (!msg.ParseFromArray(buffer.data(), buffer.size()))");
+        cpp("if (!msg.ParseFromArray(buffer.data(), static_cast<int>(buffer.size())))");
         cpp("{{");
         cpp("throw std::runtime_error(\"Failed to deserialize {} from protobuf\");", struct_name);
         cpp("}}");
@@ -3409,7 +3414,7 @@ namespace protobuf_generator
         // Serialize to buffer
         cpp("buffer.clear();");
         cpp("buffer.resize(msg.ByteSizeLong());");
-        cpp("if (!msg.SerializeToArray(buffer.data(), buffer.size()))");
+        cpp("if (!msg.SerializeToArray(buffer.data(), static_cast<int>(buffer.size())))");
         cpp("{{");
         cpp("throw std::runtime_error(\"Failed to serialize protobuf message\");");
         cpp("}}");
@@ -3428,7 +3433,7 @@ namespace protobuf_generator
             cpp("protobuf::{} msg;", concrete_name);
 
         // Parse from buffer
-        cpp("if (!msg.ParseFromArray(buffer.data(), buffer.size()))");
+        cpp("if (!msg.ParseFromArray(buffer.data(), static_cast<int>(buffer.size())))");
         cpp("{{");
         cpp("throw std::runtime_error(\"Failed to deserialize protobuf message\");");
         cpp("}}");

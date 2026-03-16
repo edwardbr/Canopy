@@ -1173,7 +1173,10 @@ namespace rpc
             using result_type = std::remove_extent_t<U>;
             return static_cast<result_type*>(ptr_);
         }
-        [[nodiscard]] long use_count() const noexcept { return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0; }
+        [[nodiscard]] long use_count() const noexcept
+        {
+            return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0;
+        }
         [[nodiscard]] bool unique() const noexcept { return use_count() == 1; }
         explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
@@ -1189,7 +1192,10 @@ namespace rpc
 
     private:
         // Internal accessors - NOT part of STL shared_ptr API
-        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const { return cb_; }
+        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const
+        {
+            return cb_;
+        }
         [[nodiscard]] element_type_impl* internal_get_ptr() const { return ptr_; }
         // Private constructor for constructing from existing control block (for friends only)
         shared_ptr(__rpc_internal::__shared_ptr_control_block::control_block_base* cb,
@@ -1504,7 +1510,10 @@ namespace rpc
             }
             return {};
         }
-        [[nodiscard]] long use_count() const noexcept { return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0; }
+        [[nodiscard]] long use_count() const noexcept
+        {
+            return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0;
+        }
         [[nodiscard]] bool expired() const noexcept
         {
             if (!cb_)
@@ -1529,7 +1538,10 @@ namespace rpc
 
     private:
         // Internal accessors - NOT part of STL weak_ptr API
-        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const { return cb_; }
+        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const
+        {
+            return cb_;
+        }
 
         template<typename U> friend class shared_ptr;
         template<typename U> friend class enable_shared_from_this;
@@ -2277,7 +2289,10 @@ namespace rpc
 
     private:
         // Internal accessors - NOT part of public API
-        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const noexcept { return cb_; }
+        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const noexcept
+        {
+            return cb_;
+        }
         [[nodiscard]] element_type_impl* internal_get_ptr() const noexcept { return ptr_; }
 
         template<typename Y> friend class shared_ptr;

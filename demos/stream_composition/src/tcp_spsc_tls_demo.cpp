@@ -165,6 +165,8 @@ namespace stream_composition
         // preventing shutdown_event from firing.
         // stream_transformer: TCP → SPSC buffering → TLS handshake
         // Returns nullopt if the TLS handshake fails, rejecting the connection.
+
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto tls_transformer = [tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm)
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {

@@ -41,8 +41,8 @@ namespace synchronous_generator
     };
 
     constexpr protocol_version_descriptor protocol_versions[] = {
-        {"RPC_V3", "rpc::VERSION_3", 3},
-        {"RPC_V2", "rpc::VERSION_2", 2},
+        {.macro = "RPC_V3", .symbol = "rpc::VERSION_3", .value = 3},
+        {.macro = "RPC_V2", .symbol = "rpc::VERSION_2", .value = 2},
     };
 
     enum print_type
@@ -172,7 +172,7 @@ namespace synchronous_generator
         std::ignore = is_const;
         std::ignore = count;
 
-        print_type pt = static_cast<print_type>(option);
+        auto pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
@@ -212,7 +212,7 @@ namespace synchronous_generator
         std::ignore = is_const;
         std::ignore = count;
 
-        print_type pt = static_cast<print_type>(option);
+        auto pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
@@ -259,7 +259,7 @@ namespace synchronous_generator
             throw std::runtime_error("MOVE does not support const vals");
         }
 
-        print_type pt = static_cast<print_type>(option);
+        auto pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
@@ -301,7 +301,7 @@ namespace synchronous_generator
             throw std::runtime_error("POINTER does not support out vals");
         }
 
-        print_type pt = static_cast<print_type>(option);
+        auto pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
@@ -340,7 +340,7 @@ namespace synchronous_generator
         {
             throw std::runtime_error("POINTER_REFERENCE does not support const out vals");
         }
-        print_type pt = static_cast<print_type>(option);
+        auto pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
@@ -381,7 +381,7 @@ namespace synchronous_generator
         std::ignore = is_const;
         std::ignore = count;
 
-        print_type pt = static_cast<print_type>(option);
+        auto pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
@@ -428,7 +428,7 @@ namespace synchronous_generator
 
         bool is_optimistic = object_type.find("rpc::optimistic_ptr") != std::string::npos;
 
-        print_type pt = static_cast<print_type>(option);
+        auto pt = static_cast<print_type>(option);
         switch (pt)
         {
         case PROXY_PREPARE_IN:
@@ -1521,7 +1521,8 @@ namespace synchronous_generator
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
             proxy("~__{0}_local_proxy() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
-            proxy("[[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const "
+            proxy("[[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal "
+                  "interface_id) const "
                   "override");
             proxy("{{");
             proxy("std::ignore = interface_id;");

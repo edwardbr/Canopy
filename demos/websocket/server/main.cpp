@@ -73,13 +73,14 @@ auto run_http_server(std::shared_ptr<coro::scheduler> scheduler,
     std::shared_ptr<streaming::tls::context> tls_ctx) -> coro::task<void>
 {
     auto stream_handler
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         = [service](std::shared_ptr<streaming::stream> stream) -> coro::task<std::shared_ptr<rpc::transport>>
     {
         websocket_demo::v1::http_client_connection connection(std::move(stream), service);
         co_return CO_AWAIT connection.handle();
     };
 
-    CO_AWAIT canopy::http_server::run_server(std::move(bind_address), port, scheduler, std::move(stream_handler), tls_ctx);
+    CO_AWAIT canopy::http_server::run_server(bind_address, port, scheduler, std::move(stream_handler), tls_ctx);
     co_return;
 }
 
@@ -155,5 +156,5 @@ auto main(int argc, char* argv[]) -> int
                                                                                            : coro::net::domain_t::ipv4;
     auto bind_address = coro::net::ip_address::from_string(cfg.get_host_string(), domain);
 
-    coro::sync_wait(coro::when_all(run_http_server(scheduler, std::move(bind_address), cfg.port, root_service, tls_ctx)));
+    coro::sync_wait(coro::when_all(run_http_server(scheduler, bind_address, cfg.port, root_service, tls_ctx)));
 }

@@ -20,7 +20,7 @@
 
 using namespace std::chrono_literals;
 
-extern std::weak_ptr<rpc::service> current_host_service;
+extern std::weak_ptr<rpc::service> current_host_service; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // an ocall for logging the test
 extern "C"

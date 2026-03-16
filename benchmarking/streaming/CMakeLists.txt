@@ -3,10 +3,8 @@
    All rights reserved.
 ]]
 #
-# Streaming Benchmark CMakeLists.txt
-# Measures raw stream throughput and round-trip latency for every stream type:
-#   spsc, tcp, io_uring (Linux), tls+spsc, ws+spsc, tls+ws+spsc
-# No transport or service layer is exercised.
+# Streaming Benchmark CMakeLists.txt Measures raw stream throughput and round-trip latency for every stream type: spsc,
+# tcp, io_uring (Linux), tls+spsc, ws+spsc, tls+ws+spsc No transport or service layer is exercised.
 #
 
 cmake_minimum_required(VERSION 3.24)

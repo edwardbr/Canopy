@@ -756,8 +756,8 @@ TEST_F(SerialiserTest, NestedStructProtobuf)
     scalar_test::something_more_complicated obj;
     obj.vector_val.push_back({1, "first"});
     obj.vector_val.push_back({2, "second"});
-    obj.map_val["key1"] = {10, "map_first"};
-    obj.map_val["key2"] = {20, "map_second"};
+    obj.map_val["key1"] = {.int_val = 10, .string_val = "map_first"};
+    obj.map_val["key2"] = {.int_val = 20, .string_val = "map_second"};
 
     auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(serialized.empty());
@@ -873,7 +873,7 @@ TEST_F(SerialiserTest, ToYasJsonWithArray)
     obj.int_val = 42;
     obj.string_val = "test_string";
 
-    std::array<char, 200> json_result = rpc::to_yas_json<std::array<char, 200>>(obj);
+    auto json_result = rpc::to_yas_json<std::array<char, 200>>(obj);
     EXPECT_FALSE(json_result.empty());
 
     EXPECT_THROW((rpc::to_yas_json<std::array<char, 10>>(obj)), std::runtime_error);
@@ -886,7 +886,7 @@ TEST_F(SerialiserTest, ToYasBinaryWithArray)
     obj.int_val = 42;
     obj.string_val = "test_string";
 
-    std::array<char, 200> binary_result = rpc::to_yas_binary<std::array<char, 200>>(obj);
+    auto binary_result = rpc::to_yas_binary<std::array<char, 200>>(obj);
     EXPECT_FALSE(binary_result.empty());
 
     EXPECT_THROW((rpc::to_yas_binary<std::array<char, 10>>(obj)), std::runtime_error);

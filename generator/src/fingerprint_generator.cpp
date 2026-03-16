@@ -4,6 +4,8 @@
  */
 #include "fingerprint_generator.h"
 #include "cpp_parser.h"
+#include <cassert>
+#include <cstdint>
 #include <filesystem>
 #include <sstream>
 
@@ -17,6 +19,21 @@ extern "C"
 
 namespace fingerprint
 {
+    namespace
+    {
+        uint64_t truncate_sha3_hash(const void* hash)
+        {
+            assert(hash);
+
+            const auto* bytes = static_cast<const uint8_t*>(hash);
+            uint64_t value = 0;
+            for (size_t i = 0; i < sizeof(value); ++i)
+            {
+                value |= static_cast<uint64_t>(bytes[i]) << (i * 8);
+            }
+            return value;
+        }
+    }
 
     const class_entity* find_type(std::string type_name, const class_entity& cls)
     {
@@ -241,7 +258,7 @@ namespace fingerprint
                     sha3_Update(&c, func->get_name().data(), func->get_name().length());
                     const auto* hash = sha3_Finalize(&c);
                     seed += "#cpp_quote";
-                    seed += std::to_string(*(uint64_t*)hash);
+                    seed += std::to_string(truncate_sha3_hash(hash));
                     continue;
                 }
                 if (func->get_entity_type() == entity_type::FUNCTION_PUBLIC)
@@ -404,6 +421,6 @@ namespace fingerprint
         sha3_Update(&c, seed.data(), seed.length());
         const auto* hash = sha3_Finalize(&c);
         // truncate and return generated hash
-        return *(uint64_t*)hash;
+        return truncate_sha3_hash(hash);
     }
 }

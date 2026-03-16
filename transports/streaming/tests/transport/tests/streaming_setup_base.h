@@ -26,6 +26,7 @@ protected:
 
     auto make_interface_setup_factory()
     {
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         return [use_host_in_child = this->use_host_in_child_](const rpc::shared_ptr<yyy::i_host>& host,
                    rpc::shared_ptr<yyy::i_example>& example,
                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
@@ -47,7 +48,10 @@ protected:
 public:
     ~streaming_setup_base() override = default;
 
-    [[nodiscard]] std::shared_ptr<rpc::stream_transport::transport> get_responder_transport() const { return responder_transport_; }
+    [[nodiscard]] std::shared_ptr<rpc::stream_transport::transport> get_responder_transport() const
+    {
+        return responder_transport_;
+    }
 
     CORO_TASK(bool) CoroSetUp()
     {
@@ -73,6 +77,7 @@ public:
                     .thread_count = 1,
                 }}));
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto setup_task = [this]() -> coro::task<void>
         {
             CO_AWAIT this->check_for_error(CoroSetUp());
@@ -93,6 +98,7 @@ public:
     virtual void tear_down()
     {
         bool shutdown_complete = false;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto shutdown_task = [&]() -> coro::task<void>
         {
             CO_AWAIT CoroTearDown();

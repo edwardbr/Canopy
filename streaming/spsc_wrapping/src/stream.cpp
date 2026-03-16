@@ -57,7 +57,7 @@ namespace streaming::spsc_wrapping
 
             // Pack bytes into an SPSC blob and push to recv_q_.
             streaming::spsc_queue::blob blob{};
-            uint32_t len = static_cast<uint32_t>(data.size());
+            auto len = static_cast<uint32_t>(data.size());
             std::memcpy(blob.data(), &len, streaming::spsc_queue::header_size);
             std::memcpy(blob.data() + streaming::spsc_queue::header_size, data.data(), data.size());
 
@@ -117,7 +117,7 @@ namespace streaming::spsc_wrapping
         -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         if (closed_)
-            co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+            co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
 
         // Serve leftover bytes from a previously oversized blob.
         if (!leftover_.empty())
@@ -125,7 +125,7 @@ namespace streaming::spsc_wrapping
             size_t to_copy = std::min(leftover_.size(), buffer.size());
             std::memcpy(buffer.data(), leftover_.data(), to_copy);
             leftover_.erase(leftover_.begin(), leftover_.begin() + static_cast<ptrdiff_t>(to_copy));
-            co_return {coro::net::io_status{coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+            co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
         }
 
         // Try to pop a blob from the receive queue.
@@ -135,14 +135,14 @@ namespace streaming::spsc_wrapping
             // Queue is empty — yield so recv_proxy_loop gets a chance to fill it,
             // then report timeout so the transport retries on its next iteration.
             co_await scheduler_->schedule();
-            co_return {coro::net::io_status{coro::net::io_status::kind::timeout}, {}};
+            co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
         }
 
         // Extract payload from the blob.
         uint32_t len = 0;
         std::memcpy(&len, blob.data(), streaming::spsc_queue::header_size);
         if (len == 0)
-            co_return {coro::net::io_status{coro::net::io_status::kind::ok}, {}};
+            co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, {}};
 
         size_t to_copy = std::min(static_cast<size_t>(len), buffer.size());
         std::memcpy(buffer.data(), blob.data() + streaming::spsc_queue::header_size, to_copy);
@@ -153,7 +153,7 @@ namespace streaming::spsc_wrapping
                 blob.data() + streaming::spsc_queue::header_size + static_cast<size_t>(len));
         }
 
-        co_return {coro::net::io_status{coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+        co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
     }
 
     // Outbound: push to send_q_ and return immediately.
@@ -161,25 +161,25 @@ namespace streaming::spsc_wrapping
     auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
-            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
 
         while (!buffer.empty())
         {
             size_t chunk = std::min(buffer.size(), streaming::spsc_queue::max_payload);
             streaming::spsc_queue::blob blob{};
-            uint32_t len = static_cast<uint32_t>(chunk);
+            auto len = static_cast<uint32_t>(chunk);
             std::memcpy(blob.data(), &len, streaming::spsc_queue::header_size);
             std::memcpy(blob.data() + streaming::spsc_queue::header_size, buffer.data(), chunk);
             while (!send_q_.push(blob))
             {
                 if (closed_)
-                    co_return coro::net::io_status{coro::net::io_status::kind::closed};
+                    co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
                 co_await scheduler_->schedule();
             }
             buffer = buffer.subspan(chunk);
         }
 
-        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
     }
 
     bool stream::is_closed() const

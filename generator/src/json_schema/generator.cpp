@@ -17,14 +17,11 @@
 #include <sstream>
 #include <algorithm>   // For std::find_if_not, std::reverse, std::find_if
 #include <cctype>      // For std::isspace, std::iscntrl
-#include <type_traits> // For underlying_type used with ALL_POSSIBLE_MEMBERS
+#include <type_traits> // For underlying_type used with all_possible_members
 #include <typeinfo>    // For dynamic_cast
 #include <stdexcept>   // For std::stoll exceptions, std::stoi
 #include <memory>      // For std::shared_ptr
 #include <variant>     // For storing different definition info types
-
-// Declare verboseStream if used globally by the generator/parser
-extern std::stringstream verboseStream;
 
 namespace json_schema
 {
@@ -120,7 +117,7 @@ namespace json_schema
                && current_entity_ptr->get_name() != "__global__")
         {
             parts.push_back(current_entity_ptr->get_name());
-            const class_entity* current_class_ptr = dynamic_cast<const class_entity*>(current_entity_ptr);
+            const auto* current_class_ptr = dynamic_cast<const class_entity*>(current_entity_ptr);
             if (current_class_ptr == nullptr)
                 break;
             const class_entity* owner = current_class_ptr->get_owner();
@@ -162,7 +159,7 @@ namespace json_schema
                     if (et == entity_type::TYPEDEF || et == entity_type::STRUCT || et == entity_type::ENUM
                         || et == entity_type::CLASS)
                     {
-                        const class_entity* found_direct_entity = dynamic_cast<const class_entity*>(element_ptr.get());
+                        const auto* found_direct_entity = dynamic_cast<const class_entity*>(element_ptr.get());
                         if (found_direct_entity)
                             return found_direct_entity;
                     }
@@ -371,10 +368,10 @@ namespace json_schema
             int64_t next_value = 0;
             std::vector<std::string> value_descriptions;
             using underlying = std::underlying_type<entity_type>::type;
-            const entity_type ALL_POSSIBLE_MEMBERS
+            const auto all_possible_members
                 = static_cast<entity_type>(static_cast<underlying>(entity_type::NAMESPACE_MEMBERS)
                                            | static_cast<underlying>(entity_type::STRUCTURE_MEMBERS));
-            for (const auto& element_ptr : ent.get_elements(ALL_POSSIBLE_MEMBERS))
+            for (const auto& element_ptr : ent.get_elements(all_possible_members))
             {
                 if (!element_ptr)
                     continue;
@@ -382,7 +379,7 @@ namespace json_schema
                 if (!enum_value_name.empty() && enum_value_name.find_first_of("{}[]() \t\n\r") == std::string::npos)
                 {
                     int64_t assigned_value = next_value;
-                    const function_entity* value_entity = dynamic_cast<const function_entity*>(element_ptr.get());
+                    const auto* value_entity = dynamic_cast<const function_entity*>(element_ptr.get());
                     if (value_entity)
                     {
                         std::string explicit_value_str = rpc_generator::clean_type_name(value_entity->get_return_type());
@@ -835,7 +832,7 @@ namespace json_schema
                 {
                     if (!element_ptr || element_ptr->get_entity_type() != entity_type::FUNCTION_METHOD)
                         continue;
-                    const function_entity* method = dynamic_cast<const function_entity*>(element_ptr.get());
+                    const auto* method = dynamic_cast<const function_entity*>(element_ptr.get());
                     if (!method)
                         continue;
                     std::string method_name = rpc_generator::clean_type_name(method->get_name());
@@ -843,8 +840,12 @@ namespace json_schema
                         continue;
                     std::string send_struct_name = qualified_name + "_" + method_name + "_send";
                     std::string receive_struct_name = qualified_name + "_" + method_name + "_receive";
-                    ordered_defs.push_back({send_struct_name, SyntheticMethodInfo{&current_entity, method, true}});
-                    ordered_defs.push_back({receive_struct_name, SyntheticMethodInfo{&current_entity, method, false}});
+                    ordered_defs.push_back({send_struct_name,
+                        SyntheticMethodInfo{
+                            .interface_entity = &current_entity, .method_entity = method, .is_send_struct = true}});
+                    ordered_defs.push_back({receive_struct_name,
+                        SyntheticMethodInfo{
+                            .interface_entity = &current_entity, .method_entity = method, .is_send_struct = false}});
                 }
             }
         }
@@ -867,7 +868,7 @@ namespace json_schema
             {
                 if (!element_ptr || element_ptr->is_in_import())
                     continue;
-                const class_entity* child_class = dynamic_cast<const class_entity*>(element_ptr.get());
+                const auto* child_class = dynamic_cast<const class_entity*>(element_ptr.get());
                 if (!child_class)
                     continue;
                 find_definable_entities(*child_class, ordered_defs);

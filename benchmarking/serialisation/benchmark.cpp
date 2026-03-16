@@ -93,7 +93,10 @@ namespace serialisation_benchmark
         rpc::encoding enc;
         const char* name;
 
-        template<typename T> [[nodiscard]] std::vector<uint8_t> serialise(const T& obj) const { return rpc::serialise(obj, enc); }
+        template<typename T> [[nodiscard]] std::vector<uint8_t> serialise(const T& obj) const
+        {
+            return rpc::serialise(obj, enc);
+        }
 
         template<typename T> std::string deserialise(const rpc::byte_span& data, T& obj) const
         {
@@ -326,8 +329,8 @@ namespace serialisation_benchmark
             obj.vector_val.push_back({1, "first"});
             obj.vector_val.push_back({2, "second"});
             obj.vector_val.push_back({3, "third"});
-            obj.map_val["key1"] = {10, "map_first"};
-            obj.map_val["key2"] = {20, "map_second"};
+            obj.map_val["key1"] = {.int_val = 10, .string_val = "map_first"};
+            obj.map_val["key2"] = {.int_val = 20, .string_val = "map_second"};
             bench_type("something_more_complicated", obj);
         }
         {

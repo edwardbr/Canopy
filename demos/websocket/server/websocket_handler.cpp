@@ -12,8 +12,8 @@ namespace websocket_demo
     namespace v1
     {
         CORO_TASK(std::shared_ptr<rpc::transport>)
-        http_client_connection::handle_websocket_upgrade(const canopy::http_server::request& parsed_request,
-            std::shared_ptr<streaming::stream> stream)
+        http_client_connection::handle_websocket_upgrade(
+            const canopy::http_server::request& parsed_request, std::shared_ptr<streaming::stream> stream)
         {
             auto transpt
                 = CO_AWAIT transport::make_server<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(

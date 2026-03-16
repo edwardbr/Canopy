@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <mutex>
 #include <example/example.h>
 
@@ -27,7 +28,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("baz",
-                    (uint64_t)this,
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -36,7 +37,7 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion((uint64_t)this,
+                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -72,7 +73,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("foo",
-                    (uint64_t)this,
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -80,7 +81,7 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion((uint64_t)this,
+                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -162,13 +163,13 @@ namespace marshalled_tests
         }
         CORO_TASK(error_code) receive_something_complicated_ref(xxx::something_complicated& val) override
         {
-            val = xxx::something_complicated{33, "22"};
+            val = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_complicated_ptr(xxx::something_complicated*& val) override
         {
             std::ignore = val;
-            val = new xxx::something_complicated{33, "22"};
+            val = new xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_complicated_in_out_ref(xxx::something_complicated& val) override
@@ -211,13 +212,13 @@ namespace marshalled_tests
         }
         CORO_TASK(error_code) receive_something_more_complicated_ref(xxx::something_more_complicated& val) override
         {
-            val.map_val["22"] = xxx::something_complicated{33, "22"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_more_complicated_ptr(xxx::something_more_complicated*& val) override
         {
             val = new xxx::something_more_complicated();
-            val->map_val["22"] = xxx::something_complicated{33, "22"};
+            val->map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code)
@@ -227,7 +228,7 @@ namespace marshalled_tests
                 RPC_INFO("got {}", val.map_val.begin()->first);
             else
                 RPC_ASSERT(!"value is null");
-            val.map_val["22"] = xxx::something_complicated{33, "23"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "23"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_multi_val(int val1, int val2) override
@@ -351,7 +352,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("multiple_inheritance",
-                    (uint64_t)this,
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -359,7 +360,7 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion((uint64_t)this,
+                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -395,7 +396,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_creation("example",
-                    (uint64_t)this,
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -403,7 +404,7 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion((uint64_t)this,
+                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }

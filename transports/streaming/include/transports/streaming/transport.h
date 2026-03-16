@@ -8,6 +8,7 @@
 #include <functional>
 #include <mutex>
 #include <queue>
+#include <type_traits>
 #include <unordered_map>
 
 #include <coro/coro.hpp>
@@ -142,8 +143,9 @@ namespace rpc::stream_transport
             std::uint64_t protocol_version, message_direction direction, SendPayload&& sendPayload, uint64_t sequence_number)
         {
             assert(direction);
+            using payload_type = std::remove_cvref_t<SendPayload>;
 
-            envelope_payload payload_envelope = {.payload_fingerprint = rpc::id<SendPayload>::get(protocol_version),
+            envelope_payload payload_envelope = {.payload_fingerprint = rpc::id<payload_type>::get(protocol_version),
                 .payload = rpc::to_yas_binary(sendPayload)};
             auto payload = rpc::to_yas_binary(payload_envelope);
 
@@ -190,7 +192,8 @@ namespace rpc::stream_transport
                 }
             }
 
-            send_payload(protocol_version, message_direction::send, std::move(sendPayload), sequence_number);
+            send_payload(
+                protocol_version, message_direction::send, std::forward<SendPayload>(sendPayload), sequence_number);
 
             CO_AWAIT res_payload.event; // wait for the reply
 
@@ -293,6 +296,7 @@ namespace rpc::stream_transport
         template<class T, class Handler> void add_typed_message_handler(Handler&& handler)
         {
             custom_message_handlers_.push_back(
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [fn = std::forward<Handler>(handler)](std::shared_ptr<activity_tracker> tracker,
                     envelope_prefix& prefix,
                     envelope_payload& payload) -> CORO_TASK(message_hook_result)
@@ -458,6 +462,7 @@ namespace rpc::stream_transport
     // the given stream. Pass the result to service::make_acceptor().
     inline rpc::transport_factory transport_factory(std::shared_ptr<streaming::stream> stream)
     {
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         return [stream = std::move(stream)](std::string name,
                    std::shared_ptr<rpc::service> svc,
                    rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
@@ -472,6 +477,7 @@ namespace rpc::stream_transport
     make_connection_callback(std::function<CORO_TASK(int)(
             const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
     {
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         return [fn = std::move(factory)](const std::string& name,
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)

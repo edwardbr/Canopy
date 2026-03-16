@@ -239,12 +239,11 @@ namespace comprehensive
             auto child_transport = std::make_shared<rpc::local::child_transport>("benchmark_child", root_service);
 
             child_transport->set_child_entry_point<i_data_processor, i_data_processor>(
-                [enc](const rpc::shared_ptr<i_data_processor>& parent,
+                [](const rpc::shared_ptr<i_data_processor>& parent,
                     rpc::shared_ptr<i_data_processor>& new_service,
                     const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
                 {
                     (void)parent;
-                    child_service_ptr->set_default_encoding(enc);
                     new_service = create_data_processor();
                     CO_RETURN rpc::error::OK();
                 });
@@ -351,11 +350,11 @@ namespace comprehensive
                 &queues->to_process_2, &queues->to_process_1, scheduler);
             auto transport_2 = CO_AWAIT service_2->make_acceptor<i_data_processor, i_data_processor>("spsc_transport_2",
                 rpc::stream_transport::transport_factory(std::move(stream_2)),
-                [&on_connected, enc](const rpc::shared_ptr<i_data_processor>&,
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                [&on_connected](const rpc::shared_ptr<i_data_processor>&,
                     rpc::shared_ptr<i_data_processor>& local,
                     const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
                 {
-                    svc->set_default_encoding(enc);
                     local = create_data_processor();
                     on_connected.set();
                     CO_RETURN rpc::error::OK();
@@ -419,11 +418,10 @@ namespace comprehensive
             auto listener = std::make_shared<streaming::listener>("server_transport",
                 std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", port}),
                 rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
-                    [enc](const rpc::shared_ptr<i_data_processor>&,
+                    [](const rpc::shared_ptr<i_data_processor>&,
                         rpc::shared_ptr<i_data_processor>& local,
                         const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
                     {
-                        svc->set_default_encoding(enc);
                         local = create_data_processor();
                         CO_RETURN rpc::error::OK();
                     }));
@@ -551,11 +549,10 @@ namespace comprehensive
             auto io_uring_listener = std::make_shared<streaming::listener>("io_uring_server_transport",
                 std::make_shared<streaming::io_uring::acceptor>(addr, port),
                 rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
-                    [enc](const rpc::shared_ptr<i_data_processor>&,
+                    [](const rpc::shared_ptr<i_data_processor>&,
                         rpc::shared_ptr<i_data_processor>& local_service,
                         const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
                     {
-                        service_ptr->set_default_encoding(enc);
                         local_service = create_data_processor();
                         CO_RETURN rpc::error::OK();
                     }));

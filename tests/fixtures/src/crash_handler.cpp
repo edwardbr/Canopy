@@ -417,7 +417,7 @@ namespace crash_handler
         std::vector<std::string> symbols;
 
         // Try backtrace_symbols first (fast but limited)
-        char** symbol_strings = backtrace_symbols(addresses.data(), addresses.size());
+        char** symbol_strings = backtrace_symbols(addresses.data(), static_cast<int>(addresses.size()));
 
         for (size_t i = 0; i < addresses.size(); ++i)
         {
@@ -506,12 +506,12 @@ namespace crash_handler
         // Get the base address of the executable to calculate relative address
         // For PIE executables, we need to subtract the base address
         Dl_info info;
-        uintptr_t addr_to_resolve = (uintptr_t)address;
+        auto addr_to_resolve = reinterpret_cast<uintptr_t>(address);
 
         if (dladdr(address, &info) != 0 && info.dli_fbase != nullptr)
         {
             // For shared libraries or PIE executables, calculate relative address
-            addr_to_resolve = (uintptr_t)address - (uintptr_t)info.dli_fbase;
+            addr_to_resolve = reinterpret_cast<uintptr_t>(address) - reinterpret_cast<uintptr_t>(info.dli_fbase);
         }
         // If dladdr fails, try the absolute address directly
 
@@ -525,10 +525,11 @@ namespace crash_handler
         commands.push_back(cmd1.str());
 
         // Strategy 2: Absolute address (for non-PIE)
-        if (addr_to_resolve != (uintptr_t)address)
+        if (addr_to_resolve != reinterpret_cast<uintptr_t>(address))
         {
             std::stringstream cmd2;
-            cmd2 << "addr2line -f -C -p -i -e " << exe_path << " 0x" << std::hex << (uintptr_t)address << " 2>/dev/null";
+            cmd2 << "addr2line -f -C -p -i -e " << exe_path << " 0x" << std::hex << reinterpret_cast<uintptr_t>(address)
+                 << " 2>/dev/null";
             commands.push_back(cmd2.str());
         }
 

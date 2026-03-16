@@ -98,8 +98,7 @@ function(
   get_filename_component(idl_dir ${idl} DIRECTORY)
   get_filename_component(idl_basename ${idl} NAME_WE)
 
-  # The subdirectory is extracted from the IDL path If idl has no directory (e.g., "example.idl"), use empty
-  # subdirectory
+  # The subdirectory is extracted from the IDL path If idl has no directory(e.g., "example.idl"), use empty subdirectory
   if("${idl_dir}" STREQUAL "")
     set(sub_directory ".")
   else()
@@ -278,6 +277,13 @@ function(
     set(PATHS_PARAMS ${PATHS_PARAMS} --suppress_catch_stub_exceptions)
   endif()
 
+  set(proto_proxy_src "")
+  if(generate_protobuf)
+    # Keep the placeholder proxy source beside the other generated outputs so all targets refer to a single stable path
+    # across source directories.
+    set(proto_proxy_src "${output_path}/src/${sub_directory}/${base_name}_proto_proxy.cpp")
+  endif()
+
   # Build the list of output files based on enabled formats
   set(GENERATOR_OUTPUTS ${full_header_path} ${full_proxy_path} ${full_stub_header_path} ${full_stub_path})
 
@@ -288,8 +294,18 @@ function(
   if(generate_protobuf)
     # Only the manifest and wrapper C++ file are direct generator outputs Individual .proto files are listed in
     # manifest.txt and compiled separately
-    list(APPEND GENERATOR_OUTPUTS ${full_protobuf_cpp_path} ${full_protobuf_manifest_path})
+    list(
+      APPEND
+      GENERATOR_OUTPUTS
+      ${full_protobuf_cpp_path}
+      ${full_protobuf_manifest_path}
+      ${proto_proxy_src})
+    set(GENERATOR_POST_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${proto_proxy_src})
+  else()
+    set(GENERATOR_POST_COMMANDS "")
   endif()
+
+  set_source_files_properties(${GENERATOR_OUTPUTS} PROPERTIES GENERATED TRUE)
 
   # Build generator command with conditional serialization flags
   set(SERIALIZATION_FLAGS "")
@@ -321,8 +337,10 @@ function(
 
   add_custom_command(
     OUTPUT ${GENERATOR_OUTPUTS}
-    COMMAND ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name} ${SERIALIZATION_FLAGS}
-            ${PATHS_PARAMS} ${ADDITIONAL_HEADERS} ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
+    COMMAND
+      ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name} ${SERIALIZATION_FLAGS}
+      ${PATHS_PARAMS} ${ADDITIONAL_HEADERS} ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
+      ${GENERATOR_POST_COMMANDS}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
     DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
@@ -348,10 +366,6 @@ function(
   if(generate_protobuf)
     set(proto_dir ${output_path}/src/${sub_directory}/protobuf)
     set(PROTO_MANIFEST "${proto_dir}/manifest.txt")
-
-    # This is a dummy file that ensures CMake has a "source" to track for the library
-    set(proto_proxy_src "${CMAKE_CURRENT_BINARY_DIR}/${name}_proto_proxy.cpp")
-    file(WRITE "${proto_proxy_src}" "// Generated proxy for ${name}\n")
 
     # The stamp file tracks when the internal compilation script has finished
     set(proto_stamp_file ${proto_dir}/.proto_compiled)
@@ -408,11 +422,21 @@ function(
       endif()
     endif()
 
-    # Mark wrapper files as GENERATED
-    set_source_files_properties("${full_protobuf_cpp_path}" PROPERTIES GENERATED TRUE)
-    set_source_files_properties("${proto_proxy_src}" PROPERTIES GENERATED TRUE)
+    # Mark wrapper files as GENERATED and skip linting because they are emitted by the protobuf generator.
+    set_source_files_properties("${full_protobuf_cpp_path}" PROPERTIES GENERATED TRUE SKIP_LINTING TRUE)
+    set_source_files_properties("${proto_proxy_src}" PROPERTIES GENERATED TRUE SKIP_LINTING TRUE)
 
-    # Define the library using the known wrapper, proxy, and all generated .pb.cc files
+    if(PROTO_PB_SOURCES)
+      # Protobuf's generated sources currently trigger noisy sign-compare warnings in bundled abseil headers under
+      # Clang. Suppress that warning for the generated .pb.cc files only so the project logs stay readable.
+      set_source_files_properties(
+        ${PROTO_PB_SOURCES}
+        PROPERTIES GENERATED TRUE
+                   SKIP_LINTING TRUE
+                   COMPILE_OPTIONS "-Wno-sign-compare;-Wno-deprecated-this-capture")
+    endif()
+
+    # Define the library using the known wrapper, proxy, and all generated.pb.cc files
     message(
       "    add_library(${name}_protobuf_generated STATIC
       ${full_protobuf_cpp_path}
@@ -438,7 +462,7 @@ function(
       target_link_libraries(${name}_protobuf_generated PRIVATE protobuf::libprotobuf)
     endif()
     # Also add the generated protobuf directory for the .pb.h files
-    target_include_directories(${name}_protobuf_generated PRIVATE ${proto_dir} ${output_path}/src)
+    target_include_directories(${name}_protobuf_generated SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
     add_dependencies(${name}_protobuf_generated ${name}_proto_compile ${name}_idl_generate)
   endif()
 
@@ -456,10 +480,10 @@ function(
   # Create the host IDL library
   add_library(${name}_idl STATIC ${IDL_SOURCES})
   target_compile_definitions(${name}_idl PRIVATE ${CANOPY_DEFINES})
-  target_include_directories(
-    ${name}_idl
-    PUBLIC "$<BUILD_INTERFACE:${output_path}>" "$<BUILD_INTERFACE:${output_path}/include>"
-    PRIVATE "${output_path}/include" ${CANOPY_INCLUDES} ${params_include_paths})
+  target_include_directories(${name}_idl SYSTEM PUBLIC "$<BUILD_INTERFACE:${output_path}>"
+                                                       "$<BUILD_INTERFACE:${output_path}/include>")
+  target_include_directories(${name}_idl SYSTEM PRIVATE "${output_path}" "${output_path}/include")
+  target_include_directories(${name}_idl PRIVATE ${CANOPY_INCLUDES} ${params_include_paths})
   target_compile_options(${name}_idl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_directories(${name}_idl PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET ${name}_idl PROPERTY COMPILE_PDB_NAME ${name}_idl)
@@ -479,7 +503,7 @@ function(
   if(generate_protobuf)
     if(TARGET protobuf::libprotobuf)
       target_link_libraries(${name}_idl PUBLIC protobuf::libprotobuf)
-      target_include_directories(${name}_idl PRIVATE ${proto_dir} ${output_path}/src)
+      target_include_directories(${name}_idl SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
       # Link the protobuf generated object library if it exists
       if(TARGET ${name}_protobuf_generated)
         target_link_libraries(${name}_idl PRIVATE ${name}_protobuf_generated)
@@ -512,10 +536,10 @@ function(
     # Create the enclave IDL library
     add_library(${name}_idl_enclave STATIC ${IDL_SOURCES})
     target_compile_definitions(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-    target_include_directories(
-      ${name}_idl_enclave
-      PUBLIC "$<BUILD_INTERFACE:${output_path}>" "$<BUILD_INTERFACE:${output_path}/include>"
-      PRIVATE "${output_path}/include" ${CANOPY_ENCLAVE_LIBCXX_INCLUDES} ${params_include_paths})
+    target_include_directories(${name}_idl_enclave SYSTEM PUBLIC "$<BUILD_INTERFACE:${output_path}>"
+                                                                 "$<BUILD_INTERFACE:${output_path}/include>")
+    target_include_directories(${name}_idl_enclave SYSTEM PRIVATE "${output_path}" "${output_path}/include")
+    target_include_directories(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES} ${params_include_paths})
 
     target_compile_options(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
     target_link_directories(${name}_idl_enclave PRIVATE ${SGX_LIBRARY_PATH})
@@ -536,7 +560,7 @@ function(
     if(generate_protobuf)
       if(TARGET protobuf::libprotobuf)
         target_link_libraries(${name}_idl_enclave PUBLIC protobuf::libprotobuf)
-        target_include_directories(${name}_idl_enclave PRIVATE ${proto_dir} ${output_path}/src)
+        target_include_directories(${name}_idl_enclave SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
         # Link the protobuf generated object library if it exists
         if(TARGET ${name}_protobuf_generated)
           target_link_libraries(${name}_idl_enclave PRIVATE ${name}_protobuf_generated)

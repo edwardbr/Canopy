@@ -65,7 +65,7 @@ using namespace marshalled_tests;
 #include "test_globals.h"
 #include "type_test_fixture.h"
 
-extern bool enable_multithreaded_tests;
+extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Test fixture for post functionality
 template<typename SetupType> using post_functionality_test = type_test<SetupType>;

@@ -279,14 +279,14 @@ namespace rpc
             if (end <= begin)
                 return 0;
 
-            uint8_t width = end - begin;
+            auto width = end - begin;
             if (width > 64u)
                 width = 64u;
 
             uint64_t value = 0;
-            uint8_t bit_offset = static_cast<uint8_t>(begin % 8u);
-            uint8_t start_byte = static_cast<uint8_t>((data.size() - 1u) - (begin / 8u));
-            uint8_t bytes_to_read = static_cast<uint8_t>((bit_offset + width + 7u) / 8u);
+            auto bit_offset = static_cast<uint8_t>(begin % 8u);
+            auto start_byte = static_cast<uint8_t>((data.size() - 1u) - (begin / 8u));
+            auto bytes_to_read = static_cast<uint8_t>((bit_offset + width + 7u) / 8u);
             for (uint8_t i = 0; i < bytes_to_read; ++i)
             {
                 value |= static_cast<uint64_t>(data[start_byte - i]) << (i * 8u);
@@ -308,9 +308,9 @@ namespace rpc
             if (width < 64u && value >= (uint64_t(1) << width))
                 return false;
 
-            uint8_t bit_offset = static_cast<uint8_t>(begin % 8u);
-            uint8_t start_byte = static_cast<uint8_t>((data.size() - 1u) - (begin / 8u));
-            uint8_t bytes_to_write = static_cast<uint8_t>((bit_offset + width + 7u) / 8u);
+            auto bit_offset = static_cast<uint8_t>(begin % 8u);
+            auto start_byte = static_cast<uint8_t>((data.size() - 1u) - (begin / 8u));
+            auto bytes_to_write = static_cast<uint8_t>((bit_offset + width + 7u) / 8u);
             uint64_t current = 0;
             for (uint8_t i = 0; i < bytes_to_write; ++i)
             {

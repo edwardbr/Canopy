@@ -36,6 +36,7 @@ namespace websocket_demo
                 return handle_rest_request(request);
             };
             handlers.websocket_upgrade_handler
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 = [this](const canopy::http_server::request& request,
                       std::shared_ptr<streaming::stream> websocket_stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
             {

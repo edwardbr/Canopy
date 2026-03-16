@@ -37,7 +37,7 @@ namespace streaming::io_uring_tcp
             std::coroutine_handle<> waiter{};
             // Storage for linked-timeout SQE. The kernel reads this at io_uring_enter
             // time, so it only needs to be valid until io_uring_enter returns.
-            __kernel_timespec timeout_ts{0, 0};
+            __kernel_timespec timeout_ts{.tv_sec = 0, .tv_nsec = 0};
         };
 
         int ring_fd{-1};
@@ -99,9 +99,9 @@ namespace streaming::io_uring_tcp
         {
             if (native_error == EAGAIN || native_error == EWOULDBLOCK)
             {
-                return coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again};
+                return coro::net::io_status{.type = coro::net::io_status::kind::would_block_or_try_again};
             }
-            return coro::net::io_status{coro::net::io_status::kind::native, native_error};
+            return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = native_error};
         }
 
         class operation_awaitable
@@ -750,7 +750,7 @@ namespace streaming::io_uring_tcp
     {
         if (closed_)
         {
-            co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
+            co_return std::pair{coro::net::io_status{.type = coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
         }
 
         while (true)
@@ -764,13 +764,14 @@ namespace streaming::io_uring_tcp
 
             if (result > 0)
             {
-                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::ok},
+                co_return std::pair{coro::net::io_status{.type = coro::net::io_status::kind::ok},
                     buffer.subspan(0, static_cast<size_t>(result))};
             }
             if (result == 0)
             {
                 closed_ = true;
-                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
+                co_return std::pair{
+                    coro::net::io_status{.type = coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
             }
 
             int native_error = static_cast<int>(-result);
@@ -785,9 +786,11 @@ namespace streaming::io_uring_tcp
                 // -ETIME:     linked timeout CQE (shouldn't reach here, but defensive).
                 if (closed_ || state_->stopping.load(std::memory_order_acquire))
                 {
-                    co_return std::pair{coro::net::io_status{coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
+                    co_return std::pair{
+                        coro::net::io_status{.type = coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
                 }
-                co_return std::pair{coro::net::io_status{coro::net::io_status::kind::timeout}, rpc::mutable_byte_span{}};
+                co_return std::pair{
+                    coro::net::io_status{.type = coro::net::io_status::kind::timeout}, rpc::mutable_byte_span{}};
             }
 
             closed_ = true;
@@ -799,7 +802,7 @@ namespace streaming::io_uring_tcp
     {
         if (closed_)
         {
-            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
         }
 
         while (!buffer.empty())
@@ -814,7 +817,7 @@ namespace streaming::io_uring_tcp
             if (result == 0)
             {
                 closed_ = true;
-                co_return coro::net::io_status{coro::net::io_status::kind::closed};
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
             }
 
             int native_error = static_cast<int>(-result);
@@ -831,7 +834,7 @@ namespace streaming::io_uring_tcp
             co_return translate_native_status(native_error);
         }
 
-        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
     }
 
     bool stream::is_closed() const

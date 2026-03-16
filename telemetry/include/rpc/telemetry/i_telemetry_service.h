@@ -318,7 +318,7 @@ namespace rpc
 #endif
 
     // Global telemetry service - defined in main.cpp (host) or set by enclave initialization
-    extern std::shared_ptr<i_telemetry_service> telemetry_service_;
+    extern std::shared_ptr<i_telemetry_service> telemetry_service_; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     // Simple function to get the global telemetry service
     inline std::shared_ptr<i_telemetry_service> get_telemetry_service()

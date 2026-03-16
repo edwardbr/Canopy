@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 #include <rpc/rpc.h>
+#include <cstdint>
 
 namespace rpc
 {
@@ -14,7 +15,7 @@ namespace rpc
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_stub_creation(zone_->get_zone_id(), id_, (uint64_t)target.get());
+            telemetry_service->on_stub_creation(zone_->get_zone_id(), id_, reinterpret_cast<std::uintptr_t>(target.get()));
 #endif
     }
     object_stub::~object_stub()

@@ -264,6 +264,7 @@ namespace rpc::local
         {
 
             child_entry_point_factory_fn_
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 = [child_entry_point_fn = std::move(child_entry_point_fn)](rpc::connection_settings input_descr,
                       rpc::interface_descriptor& output_descr,
                       const std::shared_ptr<child_transport>& parent,

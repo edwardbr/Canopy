@@ -5,7 +5,26 @@ project(websocket_server)
 
 find_package(OpenSSL)
 
+set(LLAMA_ALL_WARNINGS
+    OFF
+    CACHE BOOL "llama: enable all compiler warnings" FORCE)
+set(LLAMA_FATAL_WARNINGS
+    OFF
+    CACHE BOOL "llama: enable -Werror flag" FORCE)
 add_subdirectory(llama.cpp)
+
+foreach(llama_demo_target IN ITEMS llama common cpp-httplib build_info)
+  if(TARGET ${llama_demo_target})
+    set_target_properties(${llama_demo_target} PROPERTIES CXX_CLANG_TIDY "")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      target_compile_options(${llama_demo_target} PRIVATE -w)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      target_compile_options(${llama_demo_target} PRIVATE -w)
+    elseif(MSVC)
+      target_compile_options(${llama_demo_target} PRIVATE /W0)
+    endif()
+  endif()
+endforeach()
 
 add_executable(
   websocket_server
