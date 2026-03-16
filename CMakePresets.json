@@ -7,45 +7,45 @@
             "binaryDir": "build",
             "generator": "Ninja",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "CANOPY_BUILD_ENCLAVE": "OFF",
-                "CANOPY_BUILD": "ON",
-                "CANOPY_BUILD_TEST": "ON",
                 "c-ares_DIR": "/home/edward/projects/rpc2/submodules/c-ares",
+                "CANOPY_ADD_REF_COUNT_CHECKS": "OFF",
+                "CANOPY_ASSERT_ON_LOGGER_ERROR": "OFF",
+                "CANOPY_BUILD_BENCHMARKING": "ON",
+                "CANOPY_BUILD_COROUTINE": "OFF",
+                "CANOPY_BUILD_DEMOS": "ON",
+                "CANOPY_BUILD_ENCLAVE": "OFF",
+                "CANOPY_BUILD_TEST": "ON",
+                "CANOPY_BUILD": "ON",
+                "CANOPY_DEBUG_ADDRESS": "OFF",
+                "CANOPY_DEBUG_ALL": "OFF",
+                "CANOPY_DEBUG_GEN": "OFF",
+                "CANOPY_DEBUG_LEAK": "OFF",
+                "CANOPY_DEBUG_THREAD": "OFF",
+                "CANOPY_DEBUG_UNDEFINED": "OFF",
+                "CANOPY_ENABLE_CLANG_TIDY_FIX": "OFF",
+                "CANOPY_ENABLE_CLANG_TIDY": "OFF",
+                "CANOPY_ENABLE_COVERAGE": "OFF",
+                "CANOPY_HANG_ON_FAILED_ASSERT": "OFF",
+                "CANOPY_LOGGING_LEVEL": "2",
+                "CANOPY_STANDALONE": "ON",
+                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
+                "CANOPY_USE_LOGGING": "ON",
+                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
+                "CANOPY_USE_TELEMETRY": "OFF",
+                "CANOPY_USE_THREAD_LOCAL_LOGGING": "OFF",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-                "CMAKE_INSTALL_PREFIX": "/home/edward/projects/rpc2/submodules/c-ares",
                 "CMAKE_RULE_MESSAGES": "OFF",
                 "CMAKE_VERBOSE_MAKEFILE": "OFF",
-                "CANOPY_DEBUG_GEN": "OFF",
                 "LIBCORO_BUILD_EXAMPLES": "OFF",
                 "LIBCORO_BUILD_TESTS": "OFF",
                 "LIBCORO_EXTERNAL_DEPENDENCIES": "OFF",
+                "LIBCORO_FEATURE_NETWORKING": "OFF",
                 "LIBCORO_FEATURE_TLS": "OFF",
-                "CANOPY_STANDALONE": "ON",
                 "SGX_DIR:FILEPATH": "/home/edward/sgx/sgxsdk",
                 "SGX_HW": "OFF",
-                "SGX_MODE": "debug",
-                "CANOPY_USE_LOGGING": "OFF",
-                "CANOPY_USE_TELEMETRY": "OFF",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
-                "CANOPY_USE_THREAD_LOCAL_LOGGING": "OFF",
-                "LIBCORO_FEATURE_NETWORKING": "OFF",
-                "CANOPY_HANG_ON_FAILED_ASSERT": "OFF",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
-                "CANOPY_BUILD_DEMOS": "OFF",
-                "CANOPY_DEBUG_LEAK": "OFF",
-                "CANOPY_DEBUG_ADDRESS": "OFF",
-                "CANOPY_DEBUG_THREAD": "OFF",
-                "CANOPY_DEBUG_UNDEFINED": "OFF",
-                "CANOPY_DEBUG_ALL": "OFF",
-                "CANOPY_ENABLE_COVERAGE": "OFF",
-                "CANOPY_ENABLE_CLANG_TIDY": "OFF",
-                "CANOPY_ENABLE_CLANG_TIDY_FIX": "OFF",
-                "CANOPY_ADD_REF_COUNT_CHECKS": "OFF",
-                "CANOPY_ASSERT_ON_LOGGER_ERROR": "OFF",
-                "CANOPY_LOGGING_LEVEL": "2",
-                "CMAKE_C_COMPILER": "clang",
-                "CMAKE_CXX_COMPILER": "clang++"
+                "SGX_MODE": "debug"
             }
         },
         {
@@ -53,201 +53,108 @@
             "binaryDir": "build_debug",
             "inherits": "Base",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
                 "BUILD_TYPE": "debug",
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "ON",
                 "CANOPY_USE_TELEMETRY": "ON",
                 "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
-                "CANOPY_DEBUG_DEFAULT_DESTRUCTOR": "ON",
-                "CANOPY_ADD_REF_COUNT_CHECKS": "OFF",
-                "CANOPY_ASSERT_ON_LOGGER_ERROR": "OFF",
                 "CANOPY_LOGGING_LEVEL": "1"
             }
         },
         {
-            "name": "Debug_ASAN",
-            "binaryDir": "build_debug",
-            "inherits": "Base",
+            "name": "Debug_Agressive",
+            "inherits": "Debug",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
+                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
+                "CANOPY_DEBUG_DEFAULT_DESTRUCTOR": "ON",
+                "CANOPY_ADD_REF_COUNT_CHECKS": "ON",
+                "CANOPY_ASSERT_ON_LOGGER_ERROR": "OFF"
+            }
+        },
+        {
+            "name": "Debug_ASAN",
+            "inherits": "Debug",
+            "cacheVariables": {
                 "CANOPY_USE_LOGGING": "OFF",
                 "CANOPY_USE_TELEMETRY": "OFF",
                 "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
                 "CANOPY_DEBUG_ADDRESS": "ON"
             }
         },
         {
             "name": "Debug-clang-18",
-            "binaryDir": "build_debug",
-            "inherits": "Base",
+            "inherits": "Debug",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "ON",
-                "CANOPY_USE_TELEMETRY": "ON",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
                 "CMAKE_C_COMPILER": "clang-18",
-                "CMAKE_CXX_COMPILER": "clang++-18",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON"
+                "CMAKE_CXX_COMPILER": "clang++-18"
             }
         },
         {
             "name": "Debug_GCC",
-            "binaryDir": "build_debug",
-            "inherits": "Base",
+            "inherits": "Debug",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "ON",
-                "CANOPY_USE_TELEMETRY": "ON",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
                 "CMAKE_C_COMPILER": "gcc",
                 "CMAKE_CXX_COMPILER": "g++"
-            }
-        },
-        {
-            "name": "Coroutine_Debug",
-            "inherits": "Base",
-            "binaryDir": "build_coroutine_debug",
-            "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "ON",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "ON",
-                "CANOPY_USE_TELEMETRY": "ON",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
-                "CANOPY_BUILD_DEMOS": "ON",
-                "CANOPY_LOGGING_LEVEL": "1"
-            }
-        },
-        {
-            "name": "Coroutine_Debug_ASAN",
-            "inherits": "Base",
-            "binaryDir": "build_coroutine_debug",
-            "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "ON",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "OFF",
-                "CANOPY_USE_TELEMETRY": "OFF",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
-                "CANOPY_BUILD_DEMOS": "OFF",
-                "CANOPY_DEBUG_ADDRESS": "ON"
-            }
-        },
-        {
-            "name": "Coroutine_Debug-GCC",
-            "inherits": "Base",
-            "binaryDir": "build_coroutine_debug",
-            "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "ON",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "ON",
-                "CANOPY_USE_TELEMETRY": "ON",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
-                "CANOPY_BUILD_DEMOS": "ON",
-                "CMAKE_C_COMPILER": "gcc",
-                "CMAKE_CXX_COMPILER": "g++"
-            }
-        },
-        {
-            "name": "Debug_with_coroutines_no_logging",
-            "inherits": "Base",
-            "binaryDir": "build_coroutine_debug",
-            "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "ON",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "OFF",
-                "CANOPY_USE_TELEMETRY": "OFF",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
-                "CANOPY_BUILD_DEMOS": "ON"
             }
         },
         {
             "name": "Debug_Coverage",
             "inherits": "Debug",
-            "binaryDir": "build_debug_coverage",
             "cacheVariables": {
-                "CANOPY_ENABLE_COVERAGE": "ON",
-                "CANOPY_BUILD_DEMOS": "OFF"
-            }
-        },
-        {
-            "name": "Coroutine_Debug_Coverage",
-            "inherits": "Coroutine_Debug",
-            "binaryDir": "build_coroutine_coverage",
-            "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "ON",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_LOGGING": "ON",
-                "CANOPY_USE_TELEMETRY": "ON",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "ON",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
-                "CANOPY_BUILD_DEMOS": "ON",
                 "CANOPY_ENABLE_COVERAGE": "ON"
             }
         },
         {
-            "name": "Debug_multithreaded",
-            "inherits": "Base",
-            "binaryDir": "build_debug",
+            "name": "Debug_Hang_On_Assert",
+            "inherits": "Debug",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CANOPY_USE_TELEMETRY": "ON",
-                "CANOPY_USE_THREAD_LOCAL_LOGGING": "ON",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "ON"
-            }
-        },
-        {
-            "name": "Debug_multithreaded_hang",
-            "inherits": "Base",
-            "binaryDir": "build_debug",
-            "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "BUILD_TYPE": "debug",
-                "CMAKE_BUILD_TYPE": "Debug",
                 "CANOPY_USE_TELEMETRY": "OFF",
-                "CANOPY_USE_THREAD_LOCAL_LOGGING": "OFF",
                 "CANOPY_HANG_ON_FAILED_ASSERT": "OFF"
             }
         },
         {
-            "name": "SGX_Debug",
+            "name": "Debug_Coroutine",
             "inherits": "Debug",
-            "binaryDir": "build_sgx_debug",
+            "binaryDir": "build_debug_coroutine",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "CANOPY_BUILD_ENCLAVE": "ON",
-                "SGX_HW": "ON",
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CANOPY_BUILD_COROUTINE": "ON"
             }
         },
         {
-            "name": "SGX_Sim_Debug",
-            "binaryDir": "build_sgx_sim_debug",
-            "inherits": "Debug",
+            "name": "Debug_Coroutine_ASAN",
+            "inherits": "Debug_Coroutine",
             "cacheVariables": {
-                "CANOPY_USE_TELEMETRY": "ON",
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "CANOPY_BUILD_ENCLAVE": "ON",
-                "SGX_HW": "OFF",
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CANOPY_DEBUG_ADDRESS": "ON"
+            }
+        },
+        {
+            "name": "Debug_Coroutine-GCC",
+            "inherits": "Debug_Coroutine",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "Debug_Coroutines_With_No_Logging",
+            "inherits": "Debug_Coroutine",
+            "cacheVariables": {
+                "CANOPY_USE_LOGGING": "OFF",
+                "CANOPY_USE_TELEMETRY": "OFF",
+                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF"
+            }
+        },
+        {
+            "name": "Debug_Coroutine_With_Full_Logging",
+            "inherits": "Debug_Coroutine",
+            "cacheVariables": {
+                "CANOPY_LOGGING_LEVEL": "0"
+            }
+        },
+        {
+            "name": "Debug_Coroutine_Coverage",
+            "inherits": "Debug_Coroutine",
+            "cacheVariables": {
+                "CANOPY_ENABLE_COVERAGE": "ON"
             }
         },
         {
@@ -255,18 +162,16 @@
             "inherits": "Base",
             "binaryDir": "build_release",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
                 "BUILD_TYPE": "release",
+                "CMAKE_BUILD_TYPE": "Release",
                 "SGX_HW": "OFF",
-                "CMAKE_BUILD_TYPE": "Release"
+                "CANOPY_LOGGING_INFO": "2"
             }
         },
         {
             "name": "Release-clang-18",
-            "binaryDir": "build_release",
-            "inherits": "Base",
+            "inherits": "Release",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
                 "BUILD_TYPE": "release",
                 "SGX_HW": "OFF",
                 "CMAKE_BUILD_TYPE": "Release",
@@ -275,22 +180,10 @@
             }
         },
         {
-            "name": "SGX_Release",
-            "inherits": "Release",
-            "binaryDir": "build_sgx_release",
-            "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
-                "CANOPY_BUILD_ENCLAVE": "ON",
-                "SGX_HW": "ON",
-                "SGX_MODE": "release"
-            }
-        },
-        {
             "name": "Release_SGX_Sim",
             "inherits": "Release",
-            "binaryDir": "build_sgx_sim_release",
+            "binaryDir": "build_release_sgx_sim",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "OFF",
                 "CANOPY_BUILD_ENCLAVE": "ON",
                 "SGX_HW": "OFF",
                 "CMAKE_BUILD_TYPE": "Release",
@@ -298,51 +191,56 @@
             }
         },
         {
-            "name": "Release_with_coroutines_no_logging",
+            "name": "Release_Coroutines",
             "inherits": "Release",
-            "binaryDir": "build_coroutine_release",
+            "binaryDir": "build_release_coroutine",
             "cacheVariables": {
                 "CANOPY_BUILD_COROUTINE": "ON",
-                "CMAKE_BUILD_TYPE": "Release",
-                "CANOPY_USE_LOGGING": "OFF",
-                "CANOPY_USE_TELEMETRY": "OFF",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
-                "CANOPY_BUILD_DEMOS": "ON"
+                "CMAKE_BUILD_TYPE": "Release"
             }
         },
         {
-            "name": "Coroutine_Release_with_Info_logging",
-            "inherits": "Coroutine_Debug",
+            "name": "Release_Coroutine_with_No_logging",
+            "inherits": "Release_Coroutines",
             "cacheVariables": {
-                "CANOPY_LOGGING_INFO": "2",
-                "CANOPY_BUILD_COROUTINE": "ON",
-                "CMAKE_BUILD_TYPE": "Release",
-                "CANOPY_USE_LOGGING": "ON",
-                "CANOPY_USE_TELEMETRY": "OFF",
-                "CANOPY_BUILD_DEMOS": "ON"
+                "CANOPY_USE_LOGGING": "OFF"
             }
         },
         {
             "name": "Release_with_coroutines_GCC",
-            "inherits": "Release",
-            "binaryDir": "build_coroutine_release",
+            "inherits": "Release_Coroutines",
             "cacheVariables": {
-                "CANOPY_BUILD_COROUTINE": "ON",
-                "CMAKE_BUILD_TYPE": "Release",
-                "CANOPY_USE_LOGGING": "OFF",
-                "CANOPY_USE_TELEMETRY": "OFF",
-                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
-                "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
                 "CMAKE_C_COMPILER": "gcc",
-                "CMAKE_CXX_COMPILER": "g++",
-                "CANOPY_BUILD_DEMOS": "ON"
+                "CMAKE_CXX_COMPILER": "g++"
             }
         },
         {
-            "name": "Coroutine_Debug_full_logging",
-            "inherits": "Coroutine_Debug",
+            "name": "Debug_SGX",
+            "inherits": "Debug",
+            "binaryDir": "build_debug_sgx",
             "cacheVariables": {
-                "CANOPY_LOGGING_LEVEL": "0"
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "SGX_HW": "ON"
+            }
+        },
+        {
+            "name": "Debug_SGX_Sim",
+            "binaryDir": "build_debug_sgx_sim",
+            "inherits": "Debug",
+            "cacheVariables": {
+                "CANOPY_USE_TELEMETRY": "ON",
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "SGX_HW": "OFF"
+            }
+        },
+        {
+            "name": "Release_SGX",
+            "inherits": "Release",
+            "binaryDir": "build_release_sgx",
+            "cacheVariables": {
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "SGX_HW": "ON",
+                "SGX_MODE": "release"
             }
         }
     ],
@@ -359,12 +257,12 @@
             ]
         },
         {
-            "name": "Coroutine_Debug_Coverage",
-            "configurePreset": "Coroutine_Debug_Coverage"
+            "name": "Debug_Coroutine_Coverage",
+            "configurePreset": "Debug_Coroutine_Coverage"
         },
         {
-            "name": "Coroutine_Debug_Coverage_Report",
-            "configurePreset": "Coroutine_Debug_Coverage",
+            "name": "Debug_Coroutine_Coverage_Report",
+            "configurePreset": "Debug_Coroutine_Coverage",
             "targets": [
                 "coverage-html"
             ]
@@ -382,8 +280,8 @@
             }
         },
         {
-            "name": "Coroutine_Debug_Coverage",
-            "configurePreset": "Coroutine_Debug_Coverage",
+            "name": "Debug_Coroutine_Coverage",
+            "configurePreset": "Debug_Coroutine_Coverage",
             "execution": {
                 "jobs": 1
             },
@@ -411,19 +309,19 @@
             ]
         },
         {
-            "name": "Coroutine_Debug_Coverage",
+            "name": "Debug_Coroutine_Coverage",
             "steps": [
                 {
                     "type": "configure",
-                    "name": "Coroutine_Debug_Coverage"
+                    "name": "Debug_Coroutine_Coverage"
                 },
                 {
                     "type": "build",
-                    "name": "Coroutine_Debug_Coverage"
+                    "name": "Debug_Coroutine_Coverage"
                 },
                 {
                     "type": "build",
-                    "name": "Coroutine_Debug_Coverage_Report"
+                    "name": "Debug_Coroutine_Coverage_Report"
                 }
             ]
         }

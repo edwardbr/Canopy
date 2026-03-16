@@ -79,6 +79,10 @@ if(CANOPY_BUILD_DEMOS)
   add_subdirectory(demos)
 endif()
 
+if(CANOPY_BUILD_BENCHMARKING)
+  add_subdirectory(benchmarking)
+endif()
+
 if(CANOPY_ENABLE_COVERAGE)
   include(CoverageUtilities)
   canopy_add_coverage_targets(rpc_test "*")
