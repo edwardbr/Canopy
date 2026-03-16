@@ -741,7 +741,7 @@ namespace synchronous_generator
             }
             proxy("{{");
 
-            proxy("auto __rpc_op = object_proxy_.get_nullable();");
+            proxy("auto __rpc_op = get_object_proxy();");
             proxy("auto __rpc_sp = __rpc_op->get_service_proxy();");
             proxy("auto __rpc_encoding = __rpc_sp->get_encoding();");
             proxy("auto __rpc_version = __rpc_sp->get_remote_rpc_version();");
@@ -1560,7 +1560,7 @@ namespace synchronous_generator
                 }
 
                 proxy("{{");
-                proxy("auto ptr = ptr_.lock();");
+                proxy("auto ptr = get_ptr();");
                 proxy("if(!ptr)");
                 proxy("{{");
                 proxy("CO_RETURN rpc::error::OBJECT_GONE();");
@@ -1623,7 +1623,7 @@ namespace synchronous_generator
         proxy("  rpc::interface_proxy<{}>(std::move(object_proxy))", interface_name);
         proxy("{{");
         proxy("#ifdef CANOPY_USE_TELEMETRY");
-        proxy("auto __rpc_op = object_proxy_.get_nullable();");
+        proxy("auto __rpc_op = get_object_proxy();");
         proxy("auto __rpc_sp = __rpc_op->get_service_proxy();");
         proxy("if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)");
         proxy("{{");
@@ -1643,7 +1643,7 @@ namespace synchronous_generator
         proxy("#ifdef CANOPY_USE_TELEMETRY");
         proxy("if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)");
         proxy("{{");
-        proxy("auto __rpc_op = object_proxy_.get_nullable();");
+        proxy("auto __rpc_op = get_object_proxy();");
         proxy("auto __rpc_sp = __rpc_op->get_service_proxy();");
         proxy("telemetry_service->on_interface_proxy_deletion("
               "__rpc_sp->get_zone_id(), "

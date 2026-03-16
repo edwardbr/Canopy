@@ -1,4 +1,7 @@
 WarningsAsErrors: 'readability-isolate-declaration,  cppcoreguidelines-init-variables'
 Checks: '-*,misc-non-private-member-variables-in-classes'
 HeaderFilterRegex: '.*'
-ExcludeHeaderFilterRegex: '.*/submodules/.*'
+ExcludeHeaderFilterRegex: '.*/submodules/.*|.*/_deps/.*'
+CheckOptions:
+  - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
+    value: 'true'

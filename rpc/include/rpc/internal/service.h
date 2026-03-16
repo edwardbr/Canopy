@@ -141,7 +141,7 @@ namespace rpc
      */
     class service : public i_marshaller, public std::enable_shared_from_this<rpc::service>
     {
-    protected:
+    private:
         const zone zone_id_;
         std::string name_;
 
@@ -730,7 +730,6 @@ namespace rpc
      */
     class root_service : public service
     {
-    protected:
         zone_id_allocator zone_allocator_;
 
     public:

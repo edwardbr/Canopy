@@ -48,7 +48,6 @@ namespace secret_llama
 
         class loaded_model
         {
-        protected:
             llm_model model_config_;
 
         public:
