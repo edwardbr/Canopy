@@ -59,7 +59,7 @@ namespace streaming::tls
             return;
         }
 
-        RPC_INFO("TLS context initialized with certificate: {}", cert_file);
+        RPC_DEBUG("TLS context initialized with certificate: {}", cert_file);
     }
 
     context::~context()
@@ -86,7 +86,7 @@ namespace streaming::tls
         if (!verify_peer)
             SSL_CTX_set_verify(ctx_, SSL_VERIFY_NONE, nullptr);
 
-        RPC_INFO("TLS client context initialized (verify_peer={})", verify_peer);
+        RPC_DEBUG("TLS client context initialized (verify_peer={})", verify_peer);
     }
 
     client_context::~client_context()
@@ -203,7 +203,7 @@ namespace streaming::tls
             if (result == 1)
             {
                 handshake_complete_ = true;
-                RPC_INFO("TLS handshake completed successfully");
+                RPC_DEBUG("TLS handshake completed successfully");
                 co_return true;
             }
 
@@ -259,7 +259,7 @@ namespace streaming::tls
             if (result == 1)
             {
                 handshake_complete_ = true;
-                RPC_INFO("TLS client handshake completed successfully");
+                RPC_DEBUG("TLS client handshake completed successfully");
                 co_return true;
             }
 

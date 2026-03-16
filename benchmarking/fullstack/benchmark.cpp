@@ -6,16 +6,17 @@
 /*
  *   Benchmark Demo
  *   Tests transfer performance between two zones across a matrix of:
- *   - Transports (local, spsc, tcp)
+ *   - Transports (local, spsc, tcp) [coroutine build]
+ *   - Transports (local only) [non-coroutine build]
  *   - Serialization formats
  *   - Blob sizes
  *
  *   Measures the middle 80% of 1000 RPC calls (drops first/last 10%).
  *
  *   To build and run:
- *   1. cmake --preset Coroutine_Debug
+ *   1. cmake --preset Coroutine_Debug -DCANOPY_BUILD_BENCHMARKING=ON
  *   2. cmake --build build --target benchmark
- *   3. ./build/output/debug/demos/comprehensive/benchmark
+ *   3. ./build/output/benchmark
  */
 
 #include <demo_impl.h>
@@ -23,7 +24,6 @@
 #include <comprehensive/comprehensive_stub.h>
 
 #include <transports/local/transport.h>
-#include <streaming/listener.h>
 
 #include <algorithm>
 #include <atomic>
@@ -172,7 +172,6 @@ namespace comprehensive
             }
         }
 
-#ifdef CANOPY_BUILD_COROUTINE
         CORO_TASK(int)
         run_benchmark_calls(rpc::shared_ptr<i_data_processor> remote,
             const std::vector<uint8_t>& payload,
@@ -219,11 +218,22 @@ namespace comprehensive
         }
 
         CORO_TASK(benchmark_result)
-        run_local_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size)
+        run_local_benchmark(
+#ifdef CANOPY_BUILD_COROUTINE
+            std::shared_ptr<coro::scheduler> scheduler,
+#endif
+            rpc::encoding enc,
+            size_t blob_size)
         {
             benchmark_result result{};
 
-            auto root_service = std::make_shared<rpc::root_service>("benchmark_root", rpc::DEFAULT_PREFIX, scheduler);
+            auto root_service = std::make_shared<rpc::root_service>("benchmark_root",
+                rpc::DEFAULT_PREFIX
+#ifdef CANOPY_BUILD_COROUTINE
+                ,
+                scheduler
+#endif
+            );
             root_service->set_default_encoding(enc);
 
             auto child_transport = std::make_shared<rpc::local::child_transport>("benchmark_child", root_service);
@@ -240,7 +250,7 @@ namespace comprehensive
                 });
 
             rpc::shared_ptr<i_data_processor> remote_service;
-            rpc::shared_ptr<i_data_processor> input_service; // = create_data_processor();
+            rpc::shared_ptr<i_data_processor> input_service;
 
             const auto error = CO_AWAIT root_service->connect_to_zone(
                 "benchmark_child", child_transport, input_service, remote_service);
@@ -264,6 +274,7 @@ namespace comprehensive
             CO_RETURN result;
         }
 
+#ifdef CANOPY_BUILD_COROUTINE
         struct spsc_queues
         {
             streaming::spsc_queue::queue_type to_process_2;
@@ -646,8 +657,12 @@ namespace comprehensive
         void print_header()
         {
             fmt::print("Benchmark: 1000 RPC calls per test, middle 80% (drop first/last 10%)\n");
+#ifdef CANOPY_BUILD_COROUTINE
             fmt::print(
                 "Warmup: local=10 calls, spsc=20 calls, io_uring=100 calls, tcp=100 calls (not included in timing)\n");
+#else
+            fmt::print("Warmup: local=10 calls (not included in timing)\n");
+#endif
             fmt::print("Note: Throughput shown as 'N/A' when avg time < 0.5us (insufficient timing precision)\n");
             fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");
             fmt::print("-----------------------------------------------------------------------------------------------"
@@ -672,11 +687,6 @@ int main()
     std::cout << "RPC++ Comprehensive Demo - Benchmark\n";
     std::cout << "====================================\n\n";
 
-#ifndef CANOPY_BUILD_COROUTINE
-    std::cout << "Benchmark requires CANOPY_BUILD_COROUTINE=ON\n";
-    std::cout << "Please configure with: cmake --preset Coroutine_Debug\n";
-    return 1;
-#else
     using namespace comprehensive::v1;
 
     const std::vector<encoding_info> encodings = {
@@ -686,11 +696,6 @@ int main()
     };
 
     // Test sizes from 64 bytes to 1 MB to investigate throughput scaling
-    // Throughput drop at larger sizes may indicate:
-    // - Cache effects (L1/L2/L3 cache sizes)
-    // - Memory copy overhead becoming dominant
-    // - Queue/buffer saturation
-    // - Serialization overhead
     const std::vector<size_t> blob_sizes = {
         64,     // 64 B
         256,    // 256 B
@@ -706,6 +711,7 @@ int main()
 
     print_header();
 
+#ifdef CANOPY_BUILD_COROUTINE
     auto local_scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
         coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{.thread_count = 2},
@@ -773,10 +779,24 @@ int main()
             print_stats("io_uring", enc.name, blob_size, result.stats);
         }
     }
+#else
+    for (const auto& enc : encodings)
+    {
+        for (size_t blob_size : blob_sizes)
+        {
+            auto result = run_local_benchmark(enc.enc, blob_size);
+            if (result.error != rpc::error::OK())
+            {
+                fmt::print("local  | {:>18} | {:>9} | error {}\n", enc.name, blob_size, result.error);
+                continue;
+            }
+            print_stats("local", enc.name, blob_size, result.stats);
+        }
+    }
+#endif
 
     print_footer();
     return 0;
-#endif
 }
 
 void rpc_log(int level, const char* str, size_t sz)

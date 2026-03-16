@@ -28,7 +28,6 @@ Canopy is a Remote Procedure Call library for modern C++ that enables type-safe 
 - **`/transport/`** - Transport implementations (tcp, spsc, etc.)
 - **`/tests/`** - Test suite
   - `tests/common` - Shared fixtures
-  - `tests/test_enclave` + `tests/test_host` - SGX orchestration
   - `tests/fuzz_test` - Fuzz assets
   - `tests/idls/` - Test IDL files
 - **`/telemetry/`** - Optional telemetry/logging subsystem
@@ -36,7 +35,6 @@ Canopy is a Remote Procedure Call library for modern C++ that enables type-safe 
   - `Canopy.cmake` - Main build configuration
   - `Linux.cmake` - Linux-specific settings
   - `Windows.cmake` - Windows-specific settings
-  - `SGX.cmake` - SGX enclave support (included when CANOPY_BUILD_ENCLAVE=ON)
   - `CanopyGenerate.cmake` - IDL code generation macros
   - `FindSGX.cmake` - SGX SDK finder module
 - **`/documents/`** - Documentation (see Documentation Structure below)
@@ -75,11 +73,7 @@ CANOPY_STANDALONE=ON              # Standalone build mode
 ### Available CMake Presets
 - **`Debug`** - Standard debug build (no coroutines) with logging/telemetry hooks enabled
 - **`Coroutine_Debug`** - Debug build with coroutine pipeline (proxies emit `coro::task<T>` signatures)
-- **`SGX_Debug`** - Debug build with SGX hardware enclave support
-- **`SGX_Sim_Debug`** - Debug build with SGX simulation mode
 - **`Release`** - Optimized release build
-- **`SGX_Release`** - Release build with SGX hardware support
-
 
 ## Blocking and Coroutine support
 - Supports both blocking and coroutine functionallity 
@@ -258,17 +252,16 @@ Generator code: `/generator/src/synchronous_generator.cpp`
 5. Update documentation
 
 ## Development Workflow
-
+1. do not remove old comments unless they are wrong
 
 ### Build Commands
 ```bash
 # Configure with a preset
 cmake --preset Debug                    # Host build with logging/telemetry
 cmake --preset Coroutine_Debug          # Enable coroutine pipeline
-cmake --preset SGX_Debug                # SGX enclave support
 
 # Build core library
-cmake --build build --parallel 32 --
+cmake --build build --
 
 # Regenerate interfaces after IDL edits
 cmake --build build --target rpc_generator
@@ -276,13 +269,7 @@ cmake --build build --target <interface_name>_idl
 
 # Build and run tests
 cmake --build build --target <test_name>
-./build/output/debug/<test_name>
-
-# Execute all tests
-ctest --test-dir build --output-on-failure
-
-# Run SGX tests
-ctest --tests-regex enclave
+./build_<build_type>/output/<test_name>
 
 # Enable coverage (review build/coverage before large merges)
 cmake --preset Debug -DENABLE_COVERAGE=ON
@@ -300,10 +287,6 @@ rpc_test should be run with --telemetry-console to get more telemetry informatio
   - **Integration Tests**: Full IDL→C++ generation pipeline
   - **JSON Schema Tests**: Metadata extraction and schema validation
   - **Hierarchical Zone Tests**: Multi-level zone creation and cross-zone marshalling
-
-**SGX Tests**:
-- Run `cmake --preset SGX_Debug` then `ctest --tests-regex enclave`
-- Never gate enclave tests into default CI
 
 ### Coroutine Support
 
