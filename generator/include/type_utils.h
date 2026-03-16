@@ -15,7 +15,7 @@
 class class_entity;
 class attributes;
 
-namespace rpc_generator
+namespace generator
 {
     // Unified parameter type classification (shared across all generators)
     enum class param_type
@@ -243,4 +243,4 @@ namespace rpc_generator
         uint64_t& count,
         std::string& output);
 
-} // namespace rpc_generator
+} // namespace generator

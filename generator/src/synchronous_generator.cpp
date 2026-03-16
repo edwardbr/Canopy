@@ -67,7 +67,7 @@ namespace synchronous_generator
     };
 
     // Polymorphic renderer adapter that implements base_renderer interface
-    class calling_renderer : public rpc_generator::base_renderer
+    class calling_renderer : public generator::base_renderer
     {
     public:
         calling_renderer() = default;
@@ -606,7 +606,7 @@ namespace synchronous_generator
     {
         // UNIFIED: Use polymorphic renderer with print_type option
         calling_renderer r;
-        return rpc_generator::do_in_param_unified(
+        return generator::do_in_param_unified(
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
@@ -621,7 +621,7 @@ namespace synchronous_generator
     {
         // UNIFIED: Use polymorphic renderer with print_type option
         calling_renderer r;
-        return rpc_generator::do_out_param_unified(
+        return generator::do_out_param_unified(
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
@@ -1470,7 +1470,7 @@ namespace synchronous_generator
                 {
                     std::string type_name = parameter.get_type();
                     std::string reference_modifiers;
-                    rpc_generator::strip_reference_modifiers(type_name, reference_modifiers);
+                    generator::strip_reference_modifiers(type_name, reference_modifiers);
 
                     bool optimistic = false;
                     std::shared_ptr<class_entity> obj;

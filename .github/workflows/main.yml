@@ -77,19 +77,19 @@ jobs:
         working-directory: build_release/output
         run: ./rpc_test
       - name: CMake configure (Coroutine Debug)
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Coroutine_Debug
+        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Debug_Coroutine
       - name: Build (Coroutine Debug)
-        run: cmake --build build_coroutine_debug
+        run: cmake --build build_debug_coroutine
       - name: Test RPC (Coroutine Debug)
-        working-directory: build_coroutine_debug/output
+        working-directory: build_debug_coroutine/output
         run: ./rpc_test
       - name: CMake configure (Coroutine Release)
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Release_with_coroutines_no_logging
+        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Debug_Coroutines_With_No_Logging
       - name: Build (Coroutine Release)
-        run: cmake --build build_coroutine_release
+        run: cmake --build build_release_coroutine
       - name: Test RPC (Coroutine Release)
-        working-directory: build_coroutine_release/output
+        working-directory: build_release_coroutine/output
         run: ./rpc_test
       - name: Test Serialiser (Coroutine Release)
-        working-directory: build_coroutine_release/output
+        working-directory: build_release_coroutine/output
         run: ./serialiser_test

@@ -36,11 +36,11 @@ comprehensive/
 
 ```bash
 # Configure with coroutines (required for TCP and SPSC transports)
-cmake --preset Coroutine_Debug
+cmake --preset Debug_Coroutine
 
 # Build the core library and generator
 cmake --build build --target rpc
-cmake --build build --target rpc_generator
+cmake --build build --target generator
 
 # Generate IDL code (after creating the demo.idl generation target)
 cmake --build build --target demo_idl
@@ -269,7 +269,7 @@ CORO_TASK(error_code) my_operation()
 
 ### Build Errors
 - **"websocket_demo.h not found"**: Generate IDL code first with `cmake --build build --target demo_idl`
-- **"TCP/SPSC requires coroutines"**: Use `Coroutine_Debug` preset
+- **"TCP/SPSC requires coroutines"**: Use `Debug_Coroutine` preset
 
 ### Runtime Errors
 - **OBJECT_NOT_FOUND**: Check if object was released while reference held

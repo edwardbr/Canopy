@@ -25,9 +25,9 @@
  *   direction (receive_consumer_loop / send_producer_loop).
  *
  *   Build:
- *       cmake --preset Coroutine_Debug
- *       cmake --build build_coroutine_debug --target tcp_spsc_tls_demo
- *       ./build_coroutine_debug/output/debug/demos/stream_composition/tcp_spsc_tls_demo
+ *       cmake --preset Debug_Coroutine
+ *       cmake --build build_debug_coroutine --target tcp_spsc_tls_demo
+ *       ./build_debug_coroutine/output/debug/demos/stream_composition/tcp_spsc_tls_demo
  */
 
 #include <echo_impl.h>
@@ -362,7 +362,7 @@ int main(int argc, char* argv[])
     RPC_INFO("============================================");
 
 #ifndef CANOPY_BUILD_COROUTINE
-    RPC_ERROR("This demo requires coroutines. Build with: cmake --preset Coroutine_Debug");
+    RPC_ERROR("This demo requires coroutines. Build with: cmake --preset Debug_Coroutine");
     return 1;
 #else
     args::ArgumentParser parser("stream_composition demo: i_echo over TCP → SPSC → TLS.");

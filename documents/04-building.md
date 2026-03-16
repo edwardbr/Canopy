@@ -65,7 +65,7 @@ cmake --list-presets
 |--------|-------------|
 | `Debug` | Standard debug build with logging/telemetry |
 | `Debug_ASAN` | Debug build with AddressSanitizer |
-| `Coroutine_Debug` | Debug with C++20 coroutines enabled |
+| `Debug_Coroutine` | Debug with C++20 coroutines enabled |
 | `Coroutine_Debug_ASAN` | Coroutine debug with AddressSanitizer |
 | `Debug_with_coroutines_no_logging` | Coroutines without logging overhead |
 | `Debug_Coverage` | Debug build with gcov coverage flags enabled |
@@ -144,7 +144,7 @@ cmake --build build --target generator  # IDL generator only
 
 ```bash
 # Configure with coroutines enabled
-cmake --preset Coroutine_Debug
+cmake --preset Debug_Coroutine
 
 # Build
 cmake --build build --parallel $(nproc)
@@ -259,7 +259,7 @@ cmake --build build --target rpc_enclave   # Enclave library
 ### Generator
 
 ```bash
-cmake --build build --target rpc_generator  # IDL code generator
+cmake --build build --target generator  # IDL code generator
 ```
 
 ### Transports
@@ -294,7 +294,7 @@ Canopy has comprehensive AddressSanitizer (ASan) support for detecting memory sa
 | Preset | Description | Binary Directory |
 |--------|-------------|------------------|
 | `Debug_ASAN` | Standard debug build with ASan | `build_debug` |
-| `Coroutine_Debug_ASAN` | Coroutine build with ASan | `build_coroutine_debug` |
+| `Coroutine_Debug_ASAN` | Coroutine build with ASan | `build_debug_coroutine` |
 
 ### Building with AddressSanitizer
 
@@ -305,7 +305,7 @@ cmake --build build_debug --parallel $(nproc)
 
 # Coroutine build with ASan
 cmake --preset Coroutine_Debug_ASAN
-cmake --build build_coroutine_debug --parallel $(nproc)
+cmake --build build_debug_coroutine --parallel $(nproc)
 ```
 
 ### Running Tests with AddressSanitizer
@@ -453,7 +453,7 @@ build/
 │   │   └── tests/       # Test executables
 │   └── release/         # Release builds
 ├── generated/           # IDL-generated code
-├── generator/           # rpc_generator executable
+├── generator/           # generator executable
 ├── lib/                 # Intermediate build files
 └── CMakeFiles/          # CMake configuration
 ```

@@ -359,7 +359,7 @@ Zone 2: Application Code
 2. CMake generates target
    └─ comprehensive_idl
 
-3. rpc_generator parses IDL
+3. generator parses IDL
    └─ Uses idlparser library
    └─ Extracts interfaces, methods, attributes
 

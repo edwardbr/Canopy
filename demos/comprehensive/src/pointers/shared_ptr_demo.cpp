@@ -33,7 +33,7 @@
  *      The total reference count is distributed across zones.
  *
  *   To build and run:
- *   1. cmake --preset Debug (or Coroutine_Debug)
+ *   1. cmake --preset Debug (or Debug_Coroutine)
  *   2. cmake --build build --target shared_ptr_demo
  *   3. ./build/output/debug/demos/comprehensive/shared_ptr_demo
  */

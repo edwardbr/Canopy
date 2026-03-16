@@ -186,7 +186,7 @@ namespace json_schema
             else if (args_str[i] == ',' && depth == 0)
             {
                 std::string arg = args_str.substr(arg_start, i - arg_start);
-                rpc_generator::trim_string(arg);
+                generator::trim_string(arg);
                 if (!arg.empty())
                 {
                     args.push_back(arg);
@@ -197,7 +197,7 @@ namespace json_schema
 
         // Add the last argument
         std::string last_arg = args_str.substr(arg_start);
-        rpc_generator::trim_string(last_arg);
+        generator::trim_string(last_arg);
         if (!last_arg.empty())
         {
             args.push_back(last_arg);
@@ -240,7 +240,7 @@ namespace json_schema
                     if (func_entity)
                     {
                         std::string member_type = func_entity->get_return_type();
-                        rpc_generator::trim_string(member_type);
+                        generator::trim_string(member_type);
 
                         // Look for simple identifiers that could be template parameters
                         // Template parameters are typically single words without :: or special chars
@@ -257,13 +257,13 @@ namespace json_schema
                             if (pos != std::string::npos)
                             {
                                 clean_type.erase(pos, 5);
-                                rpc_generator::trim_string(clean_type);
+                                generator::trim_string(clean_type);
                             }
                             pos = clean_type.find("volatile");
                             if (pos != std::string::npos)
                             {
                                 clean_type.erase(pos, 8);
-                                rpc_generator::trim_string(clean_type);
+                                generator::trim_string(clean_type);
                             }
 
                             // Check if it looks like a template parameter (single identifier)
@@ -397,7 +397,7 @@ namespace json_schema
             // Parse template name and arguments
             size_t template_start = clean_type_name.find('<');
             std::string template_name = clean_type_name.substr(0, template_start);
-            rpc_generator::trim_string(template_name);
+            generator::trim_string(template_name);
 
             // Try to find the template definition
             if (root.find_class(template_name, struct_def))
@@ -517,7 +517,7 @@ namespace json_schema
                                 if (start < end)
                                 {
                                     std::string inner_type = raw_type_name.substr(start, end - start);
-                                    rpc_generator::trim_string(inner_type);
+                                    generator::trim_string(inner_type);
 
                                     writer.write_key("items");
                                     writer.open_object();
@@ -550,7 +550,7 @@ namespace json_schema
                                 if (comma != std::string::npos && comma < end)
                                 {
                                     std::string value_type = raw_type_name.substr(comma + 1, end - comma - 1);
-                                    rpc_generator::trim_string(value_type);
+                                    generator::trim_string(value_type);
 
                                     writer.write_key("items");
                                     writer.open_object();
@@ -850,7 +850,7 @@ namespace json_schema
         json_writer& writer,
         std::set<std::string>& visited_types)
     {
-        std::string idl_type_name_cleaned = rpc_generator::clean_type_name(idl_type_name);
+        std::string idl_type_name_cleaned = generator::clean_type_name(idl_type_name);
         if (idl_type_name_cleaned.empty())
         {
             writer.open_object();
@@ -862,7 +862,7 @@ namespace json_schema
         }
 
         // Handle char* specially
-        if (rpc_generator::is_char_star(idl_type_name_cleaned) || idl_type_name_cleaned == "char*")
+        if (generator::is_char_star(idl_type_name_cleaned) || idl_type_name_cleaned == "char*")
         {
             writer.open_object();
             std::string description = attribs.get_value("description");
@@ -877,8 +877,8 @@ namespace json_schema
 
         // Strip modifiers
         std::string ignored_modifiers;
-        rpc_generator::strip_reference_modifiers(idl_type_name_cleaned, ignored_modifiers);
-        idl_type_name_cleaned = rpc_generator::unconst(idl_type_name_cleaned);
+        generator::strip_reference_modifiers(idl_type_name_cleaned, ignored_modifiers);
+        idl_type_name_cleaned = generator::unconst(idl_type_name_cleaned);
 
         // Check for template types (containers)
         std::vector<std::string> template_args = parse_template_arguments(idl_type_name_cleaned);
@@ -887,7 +887,7 @@ namespace json_schema
             // Extract container name
             size_t template_start = idl_type_name_cleaned.find('<');
             std::string container_name = idl_type_name_cleaned.substr(0, template_start);
-            rpc_generator::trim_string(container_name);
+            generator::trim_string(container_name);
 
             // Handle common STL containers
             if ((container_name == "std::vector" || container_name == "std::list" || container_name == "std::set"
@@ -993,20 +993,20 @@ namespace json_schema
             writer.write_raw_property("deprecated", "true");
 
         // Use enhanced type checking
-        if (rpc_generator::is_int8(idl_type_name_cleaned) || rpc_generator::is_uint8(idl_type_name_cleaned)
-            || rpc_generator::is_int16(idl_type_name_cleaned) || rpc_generator::is_uint16(idl_type_name_cleaned)
-            || rpc_generator::is_int32(idl_type_name_cleaned) || rpc_generator::is_uint32(idl_type_name_cleaned)
-            || rpc_generator::is_int64(idl_type_name_cleaned) || rpc_generator::is_uint64(idl_type_name_cleaned)
-            || rpc_generator::is_long(idl_type_name_cleaned) || rpc_generator::is_ulong(idl_type_name_cleaned)
+        if (generator::is_int8(idl_type_name_cleaned) || generator::is_uint8(idl_type_name_cleaned)
+            || generator::is_int16(idl_type_name_cleaned) || generator::is_uint16(idl_type_name_cleaned)
+            || generator::is_int32(idl_type_name_cleaned) || generator::is_uint32(idl_type_name_cleaned)
+            || generator::is_int64(idl_type_name_cleaned) || generator::is_uint64(idl_type_name_cleaned)
+            || generator::is_long(idl_type_name_cleaned) || generator::is_ulong(idl_type_name_cleaned)
             || idl_type_name_cleaned == "int" || idl_type_name_cleaned == "char")
         {
             writer.write_string_property("type", "integer");
         }
-        else if (rpc_generator::is_float(idl_type_name_cleaned) || rpc_generator::is_double(idl_type_name_cleaned))
+        else if (generator::is_float(idl_type_name_cleaned) || generator::is_double(idl_type_name_cleaned))
         {
             writer.write_string_property("type", "number");
         }
-        else if (rpc_generator::is_bool(idl_type_name_cleaned))
+        else if (generator::is_bool(idl_type_name_cleaned))
         {
             writer.write_string_property("type", "boolean");
         }

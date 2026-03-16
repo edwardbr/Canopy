@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /var/home/edward/projects/Canopy/build_coroutine_debug
+cd /var/home/edward/projects/Canopy/build_debug_coroutine
 
 # Enable leak detection with suppressions, suppress protobuf container-overflow
 export ASAN_OPTIONS="detect_leaks=1:detect_container_overflow=0"

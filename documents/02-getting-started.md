@@ -374,7 +374,7 @@ Enable coroutines for async/await patterns:
 ### CMake Configuration
 
 ```cmake
-cmake --preset Coroutine_Debug -DCMAKE_BUILD_TYPE=Debug
+cmake --preset Debug_Coroutine -DCMAKE_BUILD_TYPE=Debug
 ```
 
 ### Coroutine Main Program

@@ -259,7 +259,7 @@ After porting, ensure all tests pass in both blocking and coroutine modes:
 
 ```bash
 # Coroutine mode
-cmake --preset Coroutine_Debug
+cmake --preset Debug_Coroutine
 cmake --build build --target all
 ctest --test-dir build
 

@@ -7,378 +7,232 @@ All rights reserved.
 
 ## Git Policy
 
-**IMPORTANT: DO NOT perform any git operations in this project without user authorization.**
+**Do not run git commands in this repository unless the user explicitly asks for them.**
 
-- **DO NOT** run git commands without explicit authorization
+- Do not fetch, pull, push, rebase, commit, stash, reset, or inspect git state without authorization.
+- If a task would normally end with git operations, stop after local verification and report what remains.
+
+## Source Of Truth
+
+The source of truth is the live repository state:
+
+- `CMakeLists.txt`
+- `CMakePresets.json`
+- files under `rpc/`, `generator/`, `transports/`, `streaming/`, `tests/`, `types/`, and `telemetry/`
+
+Do not rely on `documents/` for correctness. It may be useful for background, but it is not authoritative.
 
 ## Overview
 
-Canopy is a Remote Procedure Call library for modern C++ that enables type-safe communication across different execution contexts (in-process, inter-process, remote machines, embedded devices, SGX enclaves). The system uses Interface Definition Language (IDL) files to generate C++ proxy/stub code with full JSON schema generation capabilities.
+Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files. It supports multiple transport layers, optional coroutine builds, JSON schema metadata, enclave-related builds, demos, and benchmarks.
 
-## Project Structure
+## Repository Structure
 
-### Core Directories
-- **`/rpc/`** - Core RPC library implementation
-  - Headers in `rpc/include/rpc`
-  - Implementations in `rpc/src` (mirror the API tree)
-- **`/generator/`** - IDL code generator (creates C++ from .idl files)
-- **`/submodules/idlparser/`** - IDL parsing engine
-  - AST Classes in `coreclasses.h` (entity, interface, attributes)
-  - String extraction functions: `extract_string_literal()`, `extract_multiline_string_literal()`
-- **`/transport/`** - Transport implementations (tcp, spsc, etc.)
-- **`/tests/`** - Test suite
-  - `tests/common` - Shared fixtures
-  - `tests/fuzz_test` - Fuzz assets
-  - `tests/idls/` - Test IDL files
-- **`/telemetry/`** - Optional telemetry/logging subsystem
-- **`/cmake/`** - CMake build configuration modules
-  - `Canopy.cmake` - Main build configuration
-  - `Linux.cmake` - Linux-specific settings
-  - `Windows.cmake` - Windows-specific settings
-  - `CanopyGenerate.cmake` - IDL code generation macros
-  - `FindSGX.cmake` - SGX SDK finder module
-- **`/documents/`** - Documentation (see Documentation Structure below)
-- **`/build/`** - Build output (disposable per preset)
-  - `build/generated` - IDL outputs and proxies
+### Main Directories
 
-## Documentation Structure
-There is detailed documentation in the documents folder if you need more information
+- `rpc/` - core RPC library
+  - public headers: `rpc/include/rpc`
+  - implementation: `rpc/src`
+  - generated/public interfaces: `rpc/interfaces`
+- `generator/` - IDL code generator
+- `transports/` - transport implementations
+  - current transport subdirectories include `direct`, `local`, `mock_test`, `sgx`, `streaming`
+- `streaming/` - coroutine-only streaming stack and tests
+- `types/` - additional types, including JSON support
+- `telemetry/` - telemetry/logging support
+- `tests/` - host tests, fixtures, fuzz tests, unit tests, schema tests, serializer tests
+- `subcomponents/` - reusable support components such as `network_config`, `spsc_queue`, and `http_server`
+- `submodules/` - third-party dependencies and parser components, including `idlparser`
+- `demos/` - example programs
+- `benchmarking/` - benchmark targets
+- `cmake/` - CMake modules
 
-### Key Files
-- **`CMakeLists.txt`** - Main build configuration (version 2.2.0)
-- **`README.md`** - Project documentation and build instructions
-- **`CMakePresets.json`** - CMake preset configurations
-- **`.vscode/settings.json`** - VSCode configuration (file associations only)
-- **`.clang-format`** - WebKit base, 4-space indent, type-aligned pointers
+### Important Notes
+
+- Build outputs are preset-specific. Do not assume a single `build/` directory.
+- Generated files appear under the active binary directory, typically in `<binaryDir>/generated/`.
 
 ## Build System
 
-### CMake Configuration
-- **Generator**: Ninja
-- **C++ Standard**: C++20 when working with coroutines, otherwise C++17
-- **Toolchain Requirements**: Clang ≥10, GCC ≥9.4, MSVC 2019
-- **Presets**: Defined in `CMakePresets.json`
+### Baseline
 
-### Base Configuration
-The "Base" preset provides default settings inherited by other presets:
-```cmake
-CANOPY_BUILD_COROUTINE=OFF            # Coroutines disabled by default
-CANOPY_BUILD_ENCLAVE=OFF              # SGX enclave support disabled
-CANOPY_BUILD_TEST=ON                  # Test building enabled
-CANOPY_DEBUG_GEN=OFF              # Debug code generation disabled by default
-CMAKE_EXPORT_COMPILE_COMMANDS=ON # Export compile commands for tooling
-CANOPY_STANDALONE=ON              # Standalone build mode
-```
+- CMake minimum version: `3.24`
+- Generator: `Ninja`
+- Default compilers in presets: `clang` / `clang++`
+- Language standard:
+  - C++17 by default
+  - C++20 when `CANOPY_BUILD_COROUTINE=ON`
 
-### Available CMake Presets
-- **`Debug`** - Standard debug build (no coroutines) with logging/telemetry hooks enabled
-- **`Coroutine_Debug`** - Debug build with coroutine pipeline (proxies emit `coro::task<T>` signatures)
-- **`Release`** - Optimized release build
+### Configure Presets
 
-## Blocking and Coroutine support
-- Supports both blocking and coroutine functionallity 
-- macros CORO_TASK CO_RETURN CO_AWAIT are there to resolve to blocking and coroutines depending on the build flags 
+Current top-level configure presets are defined in `CMakePresets.json`. The commonly useful ones are:
 
-## Coding Style & Naming Conventions
+- `Debug` -> binary dir `build_debug`
+- `Debug_Agressive`
+- `Debug_ASAN`
+- `Debug-clang-18`
+- `Debug_GCC`
+- `Debug_Coverage`
+- `Debug_Hang_On_Assert`
+- `Debug_Coroutine` -> binary dir `build_debug_coroutine`
+- `Debug_Coroutine_ASAN`
+- `Debug_Coroutine-GCC`
+- `Debug_Coroutines_With_No_Logging`
+- `Debug_Coroutine_With_Full_Logging`
+- `Debug_Coroutine_Coverage`
+- `Debug_Coroutine_Tidy`
+- `Release` -> binary dir `build_release`
+- `Release-clang-18`
+- `Release_Coroutines` -> binary dir `build_release_coroutine`
+- `Release_Coroutine_with_No_logging`
+- `Release_with_coroutines_GCC`
+- `Debug_SGX`
+- `Debug_SGX_Sim`
+- `Release_SGX`
+- `Release_SGX_Sim`
 
-### Code Formatting
-- Apply `.clang-format` (WebKit base, 4-space indent, type-aligned pointers) via `clang-format -i` each time you finish making changes to a file
-- Baseline code targets C++17; coroutine builds rely on C++20 toolchain
-- Lowercase camel back with curly brackets on a new line, being dyslexic it makes it easier to read
+Use the exact preset names from `CMakePresets.json`. Do not normalize or rename them in instructions.
 
-### Naming Conventions
-- **Interfaces**: Follow `Name` pattern
-- **Generated Proxies**: Become `Name_proxy`
-- **Generated Stubs**: Become `Name_stub`
-- **Services**: Use `Name_service` pattern
-- **Telemetry Components**: Use `*_telemetry_service` pattern
-- **IDL Interfaces**: By convention all interfaces are named with a leading `i_` in IDL (not used for non-marshalled interfaces)
+### Build Behaviour
 
-**IDL-Derived Interfaces** (using `rpc::shared_ptr` or `rpc::optimistic_ptr`):
-- All interfaces defined in `.idl` files (e.g., `i_host`, `i_example`) 
-- Generated proxy/stub classes for RPC marshalling
-- User-implemented interface classes
+- `CANOPY_BUILD_TEST` defaults to `ON` in the base preset.
+- `CANOPY_BUILD_DEMOS` defaults to `ON`.
+- `CANOPY_BUILD_BENCHMARKING` defaults to `ON`.
+- `CANOPY_BUILD_COROUTINE` defaults to `OFF`.
+- `streaming/` is only added when coroutine builds are enabled.
+- `tests/test_enclave` is only added when `CANOPY_BUILD_ENCLAVE=ON`.
+- `tests/json_schema_test` is only added when `NLOHMANN_JSON_CONFIG_INSTALL_DIR` is defined.
 
-## Architecture
+## Common Commands
 
-### Zone and Transport Lifecycle Management
+### Configure
 
-**Key Principles**:
-1. **Parent Transport Lifetime**: Must remain alive as long as there's a positive reference count between zones in either direction
-2. **Single Parent Transport**: Only one parent transport per zone
-3. **Child Service Ownership**: Must have strong reference to parent transport to keep parent zone alive if the transport is hierarchical
-4. **Transport Lifetime**: All transports and services must keep parent transport alive until they die
-5. **Stub Ownership**: Stubs instantiated in service must keep service alive via `std::shared_ptr`
-6. **Zone Lifecycle Management**: Zones kept alive through `shared_ptr` to objects, not service storage
-7. **Hidden Service Principle**: Each object only interacts with current service via `get_current_service()`
-
-### Hierarchical Transport Circular Dependency Pattern
-
-All hierarchical transports (local, SGX enclave, DLL) implement an intentional circular dependency for zone lifetime management.
-
-**Applicable to:**
-- Local transport (in-process parent/child zones)
-- SGX enclave transport (host/enclave communication)
-- DLL transport (cross-DLL boundary communication)
-
-**Design Pattern:**
-```
-Parent Zone: child_transport → stdex::member_ptr<parent_transport> (to child zone)
-Child Zone:  parent_transport → stdex::member_ptr<child_transport> (to parent zone)
-```
-
-**Stack-Based Lifetime Protection:**
-When calls cross zone boundaries, stack-based `shared_ptr` protects transport lifetime:
-
-```cpp
-// In child_transport (parent zone), calling into child zone:
-CORO_TASK(int) child_transport::outbound_send(...) {
-    auto child = child_.get_nullable();  // Stack-based shared_ptr<parent_transport>
-    if (!child) CO_RETURN rpc::error::ZONE_NOT_FOUND();
-
-    // child shared_ptr keeps parent_transport alive during entire call
-    CO_RETURN CO_AWAIT child->inbound_send(...);
-}
-```
-
-**Safe Disconnection Protocol:**
-1. `child_service` destructor calls `parent_transport->set_status(DISCONNECTED)`
-2. `parent_transport::set_status()` override propagates to parent zone
-3. `child_transport::on_child_disconnected()` breaks its circular reference
-4. Both transports break their references, circular dependency resolved
-5. Stack-based protection ensures no use-after-free during active calls
-
-**Critical Safety Properties:**
-- Zone boundaries respected: child_service only touches its own transport
-- Status propagation handles cross-zone coordination
-- Stack protection prevents destruction during active calls
-- Natural cleanup when call stack unwinds
-
-See `documents/transports/hierarchical.md` and `documents/architecture/07-zone-hierarchies.md` for comprehensive details.
-
-### Smart Pointer Architecture
-- `rpc::shared_ptr` - used for remote RAII
-- `rpc::optimistic_ptr` - used for remote interfaces not managed by RAII
-
-**Core Components** (using `std::shared_ptr`):
-- `rpc::service` - Main service management class
-- `rpc::service_proxy` - Service communication proxy (holds strong reference to transport via `member_ptr`)
-- `rpc::object_proxy` - Object reference proxy
-- `rpc::child_service` - Child zone service management (hierarchical transports only: local, SGX, DLL)
-- `rpc::pass_through` - Routes communication between non-adjacent zones through intermediary (holds strong references to both transports and the intermediary service, see `documents/architecture/06-transports-and-passthroughs.md`)
-- `rpc::transport` - A base class for linking two zones together e.g. TCP and SPSC
-
-**Transport Lifetime Management**:
-As documented in `rpc/include/rpc/internal/service.h`, transports are owned by:
-- **Service proxies** - Hold strong references (`member_ptr<transport>`) to route calls
-- **Passthroughs** - Hold strong references to both transports and the intermediary service, keeping entire routing paths alive
-- **Child services** - Hold strong reference to parent transport
-- **Active stubs** - May cause transports to hold references to adjacent transports during calls
-- **Services** - Hold only weak references (registry for lookup, doesn't keep alive)
-
-**Service Lifetime Management**:
-Services are kept alive by:
-- **Local objects** (stubs) - Objects living in the zone
-- **Child services** - Hold strong reference to parent service (via parent transport)
-- **Passthroughs** - Hold strong reference to intermediary service, allowing zones to function purely as routing hubs
-
-**rpc::shared_ptr std::shared_ptr are not the same**:
-- **NEVER** cast between `rpc::shared_ptr` and `std::shared_ptr`
-- **NEVER** use raw pointer conversion between the two types
-- Use proper type-specific containers and member pointers
-
-**Type Ownership Patterns**:
-- Core components OWN `std::shared_ptr` objects
-- Core components can REFERENCE `rpc::shared_ptr` objects (IDL interfaces)
-- IDL interfaces only work with `rpc::shared_ptr` for marshalling compatibility
-
-### Transport Layer
-- **In-Memory**: Direct function calls
-- **SPSC**: Single-producer single-consumer queues
-- **TCP**: Network transport
-- **Arena-based**: Different memory spaces
-- **SGX Enclaves**: Secure execution environments
-- **Serialization**: YAS library for data marshalling
-
-**Supported Encoding Formats**:
-- `enc_default` - Default encoding (typically yas_binary)
-- `yas_binary` - Binary serialization
-- `yas_compressed_binary` - Compressed binary serialization
-- `yas_json` - JSON serialization (universal fallback format)
-- `protocol_buffers` - Protocol buffers
-
-**Format and Version Negotiation**:
-- Invalid encoding formats automatically fall back to `yas_json`
-
-### Key Dependencies
-- **YAS**: Serialization framework
-- **libcoro**: Coroutine support (when CANOPY_BUILD_COROUTINE=ON)
-- **c-ares**: DNS resolution (configured in submodules)
-- **range-v3**: Range library support
-- **spdlog**: Logging framework for telemetry
-- **CMake 3.24+**: Build system requirement
-
-### Design Characteristics
-- **Type Safety**: Full C++ type system support
-- **Transport Independence**: Protocol-agnostic design
-- **Modern C++**: Leverages C++17/C++20 features
-- **Performance**: Zero-copy serialization where possible
-- **Extensibility**: Plugin-based transport system
-- **Automatic Fallback**: Format and version negotiation for compatibility
-
-## IDL System
-
-### Supported IDL Features
-- Interfaces (pure virtual base classes)
-- Structures with C++ STL types
-- Attributes with name=value pairs
-- Namespaces
-- Basic types: int, string, vector, map, optional, variant
-
-### Code Generation Process
-1. Parse .idl files using idlparser
-2. Extract attributes (including descriptions)
-3. Generate C++ headers with proxy/stub code
-4. Include JSON schema metadata in function_info structures
-5. Compile generated code with main project
-
-Generator code: `/generator/src/synchronous_generator.cpp`
-
-### Adding New IDL Features
-1. Update parser in `/submodules/idlparser/`
-2. Modify code generator in `/generator/src/`
-3. Add test IDL files in `/tests/idls/`
-4. Create corresponding tests
-5. Update documentation
-
-## Development Workflow
-1. do not remove old comments unless they are wrong
-
-### Build Commands
 ```bash
-# Configure with a preset
-cmake --preset Debug                    # Host build with logging/telemetry
-cmake --preset Coroutine_Debug          # Enable coroutine pipeline
-
-# Build core library
-cmake --build build --
-
-# Regenerate interfaces after IDL edits
-cmake --build build --target rpc_generator
-cmake --build build --target <interface_name>_idl
-
-# Build and run tests
-cmake --build build --target <test_name>
-./build_<build_type>/output/<test_name>
-
-# Enable coverage (review build/coverage before large merges)
-cmake --preset Debug -DENABLE_COVERAGE=ON
-
-rpc_test should be run with --telemetry-console to get more telemetry information for better diagnostics
+cmake --preset Debug
+cmake --preset Debug_Coroutine
+cmake --preset Release
 ```
 
-### Testing Guidelines
+### Build
 
-**Host Tests**:
-- Adopt GoogleTest with filenames suffixed `_test.cpp`
-- Reflect runtime topology in namespaces and fixture names
-- Test types:
-  - **Unit Tests**: Individual component testing
-  - **Integration Tests**: Full IDL→C++ generation pipeline
-  - **JSON Schema Tests**: Metadata extraction and schema validation
-  - **Hierarchical Zone Tests**: Multi-level zone creation and cross-zone marshalling
-
-### Coroutine Support
-
-**Template-Based Test Infrastructure**:
-Coroutine tests use a template-based approach for improved debugging:
-
-```cpp
-// Define coroutine test function
-template<class T> CORO_TASK(bool) coro_test_name(T& lib) {
-    // test implementation
-    CO_RETURN true;
-}
-
-// Invoke via run_coro_test dispatcher
-TYPED_TEST(remote_type_test, test_name) {
-    run_coro_test(*this, [](auto& lib) {
-        return coro_test_name<TypeParam>(lib);
-    });
-}
-```
-
-**Benefits**:
-- Template functions can be debugged with standard debuggers (macros cannot)
-- Clean function signatures with proper return types
-- Unified testing approach across all coroutine tests
-
-### Common Development Tasks
-
-**This should build everything including any proxies and stubs as a result to idl changes**:
 ```bash
-cmake --build build
+cmake --build build_debug
+cmake --build build_debug_coroutine
+cmake --build build_release
 ```
 
-**Generate Code from IDL**:
+To build a specific target:
+
 ```bash
-cmake --build build --target <interface_name>_idl
+cmake --build build_debug --target rpc_test
+cmake --build build_debug --target fuzz_test_main
+cmake --build build_debug_coroutine --target io_uring_stream_test
 ```
 
-**Run JSON Schema Tests**:
+### IDL Regeneration
+
+After editing IDL, rebuild the relevant target or rebuild the active binary directory.
+
 ```bash
-cmake --build build --target simple_json_schema_metadata_test
-./build/output/debug/simple_json_schema_metadata_test
+cmake --build build_debug --target generator
+cmake --build build_debug --target <interface_name>_idl
+cmake --build build_debug
 ```
 
-**Run Hierarchical Zone Tests**:
+Do not assume generated code lands in source directories. Check the active binary directory first.
+
+## Testing
+
+### Primary Test Targets
+
+Current directly named test executables include:
+
+- `rpc_test`
+- `serialiser_test`
+- `fuzz_test_main`
+- `json_schema_metadata_test` when JSON schema test support is enabled
+- `member_ptr_test`
+- `passthrough_test`
+- `zone_address_test`
+- multiple targets under `tests/std_test`
+- `io_uring_stream_test` in coroutine builds
+
+### Running Tests
+
+Examples:
+
 ```bash
-cmake --build build --target fuzz_test_main
-./build/output/debug/fuzz_test_main 3  # Run 3 iterations
+./build_debug/output/rpc_test --telemetry-console
+./build_debug/output/fuzz_test_main 3
+./build_debug/output/json_schema_metadata_test
+./build_debug_coroutine/output/io_uring_stream_test
 ```
 
-Tests multi-level zone hierarchies, cross-zone `rpc::shared_ptr` marshalling, `place_shared_object` functionality, and property-based testing with telemetry visualization.
+Notes:
 
+- `rpc_test` supports `--telemetry-console`.
+- `fuzz_test_main` is registered with CTest to run multiple iterations.
+- `memory_tests` exists in the tree but is currently not added by `tests/CMakeLists.txt`.
+- VS Code test discovery is configured to match `build*/output/*`.
 
-### Logging and Telemetry Services
-- Prefer structured logging macros: `RPC_INFO`, `RPC_WARNING`, etc.
-- Telemetry defaults to console output
-- Enable `CANOPY_USE_TELEMETRY_RAII_LOGGING` only during investigations and scrub traces prior to upload
-- Canopy provides comprehensive telemetry services for debugging and visualization. They will harm performance.
+Prefer running the smallest relevant target first, then broaden if needed.
 
-### Documentation
-- Avoid using the word Critical, when amendments are asked for.  Blend the amendments into the documentation as if they were there all the time.
+## Style And Editing Expectations
 
-### Beads Issue Tracking
-Quick commands for `bd` (beads):
-- Create: `bd create "Title" -t task -d "Description" --acceptance "Criteria"`
-- Quick create (ID only): `bd q "Title"`
-- List/search: `bd list`, `bd search "text"`
-- Show/edit: `bd show <id>`, `bd edit <id>` or `bd update <id> --description "..."`
-- If `bd create` hangs, retry with `bd --no-daemon create ...`
+- Follow `.clang-format`.
+- The repository uses WebKit-derived formatting with:
+  - `IndentWidth: 4`
+  - `BreakBeforeBraces: Allman`
+  - `PointerAlignment: Left`
+  - `SortIncludes: false`
+- Preserve existing comments unless they are wrong or actively misleading.
+- Keep naming and surrounding style consistent with the local file.
+- Baseline code should remain valid in non-coroutine builds unless the change is explicitly coroutine-only.
 
-## Landing the Plane (Session Completion)
+## Coroutine And Blocking Builds
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+- Canopy supports both blocking and coroutine builds.
+- `CORO_TASK`, `CO_RETURN`, and `CO_AWAIT` are compatibility macros used across the codebase.
+- Coroutine-specific code paths are guarded by `CANOPY_BUILD_COROUTINE`.
+- If you change shared logic, consider both:
+  - `Debug`
+  - `Debug_Coroutine`
 
-**MANDATORY WORKFLOW:**
+## Pointer And Ownership Rules
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds.  Be sure that the code compiles in coroutine and non coroutine modes
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+- `rpc::shared_ptr` and `std::shared_ptr` are not interchangeable.
+- Do not cast between `rpc::shared_ptr` and `std::shared_ptr`.
+- Do not use raw-pointer conversions to bridge them.
+- Marshalled IDL interfaces use `rpc::shared_ptr` or `rpc::optimistic_ptr`.
+- Core ownership outside the marshalled interface layer is usually `std::shared_ptr`.
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+## Architecture Notes That Still Matter In Code
+
+- Stub and proxy lifetime management is central to correctness.
+- Hierarchical transports intentionally maintain parent/child lifetime links.
+- `child_service`, passthroughs, and service proxies all participate in transport lifetime management.
+- Changes touching transport shutdown, status propagation, service ownership, or cross-zone references need extra scrutiny.
+
+Verify behaviour in code before restating architectural claims.
+
+## Logging And Telemetry
+
+- Prefer structured logging macros such as `RPC_INFO` and `RPC_WARNING`.
+- Telemetry is enabled in the `Debug` preset and disabled in several reduced-logging presets.
+- `CANOPY_USE_TELEMETRY_RAII_LOGGING` should only be enabled deliberately for investigation because it is expensive.
+
+## Working Practices
+
+- Validate repository facts from code and CMake, not from old prose.
+- When changing build, generator, IDL, transport, or lifetime behaviour, inspect the nearest `CMakeLists.txt` and implementation files first.
+- If code changes affect both coroutine and non-coroutine paths, verify both builds when practical.
+- If a test or target is conditionally compiled, mention that condition explicitly in your handoff.
+
+## Session Completion
+
+When ending a session:
+
+1. Run the relevant local verification for the files you changed.
+2. State clearly what you verified and what you did not verify.
+3. Do not perform git or remote issue-tracker actions unless the user explicitly requested them.
+4. Note any follow-up work that remains.

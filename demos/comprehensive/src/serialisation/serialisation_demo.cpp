@@ -29,7 +29,7 @@
  *      for format-specific features like compression).
  *
  *   To build and run:
- *   1. cmake --preset Debug (or Coroutine_Debug)
+ *   1. cmake --preset Debug (or Debug_Coroutine)
  *   2. cmake --build build --target serialisation_demo
  *   3. ./build/output/debug/demos/comprehensive/serialisation_demo
  */

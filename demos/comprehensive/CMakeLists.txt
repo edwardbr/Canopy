@@ -21,9 +21,9 @@ add_subdirectory(idl)
 file(GLOB_RECURSE DEMO_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*/*.cpp)
 
 # Create executables for each demo category Note: These require the generated websocket_demo.h header which is created
-# by rpc_generator
+# by generator
 
-# Transport demos (require Coroutine_Debug for TCP and SPSC)
+# Transport demos (require Debug_Coroutine for TCP and SPSC)
 add_executable(local_transport_demo src/transport/local_transport_demo.cpp)
 target_compile_definitions(local_transport_demo PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
@@ -122,7 +122,7 @@ endif()
 message(STATUS "Comprehensive demos configured")
 message(STATUS "Demo sources: ${DEMO_SOURCES}")
 message(STATUS "")
-message(STATUS "To build these demos ensure Canopy is built with: cmake --preset Coroutine_Debug")
+message(STATUS "To build these demos ensure Canopy is built with: cmake --preset Debug_Coroutine")
 message(STATUS "")
 message(STATUS "Available demos:")
 message(STATUS "  - local_transport_demo (in-process communication)")
