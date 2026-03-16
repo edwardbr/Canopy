@@ -341,15 +341,15 @@ namespace rpc
             // NAMESPACE_INLINE_BEGIN  // Commented out to simplify
             struct control_block_base
             {
-                std::atomic<long> shared_count_{0};
-                std::atomic<long> weak_count_{1};
+                std::atomic<long> shared_count_{0}; // NOLINT(misc-non-private-member-variables-in-classes)
+                std::atomic<long> weak_count_{1};   // NOLINT(misc-non-private-member-variables-in-classes)
 #ifndef TEST_STL_COMPLIANCE
-                std::atomic<long> optimistic_count_{0};
-                bool is_local_ = false;
+                std::atomic<long> optimistic_count_{0}; // NOLINT(misc-non-private-member-variables-in-classes)
+                bool is_local_ = false;                 // NOLINT(misc-non-private-member-variables-in-classes)
 #endif
 
             protected:
-                void* managed_object_ptr_{nullptr}; // Already has trailing underscore
+                void* managed_object_ptr_{nullptr}; // NOLINT(misc-non-private-member-variables-in-classes)
 
             public:
                 control_block_base(void* obj_ptr)
@@ -625,7 +625,7 @@ namespace rpc
 
             template<typename T, typename Deleter> struct control_block_impl_with_deleter : public control_block_base
             {
-                Deleter object_deleter_; // Already has trailing underscore
+                Deleter object_deleter_; // NOLINT(misc-non-private-member-variables-in-classes)
                 control_block_impl_with_deleter(T* p, Deleter d)
                     : control_block_base(to_void_ptr(p))
                     , object_deleter_(std::move(d))
@@ -665,8 +665,8 @@ namespace rpc
             template<typename T, typename Deleter, typename Alloc>
             struct control_block_impl_with_deleter_alloc : public control_block_base
             {
-                Deleter object_deleter_;        // Already has trailing underscore
-                Alloc control_block_allocator_; // Already has trailing underscore
+                Deleter object_deleter_;        // NOLINT(misc-non-private-member-variables-in-classes)
+                Alloc control_block_allocator_; // NOLINT(misc-non-private-member-variables-in-classes)
                 control_block_impl_with_deleter_alloc(T* p, Deleter d, Alloc a)
                     : control_block_base(to_void_ptr(p))
                     , object_deleter_(std::move(d))
@@ -714,10 +714,10 @@ namespace rpc
             template<typename T, typename Alloc, typename... Args>
             struct control_block_make_shared : public control_block_base
             {
-                Alloc allocator_instance_; // Already has trailing underscore
+                Alloc allocator_instance_; // NOLINT(misc-non-private-member-variables-in-classes)
                 union
                 {
-                    T object_instance_; // Already has trailing underscore
+                    T object_instance_; // NOLINT(misc-non-private-member-variables-in-classes)
                 };
 
                 template<typename... ConcreteArgs>
@@ -1792,7 +1792,7 @@ namespace rpc
     template<typename T> class enable_shared_from_this
     {
     protected:
-        mutable weak_ptr<T> weak_this_;
+        mutable weak_ptr<T> weak_this_; // NOLINT(misc-non-private-member-variables-in-classes)
         constexpr enable_shared_from_this() noexcept = default;
         enable_shared_from_this(const enable_shared_from_this&) noexcept { }
         enable_shared_from_this& operator=(const enable_shared_from_this&) noexcept { return *this; }
@@ -1991,8 +1991,11 @@ namespace rpc
 
     template<class T> class local_proxy : public T
     {
-    protected:
         rpc::weak_ptr<T> ptr_;
+
+    protected:
+        rpc::shared_ptr<T> get_ptr() const { return ptr_.lock(); }
+        void set_ptr(const rpc::weak_ptr<T>& ptr) { ptr_ = ptr; }
 
     public:
         local_proxy(const rpc::weak_ptr<T>& ptr)

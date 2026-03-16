@@ -14,19 +14,19 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 class transport_setup_base
 {
 protected:
-    std::shared_ptr<rpc::root_service> root_service_;
+    std::shared_ptr<rpc::root_service> root_service_; // NOLINT(misc-non-private-member-variables-in-classes)
 
-    rpc::shared_ptr<yyy::i_host> i_host_ptr_;
-    rpc::weak_ptr<yyy::i_host> local_host_ptr_;
-    rpc::shared_ptr<yyy::i_example> i_example_ptr_;
+    rpc::shared_ptr<yyy::i_host> i_host_ptr_;       // NOLINT(misc-non-private-member-variables-in-classes)
+    rpc::weak_ptr<yyy::i_host> local_host_ptr_;     // NOLINT(misc-non-private-member-variables-in-classes)
+    rpc::shared_ptr<yyy::i_example> i_example_ptr_; // NOLINT(misc-non-private-member-variables-in-classes)
 
-    const bool has_enclave_ = true;
-    bool use_host_in_child_ = UseHostInChild;
-    bool run_standard_tests_ = RunStandardTests;
-    bool error_has_occurred_ = false;
+    const bool has_enclave_ = true;              // NOLINT(misc-non-private-member-variables-in-classes)
+    bool use_host_in_child_ = UseHostInChild;    // NOLINT(misc-non-private-member-variables-in-classes)
+    bool run_standard_tests_ = RunStandardTests; // NOLINT(misc-non-private-member-variables-in-classes)
+    bool error_has_occurred_ = false;            // NOLINT(misc-non-private-member-variables-in-classes)
 
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::scheduler> io_scheduler_;
+    std::shared_ptr<coro::scheduler> io_scheduler_; // NOLINT(misc-non-private-member-variables-in-classes)
 #endif
 
     void start_telemetry_test()

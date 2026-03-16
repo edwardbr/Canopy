@@ -17,12 +17,12 @@ class streaming_setup_base
     bool setup_complete_ = false;
 
 protected:
-    std::shared_ptr<rpc::root_service> peer_service_;
+    std::shared_ptr<rpc::root_service> peer_service_; // NOLINT(misc-non-private-member-variables-in-classes)
 
     // The two sides of the transport: initiator (client) and responder (server/child)
-    std::shared_ptr<rpc::stream_transport::transport> initiator_transport_;
-    std::shared_ptr<rpc::stream_transport::transport> responder_transport_;
-    std::unique_ptr<streaming::listener> listener_;
+    std::shared_ptr<rpc::stream_transport::transport> initiator_transport_; // NOLINT(misc-non-private-member-variables-in-classes)
+    std::shared_ptr<rpc::stream_transport::transport> responder_transport_; // NOLINT(misc-non-private-member-variables-in-classes)
+    std::unique_ptr<streaming::listener> listener_; // NOLINT(misc-non-private-member-variables-in-classes)
 
     auto make_interface_setup_factory()
     {

@@ -66,8 +66,11 @@ namespace rpc
     // T is a class derived from casting_interface its role is to provide access to the object proxy to the remote zone
     template<class T> class interface_proxy : public T
     {
-    protected:
         stdex::member_ptr<object_proxy> object_proxy_;
+
+    protected:
+        std::shared_ptr<object_proxy> get_object_proxy() const { return object_proxy_.get_nullable(); }
+        void set_object_proxy(std::shared_ptr<object_proxy> ptr) { object_proxy_ = std::move(ptr); }
 
     public:
         interface_proxy(std::shared_ptr<rpc::object_proxy> object_proxy)
