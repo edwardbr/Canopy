@@ -356,7 +356,7 @@ namespace rpc
                     : managed_object_ptr_(obj_ptr)
                 {
 #ifndef TEST_STL_COMPLIANCE
-                    rpc::casting_interface* ptr = reinterpret_cast<rpc::casting_interface*>(managed_object_ptr_);
+                    auto* ptr = reinterpret_cast<rpc::casting_interface*>(managed_object_ptr_);
                     if (ptr)
                     {
                         is_local_ = ptr->__rpc_is_local();

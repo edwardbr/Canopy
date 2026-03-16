@@ -65,7 +65,8 @@
       "Bash(which cmake-format:*)",
       "WebSearch",
       "Bash(touch:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(for f:*)"
     ]
   },
   "enabledPlugins": {}

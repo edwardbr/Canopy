@@ -73,6 +73,7 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 - **Build System**: Ninja (recommended)
 - **Node.js**: 18+ (for llhttp code generation)
 - **OpenSSL**: Development headers (libssl-dev on Linux, OpenSSL SDK on Windows)
+- **clang-tidy** (optional): LLVM 16+ for static analysis; LLVM 21+ recommended for full check coverage including `modernize-use-designated-initializers`
 
 ### Build
 
@@ -81,28 +82,35 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 git clone https://github.com/edwardbr/Canopy.git
 cd Canopy
 
-# Choose Blocking
+# Blocking (synchronous) mode
 cmake --preset Debug
+cmake --build build_debug
 
-# Or Coroutines
-cmake --preset Coroutine_Debug
+# Coroutine (async/await) mode
+cmake --preset Debug_Coroutine
+cmake --build build_debug_coroutine
 
-# Or with AddressSanitizer (memory safety testing)
+# With AddressSanitizer
 cmake --preset Debug_ASAN
-cmake --preset Coroutine_Debug_ASAN
+cmake --build build_debug
 
-# Coverage presets
+cmake --preset Debug_Coroutine_ASAN
+cmake --build build_debug_coroutine
+
+# Coverage builds
 cmake --preset Debug_Coverage
-cmake --preset Coroutine_Debug_Coverage
+cmake --build build_debug
 
-# Build core library
-cmake --build build_debug --target rpc
+cmake --preset Debug_Coroutine_Coverage
+cmake --build build_debug_coroutine
+
+# Static analysis with clang-tidy (requires LLVM 16+)
+cmake --preset Debug_Coroutine_Tidy
+cmake --build build_debug_coroutine_tidy
 
 # Run tests
 ctest --test-dir build_debug --output-on-failure
-
-# Run individual tests with ASan (recommended)
-tests/scripts/run_asan_tests.sh
+ctest --test-dir build_debug_coroutine --output-on-failure
 ```
 
 ### Local User Presets
@@ -195,7 +203,7 @@ See [04-transports.md](documents/04-transports.md) for details.
 - **Embedded**: Any platform with C++17 support
 
 ### Compilers
-- **Clang**: 10.0+
+- **Clang**: 10.0+ (LLVM 21 recommended for full clang-tidy support)
 - **GCC**: 9.4+
 - **MSVC**: Visual Studio 2019+
 
@@ -238,9 +246,11 @@ canopy/
 Install system dependencies:
 
 ```bash
-sudo dnf install gcc gcc-c++ clang openssl-devel wget make perl-core zlib-devel ninja-build nodejs clang-tools-extra gdb python3-pip liburing-devel
+sudo dnf install gcc gcc-c++ clang clang-tools-extra openssl-devel wget make perl-core zlib-devel ninja-build nodejs gdb python3-pip liburing-devel
 pip install --user cmakelang
 ```
+
+`clang-tools-extra` includes `clang-tidy` and `clang-format`. The Fedora 43 repos ship LLVM 21, which supports all checks used in this project including `modernize-use-designated-initializers`.
 
 Install CMake 4.x or later (the version in the Fedora repos may be too old):
 

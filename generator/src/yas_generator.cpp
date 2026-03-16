@@ -5,10 +5,8 @@
 
 // Standard C++ headers
 #include <algorithm>
-#include <filesystem>
 #include <sstream>
 #include <tuple>
-#include <type_traits>
 #include <unordered_set>
 
 // Other headers
@@ -567,7 +565,7 @@ namespace yas_generator
             proxy("{{");
             proxy("case rpc::encoding::yas_compressed_binary:");
             proxy("::yas::load<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::intrusive_"
-                  "buffer((const char*)__rpc_data.data(),__rpc_data.size()), "
+                  "buffer(reinterpret_cast<const char*>(__rpc_data.data()),__rpc_data.size()), "
                   "__yas_mapping);");
             proxy("break;");
             // proxy("case rpc::encoding::yas_text:");
@@ -575,13 +573,13 @@ namespace yas_generator
             // *)__rpc_data.data(),__rpc_data.size()),
             // __yas_mapping);"); proxy("break;");
             proxy("case rpc::encoding::yas_json:");
-            proxy("::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer((const char "
-                  "*)__rpc_data.data(),__"
+            proxy("::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
+                  "char*>(__rpc_data.data()),__"
                   "rpc_data.size()), __yas_mapping);");
             proxy("break;");
             proxy("case rpc::encoding::yas_binary:");
-            proxy("::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer((const char "
-                  "*)__rpc_data.data(),__"
+            proxy("::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
+                  "char*>(__rpc_data.data()),__"
                   "rpc_data.size()), __yas_mapping);");
             proxy("break;");
             proxy("case rpc::encoding::protocol_buffers:");
@@ -659,7 +657,7 @@ namespace yas_generator
             stub("{{");
             stub("case rpc::encoding::yas_compressed_binary:");
             stub("::yas::load<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::intrusive_"
-                 "buffer((const char *)__rpc_data.data(), __rpc_data.size()), "
+                 "buffer(reinterpret_cast<const char*>(__rpc_data.data()), __rpc_data.size()), "
                  "__yas_mapping);");
             stub("break;");
             // stub("case rpc::encoding::yas_text:");
@@ -667,13 +665,13 @@ namespace yas_generator
             //       "__rpc_data.size()), __yas_mapping);");
             // stub("break;");
             stub("case rpc::encoding::yas_json:");
-            stub("::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer((const char "
-                 "*)__rpc_data.data(), "
+            stub("::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
+                 "char*>(__rpc_data.data()), "
                  "__rpc_data.size()), __yas_mapping);");
             stub("break;");
             stub("case rpc::encoding::yas_binary:");
-            stub("::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer((const char "
-                 "*)__rpc_data.data(), "
+            stub("::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
+                 "char*>(__rpc_data.data()), "
                  "__rpc_data.size()), __yas_mapping);");
             stub("break;");
             stub("case rpc::encoding::protocol_buffers:");

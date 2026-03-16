@@ -411,7 +411,8 @@ int main(int argc, char* argv[])
 
     auto allocator = canopy::network_config::make_allocator(cfg);
 
-    rpc::zone_address server_addr, client_addr;
+    rpc::zone_address server_addr;
+    rpc::zone_address client_addr;
     allocator.allocate_zone(server_addr);
     allocator.allocate_zone(client_addr);
 

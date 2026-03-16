@@ -11,11 +11,12 @@ namespace websocket_demo
 {
     namespace v1
     {
-        auto http_client_connection::handle_websocket_upgrade(const canopy::http_server::request& parsed_request,
-            std::shared_ptr<streaming::stream> stream) -> coro::task<std::shared_ptr<rpc::transport>>
+        CORO_TASK(std::shared_ptr<rpc::transport>)
+        http_client_connection::handle_websocket_upgrade(const canopy::http_server::request& parsed_request,
+            std::shared_ptr<streaming::stream> stream)
         {
             auto transpt
-                = co_await transport::make_server<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
+                = CO_AWAIT transport::make_server<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                     service_,
                     stream,
                     [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
@@ -33,7 +34,7 @@ namespace websocket_demo
                         }
                         CO_RETURN rpc::error::OK();
                     });
-            co_return transpt;
+            CO_RETURN transpt;
         }
     }
 }

@@ -24,7 +24,7 @@ namespace websocket_demo
             explicit http_client_connection(
                 std::shared_ptr<streaming::stream> stream, std::shared_ptr<websocket_service> service);
 
-            auto handle() -> coro::task<std::shared_ptr<rpc::transport>>;
+            CORO_TASK(std::shared_ptr<rpc::transport>) handle();
 
         private:
             // in rest_handler
@@ -36,8 +36,8 @@ namespace websocket_demo
             auto handle_delete(const std::string& path) -> canopy::http_server::response;
 
             // in websocket_handler
-            auto handle_websocket_upgrade(const canopy::http_server::request& request,
-                std::shared_ptr<streaming::stream> websocket_stream) -> coro::task<std::shared_ptr<rpc::transport>>;
+            CORO_TASK(std::shared_ptr<rpc::transport>) handle_websocket_upgrade(const canopy::http_server::request& request,
+                std::shared_ptr<streaming::stream> websocket_stream);
 
             auto create_error_response(int status_code, const std::string& message) -> canopy::http_server::response;
             auto create_success_response(const std::string& data) -> canopy::http_server::response;

@@ -169,7 +169,8 @@ namespace comprehensive
             std::cout << "=== SPSC Transport Demo ===\n";
 
             rpc::zone_id_allocator zone_gen_{rpc::DEFAULT_PREFIX};
-            rpc::zone_address addr1, addr2;
+            rpc::zone_address addr1;
+            rpc::zone_address addr2;
             zone_gen_.allocate_zone(addr1);
             zone_gen_.allocate_zone(addr2);
             rpc::zone zone_1(addr1);

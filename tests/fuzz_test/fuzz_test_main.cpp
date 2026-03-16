@@ -218,7 +218,8 @@ public:
             CO_RETURN rpc::error::INVALID_DATA();
         }
 
-        int new_value = 0, target_value = 0;
+        int new_value = 0;
+        int target_value = 0;
         CO_AWAIT new_object->get_value(new_value);
         CO_AWAIT target_object->get_value(target_value);
         CO_AWAIT target_object->set_value(new_value + target_value);
@@ -1094,7 +1095,8 @@ public:
             auto factory = CO_AWAIT rpc::dynamic_pointer_cast<i_fuzz_factory>(obj);
             if (factory)
             {
-                int total_created = 0, current_refs = 0;
+                int total_created = 0;
+                int current_refs = 0;
                 if (CO_AWAIT factory->get_factory_stats(total_created, current_refs) == rpc::error::OK())
                 {
                     RPC_INFO("[GARBAGE_COLLECTOR] Object: FACTORY total_created={} current_refs={}",
@@ -1126,7 +1128,8 @@ public:
             auto worker = CO_AWAIT rpc::dynamic_pointer_cast<i_fuzz_worker>(obj);
             if (worker)
             {
-                int objects_processed = 0, total_increments = 0;
+                int objects_processed = 0;
+                int total_increments = 0;
                 if (CO_AWAIT worker->get_worker_stats(objects_processed, total_increments) == rpc::error::OK())
                 {
                     RPC_INFO("[GARBAGE_COLLECTOR] Object: WORKER processed={} increments={}",

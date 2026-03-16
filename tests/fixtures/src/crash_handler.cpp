@@ -402,7 +402,9 @@ namespace crash_handler
         {
             // Parse the stat line to get the state (3rd field after PID and comm)
             std::istringstream iss(line);
-            std::string pid, comm, state;
+            std::string pid;
+            std::string comm;
+            std::string state;
             iss >> pid >> comm >> state;
             return state;
         }

@@ -132,7 +132,10 @@ namespace canopy::network_config
 
     void ipv4_to_ip_address(const std::string& dotted_decimal, ip_address& addr)
     {
-        unsigned int a = 0, b = 0, c = 0, d = 0;
+        unsigned int a = 0;
+        unsigned int b = 0;
+        unsigned int c = 0;
+        unsigned int d = 0;
         char trailing = 0;
         int matched = std::sscanf(dotted_decimal.c_str(), "%u.%u.%u.%u%c", &a, &b, &c, &d, &trailing);
         if (matched != 4 || a > 255 || b > 255 || c > 255 || d > 255)
