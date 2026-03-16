@@ -34,6 +34,10 @@ target_link_options(fuzz_test_main PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_directories(fuzz_test_main PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET fuzz_test_main PROPERTY COMPILE_PDB_NAME fuzz_test_main)
 
+if(CANOPY_ENABLE_CLANG_TIDY)
+  set_target_properties(fuzz_test_main PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()
+
 # # Copy test to output directory set_target_properties(fuzz_test_main PROPERTIES RUNTIME_OUTPUT_DIRECTORY
 # ${CMAKE_BINARY_DIR}/output/${CMAKE_BUILD_TYPE_LOWER} OUTPUT_NAME fuzz_test_main )
 

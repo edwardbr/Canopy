@@ -32,6 +32,11 @@ if(NOT CANOPY_BUILD_COROUTINE)
   set_property(TARGET zone_address_benchmark PROPERTY CXX_STANDARD 17)
   set_property(TARGET zone_address_benchmark PROPERTY CXX_STANDARD_REQUIRED ON)
 
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(zone_address_test PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+    set_target_properties(zone_address_benchmark PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+
   add_test(NAME zone_address_benchmark COMMAND zone_address_benchmark)
 
   include(CTest)

@@ -41,6 +41,10 @@ if(NOT CANOPY_BUILD_COROUTINE)
   target_compile_options(member_ptr_test PRIVATE ${CANOPY_COMPILE_OPTIONS})
   target_link_options(member_ptr_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(member_ptr_test PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+
   # Set C++ standard
   set_property(TARGET member_ptr_test PROPERTY CXX_STANDARD 17)
   set_property(TARGET member_ptr_test PROPERTY CXX_STANDARD_REQUIRED ON)

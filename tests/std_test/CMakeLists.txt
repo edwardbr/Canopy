@@ -81,6 +81,10 @@ foreach(test_name ${BUILDABLE_TESTS})
       # Force C++17 standard (override any C++20 settings)
       set_target_properties(${test_name} PROPERTIES CXX_STANDARD 17)
 
+      if(CANOPY_ENABLE_CLANG_TIDY)
+        set_target_properties(${test_name} PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+      endif()
+
       add_test(NAME ${test_name} COMMAND ${test_name})
 
       # ASan options: disable leak detection for all tests Dev10_445289_make_shared also needs alloc_dealloc_mismatch=0
