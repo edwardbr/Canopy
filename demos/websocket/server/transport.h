@@ -71,67 +71,13 @@ namespace websocket_demo
                     const std::shared_ptr<rpc::child_service>&)>&& child_entry_point_fn);
 
             // Outbound i_marshaller interface - sends from child to parent
-            CORO_TASK(int)
-            outbound_send(uint64_t protocol_version,
-                rpc::encoding encoding,
-                uint64_t tag,
-                rpc::caller_zone caller_zone_id,
-                rpc::remote_object remote_object_id,
-                rpc::interface_ordinal interface_id,
-                rpc::method method_id,
-                const rpc::byte_span& in_data,
-                std::vector<char>& out_buf_,
-                const std::vector<rpc::back_channel_entry>& in_back_channel,
-                std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-            CORO_TASK(void)
-            outbound_post(uint64_t protocol_version,
-                rpc::encoding encoding,
-                uint64_t tag,
-                rpc::caller_zone caller_zone_id,
-                rpc::remote_object remote_object_id,
-                rpc::interface_ordinal interface_id,
-                rpc::method method_id,
-                const rpc::byte_span& in_data,
-                const std::vector<rpc::back_channel_entry>& back_channel) override;
-
-            CORO_TASK(int)
-            outbound_try_cast(uint64_t protocol_version,
-                rpc::caller_zone caller_zone_id,
-                rpc::remote_object remote_object_id,
-                rpc::interface_ordinal interface_id,
-                const std::vector<rpc::back_channel_entry>& in_back_channel,
-                std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-            CORO_TASK(int)
-            outbound_add_ref(uint64_t protocol_version,
-                rpc::remote_object remote_object_id,
-                rpc::caller_zone caller_zone_id,
-                rpc::requesting_zone requesting_zone_id,
-                rpc::add_ref_options build_out_param_channel,
-                const std::vector<rpc::back_channel_entry>& back_channel,
-                std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-            CORO_TASK(int)
-            outbound_release(uint64_t protocol_version,
-                rpc::remote_object remote_object_id,
-                rpc::caller_zone caller_zone_id,
-                rpc::release_options options,
-                const std::vector<rpc::back_channel_entry>& back_channel,
-                std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-            // New methods from i_marshaller interface
-            CORO_TASK(void)
-            outbound_object_released(uint64_t protocol_version,
-                rpc::remote_object remote_object_id,
-                rpc::caller_zone caller_zone_id,
-                const std::vector<rpc::back_channel_entry>& back_channel) override;
-
-            CORO_TASK(void)
-            outbound_transport_down(uint64_t protocol_version,
-                rpc::destination_zone destination_zone_id,
-                rpc::caller_zone caller_zone_id,
-                const std::vector<rpc::back_channel_entry>& back_channel) override;
+            CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override;
+            CORO_TASK(void) outbound_post(rpc::post_params params) override;
+            CORO_TASK(rpc::back_channel_result) outbound_try_cast(rpc::try_cast_params params) override;
+            CORO_TASK(rpc::back_channel_result) outbound_add_ref(rpc::add_ref_params params) override;
+            CORO_TASK(rpc::back_channel_result) outbound_release(rpc::release_params params) override;
+            CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override;
+            CORO_TASK(void) outbound_transport_down(rpc::transport_down_params params) override;
 
             CORO_TASK(void) stub_handle_send(websocket_demo::v1::envelope request);
 

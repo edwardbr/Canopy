@@ -60,20 +60,22 @@ public:
         RPC_INFO("passthrough_setup::CoroSetUp - Starting setup");
         RPC_INFO("passthrough_setup::CoroSetUp - Creating service");
 #ifdef CANOPY_BUILD_COROUTINE
-        service_ = std::make_shared<rpc::root_service>("test_service", rpc::zone{1}, io_scheduler_);
+        service_ = std::make_shared<rpc::root_service>("test_service", rpc::zone{rpc::zone_address(0, 1)}, io_scheduler_);
 #else
-        service_ = std::make_shared<rpc::root_service>("test_service", rpc::zone{1});
+        service_ = std::make_shared<rpc::root_service>("test_service", rpc::zone{rpc::zone_address(0, 1)});
 #endif
 
         // Create mock transports
         RPC_INFO("passthrough_setup::CoroSetUp - Setting up destinations");
-        forward_dest_ = rpc::destination_zone{100};
-        reverse_dest_ = rpc::destination_zone{200};
+        forward_dest_ = rpc::destination_zone{rpc::zone_address(0, 100)};
+        reverse_dest_ = rpc::destination_zone{rpc::zone_address(0, 200)};
 
         RPC_INFO("passthrough_setup::CoroSetUp - Creating forward transport");
-        forward_transport_ = std::make_shared<rpc::mock_test::mock_transport>("forward", service_, rpc::zone{100});
+        forward_transport_ = std::make_shared<rpc::mock_test::mock_transport>("forward", service_);
+        forward_transport_->set_adjacent_zone_id(forward_dest_);
         RPC_INFO("passthrough_setup::CoroSetUp - Creating reverse transport");
-        reverse_transport_ = std::make_shared<rpc::mock_test::mock_transport>("reverse", service_, rpc::zone{200});
+        reverse_transport_ = std::make_shared<rpc::mock_test::mock_transport>("reverse", service_);
+        reverse_transport_->set_adjacent_zone_id(reverse_dest_);
 
         // Register transports with service so it knows about them
         // This is needed for add_ref_happy_path test and proper transport state handling

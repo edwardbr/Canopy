@@ -485,7 +485,7 @@ namespace synchronous_generator
                     auto zone_ = stub ? stub->get_zone() : nullptr;
                     if (zone_)
                     {{
-                        __rpc_ret = CO_AWAIT rpc::stub_bind_in_param(protocol_version, zone_, caller_zone_id, {1}_object_, {1});
+                        __rpc_ret = CO_AWAIT rpc::stub_bind_in_param(params.protocol_version, zone_, params.caller_zone_id, {1}_object_, {1});
                     }}
                     else
                     {{
@@ -582,8 +582,8 @@ namespace synchronous_generator
         case STUB_ADD_REF_OUT_PREDECLARE:
             return fmt::format("rpc::interface_descriptor {0}_;", name);
         case STUB_ADD_REF_OUT:
-            return fmt::format("__rpc_ret = CO_AWAIT rpc::stub_bind_out_param(zone_, protocol_version, "
-                               "caller_zone_id, {0}, {0}_);",
+            return fmt::format("__rpc_ret = CO_AWAIT rpc::stub_bind_out_param(zone_, params.protocol_version, "
+                               "params.caller_zone_id, {0}, {0}_);",
                 name);
         case STUB_MARSHALL_OUT:
             return fmt::format("{}_, ", name);
@@ -698,9 +698,9 @@ namespace synchronous_generator
             stub("if (");
             if (enable_yas)
             {
-                stub("    enc != rpc::encoding::yas_binary &&");
-                stub("    enc != rpc::encoding::yas_compressed_binary &&");
-                stub("    enc != rpc::encoding::yas_json");
+                stub("    params.encoding_type != rpc::encoding::yas_binary &&");
+                stub("    params.encoding_type != rpc::encoding::yas_compressed_binary &&");
+                stub("    params.encoding_type != rpc::encoding::yas_json");
             }
             if (enable_protobuf)
             {
@@ -708,13 +708,13 @@ namespace synchronous_generator
                 {
                     stub("    &&");
                 }
-                stub("    enc != rpc::encoding::protocol_buffers");
+                stub("    params.encoding_type != rpc::encoding::protocol_buffers");
             }
             stub(")");
             if (enable_yas || enable_protobuf)
             {
                 stub("{{");
-                stub("    CO_RETURN rpc::error::INCOMPATIBLE_SERIALISATION();");
+                stub("    CO_RETURN rpc::send_result{{rpc::error::INCOMPATIBLE_SERIALISATION(), {{}}, {{}}}};");
                 stub("}}");
             }
 
@@ -912,7 +912,8 @@ namespace synchronous_generator
 
             // Generate stub deserializer
             stub("int __rpc_ret = rpc::error::OK();");
-            stub("switch(enc)");
+            stub("auto __rpc_in_data = rpc::byte_span(params.in_data.data(), params.in_data.size());");
+            stub("switch(params.encoding_type)");
             stub("{{");
             if (enable_yas)
             {
@@ -944,7 +945,7 @@ namespace synchronous_generator
                         }
                         count++;
                     }
-                    stub.raw("in_data, enc);\n");
+                    stub.raw("__rpc_in_data, params.encoding_type);\n");
                 }
                 stub("break;");
                 stub("}}");
@@ -977,18 +978,18 @@ namespace synchronous_generator
                         }
                         count++;
                     }
-                    stub.raw("in_data);\n");
+                    stub.raw("__rpc_in_data);\n");
                 }
                 stub("break;");
                 stub("}}");
             }
             stub("default:");
-            stub("CO_RETURN rpc::error::INCOMPATIBLE_SERIALISATION();");
+            stub("CO_RETURN rpc::send_result{{rpc::error::INCOMPATIBLE_SERIALISATION(), {{}}, {{}}}};");
             stub("}}");
 
             stub("if(rpc::error::is_error(__rpc_ret))");
             stub("{{");
-            stub("CO_RETURN __rpc_ret;");
+            stub("CO_RETURN rpc::send_result{{__rpc_ret, {{}}, {{}}}};");
             stub("}}");
 
             std::string tag = function->get_value("tag");
@@ -1310,7 +1311,7 @@ namespace synchronous_generator
 
             {
                 // Generate stub serializer
-                stub("switch(enc)");
+                stub("switch(params.encoding_type)");
                 stub("{{");
                 if (enable_yas)
                 {
@@ -1341,7 +1342,7 @@ namespace synchronous_generator
 
                             stub.raw(output);
                         }
-                        stub.raw("__rpc_out_buf, enc);\n");
+                        stub.raw("__rpc_result.out_buf, params.encoding_type);\n");
                     }
                     stub("break;");
                     stub("}}");
@@ -1373,7 +1374,7 @@ namespace synchronous_generator
 
                             stub.raw(output);
                         }
-                        stub.raw("__rpc_out_buf);\n");
+                        stub.raw("__rpc_result.out_buf);\n");
                     }
                     stub("break;");
                     stub("}}");
@@ -1383,7 +1384,8 @@ namespace synchronous_generator
                 stub("break;");
                 stub("}}");
             }
-            stub("CO_RETURN __rpc_ret;");
+            stub("__rpc_result.error_code = __rpc_ret;");
+            stub("CO_RETURN __rpc_result;");
 
             proxy("//PROXY_VALUE_RETURN");
             {
@@ -1669,18 +1671,14 @@ namespace synchronous_generator
             interface_name);
         proxy("");
 
-        stub("CORO_TASK(int) {0}::stub_caller::call({0}* __rpc_target_, [[maybe_unused]] uint64_t protocol_version, "
-             "rpc::encoding enc, [[maybe_unused]] uint64_t tag, [[maybe_unused]] rpc::caller_zone caller_zone_id, "
-             "[[maybe_unused]] rpc::destination_zone destination_zone_id, [[maybe_unused]] rpc::object object_id, "
-             "rpc::method method_id, const rpc::byte_span& in_data, std::vector<char>& __rpc_out_buf, "
-             "[[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel, "
-             "[[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel)",
+        stub("CORO_TASK(rpc::send_result) {0}::stub_caller::call({0}* __rpc_target_, rpc::send_params params)",
             interface_name);
         stub("{{");
         stub("if(!__rpc_target_)");
         stub("{{");
-        stub("CO_RETURN rpc::error::OBJECT_NOT_FOUND();");
+        stub("CO_RETURN rpc::send_result{{rpc::error::OBJECT_NOT_FOUND(), {{}}, {{}}}};");
         stub("}}");
+        stub("rpc::send_result __rpc_result;");
 
         bool has_methods = false;
         for (auto& function : m_ob.get_functions())
@@ -1692,7 +1690,7 @@ namespace synchronous_generator
 
         if (has_methods)
         {
-            stub("switch(method_id.get_val())");
+            stub("switch(params.method_id.get_val())");
             stub("{{");
 
             int function_count = 1;
@@ -1714,14 +1712,14 @@ namespace synchronous_generator
 
             stub("default:");
             stub("RPC_ERROR(\"Invalid method ID - unknown method in stub\");");
-            stub("CO_RETURN rpc::error::INVALID_METHOD_ID();");
+            stub("CO_RETURN rpc::send_result{{rpc::error::INVALID_METHOD_ID(), {{}}, {{}}}};");
             stub("}};");
         }
         proxy("}};");
         proxy("");
 
         stub("RPC_ERROR(\"Invalid method ID - no methods found\");");
-        stub("CO_RETURN rpc::error::INVALID_METHOD_ID();");
+        stub("CO_RETURN rpc::send_result{{rpc::error::INVALID_METHOD_ID(), {{}}, {{}}}};");
         stub("}}");
         stub("");
     };

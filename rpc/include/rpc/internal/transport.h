@@ -371,83 +371,25 @@ namespace rpc
 
         /**
          * @brief Process incoming RPC call with return value
-         * @param protocol_version RPC protocol version
-         * @param encoding Serialization format
-         * @param tag Operation tag for tracing
-         * @param caller_zone_id Zone making the call
-         * @param destination_zone_id Target zone (may be local or passthrough)
-         * @param object_id Target object ID
-         * @param interface_id Target interface ordinal
-         * @param method_id Method to invoke
-         * @param in_data Serialized input parameters
-         * @param out_buf_[out] Buffer for serialized return value
-         * @param in_back_channel Input back-channel data for reference counting
-         * @param out_back_channel[out] Output back-channel data for reference counting
-         * @return error::OK() on success, error code on failure
+         * @param params Owned parameter bundle (avoids reference params in coroutine frames)
+         * @return send_result containing error code, output buffer, and back-channel entries
          *
          * Routes to local service if destination matches zone_id_, otherwise
          * routes through passthrough to reach non-adjacent zone.
          */
-        CORO_TASK(int)
-        inbound_send(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel);
+        CORO_TASK(send_result) inbound_send(send_params params);
 
-        CORO_TASK(void)
-        inbound_post(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<back_channel_entry>& in_back_channel);
+        CORO_TASK(void) inbound_post(post_params params);
 
-        CORO_TASK(int)
-        inbound_try_cast(uint64_t protocol_version,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel);
+        CORO_TASK(back_channel_result) inbound_try_cast(try_cast_params params);
 
-        CORO_TASK(int)
-        inbound_add_ref(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            requesting_zone requesting_zone_id,
-            add_ref_options build_out_param_channel,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel);
+        CORO_TASK(back_channel_result) inbound_add_ref(add_ref_params params);
 
-        CORO_TASK(int)
-        inbound_release(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            release_options options,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel);
+        CORO_TASK(back_channel_result) inbound_release(release_params params);
 
-        CORO_TASK(void)
-        inbound_object_released(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            const std::vector<back_channel_entry>& in_back_channel);
+        CORO_TASK(void) inbound_object_released(object_released_params params);
 
-        CORO_TASK(void)
-        inbound_transport_down(uint64_t protocol_version,
-            destination_zone destination_zone_id,
-            caller_zone caller_zone_id,
-            const std::vector<back_channel_entry>& in_back_channel);
+        CORO_TASK(void) inbound_transport_down(transport_down_params params);
 
         /////////////////////////////////
         // OUTBOUND METHODS (i_marshaller implementation) - Send calls to remote zone
@@ -468,81 +410,21 @@ namespace rpc
          *
          * @see inbound_send for parameter descriptions
          */
-        CORO_TASK(int)
-        send(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel) final;
-
-        CORO_TASK(void)
-        post(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<back_channel_entry>& in_back_channel) final;
-
-        CORO_TASK(int)
-        try_cast(uint64_t protocol_version,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel) final;
-
-        CORO_TASK(int)
-        add_ref(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            requesting_zone requesting_zone_id,
-            add_ref_options build_out_param_channel,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel) final;
-
-        CORO_TASK(int)
-        release(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            release_options options,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel) final;
-
-        CORO_TASK(void)
-        object_released(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            const std::vector<back_channel_entry>& in_back_channel) final;
-
-        CORO_TASK(void)
-        transport_down(uint64_t protocol_version,
-            destination_zone destination_zone_id,
-            caller_zone caller_zone_id,
-            const std::vector<back_channel_entry>& in_back_channel) final;
+        CORO_TASK(send_result) send(send_params params) final;
+        CORO_TASK(void) post(post_params params) final;
+        CORO_TASK(back_channel_result) try_cast(try_cast_params params) final;
+        CORO_TASK(back_channel_result) add_ref(add_ref_params params) final;
+        CORO_TASK(back_channel_result) release(release_params params) final;
+        CORO_TASK(void) object_released(object_released_params params) final;
+        CORO_TASK(void) transport_down(transport_down_params params) final;
 
         // Requests a new zone ID from the root zone.
         // Non-hierarchical transports forward to the local service allocator.
         // Child-side hierarchical transports override outbound_get_new_zone_id to
         // forward the request up to the parent zone instead.
-        CORO_TASK(int)
-        get_new_zone_id(uint64_t protocol_version,
-            zone& zone_id,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel) final;
+        CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) final;
 
-        virtual CORO_TASK(int) outbound_get_new_zone_id(uint64_t protocol_version,
-            zone& zone_id,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel);
+        virtual CORO_TASK(get_new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params);
 
         /////////////////////////////////
         // VIRTUAL METHODS - Derived classes implement transport-specific behavior
@@ -581,66 +463,13 @@ namespace rpc
          *
          * @see inbound_send for parameter descriptions
          */
-        virtual CORO_TASK(int) outbound_send(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel)
-            = 0;
-
-        virtual CORO_TASK(void) outbound_post(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<back_channel_entry>& in_back_channel)
-            = 0;
-
-        virtual CORO_TASK(int) outbound_try_cast(uint64_t protocol_version,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel)
-            = 0;
-
-        virtual CORO_TASK(int) outbound_add_ref(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            requesting_zone requesting_zone_id,
-            add_ref_options build_out_param_channel,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel)
-            = 0;
-
-        virtual CORO_TASK(int) outbound_release(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            release_options options,
-            const std::vector<back_channel_entry>& in_back_channel,
-            std::vector<back_channel_entry>& out_back_channel)
-            = 0;
-
-        virtual CORO_TASK(void) outbound_object_released(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            const std::vector<back_channel_entry>& in_back_channel)
-            = 0;
-
-        virtual CORO_TASK(void) outbound_transport_down(uint64_t protocol_version,
-            destination_zone destination_zone_id,
-            caller_zone caller_zone_id,
-            const std::vector<back_channel_entry>& in_back_channel)
-            = 0;
+        virtual CORO_TASK(send_result) outbound_send(send_params params) = 0;
+        virtual CORO_TASK(void) outbound_post(post_params params) = 0;
+        virtual CORO_TASK(back_channel_result) outbound_try_cast(try_cast_params params) = 0;
+        virtual CORO_TASK(back_channel_result) outbound_add_ref(add_ref_params params) = 0;
+        virtual CORO_TASK(back_channel_result) outbound_release(release_params params) = 0;
+        virtual CORO_TASK(void) outbound_object_released(object_released_params params) = 0;
+        virtual CORO_TASK(void) outbound_transport_down(transport_down_params params) = 0;
     };
 
 } // namespace rpc

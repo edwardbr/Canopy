@@ -2021,22 +2021,11 @@ namespace rpc
             return ptr->__rpc_get_stub();
         }
 
-        CORO_TASK(int)
-        __rpc_call([[maybe_unused]] uint64_t protocol_version,
-            [[maybe_unused]] encoding encoding,
-            [[maybe_unused]] uint64_t tag,
-            [[maybe_unused]] caller_zone caller_zone_id,
-            [[maybe_unused]] destination_zone destination_zone_id,
-            [[maybe_unused]] object object_id,
-            [[maybe_unused]] interface_ordinal interface_id,
-            [[maybe_unused]] method method_id,
-            [[maybe_unused]] const rpc::byte_span& in_data,
-            [[maybe_unused]] std::vector<char>& out_buf_,
-            [[maybe_unused]] const std::vector<rpc::back_channel_entry>& in_back_channel,
-            [[maybe_unused]] std::vector<rpc::back_channel_entry>& out_back_channel) override
+        CORO_TASK(rpc::send_result)
+        __rpc_call([[maybe_unused]] rpc::send_params params) override
         {
             RPC_ASSERT(false);
-            CO_RETURN error::TRANSPORT_ERROR();
+            CO_RETURN rpc::send_result{error::TRANSPORT_ERROR(), {}, {}};
         }
     };
 

@@ -853,77 +853,57 @@ namespace rpc
 
     // inbound i_marshaller interface implementation
     // Routes via pass_thoughs_ map (service is registered as a destination)
-    CORO_TASK(int)
-    transport::inbound_send(uint64_t protocol_version,
-        encoding encoding,
-        uint64_t tag,
-        caller_zone caller_zone_id,
-        remote_object remote_object_id,
-        interface_ordinal interface_id,
-        method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(send_result)
+    transport::inbound_send(send_params params)
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_transport_inbound_send(
-                zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, interface_id, method_id);
+            telemetry_service->on_transport_inbound_send(zone_id_,
+                adjacent_zone_id_,
+                params.remote_object_id,
+                params.caller_zone_id,
+                params.interface_id,
+                params.method_id);
         }
 #endif
 
         // Reject new RPC calls when shutting down; cleanup methods are exempt
         if (get_status() >= transport_status::DISCONNECTING)
         {
-            CO_RETURN error::TRANSPORT_ERROR();
+            CO_RETURN send_result{error::TRANSPORT_ERROR(), {}, {}};
         }
 
         std::shared_ptr<i_marshaller> dest;
-        if (remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        if (params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             dest = service_.lock();
         }
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
+            dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
             if (!dest)
             {
-                CO_RETURN error::ZONE_NOT_FOUND();
+                CO_RETURN send_result{error::ZONE_NOT_FOUND(), {}, {}};
             }
         }
 
-        CO_RETURN CO_AWAIT dest->send(protocol_version,
-            encoding,
-            tag,
-            caller_zone_id,
-            remote_object_id,
-            interface_id,
-            method_id,
-            in_data,
-            out_buf_,
-            in_back_channel,
-            out_back_channel);
+        CO_RETURN CO_AWAIT dest->send(std::move(params));
     }
 
     CORO_TASK(void)
-    transport::inbound_post(uint64_t protocol_version,
-        encoding encoding,
-        uint64_t tag,
-        caller_zone caller_zone_id,
-        remote_object remote_object_id,
-        interface_ordinal interface_id,
-        method method_id,
-        const rpc::byte_span& in_data,
-        const std::vector<back_channel_entry>& in_back_channel)
+    transport::inbound_post(post_params params)
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_transport_inbound_post(
-                zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, interface_id, method_id);
+            telemetry_service->on_transport_inbound_post(zone_id_,
+                adjacent_zone_id_,
+                params.remote_object_id,
+                params.caller_zone_id,
+                params.interface_id,
+                params.method_id);
         }
 #endif
 
@@ -934,319 +914,297 @@ namespace rpc
         }
 
         std::shared_ptr<i_marshaller> dest;
-        if (remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        if (params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             dest = service_.lock();
         }
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
+            dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
             if (!dest)
             {
                 CO_RETURN;
             }
         }
 
-        CO_AWAIT dest->post(
-            protocol_version, encoding, tag, caller_zone_id, remote_object_id, interface_id, method_id, in_data, in_back_channel);
+        CO_AWAIT dest->post(std::move(params));
     }
 
-    CORO_TASK(int)
-    transport::inbound_try_cast(uint64_t protocol_version,
-        caller_zone caller_zone_id,
-        remote_object remote_object_id,
-        interface_ordinal interface_id,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    transport::inbound_try_cast(try_cast_params params)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_try_cast(
-                zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, interface_id);
+                zone_id_, adjacent_zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id);
         }
 #endif
 
         // Reject new RPC calls when shutting down; cleanup methods are exempt
         if (get_status() >= transport_status::DISCONNECTING)
         {
-            CO_RETURN error::TRANSPORT_ERROR();
+            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
         }
 
         std::shared_ptr<i_marshaller> dest;
-        if (remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        if (params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             dest = service_.lock();
         }
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
+            dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
             if (!dest)
             {
-                CO_RETURN error::ZONE_NOT_FOUND();
+                CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
             }
         }
 
-        CO_RETURN CO_AWAIT dest->try_cast(
-            protocol_version, caller_zone_id, remote_object_id, interface_id, in_back_channel, out_back_channel);
+        CO_RETURN CO_AWAIT dest->try_cast(std::move(params));
     }
 
-    CORO_TASK(int)
-    transport::inbound_add_ref(uint64_t protocol_version,
-        remote_object remote_object_id,
-        caller_zone caller_zone_id,
-        requesting_zone requesting_zone_id,
-        add_ref_options build_out_param_channel,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    transport::inbound_add_ref(add_ref_params params)
     {
         // Reject new add_ref calls when shutting down
         if (get_status() >= transport_status::DISCONNECTING)
         {
-            CO_RETURN error::TRANSPORT_ERROR();
+            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
         }
 
-        bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
-        bool build_dest_channel = !!(build_out_param_channel & add_ref_options::build_destination_route)
-                                  || build_out_param_channel == add_ref_options::normal
-                                  || build_out_param_channel == add_ref_options::optimistic;
+        bool build_caller_channel = !!(params.build_out_param_channel & add_ref_options::build_caller_route);
+        bool build_dest_channel = !!(params.build_out_param_channel & add_ref_options::build_destination_route)
+                                  || params.build_out_param_channel == add_ref_options::normal
+                                  || params.build_out_param_channel == add_ref_options::optimistic;
 
         auto svc = service_.lock();
         if (!svc)
         {
-            CO_RETURN error::TRANSPORT_ERROR();
+            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
         }
 
         RPC_DEBUG("inbound_add_ref: svc_zone={}, dest_zone={}, caller_zone={}, build_caller_channel={}, "
                   "build_dest_channel={}, requesting_zone_id={}",
             svc->get_zone_id().get_subnet(),
-            remote_object_id.get_subnet(),
-            caller_zone_id.get_subnet(),
+            params.remote_object_id.get_subnet(),
+            params.caller_zone_id.get_subnet(),
             build_caller_channel,
             build_dest_channel,
-            requesting_zone_id.get_subnet());
+            params.requesting_zone_id.get_subnet());
 
-        if (!remote_object_id.get_address().same_zone(svc->get_zone_id().get_address())
-            && caller_zone_id != svc->get_zone_id())
+        // Returns a copy of params with a modified build_out_param_channel flag
+        auto make_add_ref_params = [&](add_ref_options opts) -> add_ref_params
         {
-            auto dest_transport = svc->get_transport(remote_object_id.as_zone());
-            if (remote_object_id.get_address().same_zone(caller_zone_id.get_address()))
+            add_ref_params p = params;
+            p.build_out_param_channel = opts;
+            return p;
+        };
+
+        if (!params.remote_object_id.get_address().same_zone(svc->get_zone_id().get_address())
+            && params.caller_zone_id != svc->get_zone_id())
+        {
+            auto dest_transport = svc->get_transport(params.remote_object_id.as_zone());
+            if (params.remote_object_id.get_address().same_zone(params.caller_zone_id.get_address()))
             {
                 // caller and destination are the same zone, so we just call the transport to pass the call along and not involve a pass through
                 if (!dest_transport)
                 {
-                    CO_RETURN error::ZONE_NOT_FOUND();
+                    CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
                 }
 
                 // here we
-                auto error_code = CO_AWAIT dest_transport->add_ref(protocol_version,
-                    remote_object_id,
-                    caller_zone_id,
-                    requesting_zone_id,
-                    build_out_param_channel,
-                    in_back_channel,
-                    out_back_channel);
+                auto result = CO_AWAIT dest_transport->add_ref(make_add_ref_params(params.build_out_param_channel));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
-                    telemetry_service->on_transport_inbound_add_ref(
-                        zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel);
+                    telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                        adjacent_zone_id_,
+                        params.remote_object_id,
+                        params.caller_zone_id,
+                        params.requesting_zone_id,
+                        params.build_out_param_channel);
                 }
 #endif
-                CO_RETURN error_code;
+                CO_RETURN result;
             }
             if (!dest_transport)
             {
                 if (build_dest_channel)
                 {
-                    dest_transport = inner_get_transport_from_passthroughs(remote_object_id.as_zone());
+                    dest_transport = inner_get_transport_from_passthroughs(params.remote_object_id.as_zone());
                     if (!dest_transport)
                     {
-                        dest_transport = svc->get_transport(requesting_zone_id);
+                        dest_transport = svc->get_transport(params.requesting_zone_id);
                     }
-                    if (!dest_transport && remote_object_id != requesting_zone_id)
+                    if (!dest_transport && params.remote_object_id != params.requesting_zone_id)
                     {
-                        dest_transport = inner_get_transport_from_passthroughs(requesting_zone_id);
+                        dest_transport = inner_get_transport_from_passthroughs(params.requesting_zone_id);
                     }
                     if (!dest_transport)
                     {
-                        CO_RETURN error::ZONE_NOT_FOUND();
+                        CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
                     }
                 }
                 else
                 {
                     dest_transport = shared_from_this();
                 }
-                svc->add_transport(remote_object_id.as_zone(), dest_transport);
+                svc->add_transport(params.remote_object_id.as_zone(), dest_transport);
             }
 
             // otherwise we are going to use or create a pass-through
             {
-                auto passthrough = dest_transport->get_passthrough(caller_zone_id, remote_object_id.as_zone());
+                auto passthrough
+                    = dest_transport->get_passthrough(params.caller_zone_id, params.remote_object_id.as_zone());
                 if (passthrough)
                 {
-                    CO_RETURN CO_AWAIT passthrough->add_ref(protocol_version,
-                        remote_object_id,
-                        caller_zone_id,
-                        requesting_zone_id,
-                        build_out_param_channel,
-                        in_back_channel,
-                        out_back_channel);
+                    CO_RETURN CO_AWAIT passthrough->add_ref(make_add_ref_params(params.build_out_param_channel));
                 }
             }
 
-            auto caller_transport = svc->get_transport(caller_zone_id);
+            auto caller_transport = svc->get_transport(params.caller_zone_id);
             if (!caller_transport)
             {
                 if (!build_dest_channel && build_caller_channel)
                 {
-                    caller_transport = inner_get_transport_from_passthroughs(caller_zone_id);
+                    caller_transport = inner_get_transport_from_passthroughs(params.caller_zone_id);
                     if (!caller_transport)
                     {
-                        caller_transport = svc->get_transport(requesting_zone_id);
+                        caller_transport = svc->get_transport(params.requesting_zone_id);
                     }
-                    if (!caller_transport && caller_zone_id != requesting_zone_id)
+                    if (!caller_transport && params.caller_zone_id != params.requesting_zone_id)
                     {
-                        caller_transport = inner_get_transport_from_passthroughs(requesting_zone_id);
+                        caller_transport = inner_get_transport_from_passthroughs(params.requesting_zone_id);
                     }
                     if (!caller_transport)
                     {
-                        CO_RETURN error::ZONE_NOT_FOUND();
+                        CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
                     }
                 }
                 else
                 {
                     caller_transport = shared_from_this();
                 }
-                svc->add_transport(caller_zone_id, caller_transport);
+                svc->add_transport(params.caller_zone_id, caller_transport);
             }
 
             if (dest_transport == caller_transport)
             {
                 // here we directly call the destination
-                auto error_code = CO_AWAIT dest_transport->add_ref(protocol_version,
-                    remote_object_id,
-                    caller_zone_id,
-                    requesting_zone_id,
-                    build_out_param_channel,
-                    in_back_channel,
-                    out_back_channel);
+                auto result = CO_AWAIT dest_transport->add_ref(make_add_ref_params(params.build_out_param_channel));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
-                    telemetry_service->on_transport_inbound_add_ref(
-                        zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel);
+                    telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                        adjacent_zone_id_,
+                        params.remote_object_id,
+                        params.caller_zone_id,
+                        params.requesting_zone_id,
+                        params.build_out_param_channel);
                 }
 #endif
-                CO_RETURN error_code;
+                CO_RETURN result;
             }
 
             auto passthrough = transport::create_pass_through(
-                dest_transport, caller_transport, svc, remote_object_id.as_zone(), caller_zone_id);
+                dest_transport, caller_transport, svc, params.remote_object_id.as_zone(), params.caller_zone_id);
 
-            auto error_code = CO_AWAIT passthrough->add_ref(protocol_version,
-                remote_object_id,
-                caller_zone_id,
-                requesting_zone_id,
-                build_out_param_channel,
-                in_back_channel,
-                out_back_channel);
+            auto result = CO_AWAIT passthrough->add_ref(make_add_ref_params(params.build_out_param_channel));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_transport_inbound_add_ref(
-                    zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel);
+                telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                    adjacent_zone_id_,
+                    params.remote_object_id,
+                    params.caller_zone_id,
+                    params.requesting_zone_id,
+                    params.build_out_param_channel);
             }
 #endif
-            CO_RETURN error_code;
+            CO_RETURN result;
         }
 
         // else it is a special case that the service needs to deal with
 
-        auto error_code = CO_AWAIT svc->add_ref(protocol_version,
-            remote_object_id,
-            caller_zone_id,
-            requesting_zone_id,
-            build_out_param_channel,
-            in_back_channel,
-            out_back_channel);
+        auto result = CO_AWAIT svc->add_ref(make_add_ref_params(params.build_out_param_channel));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_transport_inbound_add_ref(
-                zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel);
+            telemetry_service->on_transport_inbound_add_ref(zone_id_,
+                adjacent_zone_id_,
+                params.remote_object_id,
+                params.caller_zone_id,
+                params.requesting_zone_id,
+                params.build_out_param_channel);
         }
 #endif
-        CO_RETURN error_code;
+        CO_RETURN result;
     }
 
-    CORO_TASK(int)
-    transport::inbound_release(uint64_t protocol_version,
-        remote_object remote_object_id,
-        caller_zone caller_zone_id,
-        release_options options,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    transport::inbound_release(release_params params)
     {
         std::shared_ptr<i_marshaller> dest;
-        if (remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        if (params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             dest = service_.lock();
         }
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
+            dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
             if (!dest)
             {
-                CO_RETURN error::ZONE_NOT_FOUND();
+                CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
             }
         }
 
-        auto error_code = CO_AWAIT dest->release(
-            protocol_version, remote_object_id, caller_zone_id, options, in_back_channel, out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        auto telemetry_remote_object_id = params.remote_object_id;
+        auto telemetry_caller_zone_id = params.caller_zone_id;
+        auto telemetry_options = params.options;
+#endif
+        auto result = CO_AWAIT dest->release(std::move(params));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_release(
-                zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id, options);
+                zone_id_, adjacent_zone_id_, telemetry_remote_object_id, telemetry_caller_zone_id, telemetry_options);
         }
 #endif
-        CO_RETURN error_code;
+        CO_RETURN result;
     }
 
     CORO_TASK(void)
-    transport::inbound_object_released(uint64_t protocol_version,
-        remote_object remote_object_id,
-        caller_zone caller_zone_id,
-        const std::vector<back_channel_entry>& in_back_channel)
+    transport::inbound_object_released(object_released_params params)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_object_released(
-                zone_id_, adjacent_zone_id_, remote_object_id, caller_zone_id);
+                zone_id_, adjacent_zone_id_, params.remote_object_id, params.caller_zone_id);
         }
 #endif
 
-        if (caller_zone_id == get_zone_id())
+        if (params.caller_zone_id == get_zone_id())
         {
-            CO_AWAIT get_service() -> object_released(protocol_version, remote_object_id, caller_zone_id, in_back_channel);
+            CO_AWAIT get_service() -> object_released(params);
             CO_RETURN;
         }
 
         // Try zone pair lookup
         std::shared_ptr<i_marshaller> dest;
-        if (remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        if (params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
             dest = service_.lock();
         }
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(remote_object_id.as_zone(), caller_zone_id);
+            dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
             if (!dest)
             {
                 // Zone not found - just return without propagating error
@@ -1254,74 +1212,54 @@ namespace rpc
             }
         }
 
-        CO_AWAIT dest->object_released(protocol_version, remote_object_id, caller_zone_id, in_back_channel);
+        CO_AWAIT dest->object_released(std::move(params));
     }
 
     CORO_TASK(void)
-    transport::inbound_transport_down(uint64_t protocol_version,
-        destination_zone destination_zone_id,
-        caller_zone caller_zone_id,
-        const std::vector<back_channel_entry>& in_back_channel)
+    transport::inbound_transport_down(transport_down_params params)
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_transport_down(
-                zone_id_, adjacent_zone_id_, destination_zone_id, caller_zone_id);
+                zone_id_, adjacent_zone_id_, params.destination_zone_id, params.caller_zone_id);
         }
 #endif
 
         std::shared_ptr<i_marshaller> dest;
-        if (destination_zone_id == zone_id_)
+        if (params.destination_zone_id == zone_id_)
         {
             dest = service_.lock();
         }
         else
         {
             // Try zone pair lookup first
-            dest = get_passthrough(destination_zone_id, caller_zone_id);
+            dest = get_passthrough(params.destination_zone_id, params.caller_zone_id);
             if (!dest)
             {
                 CO_RETURN;
             }
         }
 
-        CO_AWAIT dest->transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
+        CO_AWAIT dest->transport_down(std::move(params));
 
         {
             std::unique_lock lock(destinations_mutex_);
-            zone_counts_.erase(caller_zone_id);
+            zone_counts_.erase(params.caller_zone_id);
         }
     }
 
-    CORO_TASK(int)
-    transport::send(uint64_t protocol_version,
-        encoding encoding,
-        uint64_t tag,
-        caller_zone caller_zone_id,
-        remote_object remote_object_id,
-        interface_ordinal interface_id,
-        method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(send_result) transport::send(send_params params)
     {
-        auto ret = CO_AWAIT outbound_send(protocol_version,
-            encoding,
-            tag,
-            caller_zone_id,
-            remote_object_id,
-            interface_id,
-            method_id,
-            in_data,
-            out_buf_,
-            in_back_channel,
-            out_back_channel);
+        [[maybe_unused]] auto remote_object_id = params.remote_object_id;
+        [[maybe_unused]] auto caller_zone_id = params.caller_zone_id;
+        [[maybe_unused]] auto interface_id = params.interface_id;
+        [[maybe_unused]] auto method_id = params.method_id;
+        auto result = CO_AWAIT outbound_send(std::move(params));
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK() || ret == error::OBJECT_GONE())
+            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_send(
                     get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id);
@@ -1333,45 +1271,36 @@ namespace rpc
             }
         }
 #endif
-        CO_RETURN ret;
+        CO_RETURN result;
     }
 
-    CORO_TASK(void)
-    transport::post(uint64_t protocol_version,
-        encoding encoding,
-        uint64_t tag,
-        caller_zone caller_zone_id,
-        remote_object remote_object_id,
-        interface_ordinal interface_id,
-        method method_id,
-        const rpc::byte_span& in_data,
-        const std::vector<back_channel_entry>& in_back_channel)
+    CORO_TASK(void) transport::post(post_params params)
     {
-        CO_AWAIT outbound_post(
-            protocol_version, encoding, tag, caller_zone_id, remote_object_id, interface_id, method_id, in_data, in_back_channel);
 #ifdef CANOPY_USE_TELEMETRY
+        auto remote_object_id = params.remote_object_id;
+        auto caller_zone_id = params.caller_zone_id;
+        auto interface_id = params.interface_id;
+        auto method_id = params.method_id;
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_outbound_post(
                 get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id);
         }
 #endif
+        CO_AWAIT outbound_post(std::move(params));
     }
 
-    CORO_TASK(int)
-    transport::try_cast(uint64_t protocol_version,
-        caller_zone caller_zone_id,
-        remote_object remote_object_id,
-        interface_ordinal interface_id,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result) transport::try_cast(try_cast_params params)
     {
-        auto ret = CO_AWAIT outbound_try_cast(
-            protocol_version, caller_zone_id, remote_object_id, interface_id, in_back_channel, out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        auto remote_object_id = params.remote_object_id;
+        auto interface_id = params.interface_id;
+#endif
+        auto result = CO_AWAIT outbound_try_cast(std::move(params));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK() || ret == error::OBJECT_GONE())
+            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_try_cast(
                     get_zone_id(), get_adjacent_zone_id(), remote_object_id, get_zone_id(), interface_id);
@@ -1383,29 +1312,22 @@ namespace rpc
             }
         }
 #endif
-        CO_RETURN ret;
+        CO_RETURN result;
     }
 
-    CORO_TASK(int)
-    transport::add_ref(uint64_t protocol_version,
-        remote_object remote_object_id,
-        caller_zone caller_zone_id,
-        requesting_zone requesting_zone_id,
-        add_ref_options build_out_param_channel,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result) transport::add_ref(add_ref_params params)
     {
-        auto ret = CO_AWAIT outbound_add_ref(protocol_version,
-            remote_object_id,
-            caller_zone_id,
-            requesting_zone_id,
-            build_out_param_channel,
-            in_back_channel,
-            out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        auto remote_object_id = params.remote_object_id;
+        auto caller_zone_id = params.caller_zone_id;
+        auto requesting_zone_id = params.requesting_zone_id;
+        auto build_out_param_channel = params.build_out_param_channel;
+#endif
+        auto result = CO_AWAIT outbound_add_ref(std::move(params));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK() || ret == error::OBJECT_GONE())
+            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_add_ref(get_zone_id(),
                     get_adjacent_zone_id(),
@@ -1421,23 +1343,21 @@ namespace rpc
             }
         }
 #endif
-        CO_RETURN ret;
+        CO_RETURN result;
     }
 
-    CORO_TASK(int)
-    transport::release(uint64_t protocol_version,
-        remote_object remote_object_id,
-        caller_zone caller_zone_id,
-        release_options options,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result) transport::release(release_params params)
     {
-        auto ret = CO_AWAIT outbound_release(
-            protocol_version, remote_object_id, caller_zone_id, options, in_back_channel, out_back_channel);
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        auto remote_object_id = params.remote_object_id;
+        auto caller_zone_id = params.caller_zone_id;
+        auto options = params.options;
+#endif
+        auto result = CO_AWAIT outbound_release(std::move(params));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (ret == error::OK() || ret == error::OBJECT_GONE())
+            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
             {
                 telemetry_service->on_transport_outbound_release(
                     get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, options);
@@ -1449,16 +1369,16 @@ namespace rpc
             }
         }
 #endif
-        CO_RETURN ret;
+        CO_RETURN result;
     }
 
-    CORO_TASK(void)
-    transport::object_released(uint64_t protocol_version,
-        remote_object remote_object_id,
-        caller_zone caller_zone_id,
-        const std::vector<back_channel_entry>& in_back_channel)
+    CORO_TASK(void) transport::object_released(object_released_params params)
     {
-        CO_AWAIT outbound_object_released(protocol_version, remote_object_id, caller_zone_id, in_back_channel);
+        auto caller_zone_id = params.caller_zone_id;
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        auto remote_object_id = params.remote_object_id;
+#endif
+        CO_AWAIT outbound_object_released(std::move(params));
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
@@ -1469,44 +1389,34 @@ namespace rpc
         decrement_inbound_stub_count(caller_zone_id);
     }
 
-    CORO_TASK(void)
-    transport::transport_down(uint64_t protocol_version,
-        destination_zone destination_zone_id,
-        caller_zone caller_zone_id,
-        const std::vector<back_channel_entry>& in_back_channel)
+    CORO_TASK(void) transport::transport_down(transport_down_params params)
     {
-        CO_AWAIT outbound_transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
 #ifdef CANOPY_USE_TELEMETRY
+        auto destination_zone_id = params.destination_zone_id;
+        auto caller_zone_id = params.caller_zone_id;
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_outbound_transport_down(
                 get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id);
         }
 #endif
+        CO_AWAIT outbound_transport_down(std::move(params));
     }
 
-    CORO_TASK(int)
-    transport::get_new_zone_id(uint64_t protocol_version,
-        zone& zone_id,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(get_new_zone_id_result) transport::get_new_zone_id(get_new_zone_id_params params)
     {
-        CO_RETURN CO_AWAIT outbound_get_new_zone_id(protocol_version, zone_id, in_back_channel, out_back_channel);
+        CO_RETURN CO_AWAIT outbound_get_new_zone_id(std::move(params));
     }
 
-    CORO_TASK(int)
-    transport::outbound_get_new_zone_id(uint64_t protocol_version,
-        zone& zone_id,
-        const std::vector<back_channel_entry>& in_back_channel,
-        std::vector<back_channel_entry>& out_back_channel)
+    CORO_TASK(get_new_zone_id_result) transport::outbound_get_new_zone_id(get_new_zone_id_params params)
     {
         // Default: delegate to the local service.
         // For a root service this allocates locally; for a child_service it
         // forwards the request up to the parent zone.
         auto svc = service_.lock();
         if (!svc)
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
-        CO_RETURN CO_AWAIT svc->get_new_zone_id(protocol_version, zone_id, in_back_channel, out_back_channel);
+            CO_RETURN get_new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
+        CO_RETURN CO_AWAIT svc->get_new_zone_id(std::move(params));
     }
 
 } // namespace rpc
