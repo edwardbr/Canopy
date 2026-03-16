@@ -56,20 +56,20 @@ public:
     virtual ~transport_setup_base() = default;
 
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
+    [[nodiscard]] std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
-    bool error_has_occurred() const { return error_has_occurred_; }
+    [[nodiscard]] bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return true; }
 
-    std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
-    bool get_has_enclave() const { return has_enclave_; }
-    bool is_sgx_setup() const { return false; }
-    rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
+    [[nodiscard]] std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
+    [[nodiscard]] bool get_has_enclave() const { return has_enclave_; }
+    [[nodiscard]] bool is_sgx_setup() const { return false; }
+    [[nodiscard]] rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
     void set_example(const rpc::shared_ptr<yyy::i_example>& example) { i_example_ptr_ = example; }
-    rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }
+    [[nodiscard]] rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }
     void set_host(const rpc::shared_ptr<yyy::i_host>& host) { i_host_ptr_ = host; }
     rpc::shared_ptr<yyy::i_host> get_local_host_ptr() { return local_host_ptr_.lock(); }
-    bool get_use_host_in_child() const { return use_host_in_child_; }
+    [[nodiscard]] bool get_use_host_in_child() const { return use_host_in_child_; }
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
     {

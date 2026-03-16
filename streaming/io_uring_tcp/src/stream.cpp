@@ -114,7 +114,7 @@ namespace streaming::io_uring_tcp
             {
             }
 
-            bool await_ready() const noexcept { return false; }
+            [[nodiscard]] bool await_ready() const noexcept { return false; }
 
             bool await_suspend(std::coroutine_handle<> handle) noexcept
             {
@@ -128,7 +128,7 @@ namespace streaming::io_uring_tcp
                 return true;
             }
 
-            auto await_resume() const noexcept -> ssize_t { return op_->result; }
+            [[nodiscard]] auto await_resume() const noexcept -> ssize_t { return op_->result; }
 
         private:
             std::shared_ptr<stream::ring_state> state_;

@@ -93,7 +93,7 @@ namespace serialisation_benchmark
         rpc::encoding enc;
         const char* name;
 
-        template<typename T> std::vector<uint8_t> serialise(const T& obj) const { return rpc::serialise(obj, enc); }
+        template<typename T> [[nodiscard]] std::vector<uint8_t> serialise(const T& obj) const { return rpc::serialise(obj, enc); }
 
         template<typename T> std::string deserialise(const rpc::byte_span& data, T& obj) const
         {

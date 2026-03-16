@@ -90,7 +90,7 @@ namespace rpc
          *
          * @return size_t Number of child services
          */
-        size_t get_child_count() const;
+        [[nodiscard]] size_t get_child_count() const;
 
         /**
          * @brief Clear all child services (for test cleanup).

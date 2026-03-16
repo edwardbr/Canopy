@@ -32,8 +32,8 @@ namespace streaming
         virtual auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> = 0;
 
         // Check if connection is closed
-        virtual bool is_closed() const = 0;
+        [[nodiscard]] virtual bool is_closed() const = 0;
         virtual void set_closed() = 0;
-        virtual peer_info get_peer_info() const = 0;
+        [[nodiscard]] virtual peer_info get_peer_info() const = 0;
     };
 } // namespace streaming

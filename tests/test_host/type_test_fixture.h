@@ -17,7 +17,7 @@ template<class T> class type_test : public testing::Test
 
 public:
     T& get_lib() { return lib_; }
-    const T& get_lib() const { return lib_; }
+    [[nodiscard]] const T& get_lib() const { return lib_; }
 
     void SetUp() override { this->lib_.set_up(); }
     void TearDown() override { this->lib_.tear_down(); }
@@ -132,8 +132,8 @@ public:
         CO_RETURN;
     }
 
-    bool has_continuation_run() const { return continuation_scheduled_; }
-    bool is_completed() const { return continuation_completed_; }
+    [[nodiscard]] bool has_continuation_run() const { return continuation_scheduled_; }
+    [[nodiscard]] bool is_completed() const { return continuation_completed_; }
 };
 
 // Static member definitions

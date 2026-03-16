@@ -16,7 +16,7 @@ namespace canopy::http_server
     public:
         explicit static_webpage_delivery(std::filesystem::path root_path);
 
-        auto handle(const request& request) const -> std::optional<response>;
+        [[nodiscard]] auto handle(const request& request) const -> std::optional<response>;
         static auto get_content_type(const std::filesystem::path& path) -> std::string;
 
     private:

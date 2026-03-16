@@ -56,7 +56,7 @@ namespace secret_llama
             {
             }
             virtual ~loaded_model() = default;
-            const llm_model& get_config() const { return model_config_; }
+            [[nodiscard]] const llm_model& get_config() const { return model_config_; }
         };
 
         class loaded_tokenizer

@@ -188,8 +188,8 @@ namespace rpc
         }
 
         // accessors
-        uint64_t get_routing_prefix() const { return routing_prefix; }
-        std::array<uint8_t, host_address_size> get_host_address() const
+        [[nodiscard]] uint64_t get_routing_prefix() const { return routing_prefix; }
+        [[nodiscard]] std::array<uint8_t, host_address_size> get_host_address() const
         {
             std::array<uint8_t, host_address_size> host = {};
             size_t prefix_bytes = host.size() < 8 ? host.size() : 8u;
@@ -207,7 +207,7 @@ namespace rpc
             return true;
         }
 
-        uint64_t get_subnet() const { return static_cast<uint64_t>(subnet_id); }
+        [[nodiscard]] uint64_t get_subnet() const { return static_cast<uint64_t>(subnet_id); }
         bool set_subnet(uint64_t val)
         {
             if (val > max_subnet)
@@ -216,7 +216,7 @@ namespace rpc
             return true;
         }
 
-        uint64_t get_object_id() const { return static_cast<uint64_t>(object_id); }
+        [[nodiscard]] uint64_t get_object_id() const { return static_cast<uint64_t>(object_id); }
         bool set_object_id(uint64_t val)
         {
             if (val > max_object_id)
@@ -226,21 +226,21 @@ namespace rpc
         }
 
         // zone-only address (strips object_id)
-        zone_address zone_only() const { return zone_address(routing_prefix, subnet_id, 0); }
+        [[nodiscard]] zone_address zone_only() const { return zone_address(routing_prefix, subnet_id, 0); }
 
         // return a copy with a different object_id
-        zone_address with_object(uint64_t obj) const
+        [[nodiscard]] zone_address with_object(uint64_t obj) const
         {
             return zone_address(routing_prefix, subnet_id, static_cast<uint32_t>(obj));
         }
 
         // check if two addresses refer to the same zone (ignoring object_id)
-        bool same_zone(const zone_address& other) const
+        [[nodiscard]] bool same_zone(const zone_address& other) const
         {
             return routing_prefix == other.routing_prefix && subnet_id == other.subnet_id;
         }
 
-        bool is_set() const noexcept { return routing_prefix != 0 || subnet_id != 0; }
+        [[nodiscard]] bool is_set() const noexcept { return routing_prefix != 0 || subnet_id != 0; }
 
         bool operator<(const zone_address& other) const
         {
@@ -377,25 +377,25 @@ namespace rpc
             // RPC_ASSERT(ok);
         }
 
-        uint64_t get_routing_prefix() const { return host_prefix64(host_address); }
-        const std::array<uint8_t, host_address_size>& get_host_address() const { return host_address; }
-        uint8_t get_object_offset() const { return object_offset_; }
-        static constexpr uint16_t get_local_address_bits() { return local_address_bits; }
+        [[nodiscard]] uint64_t get_routing_prefix() const { return host_prefix64(host_address); }
+        [[nodiscard]] const std::array<uint8_t, host_address_size>& get_host_address() const { return host_address; }
+        [[nodiscard]] uint8_t get_object_offset() const { return object_offset_; }
+        [[nodiscard]] static constexpr uint16_t get_local_address_bits() { return local_address_bits; }
 #ifdef CANOPY_HASH_ADDRESS_SIZE
-        static constexpr uint8_t get_hash_offset() { return hash_offset_value_(); }
-        static constexpr uint8_t get_hash_bits() { return hash_bits_value_(); }
+        [[nodiscard]] static constexpr uint8_t get_hash_offset() { return hash_offset_value_(); }
+        [[nodiscard]] static constexpr uint8_t get_hash_bits() { return hash_bits_value_(); }
 #endif
 
-        uint64_t get_subnet() const { return get_local_bits(local_address, 0, object_offset_); }
+        [[nodiscard]] uint64_t get_subnet() const { return get_local_bits(local_address, 0, object_offset_); }
 
-        uint64_t get_object_id() const { return get_local_bits(local_address, object_offset_, object_limit_()); }
+        [[nodiscard]] uint64_t get_object_id() const { return get_local_bits(local_address, object_offset_, object_limit_()); }
 
         bool set_subnet(uint64_t val) { return set_local_bits(local_address, 0, object_offset_, val); }
 
         bool set_object_id(uint64_t val) { return set_local_bits(local_address, object_offset_, object_limit_(), val); }
 
 #ifdef CANOPY_HASH_ADDRESS_SIZE
-        uint64_t get_hash() const { return get_local_bits(local_address, hash_offset_value_(), local_address_bits); }
+        [[nodiscard]] uint64_t get_hash() const { return get_local_bits(local_address, hash_offset_value_(), local_address_bits); }
 
         bool set_hash(uint64_t val)
         {
@@ -403,7 +403,7 @@ namespace rpc
         }
 #endif
 
-        zone_address zone_only() const
+        [[nodiscard]] zone_address zone_only() const
         {
             zone_address copy(*this);
             [[maybe_unused]] bool ok = copy.set_object_id(0);
@@ -411,7 +411,7 @@ namespace rpc
             return copy;
         }
 
-        zone_address with_object(uint64_t obj) const
+        [[nodiscard]] zone_address with_object(uint64_t obj) const
         {
             zone_address copy(*this);
             [[maybe_unused]] bool ok = copy.set_object_id(obj);
@@ -419,13 +419,13 @@ namespace rpc
             return copy;
         }
 
-        bool same_zone(const zone_address& other) const
+        [[nodiscard]] bool same_zone(const zone_address& other) const
         {
             return host_address == other.host_address && object_offset_ == other.object_offset_
                    && get_subnet() == other.get_subnet();
         }
 
-        bool is_set() const noexcept
+        [[nodiscard]] bool is_set() const noexcept
         {
             if (object_offset_ != 0)
                 return true;
@@ -478,8 +478,8 @@ namespace rpc
         zone& operator=(const zone&) = default;
         zone& operator=(zone&&) noexcept = default;
 
-        uint64_t get_subnet() const { return addr_.get_subnet(); }
-        const zone_address& get_address() const { return addr_; }
+        [[nodiscard]] uint64_t get_subnet() const { return addr_.get_subnet(); }
+        [[nodiscard]] const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const zone& lhs, const zone& rhs);
@@ -496,10 +496,10 @@ namespace rpc
         // less
         bool operator<(const zone& val) const { return addr_ < val.addr_; }
 
-        bool is_set() const noexcept { return addr_.is_set(); }
+        [[nodiscard]] bool is_set() const noexcept { return addr_.is_set(); }
 
         // create a remote_object from this zone and the given object_id
-        inline remote_object with_object(object obj) const;
+        [[nodiscard]] inline remote_object with_object(object obj) const;
             )__^)
     };
 
@@ -530,7 +530,7 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return id; }
+        [[nodiscard]] uint64_t get_val() const { return id; }
 
         // compare
         friend inline bool operator==(const object& lhs, const object& rhs);
@@ -550,7 +550,7 @@ namespace rpc
         constexpr bool operator<(uint64_t val) const { return id < val; }
         constexpr bool operator<(object val) const { return id < val.id; }
 
-        constexpr bool is_set() const noexcept { return id != 0; }
+        [[nodiscard]] constexpr bool is_set() const noexcept { return id != 0; }
             )__^)
     };
 
@@ -573,8 +573,8 @@ namespace rpc
         remote_object& operator=(const remote_object&) = default;
         remote_object& operator=(remote_object&&) noexcept = default;
 
-        uint64_t get_subnet() const { return addr_.get_subnet(); }
-        const zone_address& get_address() const { return addr_; }
+        [[nodiscard]] uint64_t get_subnet() const { return addr_.get_subnet(); }
+        [[nodiscard]] const zone_address& get_address() const { return addr_; }
 
         // compare
         friend inline bool operator==(const remote_object& lhs, const remote_object& rhs);
@@ -590,14 +590,14 @@ namespace rpc
 
         bool operator<(const remote_object& val) const { return addr_ < val.addr_; }
 
-        bool is_set() const noexcept { return addr_.is_set(); }
+        [[nodiscard]] bool is_set() const noexcept { return addr_.is_set(); }
 
         // object accessors
-        inline object get_object() const;
-        inline remote_object with_object(object obj) const;
+        [[nodiscard]] inline object get_object() const;
+        [[nodiscard]] inline remote_object with_object(object obj) const;
 
         // zone conversion methods
-        inline zone as_zone() const;
+        [[nodiscard]] inline zone as_zone() const;
             )__^)
     };
 
@@ -624,7 +624,7 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return id; }
+        [[nodiscard]] uint64_t get_val() const { return id; }
 
         // compare
         friend inline bool operator==(const interface_ordinal& lhs, const interface_ordinal& rhs);
@@ -644,7 +644,7 @@ namespace rpc
         constexpr bool operator<(uint64_t val) const { return id < val; }
         constexpr bool operator<(interface_ordinal val) const { return id < val.id; }
 
-        constexpr bool is_set() const noexcept { return id != 0; }
+        [[nodiscard]] constexpr bool is_set() const noexcept { return id != 0; }
             )__^)
     };
 
@@ -671,7 +671,7 @@ namespace rpc
             return *this;
         }
 
-        uint64_t get_val() const { return id; }
+        [[nodiscard]] uint64_t get_val() const { return id; }
 
         // compare
         friend inline bool operator==(const method& lhs, const method& rhs);
@@ -691,30 +691,30 @@ namespace rpc
         constexpr bool operator<(uint64_t val) const { return id < val; }
         constexpr bool operator<(method val) const { return id < val.id; }
 
-        constexpr bool is_set() const noexcept { return id != 0; }
+        [[nodiscard]] constexpr bool is_set() const noexcept { return id != 0; }
             )__^)
     };
 
 #cpp_quote(R^__(
     // converters
 
-    inline remote_object zone::with_object(object obj) const
+    [[nodiscard]] inline remote_object zone::with_object(object obj) const
     {
         return remote_object(addr_.with_object(obj.get_val()));
     }
 
     // remote_object implementations
-    inline object remote_object::get_object() const
+    [[nodiscard]] inline object remote_object::get_object() const
     {
         return object(addr_.get_object_id());
     }
 
-    inline remote_object remote_object::with_object(object obj) const
+    [[nodiscard]] inline remote_object remote_object::with_object(object obj) const
     {
         return remote_object(addr_.with_object(obj.get_val()));
     }
 
-    inline zone remote_object::as_zone() const
+    [[nodiscard]] inline zone remote_object::as_zone() const
     {
         return zone(addr_);
     }
@@ -793,7 +793,7 @@ namespace rpc
         }
 
         // accessor for the embedded object_id
-        object get_object_id() const { return destination_zone_id.get_object(); }
+        [[nodiscard]] object get_object_id() const { return destination_zone_id.get_object(); }
     )__^)
     };
 
@@ -812,7 +812,7 @@ namespace rpc
         connection_settings& operator=(connection_settings&&) noexcept = default;
 
         // accessor for the embedded object_id in remote_object_id
-        object get_object_id() const { return remote_object_id.get_object(); }
+        [[nodiscard]] object get_object_id() const { return remote_object_id.get_object(); }
     )__^)
     };
 

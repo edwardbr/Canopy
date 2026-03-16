@@ -1521,7 +1521,7 @@ namespace synchronous_generator
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
             proxy("~__{0}_local_proxy() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
-            proxy("const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const "
+            proxy("[[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const "
                   "override");
             proxy("{{");
             proxy("std::ignore = interface_id;");

@@ -14,7 +14,7 @@ namespace rpc
     {
         virtual ~zone_authenticator() = default;
         virtual bool update(zone_address& address) const = 0;
-        virtual bool validate(const zone_address& address) const = 0;
+        [[nodiscard]] virtual bool validate(const zone_address& address) const = 0;
     };
 
     inline bool update_zone_address(zone_address& address, const zone_authenticator& authenticator)

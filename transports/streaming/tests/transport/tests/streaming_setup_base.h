@@ -47,7 +47,7 @@ protected:
 public:
     ~streaming_setup_base() override = default;
 
-    std::shared_ptr<rpc::stream_transport::transport> get_responder_transport() const { return responder_transport_; }
+    [[nodiscard]] std::shared_ptr<rpc::stream_transport::transport> get_responder_transport() const { return responder_transport_; }
 
     CORO_TASK(bool) CoroSetUp()
     {
