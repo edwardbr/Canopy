@@ -138,7 +138,7 @@ namespace rpc
             std::shared_ptr<service> service,
             destination_zone forward_dest,
             destination_zone reverse_dest);
-        ~pass_through();
+        ~pass_through() override;
 
         // i_marshaller implementations
         CORO_TASK(int)

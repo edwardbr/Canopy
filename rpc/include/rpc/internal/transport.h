@@ -215,7 +215,7 @@ namespace rpc
         virtual void on_destination_count_zero() { }
 
     public:
-        virtual ~transport();
+        ~transport() override;
 
         std::string get_name() const { return name_; }
 

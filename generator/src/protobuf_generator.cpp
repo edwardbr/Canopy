@@ -1904,8 +1904,10 @@ namespace protobuf_generator
 
                     if (has_rvalue_ref)
                     {
-                        // Rvalue references: keep as-is (e.g., int&&)
-                        final_param_type = param_type;
+                        std::string base_type = param_type;
+                        std::string reference_modifiers;
+                        rpc_generator::strip_reference_modifiers(base_type, reference_modifiers);
+                        final_param_type = "const " + base_type + "&";
                     }
                     else if (has_lvalue_ref)
                     {

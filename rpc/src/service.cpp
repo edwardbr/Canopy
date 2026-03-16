@@ -215,7 +215,7 @@ namespace rpc
                     std::to_string(zone_id_),
                     std::to_string(item.first));
 
-                for (auto proxy : svcproxy->get_proxies())
+                for (const auto& proxy : svcproxy->get_proxies())
                 {
                     auto op = proxy.second.lock();
                     if (op)
@@ -1050,7 +1050,7 @@ namespace rpc
                 service_events_copy = service_events_;
             }
         }
-        for (auto se : service_events_copy)
+        for (const auto& se : service_events_copy)
         {
             auto se_handler = se.lock();
             if (se_handler)

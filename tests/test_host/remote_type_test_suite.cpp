@@ -1342,7 +1342,7 @@ TYPED_TEST(remote_type_test, complex_topology_multiple_convergence_points_trap_5
         *this);
 }
 
-template<class T> CORO_TASK(bool) coro_check_interface_routing_with_out_params(T& lib, const auto& context)
+template<class T> CORO_TASK(bool) coro_check_interface_routing_with_out_params(T& lib)
 {
     if (!lib.get_use_host_in_child())
     {
@@ -1395,10 +1395,7 @@ template<class T> CORO_TASK(bool) coro_check_interface_routing_with_out_params(T
 TYPED_TEST(remote_type_test, check_interface_routing_with_out_params)
 {
     run_coro_test(
-        *this,
-        [](auto& lib, const auto& context)
-        { return coro_check_interface_routing_with_out_params<TypeParam>(lib, context); },
-        *this);
+        *this, [](auto& lib, const auto&) { return coro_check_interface_routing_with_out_params<TypeParam>(lib); }, *this);
 }
 
 template<class T> CORO_TASK(bool) coro_test_y_topology_and_return_new_prong_object(T& lib)
@@ -1462,6 +1459,7 @@ TYPED_TEST(remote_type_test, test_y_topology_and_return_new_prong_object)
 
 template<class T> CORO_TASK(bool) coro_test_y_topology_and_cache_and_retrieve_prong_object(T& lib, const auto& context)
 {
+    std::ignore = context;
     /*
      * Test for cached object retrieval from autonomous zones that creates Y-topology routing problems.
      * Similar to previous test but Zone 5 caches the object from Zone 7, then host retrieves it.
@@ -1532,6 +1530,7 @@ TYPED_TEST(remote_type_test, test_y_topology_and_cache_and_retrieve_prong_object
 
 template<class T> CORO_TASK(bool) coro_test_y_topology_and_set_host_with_prong_object(T& lib, const auto& context)
 {
+    std::ignore = context;
     /*
      * CRITICAL TEST: Host registry with objects from autonomous zones - triggers stack overflow.
      * Similar to previous but Zone 5 caches the object from Zone 7, then in a separate call

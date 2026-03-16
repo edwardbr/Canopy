@@ -55,7 +55,7 @@ public:
         register_active();
     }
 
-    ~object_deletion_waiter() { unregister_active(); }
+    ~object_deletion_waiter() override { unregister_active(); }
 
     // Check if any waiters are still pending
     static bool any_pending()

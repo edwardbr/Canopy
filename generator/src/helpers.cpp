@@ -10,6 +10,7 @@
 #include "helpers.h"
 #include "coreclasses.h"
 #include "attributes.h"
+#include "type_utils.h"
 
 std::string get_smart_ptr_type(const std::string& type_name, bool& is_optimistic)
 {
@@ -160,7 +161,8 @@ void render_parameter(writer& wrtr, const class_entity& m_ob, const parameter_en
 {
     std::string modifier;
     bool has_struct = false;
-    if (parameter.has_value("const"))
+    auto parameter_info = rpc_generator::analyze_parameter(m_ob, parameter.get_type(), parameter);
+    if (parameter.has_value("const") && !parameter_info.reference_modifiers.empty())
         modifier = "const " + modifier;
     if (parameter.has_value("struct"))
         has_struct = true;

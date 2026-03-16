@@ -14,7 +14,7 @@ namespace rpc
         std::weak_ptr<rpc::object_stub> stub_;
 
     public:
-        virtual ~base() = default;
+        ~base() override = default;
 
         // base is a collection of interface stubs it does not support proxy functionallity
         bool __rpc_is_local() const override { return true; }

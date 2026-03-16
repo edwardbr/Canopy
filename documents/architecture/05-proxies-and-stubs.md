@@ -167,6 +167,19 @@ class i_calculator_proxy : public comprehensive::i_calculator
 - Each method marshals parameters, sends RPC, unmarshals result
 - Returns same error codes as defined in IDL
 
+### Parameter Shape vs Marshalling Shape
+
+The generated interface and proxy methods preserve the parameter spelling from the IDL. If an IDL method uses `T&&`, the generated interface-level method also uses `T&&`.
+
+That does not require every internal generated helper to use the same parameter form. In particular, marshalling helpers such as generated serialiser functions may accept a non-consuming view of the same input so they can serialise for retry, version fallback, or encoding fallback without treating the source object as consumed.
+
+The intended split is:
+- IDL-facing generated interface: reflects the IDL exactly
+- Proxy/stub internals: may use transport-friendly parameter forms
+- Stub invocation: reconstructs temporaries and calls the target using the IDL-declared shape
+
+This keeps the public contract faithful to the IDL while allowing the transport layer to avoid fake or misleading ownership transfer during serialisation.
+
 
 ## Serialization Formats
 

@@ -283,7 +283,7 @@ namespace rpc::stream_transport
             std::shared_ptr<streaming::stream> stream,
             connection_handler handler);
 
-        virtual ~transport() { }
+        ~transport() override { }
 
         void add_custom_message_handler(custom_message_handler handler)
         {
@@ -461,7 +461,7 @@ namespace rpc::stream_transport
         return [stream = std::move(stream)](std::string name,
                    std::shared_ptr<rpc::service> svc,
                    rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-        { CO_RETURN transport::make_server(std::move(name), std::move(svc), std::move(stream), std::move(handler)); };
+        { CO_RETURN transport::make_server(std::move(name), std::move(svc), stream, std::move(handler)); };
     }
 
     // Produces a connection_callback for use with streaming::listener.

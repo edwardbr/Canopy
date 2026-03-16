@@ -48,7 +48,7 @@ namespace rpc
         encoding enc_;
 
         service_proxy(const std::string& name,
-            const zone zone_id,
+            zone zone_id,
             destination_zone destination_zone_id,
             std::shared_ptr<service> service,
             const std::shared_ptr<transport>& transport,

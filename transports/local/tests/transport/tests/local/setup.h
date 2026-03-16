@@ -26,7 +26,7 @@ class inproc_setup
     bool shutdown_complete_ = false;
 
 public:
-    virtual ~inproc_setup() = default;
+    ~inproc_setup() override = default;
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)
     {

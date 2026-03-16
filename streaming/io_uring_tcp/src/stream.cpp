@@ -213,8 +213,12 @@ namespace streaming::io_uring_tcp
                 state->cq_ring_size = state->sq_ring_size;
             }
 
-            state->sq_ring_ptr = ::mmap(
-                0, state->sq_ring_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, state->ring_fd, IORING_OFF_SQ_RING);
+            state->sq_ring_ptr = ::mmap(nullptr,
+                state->sq_ring_size,
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED | MAP_POPULATE,
+                state->ring_fd,
+                IORING_OFF_SQ_RING);
             if (state->sq_ring_ptr == MAP_FAILED)
             {
                 state->sq_ring_ptr = nullptr;
@@ -227,8 +231,12 @@ namespace streaming::io_uring_tcp
             }
             else
             {
-                state->cq_ring_ptr = ::mmap(
-                    0, state->cq_ring_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, state->ring_fd, IORING_OFF_CQ_RING);
+                state->cq_ring_ptr = ::mmap(nullptr,
+                    state->cq_ring_size,
+                    PROT_READ | PROT_WRITE,
+                    MAP_SHARED | MAP_POPULATE,
+                    state->ring_fd,
+                    IORING_OFF_CQ_RING);
                 if (state->cq_ring_ptr == MAP_FAILED)
                 {
                     state->cq_ring_ptr = nullptr;
@@ -236,7 +244,7 @@ namespace streaming::io_uring_tcp
                 }
             }
 
-            state->sqes = static_cast<io_uring_sqe*>(::mmap(0,
+            state->sqes = static_cast<io_uring_sqe*>(::mmap(nullptr,
                 params.sq_entries * sizeof(io_uring_sqe),
                 PROT_READ | PROT_WRITE,
                 MAP_SHARED | MAP_POPULATE,

@@ -22,8 +22,7 @@ namespace marshalled_tests
             CORO_ASSERT_EQ(CO_AWAIT foo.do_something_in_ref(val), rpc::error::OK());
         }
         {
-            int val = 33;
-            CORO_ASSERT_EQ(CO_AWAIT foo.do_something_in_move_ref(std::move(val)), rpc::error::OK());
+            CORO_ASSERT_EQ(CO_AWAIT foo.do_something_in_move_ref(33), rpc::error::OK());
         }
         {
             int val = 33;

@@ -19,7 +19,7 @@ namespace streaming::websocket
     {
     public:
         explicit stream(std::shared_ptr<::streaming::stream> underlying);
-        ~stream();
+        ~stream() override;
 
         stream(const stream&) = delete;
         auto operator=(const stream&) -> stream& = delete;

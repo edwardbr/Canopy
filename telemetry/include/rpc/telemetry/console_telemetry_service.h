@@ -60,7 +60,7 @@ namespace rpc
             const std::string& name,
             const std::filesystem::path& directory);
 
-        virtual ~console_telemetry_service();
+        ~console_telemetry_service() override;
         console_telemetry_service();
         console_telemetry_service(const console_telemetry_service&) = delete;
         console_telemetry_service& operator=(const console_telemetry_service&) = delete;

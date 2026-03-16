@@ -34,7 +34,7 @@ namespace rpc
         auto operator=(const zone_id_allocator&) -> zone_id_allocator& = delete;
 
         zone_id_allocator(zone_id_allocator&& other) noexcept
-            : prefix_(std::move(other.prefix_))
+            : prefix_(other.prefix_)
             , next_subnet_(other.next_subnet_.load(std::memory_order_relaxed))
         {
         }
@@ -43,7 +43,7 @@ namespace rpc
         {
             if (this != &other)
             {
-                prefix_ = std::move(other.prefix_);
+                prefix_ = other.prefix_;
                 next_subnet_.store(other.next_subnet_.load(std::memory_order_relaxed), std::memory_order_relaxed);
             }
             return *this;

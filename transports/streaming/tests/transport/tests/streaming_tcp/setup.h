@@ -74,5 +74,5 @@ protected:
     }
 
 public:
-    virtual ~streaming_tcp_setup() = default;
+    ~streaming_tcp_setup() override = default;
 };

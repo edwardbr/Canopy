@@ -53,7 +53,7 @@ namespace streaming::tls
     public:
         stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<context> tls_ctx);
         stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<client_context> client_ctx);
-        ~stream();
+        ~stream() override;
 
         stream(const stream&) = delete;
         auto operator=(const stream&) -> stream& = delete;

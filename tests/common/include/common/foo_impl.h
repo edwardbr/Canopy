@@ -32,7 +32,7 @@ namespace marshalled_tests
 #endif
         }
 
-        virtual ~baz()
+        ~baz() override
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
@@ -76,7 +76,7 @@ namespace marshalled_tests
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
-        virtual ~foo()
+        ~foo() override
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
@@ -355,7 +355,7 @@ namespace marshalled_tests
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
-        virtual ~multiple_inheritance()
+        ~multiple_inheritance() override
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
@@ -399,7 +399,7 @@ namespace marshalled_tests
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
-        virtual ~example()
+        ~example() override
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)

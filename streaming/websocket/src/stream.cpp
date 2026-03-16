@@ -200,8 +200,8 @@ namespace streaming::websocket
     // wslay callbacks
     // -----------------------------------------------------------------------
 
-    auto stream::send_callback(wslay_event_context_ptr ctx, const uint8_t* data, size_t len, int flags, void* user_data)
-        -> ssize_t
+    auto stream::send_callback(
+        wslay_event_context_ptr ctx, const uint8_t* data, size_t len, int /*flags*/, void* user_data) -> ssize_t
     {
         auto* self = static_cast<stream*>(user_data);
 
@@ -216,7 +216,8 @@ namespace streaming::websocket
         return static_cast<ssize_t>(len);
     }
 
-    auto stream::recv_callback(wslay_event_context_ptr ctx, uint8_t* buf, size_t len, int flags, void* user_data) -> ssize_t
+    auto stream::recv_callback(wslay_event_context_ptr ctx, uint8_t* buf, size_t len, int /*flags*/, void* user_data)
+        -> ssize_t
     {
         auto* self = static_cast<stream*>(user_data);
 
