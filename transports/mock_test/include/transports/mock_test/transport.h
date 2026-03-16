@@ -55,18 +55,7 @@ namespace rpc::mock_test
 
         // Optional response handlers for custom behavior
 
-        typedef std::function<CORO_TASK(int)(uint64_t,
-            rpc::encoding,
-            uint64_t,
-            rpc::caller_zone,
-            rpc::remote_object,
-            rpc::interface_ordinal,
-            rpc::method,
-            const rpc::byte_span&,
-            std::vector<char>&,
-            const std::vector<rpc::back_channel_entry>&,
-            std::vector<rpc::back_channel_entry>&)>
-            send_handler;
+        typedef std::function<CORO_TASK(send_result)(send_params)> send_handler;
 
         send_handler send_handler_;
         std::mutex send_handler_mtx_;
@@ -117,65 +106,12 @@ namespace rpc::mock_test
             rpc::interface_descriptor& output_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
-        CORO_TASK(int)
-        outbound_send(uint64_t protocol_version,
-            rpc::encoding encoding,
-            uint64_t tag,
-            rpc::caller_zone caller_zone_id,
-            rpc::remote_object remote_object_id,
-            rpc::interface_ordinal interface_id,
-            rpc::method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-        CORO_TASK(void)
-        outbound_post(uint64_t protocol_version,
-            rpc::encoding encoding,
-            uint64_t tag,
-            rpc::caller_zone caller_zone_id,
-            rpc::remote_object remote_object_id,
-            rpc::interface_ordinal interface_id,
-            rpc::method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<rpc::back_channel_entry>& in_back_channel) override;
-
-        CORO_TASK(int)
-        outbound_try_cast(uint64_t protocol_version,
-            rpc::caller_zone caller_zone_id,
-            rpc::remote_object remote_object_id,
-            rpc::interface_ordinal interface_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-        CORO_TASK(int)
-        outbound_add_ref(uint64_t protocol_version,
-            rpc::remote_object remote_object_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::requesting_zone requesting_zone_id,
-            rpc::add_ref_options build_out_param_channel,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-        CORO_TASK(int)
-        outbound_release(uint64_t protocol_version,
-            rpc::remote_object remote_object_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::release_options options,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-        CORO_TASK(void)
-        outbound_object_released(uint64_t protocol_version,
-            rpc::remote_object remote_object_id,
-            rpc::caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel) override;
-
-        CORO_TASK(void)
-        outbound_transport_down(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
-            rpc::caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel) override;
+        CORO_TASK(send_result) outbound_send(send_params params) override;
+        CORO_TASK(void) outbound_post(post_params params) override;
+        CORO_TASK(back_channel_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(back_channel_result) outbound_add_ref(add_ref_params params) override;
+        CORO_TASK(back_channel_result) outbound_release(release_params params) override;
+        CORO_TASK(void) outbound_object_released(object_released_params params) override;
+        CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
     };
 }

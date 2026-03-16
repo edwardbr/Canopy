@@ -9,6 +9,7 @@ Checks: >-
   bugprone-use-after-move,
   cppcoreguidelines-avoid-non-const-global-variables,
   cppcoreguidelines-avoid-capturing-lambda-coroutines,
+  cppcoreguidelines-avoid-reference-coroutine-parameters,
   cppcoreguidelines-init-variables,
   cppcoreguidelines-no-suspend-with-lock,
   cppcoreguidelines-pro-type-cstyle-cast,

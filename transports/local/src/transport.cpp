@@ -46,178 +46,108 @@ namespace rpc::local
     }
 
     // Outbound i_marshaller interface - sends from child to parent
-    CORO_TASK(int)
-    parent_transport::outbound_send(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(send_result)
+    parent_transport::outbound_send(send_params params)
     {
-
         auto parent = parent_.get_nullable();
         if (!parent)
         {
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            CO_RETURN send_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         }
 
         // Forward to parent transport's inbound handler
-        CO_RETURN CO_AWAIT parent->inbound_send(protocol_version,
-            encoding,
-            tag,
-            caller_zone_id,
-            remote_object_id,
-            interface_id,
-            method_id,
-            in_data,
-            out_buf_,
-            in_back_channel,
-            out_back_channel);
+        CO_RETURN CO_AWAIT parent->inbound_send(std::move(params));
     }
 
     CORO_TASK(void)
-    parent_transport::outbound_post(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    parent_transport::outbound_post(post_params params)
     {
-
         auto parent = parent_.get_nullable();
         if (!parent)
         {
             CO_RETURN;
         }
 
-        CO_AWAIT parent->inbound_post(
-            protocol_version, encoding, tag, caller_zone_id, remote_object_id, interface_id, method_id, in_data, in_back_channel);
+        CO_AWAIT parent->inbound_post(std::move(params));
     }
 
-    CORO_TASK(int)
-    parent_transport::outbound_try_cast(uint64_t protocol_version,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    parent_transport::outbound_try_cast(try_cast_params params)
     {
         auto parent = parent_.get_nullable();
         if (!parent)
         {
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
-        CO_RETURN CO_AWAIT parent->inbound_try_cast(
-            protocol_version, caller_zone_id, remote_object_id, interface_id, in_back_channel, out_back_channel);
+        CO_RETURN CO_AWAIT parent->inbound_try_cast(std::move(params));
     }
 
-    CORO_TASK(int)
-    parent_transport::outbound_add_ref(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options build_out_param_channel,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    parent_transport::outbound_add_ref(add_ref_params params)
     {
         RPC_DEBUG(
             "parent_transport::outbound_add_ref: my_zone={}, adjacent_zone={}, destination_zone={}, caller_zone={}",
             get_zone_id().get_subnet(),
             get_adjacent_zone_id().get_subnet(),
-            remote_object_id.get_subnet(),
-            caller_zone_id.get_subnet());
+            params.remote_object_id.get_subnet(),
+            params.caller_zone_id.get_subnet());
 
         auto parent = parent_.get_nullable();
         if (!parent)
         {
             RPC_ERROR("parent_transport::outbound_add_ref: parent is NULL!");
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
         RPC_DEBUG("parent_transport::outbound_add_ref: Calling parent->inbound_add_ref for zone {}",
-            remote_object_id.get_subnet());
-        auto error_code = CO_AWAIT parent->inbound_add_ref(protocol_version,
-            remote_object_id,
-            caller_zone_id,
-            requesting_zone_id,
-            build_out_param_channel,
-            in_back_channel,
-            out_back_channel);
-
-        CO_RETURN error_code;
+            params.remote_object_id.get_subnet());
+        CO_RETURN CO_AWAIT parent->inbound_add_ref(std::move(params));
     }
 
-    CORO_TASK(int)
-    parent_transport::outbound_release(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    parent_transport::outbound_release(release_params params)
     {
         auto parent = parent_.get_nullable();
         if (!parent)
         {
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
-        auto error_code = CO_AWAIT parent->inbound_release(
-            protocol_version, remote_object_id, caller_zone_id, options, in_back_channel, out_back_channel);
-
-        CO_RETURN error_code;
+        CO_RETURN CO_AWAIT parent->inbound_release(std::move(params));
     }
 
     CORO_TASK(void)
-    parent_transport::outbound_object_released(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    parent_transport::outbound_object_released(object_released_params params)
     {
-
         auto parent = parent_.get_nullable();
         if (!parent)
         {
             CO_RETURN;
         }
 
-        CO_AWAIT parent->inbound_object_released(protocol_version, remote_object_id, caller_zone_id, in_back_channel);
+        CO_AWAIT parent->inbound_object_released(std::move(params));
     }
 
     CORO_TASK(void)
-    parent_transport::outbound_transport_down(uint64_t protocol_version,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    parent_transport::outbound_transport_down(transport_down_params params)
     {
-
         auto parent = parent_.get_nullable();
         if (!parent)
         {
             CO_RETURN;
         }
 
-        CO_AWAIT parent->inbound_transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
+        CO_AWAIT parent->inbound_transport_down(std::move(params));
     }
 
-    CORO_TASK(int)
-    parent_transport::outbound_get_new_zone_id(uint64_t protocol_version,
-        rpc::zone& zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(get_new_zone_id_result)
+    parent_transport::outbound_get_new_zone_id(get_new_zone_id_params params)
     {
         auto parent = parent_.get_nullable();
         if (!parent)
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
-        CO_RETURN CO_AWAIT parent->get_new_zone_id(protocol_version, zone_id, in_back_channel, out_back_channel);
+            CO_RETURN get_new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
+        CO_RETURN CO_AWAIT parent->get_new_zone_id(std::move(params));
     }
 
     // Transport from parent zone to child zone
@@ -231,51 +161,22 @@ namespace rpc::local
     }
 
     // Outbound i_marshaller interface - sends from parent to child
-    CORO_TASK(int)
-    child_transport::outbound_send(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(send_result)
+    child_transport::outbound_send(send_params params)
     {
-
         auto child = child_.get_nullable();
         if (!child)
         {
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            CO_RETURN send_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         }
 
         // Forward to child service's inbound handler via its transport
         // Since child_service IS an i_marshaller, we can call directly
-        CO_RETURN CO_AWAIT child->inbound_send(protocol_version,
-            encoding,
-            tag,
-            caller_zone_id,
-            remote_object_id,
-            interface_id,
-            method_id,
-            in_data,
-            out_buf_,
-            in_back_channel,
-            out_back_channel);
+        CO_RETURN CO_AWAIT child->inbound_send(std::move(params));
     }
 
     CORO_TASK(void)
-    child_transport::outbound_post(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    child_transport::outbound_post(post_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
@@ -283,76 +184,47 @@ namespace rpc::local
             CO_RETURN;
         }
 
-        CO_AWAIT child->inbound_post(
-            protocol_version, encoding, tag, caller_zone_id, remote_object_id, interface_id, method_id, in_data, in_back_channel);
+        CO_AWAIT child->inbound_post(std::move(params));
     }
 
-    CORO_TASK(int)
-    child_transport::outbound_try_cast(uint64_t protocol_version,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    child_transport::outbound_try_cast(try_cast_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
         {
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
-        CO_RETURN CO_AWAIT child->inbound_try_cast(
-            protocol_version, caller_zone_id, remote_object_id, interface_id, in_back_channel, out_back_channel);
+        CO_RETURN CO_AWAIT child->inbound_try_cast(std::move(params));
     }
 
-    CORO_TASK(int)
-    child_transport::outbound_add_ref(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options build_out_param_channel,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
-    {
-
-        auto child = child_.get_nullable();
-        if (!child)
-        {
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
-        }
-
-        CO_RETURN CO_AWAIT child->inbound_add_ref(protocol_version,
-            remote_object_id,
-            caller_zone_id,
-            requesting_zone_id,
-            build_out_param_channel,
-            in_back_channel,
-            out_back_channel);
-    }
-
-    CORO_TASK(int)
-    child_transport::outbound_release(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    child_transport::outbound_add_ref(add_ref_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
         {
-            CO_RETURN rpc::error::ZONE_NOT_FOUND();
+            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
-        CO_RETURN CO_AWAIT child->inbound_release(
-            protocol_version, remote_object_id, caller_zone_id, options, in_back_channel, out_back_channel);
+        CO_RETURN CO_AWAIT child->inbound_add_ref(std::move(params));
+    }
+
+    CORO_TASK(back_channel_result)
+    child_transport::outbound_release(release_params params)
+    {
+        auto child = child_.get_nullable();
+        if (!child)
+        {
+            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+        }
+
+        CO_RETURN CO_AWAIT child->inbound_release(std::move(params));
     }
 
     CORO_TASK(void)
-    child_transport::outbound_object_released(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    child_transport::outbound_object_released(object_released_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
@@ -360,14 +232,11 @@ namespace rpc::local
             CO_RETURN;
         }
 
-        CO_AWAIT child->inbound_object_released(protocol_version, remote_object_id, caller_zone_id, in_back_channel);
+        CO_AWAIT child->inbound_object_released(std::move(params));
     }
 
     CORO_TASK(void)
-    child_transport::outbound_transport_down(uint64_t protocol_version,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    child_transport::outbound_transport_down(transport_down_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
@@ -375,6 +244,6 @@ namespace rpc::local
             CO_RETURN;
         }
 
-        CO_AWAIT child->inbound_transport_down(protocol_version, destination_zone_id, caller_zone_id, in_back_channel);
+        CO_AWAIT child->inbound_transport_down(std::move(params));
     }
 }

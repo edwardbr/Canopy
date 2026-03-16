@@ -97,8 +97,9 @@ namespace rpc
         template<class T> void create_interface_proxy(rpc::shared_ptr<T>& inface);
 
         template<class T, template<class> class PtrType = rpc::shared_ptr, bool default_do_remote_check = true>
-        CORO_TASK(int)
-        query_interface(PtrType<T>& iface, bool do_remote_check = default_do_remote_check)
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-reference-coroutine-parameters) -- iface is an output parameter; all
+        // callers use CO_AWAIT so the referenced variable is guaranteed live
+        CORO_TASK(int) query_interface(PtrType<T>& iface, bool do_remote_check = default_do_remote_check)
         {
             static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
                 "query_interface only supports rpc::shared_ptr and rpc::optimistic_ptr");

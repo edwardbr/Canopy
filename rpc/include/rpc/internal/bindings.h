@@ -9,6 +9,8 @@
 
 namespace rpc
 {
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters) -- output params in in-process binding
+    // helpers; callers use CO_AWAIT so the referenced locals cannot dangle
     template<class T, template<class> class PtrType>
     CORO_TASK(int)
     proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p,
@@ -339,4 +341,5 @@ namespace rpc
         auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface);
         CO_RETURN CO_AWAIT serv.get_descriptor_from_interface_stub(caller_zone_id, iface_cast, stub, descriptor, false);
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 }

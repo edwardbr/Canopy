@@ -75,25 +75,15 @@ namespace rpc::mock_test
         CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(int)
-    mock_transport::outbound_send(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(send_result)
+    mock_transport::outbound_send(send_params params)
     {
         send_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::SEND, protocol_version, remote_object_id, caller_zone_id);
+        record_call(call_record::call_type::SEND, params.protocol_version, params.remote_object_id, params.caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
-            CO_RETURN forced_error_code_.load(std::memory_order_acquire);
+            CO_RETURN send_result{forced_error_code_.load(std::memory_order_acquire), {}, {}};
         }
 
         // Check if custom handler is set
@@ -106,145 +96,85 @@ namespace rpc::mock_test
             }
             else
             {
-                CO_RETURN rpc::error::OK();
+                CO_RETURN send_result{rpc::error::OK(), {}, {}};
             }
         }
-        CO_RETURN CO_AWAIT handler(protocol_version,
-            encoding,
-            tag,
-            caller_zone_id,
-            remote_object_id,
-            interface_id,
-            method_id,
-            in_data,
-            out_buf_,
-            in_back_channel,
-            out_back_channel);
+        CO_RETURN CO_AWAIT handler(std::move(params));
 
         // Default successful response
-        CO_RETURN rpc::error::OK();
+        CO_RETURN send_result{rpc::error::OK(), {}, {}};
     }
 
     CORO_TASK(void)
-    mock_transport::outbound_post(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    mock_transport::outbound_post(post_params params)
     {
-        std::ignore = encoding;
-        std::ignore = tag;
-        std::ignore = interface_id;
-        std::ignore = method_id;
-        std::ignore = in_data;
-        std::ignore = in_back_channel;
-
         post_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::POST, protocol_version, remote_object_id, caller_zone_id);
+        record_call(call_record::call_type::POST, params.protocol_version, params.remote_object_id, params.caller_zone_id);
         CO_RETURN;
     }
 
-    CORO_TASK(int)
-    mock_transport::outbound_try_cast(uint64_t protocol_version,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    mock_transport::outbound_try_cast(try_cast_params params)
     {
-        std::ignore = interface_id;
-        std::ignore = in_back_channel;
-        std::ignore = out_back_channel;
-
         try_cast_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::TRY_CAST, protocol_version, remote_object_id, caller_zone_id);
+        record_call(
+            call_record::call_type::TRY_CAST, params.protocol_version, params.remote_object_id, params.caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
-            CO_RETURN forced_error_code_.load(std::memory_order_acquire);
+            CO_RETURN back_channel_result{forced_error_code_.load(std::memory_order_acquire), {}};
         }
 
-        CO_RETURN rpc::error::OK();
+        CO_RETURN back_channel_result{rpc::error::OK(), {}};
     }
 
-    CORO_TASK(int)
-    mock_transport::outbound_add_ref(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options build_out_param_channel,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    mock_transport::outbound_add_ref(add_ref_params params)
     {
-        std::ignore = requesting_zone_id;
-        std::ignore = build_out_param_channel;
-        std::ignore = in_back_channel;
-        std::ignore = out_back_channel;
-
         add_ref_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::ADD_REF, protocol_version, remote_object_id, caller_zone_id);
+        record_call(
+            call_record::call_type::ADD_REF, params.protocol_version, params.remote_object_id, params.caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
-            CO_RETURN forced_error_code_.load(std::memory_order_acquire);
+            CO_RETURN back_channel_result{forced_error_code_.load(std::memory_order_acquire), {}};
         }
 
-        CO_RETURN rpc::error::OK();
+        CO_RETURN back_channel_result{rpc::error::OK(), {}};
     }
 
-    CORO_TASK(int)
-    mock_transport::outbound_release(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    mock_transport::outbound_release(release_params params)
     {
-        std::ignore = options;
-        std::ignore = in_back_channel;
-        std::ignore = out_back_channel;
-
         release_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::RELEASE, protocol_version, remote_object_id, caller_zone_id);
+        record_call(
+            call_record::call_type::RELEASE, params.protocol_version, params.remote_object_id, params.caller_zone_id);
 
         if (force_failure_.load(std::memory_order_acquire))
         {
-            CO_RETURN forced_error_code_.load(std::memory_order_acquire);
+            CO_RETURN back_channel_result{forced_error_code_.load(std::memory_order_acquire), {}};
         }
 
-        CO_RETURN rpc::error::OK();
+        CO_RETURN back_channel_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(void)
-    mock_transport::outbound_object_released(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    mock_transport::outbound_object_released(object_released_params params)
     {
-        std::ignore = in_back_channel;
-
         object_released_count_.fetch_add(1, std::memory_order_acq_rel);
-        record_call(call_record::call_type::OBJECT_RELEASED, protocol_version, remote_object_id, caller_zone_id);
+        record_call(
+            call_record::call_type::OBJECT_RELEASED, params.protocol_version, params.remote_object_id, params.caller_zone_id);
         CO_RETURN;
     }
 
     CORO_TASK(void)
-    mock_transport::outbound_transport_down(uint64_t protocol_version,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    mock_transport::outbound_transport_down(transport_down_params params)
     {
-        std::ignore = in_back_channel;
-
         transport_down_count_.fetch_add(1, std::memory_order_acq_rel);
         record_call(call_record::call_type::TRANSPORT_DOWN,
-            protocol_version,
-            rpc::remote_object(destination_zone_id),
-            caller_zone_id);
+            params.protocol_version,
+            rpc::remote_object(params.destination_zone_id),
+            params.caller_zone_id);
 
         mark_as_down();
         CO_RETURN;

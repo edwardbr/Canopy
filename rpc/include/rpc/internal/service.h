@@ -445,86 +445,22 @@ namespace rpc
          *
          * Thread-Safety: Protected by service_proxy_control_ mutex for transport lookup
          */
-        CORO_TASK(int)
-        send(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
+        CORO_TASK(send_result) send(send_params params) override;
         /**
          * @brief Post a one-way RPC call (fire-and-forget)
-         * @param protocol_version RPC protocol version
-         * @param encoding Serialization format
-         * @param tag Operation tag for tracing
-         * @param caller_zone_id Zone making the call
-         * @param destination_zone_id Target zone
-         * @param object_id Target object ID
-         * @param interface_id Target interface ordinal
-         * @param method_id Method to invoke
-         * @param in_data Serialized input parameters
-         * @param in_back_channel Input back-channel data for reference counting
+         * @param params Bundled post parameters
          *
          * Unlike send(), post() does not wait for a return value.
          *
          * Thread-Safety: Protected by service_proxy_control_ mutex for transport lookup
          */
-        CORO_TASK(void)
-        post(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<rpc::back_channel_entry>& in_back_channel) override;
-        CORO_TASK(int)
-        try_cast(uint64_t protocol_version,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
-        CORO_TASK(int)
-        add_ref(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            requesting_zone requesting_zone_id,
-            add_ref_options build_out_param_channel,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
-        CORO_TASK(int)
-        release(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            release_options options,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-        CORO_TASK(void)
-        object_released(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel) override;
-
-        CORO_TASK(void)
-        transport_down(uint64_t protocol_version,
-            destination_zone destination_zone_id,
-            caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel) override;
-
-        CORO_TASK(int)
-        get_new_zone_id(uint64_t protocol_version,
-            zone& zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override
-            = 0;
+        CORO_TASK(void) post(post_params params) override;
+        CORO_TASK(back_channel_result) try_cast(try_cast_params params) override;
+        CORO_TASK(back_channel_result) add_ref(add_ref_params params) override;
+        CORO_TASK(back_channel_result) release(release_params params) override;
+        CORO_TASK(void) object_released(object_released_params params) override;
+        CORO_TASK(void) transport_down(transport_down_params params) override;
+        CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override = 0;
 
         ///////////////////////////////////////////////////////////////////////////////
         // OUTBOUND COMMUNICATION FUNCTIONS - Allow derived classes to add functionality
@@ -535,54 +471,14 @@ namespace rpc
         // process back_channel data.
         ///////////////////////////////////////////////////////////////////////////////
 
-        virtual CORO_TASK(int) outbound_send(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel,
-            const std::shared_ptr<transport>& transport);
-
-        virtual CORO_TASK(void) outbound_post(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            const std::shared_ptr<transport>& transport);
-
-        virtual CORO_TASK(int) outbound_try_cast(uint64_t protocol_version,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel,
-            const std::shared_ptr<transport>& transport);
-
-        virtual CORO_TASK(int) outbound_add_ref(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            requesting_zone requesting_zone_id,
-            add_ref_options build_out_param_channel,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel,
-            const std::shared_ptr<transport>& transport);
-
-        virtual CORO_TASK(int) outbound_release(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            release_options options,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel,
-            const std::shared_ptr<transport>& transport);
+        virtual CORO_TASK(send_result) outbound_send(send_params params, const std::shared_ptr<transport>& transport);
+        virtual CORO_TASK(void) outbound_post(post_params params, const std::shared_ptr<transport>& transport);
+        virtual CORO_TASK(back_channel_result)
+            outbound_try_cast(try_cast_params params, const std::shared_ptr<transport>& transport);
+        virtual CORO_TASK(back_channel_result)
+            outbound_add_ref(add_ref_params params, const std::shared_ptr<transport>& transport);
+        virtual CORO_TASK(back_channel_result)
+            outbound_release(release_params params, const std::shared_ptr<transport>& transport);
 
     public:
         CORO_TASK(uint64_t)
@@ -749,11 +645,7 @@ namespace rpc
          *
          * Thread-Safety: Safe to call from multiple threads
          */
-        CORO_TASK(int)
-        get_new_zone_id(uint64_t protocol_version,
-            zone& zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
+        CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override;
     };
 
     /**
@@ -901,13 +793,10 @@ namespace rpc
         ~child_service() override;
 
         // Forwards the request up to the parent zone via the parent transport.
-        CORO_TASK(int)
-        get_new_zone_id(uint64_t protocol_version,
-            zone& zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel) override;
+        CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override;
 
         template<class PARENT_INTERFACE, class CHILD_INTERFACE>
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters) -- output parameters; all callers use CO_AWAIT so referenced variables are guaranteed live
         static CORO_TASK(int) create_child_zone(const char* name,
             std::shared_ptr<transport> parent_transport,
             rpc::connection_settings input_descr,
@@ -1033,10 +922,11 @@ namespace rpc
             CO_RETURN rpc::error::OK();
         };
     };
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     template<class in_param_type, class out_param_type>
-    CORO_TASK(int)
-    service::connect_to_zone(const char* name,
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters) -- output parameters; all callers use CO_AWAIT so referenced variables are guaranteed live
+    CORO_TASK(int) service::connect_to_zone(const char* name,
         std::shared_ptr<transport> child_transport,
         const rpc::shared_ptr<in_param_type>& input_interface,
         rpc::shared_ptr<out_param_type>& output_interface)
@@ -1135,12 +1025,13 @@ namespace rpc
 
         CO_RETURN err_code;
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     // Attach remote zone - for peer-to-peer connections
     // Takes single transport since this is called by the remote peer during connection
     template<class PARENT_INTERFACE, class CHILD_INTERFACE>
-    CORO_TASK(int)
-    service::attach_remote_zone(const char* name,
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters) -- output parameters; all callers use CO_AWAIT so referenced variables are guaranteed live
+    CORO_TASK(int) service::attach_remote_zone(const char* name,
         std::shared_ptr<transport> peer_transport,
         rpc::connection_settings input_descr,
         rpc::interface_descriptor& output_descr,
@@ -1282,7 +1173,6 @@ namespace rpc
         }
 
         auto known_direction = zone_id_;
-        std::vector<rpc::back_channel_entry> empty_out;
         RPC_DEBUG("remote_add_ref: zone={}, dest_zone={}, caller_zone={}, "
                   "known_direction={}, destination_transport={}, obj_adj_zone={}",
             zone_id_.get_subnet(),
@@ -1293,14 +1183,17 @@ namespace rpc
             destination_transport ? destination_transport->get_adjacent_zone_id().get_subnet() : 0);
 
         auto dest_with_obj = destination_zone_id.with_object(object_id);
-        err_code = CO_AWAIT marshaller->add_ref(protocol_version,
-            dest_with_obj,
-            caller_zone_id,
-            known_direction,
-            rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
-                | (optimistic ? add_ref_options::optimistic : add_ref_options::normal),
-            empty_back_channel(),
-            empty_out);
+        add_ref_params ar_params;
+        ar_params.protocol_version = protocol_version;
+        ar_params.remote_object_id = dest_with_obj;
+        ar_params.caller_zone_id = caller_zone_id;
+        ar_params.requesting_zone_id = known_direction;
+        ar_params.build_out_param_channel = rpc::add_ref_options::build_destination_route
+                                            | rpc::add_ref_options::build_caller_route
+                                            | (optimistic ? add_ref_options::optimistic : add_ref_options::normal);
+        ar_params.in_back_channel = empty_back_channel();
+        auto ar_result = CO_AWAIT marshaller->add_ref(std::move(ar_params));
+        err_code = ar_result.error_code;
         if (err_code != rpc::error::OK())
         {
             RPC_ERROR("remote_add_ref add_ref failed with code {}", err_code);

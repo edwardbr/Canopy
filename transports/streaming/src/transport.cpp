@@ -87,56 +87,35 @@ namespace rpc::stream_transport
         CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(int)
-    transport::outbound_send(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(send_result)
+    transport::outbound_send(send_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_send zone={}", get_zone_id().get_subnet());
 
         call_receive response;
-        int ret = CO_AWAIT call_peer(protocol_version,
-            call_send{.encoding = encoding,
-                .tag = tag,
-                .caller_zone_id = caller_zone_id,
-                .destination_zone_id = remote_object_id,
-                .interface_id = interface_id,
-                .method_id = method_id,
-                .payload = std::vector<char>(in_data.begin(), in_data.end()),
-                .back_channel = in_back_channel},
+        int ret = CO_AWAIT call_peer(params.protocol_version,
+            call_send{.encoding = params.encoding_type,
+                .tag = params.tag,
+                .caller_zone_id = params.caller_zone_id,
+                .destination_zone_id = params.remote_object_id,
+                .interface_id = params.interface_id,
+                .method_id = params.method_id,
+                .payload = std::move(params.in_data),
+                .back_channel = std::move(params.in_back_channel)},
             response);
 
         if (rpc::error::is_error(ret))
         {
             RPC_DEBUG("failed stream_transport::transport::outbound_send call_send");
-            CO_RETURN ret;
+            CO_RETURN send_result{ret, {}, {}};
         }
 
-        out_buf_.swap(response.payload);
-        out_back_channel.swap(response.back_channel);
-
         RPC_DEBUG("stream_transport::transport::outbound_send complete zone={}", get_zone_id().get_subnet());
-        CO_RETURN response.err_code;
+        CO_RETURN send_result{response.err_code, std::move(response.payload), std::move(response.back_channel)};
     }
 
     CORO_TASK(void)
-    transport::outbound_post(uint64_t protocol_version,
-        rpc::encoding encoding,
-        uint64_t tag,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        const rpc::byte_span& in_data,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    transport::outbound_post(post_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_post zone={}", get_zone_id().get_subnet());
 
@@ -146,74 +125,61 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload_post_send(protocol_version,
+        send_payload_post_send(params.protocol_version,
             message_direction::one_way,
-            post_send{.encoding = encoding,
-                .tag = tag,
-                .caller_zone_id = caller_zone_id,
-                .destination_zone_id = remote_object_id,
-                .interface_id = interface_id,
-                .method_id = method_id,
-                .payload = std::vector<char>(in_data.begin(), in_data.end()),
-                .back_channel = in_back_channel},
+            post_send{.encoding = params.encoding_type,
+                .tag = params.tag,
+                .caller_zone_id = params.caller_zone_id,
+                .destination_zone_id = params.remote_object_id,
+                .interface_id = params.interface_id,
+                .method_id = params.method_id,
+                .payload = std::move(params.in_data),
+                .back_channel = std::move(params.in_back_channel)},
             0);
 
         CO_RETURN;
     }
 
-    CORO_TASK(int)
-    transport::outbound_try_cast(uint64_t protocol_version,
-        rpc::caller_zone caller_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::interface_ordinal interface_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    transport::outbound_try_cast(try_cast_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_try_cast zone={}", get_zone_id().get_subnet());
 
         try_cast_receive response_data;
-        int ret = CO_AWAIT call_peer(protocol_version,
-            try_cast_send{.caller_zone_id = caller_zone_id,
-                .destination_zone_id = remote_object_id,
-                .interface_id = interface_id,
-                .back_channel = in_back_channel},
+        int ret = CO_AWAIT call_peer(params.protocol_version,
+            try_cast_send{.caller_zone_id = params.caller_zone_id,
+                .destination_zone_id = params.remote_object_id,
+                .interface_id = params.interface_id,
+                .back_channel = std::move(params.in_back_channel)},
             response_data);
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("failed try_cast call_peer");
-            CO_RETURN ret;
+            CO_RETURN back_channel_result{ret, {}};
         }
 
-        out_back_channel.swap(response_data.back_channel);
-        CO_RETURN response_data.err_code;
+        CO_RETURN back_channel_result{response_data.err_code, std::move(response_data.back_channel)};
     }
 
-    CORO_TASK(int)
-    transport::outbound_add_ref(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options build_out_param_channel,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    transport::outbound_add_ref(add_ref_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_add_ref zone={}", get_zone_id().get_subnet());
 
         addref_receive response_data;
-        int ret = CO_AWAIT call_peer(protocol_version,
-            addref_send{.destination_zone_id = remote_object_id,
-                .caller_zone_id = caller_zone_id,
-                .requesting_zone_id = requesting_zone_id,
-                .build_out_param_channel = build_out_param_channel,
-                .back_channel = in_back_channel},
+        int ret = CO_AWAIT call_peer(params.protocol_version,
+            addref_send{.destination_zone_id = params.remote_object_id,
+                .caller_zone_id = params.caller_zone_id,
+                .requesting_zone_id = params.requesting_zone_id,
+                .build_out_param_channel = params.build_out_param_channel,
+                .back_channel = std::move(params.in_back_channel)},
             response_data);
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("failed add_ref addref_send");
-            CO_RETURN ret;
+            CO_RETURN back_channel_result{ret, {}};
         }
 
-        out_back_channel.swap(response_data.back_channel);
         if (response_data.err_code != rpc::error::OK())
         {
             RPC_ERROR("failed addref_receive.err_code");
@@ -224,20 +190,15 @@ namespace rpc::stream_transport
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
 #endif
-            CO_RETURN response_data.err_code;
+            CO_RETURN back_channel_result{response_data.err_code, std::move(response_data.back_channel)};
         }
 
         RPC_DEBUG("stream_transport::transport::outbound_add_ref complete zone={}", get_zone_id().get_subnet());
-        CO_RETURN rpc::error::OK();
+        CO_RETURN back_channel_result{rpc::error::OK(), std::move(response_data.back_channel)};
     }
 
-    CORO_TASK(int)
-    transport::outbound_release(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options,
-        const std::vector<rpc::back_channel_entry>& in_back_channel,
-        std::vector<rpc::back_channel_entry>& out_back_channel)
+    CORO_TASK(back_channel_result)
+    transport::outbound_release(release_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_release zone={}", get_zone_id().get_subnet());
 
@@ -245,15 +206,15 @@ namespace rpc::stream_transport
         {
             RPC_ERROR("failed stream_transport::transport::outbound_release - not connected, status = {}",
                 static_cast<int>(get_status()));
-            CO_RETURN rpc::error::TRANSPORT_ERROR();
+            CO_RETURN back_channel_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
 
-        send_payload_release_send(protocol_version,
+        send_payload_release_send(params.protocol_version,
             message_direction::one_way,
-            release_send{.destination_zone_id = remote_object_id,
-                .caller_zone_id = caller_zone_id,
-                .options = options,
-                .back_channel = in_back_channel},
+            release_send{.destination_zone_id = params.remote_object_id,
+                .caller_zone_id = params.caller_zone_id,
+                .options = params.options,
+                .back_channel = std::move(params.in_back_channel)},
             0);
 
         auto count = get_destination_count();
@@ -264,14 +225,11 @@ namespace rpc::stream_transport
             set_status(rpc::transport_status::DISCONNECTING);
         }
 
-        CO_RETURN rpc::error::OK();
+        CO_RETURN back_channel_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(void)
-    transport::outbound_object_released(uint64_t protocol_version,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    transport::outbound_object_released(object_released_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_object_released zone={}", get_zone_id().get_subnet());
 
@@ -281,22 +239,19 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload_object_released_send(protocol_version,
+        send_payload_object_released_send(params.protocol_version,
             message_direction::one_way,
             object_released_send{.encoding = encoding::yas_binary,
-                .destination_zone_id = remote_object_id,
-                .caller_zone_id = caller_zone_id,
-                .back_channel = in_back_channel},
+                .destination_zone_id = params.remote_object_id,
+                .caller_zone_id = params.caller_zone_id,
+                .back_channel = std::move(params.in_back_channel)},
             0);
 
         RPC_DEBUG("stream_transport::transport::outbound_object_released complete zone={}", get_zone_id().get_subnet());
     }
 
     CORO_TASK(void)
-    transport::outbound_transport_down(uint64_t protocol_version,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id,
-        const std::vector<rpc::back_channel_entry>& in_back_channel)
+    transport::outbound_transport_down(transport_down_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_transport_down zone={}", get_zone_id().get_subnet());
 
@@ -306,12 +261,12 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload_transport_down_send(protocol_version,
+        send_payload_transport_down_send(params.protocol_version,
             message_direction::one_way,
             transport_down_send{.encoding = encoding::yas_binary,
-                .destination_zone_id = destination_zone_id,
-                .caller_zone_id = caller_zone_id,
-                .back_channel = in_back_channel},
+                .destination_zone_id = params.destination_zone_id,
+                .caller_zone_id = params.caller_zone_id,
+                .back_channel = std::move(params.in_back_channel)},
             0);
 
         RPC_DEBUG("stream_transport::transport::outbound_transport_down complete zone={}", get_zone_id().get_subnet());
@@ -745,23 +700,21 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        std::vector<char> out_buf;
-        std::vector<rpc::back_channel_entry> out_back_channel;
-        auto ret = CO_AWAIT inbound_send(prefix.version,
-            request.encoding,
-            request.tag,
-            request.caller_zone_id,
-            request.destination_zone_id,
-            request.interface_id,
-            request.method_id,
-            request.payload,
-            out_buf,
-            request.back_channel,
-            out_back_channel);
+        auto send_result = CO_AWAIT inbound_send(rpc::send_params{
+            .protocol_version = prefix.version,
+            .encoding_type = request.encoding,
+            .tag = request.tag,
+            .caller_zone_id = request.caller_zone_id,
+            .remote_object_id = request.destination_zone_id,
+            .interface_id = request.interface_id,
+            .method_id = request.method_id,
+            .in_data = std::move(request.payload),
+            .in_back_channel = std::move(request.back_channel),
+        });
 
-        if (rpc::error::is_error(ret))
+        if (rpc::error::is_error(send_result.error_code))
         {
-            RPC_DEBUG("inbound_send error {}", ret);
+            RPC_DEBUG("inbound_send error {}", send_result.error_code);
         }
 
         if (prefix.direction == message_direction::one_way)
@@ -769,7 +722,9 @@ namespace rpc::stream_transport
 
         send_payload_call_receive(prefix.version,
             message_direction::receive,
-            call_receive{.payload = std::move(out_buf), .back_channel = std::move(out_back_channel), .err_code = ret},
+            call_receive{.payload = std::move(send_result.out_buf),
+                .back_channel = std::move(send_result.out_back_channel),
+                .err_code = send_result.error_code},
             prefix.sequence_number);
         RPC_DEBUG("stub_handle_send complete");
         CO_RETURN;
@@ -794,15 +749,17 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        CO_AWAIT inbound_post(prefix.version,
-            request.encoding,
-            request.tag,
-            request.caller_zone_id,
-            request.destination_zone_id,
-            request.interface_id,
-            request.method_id,
-            request.payload,
-            request.back_channel);
+        CO_AWAIT inbound_post(rpc::post_params{
+            .protocol_version = prefix.version,
+            .encoding_type = request.encoding,
+            .tag = request.tag,
+            .caller_zone_id = request.caller_zone_id,
+            .remote_object_id = request.destination_zone_id,
+            .interface_id = request.interface_id,
+            .method_id = request.method_id,
+            .in_data = std::move(request.payload),
+            .in_back_channel = std::move(request.back_channel),
+        });
 
         RPC_DEBUG("stub_handle_post complete");
         CO_RETURN;
@@ -827,22 +784,22 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        std::vector<rpc::back_channel_entry> out_back_channel;
-        auto ret = CO_AWAIT inbound_try_cast(prefix.version,
-            request.caller_zone_id,
-            request.destination_zone_id,
-            request.interface_id,
-            request.back_channel,
-            out_back_channel);
+        auto tc_result = CO_AWAIT inbound_try_cast(rpc::try_cast_params{
+            .protocol_version = prefix.version,
+            .caller_zone_id = request.caller_zone_id,
+            .remote_object_id = request.destination_zone_id,
+            .interface_id = request.interface_id,
+            .in_back_channel = std::move(request.back_channel),
+        });
 
-        if (rpc::error::is_error(ret))
+        if (rpc::error::is_error(tc_result.error_code))
         {
-            RPC_DEBUG("inbound_try_cast error {}", ret);
+            RPC_DEBUG("inbound_try_cast error {}", tc_result.error_code);
         }
 
         send_payload_try_cast_receive(prefix.version,
             message_direction::receive,
-            try_cast_receive{.back_channel = std::move(out_back_channel), .err_code = ret},
+            try_cast_receive{.back_channel = std::move(tc_result.out_back_channel), .err_code = tc_result.error_code},
             prefix.sequence_number);
         RPC_DEBUG("stub_handle_try_cast complete");
         CO_RETURN;
@@ -867,23 +824,23 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        std::vector<rpc::back_channel_entry> out_back_channel;
-        auto ret = CO_AWAIT inbound_add_ref(prefix.version,
-            request.destination_zone_id,
-            request.caller_zone_id,
-            request.requesting_zone_id,
-            request.build_out_param_channel,
-            request.back_channel,
-            out_back_channel);
+        auto ar_result = CO_AWAIT inbound_add_ref(rpc::add_ref_params{
+            .protocol_version = prefix.version,
+            .remote_object_id = request.destination_zone_id,
+            .caller_zone_id = request.caller_zone_id,
+            .requesting_zone_id = request.requesting_zone_id,
+            .build_out_param_channel = request.build_out_param_channel,
+            .in_back_channel = std::move(request.back_channel),
+        });
 
-        if (rpc::error::is_error(ret))
+        if (rpc::error::is_error(ar_result.error_code))
         {
-            RPC_DEBUG("inbound_add_ref error {}", ret);
+            RPC_DEBUG("inbound_add_ref error {}", ar_result.error_code);
         }
 
         send_payload_addref_receive(prefix.version,
             message_direction::receive,
-            addref_receive{.back_channel = std::move(out_back_channel), .err_code = ret},
+            addref_receive{.back_channel = std::move(ar_result.out_back_channel), .err_code = ar_result.error_code},
             prefix.sequence_number);
         RPC_DEBUG("stub_handle_add_ref complete");
         CO_RETURN;
@@ -903,17 +860,17 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        std::vector<rpc::back_channel_entry> out_back_channel;
-        auto ret = CO_AWAIT inbound_release(prefix.version,
-            request.destination_zone_id,
-            request.caller_zone_id,
-            request.options,
-            request.back_channel,
-            out_back_channel);
+        auto rel_result = CO_AWAIT inbound_release(rpc::release_params{
+            .protocol_version = prefix.version,
+            .remote_object_id = request.destination_zone_id,
+            .caller_zone_id = request.caller_zone_id,
+            .options = request.options,
+            .in_back_channel = std::move(request.back_channel),
+        });
 
-        if (rpc::error::is_error(ret))
+        if (rpc::error::is_error(rel_result.error_code))
         {
-            RPC_DEBUG("inbound_release error {}", ret);
+            RPC_DEBUG("inbound_release error {}", rel_result.error_code);
         }
 
         auto count = get_destination_count();
@@ -942,8 +899,12 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        CO_AWAIT inbound_object_released(
-            prefix.version, request.destination_zone_id, request.caller_zone_id, request.back_channel);
+        CO_AWAIT inbound_object_released(rpc::object_released_params{
+            .protocol_version = prefix.version,
+            .remote_object_id = request.destination_zone_id,
+            .caller_zone_id = request.caller_zone_id,
+            .in_back_channel = std::move(request.back_channel),
+        });
 
         RPC_DEBUG("stub_handle_object_released complete");
         CO_RETURN;
@@ -963,8 +924,12 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        CO_AWAIT inbound_transport_down(
-            prefix.version, request.destination_zone_id, request.caller_zone_id, request.back_channel);
+        CO_AWAIT inbound_transport_down(rpc::transport_down_params{
+            .protocol_version = prefix.version,
+            .destination_zone_id = request.destination_zone_id,
+            .caller_zone_id = request.caller_zone_id,
+            .in_back_channel = std::move(request.back_channel),
+        });
 
         RPC_DEBUG("stub_handle_transport_down complete");
         CO_RETURN;

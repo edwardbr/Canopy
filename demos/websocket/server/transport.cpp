@@ -30,10 +30,14 @@ namespace websocket_demo
             connection_handler&& handler)
         {
             // generate a zone id for the client
-            rpc::zone client_zone_id;
-            std::vector<rpc::back_channel_entry> out_back_channel;
-            auto error = co_await service->get_new_zone_id(
-                rpc::get_version(), client_zone_id, std::vector<rpc::back_channel_entry>{}, out_back_channel);
+            rpc::get_new_zone_id_params params;
+            params.protocol_version = rpc::get_version();
+            auto result = co_await service->get_new_zone_id(std::move(params));
+            if (result.error_code != rpc::error::OK())
+            {
+                co_return nullptr;
+            }
+            rpc::zone client_zone_id = result.zone_id;
 
             auto transpt = std::shared_ptr<transport>(new transport(service, client_zone_id, stream, std::move(handler)));
 
@@ -147,36 +151,29 @@ namespace websocket_demo
         }
 
         // Outbound i_marshaller interface - sends from child to parent
-        CORO_TASK(int)
-        transport::outbound_send(uint64_t protocol_version,
-            rpc::encoding encoding,
-            uint64_t tag,
-            rpc::caller_zone caller_zone_id,
-            rpc::remote_object remote_object_id,
-            rpc::interface_ordinal interface_id,
-            rpc::method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
+        CORO_TASK(rpc::send_result)
+        transport::outbound_send(rpc::send_params params)
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_transport_outbound_send(
-                    get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id);
+                telemetry_service->on_transport_outbound_send(get_zone_id(),
+                    get_adjacent_zone_id(),
+                    params.remote_object_id,
+                    params.caller_zone_id,
+                    params.interface_id,
+                    params.method_id);
             }
 #endif
             websocket_demo::v1::request request;
-            request.encoding = encoding;
-            request.tag = tag;
-            request.caller_zone_id = caller_zone_id;
-            request.destination_zone_id = to_object_address(remote_object_id.get_address());
-            request.interface_id = interface_id;
-            request.method_id = method_id;
-            request.data = std::vector<char>{
-                reinterpret_cast<const char*>(in_data.begin()), reinterpret_cast<const char*>(in_data.end())};
-            request.back_channel = in_back_channel;
+            request.encoding = params.encoding_type;
+            request.tag = params.tag;
+            request.caller_zone_id = params.caller_zone_id;
+            request.destination_zone_id = to_object_address(params.remote_object_id.get_address());
+            request.interface_id = params.interface_id;
+            request.method_id = params.method_id;
+            request.data = std::move(params.in_data);
+            request.back_channel = std::move(params.in_back_channel);
 
             auto payload = rpc::to_protobuf<std::vector<char>>(request);
             websocket_demo::v1::envelope envelope;
@@ -187,37 +184,31 @@ namespace websocket_demo
 
             CO_AWAIT stream_->send(
                 rpc::byte_span(reinterpret_cast<const char*>(complete_payload.data()), complete_payload.size()));
-            CO_RETURN rpc::error::OK();
+            CO_RETURN rpc::send_result{.error_code = rpc::error::OK(), .out_buf = {}, .out_back_channel = {}};
         }
 
         CORO_TASK(void)
-        transport::outbound_post(uint64_t protocol_version,
-            rpc::encoding encoding,
-            uint64_t tag,
-            rpc::caller_zone caller_zone_id,
-            rpc::remote_object remote_object_id,
-            rpc::interface_ordinal interface_id,
-            rpc::method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<rpc::back_channel_entry>& back_channel)
+        transport::outbound_post(rpc::post_params params)
         {
-
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_transport_outbound_post(
-                    get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id);
+                telemetry_service->on_transport_outbound_post(get_zone_id(),
+                    get_adjacent_zone_id(),
+                    params.remote_object_id,
+                    params.caller_zone_id,
+                    params.interface_id,
+                    params.method_id);
             }
 #endif
             websocket_demo::v1::request request;
-            request.encoding = encoding;
-            request.tag = tag;
-            request.caller_zone_id = caller_zone_id;
-            request.destination_zone_id = to_object_address(remote_object_id.get_address());
-            request.interface_id = interface_id;
-            request.method_id = method_id;
-            request.data = std::vector<char>{
-                reinterpret_cast<const char*>(in_data.begin()), reinterpret_cast<const char*>(in_data.end())};
+            request.encoding = params.encoding_type;
+            request.tag = params.tag;
+            request.caller_zone_id = params.caller_zone_id;
+            request.destination_zone_id = to_object_address(params.remote_object_id.get_address());
+            request.interface_id = params.interface_id;
+            request.method_id = params.method_id;
+            request.data = std::move(params.in_data);
             request.back_channel = {};
 
             auto payload = rpc::to_protobuf<std::vector<char>>(request);
@@ -232,59 +223,40 @@ namespace websocket_demo
             CO_RETURN;
         }
 
-        CORO_TASK(int)
-        transport::outbound_try_cast(uint64_t protocol_version,
-            rpc::caller_zone caller_zone_id,
-            rpc::remote_object remote_object_id,
-            rpc::interface_ordinal interface_id,
-            const std::vector<rpc::back_channel_entry>& back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
+        CORO_TASK(rpc::back_channel_result)
+        transport::outbound_try_cast(rpc::try_cast_params params)
         {
-
-            CO_RETURN rpc::error::INCOMPATIBLE_SERVICE();
+            std::ignore = params;
+            CO_RETURN rpc::back_channel_result{.error_code = rpc::error::INCOMPATIBLE_SERVICE(), .out_back_channel = {}};
         }
 
-        CORO_TASK(int)
-        transport::outbound_add_ref(uint64_t protocol_version,
-            rpc::remote_object remote_object_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::requesting_zone requesting_zone_id,
-            rpc::add_ref_options build_out_param_channel,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
+        CORO_TASK(rpc::back_channel_result)
+        transport::outbound_add_ref(rpc::add_ref_params params)
         {
+            std::ignore = params;
             // WebSocket clients do not participate in RPC reference counting lifecycle.
             // Return OK to allow stub registration to succeed.
-            CO_RETURN rpc::error::OK();
+            CO_RETURN rpc::back_channel_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
         }
 
-        CORO_TASK(int)
-        transport::outbound_release(uint64_t protocol_version,
-            rpc::remote_object remote_object_id,
-            rpc::caller_zone caller_zone_id,
-            rpc::release_options options,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
+        CORO_TASK(rpc::back_channel_result)
+        transport::outbound_release(rpc::release_params params)
         {
-            CO_RETURN rpc::error::OK();
+            std::ignore = params;
+            CO_RETURN rpc::back_channel_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
         }
 
         CORO_TASK(void)
-        transport::outbound_object_released(uint64_t protocol_version,
-            rpc::remote_object remote_object_id,
-            rpc::caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& back_channel)
+        transport::outbound_object_released(rpc::object_released_params params)
         {
-
+            std::ignore = params;
             CO_RETURN;
         }
 
         CORO_TASK(void)
-        transport::outbound_transport_down(uint64_t protocol_version,
-            rpc::destination_zone destination_zone_id,
-            rpc::caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& back_channel)
+        transport::outbound_transport_down(rpc::transport_down_params params)
         {
+            std::ignore = params;
             CO_RETURN;
         }
 
@@ -302,29 +274,27 @@ namespace websocket_demo
                 CO_RETURN; // no reply.
             }
 
-            std::vector<char> out_buf;
-            std::vector<rpc::back_channel_entry> out_back_channel;
-            auto ret = CO_AWAIT inbound_send(rpc::get_version(),
-                rpc::encoding::protocol_buffers,
-                request.tag,
-                get_adjacent_zone_id(),
-                {to_zone_address(request.destination_zone_id)},
-                request.interface_id,
-                request.method_id,
-                request.data,
-                out_buf,
-                {},
-                out_back_channel);
+            auto send_result = CO_AWAIT inbound_send(rpc::send_params{
+                .protocol_version = rpc::get_version(),
+                .encoding_type = rpc::encoding::protocol_buffers,
+                .tag = request.tag,
+                .caller_zone_id = get_adjacent_zone_id(),
+                .remote_object_id = rpc::remote_object(to_zone_address(request.destination_zone_id)),
+                .interface_id = request.interface_id,
+                .method_id = request.method_id,
+                .in_data = request.data,
+                .in_back_channel = {},
+            });
 
-            if (ret != rpc::error::OK())
+            if (send_result.error_code != rpc::error::OK())
             {
-                RPC_ERROR("failed send {}", rpc::error::to_string(ret));
+                RPC_ERROR("failed send {}", rpc::error::to_string(send_result.error_code));
             }
 
             // create a response
             websocket_demo::v1::response response;
-            response.error = ret;
-            response.data.swap(out_buf);
+            response.error = send_result.error_code;
+            response.data = std::move(send_result.out_buf);
             response.back_channel = {};
 
             // convert to protobuf

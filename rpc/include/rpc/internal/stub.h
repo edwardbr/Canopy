@@ -139,25 +139,13 @@ namespace rpc
 
         /**
          * @brief Dispatch incoming RPC call to appropriate interface stub
-         * @param protocol_version RPC protocol version
-         * @param enc Encoding format used for parameters
-         * @param caller_zone_id Zone making the call
-         * @param interface_id Target interface ordinal
-         * @param method_id Method to invoke
-         * @param in_data Serialized input parameters
-         * @param out_buf_[out] Buffer for serialized return value
-         * @return error::OK() on success, error code on failure
+         * @param params Owned parameter bundle containing protocol_version, encoding, caller_zone_id,
+         *               interface_id, method_id, and serialized input data
+         * @return send_result containing error_code and out_buf
          *
          * Thread-Safety: Protected by map_control_ for interface lookup
          */
-        CORO_TASK(int)
-        call(uint64_t protocol_version,
-            rpc::encoding enc,
-            caller_zone caller_zone_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_);
+        CORO_TASK(send_result) call(send_params params);
 
         /**
          * @brief Check if this object supports the requested interface

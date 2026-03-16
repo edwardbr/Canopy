@@ -128,8 +128,6 @@ namespace rpc
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
-        std::vector<rpc::back_channel_entry> empty_in;
-        std::vector<rpc::back_channel_entry> empty_out;
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
 #ifdef CANOPY_USE_TELEMETRY
@@ -139,19 +137,18 @@ namespace rpc
                 get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id(), interface_id, method_id);
         }
 #endif
-        auto dest_with_obj = destination_zone_id_.with_object(object_id);
-        CO_RETURN CO_AWAIT service_->outbound_send(protocol_version,
-            encoding,
-            tag,
-            get_zone_id(),
-            dest_with_obj,
-            interface_id,
-            method_id,
-            in_data,
-            out_buf_,
-            empty_in,
-            empty_out,
-            transport);
+        send_params params;
+        params.protocol_version = protocol_version;
+        params.encoding_type = encoding;
+        params.tag = tag;
+        params.caller_zone_id = get_zone_id();
+        params.remote_object_id = destination_zone_id_.with_object(object_id);
+        params.interface_id = interface_id;
+        params.method_id = method_id;
+        params.in_data.assign(in_data.begin(), in_data.end());
+        auto result = CO_AWAIT service_->outbound_send(std::move(params), transport);
+        out_buf_ = std::move(result.out_buf);
+        CO_RETURN result.error_code;
     }
 
     [[nodiscard]] CORO_TASK(int) service_proxy::post_from_this_zone(uint64_t protocol_version,
@@ -185,8 +182,6 @@ namespace rpc
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
 
-        std::vector<rpc::back_channel_entry> empty_in;
-        std::vector<rpc::back_channel_entry> empty_out;
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
 #ifdef CANOPY_USE_TELEMETRY
@@ -196,9 +191,16 @@ namespace rpc
                 get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id(), interface_id, method_id);
         }
 #endif
-        auto dest_with_obj = destination_zone_id_.with_object(object_id);
-        CO_AWAIT service_->outbound_post(
-            protocol_version, encoding, tag, get_zone_id(), dest_with_obj, interface_id, method_id, in_data, empty_in, transport);
+        post_params params;
+        params.protocol_version = protocol_version;
+        params.encoding_type = encoding;
+        params.tag = tag;
+        params.caller_zone_id = get_zone_id();
+        params.remote_object_id = destination_zone_id_.with_object(object_id);
+        params.interface_id = interface_id;
+        params.method_id = method_id;
+        params.in_data.assign(in_data.begin(), in_data.end());
+        CO_AWAIT service_->outbound_post(std::move(params), transport);
 
         CO_RETURN rpc::error::OK();
     }
@@ -229,13 +231,16 @@ namespace rpc
             }
 #endif
 
-            std::vector<rpc::back_channel_entry> empty_in;
-            std::vector<rpc::back_channel_entry> empty_out;
             // Call the outbound function on the service to allow derived classes to add extra functionality
             // such as processing back_channel data
             auto dest_with_obj = destination_zone_id.with_object(object_id);
-            auto ret = CO_AWAIT service_->outbound_try_cast(
-                version, get_zone_id(), dest_with_obj, if_id, empty_in, empty_out, transport);
+            try_cast_params tc_params;
+            tc_params.protocol_version = version;
+            tc_params.caller_zone_id = get_zone_id();
+            tc_params.remote_object_id = dest_with_obj;
+            tc_params.interface_id = if_id;
+            auto tc_result = CO_AWAIT service_->outbound_try_cast(std::move(tc_params), transport);
+            auto ret = tc_result.error_code;
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
                 if (original_version != version)
@@ -270,14 +275,18 @@ namespace rpc
         int last_error = rpc::error::INVALID_VERSION();
         while (version >= min_version)
         {
-            std::vector<rpc::back_channel_entry> empty_in;
-            std::vector<rpc::back_channel_entry> empty_out;
             // Call the outbound function on the service to allow derived classes to add extra functionality
             // such as processing back_channel data
 
             auto dest_with_obj = destination_zone_id_.with_object(object_id);
-            auto attempt = CO_AWAIT service_->outbound_add_ref(
-                version, dest_with_obj, zone_id_, requesting_zone_id, build_out_param_channel, empty_in, empty_out, transport);
+            add_ref_params ar_params;
+            ar_params.protocol_version = version;
+            ar_params.remote_object_id = dest_with_obj;
+            ar_params.caller_zone_id = zone_id_;
+            ar_params.requesting_zone_id = requesting_zone_id;
+            ar_params.build_out_param_channel = build_out_param_channel;
+            auto ar_result = CO_AWAIT service_->outbound_add_ref(std::move(ar_params), transport);
+            auto attempt = ar_result.error_code;
             if (attempt != rpc::error::INVALID_VERSION() && attempt != rpc::error::INCOMPATIBLE_SERVICE())
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -322,13 +331,16 @@ namespace rpc
 
         while (version >= min_version)
         {
-            std::vector<rpc::back_channel_entry> empty_in;
-            std::vector<rpc::back_channel_entry> empty_out;
             // Call the outbound function on the service to allow derived classes to add extra functionality
             // such as processing back_channel data
             auto dest_with_obj = destination_zone_id_.with_object(object_id);
-            auto ret = CO_AWAIT service_->outbound_release(
-                version, dest_with_obj, zone_id_, options, empty_in, empty_out, transport);
+            release_params rel_params;
+            rel_params.protocol_version = version;
+            rel_params.remote_object_id = dest_with_obj;
+            rel_params.caller_zone_id = zone_id_;
+            rel_params.options = options;
+            auto rel_result = CO_AWAIT service_->outbound_release(std::move(rel_params), transport);
+            auto ret = rel_result.error_code;
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -370,19 +382,16 @@ namespace rpc
         // if service is released then the last thing standing is the transport which may then tell its counterpart
         // to begin cleanup too
 
-        std::vector<rpc::back_channel_entry> empty_in;
-        std::vector<rpc::back_channel_entry> empty_out;
-
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
         auto dest_with_obj = destination_zone_id.with_object(object_id);
-        auto ret = CO_AWAIT svc->outbound_release(version,
-            dest_with_obj,
-            caller_id,
-            is_optimistic ? release_options::optimistic : release_options::normal,
-            empty_in,
-            empty_out,
-            transport);
+        release_params rel_params;
+        rel_params.protocol_version = version;
+        rel_params.remote_object_id = dest_with_obj;
+        rel_params.caller_zone_id = caller_id;
+        rel_params.options = is_optimistic ? release_options::optimistic : release_options::normal;
+        auto rel_result = CO_AWAIT svc->outbound_release(std::move(rel_params), transport);
+        auto ret = rel_result.error_code;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {

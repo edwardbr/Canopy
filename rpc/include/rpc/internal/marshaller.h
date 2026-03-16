@@ -11,6 +11,8 @@
 
 // types.h, error_codes.h, and serialiser.h are included by rpc.h
 
+#include <rpc/internal/marshaller_params.h>
+
 namespace rpc
 {
     inline const std::vector<rpc::back_channel_entry>& empty_back_channel() noexcept
@@ -26,79 +28,28 @@ namespace rpc
         virtual ~i_marshaller() = default;
 
         // send a function call to a different zone and expect a reply
-        virtual CORO_TASK(int) send(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
-            = 0;
+        virtual CORO_TASK(send_result) send(send_params params) = 0;
 
         // post a function call to a different zone and not expect a reply (unidirectional), in synchronous builds this may still block
-        virtual CORO_TASK(void) post(uint64_t protocol_version,
-            encoding encoding,
-            uint64_t tag,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            method method_id,
-            const rpc::byte_span& in_data,
-            const std::vector<rpc::back_channel_entry>& in_back_channel)
-            = 0;
+        virtual CORO_TASK(void) post(post_params params) = 0;
 
         // query if an object implements an interface
-        virtual CORO_TASK(int) try_cast(uint64_t protocol_version,
-            caller_zone caller_zone_id,
-            remote_object remote_object_id,
-            interface_ordinal interface_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
-            = 0;
+        virtual CORO_TASK(back_channel_result) try_cast(try_cast_params params) = 0;
 
         // add ownership of an object to a caller if shared or to just prop up the transport chain if optimistic
-        virtual CORO_TASK(int) add_ref(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            requesting_zone requesting_zone_id,
-            add_ref_options build_out_param_channel,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
-            = 0;
+        virtual CORO_TASK(back_channel_result) add_ref(add_ref_params params) = 0;
 
         // notify that a zone is no longer interested in a remote object or transport chain
-        virtual CORO_TASK(int) release(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            release_options options,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
-            = 0;
+        virtual CORO_TASK(back_channel_result) release(release_params params) = 0;
 
         // notify callers that an object has been released (for callers with optimistic ref counts only) unidirectional call
-        virtual CORO_TASK(void) object_released(uint64_t protocol_version,
-            remote_object remote_object_id,
-            caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel)
-            = 0;
+        virtual CORO_TASK(void) object_released(object_released_params params) = 0;
 
         // notify callers that a transport is down unidirectional call
-        virtual CORO_TASK(void) transport_down(uint64_t protocol_version,
-            destination_zone destination_zone_id,
-            caller_zone caller_zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel)
-            = 0;
+        virtual CORO_TASK(void) transport_down(transport_down_params params) = 0;
 
         // request a new zone id from the root zone
-        virtual CORO_TASK(int) get_new_zone_id(uint64_t protocol_version,
-            zone& zone_id,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            std::vector<rpc::back_channel_entry>& out_back_channel)
-            = 0;
+        virtual CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) = 0;
     };
 
     struct retry_buffer

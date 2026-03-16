@@ -40,34 +40,15 @@ namespace rpc
         return rpc::shared_ptr<rpc::casting_interface>(target_, iface);
     }
 
-    CORO_TASK(int)
-    object_stub::call(uint64_t protocol_version,
-        rpc::encoding enc,
-        caller_zone caller_zone_id,
-        interface_ordinal interface_id,
-        method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_)
+    CORO_TASK(send_result)
+    object_stub::call(send_params params)
     {
         if (target_)
         {
-            std::vector<rpc::back_channel_entry> empty_in_back_channel;
-            std::vector<rpc::back_channel_entry> empty_out_back_channel;
-            CO_RETURN CO_AWAIT target_->__rpc_call(protocol_version,
-                enc,
-                0,
-                caller_zone_id,
-                zone_->get_zone_id(),
-                id_,
-                interface_id,
-                method_id,
-                in_data,
-                out_buf_,
-                empty_in_back_channel,
-                empty_out_back_channel);
+            CO_RETURN CO_AWAIT target_->__rpc_call(std::move(params));
         }
         RPC_ERROR("Invalid interface ID in stub call");
-        CO_RETURN rpc::error::INVALID_INTERFACE_ID();
+        CO_RETURN send_result{rpc::error::INVALID_INTERFACE_ID(), {}, {}};
     }
 
     int object_stub::try_cast(interface_ordinal interface_id)
@@ -120,14 +101,14 @@ namespace rpc
 
             if (outcall)
             {
-                std::vector<rpc::back_channel_entry> out_back_channel;
-                ret = CO_AWAIT transport->add_ref(rpc::get_version(),
-                    get_zone()->get_zone_id().with_object(id_),
-                    caller_zone_id,
-                    get_zone()->get_zone_id(),
-                    rpc::add_ref_options::build_caller_route,
-                    {},
-                    out_back_channel);
+                add_ref_params ar_params;
+                ar_params.protocol_version = rpc::get_version();
+                ar_params.remote_object_id = get_zone()->get_zone_id().with_object(id_);
+                ar_params.caller_zone_id = caller_zone_id;
+                ar_params.requesting_zone_id = get_zone()->get_zone_id();
+                ar_params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+                auto ar_result = CO_AWAIT transport->add_ref(std::move(ar_params));
+                ret = ar_result.error_code;
             }
         }
         else
