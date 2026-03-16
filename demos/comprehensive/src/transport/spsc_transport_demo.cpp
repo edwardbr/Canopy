@@ -78,7 +78,7 @@ namespace comprehensive
                 std::cout << "Process 1: Connected!\n";
                 std::cout << "Process 1: testing...\n";
 
-                int result;
+                int result = 0;
                 error = CO_AWAIT remote_calculator->add(10, 20, result);
                 std::cout << "Process 1: add(10, 20) = " << result << " (error: " << static_cast<int>(error) << ")\n";
                 g_test_result = (error == rpc::error::OK()) ? result : -error;

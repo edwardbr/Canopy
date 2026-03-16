@@ -553,7 +553,7 @@ namespace secret_llama
                     RPC_DEBUG("[CTX {}] Adding user message: \"{}\"", std::to_string(context_id_), prompt_str.c_str());
                     add_message("user", prompt_str);
 
-                    int new_len;
+                    int new_len = 0;
                     if (apply_chat_template_with_error_handling(chat_templates_.get(), true, new_len) < 0)
                     {
                         RPC_ERROR("[CTX {}] Unable to apply chat template for user message.", std::to_string(context_id_));
@@ -860,7 +860,7 @@ namespace secret_llama
 
                     // prepare a batch for the prompt
                     llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
-                    llama_token new_token_id;
+                    llama_token new_token_id = 0;
 
                     for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_predict;)
                     {

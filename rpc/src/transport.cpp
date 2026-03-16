@@ -186,7 +186,7 @@ namespace rpc
     }
     void transport::decrement_outbound_proxy_count(destination_zone dest)
     {
-        bool should_shutdown;
+        bool should_shutdown = false;
         {
             std::unique_lock lock(destinations_mutex_);
             should_shutdown = inner_decrement_outbound_proxy_count(dest);
@@ -211,7 +211,7 @@ namespace rpc
     }
     void transport::decrement_inbound_stub_count(caller_zone dest)
     {
-        bool should_shutdown;
+        bool should_shutdown = false;
         {
             std::unique_lock lock(destinations_mutex_);
             should_shutdown = inner_decrement_inbound_stub_count(dest);

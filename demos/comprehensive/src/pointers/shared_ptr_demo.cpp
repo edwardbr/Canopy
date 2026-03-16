@@ -99,7 +99,7 @@ namespace comprehensive
 
                 // Create first object
                 rpc::shared_ptr<i_managed_object> obj1;
-                uint64_t id1;
+                uint64_t id1 = 0;
                 auto error = CO_AWAIT factory->create_object(id1, obj1);
                 print_result("Create object 1", error);
 
@@ -115,7 +115,7 @@ namespace comprehensive
 
                 // Create second object
                 rpc::shared_ptr<i_managed_object> obj2;
-                uint64_t id2;
+                uint64_t id2 = 0;
                 error = CO_AWAIT factory->create_object(id2, obj2);
                 print_result("Create object 2", error);
 
@@ -154,7 +154,7 @@ namespace comprehensive
 
                 // Create object
                 rpc::shared_ptr<i_managed_object> obj;
-                uint64_t id1;
+                uint64_t id1 = 0;
                 auto error = CO_AWAIT factory->create_object(id1, obj);
                 print_result("Create object", error);
 

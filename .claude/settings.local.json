@@ -64,7 +64,8 @@
       "Bash(./build_coroutine_debug/output/tcp_spsc_tls_demo:*)",
       "Bash(which cmake-format:*)",
       "WebSearch",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(python3:*)"
     ]
   },
   "enabledPlugins": {}

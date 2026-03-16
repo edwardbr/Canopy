@@ -364,7 +364,7 @@ public:
             CO_RETURN rpc::error::INVALID_DATA();
         }
 
-        int current_value;
+        int current_value = 0;
         auto get_result = CO_AWAIT object->get_value(current_value);
         if (get_result == rpc::error::OK())
         {
@@ -604,9 +604,10 @@ public:
         [[maybe_unused]] uint64_t target_id = 0;
         if (target_node)
         {
-            node_type type;
-            uint64_t id;
-            int conn, obj_held;
+            node_type type = {};
+            uint64_t id = 0;
+            int conn = 0;
+            int obj_held = 0;
             CO_AWAIT target_node->get_node_status(type, id, conn, obj_held);
             target_id = id;
         }
@@ -730,9 +731,10 @@ public:
 
                             if (target_sibling)
                             {
-                                node_type type;
-                                uint64_t id;
-                                int conn, obj_held;
+                                node_type type = {};
+                                uint64_t id = 0;
+                                int conn = 0;
+                                int obj_held = 0;
                                 CO_AWAIT target_sibling->get_node_status(type, id, conn, obj_held);
                                 if (static_cast<uint64_t>(id) == node_id_)
                                 {
@@ -1053,9 +1055,10 @@ public:
             auto autonomous_node = CO_AWAIT rpc::dynamic_pointer_cast<i_autonomous_node>(obj);
             if (autonomous_node)
             {
-                node_type type;
-                uint64_t id;
-                int conn, obj_held;
+                node_type type = {};
+                uint64_t id = 0;
+                int conn = 0;
+                int obj_held = 0;
                 if (CO_AWAIT autonomous_node->get_node_status(type, id, conn, obj_held) == rpc::error::OK())
                 {
                     RPC_INFO("[GARBAGE_COLLECTOR] Object: AUTONOMOUS_NODE id={} type={} connections={} objects_held={}",
@@ -1372,9 +1375,10 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
                     auto& target_node = all_nodes[target_dist(gen)];
 
                     uint64_t runner_id = 0;
-                    node_type type;
-                    uint64_t id;
-                    int conn, obj_held;
+                    node_type type = {};
+                    uint64_t id = 0;
+                    int conn = 0;
+                    int obj_held = 0;
 
                     CO_AWAIT runner_node->get_node_status(type, id, conn, obj_held);
                     runner_id = id;
