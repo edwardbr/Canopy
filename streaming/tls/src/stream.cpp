@@ -298,26 +298,26 @@ namespace streaming::tls
         -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         if (!ssl_ || !handshake_complete_ || closed_)
-            co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+            co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
 
         while (true)
         {
             // Try to decrypt whatever is already in rbio.
             int bytes_read = SSL_read(ssl_, buffer.data(), static_cast<int>(buffer.size()));
             if (bytes_read > 0)
-                co_return {coro::net::io_status{coro::net::io_status::kind::ok},
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok},
                     rpc::mutable_byte_span{buffer.data(), static_cast<size_t>(bytes_read)}};
 
             int ssl_error = SSL_get_error(ssl_, bytes_read);
             if (ssl_error == SSL_ERROR_ZERO_RETURN)
             {
                 closed_ = true;
-                co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
             }
             if (ssl_error != SSL_ERROR_WANT_READ && ssl_error != SSL_ERROR_WANT_WRITE)
             {
                 closed_ = true;
-                co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
             }
 
             // Need more raw bytes — wait on the underlying stream with the caller's timeout.
@@ -334,22 +334,22 @@ namespace streaming::tls
     auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (!ssl_ || !handshake_complete_ || closed_)
-            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
 
         int bytes_written = SSL_write(ssl_, buffer.data(), static_cast<int>(buffer.size()));
         if (bytes_written <= 0)
         {
             int ssl_error = SSL_get_error(ssl_, bytes_written);
             if (ssl_error == SSL_ERROR_WANT_WRITE || ssl_error == SSL_ERROR_WANT_READ)
-                co_return coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again};
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::would_block_or_try_again};
             closed_ = true;
-            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
         }
 
         if (!co_await drain_wbio())
-            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
 
-        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
     }
 
 } // namespace streaming::tls

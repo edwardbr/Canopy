@@ -56,16 +56,17 @@
 
 using namespace fuzz_test;
 
-std::atomic<uint64_t> g_zone_id_counter;
-std::atomic<int> g_instruction_counter;
+std::atomic<uint64_t> g_zone_id_counter; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+std::atomic<int> g_instruction_counter;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Global configuration for replay system
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static std::string g_output_directory = "tests/fuzz_test/replays";
-static bool g_cleanup_successful_tests = true;
+static bool g_cleanup_successful_tests = true; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Global deterministic random number generator for replay consistency
-static std::mt19937 g_global_rng;
-static bool g_global_rng_initialized = false;
+static std::mt19937 g_global_rng;             // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+static bool g_global_rng_initialized = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Initialize global RNG with a seed (for replay) or random seed (for normal execution)
 void initialize_global_rng(uint64_t seed = 0)
@@ -117,16 +118,14 @@ private:
     int id_;
     std::string name_;
     int value_;
-    int test_count_;
-    bool cleanup_called_;
+    int test_count_{0};
+    bool cleanup_called_{false};
 
 public:
     shared_object_impl(int id, const std::string& name, int initial_value)
         : id_(id)
         , name_(name)
         , value_(initial_value)
-        , test_count_(0)
-        , cleanup_called_(false)
     {
     }
 
@@ -179,15 +178,11 @@ class factory_impl : public rpc::base<factory_impl, i_fuzz_factory, i_cleanup>,
                      public rpc::enable_shared_from_this<factory_impl>
 {
 private:
-    int objects_created_;
-    bool cleanup_called_;
+    int objects_created_{0};
+    bool cleanup_called_{false};
 
 public:
-    factory_impl()
-        : objects_created_(0)
-        , cleanup_called_(false)
-    {
-    }
+    factory_impl() = default;
 
     CORO_TASK(int)
     create_shared_object(int id, std::string name, int initial_value, rpc::shared_ptr<i_shared_object>& created_object) override
@@ -257,13 +252,10 @@ class cache_impl : public rpc::base<cache_impl, i_fuzz_cache, i_cleanup>, public
 {
 private:
     std::map<int, rpc::shared_ptr<i_shared_object>> cache_storage_;
-    bool cleanup_called_;
+    bool cleanup_called_{false};
 
 public:
-    cache_impl()
-        : cleanup_called_(false)
-    {
-    }
+    cache_impl() = default;
 
     CORO_TASK(int) store_object(int cache_key, rpc::shared_ptr<i_shared_object> object) override
     {
@@ -344,17 +336,12 @@ class worker_impl : public rpc::base<worker_impl, i_fuzz_worker, i_cleanup>,
                     public rpc::enable_shared_from_this<worker_impl>
 {
 private:
-    int objects_processed_;
-    int total_increments_;
-    bool cleanup_called_;
+    int objects_processed_{0};
+    int total_increments_{0};
+    bool cleanup_called_{false};
 
 public:
-    worker_impl()
-        : objects_processed_(0)
-        , total_increments_(0)
-        , cleanup_called_(false)
-    {
-    }
+    worker_impl() = default;
 
     CORO_TASK(int) process_object(rpc::shared_ptr<i_shared_object> object, int increment) override
     {
@@ -419,9 +406,9 @@ class autonomous_node_impl : public rpc::base<autonomous_node_impl, i_autonomous
 private:
     node_type node_type_;
     uint64_t node_id_;
-    int connections_count_;
-    int signals_received_;
-    bool cleanup_called_;
+    int connections_count_{0};
+    int signals_received_{0};
+    bool cleanup_called_{false};
 
     // Parent node for hierarchy navigation
     rpc::shared_ptr<i_autonomous_node> parent_node_;
@@ -579,9 +566,6 @@ public:
     autonomous_node_impl(node_type type, uint64_t node_id)
         : node_type_(type)
         , node_id_(node_id)
-        , connections_count_(0)
-        , signals_received_(0)
-        , cleanup_called_(false)
     {
     }
 
@@ -817,6 +801,7 @@ public:
             auto child_transport = std::make_shared<rpc::local::child_transport>(
                 child_zone_name.c_str(), current_service->shared_from_this());
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [child_type, child_zone_id]([[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
                     rpc::shared_ptr<i_autonomous_node>& new_child,
                     const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
@@ -1040,7 +1025,7 @@ public:
     CORO_TASK(void) debug_print_collected_objects()
     {
         RPC_INFO("[GARBAGE_COLLECTOR] === DEBUG: Collected Objects ===");
-        for (auto obj : collected_objects_)
+        for (const auto& obj : collected_objects_)
         {
             if (!obj)
             {
@@ -1325,6 +1310,7 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
             auto new_zone_subnet = child_transport->get_adjacent_zone_id().get_subnet();
             scenario_config.zone_sequence.push_back(new_zone_subnet); // Track zone creation
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&, new_zone_subnet]([[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
                     rpc::shared_ptr<i_autonomous_node>& new_node,
                     const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
@@ -1432,7 +1418,7 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
                 CO_RETURN; // Cannot proceed without cleanup support
             }
 
-            for (auto node : all_nodes)
+            for (const auto& node : all_nodes)
             {
                 auto node_cleanup = CO_AWAIT rpc::dynamic_pointer_cast<i_cleanup>(node);
                 if (node_cleanup)
@@ -1615,6 +1601,7 @@ int main(int argc, char** argv)
                     coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
 
                 bool completed = false;
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 auto wrapper_task = [&]() -> coro::task<void>
                 {
                     co_await run_autonomous_instruction_test(cycle, instructions, scheduler);
@@ -1809,6 +1796,7 @@ int replay_test_scenario(const std::string& scenario_file)
 
         // Run the exact same test scenario with the saved seed
         bool completed = false;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto wrapper_task = [&]() -> coro::task<void>
         {
             co_await run_autonomous_instruction_test(

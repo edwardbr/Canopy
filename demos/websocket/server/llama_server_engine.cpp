@@ -377,10 +377,10 @@ namespace secret_llama
 
                 // 2. Get the fundamental dimensions that determine the cache's shape.
                 // Note: We use the modern `llama_model_` prefixed functions as they are forward-compatible.
-                const int32_t n_ctx = llama_n_ctx(ctx);             // Max context size
-                const int32_t n_layer = llama_model_n_layer(model); // Number of layers
-                const int32_t n_embd = llama_model_n_embd(model);   // Embedding dimension
-                const int32_t n_head = llama_model_n_head(model);   // Number of attention heads
+                const auto n_ctx = static_cast<int32_t>(llama_n_ctx(ctx)); // Max context size
+                const int32_t n_layer = llama_model_n_layer(model);        // Number of layers
+                const int32_t n_embd = llama_model_n_embd(model);          // Embedding dimension
+                const int32_t n_head = llama_model_n_head(model);          // Number of attention heads
 
                 if (n_head == 0)
                 {
@@ -437,7 +437,7 @@ namespace secret_llama
                 auto result = chat_params.prompt;
                 formatted_.resize(result.size() + 1);
                 memcpy(formatted_.data(), result.c_str(), result.size() + 1);
-                return result.size();
+                return static_cast<int>(result.size());
             }
 
             // Function to tokenize the prompt
@@ -446,11 +446,16 @@ namespace secret_llama
                 const llama_vocab* vocab = llama_model_get_vocab(model_->get());
                 const bool is_first = llama_memory_seq_pos_max(llama_get_memory(ctx_.get()), 0) == -1;
 
-                const int n_prompt_tokens
-                    = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), nullptr, 0, is_first, true);
+                const int n_prompt_tokens = -llama_tokenize(
+                    vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()), nullptr, 0, is_first, true);
                 batch_tokens_.resize(n_prompt_tokens);
-                if (llama_tokenize(
-                        vocab, prompt.c_str(), prompt.size(), batch_tokens_.data(), batch_tokens_.size(), is_first, true)
+                if (llama_tokenize(vocab,
+                        prompt.c_str(),
+                        static_cast<int32_t>(prompt.size()),
+                        batch_tokens_.data(),
+                        static_cast<int32_t>(batch_tokens_.size()),
+                        is_first,
+                        true)
                     < 0)
                 {
                     RPC_ERROR("failed to tokenize the prompt");
@@ -462,7 +467,7 @@ namespace secret_llama
             // Check if we have enough space in the context to evaluate this batch
             int check_context_size()
             {
-                const int n_ctx = llama_n_ctx(ctx_.get());
+                const int n_ctx = static_cast<int>(llama_n_ctx(ctx_.get()));
                 const int n_ctx_used = llama_memory_seq_pos_max(llama_get_memory(ctx_.get()), 0) + 1;
                 if (n_ctx_used + batch_.n_tokens > n_ctx)
                 {
@@ -576,7 +581,7 @@ namespace secret_llama
                     RPC_DEBUG("[CTX {}] Tokenized into {} tokens.", std::to_string(context_id_), n_tokens);
 
                     // prepare a batch for the prompt
-                    batch_ = llama_batch_get_one(batch_tokens_.data(), batch_tokens_.size());
+                    batch_ = llama_batch_get_one(batch_tokens_.data(), static_cast<int32_t>(batch_tokens_.size()));
                     RPC_DEBUG("[CTX {}] Batch created. n_tokens={}", 1, batch_.n_tokens);
 
                     // Update prev_len_ with the latest total length so the *next* call to add_prompt
@@ -807,12 +812,17 @@ namespace secret_llama
 
                     const llama_vocab* vocab = llama_model_get_vocab(llama_model->get());
 
-                    const int n_prompt
-                        = -llama_tokenize(vocab, (const char*)prompt.data(), prompt.size(), nullptr, 0, true, true);
+                    const int n_prompt = -llama_tokenize(
+                        vocab, prompt.data(), static_cast<int32_t>(prompt.size()), nullptr, 0, true, true);
 
                     std::vector<llama_token> prompt_tokens(n_prompt);
-                    if (llama_tokenize(
-                            vocab, (const char*)prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true)
+                    if (llama_tokenize(vocab,
+                            prompt.data(),
+                            static_cast<int32_t>(prompt.size()),
+                            prompt_tokens.data(),
+                            static_cast<int32_t>(prompt_tokens.size()),
+                            true,
+                            true)
                         < 0)
                     {
                         return error_types::UNABLE_TO_TOKENIZE;
@@ -861,7 +871,8 @@ namespace secret_llama
                     }
 
                     // prepare a batch for the prompt
-                    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+                    llama_batch batch
+                        = llama_batch_get_one(prompt_tokens.data(), static_cast<int32_t>(prompt_tokens.size()));
                     llama_token new_token_id = 0;
 
                     for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_predict;)
@@ -897,7 +908,7 @@ namespace secret_llama
                         }
                     }
 
-                    output = std::string((uint8_t*)out.data(), (uint8_t*)out.data() + out.size());
+                    output = out;
 
                     llama_sampler_free(smpl);
                     llama_free(ctx);

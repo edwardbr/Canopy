@@ -282,7 +282,8 @@ namespace rpc
     {
         try
         {
-            obj.protobuf_deserialise(std::vector<char>(reinterpret_cast<const char*>(data.data()), reinterpret_cast<const char*>(data.data()) + data.size()));
+            obj.protobuf_deserialise(std::vector<char>(
+                reinterpret_cast<const char*>(data.data()), reinterpret_cast<const char*>(data.data()) + data.size()));
             return "";
         }
         catch (const std::exception& ex)

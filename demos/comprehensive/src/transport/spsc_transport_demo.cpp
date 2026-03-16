@@ -29,7 +29,7 @@
 #include <future>
 #include <csignal>
 
-int g_test_result = 0;
+int g_test_result = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 namespace comprehensive
 {
@@ -129,6 +129,7 @@ namespace comprehensive
                 &queues->to_process_2, &queues->to_process_1, scheduler);
             auto transport_2 = CO_AWAIT service_2->make_acceptor<i_calculator, i_calculator>("transport_2",
                 rpc::stream_transport::transport_factory(std::move(stream_2)),
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](const rpc::shared_ptr<i_calculator>&,
                     rpc::shared_ptr<i_calculator>& local,
                     const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)

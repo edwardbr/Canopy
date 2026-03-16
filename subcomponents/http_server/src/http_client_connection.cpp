@@ -257,7 +257,7 @@ namespace canopy::http_server
                         std::string preview;
                         for (size_t i = 0; i < std::min<size_t>(100, read_span.size()); ++i)
                         {
-                            unsigned char c = static_cast<unsigned char>(read_span.data()[i]);
+                            auto c = static_cast<unsigned char>(read_span.data()[i]);
                             if (c >= 32 && c < 127)
                             {
                                 preview += static_cast<char>(c);

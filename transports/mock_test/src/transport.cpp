@@ -20,12 +20,12 @@ namespace rpc::mock_test
         rpc::caller_zone caller_zone_id)
     {
         std::scoped_lock lock(call_history_mtx_);
-        call_history_.push_back(call_record{type,
-            protocol_version,
-            destination_zone_id,
-            caller_zone_id,
-            destination_zone_id.get_object(),
-            std::chrono::steady_clock::now()});
+        call_history_.push_back(call_record{.type = type,
+            .protocol_version = protocol_version,
+            .destination_zone_id = destination_zone_id,
+            .caller_zone_id = caller_zone_id,
+            .object_id = destination_zone_id.get_object(),
+            .timestamp = std::chrono::steady_clock::now()});
     }
 
     void mock_transport::set_force_failure(bool force_failure, int error_code)

@@ -79,7 +79,7 @@ namespace rpc::mock_test
     public:
         mock_transport(std::string name, std::shared_ptr<rpc::service> service);
         mock_transport(std::string name, rpc::zone zone_id);
-        virtual ~mock_transport() = default;
+        ~mock_transport() override = default;
 
         // Control methods for testing
         void set_force_failure(bool force_failure, int error_code = rpc::error::TRANSPORT_ERROR());

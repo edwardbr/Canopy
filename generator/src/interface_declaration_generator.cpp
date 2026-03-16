@@ -24,8 +24,8 @@ namespace interface_declaration_generator
     };
 
     constexpr protocol_version_descriptor protocol_versions[] = {
-        {"RPC_V3", "rpc::VERSION_3", 3},
-        {"RPC_V2", "rpc::VERSION_2", 2},
+        {.macro = "RPC_V3", .symbol = "rpc::VERSION_3", .value = 3},
+        {.macro = "RPC_V2", .symbol = "rpc::VERSION_2", .value = 2},
     };
     enum print_type
     {
@@ -62,7 +62,7 @@ namespace interface_declaration_generator
             std::ignore = is_const;
             std::ignore = count;
 
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:
@@ -97,7 +97,7 @@ namespace interface_declaration_generator
             std::ignore = is_const;
             std::ignore = count;
 
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:
@@ -139,7 +139,7 @@ namespace interface_declaration_generator
                 throw std::runtime_error("MOVE does not support const vals");
             }
 
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:
@@ -176,7 +176,7 @@ namespace interface_declaration_generator
                 throw std::runtime_error("POINTER does not support out vals");
             }
 
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:
@@ -208,7 +208,7 @@ namespace interface_declaration_generator
             {
                 throw std::runtime_error("POINTER_REFERENCE does not support const out vals");
             }
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:
@@ -241,7 +241,7 @@ namespace interface_declaration_generator
             std::ignore = is_const;
             std::ignore = count;
 
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:
@@ -279,7 +279,7 @@ namespace interface_declaration_generator
                 throw std::runtime_error("INTERFACE does not support out vals");
             }
 
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:
@@ -313,7 +313,7 @@ namespace interface_declaration_generator
             std::ignore = type_name;
             std::ignore = count;
 
-            print_type pt = static_cast<print_type>(option);
+            auto pt = static_cast<print_type>(option);
             switch (pt)
             {
             case PROXY_PARAM_IN:

@@ -53,7 +53,7 @@ namespace streaming::websocket
                 decoded_messages_.pop();
                 current_msg_offset_ = 0;
             }
-            co_return {coro::net::io_status{coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+            co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
         }
 
         // No buffered message — read raw data from the underlying stream
@@ -84,7 +84,7 @@ namespace streaming::websocket
                     decoded_messages_.pop();
                     current_msg_offset_ = 0;
                 }
-                co_return {coro::net::io_status{coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
             }
         }
 
@@ -95,11 +95,11 @@ namespace streaming::websocket
     auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
-            co_return coro::net::io_status{coro::net::io_status::kind::closed};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
         queue_message(std::vector<uint8_t>(buffer.begin(), buffer.end()));
         if (!co_await do_send())
-            co_return coro::net::io_status{coro::net::io_status::kind::closed};
-        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
     }
 
     bool stream::is_closed() const

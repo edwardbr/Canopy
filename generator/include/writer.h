@@ -30,7 +30,7 @@ public:
     {
     }
 
-    int get_tab_count() const { return count_; }
+    [[nodiscard]] int get_tab_count() const { return count_; }
     void set_tab_count(int count) { count_ = count; }
 
     template<typename S, typename... Args> void operator()(S&& format_str, Args&&... args)

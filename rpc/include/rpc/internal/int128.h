@@ -30,7 +30,10 @@ namespace canopy::detail
     inline std::string int128_to_string(__int128 v)
     {
         if (v < 0)
-            return "-" + uint128_to_string(static_cast<unsigned __int128>(-v));
+        {
+            const auto magnitude = static_cast<unsigned __int128>(-(v + 1)) + 1;
+            return "-" + uint128_to_string(magnitude);
+        }
         return uint128_to_string(static_cast<unsigned __int128>(v));
     }
 

@@ -41,13 +41,11 @@
 
 using namespace std;
 
-std::stringstream verboseStream;
-
 namespace javascript_json
 {
     namespace json
     {
-        extern string namespace_name;
+        extern string namespace_name; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
     }
 }
 
@@ -188,7 +186,7 @@ int main(const int argc, char* argv[])
             auto elems = split(define, '=');
             {
                 macro_parser::definition def;
-                std::string defName = elems[0];
+                const std::string& defName = elems[0];
                 if (elems.size() > 1)
                 {
                     def.m_substitutionString = elems[1];

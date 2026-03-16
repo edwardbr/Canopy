@@ -65,7 +65,7 @@ using namespace marshalled_tests;
 #include "test_globals.h"
 #include "type_test_fixture.h"
 
-extern bool enable_multithreaded_tests;
+extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Type list for optimistic_ptr test instantiations.
 using optimistic_ptr_implementations = ::testing::Types<in_memory_setup<false>,
@@ -283,7 +283,7 @@ CORO_TASK(bool) optimistic_ptr_local_rvalue_invocation_test(std::shared_ptr<rpc:
     err = CO_AWAIT opt_f->do_something_in_move_ref(33);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
-    xxx::something_complicated complex_value{44, "local optimistic move"};
+    xxx::something_complicated complex_value{.int_val = 44, .string_val = "local optimistic move"};
     err = CO_AWAIT opt_f->give_something_complicated_move_ref(std::move(complex_value));
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
@@ -398,6 +398,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T&
         baz_object_id,
         destination_zone_id,
         root,
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         [opt_baz]() -> CORO_TASK(void)
         {
             // This runs after the object is deleted
@@ -514,6 +515,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_circular_dependency_test(T& lib
         host_object_id,
         destination_zone_id,
         root,
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         [opt_host]() -> CORO_TASK(void)
         {
             // opt_host still exists but points to deleted object
@@ -709,6 +711,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
         baz_object_id,
         destination_zone_id,
         root,
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         [opt_baz]() -> CORO_TASK(void)
         {
             // This runs after the object is deleted

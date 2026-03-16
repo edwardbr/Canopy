@@ -52,7 +52,7 @@ namespace streaming::tcp
             else if (bytes_sent == 0)
             {
                 closed_ = true;
-                co_return coro::net::io_status{coro::net::io_status::kind::closed};
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
             }
             else
             {
@@ -62,10 +62,10 @@ namespace streaming::tcp
                     continue;
                 }
                 closed_ = true;
-                co_return coro::net::io_status{coro::net::io_status::kind::native, errno};
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = errno};
             }
         }
-        co_return coro::net::io_status{coro::net::io_status::kind::ok};
+        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
     }
 
     bool stream::is_closed() const

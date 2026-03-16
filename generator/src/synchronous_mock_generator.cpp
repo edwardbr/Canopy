@@ -27,8 +27,8 @@ namespace synchronous_mock_generator
     };
 
     constexpr protocol_version_descriptor protocol_versions[] = {
-        {"RPC_V3", "rpc::VERSION_3", 3},
-        {"RPC_V2", "rpc::VERSION_2", 2},
+        {.macro = "RPC_V3", .symbol = "rpc::VERSION_3", .value = 3},
+        {.macro = "RPC_V2", .symbol = "rpc::VERSION_2", .value = 2},
     };
 
     void write_interface(const class_entity& m_ob, writer& header)

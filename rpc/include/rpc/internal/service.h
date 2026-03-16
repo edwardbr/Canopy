@@ -1395,6 +1395,8 @@ namespace rpc
         std::function<CORO_TASK(int)(
             const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
     {
+        // The handler owns its coroutine closure and the captures live with that handler.
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         return [name_str = std::string(name), fn = std::move(factory)](const rpc::connection_settings& input,
                    rpc::interface_descriptor& output,
                    std::shared_ptr<rpc::service> svc,

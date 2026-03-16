@@ -49,23 +49,23 @@ namespace marshalled_tests
             CORO_ASSERT_EQ(CO_AWAIT foo.do_something_in_out_ref(val), rpc::error::OK());
         }
         {
-            xxx::something_complicated val{33, "22"};
+            xxx::something_complicated val{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_complicated_val(val), rpc::error::OK());
         }
         {
-            xxx::something_complicated val{33, "22"};
+            xxx::something_complicated val{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_complicated_ref(val), rpc::error::OK());
         }
         {
-            xxx::something_complicated val{33, "22"};
+            xxx::something_complicated val{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_complicated_ref_val(val), rpc::error::OK());
         }
         {
-            xxx::something_complicated val{33, "22"};
+            xxx::something_complicated val{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_complicated_move_ref(std::move(val)), rpc::error::OK());
         }
         {
-            xxx::something_complicated val{33, "22"};
+            xxx::something_complicated val{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_complicated_ptr(&val), rpc::error::OK());
         }
         {
@@ -88,29 +88,29 @@ namespace marshalled_tests
         }
         {
             xxx::something_more_complicated val;
-            val.map_val["22"] = xxx::something_complicated{33, "22"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_more_complicated_val(val), rpc::error::OK());
         }
         if (!enclave)
         {
             xxx::something_more_complicated val;
-            val.map_val["22"] = xxx::something_complicated{33, "22"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_more_complicated_ref(val), rpc::error::OK());
         }
         {
             xxx::something_more_complicated val;
-            val.map_val["22"] = xxx::something_complicated{33, "22"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_more_complicated_move_ref(std::move(val)), rpc::error::OK());
         }
         {
             xxx::something_more_complicated val;
-            val.map_val["22"] = xxx::something_complicated{33, "22"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_more_complicated_ref_val(val), rpc::error::OK());
         }
         if (!enclave)
         {
             xxx::something_more_complicated val;
-            val.map_val["22"] = xxx::something_complicated{33, "22"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.give_something_more_complicated_ptr(&val), rpc::error::OK());
         }
         if (!enclave)
@@ -142,7 +142,7 @@ namespace marshalled_tests
         }
         {
             xxx::something_more_complicated val;
-            val.map_val["22"] = xxx::something_complicated{33, "22"};
+            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.receive_something_more_complicated_in_out_ref(val), rpc::error::OK());
             if (val.map_val.size() == 0)
             {
@@ -161,8 +161,8 @@ namespace marshalled_tests
         {
             xxx::something_more_complicated val1;
             xxx::something_more_complicated val2;
-            val1.map_val["22"] = xxx::something_complicated{33, "22"};
-            val2.map_val["22"] = xxx::something_complicated{33, "22"};
+            val1.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
+            val2.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
             CORO_ASSERT_EQ(CO_AWAIT foo.do_multi_complicated_val(val1, val2), rpc::error::OK());
         }
         CO_RETURN true;

@@ -17,7 +17,8 @@ namespace rpc
     {
         pass_through_key make_pass_through_key(destination_zone zone1, destination_zone zone2)
         {
-            return zone1 < zone2 ? pass_through_key{zone1, zone2} : pass_through_key{zone2, zone1};
+            return zone1 < zone2 ? pass_through_key{.zone1 = zone1, .zone2 = zone2}
+                                 : pass_through_key{.zone1 = zone2, .zone2 = zone1};
         }
     }
 

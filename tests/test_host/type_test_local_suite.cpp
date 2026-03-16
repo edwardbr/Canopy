@@ -92,7 +92,7 @@ using namespace marshalled_tests;
 
 #include "test_globals.h"
 
-extern bool enable_multithreaded_tests;
+extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Type list for local type_test instantiations.
 // Requires the various setup helpers to be included before this header.

@@ -214,7 +214,7 @@ namespace comprehensive
                 ++live_count_;
             }
 
-            ~managed_object_impl() { --live_count_; }
+            ~managed_object_impl() override { --live_count_; }
 
             CORO_TASK(int) get_object_id(uint64_t& id) override
             {

@@ -19,7 +19,7 @@ namespace rpc
     ////////////////////////////////////////////////////////////////////////////
     // service
 
-    thread_local service* current_service_ = nullptr;
+    thread_local service* current_service_ = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
     service* service::get_current_service()
     {
         return current_service_;
@@ -235,7 +235,7 @@ namespace rpc
         // Check for live transports
         // Note: For child_service, the parent_transport is expected to still be alive during shutdown
         // as it's where the thread goes when shutting down this zone
-        const child_service* child_svc = dynamic_cast<const child_service*>(this);
+        const auto* child_svc = dynamic_cast<const child_service*>(this);
         std::shared_ptr<transport> expected_parent_transport;
         destination_zone expected_parent_zone_id;
         if (child_svc)

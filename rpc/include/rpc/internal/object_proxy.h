@@ -127,6 +127,8 @@ namespace rpc
                         if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
                         {
                             guard.unlock();
+                            // False positive: the lock is explicitly released before suspension.
+                            // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
                             CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
                         }
                         else
@@ -145,6 +147,8 @@ namespace rpc
                     if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
                     {
                         guard.unlock();
+                        // False positive: the lock is explicitly released before suspension.
+                        // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
                         CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
                     }
                     else
@@ -184,6 +188,8 @@ namespace rpc
                         if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
                         {
                             guard.unlock();
+                            // False positive: the lock is explicitly released before suspension.
+                            // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
                             CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
                         }
                         else
@@ -200,6 +206,8 @@ namespace rpc
                 if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
                 {
                     guard.unlock();
+                    // False positive: the lock is explicitly released before suspension.
+                    // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
                     CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
                 }
                 else

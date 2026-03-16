@@ -91,7 +91,7 @@ using namespace marshalled_tests;
 
 #include "test_globals.h"
 
-extern bool enable_multithreaded_tests;
+extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 #include "type_test_fixture.h"
 

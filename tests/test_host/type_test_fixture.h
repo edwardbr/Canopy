@@ -86,6 +86,7 @@ public:
         {
             // For local objects, cleanup is synchronous - set continuation to run immediately
             // Capture args by value to move them into the coroutine frame
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
             continuation_ = [this, verification_lambda, ... captured = std::forward<Args>(args)]() -> CORO_TASK(void)
             {
                 CO_AWAIT verification_lambda(captured...);
@@ -99,10 +100,13 @@ public:
             // Capture args by value to move them into the coroutine frame
             auto self = shared_from_this();
             continuation_
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 = [service, self, verification_lambda, ... captured = std::forward<Args>(args)]() -> CORO_TASK(void)
             {
                 CO_AWAIT verification_lambda(captured...);
-                ((object_deletion_waiter*)self.get())->continuation_completed_ = true;
+                auto* waiter = dynamic_cast<object_deletion_waiter*>(self.get());
+                RPC_ASSERT(waiter != nullptr);
+                waiter->continuation_completed_ = true;
                 // Remove event listener after verification
                 service->remove_service_event(self);
                 CO_RETURN;
@@ -151,6 +155,7 @@ void run_coro_test(TestFixture& test_fixture, CoroFunc&& coro_function, Args&&..
 #ifdef CANOPY_BUILD_COROUTINE
     bool is_ready = false;
     // Create a lambda that calls the coroutine function and sets is_ready when done
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
     auto wrapper_function = [&]() -> CORO_TASK(bool)
     {
         auto result = CO_AWAIT coro_function(lib, std::forward<Args>(args)...);

@@ -33,12 +33,10 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
   # Ensure npm dependencies are installed
   add_custom_command(
     OUTPUT "${PBJS_STAMP_FILE}"
-    COMMAND ${CMAKE_COMMAND}
-            -DNPM_EXECUTABLE=${NPM_EXECUTABLE}
-            -DCLIENT_DIR=${CLIENT_DIR}
-            -DPBJS_EXECUTABLE=${PBJS_EXECUTABLE}
-            -DSTAMP_FILE=${PBJS_STAMP_FILE}
-            -P ${CMAKE_SOURCE_DIR}/cmake/EnsurePbjsInstalled.cmake
+    COMMAND
+      ${CMAKE_COMMAND} -DNPM_EXECUTABLE=${NPM_EXECUTABLE} -DCLIENT_DIR=${CLIENT_DIR}
+      -DPBJS_EXECUTABLE=${PBJS_EXECUTABLE} -DSTAMP_FILE=${PBJS_STAMP_FILE} -P
+      ${CMAKE_SOURCE_DIR}/cmake/EnsurePbjsInstalled.cmake
     COMMENT "Installing protobufjs-cli via npm")
 
   # Generate browser version (static module)

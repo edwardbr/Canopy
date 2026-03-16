@@ -98,13 +98,12 @@ namespace websocket_demo
                 llama_log_set(
                     [](enum ggml_log_level level, const char* text, void* /* user_data */)
                     {
-                        char* text_nonconst = (char*)text;
-                        auto len = strlen(text);
-                        for (size_t i = 0; i < len; ++i)
+                        std::string sanitized_text = text != nullptr ? text : "";
+                        for (auto& ch : sanitized_text)
                         {
-                            if (text_nonconst[i] == '\n')
+                            if (ch == '\n')
                             {
-                                text_nonconst[i] = ' ';
+                                ch = ' ';
                             }
                         }
 
@@ -112,7 +111,7 @@ namespace websocket_demo
                         {
                         case GGML_LOG_LEVEL_CONT: // continue previous log not sure what to put it under as logger is stateless
                         case GGML_LOG_LEVEL_DEBUG:
-                            RPC_DEBUG("{}", text);
+                            RPC_DEBUG("{}", sanitized_text);
                             break;
                         case GGML_LOG_LEVEL_INFO:
                             RPC_INFO("{}", text);

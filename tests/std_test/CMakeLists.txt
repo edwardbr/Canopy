@@ -69,6 +69,7 @@ foreach(test_name ${BUILDABLE_TESTS})
       # Force include compatibility headers for Microsoft-specific functions
       if(NOT MSVC)
         target_compile_options(${test_name} PRIVATE "-include${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp")
+        target_compile_options(${test_name} PRIVATE -Wno-unqualified-std-cast-call)
       endif()
 
       # Link atomic library for Clang 18 compatibility

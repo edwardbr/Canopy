@@ -56,6 +56,7 @@ public:
 
         auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
             [&](const rpc::shared_ptr<yyy::i_host>& host,
                 rpc::shared_ptr<yyy::i_example>& new_example,
                 const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
@@ -143,6 +144,7 @@ public:
 
         auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
             [&](const rpc::shared_ptr<yyy::i_host>& host,
                 rpc::shared_ptr<yyy::i_example>& new_example,
                 const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)

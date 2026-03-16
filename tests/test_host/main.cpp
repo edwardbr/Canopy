@@ -38,7 +38,7 @@
 
 #include <example/example.h>
 
-bool enable_multithreaded_tests = false;
+bool enable_multithreaded_tests = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // This line tests that we can define tests in an unnamed namespace.
 namespace

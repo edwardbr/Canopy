@@ -81,7 +81,7 @@ namespace streaming::io_uring
         {
             if (closed_.load(std::memory_order_acquire))
             {
-                co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
             }
 
             auto op = submit_recv(buffer, timeout);
@@ -89,14 +89,14 @@ namespace streaming::io_uring
 
             if (result > 0)
             {
-                co_return {coro::net::io_status{coro::net::io_status::kind::ok},
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok},
                     buffer.subspan(0, static_cast<size_t>(result))};
             }
 
             if (result == 0)
             {
                 closed_.store(true, std::memory_order_release);
-                co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
             }
 
             int native_error = -result;
@@ -104,19 +104,19 @@ namespace streaming::io_uring
             {
                 if (closed_.load(std::memory_order_acquire) || state_->stopping.load(std::memory_order_acquire))
                 {
-                    co_return {coro::net::io_status{coro::net::io_status::kind::closed}, {}};
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
                 }
-                co_return {coro::net::io_status{coro::net::io_status::kind::timeout}, {}};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
             }
 
             if (native_error == ETIME)
             {
-                co_return {coro::net::io_status{coro::net::io_status::kind::timeout}, {}};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
             }
 
             if (native_error == EAGAIN || native_error == EWOULDBLOCK || native_error == EINTR)
             {
-                co_return {coro::net::io_status{coro::net::io_status::kind::would_block_or_try_again}, {}};
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::would_block_or_try_again}, {}};
             }
 
             closed_.store(true, std::memory_order_release);
@@ -129,7 +129,7 @@ namespace streaming::io_uring
             {
                 if (closed_.load(std::memory_order_acquire))
                 {
-                    co_return coro::net::io_status{coro::net::io_status::kind::closed};
+                    co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
                 }
 
                 auto op = submit_send(buffer);
@@ -144,7 +144,7 @@ namespace streaming::io_uring
                 if (result == 0)
                 {
                     closed_.store(true, std::memory_order_release);
-                    co_return coro::net::io_status{coro::net::io_status::kind::closed};
+                    co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
                 }
 
                 int native_error = -result;
@@ -156,14 +156,14 @@ namespace streaming::io_uring
 
                 if (native_error == ECANCELED && closed_.load(std::memory_order_acquire))
                 {
-                    co_return coro::net::io_status{coro::net::io_status::kind::closed};
+                    co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
                 }
 
                 closed_.store(true, std::memory_order_release);
                 co_return detail::translate_status(native_error);
             }
 
-            co_return coro::net::io_status{coro::net::io_status::kind::ok};
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
         }
 
         [[nodiscard]] auto is_closed() const -> bool override { return closed_.load(std::memory_order_acquire); }

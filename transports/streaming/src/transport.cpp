@@ -110,7 +110,7 @@ namespace rpc::stream_transport
                 .destination_zone_id = remote_object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
-                .payload = std::vector<char>((const char*)in_data.begin(), (const char*)in_data.end()),
+                .payload = std::vector<char>(in_data.begin(), in_data.end()),
                 .back_channel = in_back_channel},
             response);
 
@@ -154,7 +154,7 @@ namespace rpc::stream_transport
                 .destination_zone_id = remote_object_id,
                 .interface_id = interface_id,
                 .method_id = method_id,
-                .payload = std::vector<char>((const char*)in_data.begin(), (const char*)in_data.end()),
+                .payload = std::vector<char>(in_data.begin(), in_data.end()),
                 .back_channel = in_back_channel},
             0);
 
@@ -338,49 +338,49 @@ namespace rpc::stream_transport
         if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received init_client_channel_send seq={}", prefix.sequence_number);
-            get_service()->spawn(create_stub(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(create_stub(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received call_send seq={}", prefix.sequence_number);
-            get_service()->spawn(stub_handle_send(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(stub_handle_send(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received post_send seq={}", prefix.sequence_number);
-            get_service()->spawn(stub_handle_post(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(stub_handle_post(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received try_cast_send seq={}", prefix.sequence_number);
-            get_service()->spawn(stub_handle_try_cast(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(stub_handle_try_cast(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received addref_send seq={}", prefix.sequence_number);
-            get_service()->spawn(stub_handle_add_ref(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(stub_handle_add_ref(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received release_send seq={}", prefix.sequence_number);
-            get_service()->spawn(stub_handle_release(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(stub_handle_release(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received object_released_send seq={}", prefix.sequence_number);
-            get_service()->spawn(stub_handle_object_released(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(stub_handle_object_released(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
         {
             RPC_DEBUG("pump: received transport_down_send seq={}", prefix.sequence_number);
-            get_service()->spawn(stub_handle_transport_down(tracker, std::move(prefix), std::move(payload)));
+            get_service()->spawn(stub_handle_transport_down(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<init_client_initial_channel_response>::get(prefix.version))
@@ -618,7 +618,7 @@ namespace rpc::stream_transport
 
                     if (result)
                     {
-                        result->prefix = std::move(prefix);
+                        result->prefix = prefix;
                         result->payload = std::move(payload);
 
                         RPC_DEBUG("pump receive prefix.sequence_number {}\n prefix = {}\n payload = {}",
@@ -651,7 +651,7 @@ namespace rpc::stream_transport
                 item = std::move(send_queue_.front());
                 send_queue_.pop();
             }
-            CO_AWAIT stream_->send(rpc::byte_span{(const char*)item.data(), item.size()});
+            CO_AWAIT stream_->send(rpc::byte_span{reinterpret_cast<const char*>(item.data()), item.size()});
         }
     }
 
@@ -679,7 +679,7 @@ namespace rpc::stream_transport
 
             if (had_item)
             {
-                CO_AWAIT stream_->send(rpc::byte_span{(const char*)item.data(), item.size()});
+                CO_AWAIT stream_->send(rpc::byte_span{reinterpret_cast<const char*>(item.data()), item.size()});
             }
             else
             {
@@ -1050,7 +1050,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number);
     }
 
     void transport::send_payload_close_connection_send(
@@ -1058,7 +1058,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number);
     }
 
     void transport::send_payload_call_receive(
@@ -1092,7 +1092,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number);
     }
 
     void transport::send_payload_init_client_channel_response(uint64_t protocol_version,
@@ -1102,6 +1102,6 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number);
     }
 }

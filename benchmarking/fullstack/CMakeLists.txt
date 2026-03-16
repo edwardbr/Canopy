@@ -3,8 +3,7 @@
    All rights reserved.
 ]]
 #
-# Fullstack Benchmark CMakeLists.txt
-# Benchmarks covering SPSC and TCP transport with multiple encodings
+# Fullstack Benchmark CMakeLists.txt Benchmarks covering SPSC and TCP transport with multiple encodings
 #
 
 cmake_minimum_required(VERSION 3.24)
@@ -18,15 +17,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(benchmark benchmark.cpp)
 target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
-target_include_directories(
-  benchmark
-  PRIVATE "${CMAKE_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})
-target_link_libraries(
-  benchmark
-  PUBLIC comprehensive_idl
-         transport_local
-         rpc
-         ${CANOPY_LIBRARIES})
+target_include_directories(benchmark PRIVATE "${CMAKE_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})
+target_link_libraries(benchmark PUBLIC comprehensive_idl transport_local rpc ${CANOPY_LIBRARIES})
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(benchmark PUBLIC transport_streaming)
 endif()

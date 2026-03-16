@@ -38,7 +38,7 @@ namespace rpc
             // Overloads for std::vector<char> (char and uint8_t are compatible)
             inline void serialize_bytes(const std::vector<int8_t>& data, std::string& proto_bytes)
             {
-                proto_bytes.assign((char*)data.data(), data.size());
+                proto_bytes.assign(reinterpret_cast<const char*>(data.data()), data.size());
             }
 
             inline void deserialize_bytes(const std::string& proto_bytes, std::vector<int8_t>& data)
