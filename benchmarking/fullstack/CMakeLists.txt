@@ -33,3 +33,7 @@ endif()
 target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET benchmark PROPERTY COMPILE_PDB_NAME benchmark)
+
+if(CANOPY_ENABLE_CLANG_TIDY)
+  set_target_properties(benchmark PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()

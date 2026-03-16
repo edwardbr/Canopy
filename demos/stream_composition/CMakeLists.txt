@@ -45,6 +45,10 @@ if(CANOPY_BUILD_COROUTINE)
   target_link_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET tcp_spsc_tls_demo PROPERTY COMPILE_PDB_NAME tcp_spsc_tls_demo)
 
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(tcp_spsc_tls_demo PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+
   message(STATUS "stream_composition demo configured")
   message(STATUS "  - tcp_spsc_tls_demo (TCP → SPSC → TLS composition, requires coroutines)")
   message(STATUS "  - Cert dir: ${DEMO_CERT_DIR}")

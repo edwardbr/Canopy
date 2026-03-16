@@ -466,6 +466,10 @@ function(
   target_link_directories(${name}_idl PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET ${name}_idl PROPERTY COMPILE_PDB_NAME ${name}_idl)
 
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(${name}_idl PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+
   target_link_libraries(${name}_idl PUBLIC rpc::rpc ${CANOPY_FMT_LIB} ${CANOPY_CORO_RUNTIME})
 
   # Link YAS if any YAS format is enabled
@@ -518,6 +522,10 @@ function(
     target_compile_options(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
     target_link_directories(${name}_idl_enclave PRIVATE ${SGX_LIBRARY_PATH})
     set_property(TARGET ${name}_idl_enclave PROPERTY COMPILE_PDB_NAME ${name}_idl_enclave)
+
+    if(CANOPY_ENABLE_CLANG_TIDY)
+      set_target_properties(${name}_idl_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+    endif()
 
     target_link_libraries(${name}_idl_enclave PUBLIC rpc::rpc_enclave ${CANOPY_ENCLAVE_FMT_LIB})
 

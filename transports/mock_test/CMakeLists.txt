@@ -17,6 +17,10 @@ target_compile_definitions(mock_test_transport PRIVATE ${CANOPY_DEFINES})
 set_property(TARGET mock_test_transport PROPERTY CXX_STANDARD 17)
 set_property(TARGET mock_test_transport PROPERTY CXX_STANDARD_REQUIRED ON)
 
+if(CANOPY_ENABLE_CLANG_TIDY)
+  set_target_properties(mock_test_transport PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()
+
 # Add alias for consistent naming
 add_library(rpc::mock_test_transport ALIAS mock_test_transport)
 

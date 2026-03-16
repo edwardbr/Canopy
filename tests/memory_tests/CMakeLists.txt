@@ -21,5 +21,9 @@ target_link_libraries(
 
 target_compile_features(rpc_memory_tests PRIVATE cxx_std_17)
 
+if(CANOPY_ENABLE_CLANG_TIDY)
+  set_target_properties(rpc_memory_tests PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()
+
 add_test(NAME rpc_memory_tests COMMAND rpc_memory_tests)
 set_tests_properties(rpc_memory_tests PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0")

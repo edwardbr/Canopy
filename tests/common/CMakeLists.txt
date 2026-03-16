@@ -32,6 +32,10 @@ if(${CANOPY_BUILD_ENCLAVE})
 
   set_property(TARGET common_enclave PROPERTY COMPILE_PDB_NAME common_enclave)
 
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(common_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+
   # ####################################################################################################################
 
 endif()
@@ -70,3 +74,7 @@ target_link_libraries(
           yas_common)
 
 set_property(TARGET common_tests PROPERTY COMPILE_PDB_NAME common_tests)
+
+if(CANOPY_ENABLE_CLANG_TIDY)
+  set_target_properties(common_tests PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()
