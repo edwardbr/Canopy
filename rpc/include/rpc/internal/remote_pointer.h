@@ -636,7 +636,7 @@ namespace rpc
                 {
                     if (managed_object_ptr_)
                     {
-                        T* obj_ptr;
+                        T* obj_ptr = nullptr;
                         if constexpr (std::is_function_v<T>)
                         {
                             obj_ptr = reinterpret_cast<T*>(managed_object_ptr_);
@@ -678,7 +678,7 @@ namespace rpc
                 {
                     if (managed_object_ptr_)
                     {
-                        T* obj_ptr;
+                        T* obj_ptr = nullptr;
                         if constexpr (std::is_function_v<T>)
                         {
                             obj_ptr = reinterpret_cast<T*>(managed_object_ptr_);
@@ -752,7 +752,7 @@ namespace rpc
                     std::allocator_traits<decltype(actual_cb_allocator)>::deallocate(actual_cb_allocator, this, 1);
                 }
                 void* get_deleter_ptr(const std::type_info&) noexcept override { return nullptr; }
-                ~control_block_make_shared() { }
+                ~control_block_make_shared() override { }
             };
         } // namespace __shared_ptr_control_block
 

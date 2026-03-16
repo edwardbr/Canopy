@@ -132,7 +132,7 @@ namespace std_testing {
         }
 #else
         int dispatch_death_test(const size_t test_id, const std::string& this_program) const {
-            pid_t pid;
+            pid_t pid = 0;
             std::string test_id_str = std::to_string(test_id);
             char* argv[] = {const_cast<char*>(this_program.c_str()), const_cast<char*>(test_id_str.c_str()), nullptr};
 
@@ -142,7 +142,7 @@ namespace std_testing {
                 api_unexpected("posix_spawn");
             }
 
-            int exit_status;
+            int exit_status = 0;
             if (waitpid(pid, &exit_status, 0) == -1) {
                 api_unexpected("waitpid");
             }

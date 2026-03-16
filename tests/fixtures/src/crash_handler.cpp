@@ -346,7 +346,7 @@ namespace crash_handler
 
         if (dir != nullptr)
         {
-            struct dirent* entry;
+            struct dirent* entry = nullptr;
             while ((entry = readdir(dir)) != nullptr)
             {
                 if (entry->d_type == DT_DIR && isdigit(entry->d_name[0]))

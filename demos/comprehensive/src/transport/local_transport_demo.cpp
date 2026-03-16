@@ -98,7 +98,7 @@ namespace comprehensive
             std::cout << "--- Making RPC calls through local transport ---\n";
 
             // Call calculator in same zone (direct)
-            int result;
+            int result = 0;
             error = CO_AWAIT calculator->add(10, 20, result);
             std::cout << "Local call: 10 + 20 = " << result << " (error: " << static_cast<int>(error) << ")\n";
 
@@ -106,7 +106,7 @@ namespace comprehensive
             std::cout << "Local call: 7 * 8 = " << result << " (error: " << static_cast<int>(error) << ")\n";
 
             // Call through child service
-            uint64_t child_zone_id_result;
+            uint64_t child_zone_id_result = 0;
             error = CO_AWAIT child_service->get_zone_id(child_zone_id_result);
             std::cout << "Remote call: Child zone ID = " << child_zone_id_result
                       << " (error: " << static_cast<int>(error) << ")\n";

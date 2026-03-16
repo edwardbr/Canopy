@@ -18,7 +18,7 @@ namespace rpc
     {
         // Increment appropriate counter based on reference type
         bool is_optimistic = static_cast<bool>(options & add_ref_options::optimistic);
-        int prev_count;
+        int prev_count = 0;
 
         if (is_optimistic)
         {
@@ -81,7 +81,7 @@ namespace rpc
     void object_proxy::release(bool is_optimistic)
     {
         // Decrement appropriate counter based on reference type
-        int prev_count;
+        int prev_count = 0;
         if (is_optimistic)
         {
             prev_count = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);

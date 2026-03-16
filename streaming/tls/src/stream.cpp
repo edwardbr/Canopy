@@ -11,7 +11,7 @@ namespace streaming::tls
     static void log_ssl_errors()
     {
         char buf[256];
-        unsigned long err;
+        unsigned long err = 0;
         while ((err = ERR_get_error()) != 0)
         {
             ERR_error_string_n(err, buf, sizeof(buf));
@@ -167,7 +167,7 @@ namespace streaming::tls
     auto stream::drain_wbio() -> coro::task<bool>
     {
         std::array<char, 4096> buf;
-        int len;
+        int len = 0;
         while ((len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()))) > 0)
         {
             auto status = co_await underlying_->send(rpc::byte_span{buf.data(), static_cast<size_t>(len)});

@@ -163,7 +163,7 @@
             "binaryDir": "build_debug_coroutine_tidy",
             "cacheVariables": {
                 "CANOPY_ENABLE_CLANG_TIDY": "ON",
-                "CANOPY_ENABLE_CLANG_TIDY_FIX": "ON"
+                "CANOPY_ENABLE_CLANG_TIDY_FIX": "OFF"
             }
         },
         {
