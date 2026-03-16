@@ -25,9 +25,9 @@
  *                   Client side uses ws_client_stream (wslay client mode, defined below).
  *
  *   Build:
- *     cmake --preset Coroutine_Debug -DCANOPY_BUILD_BENCHMARKING=ON
- *     cmake --build build_coroutine_debug --target streaming_benchmark
- *     ./build_coroutine_debug/output/streaming_benchmark
+ *     cmake --preset Debug_Coroutine -DCANOPY_BUILD_BENCHMARKING=ON
+ *     cmake --build build_debug_coroutine --target streaming_benchmark
+ *     ./build_debug_coroutine/output/streaming_benchmark
  */
 
 #include <streaming/io_uring/acceptor.h>

@@ -113,7 +113,7 @@ CORO_TASK(error_code) my_service::do_work(int input, [out] int& output)
 cmake --preset Debug
 
 # Coroutine mode
-cmake --preset Coroutine_Debug
+cmake --preset Debug_Coroutine
 ```
 
 ### Handling the Difference

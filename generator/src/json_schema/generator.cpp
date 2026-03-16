@@ -71,7 +71,7 @@ namespace json_schema
         size_t close_bracket = type_name.rfind('>');
         if (open_bracket == std::string::npos || close_bracket == std::string::npos || close_bracket <= open_bracket)
             return false;
-        container_name = rpc_generator::clean_type_name(type_name.substr(0, open_bracket));
+        container_name = generator::clean_type_name(type_name.substr(0, open_bracket));
         if (container_name.empty())
             return false;
         std::string args_str = type_name.substr(open_bracket + 1, close_bracket - open_bracket - 1);
@@ -92,8 +92,7 @@ namespace json_schema
             }
             else if (args_str[i] == ',' && bracket_level == 0)
             {
-                std::string arg
-                    = rpc_generator::clean_type_name(args_str.substr(current_arg_start, i - current_arg_start));
+                std::string arg = generator::clean_type_name(args_str.substr(current_arg_start, i - current_arg_start));
                 if (arg.empty())
                     return false;
                 args.push_back(arg);
@@ -102,7 +101,7 @@ namespace json_schema
         }
         if (bracket_level != 0)
             return false;
-        std::string last_arg = rpc_generator::clean_type_name(args_str.substr(current_arg_start));
+        std::string last_arg = generator::clean_type_name(args_str.substr(current_arg_start));
         if (last_arg.empty())
             return false;
         args.push_back(last_arg);
@@ -153,7 +152,7 @@ namespace json_schema
             {
                 if (!element_ptr)
                     continue;
-                if (rpc_generator::clean_type_name(element_ptr->get_name()) == type_name_cleaned)
+                if (generator::clean_type_name(element_ptr->get_name()) == type_name_cleaned)
                 {
                     entity_type et = element_ptr->get_entity_type();
                     if (et == entity_type::TYPEDEF || et == entity_type::STRUCT || et == entity_type::ENUM
@@ -175,7 +174,7 @@ namespace json_schema
         if (expr.empty())
             return false;
 
-        std::string cleaned = rpc_generator::clean_type_name(expr);
+        std::string cleaned = generator::clean_type_name(expr);
         while (!cleaned.empty()
                && (cleaned.back() == 'u' || cleaned.back() == 'U' || cleaned.back() == 'l' || cleaned.back() == 'L'))
         {
@@ -205,7 +204,7 @@ namespace json_schema
         {
             for (const auto& element_ptr : current_scope->get_elements(entity_type::CONSTEXPR))
             {
-                if (!element_ptr || rpc_generator::clean_type_name(element_ptr->get_name()) != name_cleaned)
+                if (!element_ptr || generator::clean_type_name(element_ptr->get_name()) != name_cleaned)
                     continue;
 
                 if (auto constexpr_entity = dynamic_cast<const function_entity*>(element_ptr.get()); constexpr_entity)
@@ -228,13 +227,13 @@ namespace json_schema
         if (current_context == nullptr)
             return false;
 
-        auto expr_cleaned = rpc_generator::clean_type_name(expr);
+        auto expr_cleaned = generator::clean_type_name(expr);
         if (expr_cleaned.empty())
             return false;
 
         if (auto constexpr_entity = find_constexpr_entity_upwards(current_context, expr_cleaned); constexpr_entity)
         {
-            auto default_value = rpc_generator::clean_type_name(constexpr_entity->get_default_value());
+            auto default_value = generator::clean_type_name(constexpr_entity->get_default_value());
             if (default_value.empty() || default_value == expr_cleaned)
                 return false;
             return try_resolve_integer_constant(current_context, default_value, value, depth + 1);
@@ -309,11 +308,11 @@ namespace json_schema
                 const auto* var = dynamic_cast<const function_entity*>(element_ptr.get());
                 if (!var)
                     continue;
-                std::string member_name = rpc_generator::clean_type_name(var->get_name());
+                std::string member_name = generator::clean_type_name(var->get_name());
                 std::string raw_member_type = var->get_return_type();
                 if (member_name.empty() || raw_member_type.empty())
                     continue;
-                std::string cleaned_member_type = rpc_generator::clean_type_name(raw_member_type);
+                std::string cleaned_member_type = generator::clean_type_name(raw_member_type);
                 if (cleaned_member_type.empty())
                     continue;
                 properties[member_name] = {cleaned_member_type, *var};
@@ -375,14 +374,14 @@ namespace json_schema
             {
                 if (!element_ptr)
                     continue;
-                std::string enum_value_name = rpc_generator::clean_type_name(element_ptr->get_name());
+                std::string enum_value_name = generator::clean_type_name(element_ptr->get_name());
                 if (!enum_value_name.empty() && enum_value_name.find_first_of("{}[]() \t\n\r") == std::string::npos)
                 {
                     int64_t assigned_value = next_value;
                     const auto* value_entity = dynamic_cast<const function_entity*>(element_ptr.get());
                     if (value_entity)
                     {
-                        std::string explicit_value_str = rpc_generator::clean_type_name(value_entity->get_return_type());
+                        std::string explicit_value_str = generator::clean_type_name(value_entity->get_return_type());
                         if (!explicit_value_str.empty())
                         {
                             try
@@ -476,11 +475,11 @@ namespace json_schema
             bool include_param = info.is_send_struct ? (is_in || implicitly_in) : is_out;
             if (include_param)
             {
-                std::string param_name = rpc_generator::clean_type_name(param.get_name());
+                std::string param_name = generator::clean_type_name(param.get_name());
                 std::string raw_param_type = param.get_type();
                 if (param_name.empty() || raw_param_type.empty())
                     continue;
-                std::string cleaned_param_type = rpc_generator::clean_type_name(raw_param_type);
+                std::string cleaned_param_type = generator::clean_type_name(raw_param_type);
                 if (cleaned_param_type.empty())
                     continue;
                 properties[param_name] = {cleaned_param_type, param};
@@ -541,7 +540,7 @@ namespace json_schema
         const std::set<std::string>& currently_processing,
         const std::map<std::string, DefinitionInfoVariant>& definition_info_map)
     {
-        std::string idl_type_name_cleaned = rpc_generator::clean_type_name(idl_type_name_in);
+        std::string idl_type_name_cleaned = generator::clean_type_name(idl_type_name_in);
         if (idl_type_name_cleaned.empty())
         {
             writer.open_object();
@@ -565,8 +564,8 @@ namespace json_schema
             return;
         }
         std::string ignored_modifiers;
-        rpc_generator::strip_reference_modifiers(idl_type_name_cleaned, ignored_modifiers);
-        idl_type_name_cleaned = rpc_generator::unconst(idl_type_name_cleaned);
+        generator::strip_reference_modifiers(idl_type_name_cleaned, ignored_modifiers);
+        idl_type_name_cleaned = generator::unconst(idl_type_name_cleaned);
         std::string container_name;
         std::vector<std::string> template_args;
         if (parse_template_args(idl_type_name_cleaned, container_name, template_args))
@@ -703,7 +702,7 @@ namespace json_schema
             entity_type et = found_entity.get_entity_type();
             if (et == entity_type::TYPEDEF)
             {
-                std::string underlying_type = rpc_generator::clean_type_name(found_entity.get_alias_name());
+                std::string underlying_type = generator::clean_type_name(found_entity.get_alias_name());
                 if (!underlying_type.empty())
                 {
                     map_idl_type_to_json_schema(root,
@@ -835,7 +834,7 @@ namespace json_schema
                     const auto* method = dynamic_cast<const function_entity*>(element_ptr.get());
                     if (!method)
                         continue;
-                    std::string method_name = rpc_generator::clean_type_name(method->get_name());
+                    std::string method_name = generator::clean_type_name(method->get_name());
                     if (method_name.empty())
                         continue;
                     std::string send_struct_name = qualified_name + "_" + method_name + "_send";

@@ -14,7 +14,7 @@
  *   Measures the middle 80% of 1000 RPC calls (drops first/last 10%).
  *
  *   To build and run:
- *   1. cmake --preset Coroutine_Debug -DCANOPY_BUILD_BENCHMARKING=ON
+ *   1. cmake --preset Debug_Coroutine -DCANOPY_BUILD_BENCHMARKING=ON
  *   2. cmake --build build --target benchmark
  *   3. ./build/output/benchmark
  */

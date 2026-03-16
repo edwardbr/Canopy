@@ -13,7 +13,7 @@
  *   - No network or IPC overhead
  *
  *   To build and run:
- *   1. cmake --preset Debug (or Coroutine_Debug)
+ *   1. cmake --preset Debug (or Debug_Coroutine)
  *   2. cmake --build build --target local_transport_demo
  *   3. ./build/output/debug/demos/comprehensive/local_transport_demo
  */

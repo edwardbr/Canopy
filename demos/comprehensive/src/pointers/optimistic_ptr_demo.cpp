@@ -55,7 +55,7 @@
  *      - Any object that should NOT die when last reference is released
  *
  *   To build and run:
- *   1. cmake --preset Debug (or Coroutine_Debug)
+ *   1. cmake --preset Debug (or Debug_Coroutine)
  *   2. cmake --build build --target optimistic_ptr_demo
  *   3. ./build/output/debug/demos/comprehensive/optimistic_ptr_demo
  */

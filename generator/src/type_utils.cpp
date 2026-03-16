@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace rpc_generator
+namespace generator
 {
 
     // Type checking utilities for basic types
@@ -480,4 +480,4 @@ namespace rpc_generator
         }
     }
 
-} // namespace rpc_generator
+} // namespace generator

@@ -161,7 +161,7 @@ void render_parameter(writer& wrtr, const class_entity& m_ob, const parameter_en
 {
     std::string modifier;
     bool has_struct = false;
-    auto parameter_info = rpc_generator::analyze_parameter(m_ob, parameter.get_type(), parameter);
+    auto parameter_info = generator::analyze_parameter(m_ob, parameter.get_type(), parameter);
     if (parameter.has_value("const") && !parameter_info.reference_modifiers.empty())
         modifier = "const " + modifier;
     if (parameter.has_value("struct"))

@@ -39,7 +39,7 @@ namespace interface_declaration_generator
     };
 
     // Polymorphic renderer adapter that implements base_renderer interface
-    class interface_renderer : public rpc_generator::base_renderer
+    class interface_renderer : public generator::base_renderer
     {
     public:
         interface_renderer() = default;
@@ -340,8 +340,7 @@ namespace interface_declaration_generator
     {
         // UNIFIED: Use polymorphic renderer with print_type option
         interface_renderer r;
-        return rpc_generator::do_in_param_unified(
-            r, static_cast<int>(option), false, lib, name, type, attribs, count, output);
+        return generator::do_in_param_unified(r, static_cast<int>(option), false, lib, name, type, attribs, count, output);
     }
 
     bool do_out_param(print_type option,
@@ -354,8 +353,7 @@ namespace interface_declaration_generator
     {
         // UNIFIED: Use polymorphic renderer with print_type option
         interface_renderer r;
-        return rpc_generator::do_out_param_unified(
-            r, static_cast<int>(option), false, lib, name, type, attribs, count, output);
+        return generator::do_out_param_unified(r, static_cast<int>(option), false, lib, name, type, attribs, count, output);
     }
 
     void build_scoped_name(const class_entity* entity, std::string& name)

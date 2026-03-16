@@ -22,7 +22,7 @@
  *   transport wrapper, which is not provided in the base RPC++ library.
  *
  *   Build and run:
- *   1. cmake --preset Coroutine_Debug
+ *   1. cmake --preset Debug_Coroutine
  *   2. cmake --build build --target tcp_transport_demo
  *   3. ./build/output/debug/demos/comprehensive/tcp_transport_demo [options]
  *

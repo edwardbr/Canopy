@@ -40,7 +40,7 @@ namespace yas_generator
     };
 
     // Polymorphic renderer adapter that implements base_renderer interface
-    class yas_renderer : public rpc_generator::base_renderer
+    class yas_renderer : public generator::base_renderer
     {
     public:
         yas_renderer() = default;
@@ -376,7 +376,7 @@ namespace yas_generator
     {
         // UNIFIED: Use polymorphic renderer with print_type option
         yas_renderer r;
-        return rpc_generator::do_in_param_unified(
+        return generator::do_in_param_unified(
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
@@ -391,7 +391,7 @@ namespace yas_generator
     {
         // UNIFIED: Use polymorphic renderer with print_type option
         yas_renderer r;
-        return rpc_generator::do_out_param_unified(
+        return generator::do_out_param_unified(
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
@@ -410,7 +410,7 @@ namespace yas_generator
         auto ret = type_name;
         std::string reference_modifiers;
         std::string template_modifier;
-        rpc_generator::strip_reference_modifiers(ret, reference_modifiers);
+        generator::strip_reference_modifiers(ret, reference_modifiers);
 
         auto template_start = ret.find('<');
         if (template_start != std::string::npos)
