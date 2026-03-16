@@ -110,6 +110,9 @@ namespace crash_handler
 
     void crash_handler::handle_crash(int signal, siginfo_t* info, void* context)
     {
+        std::ignore = info;
+        std::ignore = context;
+
         // Generate comprehensive crash report first
         auto report = generate_crash_report(signal);
 

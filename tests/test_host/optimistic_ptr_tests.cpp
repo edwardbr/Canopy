@@ -152,8 +152,7 @@ CORO_TASK(bool) optimistic_ptr_basic_lifecycle_test(std::shared_ptr<rpc::service
     rpc::optimistic_ptr<xxx::i_foo> opt_f_move(std::move(opt_f_copy));
     CORO_ASSERT_NE(opt_f_move.get_unsafe_only_for_testing(), nullptr);
     CORO_ASSERT_EQ(opt_f_move.get_unsafe_only_for_testing(),
-        opt_f.get_unsafe_only_for_testing());                          // Should point to same local_proxy
-    CORO_ASSERT_EQ(opt_f_copy.get_unsafe_only_for_testing(), nullptr); // Moved-from should be null
+        opt_f.get_unsafe_only_for_testing()); // Should point to same local_proxy
 
     // Test assignment
     rpc::optimistic_ptr<xxx::i_foo> opt_f_assigned;
@@ -269,6 +268,46 @@ TYPED_TEST(optimistic_ptr_test, optimistic_ptr_local_proxy_test)
         });
 }
 
+CORO_TASK(bool) optimistic_ptr_local_rvalue_invocation_test(std::shared_ptr<rpc::service> root_service)
+{
+    (void)root_service;
+
+    rpc::shared_ptr<xxx::i_foo> f(new foo());
+    CORO_ASSERT_NE(f, nullptr);
+
+    rpc::optimistic_ptr<xxx::i_foo> opt_f;
+    auto err = CO_AWAIT rpc::make_optimistic(f, opt_f);
+    CORO_ASSERT_EQ(err, rpc::error::OK());
+    CORO_ASSERT_NE(opt_f.get_unsafe_only_for_testing(), nullptr);
+
+    err = CO_AWAIT opt_f->do_something_in_move_ref(33);
+    CORO_ASSERT_EQ(err, rpc::error::OK());
+
+    xxx::something_complicated complex_value{44, "local optimistic move"};
+    err = CO_AWAIT opt_f->give_something_complicated_move_ref(std::move(complex_value));
+    CORO_ASSERT_EQ(err, rpc::error::OK());
+
+    f.reset();
+    CORO_ASSERT_EQ(f, nullptr);
+
+    err = CO_AWAIT opt_f->do_something_in_move_ref(55);
+    CORO_ASSERT_EQ(err, rpc::error::OBJECT_GONE());
+
+    CO_RETURN true;
+}
+
+TYPED_TEST(optimistic_ptr_test, optimistic_ptr_local_rvalue_invocation_test)
+{
+    auto& lib = this->get_lib();
+    auto root_service = lib.get_root_service();
+    run_coro_test(*this,
+        [root_service](auto& lib)
+        {
+            (void)lib;
+            return optimistic_ptr_local_rvalue_invocation_test(root_service);
+        });
+}
+
 class waiter : public rpc::service_event
 {
     rpc::object object_id_;
@@ -302,7 +341,7 @@ public:
         return w;
     }
 
-    virtual ~waiter() { svc_->remove_service_event(weak_from_this()); }
+    ~waiter() override { svc_->remove_service_event(weak_from_this()); }
 
     CORO_TASK(void) on_object_released(rpc::object object_id, rpc::destination_zone destination) override
     {

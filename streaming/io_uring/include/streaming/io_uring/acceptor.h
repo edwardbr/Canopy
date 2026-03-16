@@ -27,7 +27,7 @@ namespace streaming::io_uring
     {
     public:
         acceptor(canopy::network_config::ip_address address, uint16_t port)
-            : address_(std::move(address))
+            : address_(address)
             , port_(port)
         {
         }

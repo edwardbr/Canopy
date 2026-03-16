@@ -21,7 +21,7 @@ namespace streaming::tcp
     public:
         acceptor(const coro::net::socket_address& endpoint, coro::net::tcp::server::options opts = {})
             : endpoint_(endpoint)
-            , opts_(std::move(opts))
+            , opts_(opts)
         {
         }
 

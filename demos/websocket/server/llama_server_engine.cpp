@@ -59,7 +59,7 @@ namespace secret_llama
                 , model_(model)
             {
             }
-            virtual ~llama_cpp_loaded_model()
+            ~llama_cpp_loaded_model() override
             {
                 if (model_)
                     llama_model_free(model_);
@@ -146,7 +146,7 @@ namespace secret_llama
                 }
             }
 
-            virtual ~llama_cpp_context()
+            ~llama_cpp_context() override
             {
                 RPC_DEBUG("[CTX {}] DESTRUCTOR: Freeing context.", std::to_string(context_id_));
             }
@@ -403,10 +403,7 @@ namespace secret_llama
             }
 
             // Add a message to `messages` and store its content in `msg_strs`
-            void add_message(const char* role, const std::string& text)
-            {
-                msg_strs_.push_back({role, std::move(text)});
-            }
+            void add_message(const char* role, const std::string& text) { msg_strs_.push_back({role, text}); }
 
             // Helper function to apply the chat template and handle errors
             int apply_chat_template_with_error_handling(
@@ -449,7 +446,8 @@ namespace secret_llama
                 const llama_vocab* vocab = llama_model_get_vocab(model_->get());
                 const bool is_first = llama_memory_seq_pos_max(llama_get_memory(ctx_.get()), 0) == -1;
 
-                const int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true);
+                const int n_prompt_tokens
+                    = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), nullptr, 0, is_first, true);
                 batch_tokens_.resize(n_prompt_tokens);
                 if (llama_tokenize(
                         vocab, prompt.c_str(), prompt.size(), batch_tokens_.data(), batch_tokens_.size(), is_first, true)
@@ -742,7 +740,7 @@ namespace secret_llama
             std::atomic<uint64_t> count_;
 
         public:
-            virtual ~llama_cpp_engine() = default;
+            ~llama_cpp_engine() override = default;
 
             error_types create_context(const std::shared_ptr<loaded_model>& model,
                 uint64_t seed,
@@ -764,7 +762,8 @@ namespace secret_llama
             {
                 try
                 {
-                    std::ignore = modl;
+                    std::ignore = data;
+                    std::ignore = size;
 
                     llama_model_params model_params = llama_model_default_params();
                     // The goal is to prevent the large, static model weights from displacing the smaller, more frequently
@@ -772,7 +771,7 @@ namespace secret_llama
                     model_params.n_gpu_layers = 0;
 
                     llama_model* model = llama_model_load_from_file(modl.local_path.c_str(), model_params);
-                    if (model == NULL)
+                    if (model == nullptr)
                     {
                         return error_types::UNABLE_TO_LOAD_RECORD;
                     }
@@ -796,6 +795,9 @@ namespace secret_llama
             {
                 try
                 {
+                    std::ignore = overrides;
+                    std::ignore = rng_seed;
+
                     error_types ret = error_types::OK;
 
                     // number of tokens to predict
@@ -806,7 +808,7 @@ namespace secret_llama
                     const llama_vocab* vocab = llama_model_get_vocab(llama_model->get());
 
                     const int n_prompt
-                        = -llama_tokenize(vocab, (const char*)prompt.data(), prompt.size(), NULL, 0, true, true);
+                        = -llama_tokenize(vocab, (const char*)prompt.data(), prompt.size(), nullptr, 0, true, true);
 
                     std::vector<llama_token> prompt_tokens(n_prompt);
                     if (llama_tokenize(
@@ -832,7 +834,7 @@ namespace secret_llama
 
                     llama_context* ctx = llama_init_from_model(llama_model->get(), ctx_params);
 
-                    if (ctx == NULL)
+                    if (ctx == nullptr)
                     {
                         return error_types::MODEL_FAILED;
                     }

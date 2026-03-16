@@ -52,5 +52,5 @@ protected:
     }
 
 public:
-    virtual ~streaming_spsc_setup() = default;
+    ~streaming_spsc_setup() override = default;
 };

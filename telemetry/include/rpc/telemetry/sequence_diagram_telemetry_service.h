@@ -125,7 +125,7 @@ namespace rpc
             const std::string& name,
             const std::filesystem::path& directory);
 
-        virtual ~sequence_diagram_telemetry_service();
+        ~sequence_diagram_telemetry_service() override;
 
         void on_service_creation(
             const std::string& name, rpc::zone zone_id, rpc::destination_zone parent_zone_id) const override;

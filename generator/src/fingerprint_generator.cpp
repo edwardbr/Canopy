@@ -37,7 +37,7 @@ namespace fingerprint
                 for (const auto& ns : type_namespace)
                 {
                     std::shared_ptr<class_entity> subcls = nullptr;
-                    for (auto tmp1 : candidate_namespace->get_classes())
+                    for (const auto& tmp1 : candidate_namespace->get_classes())
                     {
                         if (tmp1->get_name() == ns)
                         {

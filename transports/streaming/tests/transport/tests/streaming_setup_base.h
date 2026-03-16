@@ -45,7 +45,7 @@ protected:
     virtual CORO_TASK(void) do_coro_teardown() { CO_RETURN; }
 
 public:
-    virtual ~streaming_setup_base() = default;
+    ~streaming_setup_base() override = default;
 
     std::shared_ptr<rpc::stream_transport::transport> get_responder_transport() const { return responder_transport_; }
 

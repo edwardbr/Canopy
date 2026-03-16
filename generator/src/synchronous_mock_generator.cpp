@@ -228,7 +228,7 @@ namespace synchronous_mock_generator
     // entry point
     void write_namespace(bool from_host, const class_entity& lib, int& id, writer& header)
     {
-        for (auto cls : lib.get_classes())
+        for (const auto& cls : lib.get_classes())
         {
             if (!cls->get_import_lib().empty())
                 continue;

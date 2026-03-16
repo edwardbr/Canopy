@@ -152,7 +152,7 @@ namespace yas_generator
             switch (opt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("{}&& {}", type_name, name);
+                return fmt::format("const {}& {}", type_name, name);
             case STUB_PARAM_IN:
                 return fmt::format("{}& {}", type_name, name);
             case PROXY_MARSHALL_IN:

@@ -35,8 +35,7 @@ namespace websocket_demo
             auto error = co_await service->get_new_zone_id(
                 rpc::get_version(), client_zone_id, std::vector<rpc::back_channel_entry>{}, out_back_channel);
 
-            auto transpt = std::shared_ptr<transport>(
-                new transport(service, client_zone_id, std::move(stream), std::move(handler)));
+            auto transpt = std::shared_ptr<transport>(new transport(service, client_zone_id, stream, std::move(handler)));
 
             transpt->keep_alive_ = transpt;
             transpt->set_status(rpc::transport_status::CONNECTED);

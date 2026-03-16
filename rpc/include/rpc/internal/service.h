@@ -222,7 +222,7 @@ namespace rpc
          * See documents/architecture/03-services.md for service lifecycle details.
          * See documents/transports/hierarchical.md for hierarchical transport pattern.
          */
-        virtual ~service();
+        ~service() override;
 
 #ifdef CANOPY_BUILD_COROUTINE
         template<typename Callable> auto schedule(Callable&& callable)
@@ -742,7 +742,7 @@ namespace rpc
         explicit root_service(const char* name, const service_config& config);
 #endif
 
-        virtual ~root_service() = default;
+        ~root_service() override = default;
 
         /**
          * @brief i_marshaller implementation: allocate a new zone ID for the caller
@@ -898,7 +898,7 @@ namespace rpc
         }
 #endif
 
-        virtual ~child_service();
+        ~child_service() override;
 
         // Forwards the request up to the parent zone via the parent transport.
         CORO_TASK(int)

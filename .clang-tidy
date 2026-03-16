@@ -5,9 +5,14 @@ Checks: >-
   bugprone-dangling-handle,
   modernize-use-nullptr,
   modernize-use-override,
+  modernize-use-default-member-init,
+  performance-for-range-copy,
+  performance-move-const-arg,
   performance-unnecessary-copy-initialization,
+  readability-avoid-const-params-in-decls,
   readability-const-return-type,
   cppcoreguidelines-init-variables,
+  misc-unused-parameters,
   misc-non-private-member-variables-in-classes
 HeaderFilterRegex: '.*'
 ExcludeHeaderFilterRegex: '.*/submodules/.*|.*/_deps/.*'

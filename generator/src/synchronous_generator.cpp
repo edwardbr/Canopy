@@ -263,7 +263,7 @@ namespace synchronous_generator
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
-            return fmt::format("std::move({0}), ", name);
+            return fmt::format("{0}, ", name);
         case PROXY_MARSHALL_OUT:
             return fmt::format("{0}, ", name);
         case STUB_DEMARSHALL_DECLARATION:
@@ -271,11 +271,11 @@ namespace synchronous_generator
         case STUB_MARSHALL_IN:
             return fmt::format("{}_, ", name);
         case STUB_PARAM_CAST:
-            return fmt::format("std::move({}_)", name);
+            return fmt::format("std::forward<{}>({}_)", object_type, name);
         case STUB_MARSHALL_OUT:
             return fmt::format("{0}_, ", name);
         case LOCAL_OPTIMISTIC_PTR_CALL:
-            return fmt::format("std::move({})", name);
+            return fmt::format("std::forward<{}>({})", object_type, name);
         default:
             return "";
         }
@@ -719,7 +719,7 @@ namespace synchronous_generator
             }
 
             proxy.print_tabs();
-            proxy.raw("virtual CORO_TASK({}) {}(", function->get_return_type(), function->get_name());
+            proxy.raw("CORO_TASK({}) {}(", function->get_return_type(), function->get_name());
             bool has_parameter = false;
             for (auto& parameter : function->get_parameters())
             {
@@ -1466,7 +1466,7 @@ namespace synchronous_generator
 
                 bool marshalls_interfaces = false;
 
-                for (auto parameter : function->get_parameters())
+                for (const auto& parameter : function->get_parameters())
                 {
                     std::string type_name = parameter.get_type();
                     std::string reference_modifiers;
@@ -1518,7 +1518,7 @@ namespace synchronous_generator
             proxy("__{0}_local_proxy(const rpc::weak_ptr<{0}>& ptr)", interface_name);
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
-            proxy("virtual ~__{0}_local_proxy() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
+            proxy("~__{0}_local_proxy() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
             proxy("const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const "
                   "override");
             proxy("{{");
@@ -1638,7 +1638,7 @@ namespace synchronous_generator
         proxy("");
         proxy("public:");
         proxy("");
-        proxy("virtual ~{}_proxy()", interface_name);
+        proxy("~{}_proxy() override", interface_name);
         proxy("{{");
         proxy("#ifdef CANOPY_USE_TELEMETRY");
         proxy("if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)");
@@ -2226,7 +2226,7 @@ namespace synchronous_generator
     // entry point
     void write_namespace_predeclaration(const class_entity& lib, writer& header, writer& proxy, writer& stub)
     {
-        for (auto cls : lib.get_classes())
+        for (const auto& cls : lib.get_classes())
         {
             if (!cls->get_import_lib().empty())
                 continue;
@@ -2234,7 +2234,7 @@ namespace synchronous_generator
                 write_interface_forward_declaration(*cls, header, proxy);
         }
 
-        for (auto cls : lib.get_classes())
+        for (const auto& cls : lib.get_classes())
         {
             if (!cls->get_import_lib().empty())
                 continue;
@@ -2356,7 +2356,7 @@ namespace synchronous_generator
         writer& stub,
         const std::vector<std::string>& namespaces)
     {
-        for (auto cls : lib.get_classes())
+        for (const auto& cls : lib.get_classes())
         {
             if (!cls->get_import_lib().empty())
                 continue;

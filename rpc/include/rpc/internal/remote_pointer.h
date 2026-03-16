@@ -377,10 +377,7 @@ namespace rpc
 #endif
                 }
 
-                control_block_base()
-                    : managed_object_ptr_(nullptr)
-                {
-                }
+                control_block_base() = default;
 
                 virtual ~control_block_base() = default;
                 virtual void dispose_object_actual() = 0;
@@ -892,7 +889,6 @@ namespace rpc
                                         && !std::is_same_v<std::remove_cv_t<Y>, __rpc_internal::__shared_ptr_control_block::control_block_base>>>
         explicit shared_ptr(Y* p)
             : ptr_(static_cast<element_type_impl*>(p))
-            , cb_(nullptr)
         {
 #ifndef TEST_STL_COMPLIANCE
             assert_casting_interface<Y>();
@@ -918,7 +914,6 @@ namespace rpc
                                         && !std::is_same_v<std::remove_cv_t<Y>, __rpc_internal::__shared_ptr_control_block::control_block_base>>>
         shared_ptr(Y* p, Deleter d)
             : ptr_(static_cast<element_type_impl*>(p))
-            , cb_(nullptr)
         {
 #ifndef TEST_STL_COMPLIANCE
             assert_casting_interface<Y>();
@@ -943,7 +938,6 @@ namespace rpc
         template<typename Deleter>
         shared_ptr(std::nullptr_t, Deleter d)
             : ptr_(nullptr)
-            , cb_(nullptr)
         {
             try
             {
@@ -969,7 +963,6 @@ namespace rpc
                                         && !std::is_same_v<std::remove_cv_t<Y>, __rpc_internal::__shared_ptr_control_block::control_block_base>>>
         shared_ptr(Y* p, Deleter d, Alloc cb_alloc)
             : ptr_(static_cast<element_type_impl*>(p))
-            , cb_(nullptr)
         {
 #ifndef TEST_STL_COMPLIANCE
             assert_casting_interface<Y>();
@@ -1018,7 +1011,6 @@ namespace rpc
         template<typename Deleter, typename Alloc>
         shared_ptr(std::nullptr_t, Deleter d, Alloc cb_alloc)
             : ptr_(nullptr)
-            , cb_(nullptr)
         {
             try
             {
@@ -2002,7 +1994,7 @@ namespace rpc
             : ptr_(ptr)
         {
         }
-        virtual ~local_proxy() = default;
+        ~local_proxy() override = default;
         rpc::weak_ptr<T> __get_weak() { return ptr_; }
 
         bool __rpc_is_local() const override { return true; }

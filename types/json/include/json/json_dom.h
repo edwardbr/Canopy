@@ -103,8 +103,8 @@ namespace json
             object& operator=(const map& val);
             object& operator=(std::unique_ptr<map>&& val);
 
-            template<typename T> const T get() const;
-            template<typename T> const T convert_to_int() const;
+            template<typename T> T get() const;
+            template<typename T> T convert_to_int() const;
 
             type get_type() const { return static_cast<type>(index()); }
 
@@ -382,7 +382,7 @@ namespace json
             return *this;
         }
 
-        template<typename T> const T object::get() const
+        template<typename T> T object::get() const
         {
             const container_type& cont = *this;
             if constexpr (std::is_same<T, std::string>::value)
@@ -412,7 +412,7 @@ namespace json
             }
         }
 
-        template<typename T> const T object::convert_to_int() const
+        template<typename T> T object::convert_to_int() const
         {
             static_assert(std::is_integral<T>::value);
             const container_type& cont = *this;
@@ -719,7 +719,7 @@ namespace yas
                     {
                         std::string var;
                         ar & var;
-                        obj = std::move(var);
+                        obj = var;
                         break;
                     }
                     case json::v1::object::type::double_type:
@@ -745,14 +745,14 @@ namespace yas
                     {
                         json::v1::array var;
                         ar & var;
-                        obj = std::move(var);
+                        obj = var;
                         break;
                     }
                     case json::v1::object::type::map_type:
                     {
                         json::v1::map var;
                         ar & var;
-                        obj = std::move(var);
+                        obj = var;
                         break;
                     }
 

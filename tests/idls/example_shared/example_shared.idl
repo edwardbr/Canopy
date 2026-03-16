@@ -38,8 +38,9 @@ namespace xxx
 
         // note local interfaced will not marshal values, so references and pointers are actual caller addresses
         // marshalled values will have temporary placeholder objects in the stubs which will be desroyed after the call
-        // rvalue references are the most efficient [in] parameters in that a move call to a proxy will not trigger a 
-        //   std::move, however in the stub it will be so you dont pay for what you dont need
+        // rvalue references remain rvalue references in the generated interface so the shared header reflects the IDL
+        // proxy-side marshalling may still serialise from a non-consuming view of the argument, while the stub creates
+        //   a temporary and passes it to the target using the IDL-declared shape
         error_code do_something_in_val(                                                        int                             val); // marshal by value - implicitly const
         error_code do_something_in_ref(                                [in]            const   int                         &   val); // marshal by value - implicitly const
         error_code do_something_in_move_ref(                           [in]                    int                         &&  val); // marshal by value - implicitly const

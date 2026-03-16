@@ -143,11 +143,11 @@ namespace interface_declaration_generator
             switch (pt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("{}&& {}", type_name, name);
+                return fmt::format("const {}& {}", type_name, name);
             case STUB_PARAM_IN:
                 return fmt::format("{}& {}", type_name, name);
             case SEND_PARAM_IN:
-                return fmt::format("std::move({0}), ", name);
+                return fmt::format("{0}, ", name);
             default:
                 return "";
             }
@@ -679,7 +679,7 @@ namespace interface_declaration_generator
         header("static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
             interface_name);
         header("");
-        header("virtual ~{}() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
+        header("~{}() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
         header("");
         header("// ********************* interface methods *********************");
 

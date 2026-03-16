@@ -28,12 +28,17 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
   set(SERVER_WWW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../server/www")
   set(PROTO_SRC_DIR "${CMAKE_BINARY_DIR}/generated/src")
   set(PBJS_EXECUTABLE "${CLIENT_DIR}/node_modules/.bin/pbjs")
+  set(PBJS_STAMP_FILE "${CLIENT_DIR}/node_modules/.protobufjs-cli.stamp")
 
   # Ensure npm dependencies are installed
   add_custom_command(
-    OUTPUT "${PBJS_EXECUTABLE}"
-    COMMAND ${NPM_EXECUTABLE} install --save-dev protobufjs-cli
-    WORKING_DIRECTORY "${CLIENT_DIR}"
+    OUTPUT "${PBJS_STAMP_FILE}"
+    COMMAND ${CMAKE_COMMAND}
+            -DNPM_EXECUTABLE=${NPM_EXECUTABLE}
+            -DCLIENT_DIR=${CLIENT_DIR}
+            -DPBJS_EXECUTABLE=${PBJS_EXECUTABLE}
+            -DSTAMP_FILE=${PBJS_STAMP_FILE}
+            -P ${CMAKE_SOURCE_DIR}/cmake/EnsurePbjsInstalled.cmake
     COMMENT "Installing protobufjs-cli via npm")
 
   # Generate browser version (static module)
@@ -41,7 +46,7 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
     OUTPUT "${SERVER_WWW_DIR}/websocket_proto.js"
     COMMAND ${PBJS_EXECUTABLE} -t static-module --path "${PROTO_SRC_DIR}" -o "${SERVER_WWW_DIR}/websocket_proto.js"
             websocket_demo/protobuf/websocket_demo_all.proto
-    DEPENDS "${PBJS_EXECUTABLE}"
+    DEPENDS "${PBJS_STAMP_FILE}"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/websocket_demo_all.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"
@@ -54,7 +59,7 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
     OUTPUT "${CLIENT_DIR}/websocket_proto.js"
     COMMAND ${PBJS_EXECUTABLE} -t static-module -w commonjs --path "${PROTO_SRC_DIR}" -o
             "${CLIENT_DIR}/websocket_proto.js" websocket_demo/protobuf/websocket_demo_all.proto
-    DEPENDS "${PBJS_EXECUTABLE}"
+    DEPENDS "${PBJS_STAMP_FILE}"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/websocket_demo_all.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"

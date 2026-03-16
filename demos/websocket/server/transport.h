@@ -45,7 +45,7 @@ namespace websocket_demo
                 std::shared_ptr<streaming::stream> stream,
                 connection_handler&& handler);
 
-            virtual ~transport() CANOPY_DEFAULT_DESTRUCTOR;
+            ~transport() override CANOPY_DEFAULT_DESTRUCTOR;
 
             CORO_TASK(void) receive_consumer_loop();
 

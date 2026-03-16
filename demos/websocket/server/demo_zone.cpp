@@ -24,7 +24,7 @@ namespace websocket_demo
         rpc::shared_ptr<i_calculator> create_websocket_demo_instance(
             const std::shared_ptr<secret_llama::v1_0::llm_engine>& engine,
             const std::shared_ptr<secret_llama::v1_0::loaded_model>& loaded_model,
-            const std::shared_ptr<rpc::service> service_);
+            std::shared_ptr<rpc::service> service_);
 
         static std::shared_ptr<secret_llama::v1_0::llm_engine> get_llama_cpp()
         {
@@ -80,13 +80,13 @@ namespace websocket_demo
         }
 
         websocket_service::websocket_service(std::string name, rpc::zone zone_id, std::shared_ptr<coro::scheduler> scheduler)
-            : rpc::root_service(name.data(), zone_id, std::move(scheduler))
+            : rpc::root_service(name.data(), zone_id, scheduler)
         {
         }
 
         websocket_service::websocket_service(
             std::string name, const rpc::service_config& config, std::shared_ptr<coro::scheduler> scheduler)
-            : rpc::root_service(name.data(), config, std::move(scheduler))
+            : rpc::root_service(name.data(), config, scheduler)
         {
         }
 

@@ -351,9 +351,7 @@ function(
 
     # This is a dummy file that ensures CMake has a "source" to track for the library
     set(proto_proxy_src "${CMAKE_CURRENT_BINARY_DIR}/${name}_proto_proxy.cpp")
-    if(NOT EXISTS "${proto_proxy_src}")
-      file(WRITE "${proto_proxy_src}" "// Generated proxy for ${name}\n")
-    endif()
+    file(WRITE "${proto_proxy_src}" "// Generated proxy for ${name}\n")
 
     # The stamp file tracks when the internal compilation script has finished
     set(proto_stamp_file ${proto_dir}/.proto_compiled)

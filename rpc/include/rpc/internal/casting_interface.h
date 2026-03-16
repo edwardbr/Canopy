@@ -77,7 +77,7 @@ namespace rpc
             : object_proxy_(object_proxy)
         {
         }
-        virtual ~interface_proxy() = default;
+        ~interface_proxy() override = default;
 
         const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
         {

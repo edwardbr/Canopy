@@ -270,7 +270,7 @@ namespace rpc
             CO_RETURN CO_AWAIT rpc::proxy_bind_out_param(sp, encap, val);
         }
 
-        auto service_proxy = sp;
+        const auto& service_proxy = sp;
         auto serv = service_proxy->get_operating_zone_service();
 
         // if it is local to this service then just get the relevant stub

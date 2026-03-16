@@ -511,6 +511,31 @@ error_code process_ref([in] const int& value);
 error_code process_move([in] int&& value);
 ```
 
+### Rvalue Reference Semantics
+
+If the IDL declares an rvalue reference, the generated interface and proxy method signatures keep that rvalue reference:
+
+```idl
+error_code process_move([in] payload&& value);
+```
+
+Generates an interface-level signature of the same shape:
+
+```cpp
+virtual CORO_TASK(error_code) process_move(payload&& value) = 0;
+```
+
+This is intentional. The shared interface must reflect the IDL contract exactly so callers can see that the API is expressed as an rvalue-reference-taking operation.
+
+Internally, the generated marshalling helpers may use non-consuming parameter forms when they serialise request data. That is an implementation detail of the generated transport layer, not a change to the public IDL contract. The reason is that proxy-side marshalling may need to inspect or serialise the same logical input more than once during encoding fallback or retry handling, while the stub still reconstructs a temporary and passes it to the implementation using the IDL-declared shape.
+
+In practice:
+- The generated shared interface keeps `T&&` if the IDL says `T&&`.
+- Calling a proxy with `std::move(x)` does not imply the RPC transport takes ownership of `x` in the same way as a local move-only call.
+- The stub side is where a deserialised temporary is created and supplied to the target function.
+
+If you need different move semantics, express that choice explicitly in the IDL because the generated interface is treated as the source of truth.
+
 ### Output Parameters ([out])
 
 Data is marshalled FROM the remote object BACK to the caller:
