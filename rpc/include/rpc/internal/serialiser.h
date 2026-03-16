@@ -212,7 +212,7 @@ namespace rpc
         {
             YAS_WARNINGS_PUSH
             yas::load<yas::mem | yas::json | yas::no_header>(
-                yas::intrusive_buffer{(const char*)data.data(), data.size()}, obj);
+                yas::intrusive_buffer{reinterpret_cast<const char*>(data.data()), data.size()}, obj);
             YAS_WARNINGS_POP
             return "";
         }
@@ -236,7 +236,7 @@ namespace rpc
         {
             YAS_WARNINGS_PUSH
             yas::load<yas::mem | ::yas::binary | ::yas::no_header>(
-                yas::intrusive_buffer{(const char*)data.data(), data.size()}, obj);
+                yas::intrusive_buffer{reinterpret_cast<const char*>(data.data()), data.size()}, obj);
             YAS_WARNINGS_POP
             return "";
         }
@@ -260,7 +260,7 @@ namespace rpc
         {
             YAS_WARNINGS_PUSH
             yas::load<yas::mem | ::yas::binary | ::yas::compacted | ::yas::no_header>(
-                yas::intrusive_buffer{(const char*)data.data(), data.size()}, obj);
+                yas::intrusive_buffer{reinterpret_cast<const char*>(data.data()), data.size()}, obj);
             YAS_WARNINGS_POP
             return "";
         }
@@ -282,7 +282,7 @@ namespace rpc
     {
         try
         {
-            obj.protobuf_deserialise(std::vector<char>((const char*)data.data(), (const char*)data.data() + data.size()));
+            obj.protobuf_deserialise(std::vector<char>(reinterpret_cast<const char*>(data.data()), reinterpret_cast<const char*>(data.data()) + data.size()));
             return "";
         }
         catch (const std::exception& ex)

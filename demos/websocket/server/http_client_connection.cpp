@@ -18,7 +18,8 @@ namespace websocket_demo
         {
         }
 
-        auto http_client_connection::handle() -> coro::task<std::shared_ptr<rpc::transport>>
+        CORO_TASK(std::shared_ptr<rpc::transport>)
+        http_client_connection::handle()
         {
             auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
                 std::filesystem::path(__FILE__).parent_path() / "www");
@@ -36,14 +37,14 @@ namespace websocket_demo
             };
             handlers.websocket_upgrade_handler
                 = [this](const canopy::http_server::request& request,
-                      std::shared_ptr<streaming::stream> websocket_stream) -> coro::task<std::shared_ptr<rpc::transport>>
+                      std::shared_ptr<streaming::stream> websocket_stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
             {
                 // handle web socket delivery
-                co_return CO_AWAIT handle_websocket_upgrade(request, websocket_stream);
+                CO_RETURN CO_AWAIT handle_websocket_upgrade(request, websocket_stream);
             };
 
             canopy::http_server::client_connection connection(stream_, std::move(handlers));
-            co_return CO_AWAIT connection.handle();
+            CO_RETURN CO_AWAIT connection.handle();
         }
     }
 }

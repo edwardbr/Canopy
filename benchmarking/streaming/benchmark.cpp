@@ -790,7 +790,8 @@ namespace stream_bench
     {
         for (size_t blob_size : blob_sizes)
         {
-            bench_stats uni{}, reply{};
+            bench_stats uni{};
+            bench_stats reply{};
             bench_fn(blob_size, uni, reply);
             unidirectional_results.push_back(uni);
             send_reply_results.push_back(reply);
@@ -825,7 +826,8 @@ int main()
     auto collect = [&](const char* name, auto bench_fn)
     {
         RPC_INFO("Doing: {}", name);
-        std::vector<bench_stats> uni, reply;
+        std::vector<bench_stats> uni;
+        std::vector<bench_stats> reply;
         run_all_sizes(name, bench_fn, uni, reply);
         all_results.push_back({name, {std::move(uni), std::move(reply)}});
     };
@@ -885,7 +887,8 @@ int main()
                 if (!server_ctx->is_valid() || !client_ctx->is_valid())
                     return;
 
-                std::shared_ptr<streaming::stream> tls_a, tls_b;
+                std::shared_ptr<streaming::stream> tls_a;
+                std::shared_ptr<streaming::stream> tls_b;
                 coro::sync_wait(coro::when_all(
                     [&]() -> coro::task<void>
                     {
@@ -941,7 +944,8 @@ int main()
                 if (!server_ctx->is_valid() || !client_ctx->is_valid())
                     return;
 
-                std::shared_ptr<streaming::stream> tls_a, tls_b;
+                std::shared_ptr<streaming::stream> tls_a;
+                std::shared_ptr<streaming::stream> tls_b;
                 coro::sync_wait(coro::when_all(
                     [&]() -> coro::task<void>
                     {

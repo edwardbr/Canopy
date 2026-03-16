@@ -305,15 +305,15 @@ namespace synchronous_generator
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
-            return fmt::format("(uint64_t){}, ", name);
+            return fmt::format("reinterpret_cast<uint64_t>({}), ", name);
         case PROXY_MARSHALL_OUT:
-            return fmt::format("(uint64_t){}, ", count);
+            return fmt::format("reinterpret_cast<uint64_t>({}), ", count);
         case STUB_DEMARSHALL_DECLARATION:
             return fmt::format("//boo;\nuint64_t {}_{{}}", name);
         case STUB_MARSHALL_IN:
             return fmt::format("{}_, ", name);
         case STUB_PARAM_CAST:
-            return fmt::format("({}*){}_", object_type, name);
+            return fmt::format("reinterpret_cast<{}*>({}_)", object_type, name);
         case LOCAL_OPTIMISTIC_PTR_CALL:
             return fmt::format("{}", name);
         default:
@@ -354,9 +354,9 @@ namespace synchronous_generator
         case PROXY_OUT_DECLARATION:
             return fmt::format("//bar\nuint64_t {}_ = 0;", name);
         case STUB_MARSHALL_OUT:
-            return fmt::format("(uint64_t){}_, ", name);
+            return fmt::format("reinterpret_cast<uint64_t>({}_), ", name);
         case PROXY_VALUE_RETURN:
-            return fmt::format("{} = ({}*){}_;", name, object_type, name);
+            return fmt::format("{} = reinterpret_cast<{}*>({}_);", name, object_type, name);
         case LOCAL_OPTIMISTIC_PTR_CALL:
             return fmt::format("{}", name);
         default:
@@ -393,11 +393,11 @@ namespace synchronous_generator
         case STUB_PARAM_CAST:
             return fmt::format("&{}_", name);
         case PROXY_VALUE_RETURN:
-            return fmt::format("*{} = ({}*){}_;", name, object_type, name);
+            return fmt::format("*{} = reinterpret_cast<{}*>({}_);", name, object_type, name);
         case PROXY_OUT_DECLARATION:
             return fmt::format("//hi\nuint64_t {}_ = 0;", name);
         case STUB_MARSHALL_OUT:
-            return fmt::format("(uint64_t){}_, ", name);
+            return fmt::format("reinterpret_cast<uint64_t>({}_), ", name);
         case LOCAL_OPTIMISTIC_PTR_CALL:
             return fmt::format("{}", name);
         default:
@@ -499,7 +499,7 @@ namespace synchronous_generator
         case STUB_PARAM_CAST:
             return fmt::format("{}", name);
         case STUB_MARSHALL_OUT:
-            return fmt::format("(uint64_t){}, ", name);
+            return fmt::format("static_cast<uint64_t>({}), ", name);
         case PROXY_VALUE_RETURN:
         case PROXY_OUT_DECLARATION:
             return fmt::format("  rpc::interface_descriptor {}_;", name);
@@ -997,7 +997,7 @@ namespace synchronous_generator
 
             if (function->has_value("post"))
             {
-                proxy("__rpc_ret = CO_AWAIT __rpc_op->post(__rpc_version, __rpc_encoding, (uint64_t){}, "
+                proxy("__rpc_ret = CO_AWAIT __rpc_op->post(__rpc_version, __rpc_encoding, static_cast<uint64_t>({}), "
                       "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
                     tag,
                     interface_name,
@@ -1005,7 +1005,7 @@ namespace synchronous_generator
             }
             else
             {
-                proxy("__rpc_ret = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, (uint64_t){}, "
+                proxy("__rpc_ret = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, static_cast<uint64_t>({}), "
                       "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}}, "
                       "__rpc_out_buf);",
                     tag,
@@ -1495,8 +1495,10 @@ namespace synchronous_generator
                         = json_schema::generate_function_output_parameter_schema_with_recursion(library, m_ob, *function);
                 }
 
-                proxy("functions.emplace_back(rpc::function_info{{\"{0}.{1}\", \"{1}\", {{{2}}}, (uint64_t){3}, "
-                      "{4}, R\"__({5})__\", R\"__({6})__\", R\"__({7})__\"}});",
+                proxy("functions.emplace_back(rpc::function_info{{.full_name = \"{0}.{1}\", .name = \"{1}\", .id = "
+                      "{{{2}}}, .tag = static_cast<uint64_t>({3}), "
+                      ".marshalls_interfaces = {4}, .description = R\"__({5})__\", .in_json_schema = R\"__({6})__\", "
+                      ".out_json_schema = R\"__({7})__\"}});",
                     full_name,
                     function->get_name(),
                     function_count,

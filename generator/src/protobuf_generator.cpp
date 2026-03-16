@@ -3225,7 +3225,7 @@ namespace protobuf_generator
                             cpp("// Warning: Could not find struct definition for {}", inner_type);
                         }
 
-                        cpp("{}.push_back(std::move(elem));", member_name);
+                        cpp("{}.push_back(elem);", member_name);
                     }
 
                     cpp("}}");
@@ -3291,7 +3291,7 @@ namespace protobuf_generator
                             cpp("// Warning: Could not find struct definition for {}", value_type);
                         }
 
-                        cpp("{}[key] = std::move(value);", member_name);
+                        cpp("{}[key] = value;", member_name);
                     }
 
                     cpp("}}");

@@ -174,7 +174,7 @@ namespace websocket_demo
             request.destination_zone_id = to_object_address(remote_object_id.get_address());
             request.interface_id = interface_id;
             request.method_id = method_id;
-            request.data = std::vector<char>{(const char*)in_data.begin(), (const char*)in_data.end()};
+            request.data = std::vector<char>{reinterpret_cast<const char*>(in_data.begin()), reinterpret_cast<const char*>(in_data.end())};
             request.back_channel = in_back_channel;
 
             auto payload = rpc::to_protobuf<std::vector<char>>(request);
@@ -215,7 +215,7 @@ namespace websocket_demo
             request.destination_zone_id = to_object_address(remote_object_id.get_address());
             request.interface_id = interface_id;
             request.method_id = method_id;
-            request.data = std::vector<char>{(const char*)in_data.begin(), (const char*)in_data.end()};
+            request.data = std::vector<char>{reinterpret_cast<const char*>(in_data.begin()), reinterpret_cast<const char*>(in_data.end())};
             request.back_channel = {};
 
             auto payload = rpc::to_protobuf<std::vector<char>>(request);

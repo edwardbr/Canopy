@@ -21,7 +21,7 @@ namespace canopy::detail
         char* p = buf + sizeof(buf);
         while (v)
         {
-            *--p = '0' + static_cast<char>(v % 10);
+            *--p = static_cast<char>('0' + static_cast<int>(v % 10));
             v /= 10;
         }
         return std::string(p, buf + sizeof(buf));
