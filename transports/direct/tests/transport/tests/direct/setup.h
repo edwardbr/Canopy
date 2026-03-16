@@ -32,19 +32,19 @@ template<bool UseHostInChild> class in_memory_setup
 public:
     virtual ~in_memory_setup() = default;
 
-    std::shared_ptr<rpc::service> get_root_service() const { return nullptr; }
-    bool get_has_enclave() const { return has_enclave_; }
-    rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
+    [[nodiscard]] std::shared_ptr<rpc::service> get_root_service() const { return nullptr; }
+    [[nodiscard]] bool get_has_enclave() const { return has_enclave_; }
+    [[nodiscard]] rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
     void set_example(const rpc::shared_ptr<yyy::i_example>& example) { i_example_ptr_ = example; }
-    rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }
+    [[nodiscard]] rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }
     void set_host(const rpc::shared_ptr<yyy::i_host>& host) { i_host_ptr_ = host; }
     rpc::shared_ptr<yyy::i_host> get_local_host_ptr() { return local_host_ptr_.lock(); }
-    bool get_use_host_in_child() const { return use_host_in_child_; }
+    [[nodiscard]] bool get_use_host_in_child() const { return use_host_in_child_; }
 
 #ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
+    [[nodiscard]] std::shared_ptr<coro::scheduler> get_scheduler() const { return io_scheduler_; }
 #endif
-    bool error_has_occurred() const { return error_has_occurred_; }
+    [[nodiscard]] bool error_has_occurred() const { return error_has_occurred_; }
     bool has_service() { return false; }
 
     CORO_TASK(void) check_for_error(CORO_TASK(bool) task)

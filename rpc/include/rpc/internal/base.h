@@ -17,11 +17,11 @@ namespace rpc
         ~base() override = default;
 
         // base is a collection of interface stubs it does not support proxy functionallity
-        bool __rpc_is_local() const override { return true; }
-        std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override { return nullptr; }
+        [[nodiscard]] bool __rpc_is_local() const override { return true; }
+        [[nodiscard]] std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override { return nullptr; }
 
         // Query to see if this class supports an an interface
-        const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
+        [[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
         {
             const rpc::casting_interface* out = nullptr;
             (
@@ -36,7 +36,7 @@ namespace rpc
         }
 
         // overriden stub functionallity
-        std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override { return stub_.lock(); }
+        [[nodiscard]] std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override { return stub_.lock(); }
         void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>& stub) override { stub_ = stub; }
 
         CORO_TASK(int)

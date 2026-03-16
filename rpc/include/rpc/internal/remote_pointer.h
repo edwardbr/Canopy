@@ -109,7 +109,7 @@ namespace rpc
     class bad_weak_ptr : public std::exception
     {
     public:
-        const char* what() const noexcept override { return "bad_weak_ptr"; }
+        [[nodiscard]] const char* what() const noexcept override { return "bad_weak_ptr"; }
     };
 
     // Forward declarations for circular dependency resolution
@@ -384,7 +384,7 @@ namespace rpc
                 virtual void destroy_self_actual() = 0;
                 virtual void* get_deleter_ptr(const std::type_info&) noexcept { return nullptr; }
 
-                void* get_managed_object_ptr() const { return managed_object_ptr_; }
+                [[nodiscard]] void* get_managed_object_ptr() const { return managed_object_ptr_; }
 
                 // Synchronous because shared_ptr operations don't need async on shared 0→1 transitions
                 // Called in these scenarios:
@@ -1158,7 +1158,7 @@ namespace rpc
             std::swap(cb_, r.cb_);
         }
 
-        element_type_impl* get() const noexcept { return ptr_; }
+        [[nodiscard]] element_type_impl* get() const noexcept { return ptr_; }
 
         template<typename U = T>
         std::enable_if_t<!std::is_void_v<U> && !std::is_array_v<U>, std::remove_extent_t<U>&> operator*() const noexcept
@@ -1173,8 +1173,8 @@ namespace rpc
             using result_type = std::remove_extent_t<U>;
             return static_cast<result_type*>(ptr_);
         }
-        long use_count() const noexcept { return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0; }
-        bool unique() const noexcept { return use_count() == 1; }
+        [[nodiscard]] long use_count() const noexcept { return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0; }
+        [[nodiscard]] bool unique() const noexcept { return use_count() == 1; }
         explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
         template<typename Y> bool owner_before(const shared_ptr<Y>& other) const noexcept
@@ -1189,8 +1189,8 @@ namespace rpc
 
     private:
         // Internal accessors - NOT part of STL shared_ptr API
-        __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const { return cb_; }
-        element_type_impl* internal_get_ptr() const { return ptr_; }
+        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const { return cb_; }
+        [[nodiscard]] element_type_impl* internal_get_ptr() const { return ptr_; }
         // Private constructor for constructing from existing control block (for friends only)
         shared_ptr(__rpc_internal::__shared_ptr_control_block::control_block_base* cb,
             element_type_impl* ptr,
@@ -1492,7 +1492,7 @@ namespace rpc
             return *this;
         }
 
-        shared_ptr<T> lock() const
+        [[nodiscard]] shared_ptr<T> lock() const
         {
             if (!cb_)
                 return {};
@@ -1504,8 +1504,8 @@ namespace rpc
             }
             return {};
         }
-        long use_count() const noexcept { return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0; }
-        bool expired() const noexcept
+        [[nodiscard]] long use_count() const noexcept { return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0; }
+        [[nodiscard]] bool expired() const noexcept
         {
             if (!cb_)
                 return true;
@@ -1529,7 +1529,7 @@ namespace rpc
 
     private:
         // Internal accessors - NOT part of STL weak_ptr API
-        __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const { return cb_; }
+        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const { return cb_; }
 
         template<typename U> friend class shared_ptr;
         template<typename U> friend class enable_shared_from_this;
@@ -1986,7 +1986,7 @@ namespace rpc
         rpc::weak_ptr<T> ptr_;
 
     protected:
-        rpc::shared_ptr<T> get_ptr() const { return ptr_.lock(); }
+        [[nodiscard]] rpc::shared_ptr<T> get_ptr() const { return ptr_.lock(); }
         void set_ptr(const rpc::weak_ptr<T>& ptr) { ptr_ = ptr; }
 
     public:
@@ -1997,11 +1997,11 @@ namespace rpc
         ~local_proxy() override = default;
         rpc::weak_ptr<T> __get_weak() { return ptr_; }
 
-        bool __rpc_is_local() const override { return true; }
-        std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override { return nullptr; }
+        [[nodiscard]] bool __rpc_is_local() const override { return true; }
+        [[nodiscard]] std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override { return nullptr; }
 
         void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) override { RPC_ASSERT(false); }
-        std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
+        [[nodiscard]] std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
         {
             auto ptr = ptr_.lock();
             if (!ptr)
@@ -2167,7 +2167,7 @@ namespace rpc
             // local_proxy_holder_ destructor runs automatically
         }
 
-        element_type_impl* get() const noexcept
+        [[nodiscard]] element_type_impl* get() const noexcept
         {
             // For local objects: ptr_ points to __i_xxx_local_proxy (safe - returns OBJECT_GONE)
             // For remote objects: ptr_ points to interface_proxy (safe - RPC handles errors)
@@ -2176,13 +2176,13 @@ namespace rpc
             return ptr_;
         }
 
-        long use_count() const noexcept
+        [[nodiscard]] long use_count() const noexcept
         {
             if (local_proxy_holder_)
                 return local_proxy_holder_.use_count();
             return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0;
         }
-        bool expired() const noexcept
+        [[nodiscard]] bool expired() const noexcept
         {
             if (use_count() > 0)
                 return false;
@@ -2247,7 +2247,7 @@ namespace rpc
         // UNSAFE: Direct pointer access - use ONLY for testing/comparison
         // The returned pointer may become invalid at any time due to concurrent deletion
         // For safe calls, use operator-> instead
-        element_type_impl* get_unsafe_only_for_testing() const noexcept
+        [[nodiscard]] element_type_impl* get_unsafe_only_for_testing() const noexcept
         {
             // WARNING: This pointer can dangle at any moment in multi-threaded scenarios
 
@@ -2277,8 +2277,8 @@ namespace rpc
 
     private:
         // Internal accessors - NOT part of public API
-        __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const noexcept { return cb_; }
-        element_type_impl* internal_get_ptr() const noexcept { return ptr_; }
+        [[nodiscard]] __rpc_internal::__shared_ptr_control_block::control_block_base* internal_get_cb() const noexcept { return cb_; }
+        [[nodiscard]] element_type_impl* internal_get_ptr() const noexcept { return ptr_; }
 
         template<typename Y> friend class shared_ptr;
         template<typename Y> friend class weak_ptr;

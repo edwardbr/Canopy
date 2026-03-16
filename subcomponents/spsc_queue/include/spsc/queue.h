@@ -43,7 +43,7 @@ namespace spsc
         }
 
     private:
-        std::size_t next(std::size_t current) const noexcept { return (current + 1) % (Size + 1); }
+        [[nodiscard]] std::size_t next(std::size_t current) const noexcept { return (current + 1) % (Size + 1); }
         T ring_[Size + 1];
         std::atomic<std::size_t> head_, tail_;
     };

@@ -166,7 +166,7 @@ namespace streaming::io_uring
             co_return coro::net::io_status{coro::net::io_status::kind::ok};
         }
 
-        auto is_closed() const -> bool override { return closed_.load(std::memory_order_acquire); }
+        [[nodiscard]] auto is_closed() const -> bool override { return closed_.load(std::memory_order_acquire); }
 
         void set_closed() override
         {
@@ -192,7 +192,7 @@ namespace streaming::io_uring
             }
         }
 
-        auto get_peer_info() const -> peer_info override
+        [[nodiscard]] auto get_peer_info() const -> peer_info override
         {
             peer_info info{};
             sockaddr_storage ss{};
@@ -275,7 +275,7 @@ namespace streaming::io_uring
             {
             }
 
-            bool await_ready() const
+            [[nodiscard]] bool await_ready() const
             {
                 std::lock_guard<std::mutex> lock(op_->mutex);
                 return op_->done;
@@ -293,7 +293,7 @@ namespace streaming::io_uring
                 return true;
             }
 
-            auto await_resume() const -> int
+            [[nodiscard]] auto await_resume() const -> int
             {
                 std::lock_guard<std::mutex> lock(op_->mutex);
                 return op_->result;

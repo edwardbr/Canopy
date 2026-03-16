@@ -31,13 +31,13 @@ namespace rpc
     {
     public:
         virtual ~casting_interface() = default;
-        virtual const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const = 0;
+        [[nodiscard]] virtual const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const = 0;
 
-        virtual bool __rpc_is_local() const = 0;
-        virtual std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const = 0;
+        [[nodiscard]] virtual bool __rpc_is_local() const = 0;
+        [[nodiscard]] virtual std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const = 0;
 
         // only for local objects
-        virtual std::shared_ptr<rpc::object_stub> __rpc_get_stub() const = 0;
+        [[nodiscard]] virtual std::shared_ptr<rpc::object_stub> __rpc_get_stub() const = 0;
         virtual void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) = 0;
 
         virtual CORO_TASK(int) __rpc_call([[maybe_unused]] uint64_t protocol_version,
@@ -69,7 +69,7 @@ namespace rpc
         stdex::member_ptr<object_proxy> object_proxy_;
 
     protected:
-        std::shared_ptr<object_proxy> get_object_proxy() const { return object_proxy_.get_nullable(); }
+        [[nodiscard]] std::shared_ptr<object_proxy> get_object_proxy() const { return object_proxy_.get_nullable(); }
         void set_object_proxy(std::shared_ptr<object_proxy> ptr) { object_proxy_ = std::move(ptr); }
 
     public:
@@ -79,22 +79,22 @@ namespace rpc
         }
         ~interface_proxy() override = default;
 
-        const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
+        [[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
         {
             if (rpc::match<T>(interface_id))
                 return static_cast<const T*>(this);
             return nullptr;
         }
 
-        bool __rpc_is_local() const override { return false; }
-        std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override
+        [[nodiscard]] bool __rpc_is_local() const override { return false; }
+        [[nodiscard]] std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const override
         {
             return object_proxy_.get_nullable();
         }
 
         // proxies dont do stub stuff
         void __rpc_set_stub(const std::shared_ptr<rpc::object_stub>&) override { RPC_ASSERT(false); }
-        std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
+        [[nodiscard]] std::shared_ptr<rpc::object_stub> __rpc_get_stub() const override
         {
             RPC_ASSERT(false);
             return nullptr;

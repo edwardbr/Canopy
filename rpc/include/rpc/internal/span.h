@@ -96,17 +96,17 @@ namespace rpc
 
         // ── Accessors ─────────────────────────────────────────────────────────
 
-        const uint8_t* data() const noexcept { return data_; }
-        size_t size() const noexcept { return size_; }
-        bool empty() const noexcept { return size_ == 0; }
+        [[nodiscard]] const uint8_t* data() const noexcept { return data_; }
+        [[nodiscard]] size_t size() const noexcept { return size_; }
+        [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
 
-        const uint8_t* begin() const noexcept { return data_; }
-        const uint8_t* end() const noexcept { return data_ + size_; }
+        [[nodiscard]] const uint8_t* begin() const noexcept { return data_; }
+        [[nodiscard]] const uint8_t* end() const noexcept { return data_ + size_; }
 
         const uint8_t& operator[](size_t idx) const noexcept { return data_[idx]; }
 
         // subspan(offset, count): count == size_t(-1) means "to end"
-        byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) const noexcept
+        [[nodiscard]] byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) const noexcept
         {
             if (offset > size_)
                 offset = size_;
@@ -186,21 +186,21 @@ namespace rpc
 
         // ── Accessors ─────────────────────────────────────────────────────────
 
-        uint8_t* data() noexcept { return data_; }
-        const uint8_t* data() const noexcept { return data_; }
-        size_t size() const noexcept { return size_; }
-        bool empty() const noexcept { return size_ == 0; }
+        [[nodiscard]] uint8_t* data() noexcept { return data_; }
+        [[nodiscard]] const uint8_t* data() const noexcept { return data_; }
+        [[nodiscard]] size_t size() const noexcept { return size_; }
+        [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
 
-        uint8_t* begin() noexcept { return data_; }
-        uint8_t* end() noexcept { return data_ + size_; }
-        const uint8_t* begin() const noexcept { return data_; }
-        const uint8_t* end() const noexcept { return data_ + size_; }
+        [[nodiscard]] uint8_t* begin() noexcept { return data_; }
+        [[nodiscard]] uint8_t* end() noexcept { return data_ + size_; }
+        [[nodiscard]] const uint8_t* begin() const noexcept { return data_; }
+        [[nodiscard]] const uint8_t* end() const noexcept { return data_ + size_; }
 
         uint8_t& operator[](size_t idx) noexcept { return data_[idx]; }
         const uint8_t& operator[](size_t idx) const noexcept { return data_[idx]; }
 
         // subspan(offset, count): count == size_t(-1) means "to end"
-        mutable_byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) noexcept
+        [[nodiscard]] mutable_byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) noexcept
         {
             if (offset > size_)
                 offset = size_;
@@ -209,7 +209,7 @@ namespace rpc
             return mutable_byte_span(data_ + offset, n);
         }
 
-        byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) const noexcept
+        [[nodiscard]] byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) const noexcept
         {
             if (offset > size_)
                 offset = size_;

@@ -25,8 +25,8 @@ namespace streaming::tls
         context(const context&) = delete;
         auto operator=(const context&) -> context& = delete;
 
-        auto get() const -> SSL_CTX* { return ctx_; }
-        auto is_valid() const -> bool { return ctx_ != nullptr; }
+        [[nodiscard]] auto get() const -> SSL_CTX* { return ctx_; }
+        [[nodiscard]] auto is_valid() const -> bool { return ctx_ != nullptr; }
 
     private:
         SSL_CTX* ctx_{nullptr};
@@ -41,8 +41,8 @@ namespace streaming::tls
         client_context(const client_context&) = delete;
         auto operator=(const client_context&) -> client_context& = delete;
 
-        auto get() const -> SSL_CTX* { return ctx_; }
-        auto is_valid() const -> bool { return ctx_ != nullptr; }
+        [[nodiscard]] auto get() const -> SSL_CTX* { return ctx_; }
+        [[nodiscard]] auto is_valid() const -> bool { return ctx_ != nullptr; }
 
     private:
         SSL_CTX* ctx_{nullptr};
@@ -65,7 +65,7 @@ namespace streaming::tls
             -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
-        auto is_closed() const -> bool override { return closed_; }
+        [[nodiscard]] auto is_closed() const -> bool override { return closed_; }
 
         void set_closed() override
         {
@@ -74,7 +74,7 @@ namespace streaming::tls
                 underlying_->set_closed();
         }
 
-        auto get_peer_info() const -> peer_info override { return underlying_->get_peer_info(); }
+        [[nodiscard]] auto get_peer_info() const -> peer_info override { return underlying_->get_peer_info(); }
 
     private:
         std::shared_ptr<::streaming::stream> underlying_;

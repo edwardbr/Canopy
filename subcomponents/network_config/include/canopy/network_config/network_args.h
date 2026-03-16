@@ -72,18 +72,18 @@ namespace canopy::network_config
         uint8_t object_offset = 64; // bit offset of object field (flexible layout only)
 
         // Returns true when a non-loopback routing prefix has been set.
-        bool has_routing_prefix() const { return routing_prefix_addr != ip_address{}; }
+        [[nodiscard]] bool has_routing_prefix() const { return routing_prefix_addr != ip_address{}; }
 
         // Return the routing prefix as a human-readable string.
         //   ipv4 family: dotted-decimal  (e.g. "192.168.1.0")
         //   ipv6 family: colon-hex /64   (e.g. "2001:db8::")
         //   all-zero:    "127.0.0.1"
-        std::string get_routing_prefix_string() const;
+        [[nodiscard]] std::string get_routing_prefix_string() const;
 
         // Return host_addr as a human-readable string.
         //   ipv4 family: dotted-decimal  (e.g. "192.168.1.1")
         //   ipv6 family: full colon-hex  (e.g. "2001:db8::1")
-        std::string get_host_string() const;
+        [[nodiscard]] std::string get_host_string() const;
 
         // Emit all fields via RPC_INFO.
         void log_values() const;
@@ -114,7 +114,7 @@ namespace canopy::network_config
         // Extract and validate a network_config after ParseCLI().
         // If --routing-prefix was not provided, calls detect_routing_prefix() automatically.
         // Throws std::invalid_argument if any value is out of range.
-        network_config get_config() const;
+        [[nodiscard]] network_config get_config() const;
     };
 
     // Register network args into parser. Returns a context that must be kept alive

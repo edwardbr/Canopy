@@ -65,7 +65,7 @@ namespace secret_llama
                     llama_model_free(model_);
             }
 
-            llama_model* get() const { return model_; }
+            [[nodiscard]] llama_model* get() const { return model_; }
         };
 
         struct context_deleter

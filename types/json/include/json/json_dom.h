@@ -106,7 +106,7 @@ namespace json
             template<typename T> T get() const;
             template<typename T> T convert_to_int() const;
 
-            type get_type() const { return static_cast<type>(index()); }
+            [[nodiscard]] type get_type() const { return static_cast<type>(index()); }
 
         private:
             friend inline bool operator!=(const object& lhs, const object& rhs);
@@ -382,7 +382,7 @@ namespace json
             return *this;
         }
 
-        template<typename T> T object::get() const
+        template<typename T> [[nodiscard]] T object::get() const
         {
             const container_type& cont = *this;
             if constexpr (std::is_same<T, std::string>::value)

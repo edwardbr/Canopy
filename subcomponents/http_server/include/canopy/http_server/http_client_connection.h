@@ -79,7 +79,7 @@ namespace canopy::http_server
         static auto build_http_response(const response& response, bool keep_alive) -> std::string;
         static auto build_websocket_handshake_response(const std::string& accept_key) -> std::string;
 
-        auto dispatch_request(const request& request) const -> std::optional<response>;
+        [[nodiscard]] auto dispatch_request(const request& request) const -> std::optional<response>;
         auto handle_websocket_upgrade(const request& request) -> coro::task<std::shared_ptr<rpc::transport>>;
 
         std::shared_ptr<streaming::stream> stream_;
