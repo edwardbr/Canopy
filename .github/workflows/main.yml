@@ -84,7 +84,7 @@ jobs:
         working-directory: build_debug_coroutine/output
         run: ./rpc_test
       - name: CMake configure (Coroutine Release)
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Debug_Coroutines_With_No_Logging
+        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Release_Coroutine_with_No_logging
       - name: Build (Coroutine Release)
         run: cmake --build build_release_coroutine
       - name: Test RPC (Coroutine Release)
