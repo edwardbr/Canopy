@@ -183,7 +183,10 @@ child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
         CO_RETURN rpc::error::OK();
     });
 
-auto err_code = CO_AWAIT this_service->connect_to_zone("example_zone", child_transport, host_ptr, target);    
+auto connect_result = CO_AWAIT this_service->connect_to_zone<yyy::i_host, yyy::i_example>(
+    "example_zone", child_transport, host_ptr);
+auto target = connect_result.output_interface;
+auto err_code = connect_result.error_code;
 ```
 
 ### Peer Zone (Network)
@@ -194,35 +197,23 @@ Peer zones connect via TCP or other network transports, this example uses corout
 // Server side
 auto server_service = std::make_shared<rpc::service>("server", get_next_zone_id(), io_scheduler_);
 
-// Create the listener for the server side
-// The connection handler will be called when a client connects
-auto listener = std::make_unique<rpc::tcp::listener>(
-    [this](const rpc::interface_descriptor& input_descr,
-        rpc::interface_descriptor& output_interface,
-        std::shared_ptr<rpc::service> child_service_ptr,
-        std::shared_ptr<rpc::tcp_transport> transport) -> CORO_TASK(int)
-    {
+// Create a streaming listener; the connection callback is invoked for each new client
+const coro::net::socket_address endpoint{
+    coro::net::ip_address::from_string("127.0.0.1"), static_cast<uint16_t>(8080)};
 
-        // Use attach_remote_zone to properly manage object lifetime, like SPSC does
-        auto ret = CO_AWAIT child_service_ptr->attach_remote_zone<yyy::i_client, yyy::i_example>("service_proxy",
-            transport,
-            input_descr,
-            output_interface,
-            [&](const rpc::shared_ptr<yyy::i_client>& client,
-                rpc::shared_ptr<yyy::i_example>& new_example,
-                const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
-            {
-                new_example = rpc::make_shared<marshalled_tests::example>(service_ptr, client);
+auto listener = std::make_shared<streaming::listener>("server_transport",
+    std::make_shared<streaming::tcp::acceptor>(endpoint),
+    rpc::stream_transport::make_connection_callback<yyy::i_client, yyy::i_example>(
+        [](const rpc::shared_ptr<yyy::i_client>& client,
+            const std::shared_ptr<rpc::service>& svc)
+            -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+        {
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{
+                rpc::error::OK(),
+                rpc::shared_ptr<yyy::i_example>(new example_impl(svc, client))};
+        }));
 
-                CO_RETURN rpc::error::OK();
-            });
-        CO_RETURN ret;
-    },
-
-auto server_options = coro::net::tcp::server::options{
-    .address = {coro::net::ip_address::from_string("127.0.0.1")}, .port = 8080, .backlog = 128};
-
-if (!listener->start_listening(peer_service_, server_options))
+if (!listener->start_listening(server_service))
 {
     RPC_ERROR("Failed to start TCP listener");
     CO_RETURN false;
@@ -230,43 +221,40 @@ if (!listener->start_listening(peer_service_, server_options))
 
 // Client side
 
-    
 // Create the client service
 auto client_service = std::make_shared<rpc::service>("client", get_next_zone_id(), io_scheduler_);
 
-coro::net::tcp::client tcp_client(scheduler,
-    coro::net::tcp::client::options{
-        .address = {coro::net::ip_address::from_string("127.0.0.1")},
-        .port = 8080,
-    });
+coro::net::tcp::client tcp_client(io_scheduler_,
+    coro::net::socket_address{
+        coro::net::ip_address::from_string("127.0.0.1"), static_cast<uint16_t>(8080)});
 
-auto connection_status = CO_AWAIT tcp_client.connect();
+auto connection_status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds(5000));
 if (connection_status != coro::net::connect_status::connected)
 {
     RPC_ERROR("Failed to connect TCP client to server");
     CO_RETURN false;
 }
 
-// Create the client transport
-auto client_transport = rpc::tcp::tcp_transport::create("client_transport",
-    client_service,
-    // std::chrono::milliseconds(100000),
-    std::move(tcp_client),
-    nullptr); // client doesn't need handler
-
-// Start the client coroutine message pump - this must run before we call connect
-client_service->spawn(client_transport_->pump_send_and_receive());
+// Wrap the connected socket in a stream and create the streaming transport
+auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), io_scheduler_);
+auto client_transport = rpc::stream_transport::make_client("client_transport",
+    client_service, std::move(tcp_stm));
 
 // an object to feed to the server if required
-rpc::shared_ptr<yyy::i_client> cli(new client());
-rpc::shared_ptr<yyy::i_example> example;
+rpc::shared_ptr<yyy::i_client> cli(new client_impl());
 
-// Connect using the client transport
-auto ret = CO_AWAIT client_service->connect_to_zone("main child", client_transport, cli, example);
+// Connect using the client transport; result carries error_code and the remote interface
+auto connect_result = CO_AWAIT client_service->connect_to_zone<yyy::i_client, yyy::i_example>(
+    "main child", client_transport, cli);
+if (connect_result.error_code != rpc::error::OK())
+{
+    CO_RETURN false;
+}
+auto example = connect_result.output_interface;
 
 // now we are talking to another zone
 CO_AWAIT example->do_something();
-    
+
 ```
 
 ## Zone Types for Routing

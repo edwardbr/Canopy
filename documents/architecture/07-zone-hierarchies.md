@@ -5,34 +5,31 @@ All rights reserved.
 
 # Zone Hierarchies
 
-Canopy supports complex hierarchical zone topologies for organizing distributed systems. This section covers creating, managing, and routing through zone hierarchies.
+The name Canopy reflects the architecture: like a forest of trees, each node in the system grows its own tree of zones — a root zone from which child zones branch outward. Multiple nodes connect as peers across a network or mesh, and objects living at any level of any tree can communicate with objects at any level of any other tree, just as the leaves of a forest canopy interweave above the trunks.
 
-## 1. Hierarchical Topology
+## 1. Per-Node Zone Trees
 
-### Tree Structure
-
-Zones form a strict tree hierarchy:
+Each machine or process hosts its own root zone. From the root, child zones branch for plugins, enclaves, DLLs, or any other isolation boundary. A typical single-node hierarchy looks like:
 
 ```
-Zone 1 (Root - Host)
+Root Zone (Node A)
 │
-├── Zone 2 (Child - Plugin A)
+├── Zone 2 (Plugin A)
 │   ├── Zone 4 (Grandchild)
 │   └── Zone 5 (Grandchild)
 │
-├── Zone 3 (Child - Plugin B)
+├── Zone 3 (Plugin B)
 │   └── Zone 6 (Grandchild)
 │
-└── Zone 7 (Child - Enclave)
+└── Zone 7 (SGX Enclave)
 ```
 
 ### Key Properties
 
-- **Parent-Child Relationships**: Each zone (except root) has one parent
+- **Parent-Child Relationships**: Each zone (except the root) has exactly one parent
 - **Strong References**: Children hold strong references to parents
 - **Lifecycle Guarantee**: Parent outlives all children
-- **Unique IDs**: Zone IDs are unique across the entire system
-
+- **Unique IDs**: Zone IDs are unique across the entire mesh
 
 ### Child Service Pattern
 
@@ -52,53 +49,69 @@ public:
 };
 ```
 
-## 3. Pass-Through Routing
+## 2. Multi-Node Mesh
 
-### Multi-Hop Communication
-
-When Zone 1 needs to communicate with Zone 4:
+Separate nodes connect as peers through streaming transports (TCP, SPSC, WebSocket, and others). There is no global owner: each node's root zone is independent and the connection between two nodes is symmetric. A root zone on Node A connects to the root zone on Node B as a peer, not as a parent–child pair.
 
 ```
-Zone 1 ──► Zone 2 ──► Zone 4
-   │          │
-   │          └── pass_through ──►
-   └── find route through Zone 2
+Node A                            Node B
+──────────────────                ──────────────────
+Root Zone (A)  ◄── TCP ──────►  Root Zone (B)
+├── Zone A2                       ├── Zone B2
+└── Zone A3                       └── Zone B3
 ```
 
-### Pass-Through Creation
+This arrangement scales naturally to a mesh of many nodes:
+
+```
+Node A ◄──────► Node B ◄──────► Node C
+  │                                 │
+  └─────────────────────────────────┘
+```
+
+Objects anywhere in the mesh — deep inside Zone A3 or at the root of Node C — reach each other through the same RPC mechanisms. When a call must travel through an intermediate node, that node acts as a relay, forwarding the message onward without the caller needing to know the full path.
+
+### Root Zone Setup
+
+Each node creates its own root service and connects out via transport:
 
 ```cpp
-// Pass-throughs are created automatically during routing
-auto pass_through = transport_->find_any_passthrough_for_destination(
-    destination_zone_id,  // Zone 4
-    caller_zone_id);      // Zone 1
+// Node A: create root and connect to Node B
+auto root_service = rpc::make_shared<rpc::service>("node_a", zone_a_id);
+auto transport = rpc::stream_transport::streaming_transport::create(
+    root_service,
+    tcp_stream,          // established TCP connection to Node B
+    connection_handler); // handles inbound calls from Node B
+
+// Retrieve an interface from Node B's root zone
+auto [err, remote_factory] = CO_AWAIT root_service->connect_to_zone<i_factory>(zone_b_id);
 ```
 
-### Pass-Through Lifecycle
+### Peer Zone Lifetime
 
-```cpp
-class pass_through
-{
-    std::shared_ptr<transport> forward_transport_;   // To destination
-    std::shared_ptr<transport> reverse_transport_;   // To caller
-    std::shared_ptr<service> service_;               // Keeps intermediary zone alive
-    std::atomic<int32_t> function_count_;            // Active calls
-    std::atomic<int32_t> shared_count_;              // References
-    std::atomic<int32_t> optimistic_count_;          // Optimistic refs
-};
+Because peer root zones are not in a parent–child relationship, each stays alive as long as local objects (stubs) exist within it or remote peers hold references to those objects. When all references are released the zone becomes eligible for cleanup.
+
+Typical peer scenarios:
+
+- **Peer-to-peer RPC**: two independent processes each create their own root service and connect via TCP
+- **Distributed service meshes**: many nodes interconnected, each managing its own object lifetimes independently
+- **In-process testing**: two root zones connected via SPSC, exercising network-style RPC without opening a socket
+
+## 3. Multi-Hop Routing
+
+A **transport** links exactly two zones. The underlying mechanism may be a physical network connection (TCP between machines), a shared-memory queue between processes, or a direct software call between in-process zones — the transport abstraction is the same in all cases.
+
+When a call must cross more than one transport — for example from Zone A through Zone B to Zone C — Zone B acts as an intermediary, forwarding traffic between its two transport legs transparently. This works equally whether the zones are on the same machine or spread across the network.
+
+```
+Zone A ──[transport]──► Zone B ──[transport]──► Zone C
 ```
 
-Passthroughs hold `std::shared_ptr<service>` to keep the intermediary zone alive while routing between non-adjacent zones.
+From the caller's perspective the path is invisible: objects in Zone A call objects in Zone C as if they were directly connected. Intermediary routing is handled automatically by Canopy.
 
-**For comprehensive passthrough documentation**, including relay operations (options=3), reference counting, and routing logic, see [Transports and Passthroughs](06-transports-and-passthroughs.md).
+**For routing implementation details**, see [Transports and Passthroughs](06-transports-and-passthroughs.md).
 
-## 4. Autonomous Zones
-
-### Creating Autonomous Children
-
-Zones that can operate independently:
-
-## 5. Fork Patterns
+## 4. Fork Patterns
 
 ### Simple Fork
 
@@ -136,26 +149,25 @@ interface i_example
 };
 ```
 
-## 6. Caching Across Zones
+## 5. Caching Across Zones
 
 ### Object Caching Pattern
 
+Objects created in one zone can be cached and handed to any other zone that has a route to it:
+
 ```cpp
-// Cache object in autonomous zone for retrieval by other zones
-error_code cache_object_from_autonomous_zone(
+// Cache an object so that other zones can retrieve it later
+error_code cache_object(
     [in] const std::vector<uint64_t>& zone_ids)
 {
-    // Create autonomous zone
-    auto autonomous_zone = create_autonomous_zone();
-
-    // Cache object
+    // Create the object locally
     cached_object_ = create_object();
 
-    // Other zones can now retrieve
+    // Other zones can now retrieve it via retrieve_cached_object()
     CO_RETURN rpc::error::OK();
 }
 
-error_code retrieve_cached_autonomous_object(
+error_code retrieve_cached_object(
     [out] rpc::shared_ptr<i_example>& cached_object)
 {
     cached_object = cached_object_;
@@ -163,7 +175,7 @@ error_code retrieve_cached_autonomous_object(
 }
 ```
 
-## 9. Common Patterns
+## 6. Common Patterns
 
 ### Service Discovery
 
@@ -207,16 +219,16 @@ class zone_factory : public i_zone_factory
 };
 ```
 
-## 10. Best Practices
+## 7. Best Practices
 
 1. **Plan zone hierarchy** before implementation
-2. **Use consistent ID generation** to avoid collisions
-3. **Keep hierarchies shallow** for better performance, however there is no additional parameter serialisation, however certain transports may have additional enveloping overhead
-4. **Use pass-throughs sparingly** - they add overhead
-5. **Consider autonomous zones** for independent subsystems
+2. **Use consistent ID generation** to avoid collisions — IDs must be unique across the whole mesh
+3. **Keep per-node hierarchies shallow** for better performance; certain transports may add enveloping overhead for each hop
+4. **Minimise pass-through hops** - each intermediate zone adds latency and reference counting overhead
+5. **Prefer peer root zones** for independent nodes rather than forcing an artificial parent–child relationship across machines
 6. **Use templates for test hierarchies** - enables parameterized testing
 
-## 11. Code References
+## 8. Code References
 
 **Hierarchical Transport Pattern**:
 - `documents/transports/hierarchical.md` - Circular dependency pattern details
@@ -228,7 +240,7 @@ class zone_factory : public i_zone_factory
 - `transports/local/include/local/child_transport.h` - Child transport
 - `transports/local/include/local/parent_transport.h` - Parent transport
 
-## 12. Next Steps
+## 9. Next Steps
 
 - [Zones](02-zones.md) - Zone fundamentals
 - [Services](03-services.md) - Service and child_service details
