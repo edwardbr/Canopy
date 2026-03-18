@@ -43,13 +43,13 @@ namespace rpc
         __rpc_call(rpc::send_params params) override
         {
             send_result result{rpc::error::INVALID_INTERFACE_ID(), {}, {}};
-            [[maybe_unused]] bool found = ((rpc::match<Interfaces>(params.interface_id)
-                                                   ? ((result = CO_AWAIT Interfaces::stub_caller::call(
-                                                           static_cast<Interfaces*>(static_cast<Implementation*>(this)),
-                                                           std::move(params))), // NOLINT(bugprone-use-after-move)
-                                                         true)
-                                                   : false)
-                                           || ...);
+            [[maybe_unused]] bool found
+                = ((rpc::match<Interfaces>(params.interface_id)
+                           ? ((result = CO_AWAIT Interfaces::stub_caller::call(
+                                   static_cast<Interfaces*>(static_cast<Implementation*>(this)), std::move(params))),
+                                 true)
+                           : false)
+                    || ...);
             CO_RETURN result;
         }
     };
