@@ -85,10 +85,8 @@ namespace rpc
 #endif
     }
 
-    CORO_TASK(int)
-    transport::connect(const std::shared_ptr<rpc::object_stub>& stub,
-        connection_settings input_descr,
-        remote_object& output_descr) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
+    CORO_TASK(connect_result)
+    transport::connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (input_descr.get_object_id().is_set())
@@ -102,22 +100,22 @@ namespace rpc
                     rpc::add_ref_options::normal);
         }
 #endif
-        int ret = CO_AWAIT inner_connect(stub, input_descr, output_descr);
+        auto result = CO_AWAIT inner_connect(stub, input_descr);
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (output_descr.get_object_id().is_set())
+        if (result.output_descriptor.get_object_id().is_set())
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_inbound_add_ref(zone_id_,
                     adjacent_zone_id_,
-                    zone_id_.with_object(output_descr.get_object_id()),
+                    zone_id_.with_object(result.output_descriptor.get_object_id()),
                     adjacent_zone_id_,
                     adjacent_zone_id_,
                     rpc::add_ref_options::normal);
         }
 #endif
 
-        CO_RETURN ret;
+        CO_RETURN result;
     }
 
     CORO_TASK(int) transport::accept()

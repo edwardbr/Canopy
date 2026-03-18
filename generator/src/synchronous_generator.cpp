@@ -603,9 +603,9 @@ namespace synchronous_generator
         case STUB_PARAM_CAST:
             return name;
         case PROXY_VALUE_RETURN:
-            return fmt::format("auto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, {0}_); "
-                               "__rpc_ret = {0}_ret.error_code; "
-                               "{0} = std::move({0}_ret.iface);",
+            return fmt::format("\t\t\t\tauto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, {0}_);\n"
+                               "\t\t\t\t__rpc_ret = {0}_ret.error_code;\n"
+                               "\t\t\t\t{0} = std::move({0}_ret.iface);\n",
                 name,
                 bind_template_args);
         case PROXY_OUT_DECLARATION:
@@ -1435,7 +1435,10 @@ namespace synchronous_generator
                             PROXY_VALUE_RETURN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
                         continue;
 
+                    proxy("if(!rpc::error::is_error(__rpc_ret))");
+                    proxy("{{");
                     proxy(output);
+                    proxy("}}");
                 }
             }
             emit_proxy_clean_in(from_host, m_ob, proxy, function);
@@ -2238,11 +2241,13 @@ namespace synchronous_generator
         stub("{{");
         stub("CO_RETURN rpc::remote_object_bind_result{{rpc::error::INVALID_DATA(), nullptr, {{}}}};");
         stub("}}");
-        stub("auto [__rpc_ret, iface_shared] = CO_AWAIT rpc::make_shared(iface);");
+        stub("auto __rpc_make_shared_result = CO_AWAIT rpc::make_shared(iface);");
+        stub("auto __rpc_ret = std::get<0>(__rpc_make_shared_result);");
         stub("if(rpc::error::is_error(__rpc_ret))");
         stub("{{");
         stub("CO_RETURN rpc::remote_object_bind_result{{__rpc_ret, nullptr, {{}}}};");
         stub("}}");
+        stub("auto iface_shared = std::get<1>(std::move(__rpc_make_shared_result));");
         stub("auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface_shared);");
         stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, true);");
         stub("}}");
@@ -2466,6 +2471,7 @@ namespace synchronous_generator
         }
 
         header("");
+        header("// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)");
 
         proxy("#include <rpc/rpc.h>");
         proxy("#include <yas/mem_streams.hpp>");
@@ -2485,6 +2491,7 @@ namespace synchronous_generator
         stub_header("#pragma once");
         stub_header("#include <rpc/rpc.h>");
         stub_header("");
+        stub_header("// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)");
 
         stub("#include <rpc/rpc.h>");
         stub("#include <yas/mem_streams.hpp>");
@@ -2537,9 +2544,11 @@ namespace synchronous_generator
         proxy("{{");
         write_epilog(from_host, lib, header, proxy, stub, namespaces);
         header("}}");
+        header("// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)");
         proxy("}}");
         proxy("// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)");
         stub("}}");
         stub("// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)");
+        stub_header("// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)");
     }
 }

@@ -3,7 +3,6 @@
  *   All rights reserved.
  */
 #pragma once
-// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <functional>
 
@@ -29,16 +28,13 @@ namespace rpc::local
         // Override to propagate disconnect to parent zone
         void set_status(rpc::transport_status status) override;
 
-        CORO_TASK(int)
-        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-            connection_settings& input_descr,
-            rpc::remote_object& output_descr) override // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
+        CORO_TASK(rpc::connect_result)
+        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override
         {
             std::ignore = stub;
             std::ignore = input_descr;
-            std::ignore = output_descr;
             // Parent transport is connected immediately - no handshake needed
-            CO_RETURN rpc::error::ZONE_NOT_SUPPORTED();
+            CO_RETURN rpc::connect_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
@@ -98,10 +94,8 @@ namespace rpc::local
         // Called by parent_transport when child zone disconnects
         void on_child_disconnected();
 
-        CORO_TASK(int)
-        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-            connection_settings& input_descr,
-            rpc::remote_object& output_descr) override // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
+        CORO_TASK(rpc::connect_result)
+        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override
         {
             auto svc = get_service();
             // get a new adjacent_zone_id
@@ -112,7 +106,7 @@ namespace rpc::local
             {
                 RPC_ERROR("[local] get_new_zone_id failed: {}", result.error_code);
                 RPC_ASSERT(false);
-                CO_RETURN result.error_code;
+                CO_RETURN rpc::connect_result{result.error_code, {}};
             }
             rpc::zone adjacent_zone_id = result.zone_id;
 
@@ -125,7 +119,7 @@ namespace rpc::local
                 auto ret = CO_AWAIT stub->add_ref(false, false, adjacent_zone_id);
                 if (ret != rpc::error::OK())
                 {
-                    CO_RETURN ret;
+                    CO_RETURN rpc::connect_result{ret, {}};
                 }
             }
 
@@ -133,7 +127,6 @@ namespace rpc::local
             auto child_result = CO_AWAIT child_entry_point_factory_fn_(
                 input_descr, std::static_pointer_cast<child_transport>(shared_from_this()));
             child_entry_point_factory_fn_ = nullptr;
-            output_descr = child_result.output_descriptor;
             if (child_result.error_code == rpc::error::OK())
                 child_ = child_result.child;
 
@@ -143,12 +136,13 @@ namespace rpc::local
             auto expected_parent_count = input_descr.get_object_id() != 0 ? 1 : 0;
 
             // as the child should be fully initialised by this time so we add the output count too
-            auto expected_child_count = expected_parent_count + (output_descr.get_object_id() != 0 ? 1 : 0);
+            auto expected_child_count
+                = expected_parent_count + (child_result.output_descriptor.get_object_id() != 0 ? 1 : 0);
 
             RPC_ASSERT(get_destination_count() >= expected_parent_count);
             RPC_ASSERT(!child_result.child || child_result.child->get_destination_count() >= expected_child_count);
 
-            CO_RETURN child_result.error_code;
+            CO_RETURN rpc::connect_result{child_result.error_code, child_result.output_descriptor};
         }
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
@@ -197,4 +191,3 @@ namespace rpc::local
     };
 
 }
-// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

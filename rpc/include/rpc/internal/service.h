@@ -986,7 +986,9 @@ namespace rpc
 
         // once the transport is connected the adjacent zone id is known it must add_ref the stub against the transport
         // if the input interface is remote then the addref is not needed.
-        err_code = CO_AWAIT child_transport->connect(input_stub, input_descr, output_descr);
+        auto connect_result = CO_AWAIT child_transport->connect(input_stub, input_descr);
+        err_code = connect_result.error_code;
+        output_descr = std::move(connect_result.output_descriptor);
         if (err_code != rpc::error::OK())
         {
             if (input_stub)

@@ -227,7 +227,7 @@ namespace websocket_demo
         transport::outbound_try_cast(rpc::try_cast_params params)
         {
             std::ignore = params;
-            CO_RETURN rpc::standard_result{.error_code = rpc::error::INCOMPATIBLE_SERVICE(), .out_back_channel = {}};
+            CO_RETURN rpc::standard_result(rpc::error::INCOMPATIBLE_SERVICE(), {});
         }
 
         CORO_TASK(rpc::standard_result)
@@ -236,14 +236,14 @@ namespace websocket_demo
             std::ignore = params;
             // WebSocket clients do not participate in RPC reference counting lifecycle.
             // Return OK to allow stub registration to succeed.
-            CO_RETURN rpc::standard_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
+            CO_RETURN rpc::standard_result(rpc::error::OK(), {});
         }
 
         CORO_TASK(rpc::standard_result)
         transport::outbound_release(rpc::release_params params)
         {
             std::ignore = params;
-            CO_RETURN rpc::standard_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
+            CO_RETURN rpc::standard_result(rpc::error::OK(), {});
         }
 
         CORO_TASK(void)

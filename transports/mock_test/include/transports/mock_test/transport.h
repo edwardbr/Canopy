@@ -100,10 +100,8 @@ namespace rpc::mock_test
         }
 
         // outbound i_marshaller implementations
-        CORO_TASK(int)
-        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-            connection_settings& input_descr,
-            rpc::remote_object& output_descr) override;
+        CORO_TASK(rpc::connect_result)
+        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         CORO_TASK(send_result) outbound_send(send_params params) override;

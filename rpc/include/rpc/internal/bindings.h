@@ -9,6 +9,30 @@
 
 namespace rpc
 {
+    template<class PtrType> [[nodiscard]] bool is_bound_pointer_null(const PtrType& iface)
+    {
+        if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType>)
+        {
+            return iface.is_null();
+        }
+        else
+        {
+            return !iface;
+        }
+    }
+
+    template<class PtrType> [[nodiscard]] bool is_bound_pointer_gone(const PtrType& iface)
+    {
+        if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType>)
+        {
+            return !iface && !iface.is_null();
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     template<class T, template<class> class PtrType>
     CORO_TASK(remote_object_bind_result)
     proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p, uint64_t protocol_version, PtrType<T> iface)
@@ -18,7 +42,13 @@ namespace rpc
 
         remote_object_bind_result result{error::OK(), nullptr, {}};
 
-        if (iface.use_count() == 0)
+        if (is_bound_pointer_gone(iface))
+        {
+            result.error_code = error::OBJECT_GONE();
+            CO_RETURN result;
+        }
+
+        if (is_bound_pointer_null(iface))
         {
             CO_RETURN result;
         }
@@ -55,7 +85,13 @@ namespace rpc
 
         remote_object_bind_result result{rpc::error::OK(), nullptr, {}};
 
-        if (iface.use_count() == 0)
+        if (is_bound_pointer_gone(iface))
+        {
+            result.error_code = error::OBJECT_GONE();
+            CO_RETURN result;
+        }
+
+        if (is_bound_pointer_null(iface))
         {
             CO_RETURN result;
         }
@@ -112,7 +148,9 @@ namespace rpc
 
             if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
             {
-                std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(shared_iface);
+                auto optimistic_result = CO_AWAIT rpc::make_optimistic(shared_iface);
+                result.error_code = std::get<0>(optimistic_result);
+                result.iface = std::get<1>(std::move(optimistic_result));
                 CO_RETURN result;
             }
             else
@@ -207,7 +245,9 @@ namespace rpc
             auto typed_iface = rpc::static_pointer_cast<T>(castable);
             if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
             {
-                std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(typed_iface);
+                auto optimistic_result = CO_AWAIT rpc::make_optimistic(typed_iface);
+                result.error_code = std::get<0>(optimistic_result);
+                result.iface = std::get<1>(std::move(optimistic_result));
                 CO_RETURN result;
             }
             else
