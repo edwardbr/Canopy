@@ -319,10 +319,10 @@ cd build_debug
 **Run all tests individually (recommended for ASan):**
 ```bash
 # Standard build
-/var/home/edward/projects/Canopy/tests/scripts/run_asan_tests.sh
+tests/scripts/run_asan_tests.sh
 
 # Coroutine build
-/var/home/edward/projects/Canopy/tests/scripts/run_asan_tests_coroutine.sh
+tests/scripts/run_asan_tests_coroutine.sh
 ```
 
 These scripts run each test individually and report any AddressSanitizer errors, creating detailed logs for failed tests in `/tmp/`.
@@ -401,7 +401,7 @@ cmake --build build_debug --target rpc_test
 cd build_debug && ./output/rpc_test --gtest_filter="*standard_tests*"
 
 # Full validation (takes longer)
-/var/home/edward/projects/Canopy/tests/scripts/run_asan_tests.sh
+tests/scripts/run_asan_tests.sh
 ```
 
 ## 8. Running Tests
@@ -435,7 +435,7 @@ ctest --test-dir build --tests-regex fuzz
 |----------|-------------|-------------|
 | Unit tests | Component-level tests | `unit_tests` |
 | Integration tests | Full IDL→C++ pipeline | `remote_type_test` |
-| JSON schema tests | Metadata extraction | `simple_json_schema_metadata_test` |
+| JSON schema tests | Metadata extraction | `json_schema_metadata_test` |
 | Hierarchical zone tests | Multi-level zones | `hierachical_transport_tests` |
 | SGX tests | Enclave functionality | `enclave_*` |
 | Fuzz tests | Property-based testing | `fuzz_test_main` |

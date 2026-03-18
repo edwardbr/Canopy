@@ -232,7 +232,7 @@ error_code blocking_work()
 // Coroutine version
 CORO_TASK(error_code) async_work()
 {
-    return CO_AWAIT calculator_->add(1, 2, result);
+    CO_RETURN CO_AWAIT calculator_->add(1, 2, result);
 }
 
 // Usage in coroutine mode
@@ -249,16 +249,16 @@ scheduler->spawn([&]() -> CORO_TASK(void)
 
 ## 8. Common Patterns
 
-### Parallel Operations
+### Sequential Operations
 
 ```cpp
-CORO_TASK(void) parallel_work()
+CORO_TASK(void) sequential_work()
 {
-    // Run multiple operations concurrently
+    // Run operations one after the other
     auto task1 = calculator_->add(1, 2, result1);
     auto task2 = calculator_->multiply(3, 4, result2);
 
-    // Await both
+    // Await each in turn
     CO_AWAIT task1;
     CO_AWAIT task2;
 

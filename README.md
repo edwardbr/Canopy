@@ -14,22 +14,49 @@ All rights reserved.
 
 **A Modern C++ Remote Procedure Call Library for High-Performance Distributed Systems**
 
-Canopy enables type-safe communication across execution contexts including in-process calls, inter-process communication, remote machines, embedded devices, and secure enclaves (SGX).
+> Note: Canopy is in Beta, including the documentation, and is under active development.
 
-Note this is in Beta including the documentation and is in active development
+---
+
+## Why Canopy?
+
+Distributed C++ systems have always been hard. Getting two components talking across a process boundary, a network connection, or a security enclave typically means writing a large amount of hand-rolled serialization, connection management, and error-handling code — code that is fragile, hard to test, and has to be rewritten every time the transport or wire format changes.
+
+Canopy takes the classical RPC model — define an interface, get a proxy on the caller side and a stub on the callee side — and brings it fully up to date with modern C++:
+
+- **Write the interface once in IDL.** Canopy generates type-safe C++ proxy and stub code from a simple Interface Definition Language. You call a remote object exactly as you would a local one; marshalling, routing, and lifecycle management are handled for you.
+
+- **Works across every boundary you care about.** The same generated code runs over in-process direct calls, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
+
+- **Streams compose.** Transport streams stack cleanly: wrap a TCP stream in an SPSC buffering layer, then wrap that in TLS, and hand the result to the transport. Each layer only knows about the `stream` interface below it. Adding encryption, compression, or custom framing requires no changes to the RPC layer above or the network layer below.
+
+- **Blocking and coroutine modes from the same source.** The same C++ implementation compiles in both a straightforward blocking mode (useful for debugging and simple deployments) and a full coroutine mode using C++20 `co_await`. Switching between them is a build flag; your code does not change. This matters particularly for AI-assisted development: LLMs can generate and reason about Canopy interfaces and implementations reliably because there is no hidden async machinery to infer.
+
+- **Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, enclaves, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.
+
+- **Serialization is a dial, not a commitment.** Binary YAS format for production throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call.
+
+- **One-directional calls for fire-and-forget workloads.** Methods marked `[post]` are sent without waiting for a reply — the caller continues immediately. This eliminates round-trip latency for workloads where the caller does not need a result: streaming media frames, LLM inference token delivery, telemetry events, log records, or any high-throughput notification pattern.
+
+- **Polymorphism across zone boundaries.** A single remote object can implement multiple interfaces simultaneously. Callers hold a proxy to one interface and can remotely cast to any other interface the object supports — the cast is performed against the live object in its zone, not a local copy. This gives you the full expressiveness of C++ polymorphism over any transport, without being limited to the single flat contracts that most RPC systems impose.
+
+- **Remote reflection.** Canopy carries interface metadata across zone boundaries, making it possible to discover what interfaces a remote object supports at runtime. This opens the door to generic tooling, dynamic proxies, and runtime composition — capabilities that are normally reserved for languages with built-in reflection and are unusual in a C++ RPC system. One practical application is implementing Model Context Protocol (MCP) services: because Canopy can enumerate the methods and types of a remote object at runtime, it can generate MCP tool descriptions dynamically, allowing AI assistants to discover and call C++ services without any hand-written schema.
+
+If you are building a C++ system that needs components to talk to each other — whether on the same machine, across a data centre, or inside a hardware security boundary — Canopy is designed to make that straightforward rather than painful.
 
 ---
 
 ## Key Features
 
-- **🔒 Type-Safe**: Full C++ type system integration with compile-time verification
-- **🌐 Transport Agnostic**: Local, TCP, SPSC, SGX Enclave, and custom transports
-- **📦 Format Agnostic**: JSON, YAS binary, Protocol Buffers support
-- **🔄 Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
-- **🛡️ SGX Enclave Support**: Secure computation in Intel SGX enclaves
-- **📊 Comprehensive Telemetry**: Sequence diagrams, console output, HTML animations
-- **🔧 Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [13-coroutine-libraries.md](documents/13-coroutine-libraries.md))
-- **🧪 AddressSanitizer Support**: Full ASan integration with 972 tests passing (100% memory safety validated)
+- **Type-Safe**: Full C++ type system integration with compile-time verification
+- **Transport Agnostic**: Local, TCP, SPSC, SGX Enclave, and custom transports
+- **Composable Streams**: Stack TCP, TLS, SPSC, WebSocket layers in any combination
+- **Format Agnostic**: YAS binary, compressed binary, JSON, Protocol Buffers
+- **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
+- **SGX Enclave Support**: Secure computation in Intel SGX enclaves
+- **Comprehensive Telemetry**: Sequence diagrams, console output, HTML animations
+- **Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [13-coroutine-libraries.md](documents/13-coroutine-libraries.md))
+- **AddressSanitizer Support**: Full ASan integration with 972 tests passing (100% memory safety validated)
 
 ---
 
@@ -39,24 +66,20 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 
 ### Getting Started
 1. [Introduction](documents/01-introduction.md) - What is Canopy and its key features
-2. [Core Concepts](documents/02-core-concepts.md) - Zones, services, smart pointers, proxies, and stubs
+2. [Getting Started Tutorial](documents/02-getting-started.md) - Step-by-step tutorials
 3. [IDL Guide](documents/03-idl-guide.md) - Interface Definition Language syntax and usage
-4. [Transports](documents/04-transports.md) - Local, TCP, SPSC, and SGX enclave transports
-   - Detailed guides: [Local](documents/transports/local.md), [TCP](documents/transports/tcp.md), [SPSC](documents/transports/spsc.md), [SGX](documents/transports/sgx.md), [Custom](documents/transports/custom.md)
-5. [Building Canopy](documents/05-building.md) - Build configuration and CMake presets
-6. [Getting Started Tutorial](documents/06-getting-started.md) - Step-by-step tutorials
+4. [Building Canopy](documents/04-building.md) - Build configuration and CMake presets
+5. [Bi-Modal Execution](documents/05-bi-modal-execution.md) - Blocking and coroutine modes
+6. [Error Handling](documents/06-error-handling.md) - Error codes and handling patterns
+7. [Telemetry](documents/07-telemetry.md) - Debugging and visualization
+8. [Coroutine Libraries](documents/08-coroutine-libraries.md) - Coroutine library support and porting
+9. [API Reference](documents/09-api-reference.md) - Quick reference for main APIs
+10. [Examples](documents/10-examples.md) - Working examples and demos
+11. [Best Practices](documents/11-best-practices.md) - Design guidelines and troubleshooting
 
-### Advanced Topics
-7. [Bi-Modal Execution](documents/07-bi-modal-execution.md) - Blocking and coroutine modes
-8. [Error Handling](documents/08-error-handling.md) - Error codes and handling patterns
-9. [Telemetry](documents/09-telemetry.md) - Debugging and visualization
-10. [Memory Management](documents/10-memory-management.md) - Reference counting and lifecycle
-11. [Zone Hierarchies](documents/11-zone-hierarchies.md) - Complex distributed topologies
-12. [API Reference](documents/12-api-reference.md) - Quick reference for main APIs
-13. [Coroutine Libraries](documents/13-coroutine-libraries.md) - Coroutine library support and porting
-14. [Examples](documents/14-examples.md) - Working examples and demos
-15. [Best Practices](documents/15-best-practices.md) - Design guidelines and troubleshooting
-16. [Migration Guide](documents/16-migration-guide.md) - Upgrading from older versions
+### Architecture
+- [Architecture Overview](documents/architecture/) - Zones, services, transports, memory management
+  - Detailed guides: [Local](documents/transports/local.md), [TCP](documents/transports/tcp.md), [SPSC](documents/transports/spsc.md), [SGX](documents/transports/sgx.md), [Custom](documents/transports/custom.md)
 
 ### Serialization
 - [YAS Serializer](documents/serializers/yas-serializer.md) - Binary, JSON, and compressed formats
@@ -156,28 +179,93 @@ namespace calculator {
     [inline] namespace v1 {
         [status=production]
         interface i_calculator {
-            int add(int a, int b, [out] int& result);
+            error_code add(int a, int b, [out] int& result);
         };
     }
 }
 ```
 
-**Usage:**
+**Server** — listen on TCP, wrap each accepted connection in TLS, serve the calculator:
 ```cpp
 #include "generated/calculator/calculator.h"
+#include <streaming/listener.h>
+#include <streaming/tcp/acceptor.h>
+#include <streaming/tls/stream.h>
+#include <transports/streaming/transport.h>
 
-// Create service and connect to calculator zone
-auto root_service = std::make_shared<rpc::service>("root", rpc::zone{1});
-rpc::shared_ptr<calculator::v1::i_calculator> calc;
+using namespace calculator::v1;
 
-auto error = CO_AWAIT root_service->connect_to_zone<...>(
-    "calc_zone", rpc::zone{2}, nullptr, calc, setup_callback);
+auto service = std::make_shared<rpc::root_service>("calc_server", server_zone, scheduler);
 
-// Make RPC call
+auto tls_ctx = std::make_shared<streaming::tls::context>(cert_path, key_path);
+
+// stream_transformer: wrap each raw TCP stream in TLS before handing it to the transport
+auto tls_transformer = [tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm)
+    -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
+{
+    auto tls_stm = std::make_shared<streaming::tls::stream>(tcp_stm, tls_ctx);
+    if (!CO_AWAIT tls_stm->handshake())
+        CO_RETURN std::nullopt;  // reject connection if handshake fails
+    CO_RETURN tls_stm;
+};
+
+auto listener = std::make_shared<streaming::listener>("calc_server",
+    std::make_shared<streaming::tcp::acceptor>(endpoint),
+    rpc::stream_transport::make_connection_callback<i_calculator, i_calculator>(
+        [](const rpc::shared_ptr<i_calculator>&,
+            const std::shared_ptr<rpc::service>& svc)
+            -> CORO_TASK(rpc::service_connect_result<i_calculator>)
+        {
+            CO_RETURN rpc::service_connect_result<i_calculator>{
+                rpc::error::OK(),
+                rpc::shared_ptr<i_calculator>(new my_calculator_impl(svc))};
+        }),
+    std::move(tls_transformer));
+
+listener->start_listening(service);
+```
+
+**Client** — connect via TCP, perform TLS handshake, call the remote calculator:
+```cpp
+#include "generated/calculator/calculator.h"
+#include <streaming/tcp/stream.h>
+#include <streaming/tls/stream.h>
+#include <transports/streaming/transport.h>
+
+using namespace calculator::v1;
+
+auto client_service = std::make_shared<rpc::root_service>("calc_client", client_zone, scheduler);
+
+// 1. Establish TCP connection
+coro::net::tcp::client tcp_client(scheduler, endpoint);
+CO_AWAIT tcp_client.connect(std::chrono::milliseconds{5000});
+auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
+
+// 2. Wrap in TLS
+auto tls_ctx = std::make_shared<streaming::tls::client_context>(/*verify_peer=*/true);
+auto tls_stm = std::make_shared<streaming::tls::stream>(tcp_stm, tls_ctx);
+CO_AWAIT tls_stm->client_handshake();
+
+// 3. Create transport and connect to the remote zone
+auto transport = rpc::stream_transport::make_client("calc_client", client_service, tls_stm);
+
+rpc::shared_ptr<i_calculator> local_iface;
+auto connect_result = CO_AWAIT client_service->connect_to_zone<i_calculator, i_calculator>(
+    "calc_server", transport, local_iface);
+
+if (connect_result.error_code != rpc::error::OK())
+{
+    // handle connection failure
+}
+auto calc = connect_result.output_interface;
+
+// 4. Make RPC call
 int result;
-error = CO_AWAIT calc->add(5, 3, result);
+auto error = CO_AWAIT calc->add(5, 3, result);
 std::cout << "5 + 3 = " << result << std::endl;  // Output: 5 + 3 = 8
 ```
+
+For a complete working example see `demos/stream_composition/src/tcp_spsc_tls_demo.cpp`.
 
 ---
 

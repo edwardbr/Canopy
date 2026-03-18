@@ -595,8 +595,6 @@ error_code process_value([in] const int* value);
 error_code allocate_value([out] int*& value);
 ```
 
-Node the [by_value] attribute is now deprecated, and this feature will be removed.
-
 **Security Warning**: Raw pointer values are memory addresses that should **never** be used for unrestricted environments (e.g., web clients, untrusted networks). Pointer serialization only makes sense when both caller and callee exist in the same address space or have carefully controlled shared memory access.
 
 ## Pointer Type Restrictions for Smart Pointers
@@ -875,7 +873,7 @@ namespace yyy {
 class i_example : public rpc::interface<i_example>
 {
 public:
-    virtual CORO_TASK(error_code) add(int a, int b, [out] int& c) = 0;
+    virtual CORO_TASK(error_code) add(int a, int b, int& c) = 0;
     virtual ~i_example() = default;
 
     static std::vector<rpc::function_info> get_function_info();
@@ -891,7 +889,7 @@ public:
 class i_example_proxy : public rpc::interface_proxy<i_example>
 {
 public:
-    virtual CORO_TASK(error_code) add(int a, int b, [out] int& c) override
+    virtual CORO_TASK(error_code) add(int a, int b, int& c) override
     {
         // Serialization and network send
         // Deserialization of response

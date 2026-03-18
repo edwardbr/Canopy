@@ -82,7 +82,7 @@ rpc::shared_ptr<base> rpc_ptr(std_ptr.get());  // WRONG!
 ### Do
 
 - **Always check return values** from RPC calls
-- **Handle OBJECT_GONE** - object may be destroyed mid-call
+- **Handle OBJECT_GONE** - expected expiry for `rpc::optimistic_ptr` targets; the object's lifetime is independent of the caller
 - **Use logging** for error context
 - **Propagate errors** at appropriate layers
 - **Distinguish between errors and exceptions**
@@ -141,16 +141,17 @@ CORO_TASK(error_code) process_item(int item)
 {
     int result;
     auto error = CO_AWAIT calculator_->process(item, result);
-    if (error != error::OK())
+    if (error != rpc::error::OK())
         CO_RETURN error;
 
-    CO_RETURN error::OK();
+    CO_RETURN rpc::error::OK();
 }
 
-// Spawn task
-scheduler_->spawn([&]() -> CORO_TASK(void)
+// Spawn task — capture by value, not by reference, since the coroutine
+// may outlive the current stack frame
+scheduler_->spawn([item = 42]() -> CORO_TASK(void)
 {
-    CO_AWAIT process_item(42);
+    CO_AWAIT process_item(item);
     CO_RETURN;
 }());
 
@@ -195,7 +196,7 @@ CORO_TASK(error_code) bad_example(int item)
 - **Plan hierarchy** before implementation
 - **Use consistent ID generation**
 - **Keep hierarchies shallow**
-- **Use autonomous zones** for independent subsystems
+- **Keep peer root zones independent** — do not force an artificial parent–child relationship between nodes that should be equals
 - **Consider pass-through cost** for multi-hop routing
 
 ### Don't
@@ -239,17 +240,47 @@ Zone 1 (Root)
 - **Don't serialize sensitive data** in plain binary
 - **Don't change serialized formats** without versioning
 
-### Performance Tips
+### Struct Passing Tips
 
-```idl
-// Use references for struct passing
-error_code process([in] const small_struct& data);
+When the caller and callee are in the same zone, Canopy makes a direct function call with no marshalling overhead. When they are in different zones, data is always serialised by the caller and deserialised by the callee — there is no zero-copy reference passing across a zone boundary.
 
-// Or this consider using references
-error_code process([in] const large_struct& data);
+Regardless of whether marshalling occurs, coroutine implementations must take `[in]` parameters **by value**. A coroutine may suspend at any `CO_AWAIT` point; a reference parameter would dangle across that suspension, causing undefined behaviour.
+
+#### Move semantics and rvalue references
+
+The utility of rvalue references depends on which side of the call you are on:
+
+- **Caller / proxy side (cross-zone)**: calling `std::move()` on an argument gives no benefit. The proxy immediately serialises the object; whether it was moved-from or not makes no difference to the serialisation cost, and the object is not used again afterwards.
+
+- **Callee / stub side (cross-zone)**: taking a parameter as `T&&` *does* help. The deserialised value can be moved directly into its destination (e.g. a member variable or container) with no extra copy.
+
+- **Same-zone direct calls**: no serialisation takes place, so rvalue references behave exactly as in ordinary C++ — passing with `std::move()` genuinely avoids a copy on both sides.
+
+```cpp
+// Proxy side — std::move() buys nothing for cross-zone calls
+service->store(std::move(large_data));  // serialised immediately; move is redundant
+
+// Stub side — T&& allows efficient move from deserialised value
+error_code store(large_struct&& data) override
+{
+    stored_ = std::move(data);  // moved, not copied, from the deserialised buffer
+    CO_RETURN rpc::error::OK();
+}
 ```
 
-## 8. Testing
+## 8. Performance
+
+- **Use SPSC transport** for high-throughput in-process IPC
+- **Use binary serialization** (`yas_binary`) in production
+- **Pass `[in]` parameters by value in coroutines** — references dangle across suspension points regardless of whether the call crosses a zone boundary
+- **Use `T&&` on the callee/stub side** for large `[in]` parameters — the deserialised value can be moved rather than copied into its destination; for same-zone direct calls this also avoids the copy on the caller side
+- **Do not rely on `std::move()` on the caller/proxy side** for cross-zone performance — the proxy serialises the argument immediately and the move has no effect on cost
+- **Keep coroutines non-blocking** — do not call blocking syscalls inside a coroutine
+- **Use `rpc::optimistic_ptr`** for objects with independent lifetimes to avoid RAII overhead
+- **Batch operations** where possible to reduce round-trip count
+- **Use `[post]`** for one-way notifications, events, and logging — fire-and-forget methods eliminate the round-trip latency of a normal call entirely
+
+## 9. Testing
 
 ### Do
 
@@ -285,12 +316,12 @@ TYPED_TEST(calculator_test, add)
     auto& lib = this->lib_;
     int result;
     auto error = CO_AWAIT lib.get_calculator()->add(1, 2, result);
-    EXPECT_EQ(error, error::OK());
+    EXPECT_EQ(error, rpc::error::OK());
     EXPECT_EQ(result, 3);
 }
 ```
 
-## 9. Debugging
+## 10. Debugging
 
 ### Enable Telemetry
 
@@ -315,42 +346,50 @@ rpc::sequence_diagram_telemetry_service::create(
 cmake --preset Debug -DCANOPY_USE_THREAD_LOCAL_LOGGING=ON
 ```
 
-## 10. Common Issues and Solutions
+## 11. Common Issues and Solutions
 
 ### Issue: OBJECT_NOT_FOUND
 
-**Cause**: Reference count reached zero before call completed
+**Cause**: The object ID supplied to the call does not exist in the remote zone. This is a serious condition: it typically means the caller is holding a stale or fabricated object ID, or the object was never registered. It is not an expected expiry — treat it as a programming error or a security concern.
 
 **Solution**:
 ```cpp
-// Keep reference alive during call
+// Ensure the rpc::shared_ptr stays alive for the duration of the call
 auto keep_alive = service_ptr;
 auto error = CO_AWAIT service_ptr->call(data);
+if (error == rpc::error::OBJECT_NOT_FOUND())
+{
+    // The object ID is unknown to the remote zone — log and investigate
+    RPC_ERROR("Remote object not found — possible stale reference");
+    CO_RETURN error;
+}
 ```
 
 ### Issue: OBJECT_GONE
 
-**Cause**: Object destroyed while call in flight
+**Cause**: The object was valid when the call began but was released by the time it completed. This is the expected expiry behavior for `rpc::optimistic_ptr`: the object's lifetime is independent of the caller, so it may disappear between calls. It is not an error in the same sense as OBJECT_NOT_FOUND — it is a normal lifecycle event.
 
 **Solution**:
 ```cpp
-if (error == error::OBJECT_GONE())
+if (error == rpc::error::OBJECT_GONE())
 {
-    // Recreate object and retry
-    service_ptr = recreate_service();
+    // The optimistic_ptr target has been released — this is expected behaviour
+    // Refresh the reference or skip this operation
+    service_ptr = try_get_fresh_reference();
 }
 ```
 
-### Issue: Transport not connected
+### Issue: Transport disconnected
 
-**Cause**: Trying to use transport before connection complete
+**Cause**: A call was made after the transport entered `DISCONNECTING` or `DISCONNECTED` state, or the transport failed before the call completed.
 
-**Solution**:
+**Solution**: Treat a disconnected transport as a terminal condition. Cancel in-flight work and surface the error to the caller rather than retrying on the same transport:
 ```cpp
-// Wait for connection
-while (transport_->get_status() == transport_status::CONNECTING)
+auto error = CO_AWAIT service_ptr->call(data);
+if (error == rpc::error::TRANSPORT_ERROR() || error == rpc::error::ZONE_NOT_FOUND())
 {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    // Transport is gone — do not retry on this transport
+    CO_RETURN error;
 }
 ```
 
@@ -378,15 +417,6 @@ class node
 };
 ```
 
-## 11. Performance Tips
-
-1. **Use SPSC transport** for high-performance IPC
-2. **Use binary serialization** (yas_binary)
-3. **Avoid large payload passing** - use references
-4. **Keep coroutines efficient** - don't block
-5. **Use optimistic_ptr** for objects with independent lifetimes
-6. **Batch operations** when possible
-
 ## 12. Security Considerations
 
 1. **Use SGX** for sensitive data processing
@@ -396,6 +426,7 @@ class node
 5. **Audit object passing** - data leakage prevention
 
 ## 13. Common Implementation Mistakes
+
 
 ### Mistake: Missing [in]/[out] Attributes Understanding
 
@@ -416,12 +447,35 @@ interface i_example
 
 **C++ Implementation**:
 ```cpp
-CORO_TASK(int) process(const std::string& input, std::string& output) override
+// [in] parameters are taken by value — never by reference in a coroutine
+CORO_TASK(int) process(std::string input, std::string& output) override
 {
     output = "Result: " + input;  // output is [out] - filled by callee
     CO_RETURN rpc::error::OK();
 }
 ```
+
+### Mistake: Expecting std::move() to Improve Cross-Zone Call Performance
+
+**Problem**: Using `std::move()` when passing an argument to a cross-zone proxy call, expecting to avoid a copy. The proxy serialises the argument immediately; the move has no effect on the serialisation cost.
+
+**No benefit**:
+```cpp
+service->store(std::move(large_data));  // serialised straight away — move is redundant
+```
+
+**Where move semantics do help** is on the callee/stub side: taking the deserialised parameter as `T&&` lets you move it into storage rather than copy it.
+
+```cpp
+// Stub implementation — T&& avoids copying from the deserialised buffer
+error_code store(large_struct&& data) override
+{
+    stored_ = std::move(data);  // efficient move, no copy
+    CO_RETURN rpc::error::OK();
+}
+```
+
+For same-zone direct calls (no marshalling) `std::move()` on the caller side works as normal C++ and genuinely avoids a copy.
 
 ### Mistake: Using [in, out] with Pointer Types
 
@@ -631,6 +685,32 @@ auto error = CO_AWAIT root_service->connect_to_zone(
     "child", transport, input_service, output);
 ```
 
+### Mistake: Passing [in] Parameters by Reference in Coroutines
+
+**Problem**: A coroutine may suspend at any `CO_AWAIT` point. If an `[in]` parameter is taken by const reference, the object it refers to may have been destroyed by the time the coroutine resumes, causing undefined behaviour.
+
+**Incorrect**:
+```cpp
+CORO_TASK(error_code) process(const large_struct& data) override
+{
+    CO_AWAIT some_async_operation();  // data reference may dangle here!
+    use(data);
+    CO_RETURN rpc::error::OK();
+}
+```
+
+**Correct** — take `[in]` parameters by value:
+```cpp
+CORO_TASK(error_code) process(large_struct data) override
+{
+    CO_AWAIT some_async_operation();  // data is owned by the coroutine frame, safe
+    use(data);
+    CO_RETURN rpc::error::OK();
+}
+```
+
+`[out]` parameters are references by necessity (they are written back by the callee), and Canopy's generated code ensures they remain valid. Only `[in]` parameters need to move from reference to value in coroutine implementations.
+
 ### Mistake: Thinking Duplicate Parameter Names Are Invalid
 
 **Explanation**: Multiple methods in the same interface can use the same parameter names (e.g., `result`) without issue. The IDL generator should handle this correctly.
@@ -647,12 +727,3 @@ interface i_calculator
 
 If you encounter conflicts with duplicate parameter names, this indicates a bug in the code generator.
 
-## 14. Performance Tips
-
-1. **Use SPSC transport** for high-performance IPC
-2. **Use binary serialization** (yas_binary)
-3. **Avoid large payload passing** - use references
-4. **Keep coroutines efficient** - don't block
-5. **Use optimistic_ptr** for objects with independent lifetimes
-6. **Batch operations** when possible
-7. **Use [post] for one-way operations** - Fire-and-forget methods with `[post]` eliminate round-trip latency for notifications, events, and logging where responses aren't needed

@@ -85,7 +85,7 @@ The base `transport` class manages:
 1. **Zone identity** - Each transport connects two zones and knows its local zone ID and the adjacent zone ID
 2. **Destination routing** - Maintains handlers for zone pairs to route incoming messages to the correct service
 3. **Pass-through routing** - For multi-hop zone hierarchies, tracks which transports can reach which destinations
-5. **Connection status** - Enum values: `CONNECTING`, `CONNECTED`, `DISCONNECTING`, `DISCONNECTED`
+4. **Connection status** - Enum values: `CONNECTING`, `CONNECTED`, `DISCONNECTING`, `DISCONNECTED`
 
 ### Transport Status
 
@@ -115,7 +115,7 @@ These base class methods are called by the specific transport implementation whe
 - `outbound/inbound_object_released()` - Notifies the transport that an object has been released
 - `outbound/inbound_transport_down()` - Notifies the transport that the adjacent transport has failed
 
-Each `inbound_*` method handle calls from the adjacent zone the derived transport implementation calls this function once it has the message.  inbound_* methods handle forward the calls to the service or pass-through.
+Each `inbound_*` method handles calls arriving from the adjacent zone. The derived transport implementation calls the appropriate `inbound_*` method once it has decoded a message from the wire; the base class then forwards the call to the local service or to a pass-through for onward routing.
 Each `outbound_*` method is overridden by the derived transport classes and sends the message to the adjacent zone.  These methods are private and are called by the base implementation on receiving an i_marshaller call.
 
 ### Transport Types
@@ -568,7 +568,11 @@ pass_through_deletion       // Passthrough deleted (ref count = 0)
 ```
 
 #### Relay Activity (options=3)
+
+The following is telemetry/visualization pseudo-code (not C++), illustrating how the HTML animation distinguishes relay operations from ordinary transport ref-count changes:
+
 ```javascript
+// Telemetry visualizer pseudo-code — not C++
 // Transport events with options=3 are relay operations
 // They trigger passthrough ref changes, not transport ref changes
 if (options === 3) {

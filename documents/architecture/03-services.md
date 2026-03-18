@@ -151,18 +151,30 @@ Service proxies represent remote zones and provide access to objects in those zo
 
 ### 6. Event Notifications
 
+Services support object lifecycle notifications through `rpc::service_event`. Implement the interface and register it with `add_service_event()` to be notified when objects are released in remote zones.
+
 ```cpp
-class service : public i_marshaller
+class my_event_listener : public rpc::service_event
 {
 public:
-...
-    // Called when an optimistic pointer remote object is released
-    virtual void object_released
-
-    // Called when a connection fails between two zones, this will be passed to all interested zones
-    virtual void transport_down
+    CORO_TASK(void) on_object_released(rpc::object object_id,
+                                       rpc::destination_zone destination) override
+    {
+        // Called when a remote object tracked by an rpc::optimistic_ptr is released
+        RPC_INFO("Object {} released in zone {}", object_id.get_id(),
+                 destination.get_address().get_subnet());
+        CO_RETURN;
+    }
 };
+
+// Register and unregister the listener
+auto listener = std::make_shared<my_event_listener>();
+service->add_service_event(listener);   // weak_ptr stored — listener must be kept alive
+// ...
+service->remove_service_event(listener);
 ```
+
+When an object is released, `service::notify_object_gone_event()` iterates all registered `service_event` instances and calls `on_object_released()` on each. Dead weak pointers are pruned automatically.
 
 ## Creating Services
 
@@ -220,15 +232,25 @@ rpc::object get_object_id(const rpc::casting_interface* ptr);
 ### Zone Connection
 
 ```cpp
-template<typename ServiceProxyType, typename... Args>
-CORO_TASK(error_code) connect_to_zone(
+template<class in_param_type, class out_param_type>
+CORO_TASK(rpc::service_connect_result<out_param_type>)
+connect_to_zone(
     const char* name,
-    std::shared_ptr<rpc::transport> transport,
-    const rpc::shared_ptr<ServiceProxyType>& service_proxy,
-    Args&&... args);
+    std::shared_ptr<rpc::transport> child_transport,
+    rpc::shared_ptr<in_param_type> input_interface);
 ```
 
-Establishes a connection to another zone and initializes service proxy.
+Establishes a connection to another zone via the supplied transport. The returned `service_connect_result<out_param_type>` carries both an `error_code` and the `output_interface` received from the remote zone:
+
+```cpp
+auto connect_result = CO_AWAIT service->connect_to_zone<yyy::i_host, yyy::i_example>(
+    "example_zone", child_transport, host_ptr);
+if (connect_result.error_code != rpc::error::OK())
+{
+    CO_RETURN connect_result.error_code;
+}
+auto target = connect_result.output_interface;
+```
 
 ### Remote Zone Attachment
 
@@ -346,17 +368,37 @@ Service proxy is the gateway to a remote zone's service.
 
 ### Pattern 1: Peer-to-Peer Services
 
+Peer services connect via a streaming transport (TCP or SPSC). The server side registers a connection callback; the client side wraps a connected stream and calls `connect_to_zone`:
+
 ```cpp
-// Service 1
-auto service1 = std::make_shared<rpc::service>("service1", rpc::zone{1});
+// Server side — streaming listener with per-connection callback
+auto server_service = std::make_shared<rpc::service>("service1", get_next_zone_id());
 
-// Service 2
-auto service2 = std::make_shared<rpc::service>("service2", rpc::zone{2});
+auto listener = std::make_shared<streaming::listener>("server",
+    std::make_shared<streaming::tcp::acceptor>(endpoint),
+    rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
+        [](const rpc::shared_ptr<yyy::i_host>& host,
+            const std::shared_ptr<rpc::service>& svc)
+            -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+        {
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{
+                rpc::error::OK(), rpc::shared_ptr<yyy::i_example>(new example_impl(svc, host))};
+        }));
 
-// Connect via TCP
-auto tcp_transport = std::make_shared<rpc::tcp_transport>(...);
-service1->add_transport(rpc::destination_zone{2}, tcp_transport);
-service2->add_transport(rpc::destination_zone{1}, tcp_transport);
+listener->start_listening(server_service);
+
+// Client side — connect and obtain the remote interface
+auto client_service = std::make_shared<rpc::service>("service2", get_next_zone_id());
+auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
+auto client_transport = rpc::stream_transport::make_client("client", client_service, std::move(tcp_stm));
+
+auto connect_result = CO_AWAIT client_service->connect_to_zone<yyy::i_host, yyy::i_example>(
+    "service1", client_transport, host_ptr);
+if (connect_result.error_code != rpc::error::OK())
+{
+    CO_RETURN connect_result.error_code;
+}
+auto example = connect_result.output_interface;
 ```
 
 ### Pattern 2: Hierarchical Services

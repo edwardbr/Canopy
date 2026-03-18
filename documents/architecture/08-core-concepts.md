@@ -571,9 +571,42 @@ public:
 
 ### Interface Versioning
 
-Each interface has a version-independent ID based on its definition:
+Each interface has a version-independent ID based on its definition. The ID is derived from the interface's hash so that changes to method signatures produce a new ID, allowing the runtime to detect version mismatches at connection time:
 
+```cpp
+// Generated stub carries the interface fingerprint
+template<>
+struct interface_descriptor<i_calculator>
+{
+    static constexpr uint64_t get_id(uint64_t rpc_version)
+    {
+        // SHA3-based fingerprint of the interface definition
+        return 0xA1B2C3D4E5F60718ULL;
+    }
+};
 ```
+
+When `connect_to_zone` is called, the runtime exchanges these fingerprints with the remote zone. If the IDs do not match, the connection is rejected with a version error, preventing silent protocol mismatches across process or machine boundaries.
+
+To evolve an interface without breaking existing clients, place the new version in a versioned namespace:
+
+```idl
+namespace my_service {
+    [inline] namespace v1 {
+        interface i_calculator {
+            error_code add(int a, int b, [out] int& result);
+        };
+    }
+    [inline] namespace v2 {
+        interface i_calculator {
+            error_code add(int a, int b, [out] int& result);
+            error_code subtract(int a, int b, [out] int& result);
+        };
+    }
+}
+```
+
+Old clients continue to connect against `v1::i_calculator` while new clients use `v2::i_calculator`, each with its own fingerprint.
 
 ## 6. Lifecycle Management
 
