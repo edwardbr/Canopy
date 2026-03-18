@@ -122,26 +122,26 @@ namespace rpc
         end_call();
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     pass_through::try_cast(try_cast_params params)
     {
         if (!begin_call())
         {
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         auto target_transport = get_directional_transport(params.remote_object_id.as_zone());
         if (!target_transport)
         {
             end_call();
-            CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
         }
 
         if (target_transport->get_status() != transport_status::CONNECTED)
         {
             end_call();
             trigger_self_destruction();
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         auto result = CO_AWAIT target_transport->try_cast(std::move(params));
@@ -156,7 +156,7 @@ namespace rpc
         CO_RETURN result;
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     pass_through::add_ref(add_ref_params params)
     {
         add_ref_options build_out_param_channel = params.build_out_param_channel;
@@ -193,14 +193,14 @@ namespace rpc
             destination_transport = get_directional_transport(remote_object_id.as_zone());
             if (!destination_transport)
             {
-                CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+                CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
             }
             // Check transport status before routing
             if (destination_transport->get_status() != transport_status::CONNECTED)
             {
                 // Transport error - trigger self-deletion
                 trigger_self_destruction();
-                CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+                CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
             }
         }
 
@@ -209,24 +209,24 @@ namespace rpc
             caller_transport = get_directional_transport(caller_zone_id);
             if (!caller_transport)
             {
-                CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+                CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
             }
             // Check transport status before routing
             if (caller_transport->get_status() != transport_status::CONNECTED)
             {
                 // Transport error - trigger self-deletion
                 trigger_self_destruction();
-                CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+                CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
             }
         }
 
         if (!begin_call())
         {
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         // We build the result by merging out_back_channels from both calls
-        back_channel_result final_result{error::OK(), {}};
+        standard_result final_result{error::OK(), {}};
 
         if (build_dest_channel)
         {
@@ -302,7 +302,7 @@ namespace rpc
         CO_RETURN final_result;
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     pass_through::release(release_params params)
     {
         remote_object remote_object_id = params.remote_object_id;
@@ -319,21 +319,21 @@ namespace rpc
 
         if (!begin_call())
         {
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         auto target_transport = get_directional_transport(remote_object_id.as_zone());
         if (!target_transport)
         {
             end_call();
-            CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
         }
 
         if (target_transport->get_status() != transport_status::CONNECTED)
         {
             end_call();
             trigger_self_destruction();
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         auto result = CO_AWAIT target_transport->release(std::move(params));
@@ -439,15 +439,15 @@ namespace rpc
         trigger_self_destruction();
     }
 
-    CORO_TASK(get_new_zone_id_result)
+    CORO_TASK(new_zone_id_result)
     pass_through::get_new_zone_id(get_new_zone_id_params params)
     {
         std::ignore = params;
-        CO_RETURN get_new_zone_id_result{rpc::error::ZONE_NOT_SUPPORTED(), {}, {}};
+        CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_SUPPORTED(), {}, {}};
     }
 
     CORO_TASK(void)
-    pass_through::local_transport_down(const std::shared_ptr<transport>& local_transport)
+    pass_through::local_transport_down(std::shared_ptr<transport> local_transport)
     {
         if (forward_transport_ != local_transport)
         {

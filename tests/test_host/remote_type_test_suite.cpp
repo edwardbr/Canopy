@@ -1053,7 +1053,7 @@ template<class T> CORO_TASK(complex_topology_nodes) build_complex_topology(const
     CO_RETURN nodes;
 }
 
-template<class T> CORO_TASK(bool) coro_complex_topology_cross_branch_routing_trap_1(T& lib, const auto& context)
+template<class T, class U> CORO_TASK(bool) coro_complex_topology_cross_branch_routing_trap_1(T& lib, const U& context)
 {
     if (!lib.get_use_host_in_child())
     {
@@ -1093,9 +1093,9 @@ TYPED_TEST(remote_type_test, complex_topology_cross_branch_routing_trap_1)
         *this);
 }
 
-template<class T>
+template<class T, class U>
 CORO_TASK(bool)
-coro_complex_topology_intermediate_channel_collision_trap_2(T& lib, const auto& context)
+coro_complex_topology_intermediate_channel_collision_trap_2(T& lib, const U& context)
 {
     if (!lib.get_use_host_in_child())
     {
@@ -1136,7 +1136,9 @@ TYPED_TEST(remote_type_test, complex_topology_intermediate_channel_collision_tra
         *this);
 }
 
-template<class T> CORO_TASK(bool) coro_complex_topology_deep_nesting_parent_fallback_trap_3(T& lib, const auto& context)
+template<class T, class U>
+CORO_TASK(bool)
+coro_complex_topology_deep_nesting_parent_fallback_trap_3(T& lib, const U& context)
 {
     if (!lib.get_use_host_in_child())
     {
@@ -1189,7 +1191,9 @@ TYPED_TEST(remote_type_test, complex_topology_deep_nesting_parent_fallback_trap_
         *this);
 }
 
-template<class T> CORO_TASK(bool) coro_complex_topology_service_proxy_cache_bypass_trap_4(T& lib, const auto& context)
+template<class T, class U>
+CORO_TASK(bool)
+coro_complex_topology_service_proxy_cache_bypass_trap_4(T& lib, const U& context)
 {
     if (!lib.get_use_host_in_child())
     {
@@ -1287,7 +1291,9 @@ TYPED_TEST(remote_type_test, complex_topology_service_proxy_cache_bypass_trap_4)
         *this);
 }
 
-template<class T> CORO_TASK(bool) coro_complex_topology_multiple_convergence_points_trap_5(T& lib, const auto& context)
+template<class T, class U>
+CORO_TASK(bool)
+coro_complex_topology_multiple_convergence_points_trap_5(T& lib, const U& context)
 {
     if (!lib.get_use_host_in_child())
     {
@@ -1457,7 +1463,9 @@ TYPED_TEST(remote_type_test, test_y_topology_and_return_new_prong_object)
     run_coro_test(*this, [](auto& lib) { return coro_test_y_topology_and_return_new_prong_object<TypeParam>(lib); });
 }
 
-template<class T> CORO_TASK(bool) coro_test_y_topology_and_cache_and_retrieve_prong_object(T& lib, const auto& context)
+template<class T, class U>
+CORO_TASK(bool)
+coro_test_y_topology_and_cache_and_retrieve_prong_object(T& lib, const U& context)
 {
     std::ignore = context;
     /*
@@ -1528,7 +1536,7 @@ TYPED_TEST(remote_type_test, test_y_topology_and_cache_and_retrieve_prong_object
         *this);
 }
 
-template<class T> CORO_TASK(bool) coro_test_y_topology_and_set_host_with_prong_object(T& lib, const auto& context)
+template<class T, class U> CORO_TASK(bool) coro_test_y_topology_and_set_host_with_prong_object(T& lib, const U& context)
 {
     std::ignore = context;
     /*
@@ -1629,8 +1637,10 @@ do_something_in_val(
 
         if (__rpc_ret != rpc::error::OK())
             CO_RETURN __rpc_ret;
-        __rpc_ret = CO_AWAIT __rpc_op->send(
-            protocol_version, enc, (uint64_t)0, xxx::i_foo::get_id(__rpc_version), {1}, {__rpc_in_buf}, __rpc_out_buf);
+        auto __rpc_send_result = CO_AWAIT __rpc_op->send(
+            protocol_version, enc, (uint64_t)0, xxx::i_foo::get_id(__rpc_version), {1}, {__rpc_in_buf});
+        __rpc_ret = __rpc_send_result.error_code;
+        __rpc_out_buf = std::move(__rpc_send_result.out_buf);
         if (__rpc_ret == rpc::error::INVALID_VERSION())
         {
             if (protocol_version == __rpc_min_version)

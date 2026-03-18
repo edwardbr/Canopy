@@ -180,11 +180,11 @@ namespace stream_composition
         auto lst = std::make_shared<streaming::listener>("server_transport",
             std::make_shared<streaming::tcp::acceptor>(endpoint),
             rpc::stream_transport::make_connection_callback<i_echo, i_echo>(
-                [](const rpc::shared_ptr<i_echo>&, rpc::shared_ptr<i_echo>& local, const std::shared_ptr<rpc::service>&)
-                    -> CORO_TASK(int)
+                [](const rpc::shared_ptr<i_echo>&,
+                    const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_echo>)
                 {
-                    local = rpc::shared_ptr<i_echo>(new echo_impl());
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN rpc::service_connect_result<i_echo>{
+                        rpc::error::OK(), rpc::shared_ptr<i_echo>(new echo_impl())};
                 }),
             std::move(tls_transformer));
 
@@ -277,7 +277,10 @@ namespace stream_composition
         rpc::shared_ptr<i_echo> local_echo;
         rpc::shared_ptr<i_echo> remote_echo;
 
-        auto error = CO_AWAIT client_service->connect_to_zone("echo_server", client_transport, local_echo, remote_echo);
+        auto connect_result
+            = CO_AWAIT client_service->connect_to_zone<i_echo, i_echo>("echo_server", client_transport, local_echo);
+        remote_echo = connect_result.output_interface;
+        auto error = connect_result.error_code;
 
         if (error != rpc::error::OK())
         {

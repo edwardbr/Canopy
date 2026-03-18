@@ -66,7 +66,16 @@
       "WebSearch",
       "Bash(touch:*)",
       "Bash(python3:*)",
-      "Bash(for f:*)"
+      "Bash(for f:*)",
+      "mcp__plugin_context-mode_context-mode__ctx_stats",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "Bash(xargs -r clang-format -i)",
+      "Bash(xargs sed:*)",
+      "Bash(/var/home/edward/projects/Canopy/rpc/include/rpc/internal/build_modifiers.h:*)",
+      "Bash(__NEW_LINE_8088faa7b9b3f7ba__ sed:*)",
+      "Bash(head -5 grep -n \"make_shared\\(iface\" /var/home/edward/projects/Canopy/generator/src/synchronous_generator.cpp)"
     ]
   },
   "enabledPlugins": {}

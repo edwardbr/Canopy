@@ -30,6 +30,19 @@ namespace rpc
     class object_proxy;
     class transport;
 
+    struct object_proxy_lookup_result
+    {
+        int error_code;
+        std::shared_ptr<object_proxy> object_proxy;
+
+        object_proxy_lookup_result() = default;
+        object_proxy_lookup_result(int error_code, std::shared_ptr<rpc::object_proxy> object_proxy)
+            : error_code(error_code)
+            , object_proxy(std::move(object_proxy))
+        {
+        }
+    };
+
     // this class is a proxy to a remote zone service
     class service_proxy : public std::enable_shared_from_this<rpc::service_proxy>
     {
@@ -77,14 +90,13 @@ namespace rpc
 
         std::shared_ptr<transport> get_transport() const { return transport_.get_nullable(); }
 
-        [[nodiscard]] CORO_TASK(int) send_from_this_zone(uint64_t protocol_version,
+        [[nodiscard]] CORO_TASK(send_result) send_from_this_zone(uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_);
+            rpc::byte_span in_data);
 
         [[nodiscard]] CORO_TASK(int) post_from_this_zone(uint64_t protocol_version,
             rpc::encoding encoding,
@@ -92,7 +104,7 @@ namespace rpc
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            const rpc::byte_span& in_data);
+            rpc::byte_span in_data);
 
         [[nodiscard]] CORO_TASK(int) sp_try_cast(
             destination_zone destination_zone_id, object object_id, std::function<interface_ordinal(uint64_t)> id_getter);
@@ -123,13 +135,12 @@ namespace rpc
             RELEASE_IF_NOT_NEW,
         };
 
-        CORO_TASK(int)
+        CORO_TASK(object_proxy_lookup_result)
         get_or_create_object_proxy(object object_id,
             object_proxy_creation_rule rule,
             bool new_proxy_added,
             requesting_zone requesting_zone_id,
-            bool is_optimistic,
-            std::shared_ptr<rpc::object_proxy>& op);
+            bool is_optimistic);
 
         friend service;
         friend child_service;

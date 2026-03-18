@@ -22,6 +22,12 @@
 // Forward declarations
 namespace rpc
 {
+    template<class Ptr> struct query_interface_result
+    {
+        int error_code;
+        Ptr iface;
+    };
+
     class service;
     class service_proxy;
     class casting_interface;
@@ -72,13 +78,12 @@ namespace rpc
         object get_object_id() const { return {object_id_}; }
         destination_zone get_destination_zone_id() const;
 
-        [[nodiscard]] CORO_TASK(int) send(uint64_t protocol_version,
+        [[nodiscard]] CORO_TASK(send_result) send(uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            const rpc::byte_span& in_data,
-            std::vector<char>& out_buf_);
+            rpc::byte_span in_data);
 
         CORO_TASK(int)
         post(uint64_t protocol_version,
@@ -86,7 +91,7 @@ namespace rpc
             uint64_t tag,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            const rpc::byte_span& in_data);
+            rpc::byte_span in_data);
 
         size_t get_proxy_count()
         {
@@ -97,19 +102,19 @@ namespace rpc
         template<class T> void create_interface_proxy(rpc::shared_ptr<T>& inface);
 
         template<class T, template<class> class PtrType = rpc::shared_ptr, bool default_do_remote_check = true>
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-reference-coroutine-parameters) -- iface is an output parameter; all
-        // callers use CO_AWAIT so the referenced variable is guaranteed live
-        CORO_TASK(int) query_interface(PtrType<T>& iface, bool do_remote_check = default_do_remote_check)
+        CORO_TASK(query_interface_result<PtrType<T>>)
+        query_interface(bool do_remote_check = default_do_remote_check)
         {
             static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
                 "query_interface only supports rpc::shared_ptr and rpc::optimistic_ptr");
+            query_interface_result<PtrType<T>> result{rpc::error::OK(), {}};
 
             const auto interface_id = T::get_id(rpc::get_version());
 
             { // scope for the lock
                 if (interface_id == 0)
                 {
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN result;
                 }
 
                 std::unique_lock<std::mutex> guard(insert_control_);
@@ -130,12 +135,13 @@ namespace rpc
                             guard.unlock();
                             // False positive: the lock is explicitly released before suspension.
                             // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                            CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
+                            std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(proxy);
+                            CO_RETURN result;
                         }
                         else
                         {
-                            iface = proxy;
-                            CO_RETURN rpc::error::OK();
+                            result.iface = proxy;
+                            CO_RETURN result;
                         }
                     }
                 }
@@ -150,12 +156,13 @@ namespace rpc
                         guard.unlock();
                         // False positive: the lock is explicitly released before suspension.
                         // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                        CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
+                        std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(tmp);
+                        CO_RETURN result;
                     }
                     else
                     {
-                        iface = tmp;
-                        CO_RETURN rpc::error::OK();
+                        result.iface = tmp;
+                        CO_RETURN result;
                     }
                 }
             }
@@ -167,7 +174,8 @@ namespace rpc
                 int ret = CO_AWAIT try_cast(T::get_id);
                 if (ret != rpc::error::OK())
                 {
-                    CO_RETURN ret;
+                    result.error_code = ret;
+                    CO_RETURN result;
                 }
             }
             { // another scope for the lock
@@ -191,12 +199,13 @@ namespace rpc
                             guard.unlock();
                             // False positive: the lock is explicitly released before suspension.
                             // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                            CO_RETURN CO_AWAIT rpc::make_optimistic(proxy, iface);
+                            std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(proxy);
+                            CO_RETURN result;
                         }
                         else
                         {
-                            iface = proxy;
-                            CO_RETURN rpc::error::OK();
+                            result.iface = proxy;
+                            CO_RETURN result;
                         }
                     }
                 }
@@ -209,12 +218,13 @@ namespace rpc
                     guard.unlock();
                     // False positive: the lock is explicitly released before suspension.
                     // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                    CO_RETURN CO_AWAIT rpc::make_optimistic(tmp, iface);
+                    std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(tmp);
+                    CO_RETURN result;
                 }
                 else
                 {
-                    iface = tmp;
-                    CO_RETURN rpc::error::OK();
+                    result.iface = tmp;
+                    CO_RETURN result;
                 }
             }
         }

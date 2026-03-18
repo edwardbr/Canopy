@@ -103,14 +103,14 @@ namespace rpc::mock_test
         CORO_TASK(int)
         inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
             connection_settings& input_descr,
-            rpc::interface_descriptor& output_descr) override;
+            rpc::remote_object& output_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
-        CORO_TASK(back_channel_result) outbound_try_cast(try_cast_params params) override;
-        CORO_TASK(back_channel_result) outbound_add_ref(add_ref_params params) override;
-        CORO_TASK(back_channel_result) outbound_release(release_params params) override;
+        CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
+        CORO_TASK(standard_result) outbound_release(release_params params) override;
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
     };

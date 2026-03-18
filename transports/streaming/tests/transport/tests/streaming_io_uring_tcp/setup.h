@@ -57,8 +57,10 @@ protected:
         this->initiator_transport_ = rpc::stream_transport::transport::make_client(
             "initiator_transport", this->root_service_, std::move(tcp_stm));
 
-        auto ret = CO_AWAIT this->root_service_->connect_to_zone(
-            "main child", this->initiator_transport_, hst, this->i_example_ptr_);
+        auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
+            "main child", this->initiator_transport_, hst);
+        this->i_example_ptr_ = std::move(connect_result.output_interface);
+        auto ret = connect_result.error_code;
 
         if (ret != rpc::error::OK())
         {

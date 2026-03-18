@@ -137,8 +137,7 @@ CORO_TASK(bool) optimistic_ptr_basic_lifecycle_test(std::shared_ptr<rpc::service
     CORO_ASSERT_NE(f, nullptr);
 
     // Create optimistic_ptr from shared_ptr
-    rpc::optimistic_ptr<xxx::i_foo> opt_f;
-    auto err = CO_AWAIT rpc::make_optimistic(f, opt_f);
+    auto [err, opt_f] = CO_AWAIT rpc::make_optimistic(f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_f.get_unsafe_only_for_testing(), nullptr);
     CORO_ASSERT_EQ(opt_f.get_unsafe_only_for_testing(), f.get());
@@ -191,8 +190,9 @@ CORO_TASK(bool) optimistic_ptr_weak_semantics_local_test(std::shared_ptr<rpc::se
         CORO_ASSERT_NE(f, nullptr);
 
         // Create optimistic_ptr from shared_ptr
-        auto err = CO_AWAIT rpc::make_optimistic(f, opt_f);
-        CORO_ASSERT_EQ(err, rpc::error::OK());
+        auto [tmp_err, tmp_opt_f] = CO_AWAIT rpc::make_optimistic(f);
+        opt_f = std::move(tmp_opt_f);
+        CORO_ASSERT_EQ(tmp_err, rpc::error::OK());
         CORO_ASSERT_NE(opt_f.get_unsafe_only_for_testing(), nullptr);
 
         // Verify object is accessible
@@ -233,7 +233,8 @@ CORO_TASK(bool) optimistic_ptr_local_proxy_test(std::shared_ptr<rpc::service> ro
 
     // Create optimistic_ptr from shared_ptr
     // optimistic_ptr should automatically create a local_proxy
-    auto err = CO_AWAIT rpc::make_optimistic(f, opt_f);
+    int err{};
+    std::tie(err, opt_f) = CO_AWAIT rpc::make_optimistic(f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_f.get_unsafe_only_for_testing(), nullptr);
 
@@ -275,15 +276,14 @@ CORO_TASK(bool) optimistic_ptr_local_rvalue_invocation_test(std::shared_ptr<rpc:
     rpc::shared_ptr<xxx::i_foo> f(new foo());
     CORO_ASSERT_NE(f, nullptr);
 
-    rpc::optimistic_ptr<xxx::i_foo> opt_f;
-    auto err = CO_AWAIT rpc::make_optimistic(f, opt_f);
+    auto [err, opt_f] = CO_AWAIT rpc::make_optimistic(f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_f.get_unsafe_only_for_testing(), nullptr);
 
     err = CO_AWAIT opt_f->do_something_in_move_ref(33);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
-    xxx::something_complicated complex_value{.int_val = 44, .string_val = "local optimistic move"};
+    xxx::something_complicated complex_value{FLD(int_val) 44, FLD(string_val) "local optimistic move"};
     err = CO_AWAIT opt_f->give_something_complicated_move_ref(std::move(complex_value));
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
@@ -383,8 +383,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T&
     auto destination_zone_id = rpc::casting_interface::get_destination_zone(*baz);
 
     // Create optimistic_ptr
-    rpc::optimistic_ptr<xxx::i_baz> opt_baz;
-    auto err = CO_AWAIT rpc::make_optimistic(baz, opt_baz);
+    auto [err, opt_baz] = CO_AWAIT rpc::make_optimistic(baz);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_baz.get_unsafe_only_for_testing(), nullptr);
 
@@ -441,8 +440,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_transparent_access_test(T& lib)
         CORO_ASSERT_EQ(CO_AWAIT example->create_foo(f_local), 0);
         CORO_ASSERT_NE(f_local, nullptr);
 
-        rpc::optimistic_ptr<xxx::i_foo> opt_f_local;
-        auto err = CO_AWAIT rpc::make_optimistic(f_local, opt_f_local);
+        auto [err, opt_f_local] = CO_AWAIT rpc::make_optimistic(f_local);
         CORO_ASSERT_EQ(err, rpc::error::OK());
 
         // operator-> works transparently for local object
@@ -458,8 +456,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_transparent_access_test(T& lib)
         CORO_ASSERT_EQ(CO_AWAIT example->create_baz(baz), 0);
         CORO_ASSERT_NE(baz, nullptr);
 
-        rpc::optimistic_ptr<xxx::i_baz> opt_baz;
-        auto err = CO_AWAIT rpc::make_optimistic(baz, opt_baz);
+        auto [err, opt_baz] = CO_AWAIT rpc::make_optimistic(baz);
         CORO_ASSERT_EQ(err, rpc::error::OK());
 
         // operator-> works transparently for remote proxy
@@ -502,8 +499,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_circular_dependency_test(T& lib
     CORO_ASSERT_EQ(CO_AWAIT host->create_baz_interface(child_ref), 0);
 
     // Child could hold optimistic_ptr back to host (breaking circular RAII ownership)
-    rpc::optimistic_ptr<xxx::i_foo> opt_host;
-    auto err = CO_AWAIT rpc::make_optimistic(host, opt_host);
+    auto [err, opt_host] = CO_AWAIT rpc::make_optimistic(host);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_host.get_unsafe_only_for_testing(), nullptr);
 
@@ -557,13 +553,11 @@ template<class T> CORO_TASK(bool) optimistic_ptr_comparison_test(T& lib)
     CORO_ASSERT_EQ(CO_AWAIT example->create_foo(f2), 0);
     CORO_ASSERT_NE(f2, nullptr);
 
-    rpc::optimistic_ptr<xxx::i_foo> opt_f1;
-    auto err = CO_AWAIT rpc::make_optimistic(f1, opt_f1);
+    auto [err, opt_f1] = CO_AWAIT rpc::make_optimistic(f1);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
-    rpc::optimistic_ptr<xxx::i_foo> opt_f2;
-    err = CO_AWAIT rpc::make_optimistic(f2, opt_f2);
-    CORO_ASSERT_EQ(err, rpc::error::OK());
+    auto [err2, opt_f2] = CO_AWAIT rpc::make_optimistic(f2);
+    CORO_ASSERT_EQ(err2, rpc::error::OK());
 
     rpc::optimistic_ptr<xxx::i_foo> opt_null;
 
@@ -609,8 +603,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_heterogeneous_upcast_test(T& li
     CORO_ASSERT_NE(baz, nullptr);
 
     // Create optimistic_ptr<i_baz>
-    rpc::optimistic_ptr<xxx::i_baz> opt_baz;
-    auto err = CO_AWAIT rpc::make_optimistic(baz, opt_baz);
+    auto [err, opt_baz] = CO_AWAIT rpc::make_optimistic(baz);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_baz.get_unsafe_only_for_testing(), nullptr);
 
@@ -642,13 +635,11 @@ template<class T> CORO_TASK(bool) optimistic_ptr_multiple_refs_test(T& lib)
     CORO_ASSERT_NE(f, nullptr);
 
     // Create multiple optimistic_ptr instances to same object
-    rpc::optimistic_ptr<xxx::i_foo> opt_f1;
-    auto err = CO_AWAIT rpc::make_optimistic(f, opt_f1);
+    auto [err, opt_f1] = CO_AWAIT rpc::make_optimistic(f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
-    rpc::optimistic_ptr<xxx::i_foo> opt_f2;
-    err = CO_AWAIT rpc::make_optimistic(f, opt_f2);
-    CORO_ASSERT_EQ(err, rpc::error::OK());
+    auto [err2, opt_f2] = CO_AWAIT rpc::make_optimistic(f);
+    CORO_ASSERT_EQ(err2, rpc::error::OK());
 
     rpc::optimistic_ptr<xxx::i_foo> opt_f3(opt_f1);
     rpc::optimistic_ptr<xxx::i_foo> opt_f4 = opt_f2;
@@ -697,8 +688,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
 
     // Test OBJECT_GONE for REMOTE objects only
     // Create optimistic_ptr from shared_ptr
-    rpc::optimistic_ptr<xxx::i_baz> opt_baz;
-    auto err = CO_AWAIT rpc::make_optimistic(baz, opt_baz);
+    auto [err, opt_baz] = CO_AWAIT rpc::make_optimistic(baz);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_baz.get_unsafe_only_for_testing(), nullptr);
 
@@ -753,8 +743,7 @@ template<class T> CORO_TASK(bool) coro_post_with_optimistic_ptr(T& lib)
     CORO_ASSERT_NE(i_foo_ptr, nullptr);
 
     // Convert to optimistic_ptr
-    rpc::optimistic_ptr<xxx::i_foo> opt_foo;
-    auto opt_ret = CO_AWAIT rpc::make_optimistic(i_foo_ptr, opt_foo);
+    auto [opt_ret, opt_foo] = CO_AWAIT rpc::make_optimistic(i_foo_ptr);
     CORO_ASSERT_EQ(opt_ret, rpc::error::OK());
 
     // Clear any existing messages first (through optimistic pointer)
@@ -858,8 +847,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_set_and_get_via_idl_test(T& lib
     CORO_ASSERT_NE(f, nullptr);
 
     // Create an optimistic_ptr from the shared_ptr
-    rpc::optimistic_ptr<xxx::i_foo> opt_f;
-    auto err = CO_AWAIT rpc::make_optimistic(f, opt_f);
+    auto [err, opt_f] = CO_AWAIT rpc::make_optimistic(f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_f.get_unsafe_only_for_testing(), nullptr);
 
@@ -898,8 +886,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
     CORO_ASSERT_NE(f, nullptr);
 
     // Create an optimistic_ptr and send to remote
-    rpc::optimistic_ptr<xxx::i_foo> opt_f;
-    auto err = CO_AWAIT rpc::make_optimistic(f, opt_f);
+    auto [err, opt_f] = CO_AWAIT rpc::make_optimistic(f);
     CORO_ASSERT_EQ(err, rpc::error::OK());
 
     err = CO_AWAIT example->set_optimistic_ptr(opt_f);

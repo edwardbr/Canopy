@@ -57,20 +57,23 @@ public:
         auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            [&](const rpc::shared_ptr<yyy::i_host>& host,
-                rpc::shared_ptr<yyy::i_example>& new_example,
-                const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
+            [&](rpc::shared_ptr<yyy::i_host> host, std::shared_ptr<rpc::child_service> child_service_ptr)
+                -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
             {
                 this->i_host_ptr_ = host;
                 child_service_ = child_service_ptr;
                 child_service_weak_ = child_service_ptr;
-                new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
+                auto new_example
+                    = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
                 if (this->use_host_in_child_)
                     CO_AWAIT new_example->set_host(host);
-                CO_RETURN rpc::error::OK();
+                CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(new_example)};
             });
 
-        auto ret = CO_AWAIT this->root_service_->connect_to_zone("main child", child_transport, hst, this->i_example_ptr_);
+        auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
+            "main child", child_transport, hst);
+        this->i_example_ptr_ = std::move(connect_result.output_interface);
+        auto ret = connect_result.error_code;
         startup_complete_ = true;
         if (ret != rpc::error::OK())
         {
@@ -145,18 +148,20 @@ public:
         auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            [&](const rpc::shared_ptr<yyy::i_host>& host,
-                rpc::shared_ptr<yyy::i_example>& new_example,
-                const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
+            [&](rpc::shared_ptr<yyy::i_host> host, std::shared_ptr<rpc::child_service> child_service_ptr)
+                -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
             {
-                new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
+                auto new_example
+                    = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
                 if (this->use_host_in_child_)
                     CO_AWAIT new_example->set_host(host);
-                CO_RETURN rpc::error::OK();
+                CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(new_example)};
             });
 
-        auto err_code
-            = CO_AWAIT this->root_service_->connect_to_zone("main child", child_transport, hst, example_relay_ptr);
+        auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
+            "main child", child_transport, hst);
+        example_relay_ptr = std::move(connect_result.output_interface);
+        auto err_code = connect_result.error_code;
 
         if (CreateNewZoneThenCreateSubordinatedZone)
         {

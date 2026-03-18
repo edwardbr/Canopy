@@ -86,11 +86,10 @@ namespace comprehensive
                 std::make_shared<streaming::tcp::acceptor>(endpoint),
                 rpc::stream_transport::make_connection_callback<i_calculator, i_calculator>(
                     [](const rpc::shared_ptr<i_calculator>&,
-                        rpc::shared_ptr<i_calculator>& local,
-                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
                     {
-                        local = rpc::shared_ptr<i_calculator>(new calculator_impl(svc));
-                        CO_RETURN rpc::error::OK();
+                        CO_RETURN rpc::service_connect_result<i_calculator>{
+                            rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
                     }));
 
             if (!listener->start_listening(service))
@@ -172,8 +171,10 @@ namespace comprehensive
 
                 RPC_INFO("Client: Starting RPC connection...");
 
-                auto error = CO_AWAIT client_service->connect_to_zone(
-                    "tcp_server", client_transport, rpc::shared_ptr<i_calculator>(), remote_calculator);
+                auto connect_result = CO_AWAIT client_service->connect_to_zone<i_calculator, i_calculator>(
+                    "tcp_server", client_transport, rpc::shared_ptr<i_calculator>());
+                remote_calculator = connect_result.output_interface;
+                auto error = connect_result.error_code;
 
                 if (error != rpc::error::OK())
                 {

@@ -92,24 +92,41 @@ namespace rpc
 
     // Result structs — outputs travel up the return chain via move
 
-    struct send_result
+    struct standard_result
     {
         int error_code;
+        std::vector<rpc::back_channel_entry> out_back_channel;
+
+        standard_result() = default;
+        standard_result(int error_code, std::vector<rpc::back_channel_entry> out_back_channel)
+            : error_code(error_code)
+            , out_back_channel(std::move(out_back_channel))
+        {
+        }
+    };
+
+    struct send_result : standard_result
+    {
         std::vector<char> out_buf;
-        std::vector<rpc::back_channel_entry> out_back_channel;
+
+        send_result() = default;
+        send_result(int ec, std::vector<char> buf, std::vector<rpc::back_channel_entry> bce)
+            : standard_result(ec, std::move(bce))
+            , out_buf(std::move(buf))
+        {
+        }
     };
 
-    struct back_channel_result
+    struct new_zone_id_result : standard_result
     {
-        int error_code;
-        std::vector<rpc::back_channel_entry> out_back_channel;
-    };
-
-    struct get_new_zone_id_result
-    {
-        int error_code;
         zone zone_id;
-        std::vector<rpc::back_channel_entry> out_back_channel;
+
+        new_zone_id_result() = default;
+        new_zone_id_result(int ec, zone z, std::vector<rpc::back_channel_entry> bce)
+            : standard_result(ec, std::move(bce))
+            , zone_id(z)
+        {
+        }
     };
 
 } // namespace rpc

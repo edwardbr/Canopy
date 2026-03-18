@@ -32,7 +32,7 @@ std::shared_ptr<rpc::child_service> rpc_server;
 int marshal_test_init_enclave(uint64_t host_zone_id, uint64_t host_id, uint64_t child_zone_id, uint64_t* example_object_id)
 {
     rpc::connection_settings input_descr{};
-    rpc::interface_descriptor output_descr{};
+    rpc::remote_object output_descr{};
 
     if (host_id)
     {

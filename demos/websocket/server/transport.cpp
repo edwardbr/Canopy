@@ -99,19 +99,19 @@ namespace websocket_demo
 
             RPC_INFO("[WS] Calling handler");
 
-            rpc::interface_descriptor output_descr;
-            auto handler_ret = CO_AWAIT handler_(cs, output_descr, svc, std::static_pointer_cast<transport>(self));
-            if (handler_ret != rpc::error::OK())
+            auto handler_ret = CO_AWAIT handler_(cs, svc, std::static_pointer_cast<transport>(self));
+            if (handler_ret.error_code != rpc::error::OK())
             {
-                RPC_ERROR("[WS] handler failed: {}", rpc::error::to_string(handler_ret));
+                RPC_ERROR("[WS] handler failed: {}", rpc::error::to_string(handler_ret.error_code));
                 stream_->set_closed();
                 co_return;
             }
+            auto output_descr = std::move(handler_ret.output_descriptor);
 
             // Send connect_response so the client knows the zone/object IDs.
             websocket_demo::v1::connect_response connect_resp;
             connect_resp.client_object = to_object_address(client_object.get_address());
-            connect_resp.outbound_remote_object = to_object_address(output_descr.destination_zone_id.get_address());
+            connect_resp.outbound_remote_object = to_object_address(output_descr.get_address());
 
             auto resp_payload = rpc::to_protobuf<std::vector<uint8_t>>(connect_resp);
             auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_payload});
@@ -184,7 +184,7 @@ namespace websocket_demo
 
             CO_AWAIT stream_->send(
                 rpc::byte_span(reinterpret_cast<const char*>(complete_payload.data()), complete_payload.size()));
-            CO_RETURN rpc::send_result{.error_code = rpc::error::OK(), .out_buf = {}, .out_back_channel = {}};
+            CO_RETURN rpc::send_result{rpc::error::OK(), {}, {}};
         }
 
         CORO_TASK(void)
@@ -223,27 +223,27 @@ namespace websocket_demo
             CO_RETURN;
         }
 
-        CORO_TASK(rpc::back_channel_result)
+        CORO_TASK(rpc::standard_result)
         transport::outbound_try_cast(rpc::try_cast_params params)
         {
             std::ignore = params;
-            CO_RETURN rpc::back_channel_result{.error_code = rpc::error::INCOMPATIBLE_SERVICE(), .out_back_channel = {}};
+            CO_RETURN rpc::standard_result{.error_code = rpc::error::INCOMPATIBLE_SERVICE(), .out_back_channel = {}};
         }
 
-        CORO_TASK(rpc::back_channel_result)
+        CORO_TASK(rpc::standard_result)
         transport::outbound_add_ref(rpc::add_ref_params params)
         {
             std::ignore = params;
             // WebSocket clients do not participate in RPC reference counting lifecycle.
             // Return OK to allow stub registration to succeed.
-            CO_RETURN rpc::back_channel_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
+            CO_RETURN rpc::standard_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
         }
 
-        CORO_TASK(rpc::back_channel_result)
+        CORO_TASK(rpc::standard_result)
         transport::outbound_release(rpc::release_params params)
         {
             std::ignore = params;
-            CO_RETURN rpc::back_channel_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
+            CO_RETURN rpc::standard_result{.error_code = rpc::error::OK(), .out_back_channel = {}};
         }
 
         CORO_TASK(void)

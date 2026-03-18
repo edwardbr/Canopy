@@ -345,9 +345,7 @@ namespace rpc
          * Thread-Safety: Implementation-specific (varies by derived class)
          */
         CORO_TASK(int)
-        connect(const std::shared_ptr<rpc::object_stub>& stub,
-            connection_settings input_descr,
-            interface_descriptor& output_descr);
+        connect(const std::shared_ptr<rpc::object_stub>& stub, connection_settings input_descr, remote_object& output_descr);
 
         /**
          * @brief Initiate a transport about to receive a connection request
@@ -381,11 +379,11 @@ namespace rpc
 
         CORO_TASK(void) inbound_post(post_params params);
 
-        CORO_TASK(back_channel_result) inbound_try_cast(try_cast_params params);
+        CORO_TASK(standard_result) inbound_try_cast(try_cast_params params);
 
-        CORO_TASK(back_channel_result) inbound_add_ref(add_ref_params params);
+        CORO_TASK(standard_result) inbound_add_ref(add_ref_params params);
 
-        CORO_TASK(back_channel_result) inbound_release(release_params params);
+        CORO_TASK(standard_result) inbound_release(release_params params);
 
         CORO_TASK(void) inbound_object_released(object_released_params params);
 
@@ -412,9 +410,9 @@ namespace rpc
          */
         CORO_TASK(send_result) send(send_params params) final;
         CORO_TASK(void) post(post_params params) final;
-        CORO_TASK(back_channel_result) try_cast(try_cast_params params) final;
-        CORO_TASK(back_channel_result) add_ref(add_ref_params params) final;
-        CORO_TASK(back_channel_result) release(release_params params) final;
+        CORO_TASK(standard_result) try_cast(try_cast_params params) final;
+        CORO_TASK(standard_result) add_ref(add_ref_params params) final;
+        CORO_TASK(standard_result) release(release_params params) final;
         CORO_TASK(void) object_released(object_released_params params) final;
         CORO_TASK(void) transport_down(transport_down_params params) final;
 
@@ -422,9 +420,9 @@ namespace rpc
         // Non-hierarchical transports forward to the local service allocator.
         // Child-side hierarchical transports override outbound_get_new_zone_id to
         // forward the request up to the parent zone instead.
-        CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) final;
+        CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) final;
 
-        virtual CORO_TASK(get_new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params);
+        virtual CORO_TASK(new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params);
 
         /////////////////////////////////
         // VIRTUAL METHODS - Derived classes implement transport-specific behavior
@@ -447,7 +445,7 @@ namespace rpc
          */
         virtual CORO_TASK(int) inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
             connection_settings& input_descr,
-            interface_descriptor& output_descr)
+            remote_object& output_descr) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
             = 0;
 
         virtual CORO_TASK(int) inner_accept() = 0;
@@ -465,9 +463,9 @@ namespace rpc
          */
         virtual CORO_TASK(send_result) outbound_send(send_params params) = 0;
         virtual CORO_TASK(void) outbound_post(post_params params) = 0;
-        virtual CORO_TASK(back_channel_result) outbound_try_cast(try_cast_params params) = 0;
-        virtual CORO_TASK(back_channel_result) outbound_add_ref(add_ref_params params) = 0;
-        virtual CORO_TASK(back_channel_result) outbound_release(release_params params) = 0;
+        virtual CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) = 0;
+        virtual CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) = 0;
+        virtual CORO_TASK(standard_result) outbound_release(release_params params) = 0;
         virtual CORO_TASK(void) outbound_object_released(object_released_params params) = 0;
         virtual CORO_TASK(void) outbound_transport_down(transport_down_params params) = 0;
     };

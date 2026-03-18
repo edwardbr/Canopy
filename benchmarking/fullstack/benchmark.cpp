@@ -240,19 +240,20 @@ namespace comprehensive
 
             child_transport->set_child_entry_point<i_data_processor, i_data_processor>(
                 [](const rpc::shared_ptr<i_data_processor>& parent,
-                    rpc::shared_ptr<i_data_processor>& new_service,
-                    const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
+                    const std::shared_ptr<rpc::child_service>& child_service_ptr)
+                    -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
                 {
                     (void)parent;
-                    new_service = create_data_processor();
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), create_data_processor()};
                 });
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
 
-            const auto error = CO_AWAIT root_service->connect_to_zone(
-                "benchmark_child", child_transport, input_service, remote_service);
+            const auto connect_result = CO_AWAIT root_service->connect_to_zone<i_data_processor, i_data_processor>(
+                "benchmark_child", child_transport, input_service);
+            remote_service = connect_result.output_interface;
+            const auto error = connect_result.error_code;
 
             if (error != rpc::error::OK())
             {
@@ -303,8 +304,10 @@ namespace comprehensive
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
 
-            const auto error
-                = CO_AWAIT service_1->connect_to_zone("spsc_server", transport_1, input_service, remote_service);
+            const auto connect_result = CO_AWAIT service_1->connect_to_zone<i_data_processor, i_data_processor>(
+                "spsc_server", transport_1, input_service);
+            remote_service = connect_result.output_interface;
+            const auto error = connect_result.error_code;
 
             service_1.reset();
             transport_1.reset();
@@ -352,12 +355,11 @@ namespace comprehensive
                 rpc::stream_transport::transport_factory(std::move(stream_2)),
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&on_connected](const rpc::shared_ptr<i_data_processor>&,
-                    rpc::shared_ptr<i_data_processor>& local,
-                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
                 {
-                    local = create_data_processor();
+                    auto local = create_data_processor();
                     on_connected.set();
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local)};
                 });
 
             co_await transport_2->accept();
@@ -419,11 +421,10 @@ namespace comprehensive
                 std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", port}),
                 rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
                     [](const rpc::shared_ptr<i_data_processor>&,
-                        rpc::shared_ptr<i_data_processor>& local,
-                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
                     {
-                        local = create_data_processor();
-                        CO_RETURN rpc::error::OK();
+                        auto local = create_data_processor();
+                        CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local)};
                     }));
 
             if (!listener->start_listening(service))
@@ -474,8 +475,10 @@ namespace comprehensive
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
 
-            const auto error
-                = CO_AWAIT client_service->connect_to_zone("tcp_server", client_transport, input_service, remote_service);
+            const auto connect_result = CO_AWAIT client_service->connect_to_zone<i_data_processor, i_data_processor>(
+                "tcp_server", client_transport, input_service);
+            remote_service = connect_result.output_interface;
+            const auto error = connect_result.error_code;
 
             if (error != rpc::error::OK())
             {
@@ -549,12 +552,11 @@ namespace comprehensive
             auto io_uring_listener = std::make_shared<streaming::listener>("io_uring_server_transport",
                 std::make_shared<streaming::io_uring::acceptor>(addr, port),
                 rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
-                    [](const rpc::shared_ptr<i_data_processor>&,
-                        rpc::shared_ptr<i_data_processor>& local_service,
-                        const std::shared_ptr<rpc::service>& service_ptr) -> CORO_TASK(int)
+                    [](const rpc::shared_ptr<i_data_processor>&, const std::shared_ptr<rpc::service>& service_ptr)
+                        -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
                     {
-                        local_service = create_data_processor();
-                        CO_RETURN rpc::error::OK();
+                        auto local_service = create_data_processor();
+                        CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local_service)};
                     }));
             io_uring_listener->start_listening(service);
             service.reset();
@@ -598,8 +600,10 @@ namespace comprehensive
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
 
-            const auto error = CO_AWAIT client_service->connect_to_zone(
-                "io_uring_server", client_transport, input_service, remote_service);
+            const auto connect_result = CO_AWAIT client_service->connect_to_zone<i_data_processor, i_data_processor>(
+                "io_uring_server", client_transport, input_service);
+            remote_service = connect_result.output_interface;
+            const auto error = connect_result.error_code;
 
             if (error != rpc::error::OK())
             {

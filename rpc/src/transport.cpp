@@ -17,8 +17,8 @@ namespace rpc
     {
         pass_through_key make_pass_through_key(destination_zone zone1, destination_zone zone2)
         {
-            return zone1 < zone2 ? pass_through_key{.zone1 = zone1, .zone2 = zone2}
-                                 : pass_through_key{.zone1 = zone2, .zone2 = zone1};
+            return zone1 < zone2 ? pass_through_key{FLD(zone1) zone1, FLD(zone2) zone2}
+                                 : pass_through_key{FLD(zone1) zone2, FLD(zone2) zone1};
         }
     }
 
@@ -86,8 +86,9 @@ namespace rpc
     }
 
     CORO_TASK(int)
-    transport::connect(
-        const std::shared_ptr<rpc::object_stub>& stub, connection_settings input_descr, interface_descriptor& output_descr)
+    transport::connect(const std::shared_ptr<rpc::object_stub>& stub,
+        connection_settings input_descr,
+        remote_object& output_descr) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (input_descr.get_object_id().is_set())
@@ -931,7 +932,7 @@ namespace rpc
         CO_AWAIT dest->post(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     transport::inbound_try_cast(try_cast_params params)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -945,7 +946,7 @@ namespace rpc
         // Reject new RPC calls when shutting down; cleanup methods are exempt
         if (get_status() >= transport_status::DISCONNECTING)
         {
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         std::shared_ptr<i_marshaller> dest;
@@ -959,20 +960,20 @@ namespace rpc
             dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
             if (!dest)
             {
-                CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+                CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
             }
         }
 
         CO_RETURN CO_AWAIT dest->try_cast(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     transport::inbound_add_ref(add_ref_params params)
     {
         // Reject new add_ref calls when shutting down
         if (get_status() >= transport_status::DISCONNECTING)
         {
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         bool build_caller_channel = !!(params.build_out_param_channel & add_ref_options::build_caller_route);
@@ -983,7 +984,7 @@ namespace rpc
         auto svc = service_.lock();
         if (!svc)
         {
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
 
         RPC_DEBUG("inbound_add_ref: svc_zone={}, dest_zone={}, caller_zone={}, build_caller_channel={}, "
@@ -1012,7 +1013,7 @@ namespace rpc
                 // caller and destination are the same zone, so we just call the transport to pass the call along and not involve a pass through
                 if (!dest_transport)
                 {
-                    CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+                    CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
                 }
 
                 // here we
@@ -1045,7 +1046,7 @@ namespace rpc
                     }
                     if (!dest_transport)
                     {
-                        CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+                        CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
                     }
                 }
                 else
@@ -1081,7 +1082,7 @@ namespace rpc
                     }
                     if (!caller_transport)
                     {
-                        CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+                        CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
                     }
                 }
                 else
@@ -1144,7 +1145,7 @@ namespace rpc
         CO_RETURN result;
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     transport::inbound_release(release_params params)
     {
         std::shared_ptr<i_marshaller> dest;
@@ -1158,7 +1159,7 @@ namespace rpc
             dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
             if (!dest)
             {
-                CO_RETURN back_channel_result{error::ZONE_NOT_FOUND(), {}};
+                CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
             }
         }
 
@@ -1241,11 +1242,12 @@ namespace rpc
             }
         }
 
+        auto caller_zone_id = params.caller_zone_id;
         CO_AWAIT dest->transport_down(std::move(params));
 
         {
             std::unique_lock lock(destinations_mutex_);
-            zone_counts_.erase(params.caller_zone_id);
+            zone_counts_.erase(caller_zone_id);
         }
     }
 
@@ -1290,7 +1292,7 @@ namespace rpc
         CO_AWAIT outbound_post(std::move(params));
     }
 
-    CORO_TASK(back_channel_result) transport::try_cast(try_cast_params params)
+    CORO_TASK(standard_result) transport::try_cast(try_cast_params params)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
@@ -1315,7 +1317,7 @@ namespace rpc
         CO_RETURN result;
     }
 
-    CORO_TASK(back_channel_result) transport::add_ref(add_ref_params params)
+    CORO_TASK(standard_result) transport::add_ref(add_ref_params params)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
@@ -1346,7 +1348,7 @@ namespace rpc
         CO_RETURN result;
     }
 
-    CORO_TASK(back_channel_result) transport::release(release_params params)
+    CORO_TASK(standard_result) transport::release(release_params params)
     {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
@@ -1403,19 +1405,19 @@ namespace rpc
         CO_AWAIT outbound_transport_down(std::move(params));
     }
 
-    CORO_TASK(get_new_zone_id_result) transport::get_new_zone_id(get_new_zone_id_params params)
+    CORO_TASK(new_zone_id_result) transport::get_new_zone_id(get_new_zone_id_params params)
     {
         CO_RETURN CO_AWAIT outbound_get_new_zone_id(std::move(params));
     }
 
-    CORO_TASK(get_new_zone_id_result) transport::outbound_get_new_zone_id(get_new_zone_id_params params)
+    CORO_TASK(new_zone_id_result) transport::outbound_get_new_zone_id(get_new_zone_id_params params)
     {
         // Default: delegate to the local service.
         // For a root service this allocates locally; for a child_service it
         // forwards the request up to the parent zone.
         auto svc = service_.lock();
         if (!svc)
-            CO_RETURN get_new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
+            CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         CO_RETURN CO_AWAIT svc->get_new_zone_id(std::move(params));
     }
 

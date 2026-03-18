@@ -329,8 +329,8 @@ namespace serialisation_benchmark
             obj.vector_val.push_back({1, "first"});
             obj.vector_val.push_back({2, "second"});
             obj.vector_val.push_back({3, "third"});
-            obj.map_val["key1"] = {.int_val = 10, .string_val = "map_first"};
-            obj.map_val["key2"] = {.int_val = 20, .string_val = "map_second"};
+            obj.map_val["key1"] = {FLD(int_val) 10, FLD(string_val) "map_first"};
+            obj.map_val["key2"] = {FLD(int_val) 20, FLD(string_val) "map_second"};
             bench_type("something_more_complicated", obj);
         }
         {

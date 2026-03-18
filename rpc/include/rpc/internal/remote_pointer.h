@@ -38,7 +38,7 @@
  * Marshalling Compatibility:
  * rpc::shared_ptr is designed to be marshalled across zone boundaries. When a
  * shared_ptr crosses a zone boundary:
- * 1. Marshalled as interface_descriptor (zone_id, object_id, interface_ordinal)
+ * 1. Marshalled as remote_object (zone_id, object_id, interface_ordinal)
  * 2. Receiving zone creates proxy with object_proxy backend
  * 3. Reference counts synchronized via RPC add_ref/release
  *
@@ -326,7 +326,7 @@ namespace rpc
             // forward declarations implemented in object_proxy.cpp
             // add_ref is async because object_proxy::add_ref() makes RPC calls on 0→1 transitions
             CORO_TASK(int)
-            object_proxy_add_ref(const std::shared_ptr<rpc::object_proxy>& ob, rpc::add_ref_options options);
+            object_proxy_add_ref(std::shared_ptr<rpc::object_proxy> ob, rpc::add_ref_options options);
             // release is synchronous - just decrements local counters
             void object_proxy_release(const std::shared_ptr<rpc::object_proxy>& ob, bool is_optimistic);
             void get_object_proxy_reference_counts(
@@ -764,6 +764,18 @@ namespace rpc
 
     } // namespace __rpc_internal
 
+    template<typename U> class shared_ptr;
+    template<typename U> class weak_ptr;
+    template<typename U> class optimistic_ptr;
+    template<typename U> using shared_response = std::tuple<int, shared_ptr<U>>;
+    template<typename U> using weak_response = std::tuple<int, weak_ptr<U>>;
+    template<typename U> using optimistic_response = std::tuple<int, optimistic_ptr<U>>;
+    template<typename Ptr> struct pointer_cast_result
+    {
+        int error_code;
+        Ptr value;
+    };
+
     /**
      * @brief Remote-aware shared pointer with reference counting across zone boundaries
      * @tparam T Type must derive from casting_interface (enforced in non-test mode)
@@ -798,7 +810,7 @@ namespace rpc
      * - Async add_ref: 0→1 transitions use async RPC to prevent deadlock
      *
      * Marshalling:
-     * When crossing zone boundaries, shared_ptr is marshalled as interface_descriptor
+     * When crossing zone boundaries, shared_ptr is marshalled as remote_object
      * and reconstructed as a proxy in the destination zone.
      *
      * Thread Safety:
@@ -1226,10 +1238,10 @@ namespace rpc
 #ifndef TEST_STL_COMPLIANCE
         template<typename U> friend class optimistic_ptr;
         // Friend declarations for factory functions
-        template<typename U> friend CORO_TASK(int) make_optimistic(const shared_ptr<U>&, optimistic_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_optimistic(const weak_ptr<U>&, optimistic_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_shared(const optimistic_ptr<U>&, shared_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_weak(const optimistic_ptr<U>&, weak_ptr<U>&) noexcept;
+        template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(shared_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(weak_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(shared_response<U>) make_shared(optimistic_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(weak_response<U>) make_weak(optimistic_ptr<U>) noexcept;
 #endif
     };
 
@@ -1549,10 +1561,10 @@ namespace rpc
 #ifndef TEST_STL_COMPLIANCE
         template<typename U> friend class optimistic_ptr;
         // Friend declarations for factory functions
-        template<typename U> friend CORO_TASK(int) make_optimistic(const shared_ptr<U>&, optimistic_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_optimistic(const weak_ptr<U>&, optimistic_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_shared(const optimistic_ptr<U>&, shared_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_weak(const optimistic_ptr<U>&, weak_ptr<U>&) noexcept;
+        template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(shared_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(weak_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(shared_response<U>) make_shared(optimistic_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(weak_response<U>) make_weak(optimistic_ptr<U>) noexcept;
 #endif
     };
 
@@ -1878,7 +1890,7 @@ namespace rpc
 
 #else
 
-    template<typename T, typename U> CORO_TASK(shared_ptr<T>) dynamic_pointer_cast(const shared_ptr<U>& from) noexcept
+    template<typename T, typename U> CORO_TASK(shared_ptr<T>) dynamic_pointer_cast(shared_ptr<U> from) noexcept
     {
         if (!from)
             CO_RETURN shared_ptr<T>();
@@ -1903,7 +1915,8 @@ namespace rpc
         // behaves the same as with normal dynamic_pointer_cast in that you can use this function to
         // cast back to the original. However static_pointer_cast in this case will not work for
         // remote interfaces.
-        CO_AWAIT ob->template query_interface<T>(ret);
+        auto query_result = CO_AWAIT ob->template query_interface<T>();
+        ret = std::move(query_result.iface);
         CO_RETURN ret;
     }
 #endif
@@ -2289,28 +2302,28 @@ namespace rpc
 #ifndef TEST_STL_COMPLIANCE
         template<typename Y> friend class optimistic_ptr;
         // Friend declarations for factory functions
-        template<typename U> friend CORO_TASK(int) make_optimistic(const shared_ptr<U>&, optimistic_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_optimistic(const weak_ptr<U>&, optimistic_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_shared(const optimistic_ptr<U>&, shared_ptr<U>&) noexcept;
-        template<typename U> friend CORO_TASK(int) make_weak(const optimistic_ptr<U>&, weak_ptr<U>&) noexcept;
+        template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(shared_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(weak_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(shared_response<U>) make_shared(optimistic_ptr<U>) noexcept;
+        template<typename U> friend CORO_TASK(weak_response<U>) make_weak(optimistic_ptr<U>) noexcept;
 #endif
     };
 
     // Dynamic pointer cast for optimistic_ptr (uses local query_interface)
     template<typename T, typename U>
-    CORO_TASK(int)
-    dynamic_pointer_cast(const optimistic_ptr<U>& from, optimistic_ptr<T>& to) noexcept
+    CORO_TASK(pointer_cast_result<optimistic_ptr<T>>)
+    dynamic_pointer_cast(optimistic_ptr<U> from) noexcept
     {
+        pointer_cast_result<optimistic_ptr<T>> result{error::OK(), {}};
         if constexpr (std::is_same<T, U>::value)
         {
-            to = from;
-            CO_RETURN error::OK();
+            result.value = std::move(from);
+            CO_RETURN result;
         }
 
         if (!from)
         {
-            to = optimistic_ptr<T>();
-            CO_RETURN error::OK();
+            CO_RETURN result;
         }
 
         if (from.local_proxy_holder_)
@@ -2318,21 +2331,19 @@ namespace rpc
             auto local_shared = from.local_proxy_holder_->__get_weak().lock();
             if (!local_shared)
             {
-                to = nullptr;
-                CO_RETURN error::OK();
+                CO_RETURN result;
             }
 
             auto ptr
                 = const_cast<T*>(static_cast<const T*>(local_shared->__rpc_query_interface(T::get_id(get_version()))));
             if (ptr)
             {
-                to = optimistic_ptr<T>(from, ptr);
-                CO_RETURN error::OK();
+                result.value = optimistic_ptr<T>(from, ptr);
+                CO_RETURN result;
             }
             else
             {
-                to = optimistic_ptr<T>();
-                CO_RETURN error::OK();
+                CO_RETURN result;
             }
         }
 
@@ -2340,18 +2351,18 @@ namespace rpc
         auto ob = from->__rpc_get_object_proxy();
         if (!ob)
         {
-            to = optimistic_ptr<T>();
-            CO_RETURN error::OK();
+            CO_RETURN result;
         }
 
-        optimistic_ptr<T> ret;
         // This magic function will return an optimistic pointer to a new interface proxy
         // Its reference count will not be the same as the "from" pointer's value, semantically it
         // behaves the same as with normal dynamic_pointer_cast in that you can use this function to
         // cast back to the original. However static_pointer_cast in this case will not work for
         // remote interfaces.
-        CO_AWAIT ob->query_interface(ret);
-        CO_RETURN ret;
+        auto query_result = CO_AWAIT ob->template query_interface<T, optimistic_ptr>();
+        result.error_code = query_result.error_code;
+        result.value = std::move(query_result.iface);
+        CO_RETURN result;
     }
 
     // ============================================================================
@@ -2360,14 +2371,14 @@ namespace rpc
     // These replace constructors/assignment operators which cannot be async
 
     // Convert shared_ptr → optimistic_ptr
-    template<typename T> CORO_TASK(int) make_optimistic(const shared_ptr<T>& in, optimistic_ptr<T>& out) noexcept
+    template<typename T> [[nodiscard]] CORO_TASK(optimistic_response<T>) make_optimistic(shared_ptr<T> in) noexcept
     {
-        out.reset(); // Clear any existing value
+        optimistic_ptr<T> out;
 
         auto cb = in.internal_get_cb();
         if (!in || !cb)
         {
-            CO_RETURN error::OK(); // Null input → null output (success)
+            CO_RETURN std::make_tuple(error::OK(), std::move(out)); // Null input → null output (success)
         }
 
         // Check if this is a local object
@@ -2376,7 +2387,7 @@ namespace rpc
             // Local object: create local_proxy using generated static method
             out.local_proxy_holder_ = T::create_local_proxy(in);
             // out.ptr_ and out.cb_ remain nullptr for local objects
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
         else
         {
@@ -2416,7 +2427,7 @@ namespace rpc
             auto err = CO_AWAIT cb->try_increment_optimistic();
             if (err)
             {
-                CO_RETURN err; // Failed to establish remote reference
+                CO_RETURN std::make_tuple(err, optimistic_ptr<T>{}); // Failed to establish remote reference
             }
 
 #ifdef CANOPY_ADD_REF_COUNT_CHECKS
@@ -2453,19 +2464,19 @@ namespace rpc
             out.cb_ = cb;
             out.ptr_ = in.internal_get_ptr();
             // out.local_proxy_holder_ remains empty for remote objects
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
     }
 
     // Convert weak_ptr → optimistic_ptr
-    template<typename T> CORO_TASK(int) make_optimistic(const weak_ptr<T>& in, optimistic_ptr<T>& out) noexcept
+    template<typename T> [[nodiscard]] CORO_TASK(optimistic_response<T>) make_optimistic(weak_ptr<T> in) noexcept
     {
-        out.reset(); // Clear any existing value
+        optimistic_ptr<T> out;
 
         auto cb = in.cb_;
         if (!cb)
         {
-            CO_RETURN error::OK(); // Null input → null output (success)
+            CO_RETURN std::make_tuple(error::OK(), std::move(out)); // Null input → null output (success)
         }
 
         // Check if this is a local object
@@ -2474,7 +2485,7 @@ namespace rpc
             // Local object: create local_proxy using generated static method
             out.local_proxy_holder_ = T::create_local_proxy(in);
             // out.ptr_ and out.cb_ remain nullptr for local objects
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
         else
         {
@@ -2524,7 +2535,7 @@ namespace rpc
             auto err = CO_AWAIT cb->try_increment_optimistic();
             if (err)
             {
-                CO_RETURN err; // Failed (likely OBJECT_GONE)
+                CO_RETURN std::make_tuple(err, optimistic_ptr<T>{}); // Failed (likely OBJECT_GONE)
             }
 
 #ifdef CANOPY_ADD_REF_COUNT_CHECKS
@@ -2568,14 +2579,14 @@ namespace rpc
             out.cb_ = cb;
             out.ptr_ = in.ptr_;
             // out.local_proxy_holder_ remains empty for remote objects
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
     }
 
     // Convert optimistic_ptr → shared_ptr
-    template<typename T> CORO_TASK(int) make_shared(const optimistic_ptr<T>& in, shared_ptr<T>& out) noexcept
+    template<typename T> [[nodiscard]] CORO_TASK(shared_response<T>) make_shared(optimistic_ptr<T> in) noexcept
     {
-        out.reset(); // Clear any existing value
+        shared_ptr<T> out;
 
         // Check if input holds local_proxy
         if (in.local_proxy_holder_)
@@ -2583,7 +2594,7 @@ namespace rpc
             // Local object: get the weak_ptr from local_proxy and try to lock it
             auto weak = in.local_proxy_holder_->__get_weak();
             out = weak.lock();
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
         else if (in.cb_)
         {
@@ -2592,45 +2603,44 @@ namespace rpc
             in.cb_->increment_shared();
             out.cb_ = in.cb_;
             out.ptr_ = in.ptr_;
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
         else
         {
             // Null input
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
     }
 
     // Convert optimistic_ptr → weak_ptr
-    template<typename T> CORO_TASK(int) make_weak(const optimistic_ptr<T>& in, weak_ptr<T>& out) noexcept
+    template<typename T> [[nodiscard]] CORO_TASK(weak_response<T>) make_weak(optimistic_ptr<T> in) noexcept
     {
-        out.reset(); // Clear any existing value
+        weak_ptr<T> out;
 
         // Check if input holds local_proxy
         if (in.local_proxy_holder_)
         {
             // Local object: get the weak_ptr directly from local_proxy
             out = in.local_proxy_holder_->__get_weak();
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
         else if (in.cb_)
         {
             // Remote object: create weak_ptr from control block
             // For remote objects we need to go through shared_ptr first
-            shared_ptr<T> temp_shared;
-            auto err = CO_AWAIT make_shared(in, temp_shared);
+            auto [err, temp_shared] = CO_AWAIT make_shared(std::move(in));
             if (err)
             {
-                CO_RETURN err;
+                CO_RETURN std::make_tuple(err, weak_ptr<T>{});
             }
             // Then create weak_ptr from shared_ptr (synchronous)
             out = weak_ptr<T>(temp_shared);
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
         else
         {
             // Null input
-            CO_RETURN error::OK();
+            CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
     }
 

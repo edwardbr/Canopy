@@ -34,13 +34,13 @@ namespace rpc
         virtual CORO_TASK(void) post(post_params params) = 0;
 
         // query if an object implements an interface
-        virtual CORO_TASK(back_channel_result) try_cast(try_cast_params params) = 0;
+        virtual CORO_TASK(standard_result) try_cast(try_cast_params params) = 0;
 
         // add ownership of an object to a caller if shared or to just prop up the transport chain if optimistic
-        virtual CORO_TASK(back_channel_result) add_ref(add_ref_params params) = 0;
+        virtual CORO_TASK(standard_result) add_ref(add_ref_params params) = 0;
 
         // notify that a zone is no longer interested in a remote object or transport chain
-        virtual CORO_TASK(back_channel_result) release(release_params params) = 0;
+        virtual CORO_TASK(standard_result) release(release_params params) = 0;
 
         // notify callers that an object has been released (for callers with optimistic ref counts only) unidirectional call
         virtual CORO_TASK(void) object_released(object_released_params params) = 0;
@@ -49,7 +49,7 @@ namespace rpc
         virtual CORO_TASK(void) transport_down(transport_down_params params) = 0;
 
         // request a new zone id from the root zone
-        virtual CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) = 0;
+        virtual CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) = 0;
     };
 
     struct retry_buffer

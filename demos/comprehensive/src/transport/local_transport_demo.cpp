@@ -72,19 +72,20 @@ namespace comprehensive
             std::cout << "Creating child service in Zone " << child_transport->get_adjacent_zone_id().get_subnet() << "\n";
 
             child_transport->set_child_entry_point<i_demo_service, i_demo_service>(
-                [&](const rpc::shared_ptr<i_demo_service>& parent,
-                    rpc::shared_ptr<i_demo_service>& new_service,
-                    const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
+                [&](const rpc::shared_ptr<i_demo_service>& parent, const std::shared_ptr<rpc::child_service>& child_service_ptr)
+                    -> CORO_TASK(rpc::service_connect_result<i_demo_service>)
                 {
-                    new_service = create_demo_service("child_service", child_service_ptr);
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN rpc::service_connect_result<i_demo_service>{
+                        rpc::error::OK(), create_demo_service("child_service", child_service_ptr)};
                 });
 
             // Connect parent to child
             rpc::shared_ptr<i_demo_service> child_service;
             rpc::shared_ptr<i_demo_service> input_service(new demo_service_impl("input", root_service));
-            auto error
-                = CO_AWAIT root_service->connect_to_zone("child_service", child_transport, input_service, child_service);
+            auto connect_result = CO_AWAIT root_service->connect_to_zone<i_demo_service, i_demo_service>(
+                "child_service", child_transport, input_service);
+            child_service = connect_result.output_interface;
+            auto error = connect_result.error_code;
 
             if (error != rpc::error::OK())
             {
