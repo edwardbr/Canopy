@@ -64,14 +64,12 @@ namespace rpc::mock_test
         set_status(rpc::transport_status::CONNECTED);
     }
 
-    CORO_TASK(int)
-    mock_transport::inner_connect(
-        const std::shared_ptr<rpc::object_stub>& stub, connection_settings& input_descr, rpc::remote_object& output_descr)
+    CORO_TASK(rpc::connect_result)
+    mock_transport::inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
     {
         std::ignore = stub;
         std::ignore = input_descr;
-        std::ignore = output_descr;
-        CO_RETURN rpc::error::OK();
+        CO_RETURN rpc::connect_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(send_result)

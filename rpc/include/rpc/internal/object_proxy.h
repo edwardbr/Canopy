@@ -135,7 +135,9 @@ namespace rpc
                             guard.unlock();
                             // False positive: the lock is explicitly released before suspension.
                             // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                            std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(proxy);
+                            auto optimistic_result = CO_AWAIT rpc::make_optimistic(proxy);
+                            result.error_code = std::get<0>(optimistic_result);
+                            result.iface = std::get<1>(std::move(optimistic_result));
                             CO_RETURN result;
                         }
                         else
@@ -156,7 +158,9 @@ namespace rpc
                         guard.unlock();
                         // False positive: the lock is explicitly released before suspension.
                         // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                        std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(tmp);
+                        auto optimistic_result = CO_AWAIT rpc::make_optimistic(tmp);
+                        result.error_code = std::get<0>(optimistic_result);
+                        result.iface = std::get<1>(std::move(optimistic_result));
                         CO_RETURN result;
                     }
                     else
@@ -199,7 +203,9 @@ namespace rpc
                             guard.unlock();
                             // False positive: the lock is explicitly released before suspension.
                             // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                            std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(proxy);
+                            auto optimistic_result = CO_AWAIT rpc::make_optimistic(proxy);
+                            result.error_code = std::get<0>(optimistic_result);
+                            result.iface = std::get<1>(std::move(optimistic_result));
                             CO_RETURN result;
                         }
                         else
@@ -218,7 +224,9 @@ namespace rpc
                     guard.unlock();
                     // False positive: the lock is explicitly released before suspension.
                     // NOLINTNEXTLINE(cppcoreguidelines-no-suspend-with-lock)
-                    std::tie(result.error_code, result.iface) = CO_AWAIT rpc::make_optimistic(tmp);
+                    auto optimistic_result = CO_AWAIT rpc::make_optimistic(tmp);
+                    result.error_code = std::get<0>(optimistic_result);
+                    result.iface = std::get<1>(std::move(optimistic_result));
                     CO_RETURN result;
                 }
                 else

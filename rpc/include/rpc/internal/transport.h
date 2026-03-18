@@ -337,15 +337,14 @@ namespace rpc
          * @brief Initiate connection handshake with remote zone
          * @param stub once the adjacent zone id is known if this is not null call add_ref on the stub with the adjacent zone id
          * @param input_descr Descriptor of interface to send to remote zone
-         * @param output_descr[out] Descriptor of interface received from remote zone
-         * @return error::OK() on success, error code on failure
+         * @return connect_result carrying error code and descriptor received from the remote zone
          *
          * Delegates to inner_connect() which derived classes implement.
          *
          * Thread-Safety: Implementation-specific (varies by derived class)
          */
-        CORO_TASK(int)
-        connect(const std::shared_ptr<rpc::object_stub>& stub, connection_settings input_descr, remote_object& output_descr);
+        CORO_TASK(connect_result)
+        connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr);
 
         /**
          * @brief Initiate a transport about to receive a connection request
@@ -432,8 +431,7 @@ namespace rpc
          * @brief Establish connection with remote zone
          * @param stub once the adjacent zone id is known if this is not null call add_ref on the stub with the adjacent zone id
          * @param input_descr Descriptor of interface to send to remote zone
-         * @param output_descr[out] Descriptor of interface received from remote zone
-         * @return error::OK() on success, error code on failure
+         * @return connect_result carrying error code and descriptor received from the remote zone
          *
          * Derived classes implement the transport-specific connection handshake.
          * Examples:
@@ -443,9 +441,8 @@ namespace rpc
          *
          * Thread-Safety: Implementation-specific
          */
-        virtual CORO_TASK(int) inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-            connection_settings& input_descr,
-            remote_object& output_descr) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
+        virtual CORO_TASK(connect_result)
+            inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
             = 0;
 
         virtual CORO_TASK(int) inner_accept() = 0;

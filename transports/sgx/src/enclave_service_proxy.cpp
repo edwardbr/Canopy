@@ -46,11 +46,10 @@ namespace rpc
         return ret;
     }
 
-    CORO_TASK(int)
-    enclave_service_proxy::inner_connectinner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-        connection_settings& input_descr,
-        rpc::remote_object& output_descr)
+    CORO_TASK(connect_result)
+    enclave_service_proxy::inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
     {
+        std::ignore = stub;
         sgx_launch_token_t token = {0};
         int updated = 0;
 #ifdef _WIN32
@@ -68,7 +67,7 @@ namespace rpc
             }
 #endif
             RPC_ERROR("Transport error - sgx_create_enclave failed");
-            return rpc::error::TRANSPORT_ERROR();
+            CO_RETURN connect_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
         int err_code = error::OK();
         uint64_t output_object_id = 0;
@@ -88,18 +87,17 @@ namespace rpc
 #endif
             sgx_destroy_enclave(eid_);
             RPC_ERROR("Transport error - marshal_test_init_enclave failed");
-            return rpc::error::TRANSPORT_ERROR();
+            CO_RETURN connect_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
         if (err_code)
-            return err_code;
+            CO_RETURN connect_result{err_code, {}};
 
         // class takes ownership of the enclave
         enclave_owner_ = std::make_shared<enclave_owner>(eid_);
         if (err_code)
-            return err_code;
+            CO_RETURN connect_result{err_code, {}};
 
-        output_descr = get_destination_zone_id().with_object({output_object_id});
-        return err_code;
+        CO_RETURN connect_result{err_code, get_destination_zone_id().with_object({output_object_id})};
     }
 
     int enclave_service_proxy::send(uint64_t protocol_version,

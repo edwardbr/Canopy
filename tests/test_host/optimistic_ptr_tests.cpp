@@ -383,7 +383,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T&
     auto destination_zone_id = rpc::casting_interface::get_destination_zone(*baz);
 
     // Create optimistic_ptr
-    auto [err, opt_baz] = CO_AWAIT rpc::make_optimistic(baz);
+    auto opt_baz_result = CO_AWAIT rpc::make_optimistic(baz);
+    auto err = std::get<0>(opt_baz_result);
+    auto opt_baz = std::get<1>(std::move(opt_baz_result));
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_baz.get_unsafe_only_for_testing(), nullptr);
 
@@ -499,7 +501,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_circular_dependency_test(T& lib
     CORO_ASSERT_EQ(CO_AWAIT host->create_baz_interface(child_ref), 0);
 
     // Child could hold optimistic_ptr back to host (breaking circular RAII ownership)
-    auto [err, opt_host] = CO_AWAIT rpc::make_optimistic(host);
+    auto opt_host_result = CO_AWAIT rpc::make_optimistic(host);
+    auto err = std::get<0>(opt_host_result);
+    auto opt_host = std::get<1>(std::move(opt_host_result));
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_host.get_unsafe_only_for_testing(), nullptr);
 
@@ -603,7 +607,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_heterogeneous_upcast_test(T& li
     CORO_ASSERT_NE(baz, nullptr);
 
     // Create optimistic_ptr<i_baz>
-    auto [err, opt_baz] = CO_AWAIT rpc::make_optimistic(baz);
+    auto opt_baz_result = CO_AWAIT rpc::make_optimistic(baz);
+    auto err = std::get<0>(opt_baz_result);
+    auto opt_baz = std::get<1>(std::move(opt_baz_result));
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_baz.get_unsafe_only_for_testing(), nullptr);
 
@@ -688,7 +694,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
 
     // Test OBJECT_GONE for REMOTE objects only
     // Create optimistic_ptr from shared_ptr
-    auto [err, opt_baz] = CO_AWAIT rpc::make_optimistic(baz);
+    auto opt_baz_result = CO_AWAIT rpc::make_optimistic(baz);
+    auto err = std::get<0>(opt_baz_result);
+    auto opt_baz = std::get<1>(std::move(opt_baz_result));
     CORO_ASSERT_EQ(err, rpc::error::OK());
     CORO_ASSERT_NE(opt_baz.get_unsafe_only_for_testing(), nullptr);
 

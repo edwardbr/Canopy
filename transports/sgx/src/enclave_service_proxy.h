@@ -37,10 +37,8 @@ namespace rpc
             const std::shared_ptr<rpc::service>& svc,
             std::string filename);
 
-        CORO_TASK(int)
-        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-            connection_settings& input_descr,
-            rpc::remote_object& output_descr) override;
+        CORO_TASK(connect_result)
+        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         int send(uint64_t protocol_version,

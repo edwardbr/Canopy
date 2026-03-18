@@ -2280,6 +2280,11 @@ namespace rpc
 
         explicit operator bool() const noexcept { return get() != nullptr; }
 
+        [[nodiscard]] bool is_null() const noexcept
+        {
+            return ptr_ == nullptr && cb_ == nullptr && !local_proxy_holder_;
+        }
+
         void reset() noexcept { optimistic_ptr().swap(*this); }
 
         void swap(optimistic_ptr& r) noexcept
@@ -2628,11 +2633,13 @@ namespace rpc
         {
             // Remote object: create weak_ptr from control block
             // For remote objects we need to go through shared_ptr first
-            auto [err, temp_shared] = CO_AWAIT make_shared(std::move(in));
+            auto make_shared_result = CO_AWAIT make_shared(std::move(in));
+            auto err = std::get<0>(make_shared_result);
             if (err)
             {
                 CO_RETURN std::make_tuple(err, weak_ptr<T>{});
             }
+            auto temp_shared = std::get<1>(std::move(make_shared_result));
             // Then create weak_ptr from shared_ptr (synchronous)
             out = weak_ptr<T>(temp_shared);
             CO_RETURN std::make_tuple(error::OK(), std::move(out));

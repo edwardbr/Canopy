@@ -3,7 +3,6 @@
  *   All rights reserved.
  */
 #pragma once
-// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <chrono>
 #include <functional>
@@ -392,10 +391,8 @@ namespace rpc::stream_transport
                 sequence_number);
         }
 
-        CORO_TASK(int)
-        inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-            connection_settings& input_descr,
-            rpc::remote_object& output_descr) override; // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
+        CORO_TASK(rpc::connect_result)
+        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override;
 
         CORO_TASK(int) inner_accept() override;
 
@@ -437,4 +434,3 @@ namespace rpc::stream_transport
         };
     }
 }
-// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

@@ -2,7 +2,6 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
-// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <transports/streaming/transport.h>
 
@@ -38,9 +37,8 @@ namespace rpc::stream_transport
         return transport;
     }
 
-    CORO_TASK(int)
-    transport::inner_connect(
-        const std::shared_ptr<rpc::object_stub>& stub, connection_settings& input_descr, rpc::remote_object& output_descr)
+    CORO_TASK(rpc::connect_result)
+    transport::inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
     {
         RPC_DEBUG("stream_transport::transport::inner_connect zone={}", get_zone_id().get_subnet());
         stub_ = stub;
@@ -65,20 +63,20 @@ namespace rpc::stream_transport
             {
                 stub_.reset();
                 RPC_ERROR("stream_transport::transport::inner_connect call_peer failed {}", rpc::error::to_string(ret));
-                CO_RETURN ret;
+                CO_RETURN rpc::connect_result{ret, {}};
             }
 
             if (init_receive.err_code != rpc::error::OK())
             {
                 stub_.reset();
                 RPC_ERROR("init_client_channel_send failed");
-                CO_RETURN init_receive.err_code;
+                CO_RETURN rpc::connect_result{init_receive.err_code, {}};
             }
 
-            output_descr = init_receive.outbound_remote_object;
+            CO_RETURN rpc::connect_result{rpc::error::OK(), std::move(init_receive.outbound_remote_object)};
         }
 
-        CO_RETURN rpc::error::OK();
+        CO_RETURN rpc::connect_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(int) transport::inner_accept()
@@ -1070,4 +1068,3 @@ namespace rpc::stream_transport
         send_payload(protocol_version, direction, payload, sequence_number);
     }
 }
-// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
