@@ -37,8 +37,8 @@ target_link_options(generator PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 set_property(TARGET generator PROPERTY COMPILE_PDB_NAME generator)
 
-# The generator is a host build tool only — its output must remain C++17 compatible,
-# but the generator itself may use C++20 features.
+# The generator is a host build tool only — its output must remain C++17 compatible, but the generator itself may use
+# C++20 features.
 set_target_properties(generator PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
