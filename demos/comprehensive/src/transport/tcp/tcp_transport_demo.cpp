@@ -166,8 +166,8 @@ namespace comprehensive
                 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
 
                 // Create TCP transport
-                auto client_transport = rpc::stream_transport::transport::make_client(
-                    "client_transport", client_service, std::move(tcp_stm));
+                auto client_transport
+                    = rpc::stream_transport::make_client("client_transport", client_service, std::move(tcp_stm));
 
                 RPC_INFO("Client: Starting RPC connection...");
 

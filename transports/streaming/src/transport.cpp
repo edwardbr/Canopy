@@ -17,10 +17,10 @@ namespace rpc::stream_transport
     {
     }
 
-    std::shared_ptr<transport> transport::make_server(std::string name,
+    std::shared_ptr<transport> make_server(std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
-        connection_handler handler)
+        transport::connection_handler handler)
     {
         auto transport = std::shared_ptr<rpc::stream_transport::transport>(
             new rpc::stream_transport::transport(name, service, std::move(stream), std::move(handler)));

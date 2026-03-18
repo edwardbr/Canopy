@@ -29,8 +29,6 @@
 #include <future>
 #include <csignal>
 
-int g_test_result = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
 namespace comprehensive
 {
     namespace v1
@@ -43,37 +41,41 @@ namespace comprehensive
             streaming::spsc_queue::queue_type to_process_1;
         };
 
-        CORO_TASK(void)
-        process_1_task(std::shared_ptr<coro::scheduler> scheduler,
+        CORO_TASK(bool)
+        process_1_task(bool& success,
+            std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
             rpc::zone zone_2,
             spsc_queues* queues,
             std::atomic<bool>& is_loaded,
             rpc::event& client_finished)
         {
-            auto service_1 = std::make_shared<rpc::root_service>("process_1", zone_1, scheduler);
-
-            auto on_shutdown_event = std::make_shared<rpc::event>();
-            service_1->set_shutdown_event(on_shutdown_event);
-
-            auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
-                &queues->to_process_1, &queues->to_process_2, scheduler);
-            auto transport_1
-                = rpc::stream_transport::transport::make_client("transport_1", service_1, std::move(stream_1));
-
-            rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
-
             rpc::shared_ptr<comprehensive::v1::i_calculator> remote_calculator;
-            std::cout << "Process 1: Connecting...\n";
-            auto connect_result = CO_AWAIT service_1->connect_to_zone<i_calculator, comprehensive::v1::i_calculator>(
-                "process_2", transport_1, local_calculator);
-            remote_calculator = connect_result.output_interface;
-            auto error = connect_result.error_code;
+            auto on_shutdown_event = std::make_shared<rpc::event>();
+            int error = rpc::error::OK();
 
-            is_loaded = true;
+            {
+                auto service_1 = std::make_shared<rpc::root_service>("process_1", zone_1, scheduler);
 
-            service_1.reset();
-            transport_1.reset();
+                service_1->set_shutdown_event(on_shutdown_event);
+
+                auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
+                    &queues->to_process_1, &queues->to_process_2, scheduler);
+                auto transport_1 = rpc::stream_transport::make_client("transport_1", service_1, std::move(stream_1));
+
+                rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
+
+                std::cout << "Process 1: Connecting...\n";
+                auto connect_result = CO_AWAIT service_1->connect_to_zone<i_calculator, comprehensive::v1::i_calculator>(
+                    "process_2", transport_1, local_calculator);
+                remote_calculator = connect_result.output_interface;
+                auto error = connect_result.error_code;
+
+                is_loaded = true;
+
+                service_1.reset();
+                transport_1.reset();
+            }
 
             if (error == rpc::error::OK())
             {
@@ -83,15 +85,19 @@ namespace comprehensive
                 int result = 0;
                 error = CO_AWAIT remote_calculator->add(10, 20, result);
                 std::cout << "Process 1: add(10, 20) = " << result << " (error: " << static_cast<int>(error) << ")\n";
-                g_test_result = (error == rpc::error::OK()) ? result : -error;
+                if (error != rpc::error::OK())
+                {
+                    success = false;
+                }
 
                 error = CO_AWAIT remote_calculator->multiply(7, 8, result);
                 std::cout << "Process 1: multiply(7, 8) = " << result << " (error: " << static_cast<int>(error) << ")\n";
 
-                if (error == rpc::error::OK())
+                if (error != rpc::error::OK())
                 {
-                    g_test_result = result;
+                    success = false;
                 }
+
                 std::cout << "Process 1: Released remote calculator\n";
             }
             else
@@ -110,6 +116,7 @@ namespace comprehensive
             std::cout << "Process 1: Waiting for shutdown event\n";
             co_await on_shutdown_event->wait();
             std::cout << "Process 1: Shutdown complete\n";
+            co_return success;
         }
 
         CORO_TASK(void)
@@ -166,7 +173,7 @@ namespace comprehensive
             std::cout << "Process 2: Shutdown complete\n";
         }
 
-        void run_spsc_demo()
+        bool run_spsc_demo()
         {
             std::cout << "=== SPSC Transport Demo ===\n";
 
@@ -195,14 +202,16 @@ namespace comprehensive
             rpc::event server_ready;
             rpc::event client_finished;
 
-            coro::sync_wait(
-                coro::when_all(process_1_task(scheduler_1, zone_1, zone_2, queues.get(), is_loaded, client_finished),
-                    process_2_task(scheduler_2, zone_2, zone_1, queues.get(), is_loaded, server_ready, client_finished)));
+            bool success = true;
+            coro::sync_wait(coro::when_all(
+                process_1_task(success, scheduler_1, zone_1, zone_2, queues.get(), is_loaded, client_finished),
+                process_2_task(scheduler_2, zone_2, zone_1, queues.get(), is_loaded, server_ready, client_finished)));
 
             // Explicitly shutdown schedulers to terminate and join their spawned threads
             // This prevents thread accumulation across multiple iterations
             scheduler_1->shutdown();
             scheduler_2->shutdown();
+            return success;
         }
 #endif
     }
@@ -248,10 +257,12 @@ int main()
     std::cout << "Requires coroutines\n";
     return 1;
 #else
+    int test_result = 0;
+
     for (int i = 0; i < 100; ++i)
     {
-        comprehensive::v1::run_spsc_demo();
+        test_result += comprehensive::v1::run_spsc_demo() ? 1 : 0;
     }
-    return (g_test_result == 30) ? 0 : 1;
+    return (test_result == 30) ? 0 : 1;
 #endif
 }

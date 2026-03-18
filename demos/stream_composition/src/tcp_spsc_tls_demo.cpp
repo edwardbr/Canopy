@@ -271,7 +271,7 @@ namespace stream_composition
         RPC_INFO("Client: TLS handshake complete");
 
         // 5. Create streaming_transport (client side — no connection_handler).
-        auto client_transport = rpc::stream_transport::transport::make_client("client_transport", client_service, tls_stm);
+        auto client_transport = rpc::stream_transport::make_client("client_transport", client_service, tls_stm);
 
         // 6. Connect to the remote zone and obtain the i_echo proxy.
         rpc::shared_ptr<i_echo> local_echo;

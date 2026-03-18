@@ -30,26 +30,6 @@ namespace rpc::stream_transport
 
         using connection_handler = rpc::connection_handler;
 
-        // Server-side: creates a transport that waits for the client's init message.
-        // Internally wraps factory with make_new_zone_connection_handler so connection protocol details
-        // stay hidden from user code.
-        template<class Remote, class Local>
-        static std::shared_ptr<transport> make_server(std::string name,
-            std::shared_ptr<rpc::service> service,
-            std::shared_ptr<streaming::stream> stream,
-            std::function<CORO_TASK(rpc::service_connect_result<Local>)(rpc::shared_ptr<Remote>, std::shared_ptr<rpc::service>)> factory)
-        {
-            auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
-            return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler));
-        }
-
-        // Client-side: creates a transport that sends the init message to the server.
-        static std::shared_ptr<transport> make_client(
-            std::string name, std::shared_ptr<rpc::service> service, std::shared_ptr<streaming::stream> stream)
-        {
-            return make_server(std::move(name), std::move(service), std::move(stream), nullptr);
-        }
-
     private:
         template<class ReceivePayload> struct peer_call_result
         {
@@ -290,11 +270,6 @@ namespace rpc::stream_transport
             uint64_t sequence_number);
 
     public:
-        static std::shared_ptr<transport> make_server(std::string name,
-            std::shared_ptr<rpc::service> service,
-            std::shared_ptr<streaming::stream> stream,
-            connection_handler handler);
-
         ~transport() override { }
 
         void add_custom_message_handler(custom_message_handler handler)
@@ -409,7 +384,30 @@ namespace rpc::stream_transport
         CORO_TASK(standard_result) outbound_release(release_params params) override;
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
+
+        friend std::shared_ptr<transport> make_server(std::string name,
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<streaming::stream> stream,
+            transport::connection_handler handler);
     };
+
+    std::shared_ptr<transport> make_server(std::string name,
+        std::shared_ptr<rpc::service> service,
+        std::shared_ptr<streaming::stream> stream,
+        transport::connection_handler handler);
+
+    // Server-side: creates a transport that waits for the client's init message.
+    // Internally wraps factory with make_new_zone_connection_handler so connection protocol details
+    // stay hidden from user code.
+    template<class Remote, class Local>
+    std::shared_ptr<transport> make_server(std::string name,
+        std::shared_ptr<rpc::service> service,
+        std::shared_ptr<streaming::stream> stream,
+        std::function<CORO_TASK(rpc::service_connect_result<Local>)(rpc::shared_ptr<Remote>, std::shared_ptr<rpc::service>)> factory)
+    {
+        auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
+        return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler));
+    }
 
     // Returns a transport_factory that creates a streaming server transport wrapping
     // the given stream. Pass the result to service::make_acceptor().
@@ -419,7 +417,13 @@ namespace rpc::stream_transport
         return [stream = std::move(stream)](std::string name,
                    std::shared_ptr<rpc::service> svc,
                    rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-        { CO_RETURN transport::make_server(std::move(name), std::move(svc), stream, std::move(handler)); };
+        { CO_RETURN make_server(std::move(name), std::move(svc), stream, std::move(handler)); };
+    }
+
+    inline std::shared_ptr<transport> make_client(
+        std::string name, std::shared_ptr<rpc::service> service, std::shared_ptr<streaming::stream> stream)
+    {
+        return make_server(std::move(name), std::move(service), std::move(stream), nullptr);
     }
 
     // Produces a connection_callback for use with streaming::listener.
@@ -435,7 +439,7 @@ namespace rpc::stream_transport
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
-            transport::make_server<Remote, Local>(name, std::move(svc), std::move(stm), fn);
+            make_server<Remote, Local>(name, std::move(svc), std::move(stm), fn);
             CO_RETURN;
         };
     }
