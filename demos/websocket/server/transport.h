@@ -49,16 +49,13 @@ namespace websocket_demo
 
             CORO_TASK(void) receive_consumer_loop();
 
-            CORO_TASK(int)
-            inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-                rpc::connection_settings& input_descr,
-                rpc::remote_object& output_descr) override
+            CORO_TASK(rpc::connect_result)
+            inner_connect(std::shared_ptr<rpc::object_stub> stub, rpc::connection_settings input_descr) override
             {
                 std::ignore = stub;
                 std::ignore = input_descr;
-                std::ignore = output_descr;
                 // Parent transport is connected immediately - no handshake needed
-                CO_RETURN rpc::error::OK();
+                CO_RETURN rpc::connect_result{rpc::error::OK(), {}};
             }
             CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
