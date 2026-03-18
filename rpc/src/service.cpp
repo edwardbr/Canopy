@@ -931,7 +931,7 @@ namespace rpc
             auto item = service_proxies_.find(destination_zone_id);
             if (item != service_proxies_.end())
             {
-                RPC_DEBUG("get_zone_proxy: Found existing proxy in service_proxies_");
+                RPC_DEBUG("get_zone_proxy: Found existing proxy in service_proxies_", 0);
                 return item->second.lock();
             }
         }

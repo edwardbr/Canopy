@@ -562,15 +562,15 @@ namespace rpc
                 RPC_ERROR("sp_add_ref failed");
                 std::lock_guard l(insert_control_);
                 proxies_.erase(object_id);
-                RPC_ASSERT(false);
                 result.error_code = ret;
+                RPC_ASSERT(false);
                 CO_RETURN result;
             }
         }
         if (!is_new && rule == object_proxy_creation_rule::RELEASE_IF_NOT_NEW)
         {
             RPC_DEBUG(
-                "get_or_create_object_proxy calling sp_release due to object_proxy_creation_rule::RELEASE_IF_NOT_NEW");
+                "get_or_create_object_proxy calling sp_release due to object_proxy_creation_rule::RELEASE_IF_NOT_NEW", 0);
 
             // as this is an out parameter the callee will be doing an add ref if the object proxy is already
             // found we can do a release
