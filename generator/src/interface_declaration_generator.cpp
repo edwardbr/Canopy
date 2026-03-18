@@ -283,13 +283,13 @@ namespace interface_declaration_generator
             switch (pt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("const rpc::interface_descriptor& {}", name);
+                return fmt::format("const rpc::remote_object& {}", name);
             case STUB_PARAM_IN:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_PARAM_OUT:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case STUB_PARAM_OUT:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             default:
                 return "";
             }
@@ -317,13 +317,13 @@ namespace interface_declaration_generator
             switch (pt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case STUB_PARAM_IN:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_PARAM_OUT:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case STUB_PARAM_OUT:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             default:
                 return "";
             }

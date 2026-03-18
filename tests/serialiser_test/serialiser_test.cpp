@@ -756,8 +756,8 @@ TEST_F(SerialiserTest, NestedStructProtobuf)
     scalar_test::something_more_complicated obj;
     obj.vector_val.push_back({1, "first"});
     obj.vector_val.push_back({2, "second"});
-    obj.map_val["key1"] = {.int_val = 10, .string_val = "map_first"};
-    obj.map_val["key2"] = {.int_val = 20, .string_val = "map_second"};
+    obj.map_val["key1"] = {FLD(int_val) 10, FLD(string_val) "map_first"};
+    obj.map_val["key2"] = {FLD(int_val) 20, FLD(string_val) "map_second"};
 
     auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(serialized.empty());

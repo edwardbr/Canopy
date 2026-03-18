@@ -71,19 +71,19 @@ namespace rpc::local
         CO_AWAIT parent->inbound_post(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     parent_transport::outbound_try_cast(try_cast_params params)
     {
         auto parent = parent_.get_nullable();
         if (!parent)
         {
-            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
         CO_RETURN CO_AWAIT parent->inbound_try_cast(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     parent_transport::outbound_add_ref(add_ref_params params)
     {
         RPC_DEBUG(
@@ -97,7 +97,7 @@ namespace rpc::local
         if (!parent)
         {
             RPC_ERROR("parent_transport::outbound_add_ref: parent is NULL!");
-            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
         RPC_DEBUG("parent_transport::outbound_add_ref: Calling parent->inbound_add_ref for zone {}",
@@ -105,13 +105,13 @@ namespace rpc::local
         CO_RETURN CO_AWAIT parent->inbound_add_ref(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     parent_transport::outbound_release(release_params params)
     {
         auto parent = parent_.get_nullable();
         if (!parent)
         {
-            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
         CO_RETURN CO_AWAIT parent->inbound_release(std::move(params));
@@ -141,12 +141,12 @@ namespace rpc::local
         CO_AWAIT parent->inbound_transport_down(std::move(params));
     }
 
-    CORO_TASK(get_new_zone_id_result)
+    CORO_TASK(new_zone_id_result)
     parent_transport::outbound_get_new_zone_id(get_new_zone_id_params params)
     {
         auto parent = parent_.get_nullable();
         if (!parent)
-            CO_RETURN get_new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
+            CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         CO_RETURN CO_AWAIT parent->get_new_zone_id(std::move(params));
     }
 
@@ -187,37 +187,37 @@ namespace rpc::local
         CO_AWAIT child->inbound_post(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     child_transport::outbound_try_cast(try_cast_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
         {
-            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
         CO_RETURN CO_AWAIT child->inbound_try_cast(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     child_transport::outbound_add_ref(add_ref_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
         {
-            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
         CO_RETURN CO_AWAIT child->inbound_add_ref(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     child_transport::outbound_release(release_params params)
     {
         auto child = child_.get_nullable();
         if (!child)
         {
-            CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
         CO_RETURN CO_AWAIT child->inbound_release(std::move(params));

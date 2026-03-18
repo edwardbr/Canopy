@@ -380,7 +380,7 @@ namespace rpc
         rpc::interface_ordinal interface_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_try_cast: destination_zone={} caller_zone={} object_id={} interface_id={}{}",
             get_zone_color(zone_id.get_subnet()),
@@ -399,7 +399,7 @@ namespace rpc
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_add_ref: destination_zone={} object_id={} "
                       "caller_zone={} requesting_zone={} options={}{}",
@@ -420,7 +420,7 @@ namespace rpc
         rpc::release_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_release: destination_zone={} object_id={} caller_zone={} "
                       "options={}{}",
@@ -440,7 +440,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info(
             "{}{} service_send: destination_zone={} caller_zone={} object_id={} interface_id={} method_id={}{}",
@@ -461,7 +461,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_post: destination_zone={} caller_zone={} object_id={} interface_id={} method_id={} "
                       "{}",
@@ -479,7 +479,7 @@ namespace rpc
         rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_object_released: destination_zone={} caller_zone={} object_id={}{}",
             get_zone_color(zone_id.get_subnet()),
@@ -560,7 +560,7 @@ namespace rpc
         rpc::interface_ordinal interface_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_proxy_try_cast: destination_zone={} caller_zone={} object_id={} interface_id={}{}",
             get_zone_color(zone_id.get_subnet()),
@@ -579,7 +579,7 @@ namespace rpc
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_proxy_add_ref: destination_zone={} caller_zone={} "
                       "requesting_zone={} object_id={} options={}{}",
@@ -600,7 +600,7 @@ namespace rpc
         rpc::release_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_proxy_release: destination_zone={} caller_zone={} object_id={} "
                       "options={}{}",
@@ -1054,7 +1054,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_proxy_send: dest_zone={} caller_zone={} object={} interface={} method={}{}",
             get_zone_color(zone_id.get_subnet()),
@@ -1074,7 +1074,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_proxy_post: dest_zone={} caller_zone={} object={} interface={} method={}{}",
             get_zone_color(zone_id.get_subnet()),
@@ -1091,7 +1091,7 @@ namespace rpc
         rpc::zone zone_id, rpc::remote_object remote_object_id, rpc::caller_zone caller_zone_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} service_proxy_object_released: dest_zone={} caller_zone={} object={}{}",
             get_zone_color(zone_id.get_subnet()),
@@ -1122,7 +1122,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_outbound_send:  adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
@@ -1145,7 +1145,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_outbound_post: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
@@ -1167,7 +1167,7 @@ namespace rpc
         rpc::interface_ordinal interface_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_outbound_try_cast: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={}{}",
@@ -1189,7 +1189,7 @@ namespace rpc
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_outbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "requesting_zone={} options={}{}",
@@ -1212,7 +1212,7 @@ namespace rpc
         rpc::release_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
 
         logger_->info("{}{} transport_outbound_release: adjacent_zone={} dest_zone={} caller_zone={} object={} "
@@ -1234,7 +1234,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_outbound_object_released: adjacent_zone={} dest_zone={} caller_zone={} "
                       "object={}{}",
@@ -1270,7 +1270,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_inbound_send: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={}{}",
@@ -1293,7 +1293,7 @@ namespace rpc
         rpc::method method_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_inbound_post: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={} method={} {}",
@@ -1315,7 +1315,7 @@ namespace rpc
         rpc::interface_ordinal interface_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_inbound_try_cast: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "interface={}{}",
@@ -1337,7 +1337,7 @@ namespace rpc
         rpc::add_ref_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_inbound_add_ref: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "requesting_zone={} options={}{}",
@@ -1360,7 +1360,7 @@ namespace rpc
         rpc::release_options options) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info("{}{} transport_inbound_release: adjacent_zone={} dest_zone={} caller_zone={} object={} "
                       "options={}{}",
@@ -1381,7 +1381,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id) const
     {
         auto destination_zone_id = remote_object_id.as_zone();
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
         init_logger();
         logger_->info(
             "{}{} transport_inbound_object_released: adjacent_zone={} dest_zone={} caller_zone={} object={}{}",

@@ -27,17 +27,16 @@ protected:
     auto make_interface_setup_factory()
     {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [use_host_in_child = this->use_host_in_child_](const rpc::shared_ptr<yyy::i_host>& host,
-                   rpc::shared_ptr<yyy::i_example>& example,
-                   const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+        return [use_host_in_child = this->use_host_in_child_](rpc::shared_ptr<yyy::i_host> host,
+                   std::shared_ptr<rpc::service> svc) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
         {
-            example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(svc, host));
+            auto example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(svc, host));
             if (use_host_in_child)
             {
                 auto ret = CO_AWAIT example->set_host(host);
-                CO_RETURN ret;
+                CO_RETURN rpc::service_connect_result<yyy::i_example>{ret, std::move(example)};
             }
-            CO_RETURN rpc::error::OK();
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(example)};
         };
     }
 

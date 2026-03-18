@@ -28,8 +28,8 @@ namespace websocket_demo
             template<class Remote, class Local>
             static CORO_TASK(std::shared_ptr<transport>) make_server(const std::shared_ptr<rpc::service>& service,
                 const std::shared_ptr<streaming::stream>& stream,
-                std::function<CORO_TASK(int)(
-                    const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
+                std::function<CORO_TASK(rpc::service_connect_result<Local>)(
+                    const rpc::shared_ptr<Remote>&, const std::shared_ptr<rpc::service>&)> factory)
             {
                 CO_RETURN CO_AWAIT make_server(service,
                     stream,
@@ -52,7 +52,7 @@ namespace websocket_demo
             CORO_TASK(int)
             inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
                 rpc::connection_settings& input_descr,
-                rpc::interface_descriptor& output_descr) override
+                rpc::remote_object& output_descr) override
             {
                 std::ignore = stub;
                 std::ignore = input_descr;
@@ -64,18 +64,17 @@ namespace websocket_demo
 
             template<class in_param_type, class out_param_type>
             static std::function<CORO_TASK(int)(
-                rpc::interface_descriptor input_descr, rpc::interface_descriptor& output_descr, std::shared_ptr<transport>& child)>
+                rpc::remote_object input_descr, rpc::remote_object& output_descr, std::shared_ptr<transport>& child)>
             bind(rpc::zone new_zone_id,
-                std::function<CORO_TASK(int)(const rpc::shared_ptr<in_param_type>&,
-                    rpc::shared_ptr<out_param_type>&,
+                std::function<CORO_TASK(rpc::service_connect_result<out_param_type>)(const rpc::shared_ptr<in_param_type>&,
                     const std::shared_ptr<rpc::child_service>&)>&& child_entry_point_fn);
 
             // Outbound i_marshaller interface - sends from child to parent
             CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override;
             CORO_TASK(void) outbound_post(rpc::post_params params) override;
-            CORO_TASK(rpc::back_channel_result) outbound_try_cast(rpc::try_cast_params params) override;
-            CORO_TASK(rpc::back_channel_result) outbound_add_ref(rpc::add_ref_params params) override;
-            CORO_TASK(rpc::back_channel_result) outbound_release(rpc::release_params params) override;
+            CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override;
+            CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override;
+            CORO_TASK(rpc::standard_result) outbound_release(rpc::release_params params) override;
             CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override;
             CORO_TASK(void) outbound_transport_down(rpc::transport_down_params params) override;
 

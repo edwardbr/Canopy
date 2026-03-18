@@ -32,7 +32,7 @@ namespace rpc
         on_service_try_cast_host(zone_id.get_subnet(),
             remote_object_id.get_subnet(),
             caller_zone_id.get_subnet(),
-            remote_object_id.get_object().get_subnet(),
+            remote_object_id.get_object_id().get_subnet(),
             interface_id.get_val());
     }
 
@@ -44,7 +44,7 @@ namespace rpc
     {
         on_service_add_ref_host(zone_id.get_subnet(),
             remote_object_id.get_subnet(),
-            remote_object_id.get_object().get_subnet(),
+            remote_object_id.get_object_id().get_subnet(),
             caller_zone_id.get_subnet(),
             requesting_zone_id.get_subnet(),
             (uint64_t)options);
@@ -57,7 +57,7 @@ namespace rpc
     {
         on_service_release_host(zone_id.get_subnet(),
             remote_object_id.get_subnet(),
-            remote_object_id.get_object().get_subnet(),
+            remote_object_id.get_object_id().get_subnet(),
             caller_zone_id.get_subnet(),
             static_cast<uint64_t>(options));
     }
@@ -98,7 +98,7 @@ namespace rpc
         on_service_proxy_try_cast_host(zone_id.get_subnet(),
             remote_object_id.get_subnet(),
             caller_zone_id.get_subnet(),
-            remote_object_id.get_object().get_subnet(),
+            remote_object_id.get_object_id().get_subnet(),
             interface_id.get_val());
     }
     void enclave_telemetry_service::on_service_proxy_add_ref(rpc::zone zone_id,
@@ -110,7 +110,7 @@ namespace rpc
         on_service_proxy_add_ref_host(zone_id.get_subnet(),
             remote_object_id.get_subnet(),
             caller_zone_id.get_subnet(),
-            remote_object_id.get_object().get_subnet(),
+            remote_object_id.get_object_id().get_subnet(),
             requesting_zone_id.get_subnet(),
             (uint64_t)options);
     }
@@ -122,7 +122,7 @@ namespace rpc
         on_service_proxy_release_host(zone_id.get_subnet(),
             remote_object_id.get_subnet(),
             caller_zone_id.get_subnet(),
-            remote_object_id.get_object().get_subnet(),
+            remote_object_id.get_object_id().get_subnet(),
             static_cast<uint64_t>(options));
     }
 

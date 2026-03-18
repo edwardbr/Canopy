@@ -20,19 +20,21 @@ namespace websocket_demo
                     service_,
                     stream,
                     [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
-                        rpc::shared_ptr<websocket_demo::v1::i_calculator>& local,
-                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                        const std::shared_ptr<rpc::service>& svc)
+                        -> CORO_TASK(rpc::service_connect_result<websocket_demo::v1::i_calculator>)
                     {
                         auto wsrvc = std::static_pointer_cast<websocket_service>(svc);
-                        local = wsrvc->get_demo_instance();
+                        auto local = wsrvc->get_demo_instance();
                         if (!local)
-                            CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                            CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
+                                rpc::error::OBJECT_NOT_FOUND(), {}};
                         if (sink)
                         {
                             auto ret = CO_AWAIT local->set_callback(sink);
-                            CO_RETURN ret;
+                            CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{ret, std::move(local)};
                         }
-                        CO_RETURN rpc::error::OK();
+                        CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
+                            rpc::error::OK(), std::move(local)};
                     });
             CO_RETURN transpt;
         }

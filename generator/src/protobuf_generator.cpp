@@ -383,8 +383,8 @@ namespace protobuf_generator
         // Handle rpc::shared_ptr<T> (interface types)
         if (type.find("rpc::shared_ptr<") == 0 || type.find("rpc::optimistic_ptr<") == 0)
         {
-            // Use the unified interface_descriptor for all interface pointer types
-            return "rpc.interface_descriptor";
+            // Use the unified remote_object for all interface pointer types
+            return "rpc.remote_object";
         }
 
         // Handle 128-bit integers using the dedicated uint128 message type (two uint64 halves).
@@ -645,7 +645,7 @@ namespace protobuf_generator
     }
 
     // NOTE: Previously generated per-interface _ptr structures, but now we use
-    // the unified rpc.interface_descriptor type instead
+    // the unified rpc.remote_object type instead
 
     // Helper function to process imports from IDL imports
     void write_imports(const class_entity& lib, writer& proto)
@@ -1061,7 +1061,7 @@ namespace protobuf_generator
         // Write imports based on IDL imports
         write_imports(lib, proto);
 
-        // Check if we need to import rpc.proto for interface_descriptor
+        // Check if we need to import rpc.proto for remote_object
         bool has_interface_parameters = false;
         for (auto& interface_elem : current_lib.get_elements(entity_type::INTERFACE))
         {
@@ -1088,7 +1088,7 @@ namespace protobuf_generator
                 break;
         }
 
-        // Import rpc.proto if we use interface_descriptor
+        // Import rpc.proto if we use remote_object
         if (has_interface_parameters)
         {
             proto("import \"rpc/protobuf/schema/rpc.proto\";");
@@ -1390,7 +1390,7 @@ namespace protobuf_generator
         // }
 
         // NOTE: Previously generated per-interface _ptr message definitions here,
-        // but now we use the unified rpc.interface_descriptor type instead
+        // but now we use the unified rpc.remote_object type instead
         std::set<std::string> defined_messages;
 
         // Generate request/response messages grouped before the service (Google-style organization)
@@ -1420,10 +1420,10 @@ namespace protobuf_generator
 
                         bool optimistic = false;
                         std::shared_ptr<class_entity> obj;
-                        // For interface types, use the unified interface_descriptor
+                        // For interface types, use the unified remote_object
                         if (is_interface_param(*interface_entity, parameter.get_type(), optimistic, obj))
                         {
-                            param_type = "rpc.interface_descriptor";
+                            param_type = "rpc.remote_object";
                         }
                         else
                         {
@@ -1452,12 +1452,12 @@ namespace protobuf_generator
                         std::string param_type;
                         std::string param_name = sanitize_field_name(parameter.get_name());
 
-                        // For interface types, use the unified interface_descriptor
+                        // For interface types, use the unified remote_object
                         bool optimistic = false;
                         std::shared_ptr<class_entity> obj;
                         if (is_interface_param(lib, parameter.get_type(), optimistic, obj))
                         {
-                            param_type = "rpc.interface_descriptor";
+                            param_type = "rpc.remote_object";
                         }
                         else
                         {
@@ -1652,7 +1652,7 @@ namespace protobuf_generator
 
         // Pointers and interfaces are NOT primitives
         if (type_str.find('*') != std::string::npos || type_str.find("rpc::shared_ptr") != std::string::npos
-            || type_str.find("rpc::interface_descriptor") != std::string::npos
+            || type_str.find("rpc::remote_object") != std::string::npos
             || type_str.find("std::vector") != std::string::npos || type_str.find("std::map") != std::string::npos)
         {
             return false;
@@ -1885,14 +1885,14 @@ namespace protobuf_generator
 
                 // Transform parameter type to match proxy_serialiser signature:
                 // - IDL pointers (T*) become uint64_t
-                // - RPC interfaces (rpc::shared_ptr<T> or rpc::optimistic_ptr<T>) become const rpc::interface_descriptor&
+                // - RPC interfaces (rpc::shared_ptr<T> or rpc::optimistic_ptr<T>) become const rpc::remote_object&
                 std::string final_param_type;
 
                 if (param_type.find("rpc::shared_ptr") != std::string::npos
                     || param_type.find("rpc::optimistic_ptr") != std::string::npos)
                 {
-                    // Interface types become interface_descriptor
-                    final_param_type = "const rpc::interface_descriptor&";
+                    // Interface types become remote_object
+                    final_param_type = "const rpc::remote_object&";
                 }
                 else if (param_type.find('*') != std::string::npos)
                 {
@@ -1953,19 +1953,19 @@ namespace protobuf_generator
         {
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
-            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes interface_descriptor)
+            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
             bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
                                  || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::interface_descriptor") != std::string::npos);
+                                 || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
-                // Interface types need special handling - serialize interface_descriptor to proto message
+                // Interface types need special handling - serialize remote_object to proto message
                 cpp("auto* proto_{} = __request.mutable_{}();", param_name, param_name);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf;");
-                cpp("{}.destination_zone_id.protobuf_serialise(__dz_buf);", param_name);
-                cpp("if (!proto_{}->mutable_destination_zone_id()->ParseFromArray(__dz_buf.data(), "
+                cpp("{}.protobuf_serialise(__dz_buf);", param_name);
+                cpp("if (!proto_{}->ParseFromArray(__dz_buf.data(), "
                     "static_cast<int>(__dz_buf.size())))",
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");
@@ -2081,8 +2081,8 @@ namespace protobuf_generator
             if (param_type.find("rpc::shared_ptr") != std::string::npos
                 || param_type.find("rpc::optimistic_ptr") != std::string::npos)
             {
-                // Interface types become interface_descriptor&
-                final_param_type = "rpc::interface_descriptor&";
+                // Interface types become remote_object&
+                final_param_type = "rpc::remote_object&";
             }
             else if (param_type.find('*') != std::string::npos)
             {
@@ -2135,22 +2135,22 @@ namespace protobuf_generator
         {
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
-            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes interface_descriptor)
+            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
             bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
                                  || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::interface_descriptor") != std::string::npos);
+                                 || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
-                // Interface types need special handling - deserialize proto message to interface_descriptor
+                // Interface types need special handling - deserialize proto message to remote_object
                 cpp("const auto& proto_{} = __response.{}();", param_name, param_name);
                 cpp("{{");
-                cpp("std::vector<char> __dz_buf(proto_{}.destination_zone_id().ByteSizeLong());", param_name);
-                cpp("if (!proto_{}.destination_zone_id().SerializeToArray(__dz_buf.data(), "
+                cpp("std::vector<char> __dz_buf(proto_{}.ByteSizeLong());", param_name);
+                cpp("if (!proto_{}.SerializeToArray(__dz_buf.data(), "
                     "static_cast<int>(__dz_buf.size())))",
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
-                cpp("{}.destination_zone_id.protobuf_deserialise(__dz_buf);", param_name);
+                cpp("{}.protobuf_deserialise(__dz_buf);", param_name);
                 cpp("}}");
             }
             else if (is_pointer)
@@ -2259,7 +2259,7 @@ namespace protobuf_generator
             if (param_type.find("rpc::shared_ptr") != std::string::npos
                 || param_type.find("rpc::optimistic_ptr") != std::string::npos)
             {
-                final_param_type = "rpc::interface_descriptor&";
+                final_param_type = "rpc::remote_object&";
             }
             else if (param_type.find('*') != std::string::npos)
             {
@@ -2323,22 +2323,22 @@ namespace protobuf_generator
         {
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
-            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes interface_descriptor)
+            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
             bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
                                  || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::interface_descriptor") != std::string::npos);
+                                 || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
-                // Interface types need special handling - deserialize proto message to interface_descriptor
+                // Interface types need special handling - deserialize proto message to remote_object
                 cpp("const auto& proto_{} = __request.{}();", param_name, param_name);
                 cpp("{{");
-                cpp("std::vector<char> __dz_buf(proto_{}.destination_zone_id().ByteSizeLong());", param_name);
-                cpp("if (!proto_{}.destination_zone_id().SerializeToArray(__dz_buf.data(), "
+                cpp("std::vector<char> __dz_buf(proto_{}.ByteSizeLong());", param_name);
+                cpp("if (!proto_{}.SerializeToArray(__dz_buf.data(), "
                     "static_cast<int>(__dz_buf.size())))",
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
-                cpp("{}.destination_zone_id.protobuf_deserialise(__dz_buf);", param_name);
+                cpp("{}.protobuf_deserialise(__dz_buf);", param_name);
                 cpp("}}");
             }
             else if (is_pointer)
@@ -2447,7 +2447,7 @@ namespace protobuf_generator
                 || param_type.find("rpc::optimistic_ptr") != std::string::npos)
             {
                 // Interface types by reference in stub_serialiser to match header
-                final_param_type = "rpc::interface_descriptor&";
+                final_param_type = "rpc::remote_object&";
             }
             else if (param_type.find('*') != std::string::npos)
             {
@@ -2500,19 +2500,19 @@ namespace protobuf_generator
         {
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
-            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes interface_descriptor)
+            // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
             bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
                                  || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::interface_descriptor") != std::string::npos);
+                                 || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
-                // Interface types need special handling - serialize interface_descriptor to proto message
+                // Interface types need special handling - serialize remote_object to proto message
                 cpp("auto* proto_{} = __response.mutable_{}();", param_name, param_name);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf;");
-                cpp("{}.destination_zone_id.protobuf_serialise(__dz_buf);", param_name);
-                cpp("if (!proto_{}->mutable_destination_zone_id()->ParseFromArray(__dz_buf.data(), "
+                cpp("{}.protobuf_serialise(__dz_buf);", param_name);
+                cpp("if (!proto_{}->ParseFromArray(__dz_buf.data(), "
                     "static_cast<int>(__dz_buf.size())))",
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");

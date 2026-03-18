@@ -87,9 +87,9 @@ public:
             // For local objects, cleanup is synchronous - set continuation to run immediately
             // Capture args by value to move them into the coroutine frame
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            continuation_ = [this, verification_lambda, ... captured = std::forward<Args>(args)]() -> CORO_TASK(void)
+            continuation_ = [this, verification_lambda, captured = std::make_tuple(std::forward<Args>(args)...)]() -> CORO_TASK(void)
             {
-                CO_AWAIT verification_lambda(captured...);
+                CO_AWAIT std::apply(verification_lambda, captured);
                 continuation_completed_ = true;
                 CO_RETURN;
             };
@@ -101,9 +101,9 @@ public:
             auto self = shared_from_this();
             continuation_
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                = [service, self, verification_lambda, ... captured = std::forward<Args>(args)]() -> CORO_TASK(void)
+                = [service, self, verification_lambda, captured = std::make_tuple(std::forward<Args>(args)...)]() -> CORO_TASK(void)
             {
-                CO_AWAIT verification_lambda(captured...);
+                CO_AWAIT std::apply(verification_lambda, captured);
                 auto* waiter = dynamic_cast<object_deletion_waiter*>(self.get());
                 RPC_ASSERT(waiter != nullptr);
                 waiter->continuation_completed_ = true;

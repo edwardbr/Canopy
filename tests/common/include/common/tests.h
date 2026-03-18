@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 #pragma once
+// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <example/example.h>
 #include <rpc/rpc.h>
@@ -139,3 +140,4 @@ namespace marshalled_tests
         CO_RETURN true;
     }
 }
+// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

@@ -65,8 +65,10 @@ namespace comprehensive
 
             rpc::shared_ptr<comprehensive::v1::i_calculator> remote_calculator;
             std::cout << "Process 1: Connecting...\n";
-            auto error
-                = CO_AWAIT service_1->connect_to_zone("process_2", transport_1, local_calculator, remote_calculator);
+            auto connect_result = CO_AWAIT service_1->connect_to_zone<i_calculator, comprehensive::v1::i_calculator>(
+                "process_2", transport_1, local_calculator);
+            remote_calculator = connect_result.output_interface;
+            auto error = connect_result.error_code;
 
             is_loaded = true;
 
@@ -131,13 +133,12 @@ namespace comprehensive
                 rpc::stream_transport::transport_factory(std::move(stream_2)),
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](const rpc::shared_ptr<i_calculator>&,
-                    rpc::shared_ptr<i_calculator>& local,
-                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
                 {
                     on_connected.set();
                     std::cout << "Process 2: Created calculator service\n";
-                    local = rpc::shared_ptr<i_calculator>(new calculator_impl(svc));
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN rpc::service_connect_result<i_calculator>{
+                        rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
                 });
 
             co_await transport_2->accept();

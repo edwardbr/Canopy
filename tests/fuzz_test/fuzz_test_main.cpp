@@ -434,15 +434,14 @@ private:
                                         + std::to_string(child_transport->get_adjacent_zone_id().get_subnet());
         child_transport->set_child_entry_point<i_fuzz_factory, i_fuzz_factory>(
             [](const rpc::shared_ptr<i_fuzz_factory>&,
-                rpc::shared_ptr<i_fuzz_factory>& new_factory,
-                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
+                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_fuzz_factory>)
             {
-                new_factory = rpc::make_shared<factory_impl>();
-                CO_RETURN rpc::error::OK();
+                CO_RETURN rpc::service_connect_result<i_fuzz_factory>{rpc::error::OK(), rpc::make_shared<factory_impl>()};
             });
 
-        CO_AWAIT current_service->connect_to_zone(
-            factory_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_factory>(), local_factory_);
+        auto connect_result = CO_AWAIT current_service->connect_to_zone<i_fuzz_factory, i_fuzz_factory>(
+            factory_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_factory>());
+        local_factory_ = std::move(connect_result.output_interface);
         CO_RETURN;
     }
 
@@ -460,15 +459,12 @@ private:
                                       + std::to_string(child_transport->get_adjacent_zone_id().get_subnet());
         child_transport->set_child_entry_point<i_fuzz_cache, i_fuzz_cache>(
             [](const rpc::shared_ptr<i_fuzz_cache>&,
-                rpc::shared_ptr<i_fuzz_cache>& new_cache,
-                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
-            {
-                new_cache = rpc::make_shared<cache_impl>();
-                CO_RETURN rpc::error::OK();
-            });
+                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_fuzz_cache>)
+            { CO_RETURN rpc::service_connect_result<i_fuzz_cache>{rpc::error::OK(), rpc::make_shared<cache_impl>()}; });
 
-        CO_AWAIT current_service->connect_to_zone(
-            cache_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_cache>(), local_cache_);
+        auto connect_result = CO_AWAIT current_service->connect_to_zone<i_fuzz_cache, i_fuzz_cache>(
+            cache_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_cache>());
+        local_cache_ = std::move(connect_result.output_interface);
         CO_RETURN;
     }
 
@@ -486,15 +482,12 @@ private:
                                        + std::to_string(child_transport->get_adjacent_zone_id().get_subnet());
         child_transport->set_child_entry_point<i_fuzz_worker, i_fuzz_worker>(
             [](const rpc::shared_ptr<i_fuzz_worker>&,
-                rpc::shared_ptr<i_fuzz_worker>& new_worker,
-                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
-            {
-                new_worker = rpc::make_shared<worker_impl>();
-                CO_RETURN rpc::error::OK();
-            });
+                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_fuzz_worker>)
+            { CO_RETURN rpc::service_connect_result<i_fuzz_worker>{rpc::error::OK(), rpc::make_shared<worker_impl>()}; });
 
-        CO_AWAIT current_service->connect_to_zone(
-            worker_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_worker>(), local_worker_);
+        auto connect_result = CO_AWAIT current_service->connect_to_zone<i_fuzz_worker, i_fuzz_worker>(
+            worker_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_worker>());
+        local_worker_ = std::move(connect_result.output_interface);
         CO_RETURN;
     }
 
@@ -803,17 +796,19 @@ public:
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [child_type, child_zone_id]([[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
-                    rpc::shared_ptr<i_autonomous_node>& new_child,
-                    const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
+                    const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
                 {
                     RPC_INFO("===CALLBACK INVOKED=== for child_zone_id={}", child_zone_id);
-                    new_child = rpc::make_shared<autonomous_node_impl>(child_type, child_zone_id);
-                    CO_RETURN CO_AWAIT new_child->initialize_node(child_type, child_zone_id);
+                    auto new_child = rpc::make_shared<autonomous_node_impl>(child_type, child_zone_id);
+                    auto err_code = CO_AWAIT new_child->initialize_node(child_type, child_zone_id);
+                    CO_RETURN rpc::service_connect_result<i_autonomous_node>{err_code, std::move(new_child)};
                 });
 
             RPC_INFO("[NODE {}] About to call connect_to_zone for {}", node_id_, child_zone_name);
-            auto result = CO_AWAIT current_service->connect_to_zone(
-                child_zone_name.c_str(), child_transport, parent_controller, child_node);
+            auto connect_result = CO_AWAIT current_service->connect_to_zone<i_autonomous_node, i_autonomous_node>(
+                child_zone_name.c_str(), child_transport, parent_controller);
+            auto result = connect_result.error_code;
+            child_node = std::move(connect_result.output_interface);
             RPC_INFO("[NODE {}] connect_to_zone returned, child_node={}", node_id_, (child_node ? "EXISTS" : "NULL"));
             RPC_INFO("[NODE {}] create_child_node result={}", node_id_, result);
             CO_RETURN result;
@@ -1312,19 +1307,20 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&, new_zone_subnet]([[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
-                    rpc::shared_ptr<i_autonomous_node>& new_node,
-                    const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
+                    const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
                 {
-                    new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_subnet);
-                    CO_RETURN CO_AWAIT new_node->initialize_node(node_type::ROOT_NODE, new_zone_subnet);
+                    auto new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_subnet);
+                    auto err_code = CO_AWAIT new_node->initialize_node(node_type::ROOT_NODE, new_zone_subnet);
+                    CO_RETURN rpc::service_connect_result<i_autonomous_node>{err_code, std::move(new_node)};
                 });
 
-            auto connect_result = CO_AWAIT root_service->connect_to_zone(
-                zone_name.c_str(), child_transport, parent_controller, root_node);
+            auto connect_result = CO_AWAIT root_service->connect_to_zone<i_autonomous_node, i_autonomous_node>(
+                zone_name.c_str(), child_transport, parent_controller);
+            root_node = std::move(connect_result.output_interface);
 
-            if (connect_result != rpc::error::OK() || !root_node)
+            if (connect_result.error_code != rpc::error::OK() || !root_node)
             {
-                spdlog::error("Failed to create root node. Error code: {}", connect_result);
+                spdlog::error("Failed to create root node. Error code: {}", connect_result.error_code);
                 CO_RETURN;
             }
             all_nodes.push_back(root_node);

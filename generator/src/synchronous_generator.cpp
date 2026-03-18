@@ -427,6 +427,11 @@ namespace synchronous_generator
         }
 
         bool is_optimistic = object_type.find("rpc::optimistic_ptr") != std::string::npos;
+        auto template_start = object_type.find('<');
+        auto template_end = object_type.rfind('>');
+        auto iface_type = object_type.substr(template_start + 1, template_end - template_start - 1);
+        auto bind_template_args
+            = fmt::format("{}, {}", iface_type, is_optimistic ? "rpc::optimistic_ptr" : "rpc::shared_ptr");
 
         auto pt = static_cast<print_type>(option);
         switch (pt)
@@ -436,23 +441,31 @@ namespace synchronous_generator
         case PROXY_PREPARE_IN_INTERFACE_ID:
             if (is_optimistic)
             {
-                return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
-                                   "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
-                                   "\t\t\t{{{{\n"
-                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
-                                   "__rpc_sp->get_remote_rpc_version(), "
-                                   "{0}, {0}_stub_, {0}_stub_id_);\n"
-                                   "\t\t\t}}}}",
+                return fmt::format(
+                    "rpc::remote_object {0}_stub_id_;\n"
+                    "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
+                    "\t\t\t{{{{\n"
+                    "\t\t\t\tauto {0}_bind_result = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
+                    "__rpc_sp->get_remote_rpc_version(), "
+                    "{0});\n"
+                    "\t\t\t\t__rpc_ret = {0}_bind_result.error_code;\n"
+                    "\t\t\t\t{0}_stub_ = std::move({0}_bind_result.stub);\n"
+                    "\t\t\t\t{0}_stub_id_ = {0}_bind_result.descriptor;\n"
+                    "\t\t\t}}}}",
                     name);
             }
-            return fmt::format("RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
-                               "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
-                               "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
-                               "\t\t\t{{{{\n"
-                               "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
-                               "__rpc_sp->get_remote_rpc_version(), "
-                               "{0}, {0}_stub_, {0}_stub_id_);\n"
-                               "\t\t\t}}}}",
+            return fmt::format(
+                "RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
+                "\t\t\trpc::remote_object {0}_stub_id_;\n"
+                "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
+                "\t\t\t{{{{\n"
+                "\t\t\t\tauto {0}_bind_result = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
+                "__rpc_sp->get_remote_rpc_version(), "
+                "{0});\n"
+                "\t\t\t\t__rpc_ret = {0}_bind_result.error_code;\n"
+                "\t\t\t\t{0}_stub_ = std::move({0}_bind_result.stub);\n"
+                "\t\t\t\t{0}_stub_id_ = {0}_bind_result.descriptor;\n"
+                "\t\t\t}}}}",
                 name);
         case PROXY_MARSHALL_IN:
         {
@@ -469,7 +482,7 @@ namespace synchronous_generator
                 name);
 
         case STUB_DEMARSHALL_DECLARATION:
-            return fmt::format(R"__(rpc::interface_descriptor {0}_object_{{}};)__", name);
+            return fmt::format(R"__(rpc::remote_object {0}_object_{{}};)__", name);
         case STUB_MARSHALL_IN:
         {
             auto ret = fmt::format("{}_object_, ", name);
@@ -479,13 +492,15 @@ namespace synchronous_generator
         case STUB_PARAM_WRAP:
             return fmt::format(R"__(
                 {0} {1};
-                if(!rpc::error::is_error(__rpc_ret) && {1}_object_.destination_zone_id.is_set() && {1}_object_.get_object_id().is_set())
+                if(!rpc::error::is_error(__rpc_ret) && {1}_object_.is_set() && {1}_object_.get_object_id().is_set())
                 {{
                     auto stub = __rpc_target_->__rpc_get_stub();
                     auto zone_ = stub ? stub->get_zone() : nullptr;
                     if (zone_)
                     {{
-                        __rpc_ret = CO_AWAIT rpc::stub_bind_in_param(params.protocol_version, zone_, params.caller_zone_id, {1}_object_, {1});
+                        auto {1}_bind_result = CO_AWAIT rpc::stub_bind_in_param<{2}>(params.protocol_version, zone_, params.caller_zone_id, {1}_object_);
+                        __rpc_ret = {1}_bind_result.error_code;
+                        {1} = std::move({1}_bind_result.iface);
                     }}
                     else
                     {{
@@ -495,14 +510,15 @@ namespace synchronous_generator
                 }}
 )__",
                 object_type,
-                name);
+                name,
+                bind_template_args);
         case STUB_PARAM_CAST:
             return fmt::format("{}", name);
         case STUB_MARSHALL_OUT:
             return fmt::format("static_cast<uint64_t>({}), ", name);
         case PROXY_VALUE_RETURN:
         case PROXY_OUT_DECLARATION:
-            return fmt::format("  rpc::interface_descriptor {}_;", name);
+            return fmt::format("  rpc::remote_object {}_;", name);
 
         case LOCAL_OPTIMISTIC_PTR_CALL:
             return fmt::format("{}", name);
@@ -529,6 +545,11 @@ namespace synchronous_generator
         std::ignore = count;
 
         bool is_optimistic = object_type.find("rpc::optimistic_ptr") != std::string::npos;
+        auto template_start = object_type.find('<');
+        auto template_end = object_type.rfind('>');
+        auto iface_type = object_type.substr(template_start + 1, template_end - template_start - 1);
+        auto bind_template_args
+            = fmt::format("{}, {}", iface_type, is_optimistic ? "rpc::optimistic_ptr" : "rpc::shared_ptr");
 
         switch (option)
         {
@@ -537,23 +558,31 @@ namespace synchronous_generator
         case PROXY_PREPARE_IN_INTERFACE_ID:
             if (is_optimistic)
             {
-                return fmt::format("rpc::interface_descriptor {0}_stub_id_;\n"
-                                   "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
-                                   "\t\t\t{{{{\n"
-                                   "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
-                                   "__rpc_sp->get_remote_rpc_version(), "
-                                   "{0}, {0}_stub_, {0}_stub_id_);\n"
-                                   "\t\t\t}}}}",
+                return fmt::format(
+                    "rpc::remote_object {0}_stub_id_;\n"
+                    "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
+                    "\t\t\t{{{{\n"
+                    "\t\t\t\tauto {0}_bind_result = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
+                    "__rpc_sp->get_remote_rpc_version(), "
+                    "{0});\n"
+                    "\t\t\t\t__rpc_ret = {0}_bind_result.error_code;\n"
+                    "\t\t\t\t{0}_stub_ = std::move({0}_bind_result.stub);\n"
+                    "\t\t\t\t{0}_stub_id_ = {0}_bind_result.descriptor;\n"
+                    "\t\t\t}}}}",
                     name);
             }
-            return fmt::format("RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
-                               "\t\t\trpc::interface_descriptor {0}_stub_id_;\n"
-                               "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
-                               "\t\t\t{{{{\n"
-                               "\t\t\t\t__rpc_ret = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
-                               "__rpc_sp->get_remote_rpc_version(), "
-                               "{0}, {0}_stub_, {0}_stub_id_);\n"
-                               "\t\t\t}}}}",
+            return fmt::format(
+                "RPC_ASSERT(rpc::are_in_same_zone(this, {0}.get()));\n"
+                "\t\t\trpc::remote_object {0}_stub_id_;\n"
+                "\t\t\tif(!rpc::error::is_error(__rpc_ret))\n"
+                "\t\t\t{{{{\n"
+                "\t\t\t\tauto {0}_bind_result = CO_AWAIT rpc::proxy_bind_in_param(__rpc_get_object_proxy(), "
+                "__rpc_sp->get_remote_rpc_version(), "
+                "{0});\n"
+                "\t\t\t\t__rpc_ret = {0}_bind_result.error_code;\n"
+                "\t\t\t\t{0}_stub_ = std::move({0}_bind_result.stub);\n"
+                "\t\t\t\t{0}_stub_id_ = {0}_bind_result.descriptor;\n"
+                "\t\t\t}}}}",
                 name);
         case PROXY_MARSHALL_IN:
         {
@@ -574,16 +603,20 @@ namespace synchronous_generator
         case STUB_PARAM_CAST:
             return name;
         case PROXY_VALUE_RETURN:
-            return fmt::format("auto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param(__rpc_sp, {0}_, "
-                               "{0}); std::ignore = {0}_ret;",
-                name);
+            return fmt::format("auto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, {0}_); "
+                               "__rpc_ret = {0}_ret.error_code; "
+                               "{0} = std::move({0}_ret.iface);",
+                name,
+                bind_template_args);
         case PROXY_OUT_DECLARATION:
-            return fmt::format("rpc::interface_descriptor {}_;", name);
+            return fmt::format("rpc::remote_object {}_;", name);
         case STUB_ADD_REF_OUT_PREDECLARE:
-            return fmt::format("rpc::interface_descriptor {0}_;", name);
+            return fmt::format("rpc::remote_object {0}_;", name);
         case STUB_ADD_REF_OUT:
-            return fmt::format("__rpc_ret = CO_AWAIT rpc::stub_bind_out_param(zone_, params.protocol_version, "
-                               "params.caller_zone_id, {0}, {0}_);",
+            return fmt::format(
+                "auto {0}_bind_result = CO_AWAIT rpc::stub_bind_out_param(zone_, params.protocol_version, "
+                "params.caller_zone_id, {0}); __rpc_ret = {0}_bind_result.error_code; {0}_ = "
+                "{0}_bind_result.descriptor;",
                 name);
         case STUB_MARSHALL_OUT:
             return fmt::format("{}_, ", name);
@@ -1006,12 +1039,13 @@ namespace synchronous_generator
             }
             else
             {
-                proxy("__rpc_ret = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, static_cast<uint64_t>({}), "
-                      "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}}, "
-                      "__rpc_out_buf);",
+                proxy("auto __rpc_send_result = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, "
+                      "static_cast<uint64_t>({}), {}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
                     tag,
                     interface_name,
                     function_count);
+                proxy("__rpc_ret = __rpc_send_result.error_code;");
+                proxy("__rpc_out_buf = std::move(__rpc_send_result.out_buf);");
             }
 
             proxy("if(__rpc_ret == rpc::error::INVALID_VERSION())");
@@ -1497,10 +1531,11 @@ namespace synchronous_generator
                         = json_schema::generate_function_output_parameter_schema_with_recursion(library, m_ob, *function);
                 }
 
-                proxy("functions.emplace_back(rpc::function_info{{.full_name = \"{0}.{1}\", .name = \"{1}\", .id = "
-                      "{{{2}}}, .tag = static_cast<uint64_t>({3}), "
-                      ".marshalls_interfaces = {4}, .description = R\"__({5})__\", .in_json_schema = R\"__({6})__\", "
-                      ".out_json_schema = R\"__({7})__\"}});",
+                proxy(
+                    "functions.emplace_back(rpc::function_info{{FLD(full_name)\"{0}.{1}\", FLD(name)\"{1}\", "
+                    "FLD(id){{{2}}}, FLD(tag)static_cast<uint64_t>({3}), "
+                    "FLD(marshalls_interfaces){4}, FLD(description)R\"__({5})__\", FLD(in_json_schema)R\"__({6})__\", "
+                    "FLD(out_json_schema)R\"__({7})__\"}});",
                     full_name,
                     function->get_name(),
                     function_count,
@@ -2144,16 +2179,14 @@ namespace synchronous_generator
             interface_declaration_generator::build_scoped_name(owner, ns);
         }
 
-        header("template<> CORO_TASK(int) "
-               "rpc::service::bind_in_proxy(uint64_t protocol_version, const rpc::shared_ptr<::{}{}>& "
-               "iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, rpc::interface_descriptor& "
-               "descriptor);",
+        header("template<> CORO_TASK(rpc::remote_object_bind_result) "
+               "rpc::service::bind_in_proxy(uint64_t protocol_version, rpc::shared_ptr<::{}{}> "
+               "iface, caller_zone caller_zone_id);",
             ns,
             interface_name);
-        header("template<> CORO_TASK(int) "
-               "rpc::service::bind_in_proxy(uint64_t protocol_version, const rpc::optimistic_ptr<::{}{}>& "
-               "iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, rpc::interface_descriptor& "
-               "descriptor);",
+        header("template<> CORO_TASK(rpc::remote_object_bind_result) "
+               "rpc::service::bind_in_proxy(uint64_t protocol_version, rpc::optimistic_ptr<::{}{}> "
+               "iface, caller_zone caller_zone_id);",
             ns,
             interface_name);
     }
@@ -2183,44 +2216,35 @@ namespace synchronous_generator
         proxy("}}");
         proxy("");
 
-        stub("template<> CORO_TASK(int) service::bind_in_proxy([[maybe_unused]] uint64_t protocol_version, "
-             "const "
-             "rpc::shared_ptr<::{}{}>& iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, "
-             "rpc::interface_descriptor& "
-             "descriptor)",
+        stub("template<> CORO_TASK(rpc::remote_object_bind_result) service::bind_in_proxy([[maybe_unused]] "
+             "uint64_t protocol_version, rpc::shared_ptr<::{}{}> iface, caller_zone caller_zone_id)",
             ns,
             interface_name);
         stub("{{");
         stub("if(!iface)");
         stub("{{");
-        stub("CO_RETURN rpc::error::INVALID_DATA();");
+        stub("CO_RETURN rpc::remote_object_bind_result{{rpc::error::INVALID_DATA(), nullptr, {{}}}};");
         stub("}}");
         stub("auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface);");
-        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, stub, descriptor, "
-             "false);");
+        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, false);");
         stub("}}");
 
-        stub("template<> CORO_TASK(int) service::bind_in_proxy([[maybe_unused]] uint64_t protocol_version, "
-             "const "
-             "rpc::optimistic_ptr<::{}{}>& iface, std::shared_ptr<rpc::object_stub>& stub, caller_zone caller_zone_id, "
-             "rpc::interface_descriptor& "
-             "descriptor)",
+        stub("template<> CORO_TASK(rpc::remote_object_bind_result) service::bind_in_proxy([[maybe_unused]] "
+             "uint64_t protocol_version, rpc::optimistic_ptr<::{}{}> iface, caller_zone caller_zone_id)",
             ns,
             interface_name);
         stub("{{");
         stub("if(!iface)");
         stub("{{");
-        stub("CO_RETURN rpc::error::INVALID_DATA();");
+        stub("CO_RETURN rpc::remote_object_bind_result{{rpc::error::INVALID_DATA(), nullptr, {{}}}};");
         stub("}}");
-        stub("rpc::shared_ptr<::{}{}> iface_shared;", ns, interface_name);
-        stub("auto __rpc_ret = CO_AWAIT rpc::make_shared(iface, iface_shared);");
+        stub("auto [__rpc_ret, iface_shared] = CO_AWAIT rpc::make_shared(iface);");
         stub("if(rpc::error::is_error(__rpc_ret))");
         stub("{{");
-        stub("CO_RETURN __rpc_ret;");
+        stub("CO_RETURN rpc::remote_object_bind_result{{__rpc_ret, nullptr, {{}}}};");
         stub("}}");
         stub("auto iface_cast = rpc::static_pointer_cast<rpc::casting_interface>(iface_shared);");
-        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, stub, descriptor, "
-             "true);");
+        stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, true);");
         stub("}}");
     }
 
@@ -2454,6 +2478,7 @@ namespace synchronous_generator
         proxy("#include <yas/std_types.hpp>");
         proxy("#include <yas/count_streams.hpp>");
         proxy("#include \"{}\"", header_filename);
+        proxy("// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)");
 
         proxy("");
 
@@ -2470,6 +2495,7 @@ namespace synchronous_generator
         stub("#include \"{}\"", header_filename);
         // stub("#include \"{}\"", yas_header_filename);
         stub("#include \"{}\"", stub_header_filename);
+        stub("// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)");
         stub("");
 
         std::string prefix;
@@ -2512,6 +2538,8 @@ namespace synchronous_generator
         write_epilog(from_host, lib, header, proxy, stub, namespaces);
         header("}}");
         proxy("}}");
+        proxy("// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)");
         stub("}}");
+        stub("// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)");
     }
 }

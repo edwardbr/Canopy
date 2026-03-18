@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 #pragma once
+// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <chrono>
 #include <functional>
@@ -37,8 +38,7 @@ namespace rpc::stream_transport
         static std::shared_ptr<transport> make_server(std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
-            std::function<CORO_TASK(int)(
-                const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
+            std::function<CORO_TASK(rpc::service_connect_result<Local>)(rpc::shared_ptr<Remote>, std::shared_ptr<rpc::service>)> factory)
         {
             auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
             return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler));
@@ -166,7 +166,9 @@ namespace rpc::stream_transport
 
         template<class SendPayload, class ReceivePayload>
         CORO_TASK(int)
-        call_peer(std::uint64_t protocol_version, SendPayload&& sendPayload, ReceivePayload& receivePayload)
+        call_peer(std::uint64_t protocol_version,
+            SendPayload sendPayload,
+            ReceivePayload& receivePayload) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
         {
             if (get_status() != rpc::transport_status::CONNECTED)
             {
@@ -299,7 +301,7 @@ namespace rpc::stream_transport
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [fn = std::forward<Handler>(handler)](std::shared_ptr<activity_tracker> tracker,
                     envelope_prefix& prefix,
-                    envelope_payload& payload) -> CORO_TASK(message_hook_result)
+                    envelope_payload& payload) -> CORO_TASK(message_hook_result) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
                 {
                     if (payload.payload_fingerprint != rpc::id<T>::get(prefix.version))
                         CO_RETURN message_hook_result::unhandled;
@@ -336,7 +338,7 @@ namespace rpc::stream_transport
             custom_message_handlers_.push_back(
                 [](std::shared_ptr<activity_tracker>,
                     envelope_prefix& prefix,
-                    envelope_payload& payload) -> CORO_TASK(message_hook_result)
+                    envelope_payload& payload) -> CORO_TASK(message_hook_result) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
                 {
                     if (payload.payload_fingerprint == rpc::id<T>::get(prefix.version))
                         CO_RETURN message_hook_result::rejected;
@@ -351,7 +353,7 @@ namespace rpc::stream_transport
         run_custom_connect(const rpc::remote_object& inbound_remote_object,
             rpc::interface_ordinal inbound_interface_id,
             rpc::interface_ordinal outbound_interface_id,
-            rpc::interface_descriptor& output_interface)
+            rpc::remote_object& output_interface) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
         {
             RPC_DEBUG("custom connect handler zone: {}", get_zone_id().get_subnet());
 
@@ -362,9 +364,10 @@ namespace rpc::stream_transport
 
             set_adjacent_zone_id(inbound_remote_object.as_zone());
 
-            int ret
-                = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
+            auto connect_result = CO_AWAIT connection_handler_(input_descr, get_service(), keep_alive_.get_nullable());
             connection_handler_ = nullptr;
+            output_interface = connect_result.output_descriptor;
+            int ret = connect_result.error_code;
             if (ret != rpc::error::OK())
             {
                 RPC_ERROR("failed custom connect to zone {}", ret);
@@ -392,15 +395,15 @@ namespace rpc::stream_transport
         CORO_TASK(int)
         inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
             connection_settings& input_descr,
-            rpc::interface_descriptor& output_descr) override;
+            rpc::remote_object& output_descr) override; // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
         CORO_TASK(int) inner_accept() override;
 
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
-        CORO_TASK(back_channel_result) outbound_try_cast(try_cast_params params) override;
-        CORO_TASK(back_channel_result) outbound_add_ref(add_ref_params params) override;
-        CORO_TASK(back_channel_result) outbound_release(release_params params) override;
+        CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
+        CORO_TASK(standard_result) outbound_release(release_params params) override;
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
     };
@@ -421,11 +424,11 @@ namespace rpc::stream_transport
     // connection_handler or make_new_zone_connection_handler.
     template<class Remote, class Local>
     std::function<CORO_TASK(void)(const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<streaming::stream>)>
-    make_connection_callback(std::function<CORO_TASK(int)(
-            const rpc::shared_ptr<Remote>&, rpc::shared_ptr<Local>&, const std::shared_ptr<rpc::service>&)> factory)
+    make_connection_callback(
+        std::function<CORO_TASK(rpc::service_connect_result<Local>)(rpc::shared_ptr<Remote>, std::shared_ptr<rpc::service>)> factory)
     {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [fn = std::move(factory)](const std::string& name,
+        return [fn = std::move(factory)](std::string name,
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
@@ -434,3 +437,4 @@ namespace rpc::stream_transport
         };
     }
 }
+// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

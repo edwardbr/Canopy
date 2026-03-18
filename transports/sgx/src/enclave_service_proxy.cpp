@@ -49,7 +49,7 @@ namespace rpc
     CORO_TASK(int)
     enclave_service_proxy::inner_connectinner_connect(const std::shared_ptr<rpc::object_stub>& stub,
         connection_settings& input_descr,
-        rpc::interface_descriptor& output_descr)
+        rpc::remote_object& output_descr)
     {
         sgx_launch_token_t token = {0};
         int updated = 0;
@@ -98,7 +98,7 @@ namespace rpc
         if (err_code)
             return err_code;
 
-        output_descr = {{output_object_id}, get_destination_zone_id()};
+        output_descr = get_destination_zone_id().with_object({output_object_id});
         return err_code;
     }
 

@@ -96,26 +96,25 @@ namespace rpc
         version_.store(std::clamp(version, min_version, max_version));
     }
 
-    [[nodiscard]] CORO_TASK(int) service_proxy::send_from_this_zone(uint64_t protocol_version,
+    [[nodiscard]] CORO_TASK(send_result) service_proxy::send_from_this_zone(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_)
+        rpc::byte_span in_data)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
         const auto max_version = rpc::HIGHEST_SUPPORTED_VERSION;
         if (protocol_version < min_version || protocol_version > max_version)
         {
-            CO_RETURN rpc::error::INVALID_VERSION();
+            CO_RETURN rpc::send_result{rpc::error::INVALID_VERSION(), {}, {}};
         }
 
         auto current_version = version_.load();
         if (protocol_version > current_version)
         {
-            CO_RETURN rpc::error::INVALID_VERSION();
+            CO_RETURN rpc::send_result{rpc::error::INVALID_VERSION(), {}, {}};
         }
         if (protocol_version < current_version)
         {
@@ -125,7 +124,7 @@ namespace rpc
         auto transport = transport_.get_nullable();
         if (!transport)
         {
-            CO_RETURN rpc::error::TRANSPORT_ERROR();
+            CO_RETURN rpc::send_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
         }
 
         // Call the outbound function on the service to allow derived classes to add extra functionality
@@ -146,9 +145,7 @@ namespace rpc
         params.interface_id = interface_id;
         params.method_id = method_id;
         params.in_data.assign(in_data.begin(), in_data.end());
-        auto result = CO_AWAIT service_->outbound_send(std::move(params), transport);
-        out_buf_ = std::move(result.out_buf);
-        CO_RETURN result.error_code;
+        CO_RETURN CO_AWAIT service_->outbound_send(std::move(params), transport);
     }
 
     [[nodiscard]] CORO_TASK(int) service_proxy::post_from_this_zone(uint64_t protocol_version,
@@ -157,7 +154,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::byte_span& in_data)
+        rpc::byte_span in_data)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
         const auto max_version = rpc::HIGHEST_SUPPORTED_VERSION;
@@ -502,14 +499,14 @@ namespace rpc
 #endif
     }
 
-    CORO_TASK(int)
+    CORO_TASK(object_proxy_lookup_result)
     service_proxy::get_or_create_object_proxy(object object_id,
         object_proxy_creation_rule rule,
         bool new_proxy_added,
         requesting_zone requesting_zone_id,
-        bool is_optimistic,
-        std::shared_ptr<rpc::object_proxy>& op)
+        bool is_optimistic)
     {
+        object_proxy_lookup_result result{error::OK(), nullptr};
         RPC_DEBUG("get_or_create_object_proxy service zone: {} destination_zone={}, caller_zone={}, object_id = {}",
             zone_id_.get_subnet(),
             destination_zone_id_.get_subnet(),
@@ -566,7 +563,8 @@ namespace rpc
                 std::lock_guard l(insert_control_);
                 proxies_.erase(object_id);
                 RPC_ASSERT(false);
-                CO_RETURN ret;
+                result.error_code = ret;
+                CO_RETURN result;
             }
         }
         if (!is_new && rule == object_proxy_creation_rule::RELEASE_IF_NOT_NEW)
@@ -582,13 +580,14 @@ namespace rpc
             if (ret != error::OK())
             {
                 RPC_ERROR("sp_release failed");
-                CO_RETURN ret;
+                result.error_code = ret;
+                CO_RETURN result;
             }
         }
 
-        op = tmp;
+        result.object_proxy = std::move(tmp);
 
         // self_ref goes out of scope here, allowing normal destruction if needed
-        CO_RETURN error::OK();
+        CO_RETURN result;
     }
 }

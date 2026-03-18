@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 #pragma once
+// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <cstdint>
 #include <mutex>
@@ -163,13 +164,13 @@ namespace marshalled_tests
         }
         CORO_TASK(error_code) receive_something_complicated_ref(xxx::something_complicated& val) override
         {
-            val = xxx::something_complicated{.int_val = 33, .string_val = "22"};
+            val = xxx::something_complicated{FLD(int_val) 33, FLD(string_val) "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_complicated_ptr(xxx::something_complicated*& val) override
         {
             std::ignore = val;
-            val = new xxx::something_complicated{.int_val = 33, .string_val = "22"};
+            val = new xxx::something_complicated{FLD(int_val) 33, FLD(string_val) "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_complicated_in_out_ref(xxx::something_complicated& val) override
@@ -212,13 +213,13 @@ namespace marshalled_tests
         }
         CORO_TASK(error_code) receive_something_more_complicated_ref(xxx::something_more_complicated& val) override
         {
-            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
+            val.map_val["22"] = xxx::something_complicated{FLD(int_val) 33, FLD(string_val) "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_more_complicated_ptr(xxx::something_more_complicated*& val) override
         {
             val = new xxx::something_more_complicated();
-            val->map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "22"};
+            val->map_val["22"] = xxx::something_complicated{FLD(int_val) 33, FLD(string_val) "22"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code)
@@ -228,7 +229,7 @@ namespace marshalled_tests
                 RPC_INFO("got {}", val.map_val.begin()->first);
             else
                 RPC_ASSERT(!"value is null");
-            val.map_val["22"] = xxx::something_complicated{.int_val = 33, .string_val = "23"};
+            val.map_val["22"] = xxx::something_complicated{FLD(int_val) 33, FLD(string_val) "23"};
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_multi_val(int val1, int val2) override
@@ -446,15 +447,17 @@ namespace marshalled_tests
 
             auto child_transport = std::make_shared<rpc::local::child_transport>("example_zone", this_service);
             child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
-                [](const rpc::shared_ptr<yyy::i_host>& host,
-                    rpc::shared_ptr<yyy::i_example>& new_example,
-                    const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(error_code)
+                [](const rpc::shared_ptr<yyy::i_host>& host, const std::shared_ptr<rpc::child_service>& child_service_ptr)
+                    -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
                 {
-                    new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host));
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(),
+                        rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host))};
                 });
 
-            auto err_code = CO_AWAIT this_service->connect_to_zone("example_zone", child_transport, host_ptr, target);
+            auto connect_result = CO_AWAIT this_service->connect_to_zone<yyy::i_host, yyy::i_example>(
+                "example_zone", child_transport, host_ptr);
+            auto err_code = connect_result.error_code;
+            target = std::move(connect_result.output_interface);
             if (err_code != rpc::error::OK())
                 CO_RETURN err_code;
             CO_RETURN err_code;
@@ -995,3 +998,4 @@ namespace marshalled_tests
         }
     };
 }
+// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

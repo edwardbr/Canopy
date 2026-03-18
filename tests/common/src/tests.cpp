@@ -2,6 +2,7 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
+// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include "gtest/gtest.h"
 
@@ -225,3 +226,4 @@ namespace marshalled_tests
         CO_RETURN true;
     }
 }
+// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

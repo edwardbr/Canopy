@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 #pragma once
+// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <functional>
 
@@ -31,7 +32,7 @@ namespace rpc::local
         CORO_TASK(int)
         inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
             connection_settings& input_descr,
-            rpc::interface_descriptor& output_descr) override
+            rpc::remote_object& output_descr) override // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
         {
             std::ignore = stub;
             std::ignore = input_descr;
@@ -44,16 +45,16 @@ namespace rpc::local
         // Outbound i_marshaller interface - sends from child to parent
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
-        CORO_TASK(back_channel_result) outbound_try_cast(try_cast_params params) override;
-        CORO_TASK(back_channel_result) outbound_add_ref(add_ref_params params) override;
-        CORO_TASK(back_channel_result) outbound_release(release_params params) override;
+        CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
+        CORO_TASK(standard_result) outbound_release(release_params params) override;
 
         // New methods from i_marshaller interface
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
 
         // Forwards the request up to the parent zone's child_transport inbound handler.
-        CORO_TASK(get_new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params) override;
+        CORO_TASK(new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params) override;
     };
 
     // Transport from parent zone to child zone
@@ -63,10 +64,24 @@ namespace rpc::local
     {
         stdex::member_ptr<parent_transport> child_;
 
-        typedef std::function<CORO_TASK(int)(rpc::connection_settings input_descr,
-            rpc::interface_descriptor& output_descr,
-            const std::shared_ptr<child_transport>& parent,
-            std::shared_ptr<parent_transport>& child)>
+        struct child_entry_point_result
+        {
+            int error_code;
+            rpc::remote_object output_descriptor;
+            std::shared_ptr<parent_transport> child;
+
+            child_entry_point_result() = default;
+            child_entry_point_result(
+                int error_code, rpc::remote_object output_descriptor, std::shared_ptr<parent_transport> child)
+                : error_code(error_code)
+                , output_descriptor(output_descriptor)
+                , child(std::move(child))
+            {
+            }
+        };
+
+        typedef std::function<CORO_TASK(child_entry_point_result)(
+            rpc::connection_settings input_descr, const std::shared_ptr<child_transport>& parent)>
             child_entry_point_factory_fn;
 
         child_entry_point_factory_fn child_entry_point_factory_fn_;
@@ -86,7 +101,7 @@ namespace rpc::local
         CORO_TASK(int)
         inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
             connection_settings& input_descr,
-            rpc::interface_descriptor& output_descr) override
+            rpc::remote_object& output_descr) override // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
         {
             auto svc = get_service();
             // get a new adjacent_zone_id
@@ -115,12 +130,12 @@ namespace rpc::local
             }
 
             assert(child_entry_point_factory_fn_);
-            std::shared_ptr<parent_transport> child;
-            auto ret = CO_AWAIT child_entry_point_factory_fn_(
-                input_descr, output_descr, std::static_pointer_cast<child_transport>(shared_from_this()), child);
+            auto child_result = CO_AWAIT child_entry_point_factory_fn_(
+                input_descr, std::static_pointer_cast<child_transport>(shared_from_this()));
             child_entry_point_factory_fn_ = nullptr;
-            if (ret == rpc::error::OK())
-                child_ = child;
+            output_descr = child_result.output_descriptor;
+            if (child_result.error_code == rpc::error::OK())
+                child_ = child_result.child;
 
             // as each transport links a stub to a proxy there will always be a positive count in both ways
 
@@ -131,55 +146,55 @@ namespace rpc::local
             auto expected_child_count = expected_parent_count + (output_descr.get_object_id() != 0 ? 1 : 0);
 
             RPC_ASSERT(get_destination_count() >= expected_parent_count);
-            RPC_ASSERT(child->get_destination_count() >= expected_child_count);
+            RPC_ASSERT(!child_result.child || child_result.child->get_destination_count() >= expected_child_count);
 
-            CO_RETURN ret;
+            CO_RETURN child_result.error_code;
         }
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         // Outbound i_marshaller interface - sends from parent to child
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
-        CORO_TASK(back_channel_result) outbound_try_cast(try_cast_params params) override;
-        CORO_TASK(back_channel_result) outbound_add_ref(add_ref_params params) override;
-        CORO_TASK(back_channel_result) outbound_release(release_params params) override;
+        CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
+        CORO_TASK(standard_result) outbound_release(release_params params) override;
 
         // New methods from i_marshaller interface
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
 
         template<class in_param_type, class out_param_type>
-        void set_child_entry_point(std::function<CORO_TASK(int)(const rpc::shared_ptr<in_param_type>&,
-                rpc::shared_ptr<out_param_type>&,
-                const std::shared_ptr<rpc::child_service>&)>&& child_entry_point_fn)
+        void set_child_entry_point(std::function<CORO_TASK(rpc::service_connect_result<out_param_type>)(
+                rpc::shared_ptr<in_param_type>, std::shared_ptr<rpc::child_service>)>&& child_entry_point_fn)
         {
 
             child_entry_point_factory_fn_
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 = [child_entry_point_fn = std::move(child_entry_point_fn)](rpc::connection_settings input_descr,
-                      rpc::interface_descriptor& output_descr,
-                      const std::shared_ptr<child_transport>& parent,
-                      std::shared_ptr<parent_transport>& child) mutable -> CORO_TASK(int)
+                      std::shared_ptr<child_transport> parent) mutable -> CORO_TASK(child_entry_point_result)
             {
-                child = std::make_shared<parent_transport>("child", parent);
+                child_entry_point_result result{rpc::error::OK(), {}, std::make_shared<parent_transport>("child", parent)};
 
-                auto err_code = CO_AWAIT rpc::child_service::create_child_zone<in_param_type, out_param_type>("child",
-                    child,
-                    input_descr,
-                    output_descr,
-                    std::move(child_entry_point_fn)
+                auto create_result
+                    = CO_AWAIT rpc::child_service::create_child_zone<in_param_type, out_param_type>("child",
+                        result.child,
+                        input_descr,
+                        std::move(child_entry_point_fn)
 #ifdef CANOPY_BUILD_COROUTINE
-                        ,
-                    parent->get_service()->get_scheduler()
+                            ,
+                        parent->get_service()->get_scheduler()
 #endif
-                );
-                if (err_code != rpc::error::OK())
+                    );
+                result.error_code = create_result.error_code;
+                result.output_descriptor = create_result.descriptor;
+                if (result.error_code != rpc::error::OK())
                 {
-                    child = nullptr;
+                    result.child = nullptr;
                 }
-                CO_RETURN err_code;
+                CO_RETURN result;
             };
         }
     };
 
 }
+// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

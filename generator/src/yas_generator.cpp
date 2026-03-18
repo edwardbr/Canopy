@@ -308,13 +308,13 @@ namespace yas_generator
             switch (opt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("const rpc::interface_descriptor& {}", name);
+                return fmt::format("const rpc::remote_object& {}", name);
             case STUB_PARAM_IN:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_PARAM_OUT:
-                return fmt::format("const rpc::interface_descriptor& {}", name);
+                return fmt::format("const rpc::remote_object& {}", name);
             case STUB_PARAM_OUT:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_MARSHALL_IN:
             case PROXY_MARSHALL_OUT:
             case STUB_MARSHALL_IN:
@@ -347,13 +347,13 @@ namespace yas_generator
             switch (opt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("const rpc::interface_descriptor& {}", name);
+                return fmt::format("const rpc::remote_object& {}", name);
             case STUB_PARAM_IN:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_PARAM_OUT:
-                return fmt::format("const rpc::interface_descriptor& {}", name);
+                return fmt::format("const rpc::remote_object& {}", name);
             case STUB_PARAM_OUT:
-                return fmt::format("rpc::interface_descriptor& {}", name);
+                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_MARSHALL_IN:
             case PROXY_MARSHALL_OUT:
             case STUB_MARSHALL_IN:

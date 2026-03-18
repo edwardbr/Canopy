@@ -105,14 +105,14 @@ namespace rpc
     }
 #endif
 
-    CORO_TASK(get_new_zone_id_result)
+    CORO_TASK(new_zone_id_result)
     root_service::get_new_zone_id(get_new_zone_id_params params)
     {
         std::ignore = params;
         zone_address addr;
         if (auto ret = zone_allocator_.allocate_zone(addr); ret != rpc::error::OK())
-            CO_RETURN get_new_zone_id_result{ret, {}, {}};
-        CO_RETURN get_new_zone_id_result{rpc::error::OK(), zone{addr}, {}};
+            CO_RETURN new_zone_id_result{ret, {}, {}};
+        CO_RETURN new_zone_id_result{rpc::error::OK(), zone{addr}, {}};
     }
 
     service::~service()
@@ -276,7 +276,7 @@ namespace rpc
     CORO_TASK(send_result)
     service::send(send_params params)
     {
-        auto object_id = params.remote_object_id.get_object();
+        auto object_id = params.remote_object_id.get_object_id();
 
         // overriden versions of this functions my have more to do with these parameters
         std::ignore = params.tag;
@@ -317,7 +317,7 @@ namespace rpc
     CORO_TASK(void)
     service::post(post_params params)
     {
-        auto object_id = params.remote_object_id.get_object();
+        auto object_id = params.remote_object_id.get_object_id();
 
         // overriden versions of this functions my have more to do with these parameters
         std::ignore = params.tag;
@@ -363,15 +363,15 @@ namespace rpc
         // For local post, we just call the stub without waiting for a response
         // Note: back-channel is not applicable for post operations (fire-and-forget)
         // Convert post_params to send_params for stub dispatch (identical fields)
-        send_params send{params.protocol_version,
-            params.encoding_type,
-            params.tag,
-            params.caller_zone_id,
-            params.remote_object_id,
-            params.interface_id,
-            params.method_id,
-            std::move(params.in_data),
-            std::move(params.in_back_channel)};
+        send_params send{FLD(protocol_version) params.protocol_version,
+            FLD(encoding_type) params.encoding_type,
+            FLD(tag) params.tag,
+            FLD(caller_zone_id) params.caller_zone_id,
+            FLD(remote_object_id) params.remote_object_id,
+            FLD(interface_id) params.interface_id,
+            FLD(method_id) params.method_id,
+            FLD(in_data) std::move(params.in_data),
+            FLD(in_back_channel) std::move(params.in_back_channel)};
         CO_AWAIT stub->call(std::move(send));
 
         // Log that post was delivered to local stub
@@ -383,8 +383,8 @@ namespace rpc
     }
 
     CORO_TASK(void)
-    service::clean_up_on_failed_connection(const std::shared_ptr<rpc::service_proxy>& destination_zone,
-        rpc::shared_ptr<rpc::casting_interface> input_interface)
+    service::clean_up_on_failed_connection(
+        std::shared_ptr<rpc::service_proxy> destination_zone, rpc::shared_ptr<rpc::casting_interface> input_interface)
     {
         if (destination_zone && input_interface)
         {
@@ -404,48 +404,44 @@ namespace rpc
     // this is a key function that returns an interface descriptor
     // for wrapping an implementation to a local object inside a stub where needed
     // or if the interface is a proxy to add ref it
-    CORO_TASK(int)
-    service::get_descriptor_from_interface_stub(caller_zone caller_zone_id,
-        const rpc::shared_ptr<rpc::casting_interface>& iface,
-        std::shared_ptr<rpc::object_stub>& stub,
-        interface_descriptor& descriptor,
-        bool optimistic)
+    CORO_TASK(remote_object_bind_result)
+    service::get_descriptor_from_interface_stub(
+        caller_zone caller_zone_id, rpc::shared_ptr<rpc::casting_interface> iface, bool optimistic)
     {
+        remote_object_bind_result result{error::OK(), nullptr, {}};
         if (!iface)
         {
-            CO_RETURN error::INVALID_DATA();
+            result.error_code = error::INVALID_DATA();
+            CO_RETURN result;
         }
         if (!iface->__rpc_is_local())
         {
             // we should not be getting the interface from remote objects
-            CO_RETURN error::OBJECT_NOT_FOUND();
+            result.error_code = error::OBJECT_NOT_FOUND();
+            CO_RETURN result;
         }
         {
             std::lock_guard g(stub_control_);
-            stub = iface->__rpc_get_stub();
-            if (!stub)
+            result.stub = iface->__rpc_get_stub();
+            if (!result.stub)
             {
-                // if (optimistic)
-                // {
-                //     CO_RETURN error::OBJECT_GONE();
-                // }
-                // else
                 {
                     auto id = generate_new_object_id();
-                    stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
-                    stubs_[id] = stub;
-                    stub->keep_self_alive();
-                    iface->__rpc_set_stub(stub);
+                    result.stub = std::make_shared<object_stub>(id, shared_from_this(), iface);
+                    stubs_[id] = result.stub;
+                    result.stub->keep_self_alive();
+                    iface->__rpc_set_stub(result.stub);
                 }
             }
         }
-        auto ret = CO_AWAIT stub->add_ref(optimistic, false, caller_zone_id);
+        auto ret = CO_AWAIT result.stub->add_ref(optimistic, false, caller_zone_id);
         if (ret != rpc::error::OK())
         {
-            CO_RETURN ret;
+            result.error_code = ret;
+            CO_RETURN result;
         }
-        descriptor = {stub->get_id(), zone_id_};
-        CO_RETURN error::OK();
+        result.descriptor = zone_id_.with_object(result.stub->get_id());
+        CO_RETURN result;
     }
 
     std::weak_ptr<object_stub> service::get_object(object object_id) const
@@ -460,13 +456,13 @@ namespace rpc
 
         return item->second;
     }
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     service::try_cast(try_cast_params params)
     {
         auto protocol_version = params.protocol_version;
         auto remote_object_id = params.remote_object_id;
         auto interface_id = params.interface_id;
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
 
         std::ignore = params.caller_zone_id;
         std::ignore = params.in_back_channel;
@@ -475,26 +471,26 @@ namespace rpc
         {
             RPC_ERROR("Routing error: try_cast() reached wrong zone - should have been routed via passthrough");
             RPC_ASSERT(false);
-            CO_RETURN back_channel_result{error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
         current_service_tracker tracker(this);
 
         if (protocol_version < rpc::LOWEST_SUPPORTED_VERSION || protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
         {
             RPC_ERROR("Unsupported service version {} in try_cast", protocol_version);
-            CO_RETURN back_channel_result{rpc::error::INVALID_VERSION(), {}};
+            CO_RETURN standard_result{rpc::error::INVALID_VERSION(), {}};
         }
         std::weak_ptr<object_stub> weak_stub = get_object(object_id);
         auto stub = weak_stub.lock();
         if (!stub)
         {
             RPC_ERROR("Invalid data - stub is null in try_cast");
-            CO_RETURN back_channel_result{error::INVALID_DATA(), {}};
+            CO_RETURN standard_result{error::INVALID_DATA(), {}};
         }
-        CO_RETURN back_channel_result{stub->try_cast(interface_id), {}};
+        CO_RETURN standard_result{stub->try_cast(interface_id), {}};
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     service::add_ref(add_ref_params params)
     {
         auto protocol_version = params.protocol_version;
@@ -502,7 +498,7 @@ namespace rpc
         auto caller_zone_id = params.caller_zone_id;
         auto requesting_zone_id = params.requesting_zone_id;
         auto build_out_param_channel = params.build_out_param_channel;
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
 
         bool optimistic = !!(build_out_param_channel & add_ref_options::optimistic);
         bool build_caller_channel = !!(build_out_param_channel & add_ref_options::build_caller_route);
@@ -544,7 +540,7 @@ namespace rpc
                     if (destination_transport == nullptr)
                     {
                         RPC_ERROR("Destination transport not found for zone {}", remote_object_id.get_subnet());
-                        CO_RETURN back_channel_result{rpc::error::ZONE_NOT_FOUND(), {}};
+                        CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
                     }
                     inner_add_transport(remote_object_id.as_zone(), destination_transport);
                 }
@@ -570,12 +566,12 @@ namespace rpc
             if (protocol_version < rpc::LOWEST_SUPPORTED_VERSION || protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
             {
                 RPC_ERROR("Unsupported service version {} in add_ref", protocol_version);
-                CO_RETURN back_channel_result{rpc::error::INVALID_VERSION(), {}};
+                CO_RETURN standard_result{rpc::error::INVALID_VERSION(), {}};
             }
 
             if (object_id == dummy_object_id)
             {
-                CO_RETURN back_channel_result{rpc::error::OK(), {}};
+                CO_RETURN standard_result{rpc::error::OK(), {}};
             }
 
             std::weak_ptr<object_stub> weak_stub = get_object(object_id);
@@ -584,7 +580,7 @@ namespace rpc
             {
                 RPC_ERROR("Stub found in registry but already expired in add_ref: object_id={}", object_id.get_val());
                 RPC_ASSERT(false);
-                CO_RETURN back_channel_result{rpc::error::OBJECT_NOT_FOUND(), {}};
+                CO_RETURN standard_result{rpc::error::OBJECT_NOT_FOUND(), {}};
             }
 
             {
@@ -601,7 +597,7 @@ namespace rpc
                 !!(build_out_param_channel & add_ref_options::optimistic), false, caller_zone_id);
             if (ret != rpc::error::OK())
             {
-                CO_RETURN back_channel_result{ret, {}};
+                CO_RETURN standard_result{ret, {}};
             }
         }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -611,11 +607,11 @@ namespace rpc
                 zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel);
         }
 #endif
-        CO_RETURN back_channel_result{rpc::error::OK(), {}};
+        CO_RETURN standard_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(uint64_t)
-    service::release_local_stub(const std::shared_ptr<rpc::object_stub>& stub, bool is_optimistic, caller_zone caller_zone_id)
+    service::release_local_stub(std::shared_ptr<rpc::object_stub> stub, bool is_optimistic, caller_zone caller_zone_id)
     {
         uint64_t count = stub->release(is_optimistic, caller_zone_id);
         if (!count && !is_optimistic)
@@ -661,14 +657,14 @@ namespace rpc
         std::ignore = other_zone;
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     service::release(release_params params)
     {
         auto protocol_version = params.protocol_version;
         auto remote_object_id = params.remote_object_id;
         auto caller_zone_id = params.caller_zone_id;
         auto options = params.options;
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
 
         std::ignore = params.in_back_channel;
 
@@ -677,7 +673,7 @@ namespace rpc
         if (protocol_version < rpc::LOWEST_SUPPORTED_VERSION || protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
         {
             RPC_ERROR("Unsupported service version {} in release", protocol_version);
-            CO_RETURN back_channel_result{rpc::error::INVALID_VERSION(), {}};
+            CO_RETURN standard_result{rpc::error::INVALID_VERSION(), {}};
         }
 
         {
@@ -689,7 +685,7 @@ namespace rpc
                 if (item == stubs_.end())
                 {
                     // Stub has been deleted - can happen with optimistic_ptr when shared_ptr is released
-                    CO_RETURN back_channel_result{rpc::error::OBJECT_NOT_FOUND(), {}};
+                    CO_RETURN standard_result{rpc::error::OBJECT_NOT_FOUND(), {}};
                 }
 
                 stub = item->second.lock();
@@ -699,7 +695,7 @@ namespace rpc
             {
                 RPC_ERROR("Stub found in registry but already expired in release: object_id={}", object_id.get_val());
                 RPC_ASSERT(false);
-                CO_RETURN back_channel_result{rpc::error::OBJECT_NOT_FOUND(), {}};
+                CO_RETURN standard_result{rpc::error::OBJECT_NOT_FOUND(), {}};
             }
 
             CO_AWAIT release_local_stub(stub, !!(release_options::optimistic & options), caller_zone_id);
@@ -711,7 +707,7 @@ namespace rpc
             telemetry_service->on_service_release(zone_id_, remote_object_id, caller_zone_id, options);
         }
 #endif
-        CO_RETURN back_channel_result{rpc::error::OK(), {}};
+        CO_RETURN standard_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(void)
@@ -720,7 +716,7 @@ namespace rpc
         auto protocol_version = params.protocol_version;
         auto remote_object_id = params.remote_object_id;
         auto caller_zone_id = params.caller_zone_id;
-        auto object_id = remote_object_id.get_object();
+        auto object_id = remote_object_id.get_object_id();
 
         std::ignore = params.in_back_channel;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -1043,12 +1039,12 @@ namespace rpc
         }
     }
 
-    CORO_TASK(get_new_zone_id_result)
+    CORO_TASK(new_zone_id_result)
     child_service::get_new_zone_id(get_new_zone_id_params params)
     {
         auto parent = get_parent_transport();
         if (!parent)
-            CO_RETURN get_new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
+            CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         CO_RETURN CO_AWAIT parent->get_new_zone_id(std::move(params));
     }
 
@@ -1057,35 +1053,35 @@ namespace rpc
     ///////////////////////////////////////////////////////////////////////////////
 
     CORO_TASK(send_result)
-    service::outbound_send(send_params params, const std::shared_ptr<transport>& transport)
+    service::outbound_send(send_params params, std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->send(std::move(params));
     }
 
     CORO_TASK(void)
-    service::outbound_post(post_params params, const std::shared_ptr<transport>& transport)
+    service::outbound_post(post_params params, std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_AWAIT transport->post(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
-    service::outbound_try_cast(try_cast_params params, const std::shared_ptr<transport>& transport)
+    CORO_TASK(standard_result)
+    service::outbound_try_cast(try_cast_params params, std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->try_cast(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
-    service::outbound_add_ref(add_ref_params params, const std::shared_ptr<transport>& transport)
+    CORO_TASK(standard_result)
+    service::outbound_add_ref(add_ref_params params, std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->add_ref(std::move(params));
     }
 
-    CORO_TASK(back_channel_result)
-    service::outbound_release(release_params params, const std::shared_ptr<transport>& transport)
+    CORO_TASK(standard_result)
+    service::outbound_release(release_params params, std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->release(std::move(params));
@@ -1094,9 +1090,9 @@ namespace rpc
     // Efficient targeted cleanup for a specific remote zone
     // This version is called when the transport knows exactly which zone connection failed
     CORO_TASK(void)
-    service::notify_transport_down([[maybe_unused]] const std::shared_ptr<transport>& transport, destination_zone remote_zone)
+    service::notify_transport_down([[maybe_unused]] std::shared_ptr<transport> transport, destination_zone remote_zone)
     {
-        std::vector<interface_descriptor> objects_to_notify;
+        std::vector<remote_object> objects_to_notify;
 
         {
             std::lock_guard l(stub_control_);
@@ -1132,7 +1128,7 @@ namespace rpc
                         obj_id.get_val(),
                         remote_zone.get_subnet());
 
-                    objects_to_notify.push_back({obj_id, remote_zone});
+                    objects_to_notify.push_back(remote_zone.with_object(obj_id));
                     stub->dont_keep_alive();
                 }
             }
@@ -1154,7 +1150,7 @@ namespace rpc
 
         // Notify service events about deleted objects (outside the lock)
         for (const auto& obj : objects_to_notify)
-            CO_AWAIT notify_object_gone_event(obj.get_object_id(), obj.destination_zone_id.as_zone());
+            CO_AWAIT notify_object_gone_event(obj.get_object_id(), obj.as_zone());
     }
 
     int service::get_or_create_link_between_source_and_destination(caller_zone caller_zone_id,

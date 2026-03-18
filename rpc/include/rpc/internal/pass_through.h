@@ -143,15 +143,14 @@ namespace rpc
         // i_marshaller implementations
         CORO_TASK(send_result) send(send_params params) override;
         CORO_TASK(void) post(post_params params) override;
-        CORO_TASK(back_channel_result) try_cast(try_cast_params params) override;
-        CORO_TASK(back_channel_result) add_ref(add_ref_params params) override;
-        CORO_TASK(back_channel_result) release(release_params params) override;
+        CORO_TASK(standard_result) try_cast(try_cast_params params) override;
+        CORO_TASK(standard_result) add_ref(add_ref_params params) override;
+        CORO_TASK(standard_result) release(release_params params) override;
         CORO_TASK(void) object_released(object_released_params params) override;
         CORO_TASK(void) transport_down(transport_down_params params) override;
-        CORO_TASK(get_new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override;
+        CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override;
 
-        CORO_TASK(void)
-        local_transport_down(const std::shared_ptr<transport>& local_transport);
+        CORO_TASK(void) local_transport_down(std::shared_ptr<transport> local_transport);
 
         // Status monitoring
         uint64_t get_shared_count() const { return shared_count_.load(std::memory_order_acquire); }

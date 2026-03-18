@@ -24,7 +24,7 @@ namespace rpc::mock_test
             .protocol_version = protocol_version,
             .destination_zone_id = destination_zone_id,
             .caller_zone_id = caller_zone_id,
-            .object_id = destination_zone_id.get_object(),
+            .object_id = destination_zone_id.get_object_id(),
             .timestamp = std::chrono::steady_clock::now()});
     }
 
@@ -65,9 +65,8 @@ namespace rpc::mock_test
     }
 
     CORO_TASK(int)
-    mock_transport::inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-        connection_settings& input_descr,
-        rpc::interface_descriptor& output_descr)
+    mock_transport::inner_connect(
+        const std::shared_ptr<rpc::object_stub>& stub, connection_settings& input_descr, rpc::remote_object& output_descr)
     {
         std::ignore = stub;
         std::ignore = input_descr;
@@ -113,7 +112,7 @@ namespace rpc::mock_test
         CO_RETURN;
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     mock_transport::outbound_try_cast(try_cast_params params)
     {
         try_cast_count_.fetch_add(1, std::memory_order_acq_rel);
@@ -122,13 +121,13 @@ namespace rpc::mock_test
 
         if (force_failure_.load(std::memory_order_acquire))
         {
-            CO_RETURN back_channel_result{forced_error_code_.load(std::memory_order_acquire), {}};
+            CO_RETURN standard_result{forced_error_code_.load(std::memory_order_acquire), {}};
         }
 
-        CO_RETURN back_channel_result{rpc::error::OK(), {}};
+        CO_RETURN standard_result{rpc::error::OK(), {}};
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     mock_transport::outbound_add_ref(add_ref_params params)
     {
         add_ref_count_.fetch_add(1, std::memory_order_acq_rel);
@@ -137,13 +136,13 @@ namespace rpc::mock_test
 
         if (force_failure_.load(std::memory_order_acquire))
         {
-            CO_RETURN back_channel_result{forced_error_code_.load(std::memory_order_acquire), {}};
+            CO_RETURN standard_result{forced_error_code_.load(std::memory_order_acquire), {}};
         }
 
-        CO_RETURN back_channel_result{rpc::error::OK(), {}};
+        CO_RETURN standard_result{rpc::error::OK(), {}};
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     mock_transport::outbound_release(release_params params)
     {
         release_count_.fetch_add(1, std::memory_order_acq_rel);
@@ -152,10 +151,10 @@ namespace rpc::mock_test
 
         if (force_failure_.load(std::memory_order_acquire))
         {
-            CO_RETURN back_channel_result{forced_error_code_.load(std::memory_order_acquire), {}};
+            CO_RETURN standard_result{forced_error_code_.load(std::memory_order_acquire), {}};
         }
 
-        CO_RETURN back_channel_result{rpc::error::OK(), {}};
+        CO_RETURN standard_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(void)

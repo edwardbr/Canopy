@@ -2,6 +2,7 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
+// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #include <transports/streaming/transport.h>
 
@@ -38,9 +39,8 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(int)
-    transport::inner_connect(const std::shared_ptr<rpc::object_stub>& stub,
-        connection_settings& input_descr,
-        rpc::interface_descriptor& output_descr)
+    transport::inner_connect(
+        const std::shared_ptr<rpc::object_stub>& stub, connection_settings& input_descr, rpc::remote_object& output_descr)
     {
         RPC_DEBUG("stream_transport::transport::inner_connect zone={}", get_zone_id().get_subnet());
         stub_ = stub;
@@ -75,7 +75,7 @@ namespace rpc::stream_transport
                 CO_RETURN init_receive.err_code;
             }
 
-            output_descr = rpc::interface_descriptor(init_receive.outbound_remote_object);
+            output_descr = init_receive.outbound_remote_object;
         }
 
         CO_RETURN rpc::error::OK();
@@ -140,7 +140,7 @@ namespace rpc::stream_transport
         CO_RETURN;
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     transport::outbound_try_cast(try_cast_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_try_cast zone={}", get_zone_id().get_subnet());
@@ -155,13 +155,13 @@ namespace rpc::stream_transport
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("failed try_cast call_peer");
-            CO_RETURN back_channel_result{ret, {}};
+            CO_RETURN standard_result{ret, {}};
         }
 
-        CO_RETURN back_channel_result{response_data.err_code, std::move(response_data.back_channel)};
+        CO_RETURN standard_result{response_data.err_code, std::move(response_data.back_channel)};
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     transport::outbound_add_ref(add_ref_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_add_ref zone={}", get_zone_id().get_subnet());
@@ -177,7 +177,7 @@ namespace rpc::stream_transport
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("failed add_ref addref_send");
-            CO_RETURN back_channel_result{ret, {}};
+            CO_RETURN standard_result{ret, {}};
         }
 
         if (response_data.err_code != rpc::error::OK())
@@ -190,14 +190,14 @@ namespace rpc::stream_transport
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
 #endif
-            CO_RETURN back_channel_result{response_data.err_code, std::move(response_data.back_channel)};
+            CO_RETURN standard_result{response_data.err_code, std::move(response_data.back_channel)};
         }
 
         RPC_DEBUG("stream_transport::transport::outbound_add_ref complete zone={}", get_zone_id().get_subnet());
-        CO_RETURN back_channel_result{rpc::error::OK(), std::move(response_data.back_channel)};
+        CO_RETURN standard_result{rpc::error::OK(), std::move(response_data.back_channel)};
     }
 
-    CORO_TASK(back_channel_result)
+    CORO_TASK(standard_result)
     transport::outbound_release(release_params params)
     {
         RPC_DEBUG("stream_transport::transport::outbound_release zone={}", get_zone_id().get_subnet());
@@ -206,7 +206,7 @@ namespace rpc::stream_transport
         {
             RPC_ERROR("failed stream_transport::transport::outbound_release - not connected, status = {}",
                 static_cast<int>(get_status()));
-            CO_RETURN back_channel_result{rpc::error::TRANSPORT_ERROR(), {}};
+            CO_RETURN standard_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
 
         send_payload_release_send(params.protocol_version,
@@ -225,7 +225,7 @@ namespace rpc::stream_transport
             set_status(rpc::transport_status::DISCONNECTING);
         }
 
-        CO_RETURN back_channel_result{rpc::error::OK(), {}};
+        CO_RETURN standard_result{rpc::error::OK(), {}};
     }
 
     CORO_TASK(void)
@@ -952,16 +952,16 @@ namespace rpc::stream_transport
         input_descr.inbound_interface_id = request.inbound_interface_id;
         input_descr.outbound_interface_id = request.outbound_interface_id;
         input_descr.remote_object_id = request.inbound_remote_object;
-        rpc::interface_descriptor output_interface;
-
         set_adjacent_zone_id(request.adjacent_zone_id);
 
         // Immediately inform the peer of our zone_id before invoking connection_handler_
         send_payload_init_client_initial_channel_response(
             prefix.version, message_direction::one_way, init_client_initial_channel_response{.zone_id = get_zone_id()}, 0);
 
-        int ret = CO_AWAIT connection_handler_(input_descr, output_interface, get_service(), keep_alive_.get_nullable());
+        auto connect_result = CO_AWAIT connection_handler_(input_descr, get_service(), keep_alive_.get_nullable());
         connection_handler_ = nullptr;
+        auto& output_interface = connect_result.output_descriptor;
+        int ret = connect_result.error_code;
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("failed to connect to zone {}", ret);
@@ -971,7 +971,7 @@ namespace rpc::stream_transport
         send_payload_init_client_channel_response(prefix.version,
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
-                .outbound_remote_object = output_interface.destination_zone_id,
+                .outbound_remote_object = output_interface,
                 .caller_zone_id = input_descr.remote_object_id.as_zone()},
             prefix.sequence_number);
 
@@ -1070,3 +1070,4 @@ namespace rpc::stream_transport
         send_payload(protocol_version, direction, payload, sequence_number);
     }
 }
+// NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)

@@ -160,7 +160,11 @@ if(NOT DEPENDENCIES_LOADED)
   # ####################################################################################################################
   # C++ Standard Configuration
   # ####################################################################################################################
-  set(CMAKE_CXX_STANDARD 20)
+  if(CANOPY_BUILD_COROUTINE)
+    set(CMAKE_CXX_STANDARD 20)
+  else()
+    set(CMAKE_CXX_STANDARD 17)
+  endif()
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)

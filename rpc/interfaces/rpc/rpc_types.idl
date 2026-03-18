@@ -593,7 +593,7 @@ namespace rpc
         [[nodiscard]] bool is_set() const noexcept { return addr_.is_set(); }
 
         // object accessors
-        [[nodiscard]] inline object get_object() const;
+        [[nodiscard]] inline object get_object_id() const;
         [[nodiscard]] inline remote_object with_object(object obj) const;
 
         // zone conversion methods
@@ -704,7 +704,7 @@ namespace rpc
     }
 
     // remote_object implementations
-    [[nodiscard]] inline object remote_object::get_object() const
+    [[nodiscard]] inline object remote_object::get_object_id() const
     {
         return object(addr_.get_object_id());
     }
@@ -762,41 +762,6 @@ namespace rpc
 #endif
     )__^)
 
-    struct interface_descriptor
-    {
-        remote_object destination_zone_id;
-
-    public:
-#cpp_quote(R^__(
-        interface_descriptor() = default;
-        interface_descriptor(const interface_descriptor&) = default;
-        interface_descriptor(interface_descriptor&&) noexcept = default;
-        interface_descriptor& operator=(const interface_descriptor&) = default;
-        interface_descriptor& operator=(interface_descriptor&&) noexcept = default;
-
-        // construct with object embedded in remote_object
-        interface_descriptor(object obj, destination_zone dest)
-            : destination_zone_id(dest.with_object(obj))
-        {
-        }
-
-        // construct from remote_object (carries zone + object)
-        interface_descriptor(remote_object dest)
-            : destination_zone_id(dest)
-        {
-        }
-
-        // construct from destination_zone (zone-only, no object)
-        interface_descriptor(destination_zone dest)
-            : destination_zone_id(dest)
-        {
-        }
-
-        // accessor for the embedded object_id
-        [[nodiscard]] object get_object_id() const { return destination_zone_id.get_object(); }
-    )__^)
-    };
-
     struct connection_settings
     {
         interface_ordinal inbound_interface_id;
@@ -812,7 +777,7 @@ namespace rpc
         connection_settings& operator=(connection_settings&&) noexcept = default;
 
         // accessor for the embedded object_id in remote_object_id
-        [[nodiscard]] object get_object_id() const { return remote_object_id.get_object(); }
+        [[nodiscard]] object get_object_id() const { return remote_object_id.get_object_id(); }
     )__^)
     };
 

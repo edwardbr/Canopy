@@ -2,6 +2,7 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
+#pragma once
 
 #ifdef CANOPY_DEBUG_DEFAULT_DESTRUCTOR
 #define CANOPY_DEFAULT_DESTRUCTOR                                                                                      \
@@ -27,4 +28,18 @@
             _Pragma("GCC diagnostic ignored \"-Wunused-value\"")                                                       \
                 _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
 #define YAS_WARNINGS_POP _Pragma("GCC diagnostic pop")
+#endif
+
+// FLD(x) - designated initializer helper.
+// In C++20 coroutine builds expands to .x = enabling proper designated initializer syntax,
+// satisfying modernize-use-designated-initializers.
+// In C++17 builds expands to nothing, falling back to positional initialization.
+//
+// Usage: SomeStruct{FLD(field_a) value_a, FLD(field_b) value_b}
+// this does not help with readability but it does with safety
+
+#if defined(CANOPY_BUILD_COROUTINE)
+#define FLD(x) .x =
+#else
+#define FLD(x)
 #endif

@@ -152,21 +152,20 @@ namespace rpc
         service_proxy_ = nullptr;
     }
 
-    CORO_TASK(int)
+    CORO_TASK(send_result)
     object_proxy::send(uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::byte_span& in_data,
-        std::vector<char>& out_buf_)
+        rpc::byte_span in_data)
     {
         auto service_proxy = service_proxy_.get_nullable();
         RPC_ASSERT(service_proxy);
         if (!service_proxy)
-            CO_RETURN rpc::error::ZONE_NOT_INITIALISED();
+            CO_RETURN rpc::send_result{rpc::error::ZONE_NOT_INITIALISED(), {}, {}};
         CO_RETURN CO_AWAIT service_proxy->send_from_this_zone(
-            protocol_version, encoding, tag, object_id_, interface_id, method_id, in_data, out_buf_);
+            protocol_version, encoding, tag, object_id_, interface_id, method_id, in_data);
     }
 
     CORO_TASK(int)
@@ -175,7 +174,7 @@ namespace rpc
         uint64_t tag,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        const rpc::byte_span& in_data)
+        rpc::byte_span in_data)
     {
         auto service_proxy = service_proxy_.get_nullable();
         RPC_ASSERT(service_proxy);
@@ -215,8 +214,7 @@ namespace rpc
         {
             // forward declarations implemented in object_proxy.cpp
             // add_ref is async because object_proxy::add_ref() is async
-            CORO_TASK(int)
-            object_proxy_add_ref(const std::shared_ptr<rpc::object_proxy>& ob, rpc::add_ref_options options)
+            CORO_TASK(int) object_proxy_add_ref(std::shared_ptr<rpc::object_proxy> ob, rpc::add_ref_options options)
             {
                 CO_RETURN CO_AWAIT ob->add_ref(options);
             }

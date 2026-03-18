@@ -182,8 +182,7 @@ namespace comprehensive
 
                 // Create optimistic reference to the service using make_optimistic
                 // This does NOT keep the service alive
-                rpc::optimistic_ptr<i_data_processor> opt_service;
-                auto error = CO_AWAIT rpc::make_optimistic(independent_service, opt_service);
+                auto [error, opt_service] = CO_AWAIT rpc::make_optimistic(independent_service);
                 print_result("Create optimistic_ptr to service", error);
 
                 // Use service (works while service is alive)
@@ -225,8 +224,7 @@ namespace comprehensive
                 RPC_INFO("Created object with shared_ptr");
 
                 // Create optimistic reference using make_optimistic
-                rpc::optimistic_ptr<i_data_processor> opt_obj;
-                auto error = CO_AWAIT rpc::make_optimistic(obj, opt_obj);
+                auto [error, opt_obj] = CO_AWAIT rpc::make_optimistic(obj);
                 print_result("Create optimistic_ptr to object", error);
 
                 // Release shared_ptr - object is destroyed
