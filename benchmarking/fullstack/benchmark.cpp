@@ -298,8 +298,7 @@ namespace comprehensive
 
             auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_1, &queues->to_process_2, scheduler);
-            auto transport_1
-                = rpc::stream_transport::transport::make_client("spsc_transport_1", service_1, std::move(stream_1));
+            auto transport_1 = rpc::stream_transport::make_client("spsc_transport_1", service_1, std::move(stream_1));
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -470,7 +469,7 @@ namespace comprehensive
 
             auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
             auto client_transport
-                = rpc::stream_transport::transport::make_client("client_transport", client_service, std::move(tcp_stm));
+                = rpc::stream_transport::make_client("client_transport", client_service, std::move(tcp_stm));
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;
@@ -594,8 +593,8 @@ namespace comprehensive
             }
 
             auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
-            auto client_transport = rpc::stream_transport::transport::make_client(
-                "io_uring_client_transport", client_service, std::move(stm));
+            auto client_transport
+                = rpc::stream_transport::make_client("io_uring_client_transport", client_service, std::move(stm));
 
             rpc::shared_ptr<i_data_processor> remote_service;
             rpc::shared_ptr<i_data_processor> input_service;

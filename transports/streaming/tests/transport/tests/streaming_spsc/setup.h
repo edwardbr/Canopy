@@ -38,8 +38,8 @@ protected:
 
         auto client_stream
             = std::make_shared<streaming::spsc_queue::stream>(&send_spsc_queue_, &receive_spsc_queue_, io_sched);
-        this->initiator_transport_ = rpc::stream_transport::transport::make_client(
-            "initiator_transport", this->root_service_, std::move(client_stream));
+        this->initiator_transport_
+            = rpc::stream_transport::make_client("initiator_transport", this->root_service_, std::move(client_stream));
 
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
             "main child", this->initiator_transport_, hst);

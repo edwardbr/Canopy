@@ -55,8 +55,8 @@ protected:
         }
 
         auto tcp_stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
-        this->initiator_transport_ = rpc::stream_transport::transport::make_client(
-            "initiator_transport", this->root_service_, std::move(tcp_stm));
+        this->initiator_transport_
+            = rpc::stream_transport::make_client("initiator_transport", this->root_service_, std::move(tcp_stm));
 
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
             "main child", this->initiator_transport_, hst);
