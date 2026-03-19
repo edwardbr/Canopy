@@ -12,6 +12,10 @@ endif()
 if(CANOPY_BUILD_COROUTINE)
   set(STREAMING_TRANSPORT_LIB transport_streaming)
   set(STREAMING_TRANSPORT_TEST_LIB transport_streaming_test)
+  set(LIBCORO_DLL_TRANSPORT_SOURCES type_test_libcoro_dll_suite.cpp)
+  set(LIBCORO_DLL_TRANSPORT_LIB transport_libcoro_dynamic_library)
+  set(LIBCORO_DLL_TRANSPORT_TEST_LIB transport_libcoro_dynamic_library_test)
+  set(LIBCORO_DLL_TEST_PATH "${CMAKE_BINARY_DIR}/output/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_libcoro_example_dll${CMAKE_SHARED_LIBRARY_SUFFIX}")
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
@@ -30,10 +34,12 @@ add_executable(
   post_functionality_test_suite.cpp
   optimistic_ptr_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
+  ${LIBCORO_DLL_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
 
 target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES}
-  $<$<BOOL:${DLL_TEST_PATH}>:CANOPY_TEST_DLL_PATH="${DLL_TEST_PATH}">)
+  $<$<BOOL:${DLL_TEST_PATH}>:CANOPY_TEST_DLL_PATH="${DLL_TEST_PATH}">
+  $<$<BOOL:${LIBCORO_DLL_TEST_PATH}>:CANOPY_TEST_LIBCORO_DLL_PATH="${LIBCORO_DLL_TEST_PATH}">)
 
 target_include_directories(
   rpc_test
@@ -57,6 +63,8 @@ target_link_libraries(
          transport_local_test
          ${DLL_TRANSPORT_LIB}
          ${DLL_TRANSPORT_TEST_LIB}
+         ${LIBCORO_DLL_TRANSPORT_LIB}
+         ${LIBCORO_DLL_TRANSPORT_TEST_LIB}
          ${SGX_TRANSPORT_TEST_LIB}
          ${STREAMING_TRANSPORT_LIB}
          ${STREAMING_TRANSPORT_TEST_LIB}
@@ -81,6 +89,10 @@ endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
   add_dependencies(rpc_test canopy_example_dll)
+endif()
+
+if(CANOPY_BUILD_COROUTINE)
+  add_dependencies(rpc_test canopy_libcoro_example_dll)
 endif()
 
 include(CTest)
