@@ -13,6 +13,7 @@ add_subdirectory(common)
 # add_subdirectory(memory_tests)
 add_subdirectory(std_test)
 add_subdirectory(fixtures)
+add_subdirectory(dynamic_library_dll)
 add_subdirectory(test_host)
 add_subdirectory(serialiser_test)
 # this is a way to detect if we have nlohman that we can use for testing json schemas
