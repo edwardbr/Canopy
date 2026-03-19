@@ -156,10 +156,13 @@ Each hierarchical transport implements this pattern:
 - Serialization required for boundary crossing
 - See `documents/transports/sgx.md`
 
-### DLL Transport
-- Crosses DLL/shared library boundary
-- Platform-specific calling conventions
-- May require marshalling depending on platform
+### DLL Transport (rpc::dynamic_library)
+- Loads a shared object at runtime via `dlopen` / `LoadLibrary`
+- Boundary crossed via C function pointers (`canopy_dll_*` entry points)
+- `RTLD_LOCAL` keeps DLL symbols isolated from the host symbol table
+- `dlclose` deferred to `on_destination_count_zero` — never called while DLL code is on the stack
+- Non-coroutine builds only
+- See `documents/transports/dynamic_library.md`
 
 ## Common Patterns
 

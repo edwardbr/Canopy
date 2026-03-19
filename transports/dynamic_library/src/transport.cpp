@@ -19,13 +19,14 @@
 #include <transports/dynamic_library/transport.h>
 #include <rpc/rpc.h>
 
+#ifndef CANOPY_BUILD_COROUTINE
+
 namespace rpc::dynamic_library
 {
     // -------------------------------------------------------------------------
     // Construction / destruction
     // -------------------------------------------------------------------------
-    child_transport::child_transport(
-        std::string name, std::shared_ptr<rpc::service> service, std::string library_path)
+    child_transport::child_transport(std::string name, std::shared_ptr<rpc::service> service, std::string library_path)
         : rpc::transport(name, service)
         , library_path_(std::move(library_path))
     {
@@ -87,15 +88,12 @@ namespace rpc::dynamic_library
         dll_try_cast_ = reinterpret_cast<dll_try_cast_fn>(resolve_symbol("canopy_dll_try_cast"));
         dll_add_ref_ = reinterpret_cast<dll_add_ref_fn>(resolve_symbol("canopy_dll_add_ref"));
         dll_release_ = reinterpret_cast<dll_release_fn>(resolve_symbol("canopy_dll_release"));
-        dll_object_released_
-            = reinterpret_cast<dll_object_released_fn>(resolve_symbol("canopy_dll_object_released"));
-        dll_transport_down_
-            = reinterpret_cast<dll_transport_down_fn>(resolve_symbol("canopy_dll_transport_down"));
-        dll_get_new_zone_id_
-            = reinterpret_cast<dll_get_new_zone_id_fn>(resolve_symbol("canopy_dll_get_new_zone_id"));
+        dll_object_released_ = reinterpret_cast<dll_object_released_fn>(resolve_symbol("canopy_dll_object_released"));
+        dll_transport_down_ = reinterpret_cast<dll_transport_down_fn>(resolve_symbol("canopy_dll_transport_down"));
+        dll_get_new_zone_id_ = reinterpret_cast<dll_get_new_zone_id_fn>(resolve_symbol("canopy_dll_get_new_zone_id"));
 
-        if (!dll_init_ || !dll_destroy_ || !dll_send_ || !dll_post_ || !dll_try_cast_ || !dll_add_ref_
-            || !dll_release_ || !dll_object_released_ || !dll_transport_down_ || !dll_get_new_zone_id_)
+        if (!dll_init_ || !dll_destroy_ || !dll_send_ || !dll_post_ || !dll_try_cast_ || !dll_add_ref_ || !dll_release_
+            || !dll_object_released_ || !dll_transport_down_ || !dll_get_new_zone_id_)
         {
             RPC_ERROR("[dynamic_library] one or more canopy_dll_* entry points missing in {}", library_path_);
             unload_library();
@@ -331,24 +329,21 @@ namespace rpc::dynamic_library
         t->inbound_post(std::move(*params));
     }
 
-    int child_transport::cb_try_cast(
-        void* host_ctx, rpc::try_cast_params* params, rpc::standard_result* result)
+    int child_transport::cb_try_cast(void* host_ctx, rpc::try_cast_params* params, rpc::standard_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         *result = t->inbound_try_cast(std::move(*params));
         return result->error_code;
     }
 
-    int child_transport::cb_add_ref(
-        void* host_ctx, rpc::add_ref_params* params, rpc::standard_result* result)
+    int child_transport::cb_add_ref(void* host_ctx, rpc::add_ref_params* params, rpc::standard_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         *result = t->inbound_add_ref(std::move(*params));
         return result->error_code;
     }
 
-    int child_transport::cb_release(
-        void* host_ctx, rpc::release_params* params, rpc::standard_result* result)
+    int child_transport::cb_release(void* host_ctx, rpc::release_params* params, rpc::standard_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         *result = t->inbound_release(std::move(*params));
@@ -387,3 +382,5 @@ namespace rpc::dynamic_library
     }
 
 } // namespace rpc::dynamic_library
+
+#endif
