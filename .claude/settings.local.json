@@ -75,7 +75,10 @@
       "Bash(xargs sed:*)",
       "Bash(/var/home/edward/projects/Canopy/rpc/include/rpc/internal/build_modifiers.h:*)",
       "Bash(__NEW_LINE_8088faa7b9b3f7ba__ sed:*)",
-      "Bash(head -5 grep -n \"make_shared\\(iface\" /var/home/edward/projects/Canopy/generator/src/synchronous_generator.cpp)"
+      "Bash(head -5 grep -n \"make_shared\\(iface\" /var/home/edward/projects/Canopy/generator/src/synchronous_generator.cpp)",
+      "Bash(./build_debug/output/rpc_test --gtest_filter=\"dll_type_test/0.initialisation_test\" --telemetry-console)",
+      "Bash(nm -D build_debug/output/libcanopy_example_dll.so)",
+      "Bash(nm build_debug/output/librpc.a)"
     ]
   },
   "enabledPlugins": {}
