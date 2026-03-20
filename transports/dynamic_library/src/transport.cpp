@@ -53,25 +53,25 @@ namespace rpc::dynamic_library
     {
         if (!lib_handle_)
             return nullptr;
-#if defined(_WIN32)
+#  if defined(_WIN32)
         return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(lib_handle_), sym_name));
-#else
+#  else
         return dlsym(lib_handle_, sym_name);
-#endif
+#  endif
     }
 
     int child_transport::load_library()
     {
         RPC_ASSERT(!lib_handle_);
 
-#if defined(_WIN32)
+#  if defined(_WIN32)
         lib_handle_ = LoadLibraryA(library_path_.c_str());
         if (!lib_handle_)
         {
             RPC_ERROR("[dynamic_library] LoadLibrary failed for {}", library_path_);
             return rpc::error::TRANSPORT_ERROR();
         }
-#else
+#  else
         // RTLD_LOCAL: keep DLL symbols private; RTLD_NOW: fail fast on missing deps.
         lib_handle_ = dlopen(library_path_.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!lib_handle_)
@@ -79,7 +79,7 @@ namespace rpc::dynamic_library
             RPC_ERROR("[dynamic_library] dlopen failed for {}: {}", library_path_, dlerror());
             return rpc::error::TRANSPORT_ERROR();
         }
-#endif
+#  endif
 
         dll_init_ = reinterpret_cast<dll_init_fn>(resolve_symbol("canopy_dll_init"));
         dll_destroy_ = reinterpret_cast<dll_destroy_fn>(resolve_symbol("canopy_dll_destroy"));
@@ -120,11 +120,11 @@ namespace rpc::dynamic_library
 
         if (lib_handle_)
         {
-#if defined(_WIN32)
+#  if defined(_WIN32)
             FreeLibrary(static_cast<HMODULE>(lib_handle_));
-#else
+#  else
             dlclose(lib_handle_);
-#endif
+#  endif
             lib_handle_ = nullptr;
         }
     }

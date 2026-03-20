@@ -442,8 +442,7 @@ namespace rpc
          * Thread-Safety: Implementation-specific
          */
         virtual CORO_TASK(connect_result)
-            inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
-            = 0;
+            inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) = 0;
 
         virtual CORO_TASK(int) inner_accept() = 0;
 

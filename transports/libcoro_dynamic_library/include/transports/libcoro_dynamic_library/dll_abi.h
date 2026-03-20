@@ -33,22 +33,22 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <memory>
-#include <rpc/rpc.h>
-#include <coro/scheduler.hpp>
+#  include <memory>
+#  include <rpc/rpc.h>
+#  include <coro/scheduler.hpp>
 
 // ---------------------------------------------------------------------------
 // Visibility macro for DLL-exported entry points
 // ---------------------------------------------------------------------------
-#if defined(_WIN32)
-#if defined(CANOPY_LIBCORO_DLL_BUILDING)
-#define CANOPY_LIBCORO_DLL_EXPORT __declspec(dllexport)
-#else
-#define CANOPY_LIBCORO_DLL_EXPORT __declspec(dllimport)
-#endif
-#else
-#define CANOPY_LIBCORO_DLL_EXPORT __attribute__((visibility("default")))
-#endif
+#  if defined(_WIN32)
+#    if defined(CANOPY_LIBCORO_DLL_BUILDING)
+#      define CANOPY_LIBCORO_DLL_EXPORT __declspec(dllexport)
+#    else
+#      define CANOPY_LIBCORO_DLL_EXPORT __declspec(dllimport)
+#    endif
+#  else
+#    define CANOPY_LIBCORO_DLL_EXPORT __attribute__((visibility("default")))
+#  endif
 
 namespace rpc::libcoro_dynamic_library
 {

@@ -128,8 +128,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         virtual std::string render_reference(int option,
             bool from_host,
@@ -139,8 +138,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         virtual std::string render_move(int option,
             bool from_host,
@@ -150,8 +148,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         virtual std::string render_pointer(int option,
             bool from_host,
@@ -161,8 +158,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         virtual std::string render_pointer_reference(int option,
             bool from_host,
@@ -172,8 +168,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         virtual std::string render_pointer_pointer(int option,
             bool from_host,
@@ -183,8 +178,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         virtual std::string render_interface(int option,
             bool from_host,
@@ -194,8 +188,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         virtual std::string render_interface_reference(int option,
             bool from_host,
@@ -205,8 +198,7 @@ namespace generator
             bool is_out,
             bool is_const,
             const std::string& type_name,
-            uint64_t& count)
-            = 0;
+            uint64_t& count) = 0;
 
         // Dispatch function that maps param_type enum to specific render function
         std::string render_param_type(param_type type,

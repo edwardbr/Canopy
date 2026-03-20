@@ -5,10 +5,10 @@
 #pragma once
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/scheduler.hpp>
+#  include <coro/scheduler.hpp>
 #else
-#include <mutex>
-#include <condition_variable>
+#  include <mutex>
+#  include <condition_variable>
 #endif
 
 namespace rpc

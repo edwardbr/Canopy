@@ -44,12 +44,12 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
-#include <functional>
-#include <memory>
-#include <atomic>
+#  include <functional>
+#  include <memory>
+#  include <atomic>
 
-#include <rpc/rpc.h>
-#include <transports/dynamic_library/dll_abi.h>
+#  include <rpc/rpc.h>
+#  include <transports/dynamic_library/dll_abi.h>
 
 namespace rpc::dynamic_library
 {
@@ -74,8 +74,7 @@ namespace rpc::dynamic_library
         host_get_new_zone_id_fn host_get_new_zone_id_;
 
     public:
-        parent_transport(
-            std::string name,
+        parent_transport(std::string name,
             rpc::zone dll_zone,
             rpc::zone host_zone,
             void* host_ctx,
@@ -102,10 +101,7 @@ namespace rpc::dynamic_library
             CO_RETURN rpc::connect_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
-        CORO_TASK(int) inner_accept() override
-        {
-            CO_RETURN rpc::error::OK();
-        }
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         // Outbound i_marshaller interface — sends from DLL to host
         CORO_TASK(send_result) outbound_send(send_params params) override;
@@ -139,17 +135,14 @@ namespace rpc::dynamic_library
     // *params.  Returns rpc::error::OK() on success.
     // -------------------------------------------------------------------------
     template<class PARENT_INTERFACE, class CHILD_INTERFACE>
-    int init_child_zone(
-        dll_init_params* params,
-        std::function<
-            rpc::service_connect_result<CHILD_INTERFACE>(rpc::shared_ptr<PARENT_INTERFACE>, std::shared_ptr<rpc::child_service>)>
-            factory)
+    int init_child_zone(dll_init_params* params,
+        std::function<rpc::service_connect_result<CHILD_INTERFACE>(
+            rpc::shared_ptr<PARENT_INTERFACE>, std::shared_ptr<rpc::child_service>)> factory)
     {
         // Create the parent_transport for the DLL zone.
         // zone_id   = the DLL's own zone
         // adjacent  = the host zone
-        auto pt = std::make_shared<parent_transport>(
-            params->name,
+        auto pt = std::make_shared<parent_transport>(params->name,
             params->dll_zone,
             params->host_zone,
             params->host_ctx,
@@ -192,25 +185,19 @@ extern "C"
 {
     CANOPY_DLL_EXPORT void canopy_dll_destroy(void* dll_ctx);
 
-    CANOPY_DLL_EXPORT int canopy_dll_send(
-        void* dll_ctx, rpc::send_params* params, rpc::send_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_send(void* dll_ctx, rpc::send_params* params, rpc::send_result* result);
 
     CANOPY_DLL_EXPORT void canopy_dll_post(void* dll_ctx, rpc::post_params* params);
 
-    CANOPY_DLL_EXPORT int canopy_dll_try_cast(
-        void* dll_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_try_cast(void* dll_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
 
-    CANOPY_DLL_EXPORT int canopy_dll_add_ref(
-        void* dll_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_add_ref(void* dll_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
 
-    CANOPY_DLL_EXPORT int canopy_dll_release(
-        void* dll_ctx, rpc::release_params* params, rpc::standard_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_release(void* dll_ctx, rpc::release_params* params, rpc::standard_result* result);
 
-    CANOPY_DLL_EXPORT void canopy_dll_object_released(
-        void* dll_ctx, rpc::object_released_params* params);
+    CANOPY_DLL_EXPORT void canopy_dll_object_released(void* dll_ctx, rpc::object_released_params* params);
 
-    CANOPY_DLL_EXPORT void canopy_dll_transport_down(
-        void* dll_ctx, rpc::transport_down_params* params);
+    CANOPY_DLL_EXPORT void canopy_dll_transport_down(void* dll_ctx, rpc::transport_down_params* params);
 
     CANOPY_DLL_EXPORT int canopy_dll_get_new_zone_id(
         void* dll_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result);

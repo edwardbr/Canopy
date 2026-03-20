@@ -25,27 +25,27 @@
 #include <rpc/rpc.h>
 #include "transports/local/transport.h"
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
-#include <rpc/telemetry/multiplexing_telemetry_service.h>
-#include <rpc/telemetry/console_telemetry_service.h>
+#  include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/multiplexing_telemetry_service.h>
+#  include <rpc/telemetry/console_telemetry_service.h>
 #endif
 
 // Other headers
 #ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wsuggest-override"
-#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wsuggest-override"
+#  pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 #elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsuggest-override"
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wsuggest-override"
 #endif
 
 #include <args.hxx>
 
 #ifdef __clang__
-#pragma clang diagnostic pop
+#  pragma clang diagnostic pop
 #elif defined(__GNUC__)
-#pragma GCC diagnostic pop
+#  pragma GCC diagnostic pop
 #endif
 
 #include <spdlog/spdlog.h>

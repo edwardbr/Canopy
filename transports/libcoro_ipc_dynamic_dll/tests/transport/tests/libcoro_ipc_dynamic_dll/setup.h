@@ -7,34 +7,34 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include "test_host.h"
-#include "test_globals.h"
+#  include "test_host.h"
+#  include "test_globals.h"
 
-#include <gtest/gtest.h>
+#  include <gtest/gtest.h>
 
-#include <common/tests.h>
-#include <common/transport_setup_base.h>
-#include <cstdio>
-#include <fcntl.h>
-#include <new>
-#include <spawn.h>
-#include <thread>
-#include <vector>
-#include <streaming/spsc_queue/stream.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <transports/libcoro_ipc_dynamic_dll/transport.h>
+#  include <common/tests.h>
+#  include <common/transport_setup_base.h>
+#  include <cstdio>
+#  include <fcntl.h>
+#  include <new>
+#  include <spawn.h>
+#  include <thread>
+#  include <vector>
+#  include <streaming/spsc_queue/stream.h>
+#  include <sys/mman.h>
+#  include <sys/stat.h>
+#  include <sys/wait.h>
+#  include <transports/libcoro_ipc_dynamic_dll/transport.h>
 
 extern char** environ;
 
-#ifndef CANOPY_TEST_LIBCORO_IPC_DLL_PATH
-#error "CANOPY_TEST_LIBCORO_IPC_DLL_PATH must be defined"
-#endif
+#  ifndef CANOPY_TEST_LIBCORO_IPC_DLL_PATH
+#    error "CANOPY_TEST_LIBCORO_IPC_DLL_PATH must be defined"
+#  endif
 
-#ifndef CANOPY_TEST_LIBCORO_IPC_LOADER_PATH
-#error "CANOPY_TEST_LIBCORO_IPC_LOADER_PATH must be defined"
-#endif
+#  ifndef CANOPY_TEST_LIBCORO_IPC_LOADER_PATH
+#    error "CANOPY_TEST_LIBCORO_IPC_LOADER_PATH must be defined"
+#  endif
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
 class libcoro_ipc_dll_setup_base
@@ -42,7 +42,8 @@ class libcoro_ipc_dll_setup_base
 {
 protected:
     rpc::zone host_zone_ = rpc::DEFAULT_PREFIX;
-    rpc::zone dll_zone_ = [] {
+    rpc::zone dll_zone_ = []
+    {
         auto address = rpc::DEFAULT_PREFIX;
         [[maybe_unused]] bool ok = address.set_subnet(address.get_subnet() + 1);
         RPC_ASSERT(ok);
@@ -72,9 +73,8 @@ protected:
 public:
     void set_up_scheduler()
     {
-        this->io_scheduler_ = std::shared_ptr<coro::scheduler>(
-            coro::scheduler::make_unique(coro::scheduler::options{
-                .thread_strategy = coro::scheduler::thread_strategy_t::manual,
+        this->io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{.thread_count = 1}}));
     }
 
@@ -162,12 +162,8 @@ class libcoro_ipc_dll_isolated_transport_setup
         ASSERT_GE(fd, 0);
         mapped_file_ = file_template;
         ASSERT_EQ(::ftruncate(fd, sizeof(rpc::libcoro_ipc_dynamic_dll::queue_pair)), 0);
-        queues_ = static_cast<rpc::libcoro_ipc_dynamic_dll::queue_pair*>(::mmap(nullptr,
-            sizeof(rpc::libcoro_ipc_dynamic_dll::queue_pair),
-            PROT_READ | PROT_WRITE,
-            MAP_SHARED,
-            fd,
-            0));
+        queues_ = static_cast<rpc::libcoro_ipc_dynamic_dll::queue_pair*>(
+            ::mmap(nullptr, sizeof(rpc::libcoro_ipc_dynamic_dll::queue_pair), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
         ::close(fd);
         ASSERT_NE(queues_, MAP_FAILED);
         new (queues_) rpc::libcoro_ipc_dynamic_dll::queue_pair{};
@@ -180,7 +176,8 @@ class libcoro_ipc_dll_isolated_transport_setup
         argv.push_back(const_cast<char*>(CANOPY_TEST_LIBCORO_IPC_DLL_PATH));
         argv.push_back(mapped_file_.data());
         argv.push_back(nullptr);
-        ASSERT_EQ(::posix_spawn(&child_pid_, CANOPY_TEST_LIBCORO_IPC_LOADER_PATH, nullptr, nullptr, argv.data(), environ), 0);
+        ASSERT_EQ(
+            ::posix_spawn(&child_pid_, CANOPY_TEST_LIBCORO_IPC_LOADER_PATH, nullptr, nullptr, argv.data(), environ), 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 

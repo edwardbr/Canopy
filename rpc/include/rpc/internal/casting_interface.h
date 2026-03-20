@@ -33,8 +33,8 @@ namespace rpc
     {
     public:
         virtual ~casting_interface() = default;
-        [[nodiscard]] virtual const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const
-            = 0;
+        [[nodiscard]] virtual const rpc::casting_interface* __rpc_query_interface(
+            rpc::interface_ordinal interface_id) const = 0;
 
         [[nodiscard]] virtual bool __rpc_is_local() const = 0;
         [[nodiscard]] virtual std::shared_ptr<rpc::object_proxy> __rpc_get_object_proxy() const = 0;

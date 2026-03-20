@@ -14,51 +14,51 @@
 
 // Additional test macros for GT and LT comparisons
 #ifdef CANOPY_BUILD_COROUTINE
-#define CORO_ASSERT_GT(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        auto _coro_temp_x = (x);                                                                                       \
-        auto _coro_temp_y = (y);                                                                                       \
-        EXPECT_GT(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x <= _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            CO_RETURN false;                                                                                           \
-        }                                                                                                              \
-    } while (0)
-#define CORO_ASSERT_LT(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        auto _coro_temp_x = (x);                                                                                       \
-        auto _coro_temp_y = (y);                                                                                       \
-        EXPECT_LT(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x >= _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            CO_RETURN false;                                                                                           \
-        }                                                                                                              \
-    } while (0)
+#  define CORO_ASSERT_GT(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
+          EXPECT_GT(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x <= _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              CO_RETURN false;                                                                                         \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_ASSERT_LT(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
+          EXPECT_LT(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x >= _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              CO_RETURN false;                                                                                         \
+          }                                                                                                            \
+      } while (0)
 #else
-#define CORO_ASSERT_GT(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        auto _coro_temp_x = (x);                                                                                       \
-        auto _coro_temp_y = (y);                                                                                       \
-        EXPECT_GT(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x <= _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            return false;                                                                                              \
-        }                                                                                                              \
-    } while (0)
-#define CORO_ASSERT_LT(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        auto _coro_temp_x = (x);                                                                                       \
-        auto _coro_temp_y = (y);                                                                                       \
-        EXPECT_LT(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x >= _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            return false;                                                                                              \
-        }                                                                                                              \
-    } while (0)
+#  define CORO_ASSERT_GT(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
+          EXPECT_GT(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x <= _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              return false;                                                                                            \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_ASSERT_LT(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
+          EXPECT_LT(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x >= _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              return false;                                                                                            \
+          }                                                                                                            \
+      } while (0)
 #endif
 
 // Test fixture for passthrough tests

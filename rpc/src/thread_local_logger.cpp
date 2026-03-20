@@ -6,17 +6,17 @@
 
 #if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
 
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cstdio>
-#include <cstdlib>
+#  include <fstream>
+#  include <sstream>
+#  include <iomanip>
+#  include <cstdio>
+#  include <cstdlib>
 
-#ifdef _IN_ENCLAVE
-#include <fmt/format-inl.h>
-#else
-#include <fmt/format.h>
-#endif
+#  ifdef _IN_ENCLAVE
+#    include <fmt/format-inl.h>
+#  else
+#    include <fmt/format.h>
+#  endif
 
 namespace rpc
 {
@@ -109,11 +109,11 @@ namespace rpc
                         entry.timestamp - std::chrono::high_resolution_clock::now()));
 
                 struct tm tm_buf;
-#ifdef _WIN32
+#  ifdef _WIN32
                 localtime_s(&tm_buf, &time_t);
-#else
+#  else
                 localtime_r(&time_t, &tm_buf);
-#endif
+#  endif
                 file << "[" << std::put_time(&tm_buf, "%H:%M:%S") << "] ";
                 file << "Level " << entry.level << ": " << entry.message;
                 if (entry.file && entry.function)
@@ -194,11 +194,11 @@ namespace rpc
         auto time_t = std::chrono::system_clock::to_time_t(now);
         std::stringstream ss;
         struct tm tm_buf;
-#ifdef _WIN32
+#  ifdef _WIN32
         localtime_s(&tm_buf, &time_t);
-#else
+#  else
         localtime_r(&time_t, &tm_buf);
-#endif
+#  endif
         ss << std::put_time(&tm_buf, "%Y%m%d_%H%M%S");
         std::string timestamp = ss.str();
 

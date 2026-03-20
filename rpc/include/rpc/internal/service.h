@@ -49,11 +49,11 @@
 #include <rpc/internal/stub.h>
 
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/i_telemetry_service.h>
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/scheduler.hpp>
+#  include <coro/scheduler.hpp>
 #endif
 
 namespace rpc
@@ -775,20 +775,20 @@ namespace rpc
             : service(name, zone_id, io_scheduler, child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
-#endif
+#  endif
         }
 #else
         explicit child_service(const char* name, zone zone_id, destination_zone parent_zone_id)
             : service(name, zone_id, child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
-#endif
+#  endif
         }
 #endif
 

@@ -6,19 +6,17 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <memory>
+#  include <memory>
 
-#include <rpc/rpc.h>
-#include <streaming/stream.h>
-#include <transports/libcoro_ipc_dynamic_dll/dll_abi.h>
-#include <transports/streaming/transport.h>
+#  include <rpc/rpc.h>
+#  include <streaming/stream.h>
+#  include <transports/libcoro_ipc_dynamic_dll/dll_abi.h>
+#  include <transports/streaming/transport.h>
 
 namespace rpc::libcoro_ipc_dynamic_dll
 {
     coro::task<std::shared_ptr<rpc::stream_transport::transport>> canopy_libcoro_ipc_dll_init(
-        const std::string& name,
-        std::shared_ptr<rpc::root_service> service,
-        std::shared_ptr<streaming::stream> stream);
+        const std::string& name, std::shared_ptr<rpc::root_service> service, std::shared_ptr<streaming::stream> stream);
 
     template<class PARENT_INTERFACE, class CHILD_INTERFACE>
     coro::task<std::shared_ptr<rpc::stream_transport::transport>> create_acceptor(const std::string& name,

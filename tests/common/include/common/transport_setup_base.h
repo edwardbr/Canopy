@@ -7,7 +7,7 @@
 #include <common/foo_impl.h>
 
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/multiplexing_telemetry_service.h>
+#  include <rpc/telemetry/multiplexing_telemetry_service.h>
 #endif
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>

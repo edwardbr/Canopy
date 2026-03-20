@@ -38,11 +38,11 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <functional>
-#include <memory>
+#  include <functional>
+#  include <memory>
 
-#include <rpc/rpc.h>
-#include <transports/libcoro_dynamic_library/dll_abi.h>
+#  include <rpc/rpc.h>
+#  include <transports/libcoro_dynamic_library/dll_abi.h>
 
 namespace rpc::libcoro_dynamic_library
 {

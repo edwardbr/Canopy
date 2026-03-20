@@ -39,11 +39,13 @@ if(LIBCORO_DLL_TEST_TARGET)
 endif()
 
 if(LIBCORO_IPC_DLL_TEST_TARGET)
-  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_LIBCORO_IPC_DLL_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_TEST_TARGET}>")
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_LIBCORO_IPC_DLL_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_TEST_TARGET}>")
 endif()
 
 if(LIBCORO_IPC_DLL_LOADER_TARGET)
-  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_LIBCORO_IPC_LOADER_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_LIBCORO_IPC_LOADER_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
 endif()
 
 add_executable(
@@ -119,7 +121,7 @@ if(CANOPY_BUILD_COROUTINE)
 endif()
 
 include(CTest)
-# Skip gtest_discover_tests when using AddressSanitizer due to protobuf container-overflow false positives
+# Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
 if(NOT CANOPY_DEBUG_ADDRESS)
   gtest_discover_tests(rpc_test)
 endif()

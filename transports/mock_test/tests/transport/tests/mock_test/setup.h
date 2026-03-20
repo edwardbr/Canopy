@@ -11,7 +11,7 @@
 #include <transports/mock_test/transport.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/scheduler.hpp>
+#  include <coro/scheduler.hpp>
 #endif
 
 // Setup class for passthrough tests - handles both blocking and coroutine modes

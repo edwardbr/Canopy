@@ -33,13 +33,13 @@
 #define SHA3_CW(x) ((x) & (~SHA3_USE_KECCAK_FLAG))
 
 #if defined(_MSC_VER)
-#define SHA3_CONST(x) x
+#  define SHA3_CONST(x) x
 #else
-#define SHA3_CONST(x) x##L
+#  define SHA3_CONST(x) x##L
 #endif
 
 #ifndef SHA3_ROTL64
-#define SHA3_ROTL64(x, y) (((x) << (y)) | ((x) >> ((sizeof(uint64_t) * 8) - (y))))
+#  define SHA3_ROTL64(x, y) (((x) << (y)) | ((x) >> ((sizeof(uint64_t) * 8) - (y))))
 #endif
 
 static const uint64_t keccakf_rndc[24] = {SHA3_CONST(0x0000000000000001UL),

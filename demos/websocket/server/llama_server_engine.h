@@ -73,20 +73,17 @@ namespace secret_llama
             virtual error_types create_context(const std::shared_ptr<loaded_model>& model_data,
                 uint64_t seed,
                 const std::string& overrides, // json::v1::map
-                std::shared_ptr<context>& context)
-                = 0;
+                std::shared_ptr<context>& context) = 0;
 
             virtual error_types infer(const std::string& prompt,
                 const std::string& overrides, // json::v1::map
                 uint64_t rng_seed,
                 const std::shared_ptr<loaded_tokenizer>& tokenizer_bin,
                 const std::shared_ptr<loaded_model>& model_bin,
-                std::string& output)
-                = 0;
+                std::string& output) = 0;
 
             virtual error_types parse_model(
-                const llm_model& modl, void* data, uint64_t size, std::shared_ptr<loaded_model>& loaded_model)
-                = 0;
+                const llm_model& modl, void* data, uint64_t size, std::shared_ptr<loaded_model>& loaded_model) = 0;
             virtual error_types parse_tokenizer(
                 const tokenizer& tok, void* data, uint64_t size, std::shared_ptr<loaded_tokenizer>& loaded_tokeniser)
             {

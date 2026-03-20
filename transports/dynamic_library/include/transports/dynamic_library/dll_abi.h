@@ -15,20 +15,20 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
-#include <rpc/rpc.h>
+#  include <rpc/rpc.h>
 
 // ---------------------------------------------------------------------------
 // Visibility macros for DLL-exported entry points
 // ---------------------------------------------------------------------------
-#if defined(_WIN32)
+#  if defined(_WIN32)
 #    if defined(CANOPY_DLL_BUILDING)
-#        define CANOPY_DLL_EXPORT __declspec(dllexport)
+#      define CANOPY_DLL_EXPORT __declspec(dllexport)
 #    else
-#        define CANOPY_DLL_EXPORT __declspec(dllimport)
+#      define CANOPY_DLL_EXPORT __declspec(dllimport)
 #    endif
-#else
+#  else
 #    define CANOPY_DLL_EXPORT __attribute__((visibility("default")))
-#endif
+#  endif
 
 namespace rpc::dynamic_library
 {
@@ -38,12 +38,9 @@ namespace rpc::dynamic_library
     // ---------------------------------------------------------------------------
     using host_send_fn = int (*)(void* host_ctx, rpc::send_params* params, rpc::send_result* result);
     using host_post_fn = void (*)(void* host_ctx, rpc::post_params* params);
-    using host_try_cast_fn
-        = int (*)(void* host_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
-    using host_add_ref_fn
-        = int (*)(void* host_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
-    using host_release_fn
-        = int (*)(void* host_ctx, rpc::release_params* params, rpc::standard_result* result);
+    using host_try_cast_fn = int (*)(void* host_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
+    using host_add_ref_fn = int (*)(void* host_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
+    using host_release_fn = int (*)(void* host_ctx, rpc::release_params* params, rpc::standard_result* result);
     using host_object_released_fn = void (*)(void* host_ctx, rpc::object_released_params* params);
     using host_transport_down_fn = void (*)(void* host_ctx, rpc::transport_down_params* params);
     using host_get_new_zone_id_fn
@@ -72,7 +69,7 @@ namespace rpc::dynamic_library
         host_get_new_zone_id_fn host_get_new_zone_id;
 
         // Outputs: filled in by canopy_dll_init
-        void* dll_ctx;              // opaque handle to dll_context allocated by DLL
+        void* dll_ctx;                 // opaque handle to dll_context allocated by DLL
         rpc::remote_object output_obj; // DLL's root object descriptor
     };
 
@@ -83,12 +80,9 @@ namespace rpc::dynamic_library
     using dll_destroy_fn = void (*)(void* dll_ctx);
     using dll_send_fn = int (*)(void* dll_ctx, rpc::send_params* params, rpc::send_result* result);
     using dll_post_fn = void (*)(void* dll_ctx, rpc::post_params* params);
-    using dll_try_cast_fn
-        = int (*)(void* dll_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
-    using dll_add_ref_fn
-        = int (*)(void* dll_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
-    using dll_release_fn
-        = int (*)(void* dll_ctx, rpc::release_params* params, rpc::standard_result* result);
+    using dll_try_cast_fn = int (*)(void* dll_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
+    using dll_add_ref_fn = int (*)(void* dll_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
+    using dll_release_fn = int (*)(void* dll_ctx, rpc::release_params* params, rpc::standard_result* result);
     using dll_object_released_fn = void (*)(void* dll_ctx, rpc::object_released_params* params);
     using dll_transport_down_fn = void (*)(void* dll_ctx, rpc::transport_down_params* params);
     using dll_get_new_zone_id_fn

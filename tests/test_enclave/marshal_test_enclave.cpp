@@ -15,8 +15,8 @@
 // RPC headers
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
-#include <rpc/telemetry/enclave_telemetry_service.h>
+#  include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/enclave_telemetry_service.h>
 #endif
 
 // Other headers

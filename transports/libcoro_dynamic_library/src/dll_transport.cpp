@@ -10,8 +10,8 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <transports/libcoro_dynamic_library/dll_transport.h>
-#include <rpc/rpc.h>
+#  include <transports/libcoro_dynamic_library/dll_transport.h>
+#  include <rpc/rpc.h>
 
 namespace rpc::libcoro_dynamic_library
 {

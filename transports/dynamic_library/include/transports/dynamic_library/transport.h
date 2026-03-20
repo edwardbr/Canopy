@@ -25,18 +25,18 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
-#include <functional>
-#include <string>
-#include <atomic>
+#  include <functional>
+#  include <string>
+#  include <atomic>
 
-#if defined(_WIN32)
+#  if defined(_WIN32)
 #    include <windows.h>
-#else
+#  else
 #    include <dlfcn.h>
-#endif
+#  endif
 
-#include <rpc/rpc.h>
-#include <transports/dynamic_library/dll_abi.h>
+#  include <rpc/rpc.h>
+#  include <transports/dynamic_library/dll_abi.h>
 
 namespace rpc::dynamic_library
 {
@@ -77,8 +77,7 @@ namespace rpc::dynamic_library
         static int cb_release(void* host_ctx, rpc::release_params* params, rpc::standard_result* result);
         static void cb_object_released(void* host_ctx, rpc::object_released_params* params);
         static void cb_transport_down(void* host_ctx, rpc::transport_down_params* params);
-        static int cb_get_new_zone_id(
-            void* host_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result);
+        static int cb_get_new_zone_id(void* host_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result);
 
         // Load a symbol from the shared object; returns nullptr on failure
         void* resolve_symbol(const char* name) const;
@@ -104,10 +103,7 @@ namespace rpc::dynamic_library
         CORO_TASK(rpc::connect_result)
         inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override;
 
-        CORO_TASK(int) inner_accept() override
-        {
-            CO_RETURN rpc::error::OK();
-        }
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         // Outbound i_marshaller interface — sends from host to DLL
         CORO_TASK(send_result) outbound_send(send_params params) override;

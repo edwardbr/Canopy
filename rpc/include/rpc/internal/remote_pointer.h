@@ -67,21 +67,21 @@
 
 #ifdef TEST_STL_COMPLIANCE
 
-#define CANOPY_DEFAULT_DESTRUCTOR = default;
+#  define CANOPY_DEFAULT_DESTRUCTOR = default;
 
-#define RPC_MEMORY std
+#  define RPC_MEMORY std
 
 namespace std
 {
 #else
 
-#include "version.h"
-#include "marshaller.h"
-#include "member_ptr.h"
-#include "coroutine_support.h" // Needed for CORO_TASK macro
-#include "casting_interface.h"
+#  include "version.h"
+#  include "marshaller.h"
+#  include "member_ptr.h"
+#  include "coroutine_support.h" // Needed for CORO_TASK macro
+#  include "casting_interface.h"
 
-#define RPC_MEMORY rpc
+#  define RPC_MEMORY rpc
 
 namespace rpc
 {
@@ -2304,14 +2304,14 @@ namespace rpc
 
         template<typename Y> friend class shared_ptr;
         template<typename Y> friend class weak_ptr;
-#ifndef TEST_STL_COMPLIANCE
+#  ifndef TEST_STL_COMPLIANCE
         template<typename Y> friend class optimistic_ptr;
         // Friend declarations for factory functions
         template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(shared_ptr<U>) noexcept;
         template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(weak_ptr<U>) noexcept;
         template<typename U> friend CORO_TASK(shared_response<U>) make_shared(optimistic_ptr<U>) noexcept;
         template<typename U> friend CORO_TASK(weak_response<U>) make_weak(optimistic_ptr<U>) noexcept;
-#endif
+#  endif
     };
 
     // Dynamic pointer cast for optimistic_ptr (uses local query_interface)
@@ -2397,7 +2397,7 @@ namespace rpc
         else
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
-#ifdef CANOPY_ADD_REF_COUNT_CHECKS
+#  ifdef CANOPY_ADD_REF_COUNT_CHECKS
             // TELEMETRY: shared_count is not touched by make_optimistic, so only check optimistic.
             // optimistic_count fires a remote add_ref only on the 0→1 transition, so cb_optimistic
             // can exceed inherited_optimistic when multiple local copies exist.  The invariant is
@@ -2427,7 +2427,7 @@ namespace rpc
                     inherited_optimistic_before);
                 RPC_ASSERT(false);
             }
-#endif
+#  endif
 
             auto err = CO_AWAIT cb->try_increment_optimistic();
             if (err)
@@ -2435,7 +2435,7 @@ namespace rpc
                 CO_RETURN std::make_tuple(err, optimistic_ptr<T>{}); // Failed to establish remote reference
             }
 
-#ifdef CANOPY_ADD_REF_COUNT_CHECKS
+#  ifdef CANOPY_ADD_REF_COUNT_CHECKS
             long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);
             int inherited_optimistic_after = 0;
             if (obj_proxy)
@@ -2464,7 +2464,7 @@ namespace rpc
                     inherited_optimistic_after);
                 RPC_ASSERT(false);
             }
-#endif
+#  endif
 
             out.cb_ = cb;
             out.ptr_ = in.internal_get_ptr();
@@ -2495,7 +2495,7 @@ namespace rpc
         else
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
-#ifdef CANOPY_ADD_REF_COUNT_CHECKS
+#  ifdef CANOPY_ADD_REF_COUNT_CHECKS
             // TELEMETRY: Check reference counts BEFORE establishing optimistic reference
             long cb_shared_before = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_before = cb->optimistic_count_.load(std::memory_order_acquire);
@@ -2535,7 +2535,7 @@ namespace rpc
                     inherited_shared_before,
                     inherited_optimistic_before);
             }
-#endif
+#  endif
 
             auto err = CO_AWAIT cb->try_increment_optimistic();
             if (err)
@@ -2543,7 +2543,7 @@ namespace rpc
                 CO_RETURN std::make_tuple(err, optimistic_ptr<T>{}); // Failed (likely OBJECT_GONE)
             }
 
-#ifdef CANOPY_ADD_REF_COUNT_CHECKS
+#  ifdef CANOPY_ADD_REF_COUNT_CHECKS
             // TELEMETRY: Check reference counts AFTER establishing optimistic reference
             long cb_shared_after = cb->shared_count_.load(std::memory_order_acquire);
             long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);
@@ -2579,7 +2579,7 @@ namespace rpc
                     inherited_shared_after,
                     inherited_optimistic_after);
             }
-#endif
+#  endif
 
             out.cb_ = cb;
             out.ptr_ = in.ptr_;

@@ -7,14 +7,14 @@
 
 #if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
 
-#include <string>
-#include <vector>
-#include <atomic>
-#include <mutex>
-#include <thread>
-#include <chrono>
-#include <unordered_map>
-#include <memory>
+#  include <string>
+#  include <vector>
+#  include <atomic>
+#  include <mutex>
+#  include <thread>
+#  include <chrono>
+#  include <unordered_map>
+#  include <memory>
 
 namespace rpc
 {

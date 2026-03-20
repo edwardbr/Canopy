@@ -7,18 +7,18 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
-#include "test_host.h"
-#include "test_globals.h"
-#include <gtest/gtest.h>
+#  include "test_host.h"
+#  include "test_globals.h"
+#  include <gtest/gtest.h>
 
-#include <rpc/rpc.h>
-#include <common/tests.h>
-#include <common/transport_setup_base.h>
-#include <transports/dynamic_library/transport.h>
+#  include <rpc/rpc.h>
+#  include <common/tests.h>
+#  include <common/transport_setup_base.h>
+#  include <transports/dynamic_library/transport.h>
 
-#ifndef CANOPY_TEST_DLL_PATH
+#  ifndef CANOPY_TEST_DLL_PATH
 #    error "CANOPY_TEST_DLL_PATH must be defined (set by CMake to the path of canopy_example_dll)"
-#endif
+#  endif
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
 class dll_transport_setup

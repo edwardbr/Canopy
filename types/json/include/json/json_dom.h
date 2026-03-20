@@ -13,11 +13,11 @@
 #include <yas/detail/tools/json_tools.hpp>
 
 #if defined(_MSC_VER) && defined(_IN_ENCLAVE) && !defined(_IN_ENCLAVE_MOCK)
-#include <mpark/variant.hpp>
-#define VARIANT_NS mpark
+#  include <mpark/variant.hpp>
+#  define VARIANT_NS mpark
 #else
-#include <variant>
-#define VARIANT_NS std
+#  include <variant>
+#  define VARIANT_NS std
 #endif
 
 // these classes are to mimic json types and to read and write clean json as yas's default serialisation format is a bit
