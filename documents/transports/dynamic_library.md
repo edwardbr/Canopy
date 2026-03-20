@@ -367,7 +367,7 @@ DLL.
 Link `transport_libcoro_dynamic_library_dll` into your shared object and export
 `canopy_libcoro_dll_create`.  That function creates the DLL-side
 `parent_transport`, returns the host-callable coroutine trampolines, and
-supplies an init coroutine that calls `init_child_zone_libcoro`.
+supplies an init coroutine that calls `init_child_zone`.
 
 ```cpp
 #include <transports/libcoro_dynamic_library/dll_transport.h>
@@ -377,7 +377,7 @@ static coro::task<rpc::connect_result> do_init(
     const rpc::connection_settings* settings,
     std::shared_ptr<coro::scheduler>* scheduler)
 {
-    return rpc::libcoro_dynamic_library::init_child_zone_libcoro<yyy::i_host, yyy::i_example>(
+    return rpc::libcoro_dynamic_library::init_child_zone<yyy::i_host, yyy::i_example>(
         ctx,
         settings,
         scheduler,
@@ -493,6 +493,6 @@ As implemented in `transports/libcoro_dynamic_library/src/transport.cpp`:
 - `transports/dynamic_library/include/transports/dynamic_library/dll_transport.h` — `parent_transport`, `init_child_zone`, `dll_context`
 - `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/dll_abi.h` — coroutine DLL ABI types
 - `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/transport.h` — coroutine `child_transport`
-- `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/dll_transport.h` — coroutine `parent_transport`, `init_child_zone_libcoro`
+- `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/dll_transport.h` — coroutine `parent_transport`, `init_child_zone`
 - `documents/transports/hierarchical.md` — Hierarchical transport pattern
 - `documents/transports/local.md` — Local transport (conceptual peer)

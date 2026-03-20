@@ -8,10 +8,12 @@ if(NOT CANOPY_BUILD_COROUTINE)
     return()
 endif()
 
+include(CanopyCreateLibcoroDynamicLibrary)
+
 # ---------------------------------------------------------------------------
 # Host-side transport library
 # ---------------------------------------------------------------------------
-add_library(transport_libcoro_dynamic_library src/transport.cpp)
+add_library(transport_libcoro_dynamic_library STATIC src/transport.cpp)
 
 target_compile_definitions(transport_libcoro_dynamic_library PRIVATE ${CANOPY_DEFINES})
 
@@ -45,7 +47,7 @@ endif()
 # ---------------------------------------------------------------------------
 # DLL-side transport library
 # ---------------------------------------------------------------------------
-add_library(transport_libcoro_dynamic_library_dll src/dll_transport.cpp)
+add_library(transport_libcoro_dynamic_library_dll STATIC src/dll_transport.cpp)
 
 target_compile_definitions(transport_libcoro_dynamic_library_dll
     PRIVATE
