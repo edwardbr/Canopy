@@ -15,14 +15,22 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_DLL_TRANSPORT_SOURCES type_test_libcoro_dll_suite.cpp)
   set(LIBCORO_DLL_TRANSPORT_LIB transport_libcoro_dynamic_library)
   set(LIBCORO_DLL_TRANSPORT_TEST_LIB transport_libcoro_dynamic_library_test)
-  set(LIBCORO_DLL_TEST_PATH "${CMAKE_BINARY_DIR}/output/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_libcoro_example_dll${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(LIBCORO_DLL_TEST_TARGET canopy_libcoro_example_dll)
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
   set(DLL_TRANSPORT_SOURCES type_test_dll_suite.cpp)
   set(DLL_TRANSPORT_LIB transport_dynamic_library)
   set(DLL_TRANSPORT_TEST_LIB transport_dynamic_library_test)
-  set(DLL_TEST_PATH "${CMAKE_BINARY_DIR}/output/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_example_dll${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(DLL_TEST_TARGET canopy_example_dll)
+endif()
+
+if(DLL_TEST_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_DLL_PATH="$<TARGET_FILE:${DLL_TEST_TARGET}>")
+endif()
+
+if(LIBCORO_DLL_TEST_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_LIBCORO_DLL_PATH="$<TARGET_FILE:${LIBCORO_DLL_TEST_TARGET}>")
 endif()
 
 add_executable(
@@ -37,9 +45,7 @@ add_executable(
   ${LIBCORO_DLL_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
 
-target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES}
-  $<$<BOOL:${DLL_TEST_PATH}>:CANOPY_TEST_DLL_PATH="${DLL_TEST_PATH}">
-  $<$<BOOL:${LIBCORO_DLL_TEST_PATH}>:CANOPY_TEST_LIBCORO_DLL_PATH="${LIBCORO_DLL_TEST_PATH}">)
+target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
 
 target_include_directories(
   rpc_test
@@ -88,11 +94,11 @@ if(CANOPY_ENABLE_CLANG_TIDY)
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
-  add_dependencies(rpc_test canopy_example_dll)
+  add_dependencies(rpc_test ${DLL_TEST_TARGET})
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  add_dependencies(rpc_test canopy_libcoro_example_dll)
+  add_dependencies(rpc_test ${LIBCORO_DLL_TEST_TARGET})
 endif()
 
 include(CTest)

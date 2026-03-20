@@ -3,10 +3,12 @@
 # transport_dynamic_library_dll   — DLL-side library  (links into the loaded shared object)
 #
 
+include(CanopyCreateDynamicLibrary)
+
 # ---------------------------------------------------------------------------
 # Host-side transport library
 # ---------------------------------------------------------------------------
-add_library(transport_dynamic_library src/transport.cpp)
+add_library(transport_dynamic_library STATIC src/transport.cpp)
 
 target_compile_definitions(transport_dynamic_library PRIVATE ${CANOPY_DEFINES})
 
@@ -43,7 +45,7 @@ endif()
 # the CANOPY_DLL_EXPORT attribute on the canopy_dll_* symbols overrides that
 # for the handful of entry points the host must be able to find via dlsym.
 # ---------------------------------------------------------------------------
-add_library(transport_dynamic_library_dll src/dll_transport.cpp)
+add_library(transport_dynamic_library_dll STATIC src/dll_transport.cpp)
 
 target_compile_definitions(transport_dynamic_library_dll
     PRIVATE

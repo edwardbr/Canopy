@@ -14,7 +14,7 @@
 //      Static inbound trampolines are returned to the host as dll_coro_*_fn
 //      pointers via dll_create_result.
 //
-//   2. init_child_zone_libcoro<P, C>() — CORO_TASK template the DLL author
+//   2. init_child_zone<P, C>() — CORO_TASK template the DLL author
 //      calls from their concrete do_init static function.  It adopts the raw
 //      parent_transport pointer, runs create_child_zone, and releases all
 //      temporaries before returning.  After it returns, only objects owned by
@@ -22,35 +22,18 @@
 //
 // Usage pattern (DLL author — canopy_libcoro_dll_init.cpp):
 //
-//   // Static concrete init function: signature matches dll_coro_init_fn.
-//   static coro::task<rpc::connect_result> do_init(
-//       void* ctx, const rpc::connection_settings* s,
-//       std::shared_ptr<coro::scheduler>* sched)
+//   namespace rpc::libcoro_dynamic_library
 //   {
-//       return rpc::libcoro_dynamic_library::init_child_zone_libcoro<i_host, i_example>(
-//           ctx, s, sched,
-//           [](rpc::shared_ptr<i_host> h, std::shared_ptr<rpc::child_service> svc)
-//               -> CORO_TASK(rpc::service_connect_result<i_example>)
-//           { CO_RETURN {rpc::error::OK(), rpc::make_shared<MyImpl>(svc, h)}; });
-//   }
-//
-//   extern "C" CANOPY_LIBCORO_DLL_EXPORT
-//   void canopy_libcoro_dll_create(dll_create_params* p, dll_create_result* r)
-//   {
-//       using namespace rpc::libcoro_dynamic_library;
-//       auto* pt = new parent_transport(p->name, p->dll_zone, p->host_zone,
-//           p->host_ctx, p->host_send, p->host_post, p->host_try_cast,
-//           p->host_add_ref, p->host_release, p->host_object_released,
-//           p->host_transport_down, p->host_get_new_zone_id);
-//       r->transport_ctx        = pt;
-//       r->init_fn              = &do_init;
-//       r->send_fn              = &parent_transport::static_inbound_send;
-//       r->post_fn              = &parent_transport::static_inbound_post;
-//       r->try_cast_fn          = &parent_transport::static_inbound_try_cast;
-//       r->add_ref_fn           = &parent_transport::static_inbound_add_ref;
-//       r->release_fn           = &parent_transport::static_inbound_release;
-//       r->object_released_fn   = &parent_transport::static_inbound_object_released;
-//       r->transport_down_fn    = &parent_transport::static_inbound_transport_down;
+//       coro::task<rpc::connect_result> canopy_libcoro_dll_init(
+//           void* ctx, const rpc::connection_settings* s,
+//           std::shared_ptr<coro::scheduler>* sched)
+//       {
+//           return init_child_zone<i_host, i_example>(
+//               ctx, s, sched,
+//               [](rpc::shared_ptr<i_host> h, std::shared_ptr<rpc::child_service> svc)
+//                   -> CORO_TASK(rpc::service_connect_result<i_example>)
+//               { CO_RETURN {rpc::error::OK(), rpc::make_shared<MyImpl>(svc, h)}; });
+//       }
 //   }
 
 #ifdef CANOPY_BUILD_COROUTINE
@@ -63,6 +46,12 @@
 
 namespace rpc::libcoro_dynamic_library
 {
+    // Concrete init coroutine supplied by the shared object that links this
+    // transport library. canopy_libcoro_dll_create is provided by the
+    // transport library and binds init_fn to this symbol.
+    coro::task<rpc::connect_result> canopy_libcoro_dll_init(
+        void* transport_ctx, const rpc::connection_settings* settings, std::shared_ptr<coro::scheduler>* scheduler);
+
     // -------------------------------------------------------------------------
     // parent_transport
     //
@@ -101,7 +90,7 @@ namespace rpc::libcoro_dynamic_library
         ~parent_transport() override;
 
         // inner_connect / inner_accept are unused; the transport is wired
-        // directly by init_child_zone_libcoro.
+        // directly by init_child_zone.
         CORO_TASK(rpc::connect_result)
         inner_connect(std::shared_ptr<rpc::object_stub>, connection_settings) override
         {
@@ -166,7 +155,7 @@ namespace rpc::libcoro_dynamic_library
     };
 
     // -------------------------------------------------------------------------
-    // init_child_zone_libcoro<PARENT_INTERFACE, CHILD_INTERFACE>
+    // init_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>
     //
     // Called from the DLL author's concrete do_init static function (which has
     // the right signature for dll_coro_init_fn).  Adopts transport_ctx into a
@@ -177,7 +166,7 @@ namespace rpc::libcoro_dynamic_library
     // by the DLL init machinery.
     // -------------------------------------------------------------------------
     template<class PARENT_INTERFACE, class CHILD_INTERFACE>
-    coro::task<rpc::connect_result> init_child_zone_libcoro(void* transport_ctx,
+    coro::task<rpc::connect_result> init_child_zone(void* transport_ctx,
         const rpc::connection_settings* settings,
         std::shared_ptr<coro::scheduler>* scheduler,
         std::function<CORO_TASK(rpc::service_connect_result<CHILD_INTERFACE>)(

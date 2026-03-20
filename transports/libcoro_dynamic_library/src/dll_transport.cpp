@@ -6,7 +6,7 @@
 // DLL-side (parent_transport) implementation.  Coroutine-build only.
 //
 // Compiled into transport_libcoro_dynamic_library_dll, which the DLL links.
-// The DLL author only needs to provide canopy_libcoro_dll_create (extern "C").
+// The DLL author only needs to provide canopy_libcoro_dll_init.
 
 #ifdef CANOPY_BUILD_COROUTINE
 
@@ -120,5 +120,35 @@ namespace rpc::libcoro_dynamic_library
     }
 
 } // namespace rpc::libcoro_dynamic_library
+
+extern "C" CANOPY_LIBCORO_DLL_EXPORT void canopy_libcoro_dll_create(
+    rpc::libcoro_dynamic_library::dll_create_params* params, rpc::libcoro_dynamic_library::dll_create_result* result)
+{
+    using namespace rpc::libcoro_dynamic_library;
+
+    auto* pt = new parent_transport(params->name,
+        params->dll_zone,
+        params->host_zone,
+        params->host_ctx,
+        params->host_send,
+        params->host_post,
+        params->host_try_cast,
+        params->host_add_ref,
+        params->host_release,
+        params->host_object_released,
+        params->host_transport_down,
+        params->host_get_new_zone_id,
+        params->host_coro_release_parent);
+
+    result->transport_ctx = pt;
+    result->init_fn = &canopy_libcoro_dll_init;
+    result->send_fn = &parent_transport::static_inbound_send;
+    result->post_fn = &parent_transport::static_inbound_post;
+    result->try_cast_fn = &parent_transport::static_inbound_try_cast;
+    result->add_ref_fn = &parent_transport::static_inbound_add_ref;
+    result->release_fn = &parent_transport::static_inbound_release;
+    result->object_released_fn = &parent_transport::static_inbound_object_released;
+    result->transport_down_fn = &parent_transport::static_inbound_transport_down;
+}
 
 #endif // CANOPY_BUILD_COROUTINE
