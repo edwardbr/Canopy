@@ -9,13 +9,13 @@
 // Windows support would require different implementation using Windows API
 #ifndef _WIN32
 
-#include <atomic>
-#include <csignal>
-#include <functional>
-#include <string>
-#include <vector>
-#include <chrono>
-#include <sys/types.h>
+#  include <atomic>
+#  include <csignal>
+#  include <functional>
+#  include <string>
+#  include <vector>
+#  include <chrono>
+#  include <sys/types.h>
 
 namespace crash_handler
 {

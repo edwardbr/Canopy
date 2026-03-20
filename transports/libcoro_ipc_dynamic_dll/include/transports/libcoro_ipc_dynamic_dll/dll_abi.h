@@ -6,18 +6,18 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <rpc/rpc.h>
-#include <streaming/spsc_queue/stream.h>
+#  include <rpc/rpc.h>
+#  include <streaming/spsc_queue/stream.h>
 
-#if defined(_WIN32)
-#if defined(CANOPY_LIBCORO_IPC_DLL_BUILDING)
-#define CANOPY_LIBCORO_IPC_DLL_EXPORT __declspec(dllexport)
-#else
-#define CANOPY_LIBCORO_IPC_DLL_EXPORT __declspec(dllimport)
-#endif
-#else
-#define CANOPY_LIBCORO_IPC_DLL_EXPORT __attribute__((visibility("default")))
-#endif
+#  if defined(_WIN32)
+#    if defined(CANOPY_LIBCORO_IPC_DLL_BUILDING)
+#      define CANOPY_LIBCORO_IPC_DLL_EXPORT __declspec(dllexport)
+#    else
+#      define CANOPY_LIBCORO_IPC_DLL_EXPORT __declspec(dllimport)
+#    endif
+#  else
+#    define CANOPY_LIBCORO_IPC_DLL_EXPORT __attribute__((visibility("default")))
+#  endif
 
 namespace rpc::libcoro_ipc_dynamic_dll
 {

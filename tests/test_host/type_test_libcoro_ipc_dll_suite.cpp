@@ -5,21 +5,20 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <common/tests.h>
-#include <rpc/rpc.h>
+#  include <common/tests.h>
+#  include <rpc/rpc.h>
 
-#include "type_test_fixture.h"
-#include <transport/tests/libcoro_ipc_dynamic_dll/setup.h>
+#  include "type_test_fixture.h"
+#  include <transport/tests/libcoro_ipc_dynamic_dll/setup.h>
 
 using namespace marshalled_tests;
 
 template<class T> using libcoro_ipc_dll_type_test = type_test<T>;
 
-using libcoro_ipc_dll_implementations
-    = ::testing::Types<libcoro_ipc_dll_transport_setup<false, false, false>,
-        libcoro_ipc_dll_transport_setup<false, true, false>,
-        libcoro_ipc_dll_transport_setup<true, false, false>,
-        libcoro_ipc_dll_transport_setup<true, true, false>>;
+using libcoro_ipc_dll_implementations = ::testing::Types<libcoro_ipc_dll_transport_setup<false, false, false>,
+    libcoro_ipc_dll_transport_setup<false, true, false>,
+    libcoro_ipc_dll_transport_setup<true, false, false>,
+    libcoro_ipc_dll_transport_setup<true, true, false>>;
 
 using libcoro_ipc_dll_isolated_implementations
     = ::testing::Types<libcoro_ipc_dll_isolated_transport_setup<false, false, false>,

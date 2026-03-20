@@ -5,15 +5,15 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <transports/libcoro_ipc_dynamic_dll/transport.h>
+#  include <transports/libcoro_ipc_dynamic_dll/transport.h>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
+#  if defined(_WIN32)
+#    include <windows.h>
+#  else
+#    include <dlfcn.h>
+#  endif
 
-#include <streaming/spsc_queue/stream.h>
+#  include <streaming/spsc_queue/stream.h>
 
 namespace rpc::libcoro_ipc_dynamic_dll
 {
@@ -21,11 +21,11 @@ namespace rpc::libcoro_ipc_dynamic_dll
     {
         void* load_symbol(void* lib_handle, const char* symbol)
         {
-#if defined(_WIN32)
+#  if defined(_WIN32)
             return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(lib_handle), symbol));
-#else
+#  else
             return dlsym(lib_handle, symbol);
-#endif
+#  endif
         }
     }
 
@@ -59,11 +59,11 @@ namespace rpc::libcoro_ipc_dynamic_dll
         auto result = std::shared_ptr<loaded_library>(new loaded_library());
         result->keep_alive_ = result;
 
-#if defined(_WIN32)
+#  if defined(_WIN32)
         result->lib_handle_ = LoadLibraryA(library_path.c_str());
-#else
+#  else
         result->lib_handle_ = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
-#endif
+#  endif
         if (!result->lib_handle_)
         {
             RPC_ERROR("[libcoro_ipc_dynamic_dll] failed to load {}", library_path);
@@ -124,11 +124,11 @@ namespace rpc::libcoro_ipc_dynamic_dll
 
         if (lib_handle_)
         {
-#if defined(_WIN32)
+#  if defined(_WIN32)
             FreeLibrary(static_cast<HMODULE>(lib_handle_));
-#else
+#  else
             dlclose(lib_handle_);
-#endif
+#  endif
             lib_handle_ = nullptr;
         }
     }

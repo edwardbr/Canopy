@@ -18,17 +18,17 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <string>
-#include <memory>
+#  include <string>
+#  include <memory>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
+#  if defined(_WIN32)
+#    include <windows.h>
+#  else
+#    include <dlfcn.h>
+#  endif
 
-#include <rpc/rpc.h>
-#include <transports/libcoro_dynamic_library/dll_abi.h>
+#  include <rpc/rpc.h>
+#  include <transports/libcoro_dynamic_library/dll_abi.h>
 
 namespace rpc::libcoro_dynamic_library
 {

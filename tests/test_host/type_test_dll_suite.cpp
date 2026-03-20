@@ -8,13 +8,13 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
-#include <rpc/rpc.h>
-#include <common/tests.h>
+#  include <rpc/rpc.h>
+#  include <common/tests.h>
 
-#include "test_host.h"
-#include "test_globals.h"
-#include "type_test_fixture.h"
-#include <transport/tests/dynamic_library/setup.h>
+#  include "test_host.h"
+#  include "test_globals.h"
+#  include "type_test_fixture.h"
+#  include <transport/tests/dynamic_library/setup.h>
 
 using namespace marshalled_tests;
 

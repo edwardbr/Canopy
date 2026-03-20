@@ -4,7 +4,7 @@
  */
 
 #ifndef _WIN32
-#include <arpa/inet.h>
+#  include <arpa/inet.h>
 #endif
 
 #include <array>

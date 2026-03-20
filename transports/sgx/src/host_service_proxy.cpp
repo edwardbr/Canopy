@@ -4,12 +4,12 @@
  */
 #include "common/host_service_proxy.h"
 #ifdef CANOPY_USE_TELEMETRY
-#include "rpc/telemetry/i_telemetry_service.h"
+#  include "rpc/telemetry/i_telemetry_service.h"
 #endif
 
 #ifdef _IN_ENCLAVE
 
-#include "trusted/enclave_marshal_test_t.h"
+#  include "trusted/enclave_marshal_test_t.h"
 
 namespace rpc
 {
@@ -79,12 +79,12 @@ namespace rpc
 
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(rpc::i_telemetry_service::err, "call_host failed");
             }
-#endif
+#  endif
             RPC_ERROR("Transport error - call_host failed");
             return rpc::error::TRANSPORT_ERROR();
         }
@@ -110,12 +110,12 @@ namespace rpc
                 &data_out_sz);
             if (status)
             {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
                     telemetry_service->message(rpc::i_telemetry_service::err, "call_host failed");
                 }
-#endif
+#  endif
                 RPC_ERROR("Transport error - call_host failed on retry gave an enclave error {}", (int)status);
                 RPC_ASSERT(false);
                 return rpc::error::TRANSPORT_ERROR();
@@ -186,12 +186,12 @@ namespace rpc
 
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(rpc::i_telemetry_service::err, "post_host failed");
             }
-#endif
+#  endif
             RPC_ERROR("Transport error - post_host failed");
         }
         // Fire and forget - ignore err_code for post
@@ -231,12 +231,12 @@ namespace rpc
             &out_bc_sz);
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(rpc::i_telemetry_service::err, "try_cast failed");
             }
-#endif
+#  endif
             RPC_ERROR("Transport error - try_cast_host gave an enclave error {}", (int)status);
             RPC_ASSERT(false);
             return rpc::error::TRANSPORT_ERROR();
@@ -286,12 +286,12 @@ namespace rpc
             &out_bc_sz);
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(rpc::i_telemetry_service::err, "add_ref_host failed");
             }
-#endif
+#  endif
             RPC_ERROR("add_ref_host gave an enclave error {}", (int)status);
             RPC_ASSERT(false);
             return rpc::error::ZONE_NOT_FOUND();
@@ -305,13 +305,13 @@ namespace rpc
             ia & out_back_channel;
         }
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+#  if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_add_ref(
                 get_zone_id(), destination_zone_id, get_caller_zone_id(), object_id, requesting_zone_id, build_out_param_channel);
         }
-#endif
+#  endif
 
         auto svc = std::static_pointer_cast<child_service>(get_operating_zone_service());
         return err_code;
@@ -350,12 +350,12 @@ namespace rpc
             &out_bc_sz);
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(rpc::i_telemetry_service::err, "release_host failed");
             }
-#endif
+#  endif
             RPC_ERROR("release_host gave an enclave error {}", (int)status);
             RPC_ASSERT(false);
             return rpc::error::ZONE_NOT_FOUND();

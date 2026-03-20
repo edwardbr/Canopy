@@ -5,28 +5,28 @@
 
 #ifdef __linux__
 
-#include <streaming/stream.h>
+#  include <streaming/stream.h>
 
-#include <coro/net/tcp/client.hpp>
+#  include <coro/net/tcp/client.hpp>
 
-#include <arpa/inet.h>
-#include <atomic>
-#include <cerrno>
-#include <chrono>
-#include <coroutine>
-#include <cstring>
-#include <liburing.h>
-#include <memory>
-#include <mutex>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <optional>
-#include <stdexcept>
-#include <sys/eventfd.h>
-#include <sys/socket.h>
-#include <thread>
-#include <unordered_map>
-#include <unistd.h>
+#  include <arpa/inet.h>
+#  include <atomic>
+#  include <cerrno>
+#  include <chrono>
+#  include <coroutine>
+#  include <cstring>
+#  include <liburing.h>
+#  include <memory>
+#  include <mutex>
+#  include <netinet/in.h>
+#  include <netinet/tcp.h>
+#  include <optional>
+#  include <stdexcept>
+#  include <sys/eventfd.h>
+#  include <sys/socket.h>
+#  include <thread>
+#  include <unordered_map>
+#  include <unistd.h>
 
 namespace streaming::io_uring_tcp
 {

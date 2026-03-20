@@ -10,9 +10,9 @@
 #include <rpc/rpc.h>
 
 #ifdef _IN_ENCLAVE
-#include <fmt/format-inl.h>
+#  include <fmt/format-inl.h>
 #else
-#include <fmt/format.h>
+#  include <fmt/format.h>
 #endif
 namespace rpc
 {
@@ -77,10 +77,10 @@ namespace rpc
         : service(name, zone_id, scheduler)
         , zone_allocator_(zone_id.get_address())
     {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_service_creation(name, zone_id, destination_zone());
-#endif
+#  endif
     }
 
     root_service::root_service(
@@ -93,10 +93,10 @@ namespace rpc
         : service(name, zone_id)
         , zone_allocator_(zone_id.get_address())
     {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_service_creation(name, zone_id, destination_zone());
-#endif
+#  endif
     }
 
     root_service::root_service(const char* name, const service_config& config)

@@ -7,9 +7,9 @@
 #include <rpc/telemetry/multiplexing_telemetry_service.h>
 
 #ifndef _IN_ENCLAVE
-#include <rpc/telemetry/console_telemetry_service.h>
-#include <rpc/telemetry/sequence_diagram_telemetry_service.h>
-#include <rpc/telemetry/animation_telemetry_service.h>
+#  include <rpc/telemetry/console_telemetry_service.h>
+#  include <rpc/telemetry/sequence_diagram_telemetry_service.h>
+#  include <rpc/telemetry/animation_telemetry_service.h>
 #endif
 
 namespace rpc

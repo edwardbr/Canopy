@@ -11,99 +11,99 @@
 #include <common/foo_impl.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/coro.hpp>
+#  include <coro/coro.hpp>
 
-#define CORO_ASSERT_EQ(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x != _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            CO_RETURN false;                                                                                           \
-        }                                                                                                              \
-    } while (0)
-#define CORO_ASSERT_NE(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x == _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            CO_RETURN false;                                                                                           \
-        }                                                                                                              \
-    } while (0)
-#define CORO_VOID_ASSERT_EQ(x, y)                                                                                      \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x != _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            is_ready = true;                                                                                           \
-            CO_RETURN;                                                                                                 \
-        }                                                                                                              \
-    } while (0)
-#define CORO_VOID_ASSERT_NE(x, y)                                                                                      \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x == _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            is_ready = true;                                                                                           \
-            CO_RETURN;                                                                                                 \
-        }                                                                                                              \
-    } while (0)
+#  define CORO_ASSERT_EQ(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x != _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              CO_RETURN false;                                                                                         \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_ASSERT_NE(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x == _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              CO_RETURN false;                                                                                         \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_VOID_ASSERT_EQ(x, y)                                                                                    \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x != _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              is_ready = true;                                                                                         \
+              CO_RETURN;                                                                                               \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_VOID_ASSERT_NE(x, y)                                                                                    \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x == _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              is_ready = true;                                                                                         \
+              CO_RETURN;                                                                                               \
+          }                                                                                                            \
+      } while (0)
 #else
-#define CORO_ASSERT_EQ(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x != _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            return false;                                                                                              \
-        }                                                                                                              \
-    } while (0)
-#define CORO_ASSERT_NE(x, y)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x == _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            return false;                                                                                              \
-        }                                                                                                              \
-    } while (0)
-#define CORO_VOID_ASSERT_EQ(x, y)                                                                                      \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x != _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            return;                                                                                                    \
-        }                                                                                                              \
-    } while (0)
-#define CORO_VOID_ASSERT_NE(x, y)                                                                                      \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        const auto& _coro_temp_x = (x);                                                                                \
-        const auto& _coro_temp_y = (y);                                                                                \
-        EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                         \
-        if (_coro_temp_x == _coro_temp_y)                                                                              \
-        {                                                                                                              \
-            return;                                                                                                    \
-        }                                                                                                              \
-    } while (0)
+#  define CORO_ASSERT_EQ(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x != _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              return false;                                                                                            \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_ASSERT_NE(x, y)                                                                                         \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x == _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              return false;                                                                                            \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_VOID_ASSERT_EQ(x, y)                                                                                    \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x != _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              return;                                                                                                  \
+          }                                                                                                            \
+      } while (0)
+#  define CORO_VOID_ASSERT_NE(x, y)                                                                                    \
+      do                                                                                                               \
+      {                                                                                                                \
+          const auto& _coro_temp_x = (x);                                                                              \
+          const auto& _coro_temp_y = (y);                                                                              \
+          EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
+          if (_coro_temp_x == _coro_temp_y)                                                                            \
+          {                                                                                                            \
+              return;                                                                                                  \
+          }                                                                                                            \
+      } while (0)
 #endif
 
 namespace marshalled_tests

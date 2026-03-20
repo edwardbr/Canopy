@@ -5,15 +5,15 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <chrono>
-#include <fcntl.h>
-#include <iostream>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <thread>
-#include <unistd.h>
+#  include <chrono>
+#  include <fcntl.h>
+#  include <iostream>
+#  include <sys/mman.h>
+#  include <sys/stat.h>
+#  include <thread>
+#  include <unistd.h>
 
-#include <transports/libcoro_ipc_dynamic_dll/transport.h>
+#  include <transports/libcoro_ipc_dynamic_dll/transport.h>
 
 int main(int argc, char** argv)
 {
@@ -28,12 +28,7 @@ int main(int argc, char** argv)
         return 2;
 
     auto* queues = static_cast<rpc::libcoro_ipc_dynamic_dll::queue_pair*>(
-        ::mmap(nullptr,
-            sizeof(rpc::libcoro_ipc_dynamic_dll::queue_pair),
-            PROT_READ | PROT_WRITE,
-            MAP_SHARED,
-            fd,
-            0));
+        ::mmap(nullptr, sizeof(rpc::libcoro_ipc_dynamic_dll::queue_pair), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
     ::close(fd);
     if (queues == MAP_FAILED)
         return 3;

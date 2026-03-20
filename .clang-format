@@ -19,6 +19,8 @@ BinPackArguments: false
 BinPackParameters: false
 BreakBeforeBraces: Allman
 BreakBeforeTernaryOperators: true
+IndentPPDirectives: AfterHash
+PPIndentWidth: 2
 IndentCaseLabels: false
 InsertNewlineAtEOF: true
 SortIncludes: false

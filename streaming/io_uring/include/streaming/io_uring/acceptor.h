@@ -5,21 +5,21 @@
 
 #ifdef __linux__
 
-#include <chrono>
-#include <cstring>
-#include <cerrno>
-#include <memory>
-#include <netinet/in.h>
-#include <optional>
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#  include <chrono>
+#  include <cstring>
+#  include <cerrno>
+#  include <memory>
+#  include <netinet/in.h>
+#  include <optional>
+#  include <fcntl.h>
+#  include <sys/socket.h>
+#  include <unistd.h>
 
-#include <coro/coro.hpp>
+#  include <coro/coro.hpp>
 
-#include <canopy/network_config/network_args.h>
-#include <streaming/io_uring/stream.h>
-#include <streaming/stream_acceptor.h>
+#  include <canopy/network_config/network_args.h>
+#  include <streaming/io_uring/stream.h>
+#  include <streaming/stream_acceptor.h>
 
 namespace streaming::io_uring
 {

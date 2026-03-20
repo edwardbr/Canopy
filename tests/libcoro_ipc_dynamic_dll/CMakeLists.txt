@@ -4,15 +4,15 @@
 ]]
 
 if(NOT CANOPY_BUILD_COROUTINE)
-    return()
+  return()
 endif()
 
-CanopyCreateLibcoroIpcDynamicLibrary(
-    canopy_libcoro_ipc_example_dll
-    SOURCES
-        src/canopy_libcoro_ipc_dll_init.cpp
-        src/rpc_log.cpp
-    LINK_LIBRARIES
-        transport_local
-        common_tests
-        example_idl)
+canopycreatelibcoroipcdynamiclibrary(
+  canopy_libcoro_ipc_example_dll
+  SOURCES
+  src/canopy_libcoro_ipc_dll_init.cpp
+  src/rpc_log.cpp
+  LINK_LIBRARIES
+  transport_local
+  common_tests
+  example_idl)

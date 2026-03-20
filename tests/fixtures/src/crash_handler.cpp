@@ -9,28 +9,28 @@
 #ifndef _WIN32
 
 // OS-specific headers
-#include <dirent.h>
-#include <dlfcn.h>
-#include <execinfo.h>
-#include <link.h>
-#include <sys/types.h>
-#include <unistd.h>
+#  include <dirent.h>
+#  include <dlfcn.h>
+#  include <execinfo.h>
+#  include <link.h>
+#  include <sys/types.h>
+#  include <unistd.h>
 
 // Standard C++ headers
-#include <chrono>
-#include <cstdlib>
-#include <cstring>
-#include <cxxabi.h>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
+#  include <chrono>
+#  include <cstdlib>
+#  include <cstring>
+#  include <cxxabi.h>
+#  include <fstream>
+#  include <iomanip>
+#  include <iostream>
+#  include <sstream>
 
 // RPC headers
-#include <rpc/rpc.h>
+#  include <rpc/rpc.h>
 
 // Other headers
-#include <gtest/gtest.h>
+#  include <gtest/gtest.h>
 
 namespace crash_handler
 {
@@ -117,7 +117,7 @@ namespace crash_handler
         auto report = generate_crash_report(signal);
 
         // Dump thread-local circular buffers with enhanced stack trace
-#if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
+#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
         try
         {
             std::cout << "\n=== DUMPING THREAD-LOCAL CIRCULAR BUFFERS ===" << std::endl;
@@ -130,7 +130,7 @@ namespace crash_handler
         {
             std::cerr << "[crash_handler] Exception while dumping thread-local buffers" << std::endl;
         }
-#endif
+#  endif
 
         // Print the crash report
         print_crash_report(report);
@@ -237,9 +237,9 @@ namespace crash_handler
         }
 
         // Print thread-local logging information if enabled
-#if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
+#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
         std::cout << "Thread-Local Logs: Check /tmp/rpc_debug_dumps/ for per-thread message history" << std::endl;
-#endif
+#  endif
 
         // Print threading debug info
         if (!report.threading_debug_info.empty())
@@ -638,14 +638,14 @@ namespace crash_handler
     {
         std::stringstream info;
 
-#ifdef RPC_THREADING_DEBUG
+#  ifdef RPC_THREADING_DEBUG
         // If threading debug is enabled, we could add more specific info here
         info << " | Threading debug: ENABLED";
         // Note: We'd need to extend the threading_debug API to get activity counts
         // For now, just indicate it's enabled
-#else
+#  else
         info << " | Threading debug: DISABLED";
-#endif
+#  endif
 
         return info.str();
     }
@@ -769,9 +769,9 @@ namespace crash_handler
                 file << "Current Test: " << test_info->test_suite_name() << "." << test_info->name() << "\n";
             }
 
-#if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
+#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
             file << "Thread-Local Logs: Check /tmp/rpc_debug_dumps/ for per-thread message history\n";
-#endif
+#  endif
 
             file << "Signal: " << report.signal_number;
             if (!report.signal_name.empty())

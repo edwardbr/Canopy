@@ -14,13 +14,13 @@
 // RPC headers
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/i_telemetry_service.h>
 #endif
 
 // Other headers
 #ifdef CANOPY_BUILD_ENCLAVE
-#include "untrusted/enclave_marshal_test_u.h"
-#include <common/enclave_service_proxy.h>
+#  include "untrusted/enclave_marshal_test_u.h"
+#  include <common/enclave_service_proxy.h>
 #endif
 #include <example/example.h>
 #include "test_globals.h"

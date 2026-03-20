@@ -8,8 +8,8 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <transports/libcoro_dynamic_library/transport.h>
-#include <rpc/rpc.h>
+#  include <transports/libcoro_dynamic_library/transport.h>
+#  include <rpc/rpc.h>
 
 namespace rpc::libcoro_dynamic_library
 {
@@ -34,25 +34,25 @@ namespace rpc::libcoro_dynamic_library
     {
         if (!lib_handle_)
             return nullptr;
-#if defined(_WIN32)
+#  if defined(_WIN32)
         return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(lib_handle_), sym_name));
-#else
+#  else
         return dlsym(lib_handle_, sym_name);
-#endif
+#  endif
     }
 
     int child_transport::load_library()
     {
         RPC_ASSERT(!lib_handle_);
 
-#if defined(_WIN32)
+#  if defined(_WIN32)
         lib_handle_ = LoadLibraryA(library_path_.c_str());
         if (!lib_handle_)
         {
             RPC_ERROR("[libcoro_dynamic_library] LoadLibrary failed for {}", library_path_);
             return rpc::error::TRANSPORT_ERROR();
         }
-#else
+#  else
         // RTLD_NODELETE: the DLL's copy of librpc.a may have coroutine frames
         // (e.g. send_object_release) still live on the scheduler when the last
         // proxy is released.  Keeping the code pages mapped lets those frames
@@ -63,7 +63,7 @@ namespace rpc::libcoro_dynamic_library
             RPC_ERROR("[libcoro_dynamic_library] dlopen failed for {}: {}", library_path_, dlerror());
             return rpc::error::TRANSPORT_ERROR();
         }
-#endif
+#  endif
 
         if (!resolve_symbol("canopy_libcoro_dll_create"))
         {
@@ -88,11 +88,11 @@ namespace rpc::libcoro_dynamic_library
 
         if (lib_handle_)
         {
-#if defined(_WIN32)
+#  if defined(_WIN32)
             FreeLibrary(static_cast<HMODULE>(lib_handle_));
-#else
+#  else
             dlclose(lib_handle_);
-#endif
+#  endif
             lib_handle_ = nullptr;
         }
     }

@@ -14,7 +14,14 @@ jobs:
     steps:
       - name: Install system and C++ dependencies
         run: |
-          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs clang-tools-extra gdb liburing-devel git
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz
+      - name: Install clang-format 22.1.1
+        run: |
+          wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.1/LLVM-22.1.1-Linux-X64.tar.xz
+          tar -xJf LLVM-22.1.1-Linux-X64.tar.xz
+          mkdir -p /opt/llvm-22.1.1
+          cp -r LLVM-22.1.1-Linux-X64/* /opt/llvm-22.1.1/
+          echo "/opt/llvm-22.1.1/bin" >> $GITHUB_PATH
       - name: Install Perl dependencies
         run: |
           dnf install -y perl-core

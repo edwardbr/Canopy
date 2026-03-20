@@ -7,16 +7,16 @@
 
 #ifdef CANOPY_BUILD_ENCLAVE
 
-#include <atomic>
-#include "test_host.h"
-#include "test_globals.h"
-#include <gtest/gtest.h>
-#include <common/foo_impl.h>
-#include <common/tests.h>
+#  include <atomic>
+#  include "test_host.h"
+#  include "test_globals.h"
+#  include <gtest/gtest.h>
+#  include <common/foo_impl.h>
+#  include <common/tests.h>
 
-#ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
-#endif
+#  ifdef CANOPY_USE_TELEMETRY
+#    include <rpc/telemetry/i_telemetry_service.h>
+#  endif
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class sgx_setup
 {
@@ -59,14 +59,14 @@ public:
 
     virtual void set_up()
     {
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
         if (auto telemetry_service
             = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
         {
             telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
         }
-#endif
+#  endif
         root_service_ = std::make_shared<rpc::root_service>("host", rpc::DEFAULT_PREFIX);
         current_host_service = root_service_;
 
@@ -85,13 +85,13 @@ public:
         i_host_ptr_ = nullptr;
         root_service_ = nullptr;
         current_host_service.reset();
-#ifdef CANOPY_USE_TELEMETRY
+#  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service
             = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
         {
             telemetry_service->reset_for_test();
         }
-#endif
+#  endif
     }
 
     rpc::shared_ptr<yyy::i_example> create_new_zone()

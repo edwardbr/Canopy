@@ -4,15 +4,15 @@
  */
 
 #ifndef _IN_ENCLAVE
-#include <thread>
+#  include <thread>
 
-#ifdef CANOPY_BUILD_ENCLAVE
-#include <sgx_urts.h>
-#include <sgx_capable.h>
+#  ifdef CANOPY_BUILD_ENCLAVE
+#    include <sgx_urts.h>
+#    include <sgx_capable.h>
 
-#include <rpc/rpc.h>
-#include "common/enclave_service_proxy.h"
-#include <untrusted/enclave_marshal_test_u.h>
+#    include <rpc/rpc.h>
+#    include "common/enclave_service_proxy.h"
+#    include <untrusted/enclave_marshal_test_u.h>
 
 namespace rpc
 {
@@ -52,20 +52,20 @@ namespace rpc
         std::ignore = stub;
         sgx_launch_token_t token = {0};
         int updated = 0;
-#ifdef _WIN32
+#    ifdef _WIN32
         auto status = sgx_create_enclavea(filename_.data(), SGX_DEBUG_FLAG, &token, &updated, &eid_, NULL);
-#else
+#    else
         auto status = sgx_create_enclave(filename_.data(), SGX_DEBUG_FLAG, &token, &updated, &eid_, NULL);
-#endif
+#    endif
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("sgx_create_enclave failed ") + std::to_string(status);
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
-#endif
+#    endif
             RPC_ERROR("Transport error - sgx_create_enclave failed");
             CO_RETURN connect_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
@@ -79,12 +79,12 @@ namespace rpc
             &output_object_id);
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(rpc::i_telemetry_service::err, "marshal_test_init_enclave failed");
             }
-#endif
+#    endif
             sgx_destroy_enclave(eid_);
             RPC_ERROR("Transport error - marshal_test_init_enclave failed");
             CO_RETURN connect_result{rpc::error::TRANSPORT_ERROR(), {}};
@@ -157,13 +157,13 @@ namespace rpc
 
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("call_enclave failed ") + std::to_string(status);
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
-#endif
+#    endif
             RPC_ERROR("call_enclave gave an enclave error {}", (int)status);
             RPC_ASSERT(false);
             return rpc::error::TRANSPORT_ERROR();
@@ -192,13 +192,13 @@ namespace rpc
                 &tls);
             if (status)
             {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
                     auto error_message = std::string("call_enclave failed ") + std::to_string(status);
                     telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
                 }
-#endif
+#    endif
                 RPC_ERROR("call_enclave gave an enclave error {}", (int)status);
                 RPC_ASSERT(false);
                 return rpc::error::TRANSPORT_ERROR();
@@ -272,13 +272,13 @@ namespace rpc
 
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("post_enclave failed ") + std::to_string(status);
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
-#endif
+#    endif
             RPC_ERROR("post_enclave gave an enclave error {}", (int)status);
         }
         // Fire and forget - ignore err_code for post
@@ -335,13 +335,13 @@ namespace rpc
         }
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("try_cast_enclave failed ") + std::to_string(status);
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
-#endif
+#    endif
             RPC_ERROR("try_cast_enclave gave an enclave error {}", (int)status);
             RPC_ASSERT(false);
             return rpc::error::TRANSPORT_ERROR();
@@ -414,13 +414,13 @@ namespace rpc
         }
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("add_ref_enclave failed ") + std::to_string(status);
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
-#endif
+#    endif
             RPC_ERROR("add_ref_enclave gave an enclave error {}", (int)status);
             RPC_ASSERT(false);
             return rpc::error::ZONE_NOT_FOUND();
@@ -432,13 +432,13 @@ namespace rpc
             yas::binary_iarchive<yas::mem_istream, yas::binary | yas::no_header> ia(is);
             ia & out_back_channel;
         }
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+#    if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_add_ref(
                 get_zone_id(), destination_zone_id, get_caller_zone_id(), object_id, requesting_zone_id, build_out_param_channel);
         }
-#endif
+#    endif
         return err_code;
     }
 
@@ -496,13 +496,13 @@ namespace rpc
         }
         if (status)
         {
-#ifdef CANOPY_USE_TELEMETRY
+#    ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("release_enclave failed ") + std::to_string(status);
                 telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
             }
-#endif
+#    endif
             RPC_ERROR("release_enclave gave an enclave error {}", (int)status);
             RPC_ASSERT(false);
             return rpc::error::ZONE_NOT_FOUND();
@@ -517,5 +517,5 @@ namespace rpc
         return err_code;
     }
 }
-#endif
+#  endif
 #endif

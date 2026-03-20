@@ -3,19 +3,19 @@
    All rights reserved.
 ]]
 
-# Test DLL for the libcoro_dynamic_library transport (coroutine builds only).
-# Provides canopy_libcoro_dll_init wired to marshalled_tests::example.
+# Test DLL for the libcoro_dynamic_library transport (coroutine builds only). Provides canopy_libcoro_dll_init wired to
+# marshalled_tests::example.
 
 if(NOT CANOPY_BUILD_COROUTINE)
-    return()
+  return()
 endif()
 
-CanopyCreateLibcoroDynamicLibrary(
-    canopy_libcoro_example_dll
-    SOURCES
-        src/canopy_libcoro_dll_init.cpp
-        src/rpc_log.cpp
-    LINK_LIBRARIES
-        transport_local
-        common_tests
-        example_idl)
+canopycreatelibcorodynamiclibrary(
+  canopy_libcoro_example_dll
+  SOURCES
+  src/canopy_libcoro_dll_init.cpp
+  src/rpc_log.cpp
+  LINK_LIBRARIES
+  transport_local
+  common_tests
+  example_idl)

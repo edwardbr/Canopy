@@ -37,14 +37,14 @@
 #include <fmt/format.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <streaming/listener.h>
-#include <streaming/io_uring/acceptor.h>
-#include <streaming/io_uring/stream.h>
-#include <streaming/spsc_queue/stream.h>
-#include <streaming/tcp/acceptor.h>
-#include <streaming/tcp/stream.h>
-#include <transports/streaming/transport.h>
-#include <unistd.h>
+#  include <streaming/listener.h>
+#  include <streaming/io_uring/acceptor.h>
+#  include <streaming/io_uring/stream.h>
+#  include <streaming/spsc_queue/stream.h>
+#  include <streaming/tcp/acceptor.h>
+#  include <streaming/tcp/stream.h>
+#  include <transports/streaming/transport.h>
+#  include <unistd.h>
 #endif
 
 namespace comprehensive

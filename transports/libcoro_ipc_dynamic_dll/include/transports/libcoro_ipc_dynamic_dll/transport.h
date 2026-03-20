@@ -6,14 +6,14 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#include <condition_variable>
-#include <memory>
-#include <mutex>
-#include <string>
+#  include <condition_variable>
+#  include <memory>
+#  include <mutex>
+#  include <string>
 
-#include <rpc/rpc.h>
-#include <transports/libcoro_ipc_dynamic_dll/dll_abi.h>
-#include <transports/streaming/transport.h>
+#  include <rpc/rpc.h>
+#  include <transports/libcoro_ipc_dynamic_dll/dll_abi.h>
+#  include <transports/streaming/transport.h>
 
 namespace rpc::libcoro_ipc_dynamic_dll
 {
@@ -50,9 +50,8 @@ namespace rpc::libcoro_ipc_dynamic_dll
         void stop();
     };
 
-    std::shared_ptr<rpc::stream_transport::transport> make_client(std::string name,
-        const std::shared_ptr<rpc::service>& service,
-        queue_pair* queues);
+    std::shared_ptr<rpc::stream_transport::transport> make_client(
+        std::string name, const std::shared_ptr<rpc::service>& service, queue_pair* queues);
 
 } // namespace rpc::libcoro_ipc_dynamic_dll
 

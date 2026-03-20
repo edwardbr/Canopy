@@ -4,9 +4,9 @@
  */
 
 #ifndef _WIN32
-#include <ifaddrs.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#  include <ifaddrs.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
 #endif
 
 #include <array>

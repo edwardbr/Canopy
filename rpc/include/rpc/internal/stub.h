@@ -44,7 +44,7 @@
 #include <rpc/internal/marshaller.h>
 #include <rpc/internal/remote_pointer.h>
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/i_telemetry_service.h>
 #endif
 #include <rpc/internal/service.h>
 

@@ -13,32 +13,32 @@
 // RPC headers
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
-#include <rpc/telemetry/multiplexing_telemetry_service.h>
-#include <rpc/telemetry/console_telemetry_service.h>
-#include <rpc/telemetry/sequence_diagram_telemetry_service.h>
+#  include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/multiplexing_telemetry_service.h>
+#  include <rpc/telemetry/console_telemetry_service.h>
+#  include <rpc/telemetry/sequence_diagram_telemetry_service.h>
 #endif
 
 // Other headers
 #ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wsuggest-override"
-#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wsuggest-override"
+#  pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 #elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsuggest-override"
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wsuggest-override"
 #endif
 
 #include <args.hxx>
 
 #ifdef __clang__
-#pragma clang diagnostic pop
+#  pragma clang diagnostic pop
 #elif defined(__GNUC__)
-#pragma GCC diagnostic pop
+#  pragma GCC diagnostic pop
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
-#include <coro/scheduler.hpp>
+#  include <coro/scheduler.hpp>
 #endif
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -50,12 +50,12 @@
 #include <transport/tests/direct/setup.h>
 #include <transport/tests/local/setup.h>
 #ifdef CANOPY_BUILD_ENCLAVE
-#include <transport/tests/sgx/setup.h>
+#  include <transport/tests/sgx/setup.h>
 #endif
 #ifdef CANOPY_BUILD_COROUTINE
-#include <transport/tests/streaming_tcp/setup.h>
-#include <transport/tests/streaming_spsc/setup.h>
-#include <transport/tests/streaming_iouring/setup.h>
+#  include <transport/tests/streaming_tcp/setup.h>
+#  include <transport/tests/streaming_spsc/setup.h>
+#  include <transport/tests/streaming_iouring/setup.h>
 #endif
 #include "crash_handler.h"
 #include "type_test_fixture.h"

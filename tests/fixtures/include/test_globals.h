@@ -9,7 +9,7 @@
 #include <rpc/rpc.h>
 
 #ifdef CANOPY_USE_TELEMETRY
-#include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/i_telemetry_service.h>
 #endif
 
 // Other global variables used by the test setup classes
