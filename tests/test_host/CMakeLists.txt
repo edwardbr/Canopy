@@ -16,6 +16,11 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_DLL_TRANSPORT_LIB transport_libcoro_dynamic_library)
   set(LIBCORO_DLL_TRANSPORT_TEST_LIB transport_libcoro_dynamic_library_test)
   set(LIBCORO_DLL_TEST_TARGET canopy_libcoro_example_dll)
+  set(LIBCORO_IPC_DLL_TRANSPORT_SOURCES type_test_libcoro_ipc_dll_suite.cpp)
+  set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_ipc_dynamic_dll)
+  set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_ipc_dynamic_dll_test)
+  set(LIBCORO_IPC_DLL_TEST_TARGET canopy_libcoro_ipc_example_dll)
+  set(LIBCORO_IPC_DLL_LOADER_TARGET canopy_libcoro_ipc_loader)
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
@@ -33,6 +38,14 @@ if(LIBCORO_DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_LIBCORO_DLL_PATH="$<TARGET_FILE:${LIBCORO_DLL_TEST_TARGET}>")
 endif()
 
+if(LIBCORO_IPC_DLL_TEST_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_LIBCORO_IPC_DLL_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_TEST_TARGET}>")
+endif()
+
+if(LIBCORO_IPC_DLL_LOADER_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_LIBCORO_IPC_LOADER_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
+endif()
+
 add_executable(
   rpc_test
   main.cpp
@@ -43,6 +56,7 @@ add_executable(
   optimistic_ptr_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${LIBCORO_DLL_TRANSPORT_SOURCES}
+  ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
 
 target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
@@ -71,6 +85,8 @@ target_link_libraries(
          ${DLL_TRANSPORT_TEST_LIB}
          ${LIBCORO_DLL_TRANSPORT_LIB}
          ${LIBCORO_DLL_TRANSPORT_TEST_LIB}
+         ${LIBCORO_IPC_DLL_TRANSPORT_LIB}
+         ${LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB}
          ${SGX_TRANSPORT_TEST_LIB}
          ${STREAMING_TRANSPORT_LIB}
          ${STREAMING_TRANSPORT_TEST_LIB}
@@ -99,6 +115,7 @@ endif()
 
 if(CANOPY_BUILD_COROUTINE)
   add_dependencies(rpc_test ${LIBCORO_DLL_TEST_TARGET})
+  add_dependencies(rpc_test ${LIBCORO_IPC_DLL_TEST_TARGET} ${LIBCORO_IPC_DLL_LOADER_TARGET})
 endif()
 
 include(CTest)
