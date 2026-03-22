@@ -20,23 +20,27 @@ include(CanopyCreateLibcoroDynamicLibrary)
 include(CanopyCreateLibcoroSpscDynamicLibrary)
 
 if(CANOPY_BUILD_COROUTINE)
-  CanopyCreateLibcoroDynamicLibrary(
+  canopycreatelibcorodynamiclibrary(
     canopy_benchmark_libcoro_dll
-    SOURCES src/canopy_libcoro_dll_init.cpp src/rpc_log.cpp
-    LINK_LIBRARIES comprehensive_idl)
+    SOURCES
+    src/canopy_libcoro_dll_init.cpp
+    src/rpc_log.cpp
+    LINK_LIBRARIES
+    comprehensive_idl)
 
-  CanopyCreateLibcoroSpscDynamicLibrary(
+  canopycreatelibcorospscdynamiclibrary(
     canopy_benchmark_libcoro_spsc_dll
-    SOURCES src/canopy_libcoro_spsc_dll_init.cpp src/rpc_log.cpp
-    LINK_LIBRARIES comprehensive_idl)
+    SOURCES
+    src/canopy_libcoro_spsc_dll_init.cpp
+    src/rpc_log.cpp
+    LINK_LIBRARIES
+    comprehensive_idl)
 
   add_executable(canopy_benchmark_ipc_child_process src/ipc_child_process_main.cpp src/rpc_log.cpp)
   target_compile_definitions(canopy_benchmark_ipc_child_process PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
-    canopy_benchmark_ipc_child_process
-    PRIVATE "${CMAKE_SOURCE_DIR}/demos/comprehensive/include"
-            ${CANOPY_INCLUDES}
-            "${CMAKE_SOURCE_DIR}/transports/local/include")
+    canopy_benchmark_ipc_child_process PRIVATE "${CMAKE_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES}
+                                               "${CMAKE_SOURCE_DIR}/transports/local/include")
   target_link_libraries(
     canopy_benchmark_ipc_child_process
     PRIVATE transport_ipc_transport
@@ -51,13 +55,25 @@ if(CANOPY_BUILD_COROUTINE)
   target_link_options(canopy_benchmark_ipc_child_process PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET canopy_benchmark_ipc_child_process PROPERTY COMPILE_PDB_NAME canopy_benchmark_ipc_child_process)
 else()
-  CanopyCreateDynamicLibrary(
+  canopycreatedynamiclibrary(
     canopy_benchmark_dll
-    SOURCES src/canopy_dll_init.cpp src/rpc_log.cpp
-    LINK_LIBRARIES comprehensive_idl)
+    SOURCES
+    src/canopy_dll_init.cpp
+    src/rpc_log.cpp
+    LINK_LIBRARIES
+    comprehensive_idl)
 endif()
 
-add_executable(benchmark benchmark.cpp)
+add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmark_local.cpp src/rpc_log.cpp)
+if(CANOPY_BUILD_COROUTINE)
+  target_sources(
+    benchmark
+    PRIVATE src/benchmark_libcoro_dynamic_library.cpp
+            src/benchmark_ipc.cpp
+            src/benchmark_spsc.cpp
+            src/benchmark_tcp.cpp
+            src/benchmark_io_uring.cpp)
+endif()
 target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
 if(CANOPY_BUILD_COROUTINE)
   target_compile_definitions(
@@ -69,7 +85,8 @@ if(CANOPY_BUILD_COROUTINE)
 else()
   target_compile_definitions(benchmark PRIVATE CANOPY_BENCHMARK_DLL_PATH="$<TARGET_FILE:canopy_benchmark_dll>")
 endif()
-target_include_directories(benchmark PRIVATE "${CMAKE_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})
+target_include_directories(benchmark PRIVATE "${CMAKE_SOURCE_DIR}/benchmarking/fullstack/src"
+                                             "${CMAKE_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})
 target_link_libraries(benchmark PUBLIC comprehensive_idl transport_local rpc ${CANOPY_LIBRARIES})
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(benchmark PUBLIC transport_streaming transport_libcoro_dynamic_library transport_ipc_transport)
@@ -81,8 +98,12 @@ target_link_options(benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET benchmark PROPERTY COMPILE_PDB_NAME benchmark)
 
 if(CANOPY_BUILD_COROUTINE)
-  add_dependencies(benchmark canopy_benchmark_libcoro_dll canopy_benchmark_libcoro_spsc_dll canopy_benchmark_ipc_child_process
-                   canopy_ipc_child_host_process)
+  add_dependencies(
+    benchmark
+    canopy_benchmark_libcoro_dll
+    canopy_benchmark_libcoro_spsc_dll
+    canopy_benchmark_ipc_child_process
+    canopy_ipc_child_host_process)
 else()
   add_dependencies(benchmark canopy_benchmark_dll)
 endif()
