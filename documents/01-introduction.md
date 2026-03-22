@@ -49,7 +49,7 @@ Canopy abstracts transport details behind a consistent interface. Multiple trans
 |-----------|----------|--------------|
 | [Local](transports/local.md) | In-process parent/child zones | None |
 | [TCP](transports/tcp.md) | Network communication | CANOPY_BUILD_COROUTINE=ON |
-| [SPSC](transports/spsc.md) | Lock-free single producer/consumer IPC | CANOPY_BUILD_COROUTINE=ON |
+| [SPSC and IPC](transports/spsc_and_ipc.md) | Lock-free single producer/consumer IPC and process-hosted streaming | CANOPY_BUILD_COROUTINE=ON |
 | [SGX](transports/sgx.md) | Secure enclave communication | CANOPY_BUILD_ENCLAVE=ON |
 | [Custom](transports/custom.md) | User-defined transports | Varies |
 

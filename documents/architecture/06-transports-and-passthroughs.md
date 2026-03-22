@@ -125,8 +125,10 @@ Canopy provides several transport implementations, each optimized for different 
 | Transport | Purpose | Requirements |
 |-----------|---------|--------------|
 | [Local](../transports/local.md) | In-process parent-child zone communication | None |
+| [Dynamic Library](../transports/dynamic_library.md) | In-process DLL-backed child zones | Blocking or coroutine variant |
+| [IPC Transport](../transports/dynamic_library.md) | Process-owned child zone connections over SPSC streams | Coroutines |
 | [TCP](../transports/tcp.md) | Network communication between machines | Coroutines |
-| [SPSC](../transports/spsc.md) | Lock-free inter-process communication | Coroutines |
+| [SPSC and IPC](../transports/spsc_and_ipc.md) | Lock-free inter-process communication and SPSC-backed process transport | Coroutines |
 | [SGX](../transports/sgx.md) | Secure enclave communication | SGX SDK |
 | [Custom](../transports/custom.md) | User-defined transport implementations | Depends on implementation |
 
@@ -664,5 +666,5 @@ Enable telemetry to see the complete picture:
 - [Hierarchical Transports](../transports/hierarchical.md) - Parent/child transport pattern
 - [Local Transport](../transports/local.md) - In-process transport
 - [TCP Transport](../transports/tcp.md) - Network transport
-- [SPSC Transport](../transports/spsc.md) - Lock-free IPC transport
+- [SPSC and IPC](../transports/spsc_and_ipc.md) - Lock-free IPC queue and SPSC-backed process transport
 - [SGX Transport](../transports/sgx.md) - Secure enclave transport

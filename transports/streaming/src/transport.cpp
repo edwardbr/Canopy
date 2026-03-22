@@ -17,6 +17,15 @@ namespace rpc::stream_transport
     {
     }
 
+    void transport::initialise_after_construction()
+    {
+        keep_alive_ = std::static_pointer_cast<rpc::stream_transport::transport>(shared_from_this());
+        set_status(rpc::transport_status::CONNECTED);
+
+        if (connection_handler_)
+            get_service()->spawn(pump_send_and_receive());
+    }
+
     std::shared_ptr<transport> make_server(std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
@@ -25,14 +34,7 @@ namespace rpc::stream_transport
         auto transport = std::shared_ptr<rpc::stream_transport::transport>(
             new rpc::stream_transport::transport(name, service, std::move(stream), std::move(handler)));
 
-        transport->keep_alive_ = transport;
-        transport->set_status(rpc::transport_status::CONNECTED);
-
-        // Server-side transports (those with a connection_handler) start the pump immediately
-        // so they can receive the client's init message.  Client-side transports have no
-        // connection_handler and their pump is started inside inner_connect().
-        if (transport->connection_handler_)
-            service->spawn(transport->pump_send_and_receive());
+        transport->initialise_after_construction();
 
         return transport;
     }
