@@ -5,31 +5,31 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#  include <common/foo_impl.h>
-#  include <example/example.h>
+#  include "benchmark_data_processor.h"
 #  include <streaming/spsc_queue/stream.h>
 #  include <transports/ipc_transport/bootstrap.h>
 #  include <transports/streaming/transport.h>
 
 namespace
 {
-    CORO_TASK(rpc::service_connect_result<yyy::i_example>)
-    make_example(rpc::shared_ptr<yyy::i_host> host, std::shared_ptr<rpc::service> svc)
+    CORO_TASK(rpc::service_connect_result<comprehensive::v1::i_data_processor>)
+    make_data_processor(rpc::shared_ptr<comprehensive::v1::i_data_processor>, std::shared_ptr<rpc::service>)
     {
-        auto example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(svc, host));
-        CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(example)};
+        CO_RETURN rpc::service_connect_result<comprehensive::v1::i_data_processor>{
+            rpc::error::OK(), comprehensive::v1::make_benchmark_data_processor()};
     }
 
     CORO_TASK(int)
     run_child_process(
         std::shared_ptr<coro::scheduler> scheduler, rpc::zone child_zone, rpc::libcoro_spsc_dynamic_dll::queue_pair* queues)
     {
-        auto service = std::make_shared<rpc::root_service>("ipc_child_process", child_zone, scheduler);
+        auto service = std::make_shared<rpc::root_service>("benchmark_ipc_child_process", child_zone, scheduler);
 
         auto stream
             = std::make_shared<streaming::spsc_queue::stream>(&queues->dll_to_host, &queues->host_to_dll, scheduler);
-        auto acceptor = rpc::stream_transport::make_server<yyy::i_host, yyy::i_example>(
-            "ipc_child_process", service, std::move(stream), &make_example);
+        auto acceptor
+            = rpc::stream_transport::make_server<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(
+                "benchmark_ipc_child_process", service, std::move(stream), &make_data_processor);
         if (!acceptor)
             CO_RETURN 3;
 
@@ -74,4 +74,4 @@ int main(int argc, char** argv)
     return exit_code;
 }
 
-#endif // CANOPY_BUILD_COROUTINE
+#endif

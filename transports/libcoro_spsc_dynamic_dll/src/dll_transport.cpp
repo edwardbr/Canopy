@@ -5,7 +5,6 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#  include <atomic>
 #  include <thread>
 #  include <transports/libcoro_spsc_dynamic_dll/dll_transport.h>
 
@@ -16,7 +15,6 @@ namespace rpc::libcoro_spsc_dynamic_dll
         struct runtime_context
         {
             std::shared_ptr<coro::scheduler> scheduler;
-            std::shared_ptr<std::atomic<bool>> running;
             std::shared_ptr<rpc::event> shutdown_event;
             std::thread worker;
         };
@@ -29,8 +27,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
             parent_expired_fn on_parent_expired,
             void* callback_ctx,
             std::shared_ptr<coro::scheduler> scheduler,
-            std::shared_ptr<rpc::event> shutdown_event,
-            std::shared_ptr<std::atomic<bool>> running)
+            std::shared_ptr<rpc::event> shutdown_event)
         {
             auto service = std::make_shared<rpc::root_service>(name.c_str(), dll_zone, scheduler);
             service->set_shutdown_event(shutdown_event);
@@ -38,27 +35,17 @@ namespace rpc::libcoro_spsc_dynamic_dll
             auto stream = std::make_shared<streaming::spsc_queue::stream>(send_queue, recv_queue, scheduler);
             auto acceptor = CO_AWAIT canopy_libcoro_spsc_dll_init(name, service, std::move(stream));
             if (!acceptor)
-            {
-                running->store(false, std::memory_order_release);
                 CO_RETURN;
-            }
 
             auto accept_err = CO_AWAIT acceptor->accept();
             if (accept_err != rpc::error::OK())
-            {
-                running->store(false, std::memory_order_release);
                 CO_RETURN;
-            }
 
-            // this is the main loop of the dll
             while (acceptor->get_status() != rpc::transport_status::DISCONNECTED)
-            {
                 CO_AWAIT scheduler->schedule();
-            }
 
             acceptor.reset();
             service.reset();
-            running->store(false, std::memory_order_release);
 
             if (on_parent_expired)
                 on_parent_expired(callback_ctx);
@@ -88,11 +75,11 @@ extern "C" CANOPY_LIBCORO_SPSC_DLL_EXPORT void canopy_libcoro_spsc_dll_start(
 
     auto* ctx = new runtime_context{};
     ctx->scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{
-                .thread_count = 1,
-            }}));
-    ctx->running = std::make_shared<std::atomic<bool>>(true);
+                .thread_count = static_cast<uint32_t>(params->scheduler_thread_count),
+            },
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
     ctx->shutdown_event = std::make_shared<rpc::event>();
 
     ctx->worker = std::thread(
@@ -103,14 +90,15 @@ extern "C" CANOPY_LIBCORO_SPSC_DLL_EXPORT void canopy_libcoro_spsc_dll_start(
             on_parent_expired = params->on_parent_expired,
             callback_ctx = params->callback_ctx,
             scheduler = ctx->scheduler,
-            shutdown_event = ctx->shutdown_event,
-            running = ctx->running]() mutable
+            shutdown_event = ctx->shutdown_event]() mutable
         {
-            RPC_ASSERT(scheduler->spawn_detached(run_runtime(
-                std::move(name), dll_zone, send_queue, recv_queue, on_parent_expired, callback_ctx, scheduler, shutdown_event, running)));
-
-            while (running->load(std::memory_order_acquire))
-                scheduler->process_events(std::chrono::milliseconds(1));
+            coro::sync_wait(coro::when_all(
+                [&]() -> coro::task<void>
+                {
+                    CO_AWAIT run_runtime(
+                        std::move(name), dll_zone, send_queue, recv_queue, on_parent_expired, callback_ctx, scheduler, shutdown_event);
+                    CO_RETURN;
+                }()));
         });
 
     result->runtime_ctx = ctx;
