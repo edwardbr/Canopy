@@ -50,8 +50,11 @@ namespace rpc::libcoro_ipc_dynamic_dll
                 CO_RETURN;
             }
 
+            // this is the main loop of the dll
             while (acceptor->get_status() != rpc::transport_status::DISCONNECTED)
+            {
                 CO_AWAIT scheduler->schedule();
+            }
 
             acceptor.reset();
             service.reset();

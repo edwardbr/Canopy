@@ -9,7 +9,7 @@ endif()
 
 include(CanopyCreateLibcoroIpcDynamicLibrary)
 
-add_library(transport_libcoro_ipc_dynamic_dll STATIC src/transport.cpp)
+add_library(transport_libcoro_ipc_dynamic_dll STATIC src/transport.cpp src/loaded_library.cpp)
 
 target_compile_definitions(transport_libcoro_ipc_dynamic_dll PRIVATE ${CANOPY_DEFINES})
 

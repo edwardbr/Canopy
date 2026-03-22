@@ -18,6 +18,7 @@ namespace rpc::libcoro_ipc_dynamic_dll
     coro::task<std::shared_ptr<rpc::stream_transport::transport>> canopy_libcoro_ipc_dll_init(
         const std::string& name, std::shared_ptr<rpc::root_service> service, std::shared_ptr<streaming::stream> stream);
 
+    // a factory function that creates a stream_transport and redirects it to an app specific function
     template<class PARENT_INTERFACE, class CHILD_INTERFACE>
     coro::task<std::shared_ptr<rpc::stream_transport::transport>> create_acceptor(const std::string& name,
         const std::shared_ptr<rpc::root_service>& service,
