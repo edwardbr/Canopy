@@ -6,6 +6,7 @@
 #ifdef CANOPY_BUILD_COROUTINE
 
 #  include <chrono>
+#  include <cstdlib>
 #  include <fcntl.h>
 #  include <iostream>
 #  include <sys/mman.h>
@@ -13,13 +14,13 @@
 #  include <thread>
 #  include <unistd.h>
 
-#  include <transports/libcoro_ipc_dynamic_dll/transport.h>
+#  include <transports/libcoro_ipc_dynamic_dll/loaded_library.h>
 
 int main(int argc, char** argv)
 {
-    if (argc != 3)
+    if (argc != 4)
     {
-        std::cerr << "usage: canopy_libcoro_ipc_loader <dll-path> <mapped-queue-file>\n";
+        std::cerr << "usage: canopy_libcoro_ipc_loader <dll-path> <mapped-queue-file> <dll-subnet>\n";
         return 1;
     }
 
@@ -35,7 +36,12 @@ int main(int argc, char** argv)
 
     rpc::zone host_zone = rpc::DEFAULT_PREFIX;
     auto dll_zone_address = rpc::DEFAULT_PREFIX;
-    [[maybe_unused]] bool ok = dll_zone_address.set_subnet(dll_zone_address.get_subnet() + 1);
+    char* end = nullptr;
+    auto dll_subnet = std::strtoull(argv[3], &end, 10);
+    if (!end || *end != '\0')
+        return 5;
+
+    [[maybe_unused]] bool ok = dll_zone_address.set_subnet(dll_subnet);
     RPC_ASSERT(ok);
     rpc::zone dll_zone = dll_zone_address;
 
@@ -44,8 +50,11 @@ int main(int argc, char** argv)
     if (!loaded)
         return 4;
 
+    std::cout << "loader: loaded dll zone " << dll_zone.get_subnet() << '\n';
     loaded->wait_until_expired(std::chrono::seconds(30));
+    std::cout << "loader: parent expired for dll zone " << dll_zone.get_subnet() << '\n';
     loaded->stop();
+    std::cout << "loader: stopped dll zone " << dll_zone.get_subnet() << '\n';
 
     ::munmap(queues, sizeof(rpc::libcoro_ipc_dynamic_dll::queue_pair));
     return 0;

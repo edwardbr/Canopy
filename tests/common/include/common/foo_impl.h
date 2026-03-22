@@ -21,6 +21,8 @@
 
 namespace marshalled_tests
 {
+    CORO_TASK(bool) standard_tests(xxx::i_foo& foo, bool enclave);
+
     class baz : public rpc::base<baz, xxx::i_baz, xxx::i_bar>
     {
     public:
@@ -387,6 +389,7 @@ namespace marshalled_tests
     class example : public rpc::base<example, yyy::i_example>, public rpc::enable_shared_from_this<example>
     {
         rpc::member_ptr<yyy::i_host> host_;
+        rpc::member_ptr<yyy::i_example> retained_peer_;
         std::weak_ptr<rpc::service> this_service_;
 
     public:
@@ -403,6 +406,9 @@ namespace marshalled_tests
         }
         ~example() override
         {
+            RPC_INFO("example::~example zone={} retained_peer={}",
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0,
+                retained_peer_.get_nullable() != nullptr);
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
