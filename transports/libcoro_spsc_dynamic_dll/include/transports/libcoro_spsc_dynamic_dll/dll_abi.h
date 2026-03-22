@@ -37,6 +37,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
         rpc::zone host_zone;
         streaming::spsc_queue::queue_type* send_queue = nullptr;
         streaming::spsc_queue::queue_type* recv_queue = nullptr;
+        size_t scheduler_thread_count = 1;
         void* callback_ctx = nullptr;
         parent_expired_fn on_parent_expired = nullptr;
     };

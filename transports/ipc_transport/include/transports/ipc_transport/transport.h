@@ -28,6 +28,7 @@ namespace rpc::ipc_transport
         std::string dll_path;
         rpc::zone dll_zone;
         child_process_kind process_kind = child_process_kind::host_dll;
+        size_t child_scheduler_thread_count = 1;
         bool kill_child_on_parent_death = false;
     };
 

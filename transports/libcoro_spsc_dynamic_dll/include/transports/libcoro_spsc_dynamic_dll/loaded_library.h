@@ -42,7 +42,8 @@ namespace rpc::libcoro_spsc_dynamic_dll
             rpc::zone dll_zone,
             rpc::zone host_zone,
             streaming::spsc_queue::queue_type* send_queue,
-            streaming::spsc_queue::queue_type* recv_queue);
+            streaming::spsc_queue::queue_type* recv_queue,
+            size_t scheduler_thread_count = 1);
 
         bool wait_until_expired(std::chrono::milliseconds timeout);
         bool is_expired() const;

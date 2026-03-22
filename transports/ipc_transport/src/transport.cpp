@@ -64,6 +64,22 @@ namespace rpc::ipc_transport
             return ::kill(pid, 0) == 0 || errno == EPERM;
         }
 
+        [[nodiscard]] bool wait_for_child_exit(pid_t child_pid, int& status, std::chrono::milliseconds timeout)
+        {
+            const auto deadline = std::chrono::steady_clock::now() + timeout;
+            for (;;)
+            {
+                auto wait_result = ::waitpid(child_pid, &status, WNOHANG);
+                if (wait_result == child_pid)
+                    return true;
+                if (wait_result < 0)
+                    return false;
+                if (std::chrono::steady_clock::now() >= deadline)
+                    return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+
         [[nodiscard]] std::string path_basename(std::string_view path)
         {
             auto pos = path.find_last_of('/');
@@ -148,10 +164,13 @@ namespace rpc::ipc_transport
             auto argv0 = path_basename(options.process_executable);
             std::vector<std::string> arguments;
             if (options.process_kind == child_process_kind::host_dll)
-                arguments
-                    = child_host_bootstrap(options.dll_path, state->mapped_file, options.dll_zone).make_command_line();
+                arguments = child_host_bootstrap(
+                    options.dll_path, state->mapped_file, options.dll_zone, options.child_scheduler_thread_count)
+                                .make_command_line();
             else
-                arguments = child_process_bootstrap(state->mapped_file, options.dll_zone).make_command_line();
+                arguments
+                    = child_process_bootstrap(state->mapped_file, options.dll_zone, options.child_scheduler_thread_count)
+                          .make_command_line();
             std::vector<char*> argv;
             argv.reserve(arguments.size() + 2);
             argv.push_back(argv0.data());
@@ -186,8 +205,31 @@ namespace rpc::ipc_transport
         if (state->child_pid > 0)
         {
             int status = 0;
-            auto wait_result = ::waitpid(state->child_pid, &status, 0);
+            bool child_exited = false;
+            auto wait_result = ::waitpid(state->child_pid, &status, WNOHANG);
             if (wait_result == state->child_pid)
+                child_exited = true;
+            if (wait_result == 0 && process_is_alive(state->child_pid))
+            {
+                if (!wait_for_child_exit(state->child_pid, status, std::chrono::seconds(5)))
+                {
+                    RPC_WARNING("ipc_transport: child pid={} did not exit cleanly, sending SIGTERM", state->child_pid);
+                    ::kill(state->child_pid, SIGTERM);
+                    if (!wait_for_child_exit(state->child_pid, status, std::chrono::seconds(1)))
+                    {
+                        RPC_WARNING(
+                            "ipc_transport: child pid={} still alive after SIGTERM, sending SIGKILL", state->child_pid);
+                        ::kill(state->child_pid, SIGKILL);
+                        child_exited = wait_for_child_exit(state->child_pid, status, std::chrono::seconds(1));
+                    }
+                    else
+                        child_exited = true;
+                }
+                else
+                    child_exited = true;
+            }
+
+            if (child_exited)
                 RPC_INFO("ipc_transport: child pid={} exited with status={}", state->child_pid, status);
             state->child_pid = -1;
         }

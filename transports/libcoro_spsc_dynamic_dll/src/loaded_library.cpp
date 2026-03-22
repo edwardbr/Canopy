@@ -53,7 +53,8 @@ namespace rpc::libcoro_spsc_dynamic_dll
         rpc::zone dll_zone,
         rpc::zone host_zone,
         streaming::spsc_queue::queue_type* send_queue,
-        streaming::spsc_queue::queue_type* recv_queue)
+        streaming::spsc_queue::queue_type* recv_queue,
+        size_t scheduler_thread_count)
     {
         auto result = std::shared_ptr<loaded_library>(new loaded_library());
         result->keep_alive_ = result;
@@ -83,6 +84,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
         params.host_zone = host_zone;
         params.send_queue = send_queue;
         params.recv_queue = recv_queue;
+        params.scheduler_thread_count = scheduler_thread_count;
         params.callback_ctx = result.get();
         params.on_parent_expired = &loaded_library::static_on_parent_expired;
 
