@@ -17,10 +17,11 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_DLL_TRANSPORT_TEST_LIB transport_libcoro_dynamic_library_test)
   set(LIBCORO_DLL_TEST_TARGET canopy_libcoro_example_dll)
   set(LIBCORO_IPC_DLL_TRANSPORT_SOURCES type_test_libcoro_ipc_dll_suite.cpp)
-  set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_ipc_dynamic_dll)
-  set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_ipc_dynamic_dll_test)
-  set(LIBCORO_IPC_DLL_TEST_TARGET canopy_libcoro_ipc_example_dll)
-  set(LIBCORO_IPC_DLL_LOADER_TARGET canopy_libcoro_ipc_loader)
+  set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_spsc_dynamic_dll)
+  set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_spsc_dynamic_dll_test)
+  set(LIBCORO_IPC_DLL_TEST_TARGET canopy_libcoro_spsc_example_dll)
+  set(LIBCORO_IPC_DLL_LOADER_TARGET canopy_ipc_child_host_process)
+  set(IPC_TRANSPORT_TEST_LIB transport_ipc_transport_test)
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
@@ -40,12 +41,16 @@ endif()
 
 if(LIBCORO_IPC_DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_IPC_DLL_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_TEST_TARGET}>")
+       CANOPY_TEST_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_TEST_TARGET}>")
 endif()
 
 if(LIBCORO_IPC_DLL_LOADER_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_IPC_LOADER_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
+       CANOPY_TEST_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
+endif()
+
+if(CANOPY_BUILD_COROUTINE)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_child_process>")
 endif()
 
 add_executable(
@@ -89,6 +94,7 @@ target_link_libraries(
          ${LIBCORO_DLL_TRANSPORT_TEST_LIB}
          ${LIBCORO_IPC_DLL_TRANSPORT_LIB}
          ${LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB}
+         ${IPC_TRANSPORT_TEST_LIB}
          ${SGX_TRANSPORT_TEST_LIB}
          ${STREAMING_TRANSPORT_LIB}
          ${STREAMING_TRANSPORT_TEST_LIB}
@@ -101,6 +107,10 @@ target_link_libraries(
          ${CANOPY_FMT_LIB}
          ${ENCLAVE_DEPENDANCIES}
          ${CANOPY_LIBRARIES})
+
+if(CANOPY_BUILD_COROUTINE)
+  target_link_libraries(rpc_test PUBLIC transport_ipc_transport)
+endif()
 
 target_compile_options(rpc_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(rpc_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

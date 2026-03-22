@@ -93,11 +93,6 @@ namespace rpc::stream_transport
             ~activity_tracker() { svc->spawn(transport->cleanup(transport, svc)); }
         };
 
-        transport(std::string name,
-            std::shared_ptr<rpc::service> service,
-            std::shared_ptr<streaming::stream> stream,
-            connection_handler handler);
-
         // Producer/consumer coroutines
         CORO_TASK(void) receive_consumer_loop(std::shared_ptr<activity_tracker> tracker);
         CORO_TASK(void) send_producer_loop(std::shared_ptr<activity_tracker> tracker);
@@ -229,6 +224,12 @@ namespace rpc::stream_transport
         }
 
     protected:
+        transport(std::string name,
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<streaming::stream> stream,
+            connection_handler handler);
+        void initialise_after_construction();
+
         void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
 
         void set_status(rpc::transport_status new_status) override

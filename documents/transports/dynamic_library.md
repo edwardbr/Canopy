@@ -3,23 +3,86 @@ Copyright (c) 2026 Edward Boggis-Rolfe
 All rights reserved.
 -->
 
-# Dynamic Library Transports
+# Dynamic Library and IPC Child Transports
 
-Canopy has two dynamic-library hierarchical transports:
+Canopy now has four closely related transports and transport-adjacent runtime
+components for loading child zones from shared objects or child processes:
 
 - `rpc::dynamic_library` for blocking / non-coroutine builds
 - `rpc::libcoro_dynamic_library` for coroutine builds
+- `rpc::libcoro_spsc_dynamic_dll` for coroutine builds where the DLL is reached
+  over an SPSC stream
+- `rpc::ipc_transport` for coroutine builds where the host spawns and owns a
+  child process and connects to it through an SPSC-backed `stream_transport`
 
-Both load a child zone from a shared object at runtime, keep the zone boundary
-inside the same host process, and communicate through an explicit C ABI rather
-than direct C++ symbol linkage.
+These pieces are intentionally separate:
+
+- `dynamic_library` and `libcoro_dynamic_library` load a DLL into the current
+  process
+- `libcoro_spsc_dynamic_dll` runs the DLL runtime behind an SPSC stream
+- `ipc_transport` owns a child process and the shared-memory queue pair used to
+  talk to it
+- `ipc_child_host_process` is not a transport; it is a small executable that
+  maps the shared queue pair and forwards it into `libcoro_spsc_dynamic_dll`
+- `ipc_child_process` is also not a transport; it maps the shared queue pair and
+  hosts a `rpc::stream_transport` directly inside the child process
+
+## How They Fit Together
+
+### In-process DLL loading
+
+Use one of these when you want a zone boundary without process isolation:
+
+- `rpc::dynamic_library`
+- `rpc::libcoro_dynamic_library`
+
+In both cases the host and child zone live in the same operating-system
+process, but the child implementation is loaded from a shared object at runtime.
+
+### Out-of-process DLL loading
+
+Use these together when you want process isolation as well as a DLL boundary:
+
+- `rpc::ipc_transport` in the host process
+- `ipc_child_host_process` as the spawned executable
+- `rpc::libcoro_spsc_dynamic_dll` inside the child process
+
+The ownership flow is:
+
+1. `ipc_transport` creates a shared-memory SPSC queue pair
+2. `ipc_transport` spawns `ipc_child_host_process`
+3. the child process maps the queue pair and loads the DLL
+4. `libcoro_spsc_dynamic_dll` hosts the child zone behind a
+   `rpc::stream_transport`
+5. when the transport disconnects, the child process exits and
+   `ipc_transport` reaps it
+
+### Out-of-process direct child service
+
+Use these together when you want process isolation without a DLL:
+
+- `rpc::ipc_transport` in the host process
+- `ipc_child_process` as the spawned executable
+
+In this mode the child process maps the queue pair and hosts a
+`rpc::stream_transport` directly in the process executable.
 
 ## Variants At A Glance
 
-| Variant | Namespace | Build mode | Host target | DLL target | DLL entry point |
-|--------|-----------|------------|-------------|------------|-----------------|
-| Blocking | `rpc::dynamic_library` | `CANOPY_BUILD_COROUTINE=OFF` | `transport_dynamic_library` | `transport_dynamic_library_dll` | `canopy_dll_init` |
-| Coroutine | `rpc::libcoro_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_dynamic_library` | `transport_libcoro_dynamic_library_dll` | `canopy_libcoro_dll_create` |
+| Variant | Namespace / executable | Build mode | Host-side transport | Child-side runtime |
+|--------|-------------------------|------------|---------------------|--------------------|
+| Blocking DLL | `rpc::dynamic_library` | `CANOPY_BUILD_COROUTINE=OFF` | `transport_dynamic_library` | `transport_dynamic_library_dll` inside the loaded DLL |
+| Coroutine DLL | `rpc::libcoro_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_dynamic_library` | `transport_libcoro_dynamic_library_dll` inside the loaded DLL |
+| Coroutine SPSC DLL | `rpc::libcoro_spsc_dynamic_dll` | `CANOPY_BUILD_COROUTINE=ON` | usually reached via `rpc::ipc_transport` | `transport_libcoro_spsc_dynamic_dll` inside the loaded DLL |
+| Process-owned SPSC transport | `rpc::ipc_transport` | `CANOPY_BUILD_COROUTINE=ON` | `transport_ipc_transport` | `ipc_child_host_process` or `ipc_child_process` |
+
+## Entry Points At A Glance
+
+| Variant | Export owned by child | User-implemented entry point |
+|--------|------------------------|-------------------------------|
+| Blocking DLL | `canopy_dll_*` | `canopy_dll_init` |
+| Coroutine DLL | `canopy_libcoro_dll_create` plus `dll_coro_*` callbacks | `canopy_libcoro_dll_init` |
+| Coroutine SPSC DLL | `canopy_libcoro_spsc_dll_start` | `canopy_libcoro_spsc_dll_init` |
 
 ## Blocking Transport (`rpc::dynamic_library`)
 
@@ -486,6 +549,80 @@ As implemented in `transports/libcoro_dynamic_library/src/transport.cpp`:
 | DLL unload trigger | Deferred until proxy count reaches zero | Deferred until `child_transport` destruction |
 | Linux unload safety | Normal `dlclose` timing | Uses `RTLD_NODELETE` |
 
+## SPSC DLL Transport (`rpc::libcoro_spsc_dynamic_dll`)
+
+`rpc::libcoro_spsc_dynamic_dll` is the coroutine DLL runtime used when the DLL
+is not loaded by the host directly. Instead, the DLL is given an already-open
+SPSC queue pair and exposes its child zone behind a `rpc::stream_transport`.
+
+This transport exists to separate two concerns that used to be coupled:
+
+- how to host a child zone inside a DLL
+- how to get bytes to that DLL across a process boundary
+
+`libcoro_spsc_dynamic_dll` owns only the first concern. It assumes the queue
+pair already exists and does not spawn processes or create shared-memory files.
+
+### What It Does
+
+- starts a dedicated coroutine scheduler for the loaded DLL
+- creates a `streaming::spsc_queue::stream` over the supplied queue pair
+- calls the user-provided `canopy_libcoro_spsc_dll_init(...)`
+- hosts the DLL child zone behind `rpc::stream_transport`
+- notifies the embedding host runtime when the parent transport expires
+
+### What It Does Not Do
+
+- it does not create the shared-memory file
+- it does not spawn or reap a child process
+- it does not parse process-launch policy
+
+Those responsibilities belong to `rpc::ipc_transport` and the small child
+executables in `transports/ipc_transport/`.
+
+## IPC Process Transport (`rpc::ipc_transport`)
+
+`rpc::ipc_transport` is a real transport derived from
+`rpc::stream_transport::transport`. Its purpose is to encapsulate:
+
+- creation of the shared-memory SPSC queue pair
+- spawning of the child process executable
+- optional OS-enforced child termination if the parent dies unexpectedly
+- reaping the child process when the transport disconnects
+
+It is intentionally separate from the DLL runtime. The child process may do one
+of two things:
+
+- run `ipc_child_host_process`, which maps the queue pair and forwards it into a
+  `libcoro_spsc_dynamic_dll` DLL
+- run `ipc_child_process`, which maps the queue pair and hosts a
+  `rpc::stream_transport` directly in the child process
+
+### Why This Split Matters
+
+Separating the transport from the child runtime gives three independent
+building blocks:
+
+- DLL transport without process isolation: `dynamic_library` /
+  `libcoro_dynamic_library`
+- process isolation plus DLL hosting: `ipc_transport` +
+  `ipc_child_host_process` + `libcoro_spsc_dynamic_dll`
+- process isolation plus direct child service hosting: `ipc_transport` +
+  `ipc_child_process`
+
+That keeps each component responsible for one boundary:
+
+- DLL ABI boundary
+- stream/message boundary
+- process lifetime boundary
+
+### Parent-death behaviour
+
+On Linux, `rpc::ipc_transport::options::kill_child_on_parent_death` uses
+`PR_SET_PDEATHSIG(SIGKILL)` in the forked child before `execve()`. A readiness
+pipe ensures this contract is armed before the parent returns from transport
+construction.
+
 ## See Also
 
 - `transports/dynamic_library/include/transports/dynamic_library/dll_abi.h` — C ABI types
@@ -494,5 +631,10 @@ As implemented in `transports/libcoro_dynamic_library/src/transport.cpp`:
 - `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/dll_abi.h` — coroutine DLL ABI types
 - `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/transport.h` — coroutine `child_transport`
 - `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/dll_transport.h` — coroutine `parent_transport`, `init_child_zone`
+- `transports/libcoro_spsc_dynamic_dll/include/transports/libcoro_spsc_dynamic_dll/dll_abi.h` — SPSC DLL ABI types and queue-pair definition
+- `transports/libcoro_spsc_dynamic_dll/include/transports/libcoro_spsc_dynamic_dll/dll_transport.h` — `canopy_libcoro_spsc_dll_init` contract
+- `transports/ipc_transport/include/transports/ipc_transport/transport.h` — process-owning transport
+- `transports/ipc_transport/include/transports/ipc_transport/bootstrap.h` — named child-process bootstrap arguments
 - `documents/transports/hierarchical.md` — Hierarchical transport pattern
 - `documents/transports/local.md` — Local transport (conceptual peer)
+- `documents/transports/spsc_and_ipc.md` — SPSC queue and stream background
