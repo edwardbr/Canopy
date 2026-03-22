@@ -78,7 +78,9 @@
       "Bash(head -5 grep -n \"make_shared\\(iface\" /var/home/edward/projects/Canopy/generator/src/synchronous_generator.cpp)",
       "Bash(./build_debug/output/rpc_test --gtest_filter=\"dll_type_test/0.initialisation_test\" --telemetry-console)",
       "Bash(nm -D build_debug/output/libcanopy_example_dll.so)",
-      "Bash(nm build_debug/output/librpc.a)"
+      "Bash(nm build_debug/output/librpc.a)",
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "mcp__plugin_context-mode_context-mode__ctx_index"
     ]
   },
   "enabledPlugins": {}

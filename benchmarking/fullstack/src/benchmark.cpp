@@ -3,7 +3,7 @@
  *   All rights reserved.
  */
 
-#include "src/benchmark_common.h"
+#include "benchmark_common.h"
 
 #include <fmt/format.h>
 
