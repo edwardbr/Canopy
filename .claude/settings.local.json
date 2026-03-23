@@ -90,7 +90,10 @@
       "Bash(BIN=build_debug_coroutine/output/rpc_test for addr in 0x503f19 0x50eeed 0x916b1e4 0xa2d0257 0x920255f)",
       "Bash(do echo:*)",
       "Bash(ASAN_OPTIONS=detect_leaks=1:abort_on_error=1:strict_string_checks=1 build_debug_coroutine/output/benchmark)",
-      "Bash(UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 build_debug_coroutine/output/benchmark 2>&1)"
+      "Bash(UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 build_debug_coroutine/output/benchmark 2>&1)",
+      "Bash(gh run:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)"
     ]
   },
   "enabledPlugins": {}

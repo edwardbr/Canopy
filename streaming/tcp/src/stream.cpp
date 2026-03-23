@@ -58,6 +58,9 @@ namespace streaming::tcp
             {
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
+                    RPC_WARNING("tcp::stream::send EAGAIN: {} bytes remaining, fd={}",
+                        buffer.size(),
+                        client_.socket().native_handle());
                     co_await scheduler_->schedule();
                     continue;
                 }

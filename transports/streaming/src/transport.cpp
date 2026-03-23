@@ -539,6 +539,10 @@ namespace rpc::stream_transport
 
             // Full payload received — dispatch
             {
+                RPC_DEBUG("receive_consumer_loop: full payload received seq={} bytes={} zone={}",
+                    prefix.sequence_number,
+                    payload_buf.size(),
+                    get_zone_id().get_subnet());
                 envelope_payload payload;
                 auto str_err = rpc::from_yas_binary(rpc::byte_span(payload_buf), payload);
                 if (!str_err.empty())
@@ -712,6 +716,11 @@ namespace rpc::stream_transport
 
             if (had_item)
             {
+                RPC_DEBUG("send_producer_loop: sending seq={} direction={} payload_bytes={} zone={}",
+                    item.sequence_number,
+                    static_cast<uint64_t>(item.direction),
+                    item.payload_data.size(),
+                    get_zone_id().get_subnet());
                 auto send_part = [this](const std::vector<uint8_t>& data) -> CORO_TASK(coro::net::io_status)
                 {
                     if (data.empty())
@@ -722,6 +731,10 @@ namespace rpc::stream_transport
                 auto send_status = CO_AWAIT send_part(item.prefix_data);
                 if (send_status.is_ok())
                     send_status = CO_AWAIT send_part(item.payload_data);
+                if (send_status.is_ok())
+                {
+                    RPC_DEBUG("send_producer_loop: sent seq={} zone={}", item.sequence_number, get_zone_id().get_subnet());
+                }
                 if (!send_status.is_ok())
                 {
                     if (is_expected_disconnect_send_failure(get_status(), send_status))
@@ -753,7 +766,9 @@ namespace rpc::stream_transport
                     continue;
                 if (send_queue_ready_.is_set())
                     continue;
+                RPC_DEBUG("send_producer_loop: waiting on send_queue_ready_ zone={}", get_zone_id().get_subnet());
                 CO_AWAIT send_queue_ready_;
+                RPC_DEBUG("send_producer_loop: send_queue_ready_ fired zone={}", get_zone_id().get_subnet());
             }
         }
 
