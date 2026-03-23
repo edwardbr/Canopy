@@ -18,7 +18,7 @@ namespace streaming::tcp
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
 
         [[nodiscard]] bool is_closed() const override;
-        void set_closed() override;
+        auto set_closed() -> coro::task<void> override;
         [[nodiscard]] peer_info get_peer_info() const override;
         auto client() -> coro::net::tcp::client&;
 

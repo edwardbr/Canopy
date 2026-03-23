@@ -144,11 +144,6 @@ namespace streaming::tls
             }
             SSL_free(ssl_); // also frees rbio_ and wbio_
         }
-        // Propagate closure to the underlying stream so that any proxy loops
-        // (e.g. spsc_wrapping_stream's recv_proxy_loop / send_proxy_loop) detect
-        // the closed_ flag and exit cleanly.
-        if (underlying_)
-            underlying_->set_closed();
     }
 
     // -----------------------------------------------------------------------
@@ -350,6 +345,25 @@ namespace streaming::tls
             co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
 
         co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
+    }
+
+    auto stream::set_closed() -> coro::task<void>
+    {
+        if (closed_)
+            co_return;
+
+        closed_ = true;
+
+        if (ssl_ && handshake_complete_)
+        {
+            SSL_shutdown(ssl_);
+            (void)co_await drain_wbio();
+        }
+
+        if (underlying_)
+            co_await underlying_->set_closed();
+
+        co_return;
     }
 
 } // namespace streaming::tls

@@ -595,7 +595,7 @@ namespace streaming::io_uring_tcp
         if (shutting_down_.exchange(true))
             return;
 
-        set_closed();
+        request_close();
 
         // Brief wait for cleanup to complete (avoid hanging)
         if (state_ && state_->stopping.load(std::memory_order_acquire))
@@ -842,7 +842,7 @@ namespace streaming::io_uring_tcp
         return closed_;
     }
 
-    void stream::set_closed()
+    void stream::request_close()
     {
         RPC_TRACE("io_uring_tcp_stream set_closed ring_fd={}", state_ ? state_->ring_fd : -1);
         closed_ = true;
@@ -861,6 +861,12 @@ namespace streaming::io_uring_tcp
             client_.socket().shutdown();
             client_.socket().close();
         }
+    }
+
+    auto stream::set_closed() -> coro::task<void>
+    {
+        request_close();
+        co_return;
     }
 
     auto stream::client() -> coro::net::tcp::client&

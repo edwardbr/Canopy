@@ -69,7 +69,7 @@ namespace websocket_demo
                 }
                 else if (!status.is_timeout())
                 {
-                    stream_->set_closed();
+                    co_await stream_->set_closed();
                     co_return;
                 }
             }
@@ -85,7 +85,7 @@ namespace websocket_demo
             if (!parse_err.empty())
             {
                 RPC_ERROR("[WS] invalid connect_request: {}", parse_err);
-                stream_->set_closed();
+                co_await stream_->set_closed();
                 co_return;
             }
 
@@ -103,7 +103,7 @@ namespace websocket_demo
             if (handler_ret.error_code != rpc::error::OK())
             {
                 RPC_ERROR("[WS] handler failed: {}", rpc::error::to_string(handler_ret.error_code));
-                stream_->set_closed();
+                co_await stream_->set_closed();
                 co_return;
             }
             auto output_descr = std::move(handler_ret.output_descriptor);
@@ -117,7 +117,7 @@ namespace websocket_demo
             auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_payload});
             if (!send_status.is_ok())
             {
-                stream_->set_closed();
+                co_await stream_->set_closed();
                 co_return;
             }
 
@@ -134,7 +134,7 @@ namespace websocket_demo
                     if (!env_err.empty())
                     {
                         RPC_ERROR("[WS] envelope parse error: {}", env_err);
-                        stream_->set_closed();
+                        co_await stream_->set_closed();
                         co_return;
                     }
                     CO_AWAIT stub_handle_send(std::move(env));
@@ -145,7 +145,7 @@ namespace websocket_demo
                 }
             }
 
-            stream_->set_closed();
+            co_await stream_->set_closed();
             RPC_DEBUG("receive_consumer_loop exiting for zone {}", get_zone_id().get_subnet());
             CO_RETURN;
         }
@@ -270,7 +270,7 @@ namespace websocket_demo
             if (error.length())
             {
                 RPC_DEBUG("Received message ({} bytes) parsing error: {}", envelope.data.size(), error);
-                stream_->set_closed();
+                co_await stream_->set_closed();
                 CO_RETURN; // no reply.
             }
 

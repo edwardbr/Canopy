@@ -48,6 +48,8 @@ namespace streaming::io_uring
     class stream : public ::streaming::stream
     {
     public:
+        static constexpr uint64_t timeout_user_data_flag = 1ULL << 63;
+
         stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler)
             : fd_(client.socket().native_handle())
             , scheduler_(std::move(scheduler))
@@ -57,24 +59,7 @@ namespace streaming::io_uring
             initialise_stream();
         }
 
-        ~stream() override
-        {
-            set_closed();
-
-            if (state_)
-            {
-                constexpr auto wait_limit = std::chrono::milliseconds(500);
-                auto start = std::chrono::steady_clock::now();
-                while (state_->pump_running.load(std::memory_order_acquire)
-                       && std::chrono::steady_clock::now() - start < wait_limit)
-                {
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
-                }
-            }
-
-            teardown_ring();
-            close_owned_socket();
-        }
+        ~stream() override = default;
 
         auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
             -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override
@@ -84,43 +69,71 @@ namespace streaming::io_uring
                 co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
             }
 
-            auto op = submit_recv(buffer, timeout);
-            auto result = co_await operation_awaitable{op};
+            const bool use_deadline = timeout.count() > 0;
+            const auto deadline = use_deadline ? std::optional(std::chrono::steady_clock::now() + timeout) : std::nullopt;
 
-            if (result > 0)
+            while (true)
             {
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok},
-                    buffer.subspan(0, static_cast<size_t>(result))};
-            }
-
-            if (result == 0)
-            {
-                closed_.store(true, std::memory_order_release);
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
-            }
-
-            int native_error = -result;
-            if (native_error == ECANCELED)
-            {
-                if (closed_.load(std::memory_order_acquire) || state_->stopping.load(std::memory_order_acquire))
+                auto remaining_timeout = std::chrono::milliseconds{0};
+                if (deadline.has_value())
                 {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (now >= *deadline)
+                    {
+                        co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+                    }
+
+                    remaining_timeout = std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - now);
+                    if (remaining_timeout <= std::chrono::milliseconds::zero())
+                    {
+                        remaining_timeout = std::chrono::milliseconds{1};
+                    }
+                }
+
+                auto op = submit_recv(buffer, remaining_timeout);
+                auto result = co_await operation_awaitable{op};
+
+                if (result > 0)
+                {
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok},
+                        buffer.subspan(0, static_cast<size_t>(result))};
+                }
+
+                if (result == 0)
+                {
+                    closed_.store(true, std::memory_order_release);
                     co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
                 }
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
-            }
 
-            if (native_error == ETIME)
-            {
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
-            }
+                int native_error = -result;
+                if (native_error == ECANCELED)
+                {
+                    if (closed_.load(std::memory_order_acquire) || state_->stopping.load(std::memory_order_acquire))
+                    {
+                        co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                    }
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+                }
 
-            if (native_error == EAGAIN || native_error == EWOULDBLOCK || native_error == EINTR)
-            {
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::would_block_or_try_again}, {}};
-            }
+                if (native_error == ETIME)
+                {
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+                }
 
-            closed_.store(true, std::memory_order_release);
-            co_return {detail::translate_status(native_error), {}};
+                if (native_error == EAGAIN || native_error == EWOULDBLOCK || native_error == EINTR)
+                {
+                    if (!deadline.has_value())
+                    {
+                        co_return {coro::net::io_status{.type = coro::net::io_status::kind::would_block_or_try_again}, {}};
+                    }
+
+                    co_await scheduler_->schedule();
+                    continue;
+                }
+
+                closed_.store(true, std::memory_order_release);
+                co_return {detail::translate_status(native_error), {}};
+            }
         }
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override
@@ -168,28 +181,24 @@ namespace streaming::io_uring
 
         [[nodiscard]] auto is_closed() const -> bool override { return closed_.load(std::memory_order_acquire); }
 
-        void set_closed() override
+        auto set_closed() -> coro::task<void> override
         {
-            bool was_closed = closed_.exchange(true, std::memory_order_acq_rel);
+            request_close();
 
-            if (state_)
+            if (!state_)
             {
-                state_->stopping.store(true, std::memory_order_release);
-                cancel_all();
-                signal_eventfd();
+                close_owned_socket();
+                co_return;
             }
 
-            if (!was_closed && fd_ != -1)
+            if (state_->pump_running.load(std::memory_order_acquire))
             {
-                if (client_)
-                {
-                    client_->socket().shutdown();
-                }
-                else
-                {
-                    ::shutdown(fd_, SHUT_RDWR);
-                }
+                co_await state_->pump_stopped;
             }
+
+            teardown_ring();
+            close_owned_socket();
+            co_return;
         }
 
         [[nodiscard]] auto get_peer_info() const -> peer_info override
@@ -225,6 +234,29 @@ namespace streaming::io_uring
         }
 
     private:
+        void request_close()
+        {
+            bool was_closed = closed_.exchange(true, std::memory_order_acq_rel);
+
+            if (state_)
+            {
+                state_->stopping.store(true, std::memory_order_release);
+                cancel_all();
+                signal_eventfd();
+            }
+
+            if (!was_closed && fd_ != -1)
+            {
+                if (client_)
+                {
+                    client_->socket().shutdown();
+                }
+                else
+                {
+                    ::shutdown(fd_, SHUT_RDWR);
+                }
+            }
+        }
         struct accepted_socket_tag
         {
         };
@@ -251,6 +283,7 @@ namespace streaming::io_uring
             uint64_t id{0};
             int result{-ECANCELED};
             bool done{false};
+            bool timeout_expired{false};
             std::optional<__kernel_timespec> timeout_spec;
             std::coroutine_handle<> continuation{};
             std::mutex mutex;
@@ -262,6 +295,9 @@ namespace streaming::io_uring
             int event_fd{-1};
             std::atomic<bool> stopping{false};
             std::atomic<bool> pump_running{false};
+            coro::event pump_stopped{};
+            std::atomic<bool> ring_torn_down{false};
+            std::atomic<bool> cancel_requested{false};
             std::atomic<uint64_t> next_id{1};
             std::mutex mutex;
             std::unordered_map<uint64_t, std::shared_ptr<pending_op>> in_flight;
@@ -364,6 +400,11 @@ namespace streaming::io_uring
 
         void teardown_ring()
         {
+            if (!state_ || state_->ring_torn_down.exchange(true, std::memory_order_acq_rel))
+            {
+                return;
+            }
+
             if (state_->event_fd != -1)
             {
                 ::close(state_->event_fd);
@@ -382,9 +423,22 @@ namespace streaming::io_uring
                 state_->in_flight[op->id] = op;
             }
 
+            const unsigned required_sqes = timeout.count() > 0 ? 2U : 1U;
+            if (io_uring_sq_space_left(&state_->ring) < required_sqes)
+            {
+                std::lock_guard<std::mutex> state_lock(state_->mutex);
+                state_->in_flight.erase(op->id);
+                std::lock_guard<std::mutex> lock(op->mutex);
+                op->done = true;
+                op->result = -EAGAIN;
+                return op;
+            }
+
             io_uring_sqe* sqe = io_uring_get_sqe(&state_->ring);
             if (sqe == nullptr)
             {
+                std::lock_guard<std::mutex> state_lock(state_->mutex);
+                state_->in_flight.erase(op->id);
                 std::lock_guard<std::mutex> lock(op->mutex);
                 op->done = true;
                 op->result = -EAGAIN;
@@ -396,21 +450,30 @@ namespace streaming::io_uring
 
             if (timeout.count() > 0)
             {
-                sqe->flags |= IOSQE_IO_LINK;
                 io_uring_sqe* timeout_sqe = io_uring_get_sqe(&state_->ring);
-                if (timeout_sqe != nullptr)
+                if (timeout_sqe == nullptr)
                 {
-                    op->timeout_spec = __kernel_timespec{
-                        .tv_sec = static_cast<__kernel_time64_t>(timeout.count() / 1000),
-                        .tv_nsec = static_cast<long>((timeout.count() % 1000) * 1000000),
-                    };
-                    io_uring_prep_link_timeout(timeout_sqe, &*op->timeout_spec, 0);
-                    io_uring_sqe_set_data64(timeout_sqe, 0);
+                    std::lock_guard<std::mutex> state_lock(state_->mutex);
+                    state_->in_flight.erase(op->id);
+                    std::lock_guard<std::mutex> lock(op->mutex);
+                    op->done = true;
+                    op->result = -EAGAIN;
+                    return op;
                 }
+
+                sqe->flags |= IOSQE_IO_LINK;
+                op->timeout_spec = __kernel_timespec{
+                    .tv_sec = static_cast<__kernel_time64_t>(timeout.count() / 1000),
+                    .tv_nsec = static_cast<long>((timeout.count() % 1000) * 1000000),
+                };
+                io_uring_prep_link_timeout(timeout_sqe, &*op->timeout_spec, 0);
+                io_uring_sqe_set_data64(timeout_sqe, op->id | timeout_user_data_flag);
             }
 
             if (io_uring_submit(&state_->ring) < 0)
             {
+                std::lock_guard<std::mutex> state_lock(state_->mutex);
+                state_->in_flight.erase(op->id);
                 std::lock_guard<std::mutex> lock(op->mutex);
                 op->done = true;
                 op->result = -EIO;
@@ -433,6 +496,8 @@ namespace streaming::io_uring
             io_uring_sqe* sqe = io_uring_get_sqe(&state_->ring);
             if (sqe == nullptr)
             {
+                std::lock_guard<std::mutex> state_lock(state_->mutex);
+                state_->in_flight.erase(op->id);
                 std::lock_guard<std::mutex> lock(op->mutex);
                 op->done = true;
                 op->result = -EAGAIN;
@@ -444,6 +509,8 @@ namespace streaming::io_uring
 
             if (io_uring_submit(&state_->ring) < 0)
             {
+                std::lock_guard<std::mutex> state_lock(state_->mutex);
+                state_->in_flight.erase(op->id);
                 std::lock_guard<std::mutex> lock(op->mutex);
                 op->done = true;
                 op->result = -EIO;
@@ -455,6 +522,12 @@ namespace streaming::io_uring
 
         void cancel_all()
         {
+            bool expected = false;
+            if (!state_ || !state_->cancel_requested.compare_exchange_strong(expected, true))
+            {
+                return;
+            }
+
             std::lock_guard<std::mutex> lock(state_->mutex);
             for (auto& [id, op] : state_->in_flight)
             {
@@ -482,29 +555,72 @@ namespace streaming::io_uring
         static auto completion_pump(std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler)
             -> coro::task<void>
         {
+            state->pump_stopped.reset();
             state->pump_running.store(true, std::memory_order_release);
             __kernel_timespec wait_timeout{
                 .tv_sec = 0,
                 .tv_nsec = 100'000,
             };
 
-            while (!state->stopping.load(std::memory_order_acquire))
+            auto fail_all_pending = [&](int native_error)
             {
+                std::vector<std::coroutine_handle<>> continuations;
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    for (auto& [id, op] : state->in_flight)
+                    {
+                        (void)id;
+                        std::lock_guard<std::mutex> op_lock(op->mutex);
+                        op->done = true;
+                        op->result = -native_error;
+                        if (op->continuation)
+                        {
+                            continuations.push_back(op->continuation);
+                            op->continuation = {};
+                        }
+                    }
+                    state->in_flight.clear();
+                }
+
+                for (auto continuation : continuations)
+                {
+                    scheduler->resume(continuation);
+                }
+            };
+
+            while (true)
+            {
+                if (state->stopping.load(std::memory_order_acquire))
+                {
+                    break;
+                }
+
                 io_uring_cqe* cqe = nullptr;
                 int rc = io_uring_wait_cqe_timeout(&state->ring, &cqe, &wait_timeout);
                 if (rc == -ETIME || rc == -EAGAIN)
                 {
+                    if (state->stopping.load(std::memory_order_acquire))
+                    {
+                        break;
+                    }
                     co_await scheduler->schedule();
                     continue;
                 }
                 if (rc < 0 || cqe == nullptr)
                 {
+                    fail_all_pending(ECANCELED);
                     break;
                 }
 
                 auto id = io_uring_cqe_get_data64(cqe);
                 if (id != 0)
                 {
+                    const bool is_timeout_cqe = (id & timeout_user_data_flag) != 0;
+                    if (is_timeout_cqe)
+                    {
+                        id &= ~timeout_user_data_flag;
+                    }
+
                     std::shared_ptr<pending_op> op;
                     {
                         std::lock_guard<std::mutex> lock(state->mutex);
@@ -512,22 +628,33 @@ namespace streaming::io_uring
                         if (it != state->in_flight.end())
                         {
                             op = it->second;
-                            state->in_flight.erase(it);
+                            if (!is_timeout_cqe)
+                            {
+                                state->in_flight.erase(it);
+                            }
                         }
                     }
 
                     if (op)
                     {
-                        std::coroutine_handle<> continuation;
+                        if (is_timeout_cqe)
                         {
                             std::lock_guard<std::mutex> lock(op->mutex);
-                            op->done = true;
-                            op->result = cqe->res;
-                            continuation = op->continuation;
+                            op->timeout_expired = true;
                         }
-                        if (continuation)
+                        else
                         {
-                            scheduler->resume(continuation);
+                            std::coroutine_handle<> continuation;
+                            {
+                                std::lock_guard<std::mutex> lock(op->mutex);
+                                op->done = true;
+                                op->result = (op->timeout_expired && cqe->res == -ECANCELED) ? -ETIME : cqe->res;
+                                continuation = op->continuation;
+                            }
+                            if (continuation)
+                            {
+                                scheduler->resume(continuation);
+                            }
                         }
                     }
                 }
@@ -535,7 +662,18 @@ namespace streaming::io_uring
                 io_uring_cqe_seen(&state->ring, cqe);
             }
 
+            fail_all_pending(ECANCELED);
             state->pump_running.store(false, std::memory_order_release);
+            state->pump_stopped.set();
+            if (!state->ring_torn_down.exchange(true, std::memory_order_acq_rel))
+            {
+                if (state->event_fd != -1)
+                {
+                    ::close(state->event_fd);
+                    state->event_fd = -1;
+                }
+                io_uring_queue_exit(&state->ring);
+            }
             co_return;
         }
 

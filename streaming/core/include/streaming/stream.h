@@ -32,7 +32,9 @@ namespace streaming
 
         // Check if connection is closed
         [[nodiscard]] virtual bool is_closed() const = 0;
-        virtual void set_closed() = 0;
+        // Initiate shutdown of the stream and complete only once stream-local shutdown work
+        // has reached a stable state for that implementation.
+        virtual auto set_closed() -> coro::task<void> = 0;
         [[nodiscard]] virtual peer_info get_peer_info() const = 0;
     };
 } // namespace streaming

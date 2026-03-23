@@ -6,11 +6,11 @@
 
 #include <chrono>
 #include <functional>
+#include <iostream>
 #include <mutex>
 #include <queue>
 #include <type_traits>
 #include <unordered_map>
-
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
 #include <stream_transport/stream_transport.h>
@@ -18,6 +18,14 @@
 
 namespace rpc::stream_transport
 {
+    namespace debug
+    {
+        void reset_diagnostics();
+        void dump_diagnostics(std::ostream& out);
+        void record_send_payload(uint64_t sequence_number, uint64_t direction, size_t payload_size, size_t queue_size);
+        void trace_line(std::string line);
+    }
+
     class transport : public rpc::transport
     {
     public:
@@ -65,11 +73,20 @@ namespace rpc::stream_transport
         std::mutex pending_transmits_mtx_;
 
         std::shared_ptr<streaming::stream> stream_;
+        uint64_t instance_id_{0};
 
         std::atomic<uint64_t> sequence_number_ = 0;
 
-        std::queue<std::vector<uint8_t>> send_queue_;
+        struct queued_send_item
+        {
+            uint64_t sequence_number{0};
+            message_direction direction{message_direction::one_way};
+            std::vector<uint8_t> data;
+        };
+
+        std::queue<queued_send_item> send_queue_;
         std::mutex send_queue_mtx_;
+        coro::event send_queue_ready_{false};
 
         connection_handler connection_handler_;
         std::vector<custom_message_handler> custom_message_handlers_;
@@ -96,7 +113,7 @@ namespace rpc::stream_transport
         // Producer/consumer coroutines
         CORO_TASK(void) receive_consumer_loop(std::shared_ptr<activity_tracker> tracker);
         CORO_TASK(void) send_producer_loop(std::shared_ptr<activity_tracker> tracker);
-        CORO_TASK(void) flush_send_queue();
+        CORO_TASK(bool) flush_send_queue();
 
         // Stub handlers (called when receiving messages)
         CORO_TASK(void)
@@ -142,9 +159,26 @@ namespace rpc::stream_transport
                 rpc::to_yas_json<std::string>(prefix),
                 rpc::to_yas_json<std::string>(payload_envelope));
 
-            std::scoped_lock g(send_queue_mtx_);
-            send_queue_.push(rpc::to_yas_binary(prefix));
-            send_queue_.push(payload);
+            size_t queue_size = 0;
+            {
+                std::scoped_lock g(send_queue_mtx_);
+                send_queue_.push(queued_send_item{
+                    .sequence_number = sequence_number,
+                    .direction = direction,
+                    .data = rpc::to_yas_binary(prefix),
+                });
+                send_queue_.push(queued_send_item{
+                    .sequence_number = sequence_number,
+                    .direction = direction,
+                    .data = std::move(payload),
+                });
+                queue_size = send_queue_.size();
+            }
+
+            send_queue_ready_.set();
+
+            debug::record_send_payload(
+                sequence_number, static_cast<uint64_t>(direction), prefix.payload_size, queue_size);
         }
 
         template<class SendPayload, class ReceivePayload>
@@ -232,14 +266,7 @@ namespace rpc::stream_transport
 
         void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
 
-        void set_status(rpc::transport_status new_status) override
-        {
-            if (new_status == rpc::transport_status::DISCONNECTING)
-            {
-                disconnecting_since_ = std::chrono::steady_clock::now();
-            }
-            rpc::transport::set_status(new_status);
-        }
+        void set_status(rpc::transport_status new_status) override;
 
         virtual void send_payload_post_send(
             uint64_t protocol_version, message_direction direction, post_send&& payload, uint64_t sequence_number);
@@ -440,7 +467,11 @@ namespace rpc::stream_transport
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
-            make_server<Remote, Local>(name, std::move(svc), std::move(stm), fn);
+            auto transport = make_server<Remote, Local>(name, svc, std::move(stm), fn);
+            // while (transport && transport->get_status() < rpc::transport_status::DISCONNECTED)
+            // {
+            //     CO_AWAIT svc->get_scheduler()->schedule();
+            // }
             CO_RETURN;
         };
     }

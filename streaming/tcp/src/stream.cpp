@@ -73,7 +73,7 @@ namespace streaming::tcp
         return closed_;
     }
 
-    void stream::set_closed()
+    auto stream::set_closed() -> coro::task<void>
     {
         closed_ = true;
         if (!socket_closed_)
@@ -82,6 +82,7 @@ namespace streaming::tcp
             client_.socket().shutdown();
             client_.socket().close();
         }
+        co_return;
     }
 
     auto stream::client() -> coro::net::tcp::client&

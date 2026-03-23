@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -22,7 +23,7 @@ namespace streaming::spsc_wrapping
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         bool is_closed() const override;
-        void set_closed() override;
+        auto set_closed() -> coro::task<void> override;
         auto get_peer_info() const -> peer_info override;
 
     private:
@@ -38,5 +39,6 @@ namespace streaming::spsc_wrapping
         streaming::spsc_queue::queue_type send_q_;
         std::vector<uint8_t> leftover_;
         bool closed_{false};
+        std::atomic<size_t> pending_send_blobs_{0};
     };
 } // namespace streaming::spsc_wrapping

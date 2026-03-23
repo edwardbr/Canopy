@@ -30,7 +30,7 @@ namespace streaming::spsc_queue
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         [[nodiscard]] bool is_closed() const override;
-        void set_closed() override;
+        auto set_closed() -> coro::task<void> override;
         [[nodiscard]] auto get_peer_info() const -> peer_info override;
 
     private:

@@ -4,6 +4,8 @@
 // spsc queue stream implementation
 #include <streaming/spsc_queue/stream.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstring>
 
 // Include the SPSC queue template definition
@@ -11,6 +13,20 @@
 
 namespace streaming::spsc_queue
 {
+    namespace
+    {
+        constexpr auto poll_interval = std::chrono::milliseconds{1};
+
+        auto remaining_timeout(std::chrono::steady_clock::time_point deadline) -> std::chrono::milliseconds
+        {
+            auto now = std::chrono::steady_clock::now();
+            if (now >= deadline)
+                return std::chrono::milliseconds{0};
+
+            return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+        }
+    } // namespace
+
     stream::stream(queue_type* send_q, queue_type* recv_q, std::shared_ptr<coro::scheduler> scheduler)
         : send_queue_(send_q)
         , recv_queue_(recv_q)
@@ -18,7 +34,7 @@ namespace streaming::spsc_queue
     {
     }
 
-    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds)
+    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
         -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
         if (closed_)
@@ -33,35 +49,47 @@ namespace streaming::spsc_queue
             co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
         }
 
-        // Try to pop one blob from the receive queue.
-        blob blob;
-        if (!recv_queue_->pop(blob))
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        bool single_attempt = timeout <= std::chrono::milliseconds{0};
+
+        while (true)
         {
-            // Yield once so that other coroutines (e.g. relay pumps that fill this
-            // queue) get a chance to run before we report the timeout to the caller.
-            co_await scheduler_->schedule();
-            co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+            blob blob;
+            if (recv_queue_->pop(blob))
+            {
+                uint32_t len = 0;
+                std::memcpy(&len, blob.data(), header_size);
+
+                if (len == 0)
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, {}};
+
+                size_t to_copy = std::min(static_cast<size_t>(len), buffer.size());
+                std::memcpy(buffer.data(), blob.data() + header_size, to_copy);
+
+                if (to_copy < static_cast<size_t>(len))
+                {
+                    leftover_.assign(
+                        blob.data() + header_size + to_copy, blob.data() + header_size + static_cast<size_t>(len));
+                }
+
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+            }
+
+            if (single_attempt)
+            {
+                co_await scheduler_->schedule();
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+            }
+
+            auto remaining = remaining_timeout(deadline);
+            if (remaining <= std::chrono::milliseconds{0})
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+
+            co_await scheduler_->yield_for(std::min(poll_interval, remaining));
+
+            if (closed_)
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
         }
-
-        // Read the length header.
-        uint32_t len = 0;
-        std::memcpy(&len, blob.data(), header_size);
-
-        if (len == 0)
-        {
-            co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, {}};
-        }
-
-        // Copy payload into caller's buffer; save any excess.
-        size_t to_copy = std::min(static_cast<size_t>(len), buffer.size());
-        std::memcpy(buffer.data(), blob.data() + header_size, to_copy);
-
-        if (to_copy < static_cast<size_t>(len))
-        {
-            leftover_.assign(blob.data() + header_size + to_copy, blob.data() + header_size + static_cast<size_t>(len));
-        }
-
-        co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
     }
 
     auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
@@ -96,9 +124,10 @@ namespace streaming::spsc_queue
         return closed_;
     }
 
-    void stream::set_closed()
+    auto stream::set_closed() -> coro::task<void>
     {
         closed_ = true;
+        co_return;
     }
 
     auto stream::get_peer_info() const -> peer_info
