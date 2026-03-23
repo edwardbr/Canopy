@@ -1241,7 +1241,11 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
 #ifdef CANOPY_BUILD_COROUTINE
     // Create root service with zone 1 and scheduler
     auto root_service = std::make_shared<rpc::root_service>(
-        "AUTONOMOUS_ROOT", rpc::zone{rpc::zone_address(0, static_cast<uint32_t>(++g_zone_id_counter))}, scheduler);
+        "AUTONOMOUS_ROOT",
+        rpc::zone{rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3, rpc::zone_address::address_type::local, 0, {},
+            rpc::zone_address::default_local_subnet_size_bits, static_cast<uint32_t>(++g_zone_id_counter),
+            rpc::zone_address::get_default_local_object_id_size_bits(), 0, {}))},
+        scheduler);
 #else
     // Create root service with zone 1 (no scheduler in non-coroutine build)
     auto root_service = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX);

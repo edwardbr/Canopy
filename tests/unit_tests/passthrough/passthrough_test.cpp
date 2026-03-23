@@ -79,6 +79,15 @@ using passthrough_test_implementations = ::testing::Types<passthrough_setup>;
 
 TYPED_TEST_SUITE(passthrough_test, passthrough_test_implementations);
 
+namespace
+{
+    rpc::zone_address make_local_zone_address(uint64_t subnet, uint64_t object_id = 0)
+    {
+        return rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3, rpc::zone_address::address_type::local, 0, {},
+            rpc::zone_address::default_local_subnet_size_bits, subnet, rpc::zone_address::get_default_local_object_id_size_bits(), object_id, {}));
+    }
+} // namespace
+
 // Helper function for running coro tests (simplified version of run_coro_test)
 template<typename TestFixture, typename CoroFunc>
 void run_passthrough_test(TestFixture& test_fixture, CoroFunc&& coro_function)
@@ -390,7 +399,7 @@ template<class T> CORO_TASK(bool) coro_send_with_forward_transport_down(T& lib)
         .protocol_version = rpc::get_version(),
         .encoding_type = rpc::encoding::yas_binary,
         .tag = 12345,
-        .caller_zone_id = rpc::caller_zone{rpc::zone_address(0, 1)},
+        .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
         .remote_object_id = rpc::remote_object(lib.get_forward_dest()),
         .interface_id = rpc::interface_ordinal{1},
         .method_id = rpc::method{1},
@@ -418,8 +427,8 @@ template<class T> CORO_TASK(bool) coro_send_with_invalid_destination(T& lib)
         .protocol_version = rpc::get_version(),
         .encoding_type = rpc::encoding::yas_binary,
         .tag = 12345,
-        .caller_zone_id = rpc::caller_zone{rpc::zone_address(0, 1)},
-        .remote_object_id = rpc::remote_object(rpc::destination_zone{rpc::zone_address(0, 999)}), // Invalid destination
+        .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
+        .remote_object_id = rpc::remote_object(rpc::destination_zone{make_local_zone_address(999)}), // Invalid destination
         .interface_id = rpc::interface_ordinal{1},
         .method_id = rpc::method{1},
         .in_data = {1, 2, 3, 4},
@@ -510,7 +519,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
     CO_AWAIT reverse_transport->inbound_release(rpc::release_params{
         .protocol_version = rpc::get_version(),
         .remote_object_id = rpc::remote_object(lib.get_forward_dest()),
-        .caller_zone_id = rpc::caller_zone{rpc::zone_address(0, 1)},
+        .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
         .options = rpc::release_options::normal,
         .in_back_channel = {},
     });
@@ -518,7 +527,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
     CO_AWAIT reverse_transport->inbound_release(rpc::release_params{
         .protocol_version = rpc::get_version(),
         .remote_object_id = rpc::remote_object(lib.get_forward_dest()),
-        .caller_zone_id = rpc::caller_zone{rpc::zone_address(0, 1)},
+        .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
         .options = rpc::release_options::normal,
         .in_back_channel = {},
     });
@@ -561,7 +570,7 @@ template<class T> CORO_TASK(bool) coro_cleanup_verification(T& lib)
     CO_AWAIT reverse_transport->inbound_release(rpc::release_params{
         .protocol_version = rpc::get_version(),
         .remote_object_id = rpc::remote_object(lib.get_forward_dest()),
-        .caller_zone_id = rpc::caller_zone{rpc::zone_address(0, 1)},
+        .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
         .options = rpc::release_options::normal,
         .in_back_channel = {},
     });

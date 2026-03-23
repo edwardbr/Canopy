@@ -6,18 +6,37 @@
 #include <string>
 #include <stdint.h>
 #include <functional>
+#include <sstream>
+#include <iomanip>
+#include <vector>
 
 #include "rpc/internal/coroutine_support.h"
 #include <rpc/internal/serialiser.h>
 
 namespace std
 {
+    inline std::string to_string(const std::vector<uint8_t>& bytes)
+    {
+        if (bytes.empty())
+            return {};
+
+        std::ostringstream stream;
+        stream << std::hex << std::setfill('0');
+        for (size_t i = 0; i < bytes.size(); ++i)
+        {
+            if (i != 0)
+                stream << '.';
+            stream << std::setw(2) << static_cast<unsigned int>(bytes[i]);
+        }
+        return stream.str();
+    }
+
     inline std::string to_string(const rpc::zone_address& val)
     {
-        if (val.get_routing_prefix() == 0 && val.get_object_id() == 0)
+        auto routing_prefix = val.get_routing_prefix();
+        if (routing_prefix.empty() && val.get_object_id() == 0)
             return std::to_string(val.get_subnet());
-        return std::to_string(val.get_routing_prefix()) + ":" + std::to_string(val.get_subnet()) + "/"
-               + std::to_string(val.get_object_id());
+        return std::to_string(routing_prefix) + ":" + std::to_string(val.get_subnet()) + "/" + std::to_string(val.get_object_id());
     }
     inline std::string to_string(const rpc::zone& val)
     {
@@ -45,12 +64,10 @@ namespace std
         auto operator()(const rpc::zone_address& item) const noexcept
         {
             std::size_t h = 0;
-            for (auto byte : item.get_host_address())
+            for (auto byte : item.get_blob())
             {
                 h ^= std::hash<uint8_t>{}(byte) + 0x9e3779b9 + (h << 6) + (h >> 2);
             }
-            h ^= std::hash<uint64_t>{}(item.get_subnet()) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= std::hash<uint64_t>{}(item.get_object_id()) + 0x9e3779b9 + (h << 6) + (h >> 2);
             return h;
         }
     };

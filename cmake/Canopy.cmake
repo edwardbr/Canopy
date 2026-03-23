@@ -33,11 +33,6 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_STANDALONE "Build Canopy stand alone" OFF)
   option(CANOPY_DEBUG_GEN "Get the generator produce verbose messages" OFF)
   option(CANOPY_DEBUG_DEFAULT_DESTRUCTOR "Get the generator produce verbose messages" OFF)
-  set(CANOPY_HASH_ADDRESS_SIZE
-      "0"
-      CACHE STRING
-            "Reserve this many bits at the tail of flexible zone addresses for a nonce-derived hash (0 disables)")
-
   # SGX Enclave support (disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
   option(CANOPY_IO_URING_SQPOLL "Use io_uring SQPOLL mode for streaming io_uring TCP streams on Linux" OFF)
@@ -298,13 +293,6 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG)
   endif()
 
-  if(CANOPY_HASH_ADDRESS_SIZE
-     AND NOT CANOPY_HASH_ADDRESS_SIZE STREQUAL "0")
-    set(CANOPY_HASH_ADDRESS_SIZE_FLAG CANOPY_HASH_ADDRESS_SIZE=${CANOPY_HASH_ADDRESS_SIZE})
-  else()
-    set(CANOPY_HASH_ADDRESS_SIZE_FLAG)
-  endif()
-
   set(CANOPY_LOGGING_LEVEL_FLAG CANOPY_LOGGING_LEVEL=${CANOPY_LOGGING_LEVEL})
 
   set(CANOPY_FMT_LIB fmt::fmt-header-only)
@@ -327,7 +315,6 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_USE_TELEMETRY_RAII_LOGGING_FLAG}
       ${CANOPY_BUILD_TEST_FLAG}
       ${CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG}
-      ${CANOPY_HASH_ADDRESS_SIZE_FLAG}
       CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE}
       CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE}
       ${CANOPY_LOGGING_LEVEL_FLAG})

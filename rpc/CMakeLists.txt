@@ -34,6 +34,7 @@ if(CANOPY_BUILD_ENCLAVE)
     include/rpc/internal/types.h
     include/rpc/internal/transport.h
     include/rpc/internal/version.h
+    src/rpc_types.cpp
     src/casting_interface.cpp
     src/error_codes.cpp
     src/object_proxy.cpp
@@ -81,6 +82,7 @@ add_library(
   include/rpc/internal/transport.h
   include/rpc/internal/types.h
   include/rpc/internal/version.h
+  src/rpc_types.cpp
   src/casting_interface.cpp
   src/error_codes.cpp
   src/object_proxy.cpp

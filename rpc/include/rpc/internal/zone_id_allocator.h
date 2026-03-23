@@ -61,7 +61,7 @@ namespace rpc
             return rpc::error::OK();
         }
 
-        [[nodiscard]] uint64_t routing_prefix() const { return prefix_.get_routing_prefix(); }
+        [[nodiscard]] std::vector<uint8_t> routing_prefix() const { return prefix_.get_routing_prefix(); }
     };
 
 } // namespace rpc

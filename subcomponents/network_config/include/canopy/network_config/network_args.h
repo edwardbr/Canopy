@@ -51,15 +51,17 @@ namespace canopy::network_config
     //   IPv6 family: bytes[0..15] hold the full address (routing prefix uses
     //                bytes[0..7] for the /64 network prefix, bytes[8..15] are zero)
     //
-    // The subnet range is determined by the zone_address field width and requires
-    // no separate configuration.  make_allocator() is the single conversion point
-    // between binary network addresses and the rpc::zone_address encoding.
+    // The v3 zone_address format stores a versioned capability header followed by
+    // optional port, network address bytes, subnet bits, object bits and validation
+    // bits. make_allocator() is the conversion point between binary network addresses
+    // and that blob encoding.
     //
-    // object_offset marks the boundary within zone_address::local_address:
+    // object_offset marks the boundary within the runtime-configured local
+    // payload carried by zone_address:
     //   bits [0 .. object_offset-1]                 subnet
-    //   bits [object_offset .. (local_bits - hash_bits - 1)] object
-    //   bits [local_bits - hash_bits .. local_bits - 1]      optional hash
-    // local_bits defaults to 120 when CANOPY_LOCAL_ADDRESS_SIZE is left at 15.
+    //   bits [object_offset .. local_bits - 1]      object
+    // the default local payload is currently 120 bits unless the process
+    // configures a different split before constructing the root service.
     struct network_config
     {
         ip_address routing_prefix_addr = {}; // network prefix in binary
@@ -133,8 +135,7 @@ namespace canopy::network_config
     // Convenience: add args to parser, parse, and return config in one step.
     network_config parse_network_args(int argc, char* argv[], args::ArgumentParser& parser);
 
-    // Convert binary routing_prefix_addr to the uint64_t encoding used by the
-    // zone_address uint64_t-prefix constructor.
+    // Convert binary routing_prefix_addr to the legacy uint64_t prefix encoding.
     //   IPv4: 6to4 mapping — 0x2002 << 48 | ipv4_u32 << 16
     //   IPv6: first 8 bytes packed as big-endian uint64_t
     //   all-zero addr: returns 0 (local-only mode)
@@ -142,7 +143,18 @@ namespace canopy::network_config
 
     inline rpc::zone_address get_zone_address(const network_config& cfg)
     {
-        return rpc::zone_address(cfg.routing_prefix_addr, cfg.object_offset, 0);
+        if (cfg.routing_prefix_addr == ip_address{})
+        {
+            return rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3, rpc::zone_address::address_type::local, 0, {},
+                rpc::zone_address::default_local_subnet_size_bits, 0, rpc::zone_address::get_default_local_object_id_size_bits(), 0, {}));
+        }
+
+        auto type = cfg.routing_prefix_family == ip_address_family::ipv4 ? rpc::zone_address::address_type::ipv4
+                                                                         : rpc::zone_address::address_type::ipv6;
+        auto routing_prefix = std::vector<uint8_t>(
+            cfg.routing_prefix_addr.begin(), cfg.routing_prefix_family == ip_address_family::ipv4 ? cfg.routing_prefix_addr.begin() + 4 : cfg.routing_prefix_addr.end());
+        return rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3, type, cfg.port, routing_prefix, cfg.object_offset, 0,
+            static_cast<uint8_t>(rpc::zone_address::get_default_local_object_id_size_bits() - cfg.object_offset), 0, {}));
     }
 
     // Build a rpc::zone_id_allocator from a network_config.

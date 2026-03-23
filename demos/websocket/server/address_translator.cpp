@@ -10,7 +10,8 @@ namespace websocket_demo
         object_address to_object_address(const rpc::zone_address& addr)
         {
             object_address result;
-            auto host = addr.get_host_address();
+            auto host = addr.get_routing_prefix();
+            host.resize(16, 0);
             char buf[INET6_ADDRSTRLEN] = {};
             inet_ntop(AF_INET6, host.data(), buf, sizeof(buf));
             result.routing_prefix = buf;
@@ -21,19 +22,10 @@ namespace websocket_demo
 
         rpc::zone_address to_zone_address(const object_address& addr)
         {
-            std::array<uint8_t, 16> host = {};
+            std::vector<uint8_t> host(16, 0);
             inet_pton(AF_INET6, addr.routing_prefix.c_str(), host.data());
-#ifdef CANOPY_FIXED_ADDRESS_SIZE
-            uint64_t prefix = 0;
-            for (int i = 0; i < 8; ++i)
-                prefix = (prefix << 8) | host[i];
-            rpc::zone_address result(prefix, static_cast<uint32_t>(addr.subnet), static_cast<uint32_t>(addr.object_id));
-#else
-            rpc::zone_address result(host, 64);
-            result.set_subnet(addr.subnet);
-            result.set_object_id(addr.object_id);
-#endif
-            return result;
+            return rpc::zone_address(rpc::zone_address::construction_args(
+                rpc::zone_address::version_3, rpc::zone_address::address_type::ipv6, 0, host, 64, addr.subnet, 56, addr.object_id, {}));
         }
     }
 }
