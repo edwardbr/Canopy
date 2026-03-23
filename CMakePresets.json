@@ -127,6 +127,13 @@
             }
         },
         {
+            "name": "Debug_Coroutine_UBSAN",
+            "inherits": "Debug_Coroutine",
+            "cacheVariables": {
+                "CANOPY_DEBUG_UNDEFINED": "ON"
+            }
+        },
+        {
             "name": "Debug_Coroutine-GCC",
             "inherits": "Debug_Coroutine",
             "cacheVariables": {
