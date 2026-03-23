@@ -18,6 +18,12 @@ Network communication between different machines or processes.
 - `CANOPY_BUILD_COROUTINE=ON` (requires libcoro)
 - Coroutine-based async I/O
 
+## See Also
+
+- [Stream Backpressure Guidelines](stream_backpressure_guidelines.md)
+- [SPSC Queues and Streams](spsc_and_ipc.md)
+- [Custom Transports](custom.md)
+
 ## Components
 
 ```cpp

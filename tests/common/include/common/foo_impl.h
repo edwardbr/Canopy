@@ -47,19 +47,19 @@ namespace marshalled_tests
         CORO_TASK(error_code) callback(int val) override
         {
             std::ignore = val;
-            RPC_INFO("callback {}", val);
+            RPC_DEBUG("callback {}", val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) blob_test(const std::vector<uint8_t>& inval, std::vector<uint8_t>& out_val) override
         {
-            RPC_INFO("baz blob_test {}", inval.size());
+            RPC_DEBUG("baz blob_test {}", inval.size());
             out_val = inval;
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_something_else(int val) override
         {
             std::ignore = val;
-            RPC_INFO("baz do_something_else");
+            RPC_DEBUG("baz do_something_else");
             CO_RETURN rpc::error::OK();
         }
     };
@@ -91,25 +91,25 @@ namespace marshalled_tests
         CORO_TASK(error_code) do_something_in_val(int val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val);
+            RPC_DEBUG("got {}", val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_something_in_ref(const int& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val);
+            RPC_DEBUG("got {}", val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_something_in_move_ref(int&& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val);
+            RPC_DEBUG("got {}", val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_something_in_ptr(const int* val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", *val);
+            RPC_DEBUG("got {}", *val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_something_out_val(int& val) override
@@ -130,38 +130,38 @@ namespace marshalled_tests
         CORO_TASK(error_code) do_something_in_out_ref(int& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val);
+            RPC_DEBUG("got {}", val);
             val = 33;
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_complicated_val(const xxx::something_complicated val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.int_val);
+            RPC_DEBUG("got {}", val.int_val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_complicated_ref(const xxx::something_complicated& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.int_val);
+            RPC_DEBUG("got {}", val.int_val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_complicated_ref_val(const xxx::something_complicated& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.int_val);
+            RPC_DEBUG("got {}", val.int_val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_complicated_move_ref(xxx::something_complicated&& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.int_val);
+            RPC_DEBUG("got {}", val.int_val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_complicated_ptr(const xxx::something_complicated* val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val->int_val);
+            RPC_DEBUG("got {}", val->int_val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_complicated_ref(xxx::something_complicated& val) override
@@ -178,39 +178,39 @@ namespace marshalled_tests
         CORO_TASK(error_code) receive_something_complicated_in_out_ref(xxx::something_complicated& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.int_val);
+            RPC_DEBUG("got {}", val.int_val);
             val.int_val = 33;
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_more_complicated_val(const xxx::something_more_complicated val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.map_val.begin()->first);
+            RPC_DEBUG("got {}", val.map_val.begin()->first);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_more_complicated_ref(const xxx::something_more_complicated& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.map_val.begin()->first);
+            RPC_DEBUG("got {}", val.map_val.begin()->first);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_more_complicated_move_ref(xxx::something_more_complicated&& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.map_val.begin()->first);
+            RPC_DEBUG("got {}", val.map_val.begin()->first);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code)
         give_something_more_complicated_ref_val(const xxx::something_more_complicated& val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val.map_val.begin()->first);
+            RPC_DEBUG("got {}", val.map_val.begin()->first);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) give_something_more_complicated_ptr(const xxx::something_more_complicated* val) override
         {
             std::ignore = val;
-            RPC_INFO("got {}", val->map_val.begin()->first);
+            RPC_DEBUG("got {}", val->map_val.begin()->first);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) receive_something_more_complicated_ref(xxx::something_more_complicated& val) override
@@ -228,7 +228,7 @@ namespace marshalled_tests
         receive_something_more_complicated_in_out_ref(xxx::something_more_complicated& val) override
         {
             if (val.map_val.size())
-                RPC_INFO("got {}", val.map_val.begin()->first);
+                RPC_DEBUG("got {}", val.map_val.begin()->first);
             else
                 RPC_ASSERT(!"value is null");
             val.map_val["22"] = xxx::something_complicated{FLD(int_val) 33, FLD(string_val) "23"};
@@ -238,7 +238,7 @@ namespace marshalled_tests
         {
             std::ignore = val1;
             std::ignore = val2;
-            RPC_INFO("got {}", val1);
+            RPC_DEBUG("got {}", val1);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code)
@@ -246,7 +246,7 @@ namespace marshalled_tests
         {
             std::ignore = val1;
             std::ignore = val2;
-            RPC_INFO("got {}", val1.map_val.begin()->first);
+            RPC_DEBUG("got {}", val1.map_val.begin()->first);
             CO_RETURN rpc::error::OK();
         }
 
@@ -376,7 +376,7 @@ namespace marshalled_tests
         CORO_TASK(error_code) callback(int val) override
         {
             std::ignore = val;
-            RPC_INFO("callback {}", val);
+            RPC_DEBUG("callback {}", val);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) blob_test(const std::vector<uint8_t>& inval, std::vector<uint8_t>& out_val) override
@@ -406,7 +406,7 @@ namespace marshalled_tests
         }
         ~example() override
         {
-            RPC_INFO("example::~example zone={} retained_peer={}",
+            RPC_DEBUG("example::~example zone={} retained_peer={}",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0,
                 retained_peer_.get_nullable() != nullptr);
 #ifdef CANOPY_USE_TELEMETRY
@@ -773,7 +773,7 @@ namespace marshalled_tests
             // This method runs in the current zone and autonomously creates a chain of zones through the factory
             // The zone_factory is a reference to an intermediate zone that can create new zones
             // fork_zone_ids specifies the chain of zones to create and which zone to get the object from
-            RPC_INFO("example::create_fork_and_return_object - Zone {} creating fork chain through zone factory",
+            RPC_DEBUG("example::create_fork_and_return_object - Zone {} creating fork chain through zone factory",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (fork_zone_ids.empty())
@@ -797,7 +797,7 @@ namespace marshalled_tests
             for (size_t i = 0; i < fork_zone_ids.size(); ++i)
             {
                 uint64_t zone_id = fork_zone_ids[i];
-                RPC_INFO("Creating zone {} in fork chain (step {} of {})", zone_id, i + 1, fork_zone_ids.size());
+                RPC_DEBUG("Creating zone {} in fork chain (step {} of {})", zone_id, i + 1, fork_zone_ids.size());
 
                 rpc::shared_ptr<yyy::i_example> new_zone;
                 auto err = CO_AWAIT current_zone->create_example_in_subordinate_zone(new_zone, host);
@@ -829,10 +829,10 @@ namespace marshalled_tests
                 CO_RETURN rpc::error::ZONE_NOT_FOUND();
             }
 
-            RPC_INFO("Successfully created fork chain, creating object in final zone {}", fork_zone_ids.back());
+            RPC_DEBUG("Successfully created fork chain, creating object in final zone {}", fork_zone_ids.back());
             object_from_forked_zone = current_zone;
 
-            RPC_INFO("Successfully created object in zone {} - will return to caller", fork_zone_ids.back());
+            RPC_DEBUG("Successfully created object in zone {} - will return to caller", fork_zone_ids.back());
 
             // This object is from the final zone in the fork, which the root zone doesn't know about
             // When this gets passed to the root zone, it should trigger the routing fix
@@ -859,8 +859,8 @@ namespace marshalled_tests
     public:
         CORO_TASK(error_code) cache_object_from_autonomous_zone(const std::vector<uint64_t>& zone_ids) override
         {
-            RPC_INFO("example::cache_object_from_autonomous_zone - Zone {} autonomously creating and caching object "
-                     "from unknown zone",
+            RPC_DEBUG("example::cache_object_from_autonomous_zone - Zone {} autonomously creating and caching object "
+                      "from unknown zone",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (zone_ids.empty())
@@ -888,7 +888,7 @@ namespace marshalled_tests
             // Cache the object locally
             cached_autonomous_object_ = autonomous_object;
 
-            RPC_INFO("Successfully cached object from autonomous zone {} in zone {}",
+            RPC_DEBUG("Successfully cached object from autonomous zone {} in zone {}",
                 zone_ids.back(),
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
             CO_RETURN rpc::error::OK();
@@ -897,7 +897,7 @@ namespace marshalled_tests
         CORO_TASK(error_code)
         create_y_topology_fork(rpc::shared_ptr<yyy::i_example> factory_zone, const std::vector<uint64_t>& fork_zone_ids) override
         {
-            RPC_INFO("example::create_y_topology_fork - Zone {} creating Y-topology fork via factory zone",
+            RPC_DEBUG("example::create_y_topology_fork - Zone {} creating Y-topology fork via factory zone",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (fork_zone_ids.empty())
@@ -918,7 +918,7 @@ namespace marshalled_tests
             // and other zones in the original chain are NOT notified.
             // This creates the true Y-topology where one prong creates a fork at an earlier point.
 
-            RPC_INFO("Zone {} asking factory zone to create autonomous fork with {} zones",
+            RPC_DEBUG("Zone {} asking factory zone to create autonomous fork with {} zones",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0,
                 fork_zone_ids.size());
 
@@ -933,14 +933,14 @@ namespace marshalled_tests
             // Cache it locally so we can later pass it to zones that have no route to the fork
             cached_autonomous_object_ = object_from_forked_zone;
 
-            RPC_INFO("Successfully created Y-topology fork - Zone {} now has object from factory's autonomous zones",
+            RPC_DEBUG("Successfully created Y-topology fork - Zone {} now has object from factory's autonomous zones",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
             CO_RETURN rpc::error::OK();
         }
 
         CORO_TASK(error_code) retrieve_cached_autonomous_object(rpc::shared_ptr<yyy::i_example>& cached_object) override
         {
-            RPC_INFO("example::retrieve_cached_autonomous_object - Zone {} retrieving cached autonomous object",
+            RPC_DEBUG("example::retrieve_cached_autonomous_object - Zone {} retrieving cached autonomous object",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (!cached_autonomous_object_)
@@ -953,7 +953,7 @@ namespace marshalled_tests
 
             cached_object = cached_autonomous_object_;
 
-            RPC_INFO("Successfully retrieved cached autonomous object in zone {}",
+            RPC_DEBUG("Successfully retrieved cached autonomous object in zone {}",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             // CRITICAL: This is where the routing bug should trigger
@@ -966,7 +966,7 @@ namespace marshalled_tests
 
         CORO_TASK(error_code) give_host_cached_object() override
         {
-            RPC_INFO("example::give_host_cached_object - Zone {} giving host cached autonomous object",
+            RPC_DEBUG("example::give_host_cached_object - Zone {} giving host cached autonomous object",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (!cached_autonomous_object_)
@@ -992,7 +992,7 @@ namespace marshalled_tests
                 CO_RETURN err;
             }
 
-            RPC_INFO("Successfully retrieved cached autonomous object in zone {}",
+            RPC_DEBUG("Successfully retrieved cached autonomous object in zone {}",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             // CRITICAL: This is where the routing bug should trigger

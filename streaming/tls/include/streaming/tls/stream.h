@@ -66,13 +66,7 @@ namespace streaming::tls
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         [[nodiscard]] auto is_closed() const -> bool override { return closed_; }
-
-        void set_closed() override
-        {
-            closed_ = true;
-            if (underlying_)
-                underlying_->set_closed();
-        }
+        auto set_closed() -> coro::task<void> override;
 
         [[nodiscard]] auto get_peer_info() const -> peer_info override { return underlying_->get_peer_info(); }
 

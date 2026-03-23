@@ -116,12 +116,11 @@ using remote_implementations = ::testing::Types<
     streaming_spsc_setup<true, false, false>,
     streaming_spsc_setup<true, false, true>,
     streaming_spsc_setup<true, true, false>,
-    streaming_spsc_setup<true, true, true>
-// ,
-// streaming_iouring_setup<true, false, false>,
-// streaming_iouring_setup<true, false, true>,
-// streaming_iouring_setup<true, true, false>,
-// streaming_iouring_setup<true, true, true>
+    streaming_spsc_setup<true, true, true>,
+    streaming_iouring_setup<true, false, false>,
+    streaming_iouring_setup<true, false, true>,
+    streaming_iouring_setup<true, true, false>,
+    streaming_iouring_setup<true, true, true>
 #endif
 
 #ifdef CANOPY_BUILD_ENCLAVE

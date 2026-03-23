@@ -114,7 +114,7 @@ TEST(IoUringStream, PingPong)
             auto st = co_await stm->send(rpc::byte_span(reply.data(), reply.size()));
             EXPECT_EQ(st.type, io_kind::ok);
 
-            stm->set_closed();
+            co_await stm->set_closed();
             acceptor.stop();
             server_ok = true;
         }(),
@@ -136,7 +136,7 @@ TEST(IoUringStream, PingPong)
             EXPECT_TRUE(got);
             EXPECT_EQ((std::string_view{buf.data(), 4}), "pong");
 
-            stm->set_closed();
+            co_await stm->set_closed();
             client_ok = true;
         }()));
 
@@ -179,7 +179,7 @@ TEST(IoUringStream, ManyRoundTrips)
                     break;
                 ++server_rounds;
             }
-            stm->set_closed();
+            co_await stm->set_closed();
             acceptor.stop();
         }(),
         [&]() -> coro::task<void>
@@ -205,7 +205,7 @@ TEST(IoUringStream, ManyRoundTrips)
                     break;
                 ++client_rounds;
             }
-            stm->set_closed();
+            co_await stm->set_closed();
         }()));
 
     server_scheduler->shutdown();
@@ -236,7 +236,7 @@ TEST(IoUringStream, ReceiveTimeout)
                 co_return;
             auto stm = *conn;
             co_await server_scheduler->yield_for(std::chrono::milliseconds{500});
-            stm->set_closed();
+            co_await stm->set_closed();
             acceptor.stop();
         }(),
         [&]() -> coro::task<void>
@@ -251,7 +251,7 @@ TEST(IoUringStream, ReceiveTimeout)
             std::array<char, 64> buf{};
             auto [status, data] = co_await stm->receive(rpc::mutable_byte_span(buf.data(), buf.size()), 100ms);
             timed_out = (status.type == io_kind::timeout);
-            stm->set_closed();
+            co_await stm->set_closed();
         }()));
 
     server_scheduler->shutdown();
@@ -291,7 +291,7 @@ TEST(IoUringStream, LargePayload)
             {
                 recv_ok = (recv_buf == send_buf);
             }
-            stm->set_closed();
+            co_await stm->set_closed();
             acceptor.stop();
         }(),
         [&]() -> coro::task<void>
@@ -305,7 +305,7 @@ TEST(IoUringStream, LargePayload)
 
             auto st = co_await stm->send(rpc::byte_span(send_buf.data(), send_buf.size()));
             send_ok = (st.type == io_kind::ok);
-            stm->set_closed();
+            co_await stm->set_closed();
         }()));
 
     server_scheduler->shutdown();

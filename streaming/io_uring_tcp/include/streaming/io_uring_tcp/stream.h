@@ -27,7 +27,7 @@ namespace streaming::io_uring_tcp
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
 
         [[nodiscard]] bool is_closed() const override;
-        void set_closed() override;
+        auto set_closed() -> coro::task<void> override;
         [[nodiscard]] auto get_peer_info() const -> peer_info override;
         auto client() -> coro::net::tcp::client&;
 
@@ -36,6 +36,7 @@ namespace streaming::io_uring_tcp
     private:
         static auto completion_pump(std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler)
             -> coro::task<void>;
+        void request_close();
 
         coro::net::tcp::client client_;
         std::shared_ptr<coro::scheduler> scheduler_;

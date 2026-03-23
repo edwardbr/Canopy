@@ -95,6 +95,7 @@ namespace streaming::spsc_wrapping
 
             uint32_t len = 0;
             std::memcpy(&len, blob.data(), streaming::spsc_queue::header_size);
+            self->pending_send_blobs_.fetch_sub(1, std::memory_order_release);
             if (len == 0)
                 continue;
 
@@ -176,6 +177,7 @@ namespace streaming::spsc_wrapping
                     co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
                 co_await scheduler_->schedule();
             }
+            pending_send_blobs_.fetch_add(1, std::memory_order_release);
             buffer = buffer.subspan(chunk);
         }
 
@@ -187,13 +189,21 @@ namespace streaming::spsc_wrapping
         return closed_ || underlying_->is_closed();
     }
 
-    void stream::set_closed()
+    auto stream::set_closed() -> coro::task<void>
     {
-        // Set the flag so proxy loops see the shutdown signal.
-        // Do NOT close underlying_ here: send_proxy_loop must drain send_q_ first.
-        // The underlying stream is released naturally when the proxy loops exit
-        // and this object is destroyed.
         closed_ = true;
+
+        while (pending_send_blobs_.load(std::memory_order_acquire) > 0)
+        {
+            if (!underlying_ || underlying_->is_closed())
+                break;
+
+            co_await scheduler_->schedule();
+        }
+
+        if (underlying_)
+            co_await underlying_->set_closed();
+        co_return;
     }
 
     auto stream::get_peer_info() const -> peer_info

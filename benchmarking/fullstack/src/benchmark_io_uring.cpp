@@ -20,19 +20,20 @@ namespace comprehensive::v1
         CORO_TASK(void)
         io_uring_server_task(std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
-            const rpc::event& client_connected,
+            const rpc::event& client_finished,
             rpc::encoding enc,
             uint16_t port)
         {
             auto service = std::make_shared<rpc::root_service>("io_uring_server", rpc::DEFAULT_PREFIX, scheduler);
             service->set_default_encoding(enc);
+            auto shutdown_event = std::make_shared<rpc::event>();
+            service->set_shutdown_event(shutdown_event);
 
             canopy::network_config::ip_address addr{};
             addr[0] = 127;
             addr[1] = 0;
             addr[2] = 0;
             addr[3] = 1;
-
             auto io_uring_listener = std::make_shared<streaming::listener>("io_uring_server_transport",
                 std::make_shared<streaming::io_uring::acceptor>(addr, port),
                 rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
@@ -42,19 +43,20 @@ namespace comprehensive::v1
                         auto local_service = make_benchmark_data_processor();
                         CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local_service)};
                     }));
-            io_uring_listener->start_listening(service);
+            auto started = CO_AWAIT io_uring_listener->start_listening_async(service);
             server_ready.set();
 
-            CO_AWAIT client_connected.wait();
+            CO_AWAIT client_finished.wait();
             CO_AWAIT io_uring_listener->stop_listening();
             io_uring_listener.reset();
             service.reset();
+            CO_AWAIT shutdown_event->wait();
         }
 
         CORO_TASK(void)
         io_uring_client_task(std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
-            rpc::event& client_connected,
+            rpc::event& client_finished,
             rpc::encoding enc,
             size_t blob_size,
             uint16_t port,
@@ -65,13 +67,15 @@ namespace comprehensive::v1
             auto client_service
                 = std::make_shared<rpc::root_service>("io_uring_client", rpc::zone_address(2, 1), scheduler);
             client_service->set_default_encoding(enc);
+            auto shutdown_event = std::make_shared<rpc::event>();
+            client_service->set_shutdown_event(shutdown_event);
 
             coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", port});
             const auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
             if (connection_status != coro::net::connect_status::connected)
             {
                 result.error = rpc::error::ZONE_NOT_FOUND();
-                client_connected.set();
+                client_finished.set();
                 CO_RETURN;
             }
 
@@ -81,17 +85,22 @@ namespace comprehensive::v1
 
             rpc::shared_ptr<i_data_processor> remote_processor;
             rpc::shared_ptr<i_data_processor> not_used;
-
-            const auto connect_result = CO_AWAIT client_service->connect_to_zone<i_data_processor, i_data_processor>(
-                "io_uring_server", client_transport, not_used);
-            remote_processor = connect_result.output_interface;
-            const auto error = connect_result.error_code;
+            auto error = rpc::error::OK();
+            {
+                auto connect_result = CO_AWAIT client_service->connect_to_zone<i_data_processor, i_data_processor>(
+                    "io_uring_server", client_transport, not_used);
+                remote_processor = connect_result.output_interface;
+                error = connect_result.error_code;
+            }
             not_used = nullptr;
 
             if (error != rpc::error::OK())
             {
                 result.error = error;
-                client_connected.set();
+                client_finished.set();
+                client_transport.reset();
+                client_service.reset();
+                CO_AWAIT shutdown_event->wait();
                 CO_RETURN;
             }
 
@@ -102,9 +111,10 @@ namespace comprehensive::v1
                 result.stats = compute_stats(durations_us);
 
             remote_processor.reset();
-            client_connected.set();
+            client_finished.set();
             client_transport.reset();
             client_service.reset();
+            CO_AWAIT shutdown_event->wait();
         }
     }
 
@@ -116,12 +126,11 @@ namespace comprehensive::v1
         auto scheduler_2 = make_benchmark_scheduler();
         auto weak_scheduler_1 = std::weak_ptr<coro::scheduler>(scheduler_1);
         auto weak_scheduler_2 = std::weak_ptr<coro::scheduler>(scheduler_2);
-
         rpc::event server_ready;
-        rpc::event client_connected;
+        rpc::event client_finished;
 
-        coro::sync_wait(coro::when_all(io_uring_server_task(scheduler_1, server_ready, client_connected, enc, port),
-            io_uring_client_task(scheduler_2, server_ready, client_connected, enc, blob_size, port, result)));
+        coro::sync_wait(coro::when_all(io_uring_server_task(scheduler_1, server_ready, client_finished, enc, port),
+            io_uring_client_task(scheduler_2, server_ready, client_finished, enc, blob_size, port, result)));
 
         scheduler_1.reset();
         scheduler_2.reset();

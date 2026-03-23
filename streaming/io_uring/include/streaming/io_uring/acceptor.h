@@ -6,11 +6,13 @@
 #ifdef __linux__
 
 #  include <chrono>
+#  include <atomic>
 #  include <cstring>
 #  include <cerrno>
 #  include <memory>
 #  include <netinet/in.h>
 #  include <optional>
+#  include <ostream>
 #  include <fcntl.h>
 #  include <sys/socket.h>
 #  include <unistd.h>
@@ -23,6 +25,46 @@
 
 namespace streaming::io_uring
 {
+    namespace debug
+    {
+        struct acceptor_diagnostics
+        {
+            std::atomic<uint64_t> init_calls{0};
+            std::atomic<uint64_t> accept_calls{0};
+            std::atomic<uint64_t> accept_successes{0};
+            std::atomic<uint64_t> accept_eagain_loops{0};
+            std::atomic<uint64_t> stop_calls{0};
+        };
+
+        inline auto acceptor_diag() -> acceptor_diagnostics&
+        {
+            static acceptor_diagnostics diag;
+            return diag;
+        }
+
+        inline void reset_acceptor_diagnostics()
+        {
+            auto& d = acceptor_diag();
+            d.init_calls.store(0, std::memory_order_relaxed);
+            d.accept_calls.store(0, std::memory_order_relaxed);
+            d.accept_successes.store(0, std::memory_order_relaxed);
+            d.accept_eagain_loops.store(0, std::memory_order_relaxed);
+            d.stop_calls.store(0, std::memory_order_relaxed);
+        }
+
+        inline void dump_acceptor_diagnostics(std::ostream& out)
+        {
+            auto& d = acceptor_diag();
+            out << "io_uring acceptor diagnostics:"
+                << " init_calls=" << d.init_calls.load(std::memory_order_relaxed)
+                << " accept_calls=" << d.accept_calls.load(std::memory_order_relaxed)
+                << " accept_successes=" << d.accept_successes.load(std::memory_order_relaxed)
+                << " accept_eagain_loops=" << d.accept_eagain_loops.load(std::memory_order_relaxed)
+                << " stop_calls=" << d.stop_calls.load(std::memory_order_relaxed)
+                << '\n';
+        }
+    } // namespace debug
+
     class acceptor : public ::streaming::stream_acceptor
     {
     public:
@@ -34,6 +76,7 @@ namespace streaming::io_uring
 
         bool init(std::shared_ptr<coro::scheduler> scheduler) override
         {
+            debug::acceptor_diag().init_calls.fetch_add(1, std::memory_order_relaxed);
             scheduler_ = std::move(scheduler);
 
             listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -93,11 +136,13 @@ namespace streaming::io_uring
 
         CORO_TASK(std::optional<std::shared_ptr<::streaming::stream>>) accept() override
         {
+            debug::acceptor_diag().accept_calls.fetch_add(1, std::memory_order_relaxed);
             while (!stop_requested_)
             {
                 auto client_fd = ::accept(listen_fd_, nullptr, nullptr);
                 if (client_fd >= 0)
                 {
+                    debug::acceptor_diag().accept_successes.fetch_add(1, std::memory_order_relaxed);
                     if (!configure_socket(client_fd))
                     {
                         RPC_ERROR("io_uring::acceptor configure accepted socket failed: {}", errno);
@@ -109,6 +154,7 @@ namespace streaming::io_uring
                 }
                 if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
                     break;
+                debug::acceptor_diag().accept_eagain_loops.fetch_add(1, std::memory_order_relaxed);
                 CO_AWAIT scheduler_->yield_for(std::chrono::milliseconds{1});
             }
             CO_RETURN std::nullopt;
@@ -116,6 +162,7 @@ namespace streaming::io_uring
 
         void stop() override
         {
+            debug::acceptor_diag().stop_calls.fetch_add(1, std::memory_order_relaxed);
             stop_requested_ = true;
             if (listen_fd_ != -1)
             {

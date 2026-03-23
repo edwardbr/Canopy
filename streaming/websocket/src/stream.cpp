@@ -11,9 +11,21 @@
 
 namespace streaming::websocket
 {
+    namespace
+    {
+        auto remaining_timeout(std::chrono::steady_clock::time_point deadline) -> std::chrono::milliseconds
+        {
+            auto now = std::chrono::steady_clock::now();
+            if (now >= deadline)
+                return std::chrono::milliseconds{0};
+
+            return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+        }
+    } // namespace
+
     stream::stream(std::shared_ptr<::streaming::stream> underlying)
         : underlying_(std::move(underlying))
-        , raw_recv_buffer_(4096, '\0')
+        , raw_recv_buffer_(io_chunk_size, '\0')
     {
         wslay_event_callbacks callbacks;
         std::memset(&callbacks, 0, sizeof(callbacks));
@@ -40,64 +52,65 @@ namespace streaming::websocket
     auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
         -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
     {
-        // Return any already-decoded message first (supports partial reads too)
         if (!decoded_messages_.empty())
-        {
-            auto& msg = decoded_messages_.front();
-            size_t available = msg.size() - current_msg_offset_;
-            size_t to_copy = std::min(available, buffer.size());
-            std::memcpy(buffer.data(), msg.data() + current_msg_offset_, to_copy);
-            current_msg_offset_ += to_copy;
-            if (current_msg_offset_ >= msg.size())
-            {
-                decoded_messages_.pop();
-                current_msg_offset_ = 0;
-            }
-            co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
-        }
+            co_return serve_decoded(buffer);
 
-        // No buffered message — read raw data from the underlying stream
-        auto [status, span] = co_await underlying_->receive(
-            rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()), timeout);
-        if (status.is_closed())
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        bool single_attempt = timeout <= std::chrono::milliseconds{0};
+
+        while (true)
         {
-            closed_ = true;
-            co_return {status, {}};
-        }
-        if (status.is_ok() && !span.empty())
-        {
-            raw_recv_pos_ = 0;
-            raw_recv_size_ = span.size();
+            if (!co_await drive_send())
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+
+            auto [status, span] = co_await underlying_->receive(rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()),
+                single_attempt ? std::chrono::milliseconds{0} : remaining_timeout(deadline));
+            if (status.is_closed())
             {
-                std::lock_guard<std::mutex> lock(wslay_mutex_);
+                closed_ = true;
+                co_return {status, {}};
+            }
+            if (status.is_ok() && !span.empty())
+            {
+                raw_recv_pos_ = 0;
+                raw_recv_size_ = span.size();
                 wslay_event_recv(wslay_ctx_);
-            }
 
-            if (!decoded_messages_.empty())
+                if (!co_await drive_send())
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+
+                if (!decoded_messages_.empty())
+                    co_return serve_decoded(buffer);
+            }
+            else if (status.is_timeout() || span.empty())
             {
-                auto& msg = decoded_messages_.front();
-                size_t to_copy = std::min(msg.size(), buffer.size());
-                std::memcpy(buffer.data(), msg.data(), to_copy);
-                current_msg_offset_ = to_copy;
-                if (current_msg_offset_ >= msg.size())
-                {
-                    decoded_messages_.pop();
-                    current_msg_offset_ = 0;
-                }
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+                if (single_attempt || std::chrono::steady_clock::now() >= deadline)
+                    co_return {status, {}};
             }
-        }
+            else
+            {
+                co_return {status, {}};
+            }
 
-        // Timeout or incomplete frame — no message to deliver yet
-        co_return {status, {}};
+            if (single_attempt)
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+        }
     }
 
     auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
     {
         if (closed_)
             co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
-        queue_message(std::vector<uint8_t>(buffer.begin(), buffer.end()));
-        if (!co_await do_send())
+
+        // wslay copies the payload internally so we can pass the span directly.
+        wslay_event_msg msg{};
+        msg.opcode = WSLAY_BINARY_FRAME;
+        msg.msg = reinterpret_cast<const uint8_t*>(buffer.data());
+        msg.msg_length = buffer.size();
+        if (wslay_event_queue_msg(wslay_ctx_, &msg) != 0)
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+
+        if (!co_await drive_send())
             co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
         co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
     }
@@ -107,9 +120,12 @@ namespace streaming::websocket
         return closed_;
     }
 
-    void stream::set_closed()
+    auto stream::set_closed() -> coro::task<void>
     {
         closed_ = true;
+        if (underlying_)
+            co_await underlying_->set_closed();
+        co_return;
     }
 
     auto stream::get_peer_info() const -> peer_info
@@ -117,83 +133,53 @@ namespace streaming::websocket
         return underlying_->get_peer_info();
     }
 
-    void stream::queue_message(std::vector<uint8_t> data)
+    auto stream::serve_decoded(rpc::mutable_byte_span buffer)
+        -> std::pair<coro::net::io_status, rpc::mutable_byte_span>
     {
-        std::lock_guard<std::mutex> lock(pending_outgoing_mutex_);
-        pending_outgoing_.push(std::move(data));
-    }
-
-    void stream::queue_close(uint16_t code, const std::string& reason)
-    {
-        std::lock_guard<std::mutex> lock(wslay_mutex_);
-        wslay_event_queue_close(wslay_ctx_, code, reinterpret_cast<const uint8_t*>(reason.data()), reason.size());
-    }
-
-    void stream::drain_pending()
-    {
-        std::lock_guard<std::mutex> pending_lock(pending_outgoing_mutex_);
-        if (pending_outgoing_.empty())
-            return;
-
-        std::lock_guard<std::mutex> wslay_lock(wslay_mutex_);
-        while (!pending_outgoing_.empty())
+        auto& msg = decoded_messages_.front();
+        size_t available = msg.size() - current_msg_offset_;
+        size_t to_copy = std::min(available, buffer.size());
+        std::memcpy(buffer.data(), msg.data() + current_msg_offset_, to_copy);
+        current_msg_offset_ += to_copy;
+        if (current_msg_offset_ >= msg.size())
         {
-            auto& msg_data = pending_outgoing_.front();
-
-            wslay_event_msg msg;
-            msg.opcode = WSLAY_BINARY_FRAME;
-            msg.msg = msg_data.data();
-            msg.msg_length = msg_data.size();
-
-            int result = wslay_event_queue_msg(wslay_ctx_, &msg);
-            if (result != 0)
-            {
-                RPC_ERROR("Failed to queue WebSocket message: {}", result);
-            }
-            pending_outgoing_.pop();
+            decoded_messages_.pop();
+            current_msg_offset_ = 0;
         }
+        return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
     }
 
-    auto stream::do_send() -> coro::task<bool>
+    auto stream::drive_send() -> coro::task<bool>
     {
-        drain_pending();
-
-        // Let wslay encode frames into outgoing_raw_ via send_callback.
-        // Capture the staged bytes while holding the lock, then write without it.
-        std::vector<uint8_t> to_write;
+        while (wslay_event_want_write(wslay_ctx_))
         {
-            std::lock_guard<std::mutex> lock(wslay_mutex_);
+            outgoing_raw_.clear();
             int r = wslay_event_send(wslay_ctx_);
             if (r != 0)
             {
                 RPC_ERROR("wslay_event_send error: {}", r);
                 co_return false;
             }
-            to_write = std::move(outgoing_raw_);
-            outgoing_raw_ = {};
-        }
-
-        if (!to_write.empty())
-        {
-            auto status = co_await underlying_->send(
-                rpc::byte_span(reinterpret_cast<const char*>(to_write.data()), to_write.size()));
-            if (!status.is_ok())
+            if (!co_await flush_outgoing_raw())
                 co_return false;
         }
-
         co_return true;
     }
 
-    bool stream::wants_read() const
+    auto stream::flush_outgoing_raw() -> coro::task<bool>
     {
-        std::lock_guard<std::mutex> lock(wslay_mutex_);
-        return wslay_event_want_read(wslay_ctx_) != 0;
-    }
-
-    bool stream::wants_write() const
-    {
-        std::lock_guard<std::mutex> lock(wslay_mutex_);
-        return wslay_event_want_write(wslay_ctx_) != 0;
+        size_t offset = 0;
+        while (offset < outgoing_raw_.size())
+        {
+            size_t chunk_size = std::min(io_chunk_size, outgoing_raw_.size() - offset);
+            auto status = co_await underlying_->send(rpc::byte_span(
+                reinterpret_cast<const char*>(outgoing_raw_.data() + offset), chunk_size));
+            if (!status.is_ok())
+                co_return false;
+            offset += chunk_size;
+        }
+        outgoing_raw_.clear();
+        co_return true;
     }
 
     // -----------------------------------------------------------------------

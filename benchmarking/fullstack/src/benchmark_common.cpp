@@ -125,7 +125,9 @@ namespace comprehensive::v1
                 CO_RETURN error;
 
             if (response.size() != payload.size())
+            {
                 CO_RETURN rpc::error::INVALID_DATA();
+            }
 
             const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
             durations_us.push_back(static_cast<int64_t>(elapsed));

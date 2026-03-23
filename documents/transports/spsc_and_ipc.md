@@ -40,6 +40,12 @@ not the DLL loader.
 - `CANOPY_BUILD_COROUTINE=ON` (requires libcoro)
 - Host-only (no enclave version)
 
+## See Also
+
+- [Stream Backpressure Guidelines](stream_backpressure_guidelines.md)
+- [Dynamic Library and IPC Child Transports](dynamic_library.md)
+- [TCP Transport](tcp.md)
+
 ## Architecture
 
 ```

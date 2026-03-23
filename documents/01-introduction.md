@@ -54,6 +54,8 @@ Canopy abstracts transport details behind a consistent interface. Multiple trans
 | [Custom](transports/custom.md) | User-defined transports | Varies |
 
 For detailed transport documentation, see the [transports directory](transports/).
+For stream-backed transport behaviour under saturation, see
+[Stream Backpressure Guidelines](transports/stream_backpressure_guidelines.md).
 
 ### Bi-Modal Execution
 
