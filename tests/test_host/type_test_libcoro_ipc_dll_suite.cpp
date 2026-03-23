@@ -6,6 +6,7 @@
 #ifdef CANOPY_BUILD_COROUTINE
 
 #  include <csignal>
+#  include <sys/prctl.h>
 #  include <sys/wait.h>
 #  include <thread>
 
@@ -164,6 +165,12 @@ namespace
 
 TEST(libcoro_ipc_transport_process_lifetime, child_dies_when_parent_dies_unexpectedly)
 {
+    // Become the subreaper so that when the harness dies the grandchild (IPC child process)
+    // is reparented to us rather than to Docker's PID 1.  Without this, PID 1 in a container
+    // does not promptly reap zombies, so kill(zombie_pid, 0) keeps returning 0 and the test
+    // never detects the child as gone.
+    ::prctl(PR_SET_CHILD_SUBREAPER, 1);
+
     auto harness = spawn_pdeathsig_harness();
     ASSERT_GT(harness.harness_pid, 0);
     ASSERT_GT(harness.child_pid, 0);
@@ -187,11 +194,21 @@ TEST(libcoro_ipc_transport_process_lifetime, child_dies_when_parent_dies_unexpec
     ASSERT_TRUE(WIFSIGNALED(harness_status));
     ASSERT_EQ(WTERMSIG(harness_status), SIGKILL);
 
+    // Poll for up to 5 seconds.  Use waitpid(WNOHANG) so we both detect and reap the zombie;
+    // kill(zombie, 0) returns 0 (not ESRCH) until the zombie is reaped.
     bool child_gone = false;
-    for (int i = 0; i < 200; ++i)
+    for (int i = 0; i < 500; ++i)
     {
-        if (::kill(harness.child_pid, 0) != 0 && errno == ESRCH)
+        int child_status = 0;
+        pid_t result = ::waitpid(harness.child_pid, &child_status, WNOHANG);
+        if (result == harness.child_pid)
         {
+            child_gone = true;
+            break;
+        }
+        if (result == -1 && errno == ECHILD)
+        {
+            // Already reaped by someone else (non-subreaper environment).
             child_gone = true;
             break;
         }
