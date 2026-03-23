@@ -11,8 +11,13 @@ This document describes the circular dependency architecture and safe disconnect
 
 - **Local Transport** (`rpc::local`) - In-process parent/child zones
 - **SGX Enclave Transport** - Host/enclave communication
-- **DLL Transport** - Cross-DLL boundary communication
+- **Blocking DLL Transport** (`rpc::dynamic_library`) - In-process DLL child zones in blocking builds
+- **Coroutine DLL Transport** (`rpc::libcoro_dynamic_library`) - In-process DLL child zones in coroutine builds
 - Any transport where a parent zone creates and manages a child zone
+
+`rpc::ipc_transport` is intentionally not part of this document. It is a
+process-owning `rpc::stream_transport::transport`, not necessarily a hierarchical
+`child_transport` / `parent_transport` pair.
 
 ## Architecture: Circular Dependency by Design
 
@@ -156,12 +161,18 @@ Each hierarchical transport implements this pattern:
 - Serialization required for boundary crossing
 - See `documents/transports/sgx.md`
 
-### DLL Transport (rpc::dynamic_library)
+### Blocking DLL Transport (`rpc::dynamic_library`)
 - Loads a shared object at runtime via `dlopen` / `LoadLibrary`
 - Boundary crossed via C function pointers (`canopy_dll_*` entry points)
 - `RTLD_LOCAL` keeps DLL symbols isolated from the host symbol table
 - `dlclose` deferred to `on_destination_count_zero` — never called while DLL code is on the stack
 - Non-coroutine builds only
+- See `documents/transports/dynamic_library.md`
+
+### Coroutine DLL Transport (`rpc::libcoro_dynamic_library`)
+- Loads a shared object into the current process in coroutine builds
+- Uses coroutine-oriented DLL entry points
+- Preserves the same parent/child lifetime pattern as other hierarchical transports
 - See `documents/transports/dynamic_library.md`
 
 ## Common Patterns
@@ -184,9 +195,15 @@ child_transport->set_child_entry_point<i_example_parent, i_example_child>(
     });
 
 rpc::shared_ptr<i_example_parent> parent_ptr;
-rpc::shared_ptr<i_example_child> child_ptr;
-auto ret = CO_AWAIT parent_service->connect_to_zone(
-    "child_name", child_transport, parent_ptr, child_ptr);
+auto ret = CO_AWAIT parent_service->connect_to_zone<i_example_parent, i_example_child>(
+    "child_name", child_transport, parent_ptr);
+
+if (ret.error_code != rpc::error::OK())
+{
+    CO_RETURN ret.error_code;
+}
+
+auto child_ptr = ret.output_interface;
 ```
 
 ### Destroying a Child Zone

@@ -46,13 +46,13 @@ Canopy takes the classical RPC model — define an interface, get a proxy on the
 <div align="center">
 <pre>
   ┌──────────────────────────────────────┐
-   direct  IPC   DLL   TCP   TLS   SGX
+  direct  DLL  SPSC   TCP   TLS   SGX  IPC
   └──────────────────────────────────────┘
        same generated interface
 </pre>
 </div>
 
-**Works across every boundary you care about.** The same generated code runs over in-process direct calls, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
+**Works across every boundary you care about.** The same generated code runs over in-process direct calls, in-process DLL boundaries, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, child-process IPC transports, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
 
 ---
 
@@ -161,7 +161,7 @@ If you are building a C++ system that needs components to talk to each other —
 ## Key Features
 
 - **Type-Safe**: Full C++ type system integration with compile-time verification
-- **Transport Agnostic**: Local, TCP, SPSC, SGX Enclave, and custom transports
+- **Transport Agnostic**: Local, DLL, IPC, TCP, SPSC, SGX Enclave, and custom transports
 - **Composable Streams**: Stack TCP, TLS, SPSC, WebSocket layers in any combination
 - **Format Agnostic**: YAS binary, compressed binary, JSON, Protocol Buffers
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
@@ -191,7 +191,7 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 
 ### Architecture
 - [Architecture Overview](documents/architecture/01-overview.md) - Zones, services, transports, memory management
-  - Detailed guides: [Local](documents/transports/local.md), [TCP](documents/transports/tcp.md), [SPSC](documents/transports/spsc.md), [SGX](documents/transports/sgx.md), [Custom](documents/transports/custom.md)
+  - Detailed guides: [Local](documents/transports/local.md), [Dynamic Library and IPC Child Transports](documents/transports/dynamic_library.md), [TCP](documents/transports/tcp.md), [SPSC](documents/transports/spsc.md), [SGX](documents/transports/sgx.md), [Custom](documents/transports/custom.md)
 
 ### Serialization
 - [YAS Serializer](documents/serializers/yas-serializer.md) - Binary, JSON, and compressed formats
@@ -387,12 +387,16 @@ For a complete working example see `demos/stream_composition/src/tcp_spsc_tls_de
 | Transport | Description | Requirements |
 |-----------|-------------|--------------|
 | **Local** | In-process parent-child communication | None |
+| **DLL (`rpc::dynamic_library`)** | In-process DLL-loaded child zone in blocking builds | Shared library payload |
+| **DLL (`rpc::libcoro_dynamic_library`)** | In-process DLL-loaded child zone in coroutine builds | `CANOPY_BUILD_COROUTINE=ON` |
+| **IPC (`rpc::ipc_transport`)** | Child-process transport hosting a direct `stream_transport` service | `CANOPY_BUILD_COROUTINE=ON` |
+| **IPC + DLL (`rpc::ipc_transport` + `rpc::libcoro_spsc_dynamic_dll`)** | Child-process transport hosting a DLL-backed zone over SPSC streams | `CANOPY_BUILD_COROUTINE=ON` |
 | **TCP** | Network communication between machines | Coroutines |
 | **SPSC** | Single-producer single-consumer queues | Coroutines |
 | **SGX Enclave** | Secure enclave communication | SGX SDK |
 | **Custom** | User-defined transport implementations | Custom implementation |
 
-See [transport documentation](documents/transports/) for details.
+See [transport documentation](documents/transports/) for details, especially [Dynamic Library and IPC Child Transports](documents/transports/dynamic_library.md) and [Hierarchical Transport Pattern](documents/transports/hierarchical.md).
 
 ---
 
