@@ -71,6 +71,15 @@ if(CANOPY_BUILD_TEST
   target_link_libraries(io_uring_stream_test PRIVATE streaming GTest::gtest_main)
   add_test(NAME io_uring_stream_test COMMAND io_uring_stream_test)
   message(STATUS "io_uring_stream_test configured")
+
+  add_executable(streaming_regression_test tests/streaming_regression_test.cpp)
+  target_include_directories(streaming_regression_test PRIVATE ${CANOPY_INCLUDES})
+  target_compile_definitions(streaming_regression_test PRIVATE ${CANOPY_DEFINES})
+  target_compile_options(streaming_regression_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_link_options(streaming_regression_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+  target_link_libraries(streaming_regression_test PRIVATE streaming GTest::gtest_main)
+  add_test(NAME streaming_regression_test COMMAND streaming_regression_test)
+  message(STATUS "streaming_regression_test configured")
 endif()
 
 message(STATUS "streaming configured")
