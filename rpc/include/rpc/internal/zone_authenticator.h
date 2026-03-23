@@ -27,7 +27,7 @@ namespace rpc
         return authenticator.validate(address);
     }
 
-#if defined(CANOPY_HASH_ADDRESS_SIZE) && !defined(CANOPY_FIXED_ADDRESS_SIZE)
+#if defined(CANOPY_HASH_ADDRESS_SIZE)
     namespace detail
     {
         inline uint64_t mix_zone_address_hash(uint64_t hash, uint64_t value)

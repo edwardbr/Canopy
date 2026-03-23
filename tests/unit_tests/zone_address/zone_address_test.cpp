@@ -7,7 +7,7 @@
 
 #include <rpc/rpc.h>
 
-#if defined(CANOPY_HASH_ADDRESS_SIZE) && !defined(CANOPY_FIXED_ADDRESS_SIZE)
+#if defined(CANOPY_HASH_ADDRESS_SIZE)
 namespace
 {
     class nonce_zone_authenticator : public rpc::zone_authenticator
@@ -43,7 +43,7 @@ TEST(zone_address_test, zone_only_clears_object_id)
     EXPECT_EQ(zone_only.get_object_id(), 0u);
 }
 
-#if defined(CANOPY_HASH_ADDRESS_SIZE) && !defined(CANOPY_FIXED_ADDRESS_SIZE)
+#if defined(CANOPY_HASH_ADDRESS_SIZE)
 TEST(zone_address_test, hash_uses_reserved_tail_bits)
 {
     std::array<uint8_t, rpc::zone_address::host_address_size> host = {};
