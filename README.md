@@ -30,8 +30,8 @@ Canopy takes the classical RPC model — define an interface, get a proxy on the
 
 <div align="center">
 <pre>
-         🌿  .idl  🌿
-              │
+           .idl  
+         │
          ┌────┴────┐
        proxy      stub
          │          │
@@ -45,10 +45,10 @@ Canopy takes the classical RPC model — define an interface, get a proxy on the
 
 <div align="center">
 <pre>
-  ┌─────────────────────────────────┐
-    direct  SPSC   TCP   TLS   SGX
-  └─────────────────────────────────┘
-        same generated interface
+  ┌──────────────────────────────────────┐
+   direct  IPC   DLL   TCP   TLS   SGX
+  └──────────────────────────────────────┘
+       same generated interface
 </pre>
 </div>
 
@@ -77,8 +77,8 @@ Canopy takes the classical RPC model — define an interface, get a proxy on the
   ┌──── build flag ────┐
   │                    │
   ▼                    ▼
-blocking           co_await
- A→B→C→D           A→ →C→ →E
+blocking            co_await
+ A→B→C→D            A→B→C→D
     (same source code, two modes)
 </pre>
 </div>
@@ -92,10 +92,10 @@ blocking           co_await
             ┌──[root zone]──┐
            /        │        \
        [zone A]  [zone B]  [zone C]
-         │                    │
+         │          │         │
        [sub]    peer link    [sub]
-               /         \
-           node A         node B
+     /   \
+         node A    node B
 </pre>
 </div>
 
@@ -107,7 +107,7 @@ blocking           co_await
 <pre>
   ╭──────────────────────────────────╮
   │  BINARY ◄────────●────────► JSON │
-  │            PROTO   CBOR          │
+  │            PROTO   YAS           │
   │         per-connection dial      │
   ╰──────────────────────────────────╯
 </pre>
@@ -133,22 +133,22 @@ blocking           co_await
 
 <div align="center">
 <pre>
-                   ┌──[i_foo]──▶ zone A
-  [remote object]──┼──[i_bar]──▶ zone B
-                   └──[i_baz]──▶ zone C
+            ┌──[i_foo]──▶ 
+  [remote object]──┼──[i_bar]──▶ class X<i_foo, i_bar, i_baz>
+            └──[i_baz]──▶ 
      cast performed against live object
 </pre>
 </div>
 
-**Polymorphism across zone boundaries.** A single remote object can implement multiple interfaces simultaneously. Callers hold a proxy to one interface and can remotely cast to any other interface the object supports — the cast is performed against the live object in its zone, not a local copy. This gives you the full expressiveness of C++ polymorphism over any transport, without being limited to the single flat contracts that most RPC systems impose.
+**Polymorphism and Multiple Inheritance.** A single remote object can implement multiple interfaces simultaneously, and many different classes can implement the same interface. Callers hold a proxy to one interface and can remotely cast to any other interface the object supports — the cast is performed against the live object in its zone, not a local copy. This gives you the full expressiveness of C++ polymorphism over any transport, without being limited to the single flat contracts that most RPC systems impose.
 
 ---
 
 <div align="center">
 <pre>
-  [zone] ──── discover ────▶  { i_calculator }
-    ?                          { i_logger     }  ──▶ 🤖 MCP
-                               { i_storage    }
+  [zone] ──── discover ────▶  { i_calculator }  ──▶ MCP
+    ?                 { i_logger     }
+                      { i_storage    }
 </pre>
 </div>
 
@@ -328,6 +328,7 @@ auto listener = std::make_shared<streaming::listener>("calc_server",
             const std::shared_ptr<rpc::service>& svc)
             -> CORO_TASK(rpc::service_connect_result<i_calculator>)
         {
+            // Welcome you are in RPC land!
             CO_RETURN rpc::service_connect_result<i_calculator>{
                 rpc::error::OK(),
                 rpc::shared_ptr<i_calculator>(new my_calculator_impl(svc))};
