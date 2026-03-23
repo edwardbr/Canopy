@@ -198,7 +198,9 @@ When all service proxies and active stubs are destroyed, the transport can be cl
 ### Hierarchical Transports
 - **Local**: In-process parent/child zones
 - **SGX**: Host/enclave secure communication
-- **DLL**: Cross-DLL boundary communication
+- **DLL**: In-process child zones loaded from shared objects
+- **Coroutine DLL**: Coroutine-aware in-process DLL child zones
+- **IPC + DLL**: Child processes that host DLL-backed child zones over SPSC streams
 
 
 ### Passthrough Routing

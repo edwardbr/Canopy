@@ -19,91 +19,31 @@ Implement your own transport by inheriting from `rpc::transport`.
 class my_transport : public rpc::transport
 {
 public:
-    // Connection establishment
-    CORO_TASK(int) inner_connect(const std::shared_ptr<rpc::object_stub>& stub, connection_settings& input_descr,
-                                  interface_descriptor& output_descr) override
+    CORO_TASK(rpc::connect_result)
+    inner_connect(std::shared_ptr<rpc::object_stub> stub, rpc::connection_settings input_descr) override
     {
-        // Perform handshake
-        status_ = transport_status::CONNECTED;
-        CO_RETURN rpc::error::OK();
+        // Perform handshake and return the remote root descriptor
+        CO_RETURN rpc::connect_result{rpc::error::OK(), remote_descriptor};
     }
 
-    // Accept incoming connection
     CORO_TASK(int) inner_accept() override
     {
-        // Accept connection from remote
         CO_RETURN rpc::error::OK();
     }
 
-    // Request-response RPC (outbound - called by base class)
-    CORO_TASK(int) outbound_send(uint64_t protocol_version,
-                                  rpc::encoding encoding,
-                                  uint64_t tag,
-                                  rpc::caller_zone caller_zone_id,
-                                  rpc::remote_object remote_object_id,
-                                  rpc::interface_ordinal interface_id,
-                                  rpc::method method_id,
-                                  const rpc::span& in_data,
-                                  std::vector<char>& out_buf_,
-                                  const std::vector<rpc::back_channel_entry>& in_back_channel,
-                                  std::vector<rpc::back_channel_entry>& out_back_channel) override
-    {
-        // Serialize message into envelope
-        // Send to remote zone
-        // Wait for response
-        // Deserialize response
-    }
-
-    // Fire-and-forget (outbound)
-    CORO_TASK(void) outbound_post(uint64_t protocol_version,
-                                   rpc::encoding encoding,
-                                   uint64_t tag,
-                                   rpc::caller_zone caller_zone_id,
-                                   rpc::remote_object remote_object_id,
-                                   rpc::interface_ordinal interface_id,
-                                   rpc::method method_id,
-                                   const rpc::span& in_data,
-                                   const std::vector<rpc::back_channel_entry>& in_back_channel) override
-    {
-        // Serialize and send without waiting for response
-    }
-
-    // Interface query (outbound)
-    CORO_TASK(int) outbound_try_cast(uint64_t protocol_version,
-                                      rpc::caller_zone caller_zone_id,
-                                      rpc::remote_object remote_object_id,
-                                      rpc::interface_ordinal interface_id,
-                                      const std::vector<rpc::back_channel_entry>& in_back_channel,
-                                      std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-    // Reference counting (outbound)
-    CORO_TASK(int) outbound_add_ref(uint64_t protocol_version,
-                                     rpc::remote_object remote_object_id,
-                                     rpc::caller_zone caller_zone_id,
-                                     rpc::requesting_zone requesting_zone_id,
-                                     rpc::add_ref_options build_out_param_channel,
-                                     const std::vector<rpc::back_channel_entry>& in_back_channel,
-                                     std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-    CORO_TASK(int) outbound_release(uint64_t protocol_version,
-                                     rpc::remote_object remote_object_id,
-                                     rpc::caller_zone caller_zone_id,
-                                     rpc::release_options options,
-                                     const std::vector<rpc::back_channel_entry>& in_back_channel,
-                                     std::vector<rpc::back_channel_entry>& out_back_channel) override;
-
-    // Lifecycle notifications (outbound)
-    CORO_TASK(void) outbound_object_released(uint64_t protocol_version,
-                                              rpc::remote_object remote_object_id,
-                                              rpc::caller_zone caller_zone_id,
-                                              const std::vector<rpc::back_channel_entry>& in_back_channel) override;
-
-    CORO_TASK(void) outbound_transport_down(uint64_t protocol_version,
-                                             rpc::destination_zone destination_zone_id,
-                                             rpc::caller_zone caller_zone_id,
-                                             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
+    CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override;
+    CORO_TASK(void) outbound_post(rpc::post_params params) override;
+    CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override;
+    CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override;
+    CORO_TASK(rpc::standard_result) outbound_release(rpc::release_params params) override;
+    CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override;
+    CORO_TASK(void) outbound_transport_down(rpc::transport_down_params params) override;
 };
 ```
+
+The parameter-object types (`send_params`, `post_params`, `try_cast_params`,
+and so on) live in `rpc/include/rpc/internal/marshaller.h`. The canonical
+virtual interface lives in `rpc/include/rpc/internal/transport.h`.
 
 ## Lifecycle Notifications
 
@@ -131,7 +71,8 @@ The base `transport` class handles inbound message processing automatically. You
 
 ## Hierarchical Transports (Parent/Child Zones)
 
-If implementing a hierarchical transport (like local, SGX, or DLL) that creates parent/child zone relationships:
+If implementing a hierarchical transport (like local, SGX, or the in-process
+DLL transports) that creates parent/child zone relationships:
 
 1. **Use the standard pattern**: See `documents/transports/hierarchical.md`
 2. **Implement circular dependency**: `parent_transport` and `child_transport` reference each other
@@ -142,4 +83,4 @@ If implementing a hierarchical transport (like local, SGX, or DLL) that creates 
 Examples:
 - **Local**: `transports/local/` - In-process parent/child
 - **SGX**: Enclave transport - Host/enclave boundary
-- **DLL**: Cross-DLL boundary (platform-specific)
+- **DLL**: In-process shared-library child zone

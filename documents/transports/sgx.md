@@ -45,7 +45,9 @@ Secure communication between host application and Intel SGX enclaves.
 
 ## Hierarchical Transport Pattern
 
-SGX enclave transport implements the standard hierarchical transport pattern used by all parent/child zone transports (local, SGX, DLL).
+SGX enclave transport implements the standard hierarchical transport pattern used
+by the current parent/child transport families: local, SGX, and the in-process
+DLL transports.
 
 ### Key Features:
 - **Circular dependency by design**: Host and enclave zones keep each other alive

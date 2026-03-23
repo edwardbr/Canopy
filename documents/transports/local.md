@@ -33,28 +33,32 @@ auto root_service = std::make_shared<rpc::service>("root", rpc::zone{1});
 
 **Child Zone (client)**:
 ```cpp
-uint64_t new_zone_id = 2;
-
 auto child_transport = std::make_shared<rpc::local::child_transport>(
     "child_zone",
-    root_service_,
-    rpc::zone{new_zone_id});
+    root_service_);
 
 child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
-    [&](const rpc::shared_ptr<yyy::i_host>& host,
-        rpc::shared_ptr<yyy::i_example>& new_example,
-        const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
+    [&](rpc::shared_ptr<yyy::i_host> host,
+        std::shared_ptr<rpc::child_service> child_service_ptr)
+        -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
     {
         // Initialize child zone
-        new_example = rpc::make_shared<example_impl>(child_service_ptr, host);
-        CO_RETURN rpc::error::OK();
+        auto new_example = rpc::make_shared<example_impl>(child_service_ptr, host);
+        CO_RETURN rpc::service_connect_result<yyy::i_example>{
+            rpc::error::OK(),
+            std::move(new_example)};
     });
 
 rpc::shared_ptr<yyy::i_host> host_ptr;
-rpc::shared_ptr<yyy::i_example> example_ptr;
+auto ret = CO_AWAIT root_service_->connect_to_zone<yyy::i_host, yyy::i_example>(
+    "child_zone", child_transport, host_ptr);
 
-auto ret = CO_AWAIT root_service_->connect_to_zone(
-    "child_zone", child_transport, host_ptr, example_ptr);
+if (ret.error_code != rpc::error::OK())
+{
+    CO_RETURN ret.error_code;
+}
+
+auto example_ptr = ret.output_interface;
 ```
 
 ## Key Characteristics
@@ -67,7 +71,9 @@ auto ret = CO_AWAIT root_service_->connect_to_zone(
 
 ## Hierarchical Transport Pattern
 
-Local transport implements the standard hierarchical transport pattern used by all parent/child zone transports (local, SGX, DLL).
+Local transport implements the standard hierarchical transport pattern used by
+the current `child_transport` / `parent_transport` families: local, SGX, and
+the in-process DLL transports.
 
 ### Key Features:
 - **Circular dependency by design**: Keeps zones alive while references exist
@@ -95,4 +101,3 @@ Local transport implements the standard hierarchical transport pattern used by a
 - Single process only
 - No isolation between zones
 - Shared memory space
-

@@ -27,6 +27,10 @@ These pieces are intentionally separate:
 - `ipc_child_process` is also not a transport; it maps the shared queue pair and
   hosts a `rpc::stream_transport` directly inside the child process
 
+`rpc::ipc_transport` is not necesarily a hierarchical transport. It is a
+process-owning `rpc::stream_transport::transport` that can be combined with
+either a direct child-process runtime or a DLL-hosting child-process runtime.
+
 ## See Also
 
 - [Stream Backpressure Guidelines](stream_backpressure_guidelines.md)

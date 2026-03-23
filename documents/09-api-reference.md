@@ -134,6 +134,27 @@ explicit operator bool() const;
 
 ## 5. Transport
 
+### Built-in Transport Families
+
+```cpp
+// In-process parent/child zones
+rpc::local
+
+// In-process DLL-backed child zones
+rpc::dynamic_library         // blocking builds
+rpc::libcoro_dynamic_library // coroutine builds
+rpc::sgx                     // a signed dynamic library 
+
+// Child-process transport and DLL-backed child-process composition
+rpc::ipc_transport           // coroutine builds
+rpc::libcoro_spsc_dynamic_dll
+
+// Peer and stream-based transports
+rpc::stream_transport
+```
+
+For the DLL and IPC variants, see `documents/transports/dynamic_library.md`.
+
 ### Status
 
 ```cpp

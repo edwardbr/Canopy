@@ -7,16 +7,16 @@ All rights reserved.
 
 Single-Producer Single-Consumer queue-based communication for lock-free IPC.
 
-In the current Canopy transport stack, the SPSC queue is primarily the byte
-transport underneath coroutine `stream_transport`-based implementations rather
-than a standalone top-level transport API.
+In the current Canopy transport stack, the SPSC queue is a stream primitive, not
+a standalone top-level RPC transport API. It is primarily used underneath
+coroutine `rpc::stream_transport::transport` implementations.
 
 ## Where It Is Used
 
 - High-performance inter-process communication
 - Same-machine, different processes
 - Lock-free architecture requirements
-- `rpc::ipc_transport` shared-memory parent/child connections
+- `rpc::ipc_transport` shared-memory process-owned connections
 - `rpc::libcoro_spsc_dynamic_dll` DLL hosting over process boundaries
 
 ## Relationship To The New IPC Transports
@@ -32,8 +32,8 @@ The current split is:
 - `ipc_child_process` consumes an already-created queue pair and hosts a direct
   child service behind a `stream_transport`
 
-So the SPSC layer is the message pipe; it is not the process manager and it is
-not the DLL loader.
+So the SPSC layer is the message pipe; it is not the process manager, it is not
+the DLL loader, and it is not itself a hierarchical transport.
 
 ## Requirements
 
@@ -79,61 +79,29 @@ namespace spsc {
 
 ## Queue Pair Setup
 
-**Server Side (receiver)**:
+The current pattern is to wrap each queue pair in
+`streaming::spsc_queue::stream` and then hand the resulting stream to
+`rpc::stream_transport`.
+
 ```cpp
-spsc::queue_type receive_queue;
-spsc::queue_type send_queue;
+streaming::spsc_queue::queue_type send_queue;
+streaming::spsc_queue::queue_type receive_queue;
 
-auto server_transport = rpc::spsc::spsc_transport::create(
-    "server",
-    peer_service_,
-    rpc::zone{peer_zone_id},
-    &receive_queue,     // Queue to receive on
-    &send_queue,        // Queue to send on (reversed)
-    handler_lambda);    // Inbound message handler
+auto peer_stream = std::make_shared<streaming::spsc_queue::stream>(
+    &receive_queue, &send_queue, io_scheduler);
+
+auto responder_transport = std::static_pointer_cast<rpc::stream_transport::transport>(
+    CO_AWAIT peer_service->make_acceptor<yyy::i_host, yyy::i_example>(
+        "responder_transport",
+        rpc::stream_transport::transport_factory(std::move(peer_stream)),
+        interface_factory));
+
+auto client_stream = std::make_shared<streaming::spsc_queue::stream>(
+    &send_queue, &receive_queue, io_scheduler);
+
+auto initiator_transport =
+    rpc::stream_transport::make_client("initiator_transport", root_service, std::move(client_stream));
 ```
 
-**Client Side (initiator)**:
-```cpp
-spsc::queue_type send_queue;
-spsc::queue_type receive_queue;
-
-auto client_transport = rpc::spsc::spsc_transport::create(
-    "client",
-    root_service_,
-    rpc::zone{peer_zone_id},
-    &send_queue,       // Queue to send on
-    &receive_queue,    // Queue to receive on (reversed)
-    nullptr);          // Client doesn't need handler
-```
-
-## Message Protocol
-
-Messages include metadata and payload:
-
-```idl
-struct envelope_prefix
-{
-    uint64_t version;
-    message_direction direction;      // send, receive, one_way
-    uint64_t sequence_number;
-    uint64_t payload_size;
-};
-
-struct envelope_payload
-{
-    uint64_t payload_fingerprint;
-    std::vector<uint8_t> payload;
-};
-```
-
-**Message Types**:
-- `init_client_channel_send` / `init_client_channel_response` - Connection handshake
-- `call_send` / `call_receive` - Request-response RPC calls
-- `post_send` - Fire-and-forget notifications
-- `try_cast_send` / `try_cast_receive` - Interface queries
-- `addref_send` / `addref_receive` - Reference count increments
-- `release_send` / `release_receive` - Reference count decrements
-- `object_released_send` - Object lifecycle notification
-- `transport_down_send` - Transport disconnection notification
-- `close_connection_send` / `close_connection_ack` - Graceful shutdown
+The envelope and handshake logic lives in `rpc::stream_transport`; the SPSC
+layer just moves bytes between the two stream endpoints.
