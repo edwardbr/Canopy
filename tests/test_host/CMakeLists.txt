@@ -61,6 +61,7 @@ add_executable(
   hierachical_transport_tests.cpp
   post_functionality_test_suite.cpp
   optimistic_ptr_tests.cpp
+  streaming_transport_regression_suite.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${LIBCORO_DLL_TRANSPORT_SOURCES}
   ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}

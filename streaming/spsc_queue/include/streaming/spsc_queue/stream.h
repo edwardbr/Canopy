@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -38,6 +39,7 @@ namespace streaming::spsc_queue
         queue_type* recv_queue_;
         std::shared_ptr<coro::scheduler> scheduler_;
         std::vector<uint8_t> leftover_;
-        bool closed_{false};
+        size_t leftover_offset_{0};
+        std::atomic<bool> closed_{false};
     };
 } // namespace streaming::spsc_queue

@@ -6,7 +6,6 @@
 
 #include <chrono>
 #include <functional>
-#include <iostream>
 #include <mutex>
 #include <queue>
 #include <type_traits>
@@ -18,14 +17,6 @@
 
 namespace rpc::stream_transport
 {
-    namespace debug
-    {
-        void reset_diagnostics();
-        void dump_diagnostics(std::ostream& out);
-        void record_send_payload(uint64_t sequence_number, uint64_t direction, size_t payload_size, size_t queue_size);
-        void trace_line(std::string line);
-    }
-
     class transport : public rpc::transport
     {
     public:
@@ -34,6 +25,12 @@ namespace rpc::stream_transport
             unhandled,
             handled,
             rejected
+        };
+
+        enum class send_priority
+        {
+            normal,
+            high
         };
 
         using connection_handler = rpc::connection_handler;
@@ -69,22 +66,23 @@ namespace rpc::stream_transport
         using custom_outgoing_handler = std::function<bool(
             uint64_t protocol_version, message_direction direction, uint64_t sequence_number, uint64_t type_fingerprint, const void* typed_payload)>;
 
-        std::unordered_map<uint64_t, result_listener*> pending_transmits_;
+        std::unordered_map<uint64_t, std::shared_ptr<result_listener>> pending_transmits_;
         std::mutex pending_transmits_mtx_;
 
         std::shared_ptr<streaming::stream> stream_;
-        uint64_t instance_id_{0};
 
         std::atomic<uint64_t> sequence_number_ = 0;
 
-        struct queued_send_item
+        struct queued_send_message
         {
             uint64_t sequence_number{0};
             message_direction direction{message_direction::one_way};
-            std::vector<uint8_t> data;
+            std::vector<uint8_t> prefix_data;
+            std::vector<uint8_t> payload_data;
         };
 
-        std::queue<queued_send_item> send_queue_;
+        std::queue<queued_send_message> normal_send_queue_;
+        std::queue<queued_send_message> high_priority_send_queue_;
         std::mutex send_queue_mtx_;
         coro::event send_queue_ready_{false};
 
@@ -139,10 +137,17 @@ namespace rpc::stream_transport
         CORO_TASK(bool) dispatch_builtin_message(message_handler_context context);
 
         template<class SendPayload>
-        void send_payload(
-            std::uint64_t protocol_version, message_direction direction, SendPayload&& sendPayload, uint64_t sequence_number)
+        void send_payload(std::uint64_t protocol_version,
+            message_direction direction,
+            SendPayload&& sendPayload,
+            uint64_t sequence_number,
+            send_priority priority = send_priority::normal)
         {
-            assert(direction);
+            if (static_cast<uint64_t>(direction) == 0)
+            {
+                RPC_ERROR("send_payload: invalid message direction");
+                return;
+            }
             using payload_type = std::remove_cvref_t<SendPayload>;
 
             envelope_payload payload_envelope = {.payload_fingerprint = rpc::id<payload_type>::get(protocol_version),
@@ -159,26 +164,18 @@ namespace rpc::stream_transport
                 rpc::to_yas_json<std::string>(prefix),
                 rpc::to_yas_json<std::string>(payload_envelope));
 
-            size_t queue_size = 0;
             {
                 std::scoped_lock g(send_queue_mtx_);
-                send_queue_.push(queued_send_item{
+                auto& queue = priority == send_priority::high ? high_priority_send_queue_ : normal_send_queue_;
+                queue.push(queued_send_message{
                     .sequence_number = sequence_number,
                     .direction = direction,
-                    .data = rpc::to_yas_binary(prefix),
+                    .prefix_data = rpc::to_yas_binary(prefix),
+                    .payload_data = std::move(payload),
                 });
-                send_queue_.push(queued_send_item{
-                    .sequence_number = sequence_number,
-                    .direction = direction,
-                    .data = std::move(payload),
-                });
-                queue_size = send_queue_.size();
             }
 
             send_queue_ready_.set();
-
-            debug::record_send_payload(
-                sequence_number, static_cast<uint64_t>(direction), prefix.payload_size, queue_size);
         }
 
         template<class SendPayload, class ReceivePayload>
@@ -193,7 +190,13 @@ namespace rpc::stream_transport
 
             auto sequence_number = ++sequence_number_;
 
-            result_listener res_payload;
+            auto res_payload = std::make_shared<result_listener>();
+
+            auto remove_pending_result = [this, sequence_number]()
+            {
+                std::scoped_lock lock(pending_transmits_mtx_);
+                pending_transmits_.erase(sequence_number);
+            };
 
             {
                 RPC_TRACE("call_peer started zone: {} sequence_number: {} id: {}",
@@ -201,7 +204,7 @@ namespace rpc::stream_transport
                     sequence_number,
                     rpc::id<SendPayload>::get(rpc::get_version()));
                 std::scoped_lock lock(pending_transmits_mtx_);
-                auto [it, success] = pending_transmits_.try_emplace(sequence_number, &res_payload);
+                auto [it, success] = pending_transmits_.try_emplace(sequence_number, res_payload);
                 if (!success)
                 {
                     RPC_ERROR("call_peer: failed to insert sequence number {}", sequence_number);
@@ -212,27 +215,28 @@ namespace rpc::stream_transport
             send_payload(
                 protocol_version, message_direction::send, std::forward<SendPayload>(sendPayload), sequence_number);
 
-            CO_AWAIT res_payload.event; // wait for the reply
+            CO_AWAIT res_payload->event; // wait for the reply
+            remove_pending_result();
 
             RPC_TRACE("call_peer succeeded zone: {} sequence_number: {} id: {}",
                 get_service()->get_zone_id().get_subnet(),
                 sequence_number,
                 rpc::id<SendPayload>::get(rpc::get_version()));
 
-            if (res_payload.error_code == rpc::error::OBJECT_GONE())
+            if (res_payload->error_code == rpc::error::OBJECT_GONE())
             {
-                CO_RETURN peer_call_result<ReceivePayload>{res_payload.error_code, {}};
+                CO_RETURN peer_call_result<ReceivePayload>{res_payload->error_code, {}};
             }
-            if (rpc::error::is_critical(res_payload.error_code))
+            if (rpc::error::is_critical(res_payload->error_code))
             {
                 RPC_ERROR("call_peer returning cancelled error for zone: {} sequence_number: {}",
                     get_service()->get_zone_id().get_subnet(),
                     sequence_number);
-                CO_RETURN peer_call_result<ReceivePayload>{res_payload.error_code, {}};
+                CO_RETURN peer_call_result<ReceivePayload>{res_payload->error_code, {}};
             }
 
             ReceivePayload receive_payload;
-            auto str_err = rpc::from_yas_binary(rpc::byte_span(res_payload.payload.payload), receive_payload);
+            auto str_err = rpc::from_yas_binary(rpc::byte_span(res_payload->payload.payload), receive_payload);
             if (!str_err.empty())
             {
                 RPC_ERROR("failed call_peer send_payload from_yas_binary");

@@ -5,51 +5,12 @@
 
 #include <atomic>
 #include <cerrno>
-#include <iostream>
-#include <mutex>
-
 #include <transports/streaming/transport.h>
 
 namespace rpc::stream_transport
 {
     namespace
     {
-        struct diagnostics_snapshot
-        {
-            std::atomic<uint64_t> receive_loop_entries{0};
-            std::atomic<uint64_t> prefix_parsed{0};
-            std::atomic<uint64_t> last_prefix_seq{0};
-            std::atomic<uint64_t> last_prefix_direction{0};
-            std::atomic<uint64_t> builtin_init_messages{0};
-            std::atomic<uint64_t> send_payload_calls{0};
-            std::atomic<uint64_t> send_payload_large_calls{0};
-            std::atomic<uint64_t> send_payload_last_seq{0};
-            std::atomic<uint64_t> send_payload_last_queue_size{0};
-            std::atomic<uint64_t> send_payload_last_bytes{0};
-            std::atomic<uint64_t> send_payload_last_direction{0};
-            std::atomic<uint64_t> send_loop_dequeues{0};
-            std::atomic<uint64_t> send_loop_large_dequeues{0};
-            std::atomic<uint64_t> send_loop_last_bytes{0};
-            std::atomic<uint64_t> send_loop_last_status{0};
-            std::atomic<uint64_t> send_loop_last_native{0};
-            std::atomic<uint64_t> send_loop_exits{0};
-            std::atomic<uint64_t> recv_large_prefixes{0};
-            std::atomic<uint64_t> recv_last_seq{0};
-            std::atomic<uint64_t> recv_last_direction{0};
-            std::atomic<uint64_t> recv_last_payload_size{0};
-            std::atomic<uint64_t> recv_last_payload_progress{0};
-            std::atomic<uint64_t> status_changes{0};
-            std::atomic<uint64_t> last_old_status{0};
-            std::atomic<uint64_t> last_new_status{0};
-            std::atomic<uint64_t> last_zone{0};
-        };
-
-        auto diagnostics() -> diagnostics_snapshot&
-        {
-            static diagnostics_snapshot snapshot;
-            return snapshot;
-        }
-
         auto is_expected_disconnect_send_failure(
             rpc::transport_status transport_status, const coro::net::io_status& send_status) -> bool
         {
@@ -60,106 +21,9 @@ namespace rpc::stream_transport
                 return true;
 
             return send_status.type == coro::net::io_status::kind::native
-                && (send_status.native_code == EPIPE || send_status.native_code == ECONNRESET);
-        }
-
-        auto trace_mutex() -> std::mutex&
-        {
-            static std::mutex mtx;
-            return mtx;
-        }
-
-        auto next_transport_instance_id() -> uint64_t
-        {
-            static std::atomic<uint64_t> next_id{1};
-            return next_id.fetch_add(1, std::memory_order_relaxed);
+                   && (send_status.native_code == EPIPE || send_status.native_code == ECONNRESET);
         }
     } // namespace
-
-    namespace debug
-    {
-        void trace_line(std::string line)
-        {
-            std::lock_guard<std::mutex> lock(trace_mutex());
-            std::cerr << line << '\n';
-        }
-
-        void record_send_payload(uint64_t sequence_number, uint64_t direction, size_t payload_size, size_t queue_size)
-        {
-            auto& d = diagnostics();
-            d.send_payload_calls.fetch_add(1, std::memory_order_relaxed);
-            d.send_payload_last_seq.store(sequence_number, std::memory_order_relaxed);
-            d.send_payload_last_queue_size.store(queue_size, std::memory_order_relaxed);
-            d.send_payload_last_bytes.store(payload_size, std::memory_order_relaxed);
-            d.send_payload_last_direction.store(direction, std::memory_order_relaxed);
-            if (payload_size >= 100000)
-                d.send_payload_large_calls.fetch_add(1, std::memory_order_relaxed);
-        }
-
-        void reset_diagnostics()
-        {
-            auto& d = diagnostics();
-            d.send_payload_calls.store(0, std::memory_order_relaxed);
-            d.receive_loop_entries.store(0, std::memory_order_relaxed);
-            d.prefix_parsed.store(0, std::memory_order_relaxed);
-            d.last_prefix_seq.store(0, std::memory_order_relaxed);
-            d.last_prefix_direction.store(0, std::memory_order_relaxed);
-            d.builtin_init_messages.store(0, std::memory_order_relaxed);
-            d.send_payload_large_calls.store(0, std::memory_order_relaxed);
-            d.send_payload_last_seq.store(0, std::memory_order_relaxed);
-            d.send_payload_last_queue_size.store(0, std::memory_order_relaxed);
-            d.send_payload_last_bytes.store(0, std::memory_order_relaxed);
-            d.send_payload_last_direction.store(0, std::memory_order_relaxed);
-            d.send_loop_dequeues.store(0, std::memory_order_relaxed);
-            d.send_loop_large_dequeues.store(0, std::memory_order_relaxed);
-            d.send_loop_last_bytes.store(0, std::memory_order_relaxed);
-            d.send_loop_last_status.store(0, std::memory_order_relaxed);
-            d.send_loop_last_native.store(0, std::memory_order_relaxed);
-            d.send_loop_exits.store(0, std::memory_order_relaxed);
-            d.recv_large_prefixes.store(0, std::memory_order_relaxed);
-            d.recv_last_seq.store(0, std::memory_order_relaxed);
-            d.recv_last_direction.store(0, std::memory_order_relaxed);
-            d.recv_last_payload_size.store(0, std::memory_order_relaxed);
-            d.recv_last_payload_progress.store(0, std::memory_order_relaxed);
-            d.status_changes.store(0, std::memory_order_relaxed);
-            d.last_old_status.store(0, std::memory_order_relaxed);
-            d.last_new_status.store(0, std::memory_order_relaxed);
-            d.last_zone.store(0, std::memory_order_relaxed);
-        }
-
-        void dump_diagnostics(std::ostream& out)
-        {
-            auto& d = diagnostics();
-            out << "stream_transport diagnostics:"
-                << " receive_loop_entries=" << d.receive_loop_entries.load(std::memory_order_relaxed)
-                << " prefix_parsed=" << d.prefix_parsed.load(std::memory_order_relaxed)
-                << " last_prefix_seq=" << d.last_prefix_seq.load(std::memory_order_relaxed)
-                << " last_prefix_direction=" << d.last_prefix_direction.load(std::memory_order_relaxed)
-                << " builtin_init_messages=" << d.builtin_init_messages.load(std::memory_order_relaxed)
-                << " send_payload_calls=" << d.send_payload_calls.load(std::memory_order_relaxed)
-                << " send_payload_large_calls=" << d.send_payload_large_calls.load(std::memory_order_relaxed)
-                << " send_payload_last_seq=" << d.send_payload_last_seq.load(std::memory_order_relaxed)
-                << " send_payload_last_queue_size=" << d.send_payload_last_queue_size.load(std::memory_order_relaxed)
-                << " send_payload_last_bytes=" << d.send_payload_last_bytes.load(std::memory_order_relaxed)
-                << " send_payload_last_direction=" << d.send_payload_last_direction.load(std::memory_order_relaxed)
-                << " send_loop_dequeues=" << d.send_loop_dequeues.load(std::memory_order_relaxed)
-                << " send_loop_large_dequeues=" << d.send_loop_large_dequeues.load(std::memory_order_relaxed)
-                << " send_loop_last_bytes=" << d.send_loop_last_bytes.load(std::memory_order_relaxed)
-                << " send_loop_last_status=" << d.send_loop_last_status.load(std::memory_order_relaxed)
-                << " send_loop_last_native=" << d.send_loop_last_native.load(std::memory_order_relaxed)
-                << " send_loop_exits=" << d.send_loop_exits.load(std::memory_order_relaxed)
-                << " recv_large_prefixes=" << d.recv_large_prefixes.load(std::memory_order_relaxed)
-                << " recv_last_seq=" << d.recv_last_seq.load(std::memory_order_relaxed)
-                << " recv_last_direction=" << d.recv_last_direction.load(std::memory_order_relaxed)
-                << " recv_last_payload_size=" << d.recv_last_payload_size.load(std::memory_order_relaxed)
-                << " recv_last_payload_progress=" << d.recv_last_payload_progress.load(std::memory_order_relaxed)
-                << " status_changes=" << d.status_changes.load(std::memory_order_relaxed)
-                << " last_old_status=" << d.last_old_status.load(std::memory_order_relaxed)
-                << " last_new_status=" << d.last_new_status.load(std::memory_order_relaxed)
-                << " last_zone=" << d.last_zone.load(std::memory_order_relaxed)
-                << '\n';
-        }
-    } // namespace debug
 
     transport::transport(std::string name,
         std::shared_ptr<rpc::service> service,
@@ -167,7 +31,6 @@ namespace rpc::stream_transport
         connection_handler handler)
         : rpc::transport(name, service)
         , stream_(std::move(stream))
-        , instance_id_(next_transport_instance_id())
         , connection_handler_(std::move(handler))
     {
     }
@@ -184,19 +47,8 @@ namespace rpc::stream_transport
     void transport::set_status(rpc::transport_status new_status)
     {
         auto old_status = get_status();
-        if (old_status != new_status)
-        {
-            auto& d = diagnostics();
-            d.status_changes.fetch_add(1, std::memory_order_relaxed);
-            d.last_old_status.store(static_cast<uint64_t>(old_status), std::memory_order_relaxed);
-            d.last_new_status.store(static_cast<uint64_t>(new_status), std::memory_order_relaxed);
-            d.last_zone.store(get_zone_id().get_subnet(), std::memory_order_relaxed);
-        }
-
-        if (new_status == rpc::transport_status::DISCONNECTING)
-        {
+        if (old_status != new_status && new_status == rpc::transport_status::DISCONNECTING)
             disconnecting_since_ = std::chrono::steady_clock::now();
-        }
         if (new_status != rpc::transport_status::CONNECTED)
         {
             send_queue_ready_.set();
@@ -473,50 +325,41 @@ namespace rpc::stream_transport
         auto tracker = std::move(context.tracker);
         if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
         {
-            diagnostics().builtin_init_messages.fetch_add(1, std::memory_order_relaxed);
-            RPC_DEBUG("pump: received init_client_channel_send seq={}", prefix.sequence_number);
             get_service()->spawn(create_stub(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received call_send seq={}", prefix.sequence_number);
             get_service()->spawn(stub_handle_send(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received post_send seq={}", prefix.sequence_number);
             get_service()->spawn(stub_handle_post(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received try_cast_send seq={}", prefix.sequence_number);
             get_service()->spawn(stub_handle_try_cast(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received addref_send seq={}", prefix.sequence_number);
             get_service()->spawn(stub_handle_add_ref(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received release_send seq={}", prefix.sequence_number);
             get_service()->spawn(stub_handle_release(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received object_released_send seq={}", prefix.sequence_number);
             get_service()->spawn(stub_handle_object_released(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received transport_down_send seq={}", prefix.sequence_number);
             get_service()->spawn(stub_handle_transport_down(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
@@ -549,15 +392,12 @@ namespace rpc::stream_transport
         }
         else if (payload.payload_fingerprint == rpc::id<close_connection_send>::get(prefix.version))
         {
-            RPC_DEBUG(
-                "pump: received close_connection_send seq={} zone={}", prefix.sequence_number, get_zone_id().get_subnet());
             set_status(rpc::transport_status::DISCONNECTING);
             peer_requested_disconnection_ = true;
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<close_connection_ack>::get(prefix.version))
         {
-            RPC_DEBUG("pump: received close_connection_ack - shutdown confirmed zone={}", get_zone_id().get_subnet());
             set_status(rpc::transport_status::DISCONNECTED);
             CO_RETURN true;
         }
@@ -592,8 +432,6 @@ namespace rpc::stream_transport
         auto self = shared_from_this();
         auto svc = get_service();
         RPC_ASSERT(svc);
-        diagnostics().receive_loop_entries.fetch_add(1, std::memory_order_relaxed);
-
         static auto envelope_prefix_saved_size = rpc::yas_binary_saved_size(envelope_prefix());
 
         std::vector<char> prefix_buf(envelope_prefix_saved_size);
@@ -628,13 +466,9 @@ namespace rpc::stream_transport
                     {
                         if (send_cleanup_done_.load(std::memory_order_acquire))
                         {
-                            RPC_DEBUG("receive_consumer_loop: responder sending close_connection_ack for zone {}",
-                                get_zone_id().get_subnet());
                             send_payload_close_connection_ack(
                                 rpc::get_version(), message_direction::one_way, close_connection_ack{}, 0);
                             CO_AWAIT flush_send_queue();
-                            RPC_DEBUG("receive_consumer_loop: responder transition to DISCONNECTED zone {}",
-                                get_zone_id().get_subnet());
                             set_status(rpc::transport_status::DISCONNECTED);
                             stop_loop = true;
                             break;
@@ -680,12 +514,6 @@ namespace rpc::stream_transport
 
             remaining = remaining.subspan(recv_bytes.size());
 
-            if (!receiving_prefix && prefix.payload_size >= 100000)
-            {
-                diagnostics().recv_last_payload_progress.store(
-                    payload_buf.size() - remaining.size(), std::memory_order_relaxed);
-            }
-
             if (!remaining.empty())
                 continue;
 
@@ -697,19 +525,12 @@ namespace rpc::stream_transport
                     RPC_ERROR("Deserialization FAILED: {}", str_err);
                     break;
                 }
-                diagnostics().prefix_parsed.fetch_add(1, std::memory_order_relaxed);
-                diagnostics().last_prefix_seq.store(prefix.sequence_number, std::memory_order_relaxed);
-                diagnostics().last_prefix_direction.store(static_cast<uint64_t>(prefix.direction), std::memory_order_relaxed);
-                if (prefix.payload_size >= 100000)
+                if (static_cast<uint64_t>(prefix.direction) == 0)
                 {
-                    auto& d = diagnostics();
-                    d.recv_large_prefixes.fetch_add(1, std::memory_order_relaxed);
-                    d.recv_last_seq.store(prefix.sequence_number, std::memory_order_relaxed);
-                    d.recv_last_direction.store(static_cast<uint64_t>(prefix.direction), std::memory_order_relaxed);
-                    d.recv_last_payload_size.store(prefix.payload_size, std::memory_order_relaxed);
-                    d.recv_last_payload_progress.store(0, std::memory_order_relaxed);
+                    RPC_ERROR("invalid envelope prefix: missing direction");
+                    set_status(rpc::transport_status::DISCONNECTING);
+                    break;
                 }
-                assert(prefix.direction);
                 receiving_prefix = false;
                 payload_buf.assign(prefix.payload_size, '\0');
                 remaining = payload_buf;
@@ -722,7 +543,8 @@ namespace rpc::stream_transport
                 auto str_err = rpc::from_yas_binary(rpc::byte_span(payload_buf), payload);
                 if (!str_err.empty())
                 {
-                    RPC_ERROR("failed bad payload format");
+                    RPC_ERROR("invalid envelope payload: {}", str_err);
+                    set_status(rpc::transport_status::DISCONNECTING);
                     break;
                 }
 
@@ -752,7 +574,7 @@ namespace rpc::stream_transport
                 else
                 {
                     // Find the pending result listener and wake it
-                    result_listener* result = nullptr;
+                    std::shared_ptr<result_listener> result;
                     {
                         std::scoped_lock lock(pending_transmits_mtx_);
                         auto it = pending_transmits_.find(prefix.sequence_number);
@@ -763,7 +585,7 @@ namespace rpc::stream_transport
 
                         if (it != pending_transmits_.end())
                         {
-                            result = it->second;
+                            result = std::move(it->second);
                             pending_transmits_.erase(it);
                         }
                         else
@@ -806,16 +628,32 @@ namespace rpc::stream_transport
     {
         while (true)
         {
-            queued_send_item item;
+            queued_send_message item;
             {
                 std::scoped_lock g(send_queue_mtx_);
-                if (send_queue_.empty())
+                if (!high_priority_send_queue_.empty())
+                {
+                    item = std::move(high_priority_send_queue_.front());
+                    high_priority_send_queue_.pop();
+                }
+                else if (!normal_send_queue_.empty())
+                {
+                    item = std::move(normal_send_queue_.front());
+                    normal_send_queue_.pop();
+                }
+                else
                     break;
-                item = std::move(send_queue_.front());
-                send_queue_.pop();
             }
-            auto send_status
-                = CO_AWAIT stream_->send(rpc::byte_span{reinterpret_cast<const char*>(item.data.data()), item.data.size()});
+            auto send_part = [this](const std::vector<uint8_t>& data) -> CORO_TASK(coro::net::io_status)
+            {
+                if (data.empty())
+                    CO_RETURN coro::net::io_status{.type = coro::net::io_status::kind::ok};
+                CO_RETURN CO_AWAIT stream_->send(rpc::byte_span{reinterpret_cast<const char*>(data.data()), data.size()});
+            };
+
+            auto send_status = CO_AWAIT send_part(item.prefix_data);
+            if (send_status.is_ok())
+                send_status = CO_AWAIT send_part(item.payload_data);
             if (!send_status.is_ok())
             {
                 if (is_expected_disconnect_send_failure(get_status(), send_status))
@@ -850,14 +688,20 @@ namespace rpc::stream_transport
 
         while (get_status() == rpc::transport_status::CONNECTED)
         {
-            queued_send_item item;
+            queued_send_message item;
             bool had_item = false;
             {
                 std::scoped_lock g(send_queue_mtx_);
-                if (!send_queue_.empty())
+                if (!high_priority_send_queue_.empty())
                 {
-                    item = std::move(send_queue_.front());
-                    send_queue_.pop();
+                    item = std::move(high_priority_send_queue_.front());
+                    high_priority_send_queue_.pop();
+                    had_item = true;
+                }
+                else if (!normal_send_queue_.empty())
+                {
+                    item = std::move(normal_send_queue_.front());
+                    normal_send_queue_.pop();
                     had_item = true;
                 }
                 else if (get_status() == rpc::transport_status::CONNECTED)
@@ -868,15 +712,16 @@ namespace rpc::stream_transport
 
             if (had_item)
             {
-                auto& d = diagnostics();
-                d.send_loop_dequeues.fetch_add(1, std::memory_order_relaxed);
-                d.send_loop_last_bytes.store(item.data.size(), std::memory_order_relaxed);
-                if (item.data.size() >= 100000)
-                    d.send_loop_large_dequeues.fetch_add(1, std::memory_order_relaxed);
-                auto send_status = CO_AWAIT stream_->send(
-                    rpc::byte_span{reinterpret_cast<const char*>(item.data.data()), item.data.size()});
-                d.send_loop_last_status.store(static_cast<uint64_t>(send_status.type), std::memory_order_relaxed);
-                d.send_loop_last_native.store(static_cast<uint64_t>(send_status.native_code), std::memory_order_relaxed);
+                auto send_part = [this](const std::vector<uint8_t>& data) -> CORO_TASK(coro::net::io_status)
+                {
+                    if (data.empty())
+                        CO_RETURN coro::net::io_status{.type = coro::net::io_status::kind::ok};
+                    CO_RETURN CO_AWAIT stream_->send(
+                        rpc::byte_span{reinterpret_cast<const char*>(data.data()), data.size()});
+                };
+                auto send_status = CO_AWAIT send_part(item.prefix_data);
+                if (send_status.is_ok())
+                    send_status = CO_AWAIT send_part(item.payload_data);
                 if (!send_status.is_ok())
                 {
                     if (is_expected_disconnect_send_failure(get_status(), send_status))
@@ -911,8 +756,6 @@ namespace rpc::stream_transport
                 CO_AWAIT send_queue_ready_;
             }
         }
-
-        diagnostics().send_loop_exits.fetch_add(1, std::memory_order_relaxed);
 
         // Flush any messages queued before DISCONNECTING was set
         if (get_status() == rpc::transport_status::DISCONNECTED)
@@ -963,6 +806,7 @@ namespace rpc::stream_transport
                 it.second->error_code = rpc::error::CALL_CANCELLED();
                 it.second->event.set();
             }
+            transport->pending_transmits_.clear();
         }
         if (transport->stream_)
         {
@@ -978,7 +822,12 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stub_handle_send");
 
-        assert(prefix.direction == message_direction::send || prefix.direction == message_direction::one_way);
+        if (prefix.direction != message_direction::send && prefix.direction != message_direction::one_way)
+        {
+            RPC_ERROR("invalid call_send direction {}", static_cast<uint64_t>(prefix.direction));
+            set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN;
+        }
 
         if (get_status() != rpc::transport_status::CONNECTED)
         {
@@ -1309,7 +1158,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
     }
 
     void transport::send_payload_close_connection_send(
@@ -1317,7 +1166,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
     }
 
     void transport::send_payload_call_receive(
@@ -1325,7 +1174,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 
     void transport::send_payload_try_cast_receive(
@@ -1333,7 +1182,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 
     void transport::send_payload_addref_receive(
@@ -1341,7 +1190,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number);
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 
     void transport::send_payload_init_client_initial_channel_response(uint64_t protocol_version,
@@ -1351,7 +1200,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
     }
 
     void transport::send_payload_init_client_channel_response(uint64_t protocol_version,
@@ -1361,6 +1210,6 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number);
+        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
     }
 }
