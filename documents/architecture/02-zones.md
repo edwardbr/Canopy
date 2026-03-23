@@ -166,21 +166,20 @@ auto root_service = std::make_shared<rpc::service>(
 Child zones are created through transport connections:
 
 ```cpp
-
-// rpc::local::child_transport is mainly used for testing but is good in this case to demonstrate the code needed in the child zone.
+// rpc::local::child_transport is mainly used for testing, but it shows the
+// same connect_to_zone pattern used by the current demos.
 
 // From parent zone
 auto child_transport = std::make_shared<rpc::local::child_transport>("example_zone", this_service, new_zone);
 
 child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
     [](const rpc::shared_ptr<yyy::i_host>& host,
-        rpc::shared_ptr<yyy::i_example>& new_example,
-        const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(error_code)
+        const std::shared_ptr<rpc::child_service>& child_service_ptr)
+        -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
     {
-        // Create the object in the child zone, to be transferred to the parent zone.
-        new_example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host));
-
-        CO_RETURN rpc::error::OK();
+        CO_RETURN rpc::service_connect_result<yyy::i_example>{
+            rpc::error::OK(),
+            rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host))};
     });
 
 auto connect_result = CO_AWAIT this_service->connect_to_zone<yyy::i_host, yyy::i_example>(

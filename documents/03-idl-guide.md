@@ -369,16 +369,16 @@ namespace websocket_demo::v1
     interface i_context_event
     {
         // Fire-and-forget notification - returns immediately
-        [post] int piece(const std::string& data);
+        [post] error_code piece(const std::string& data);
     };
 
     interface i_logger
     {
         // Fire-and-forget log message
-        [post] int log_event(const std::string& message, int severity);
+        [post] error_code log_event(const std::string& message, int severity);
 
         // Fire-and-forget metrics update
-        [post] int record_metric(const std::string& metric_name, double value);
+        [post] error_code record_metric(const std::string& metric_name, double value);
     };
 }
 ```
@@ -392,7 +392,7 @@ class context_event : public rpc::base<context_event, i_context_event>
 
 public:
     // [post] methods still return error_code but caller doesn't wait for it
-    CORO_TASK(int) piece(const std::string& data) override
+    CORO_TASK(error_code) piece(const std::string& data) override
     {
         std::lock_guard<std::mutex> lock(mutex_);
         received_pieces_.push_back(data);
@@ -417,7 +417,7 @@ for (int i = 0; i < 100; ++i)
 **Restrictions**:
 - Cannot have `[out]` or `[in, out]` parameters - all parameters must be `[in]` only
 - Cannot pass interface parameters (`rpc::shared_ptr` or `rpc::optimistic_ptr`) - posting interfaces is not currently supported
-- Return type must be `int` or `error_code`
+- Return type should be `error_code`
 - No response data can be returned to caller
 - Errors may not be immediately visible to caller
 
@@ -426,13 +426,13 @@ for (int i = 0; i < 100; ++i)
 interface i_invalid_post
 {
     // ERROR: [post] cannot have [out] parameters
-    [post] int send_data(const std::string& data, [out] int& status);
+    [post] error_code send_data(const std::string& data, [out] int& status);
 
     // ERROR: [post] cannot pass interface parameters
-    [post] int notify_observer(const rpc::shared_ptr<i_observer>& observer);
+    [post] error_code notify_observer(const rpc::shared_ptr<i_observer>& observer);
 
     // ERROR: [post] cannot have [in, out] parameters
-    [post] int modify([in, out] std::string& value);
+    [post] error_code modify([in, out] std::string& value);
 }
 ```
 
@@ -441,13 +441,13 @@ interface i_invalid_post
 interface i_valid_post
 {
     // OK: Only [in] parameters (primitive types and structs)
-    [post] int log_message(const std::string& message, int severity);
+    [post] error_code log_message(const std::string& message, int severity);
 
     // OK: Multiple [in] parameters
-    [post] int record_metric(const std::string& name, double value, uint64_t timestamp);
+    [post] error_code record_metric(const std::string& name, double value, uint64_t timestamp);
 
     // OK: Complex struct as [in] parameter
-    [post] int send_event(const event_data& event);
+    [post] error_code send_event(const event_data& event);
 }
 ```
 
@@ -474,7 +474,7 @@ Since the caller doesn't wait for a response, error handling is limited:
 interface i_async_logger
 {
     // Fire-and-forget log write
-    [post] int write_log(const std::string& message);
+    [post] error_code write_log(const std::string& message);
 
     // Query method to check logger health (normal bidirectional call)
     error_code get_status([out] std::string& status);

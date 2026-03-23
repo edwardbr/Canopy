@@ -23,12 +23,13 @@ rpc/include/rpc/internal/coroutine_support.h
 
 To support a new coroutine library, the following abstractions must be provided:
 
-| Macro | Purpose | Requirements |
-|-------|---------|--------------|
-| `CORO_TASK(x)` | Return type for coroutine functions | Must be awaitable, copyable/movable |
-| `CO_RETURN` | Return from coroutine | Coroutine return statement |
-| `CO_AWAIT` | Suspend until completion | Must work with `co_await` expression |
-| `SYNC_WAIT(x)` | Blocking wait for coroutine | Must block current thread until completion |
+| Macro          | Purpose                             | Blocking mode | Requirements                                    |
+|----------------|-------------------------------------|---------------|-------------------------------------------------|
+| `CORO_TASK(x)` | Return type for coroutine functions | x             | Must be awaitable, copyable/movable             |
+| `CO_RETURN`    | Return from coroutine               | return        | Coroutine return statement                      |
+| `CO_AWAIT`     | Suspend until completion            | <empty>       | Must work with `co_await` expression            |
+| `SPAWN(x)`     | Launch a task and not wait          | <custom>      | Must spawn a separate thread or use a pool      |
+| `SYNC_WAIT(x)` | Blocking wait for coroutine         | <custom>      | Must block current thread/task until completion |
 
 ## Current Implementation (libcoro)
 
@@ -92,7 +93,7 @@ For transports that use async I/O (TCP, SPSC), you may need to adapt the network
 - **Asio**: Uses `asio::io_context` and `asio::ip::tcp::*`
 - **libunifex**: Uses `unifex::single_thread_context` and sender-based operations
 
-## Supported Libraries
+## Target Libraries
 
 - [libcoro](libcoro.md) - Current implementation, C++20 coroutine library
 - [libunifex](libunifex.md) - Facebook's sender/receiver framework
@@ -101,15 +102,15 @@ For transports that use async I/O (TCP, SPSC), you may need to adapt the network
 
 ## Feature Matrix
 
-| Feature | libcoro | libunifex | cppcoro | Asio |
-|---------|---------|-----------|---------|------|
-| task<T> | Yes | Via sender | Yes | awaitable<T> |
-| sync_wait | Yes | Via sync_wait | Yes | Via io_context |
-| Thread pool | Yes | Yes | static_thread_pool | io_context |
-| TCP I/O | Yes | Via libunifex | Limited | Yes |
-| UDP I/O | Yes | Via libunifex | Limited | Yes |
-| Timers | Yes | Via libunifex | Limited | Yes |
-| Active development | Yes | Yes | Minimal | Yes |
+| Feature            | libcoro | libunifex     | cppcoro            | Asio            |
+|--------------------|---------|---------------|--------------------|-----------------|
+| task<T>            | Yes     | Via sender    | Yes                | awaitable<T>    |
+| sync_wait          | Yes     | Via sync_wait | Yes                | Via io_context  |
+| Thread pool        | Yes     | Yes           | static_thread_pool | io_context      |
+| TCP I/O            | Yes     | Via libunifex | Limited            | Yes             |
+| UDP I/O            | Yes     | Via libunifex | Limited            | Yes             |
+| Timers             | Yes     | Via libunifex | Limited            | Yes             |
+| Active development | Yes     | No            | No                 | No              |
 
 ## Limitations
 

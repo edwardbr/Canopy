@@ -247,7 +247,7 @@ auto connect_result = CO_AWAIT service->connect_to_zone<yyy::i_host, yyy::i_exam
     "example_zone", child_transport, host_ptr);
 if (connect_result.error_code != rpc::error::OK())
 {
-    CO_RETURN connect_result.error_code;
+    // handle connection failure
 }
 auto target = connect_result.output_interface;
 ```
@@ -255,16 +255,16 @@ auto target = connect_result.output_interface;
 ### Remote Zone Attachment
 
 ```cpp
-template<typename InterfaceType, typename... Args>
-CORO_TASK(error_code) attach_remote_zone(
+template<class PARENT_INTERFACE, class CHILD_INTERFACE>
+CORO_TASK(rpc::remote_object_result) attach_remote_zone(
     const char* name,
-    std::shared_ptr<rpc::transport> transport,
-    const rpc::interface_descriptor& input_descr,
-    const rpc::interface_descriptor& output_descr,
-    SetupCallback<InterfaceType, Args...> setup);
+    std::shared_ptr<rpc::transport> peer_transport,
+    rpc::connection_settings input_descr,
+    std::function<CORO_TASK(rpc::service_connect_result<CHILD_INTERFACE>)(
+        rpc::shared_ptr<PARENT_INTERFACE>, std::shared_ptr<rpc::service>)> fn);
 ```
 
-Attaches to a remote zone with interface negotiation.
+This is the server-side counterpart to `connect_to_zone()`. It demarshals the incoming interface, creates the local service proxy for the peer, and returns the remote object description for the interface supplied by the callback.
 
 ## Service Lifecycle
 
@@ -345,8 +345,13 @@ auto stub = service1->get_stub(object_id_from_service2);  // Error!
 
 // Correct: Use proxy for cross-zone access
 rpc::shared_ptr<i_interface> input;  // Interface to send to remote zone
-rpc::shared_ptr<i_interface> output;  // Interface received from remote zone
-CO_AWAIT service1->connect_to_zone("remote", transport, input, output);
+auto connect_result = CO_AWAIT service1->connect_to_zone<i_interface, i_interface>(
+    "remote", transport, input);
+if (connect_result.error_code != rpc::error::OK())
+{
+    CO_RETURN connect_result.error_code;
+}
+auto output = connect_result.output_interface;
 auto error = CO_AWAIT output->method();
 ```
 
@@ -417,12 +422,13 @@ auto child_transport = std::make_shared<rpc::local::child_transport>(
 
 child_transport->set_child_entry_point<i_example_parent, i_example_child>(
     [](const rpc::shared_ptr<i_example_parent>& parent_interface,
-       rpc::shared_ptr<i_example_child>& child_interface,
-       const std::shared_ptr<rpc::child_service>& child_service) -> CORO_TASK(int) {
+       const std::shared_ptr<rpc::child_service>& child_service)
+        -> CORO_TASK(rpc::service_connect_result<i_example_child>) {
         // Register stubs in child zone
         // Create child interface object
-        child_interface = rpc::make_shared<example_child_impl>(child_service, parent_interface);
-        CO_RETURN rpc::error::OK();
+        CO_RETURN rpc::service_connect_result<i_example_child>{
+            rpc::error::OK(),
+            rpc::make_shared<example_child_impl>(child_service, parent_interface)};
     });
 
 // Child service created inside entry point callback

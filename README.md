@@ -3,7 +3,11 @@ Copyright (c) 2026 Edward Boggis-Rolfe
 All rights reserved.
 -->
 
+<div align="center">
+
 ![Canopy](image.png)
+
+</div>
 
 # Canopy
 
@@ -24,23 +28,131 @@ Distributed C++ systems have always been hard. Getting two components talking ac
 
 Canopy takes the classical RPC model — define an interface, get a proxy on the caller side and a stub on the callee side — and brings it fully up to date with modern C++:
 
-- **Write the interface once in IDL.** Canopy generates type-safe C++ proxy and stub code from a simple Interface Definition Language. You call a remote object exactly as you would a local one; marshalling, routing, and lifecycle management are handled for you.
+<div align="center">
+<pre>
+         🌿  .idl  🌿
+              │
+         ┌────┴────┐
+       proxy      stub
+         │          │
+      caller      callee
+</pre>
+</div>
 
-- **Works across every boundary you care about.** The same generated code runs over in-process direct calls, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
+**Write the interface once in IDL.** Canopy generates type-safe C++ proxy and stub code from a simple Interface Definition Language. You call a remote object exactly as you would a local one; marshalling, routing, and lifecycle management are handled for you.
 
-- **Streams compose.** Transport streams stack cleanly: wrap a TCP stream in an SPSC buffering layer, then wrap that in TLS, and hand the result to the transport. Each layer only knows about the `stream` interface below it. Adding encryption, compression, or custom framing requires no changes to the RPC layer above or the network layer below.
+---
 
-- **Blocking and coroutine modes from the same source.** The same C++ implementation compiles in both a straightforward blocking mode (useful for debugging and simple deployments) and a full coroutine mode using C++20 `co_await`. Switching between them is a build flag; your code does not change. This matters particularly for AI-assisted development: LLMs can generate and reason about Canopy interfaces and implementations reliably because there is no hidden async machinery to infer.
+<div align="center">
+<pre>
+  ┌─────────────────────────────────┐
+    direct  SPSC   TCP   TLS   SGX
+  └─────────────────────────────────┘
+        same generated interface
+</pre>
+</div>
 
-- **Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, enclaves, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.
+**Works across every boundary you care about.** The same generated code runs over in-process direct calls, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
 
-- **Serialization is a dial, not a commitment.** Binary YAS format for production throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call.
+---
 
-- **One-directional calls for fire-and-forget workloads.** Methods marked `[post]` are sent without waiting for a reply — the caller continues immediately. This eliminates round-trip latency for workloads where the caller does not need a result: streaming media frames, LLM inference token delivery, telemetry events, log records, or any high-throughput notification pattern.
+<div align="center">
+<pre>
+ ╔═════════════ TLS ════════════════╗
+ ║ ╔═══════════ TCP ══════════════╗ ║
+ ║ ║ ╔═════════ SPSC ═══════════╗ ║ ║
+ ║ ║ ║    streaming::stream     ║ ║ ║
+ ║ ║ ╚══════════════════════════╝ ║ ║
+ ║ ╚══════════════════════════════╝ ║
+ ╚══════════════════════════════════╝
+</pre>
+</div>
 
-- **Polymorphism across zone boundaries.** A single remote object can implement multiple interfaces simultaneously. Callers hold a proxy to one interface and can remotely cast to any other interface the object supports — the cast is performed against the live object in its zone, not a local copy. This gives you the full expressiveness of C++ polymorphism over any transport, without being limited to the single flat contracts that most RPC systems impose.
+**Streams compose.** Transport streams stack cleanly: wrap a TCP stream in an SPSC buffering layer, then wrap that in TLS, and hand the result to the transport. Each layer only knows about the `stream` interface below it. Adding encryption, compression, or custom framing requires no changes to the RPC layer above or the network layer below.
 
-- **Remote reflection.** Canopy carries interface metadata across zone boundaries, making it possible to discover what interfaces a remote object supports at runtime. This opens the door to generic tooling, dynamic proxies, and runtime composition — capabilities that are normally reserved for languages with built-in reflection and are unusual in a C++ RPC system. One practical application is implementing Model Context Protocol (MCP) services: because Canopy can enumerate the methods and types of a remote object at runtime, it can generate MCP tool descriptions dynamically, allowing AI assistants to discover and call C++ services without any hand-written schema.
+---
+
+<div align="center">
+<pre>
+  ┌──── build flag ────┐
+  │                    │
+  ▼                    ▼
+blocking           co_await
+ A→B→C→D           A→ →C→ →E
+    (same source code, two modes)
+</pre>
+</div>
+
+**Blocking and coroutine modes from the same source.** The same C++ implementation compiles in both a straightforward blocking mode (useful for debugging and simple deployments) and a full coroutine mode using C++20 `co_await`. Switching between them is a build flag; your code does not change. This matters particularly for AI-assisted development: LLMs can generate and reason about Canopy interfaces and implementations reliably because there is no hidden async machinery to infer.
+
+---
+
+<div align="center">
+<pre>
+            ┌──[root zone]──┐
+           /        │        \
+       [zone A]  [zone B]  [zone C]
+         │                    │
+       [sub]    peer link    [sub]
+               /         \
+           node A         node B
+</pre>
+</div>
+
+**Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, enclaves, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.
+
+---
+
+<div align="center">
+<pre>
+  ╭──────────────────────────────────╮
+  │  BINARY ◄────────●────────► JSON │
+  │            PROTO   CBOR          │
+  │         per-connection dial      │
+  ╰──────────────────────────────────╯
+</pre>
+</div>
+
+**Serialization formats is a choice, not a commitment.** Binary YAS format for production throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call.
+
+---
+
+<div align="center">
+<pre>
+  caller                      callee
+   🐒  ══[post]══▶▶▶▶▶▶▶▶   🐒
+   │
+   └──▶ continues immediately
+           (no reply needed)
+</pre>
+</div>
+
+**One-directional calls for fire-and-forget workloads and streaming, good for financial data or streaming media.** Methods marked `[post]` are sent without waiting for a reply — the caller continues immediately. This eliminates round-trip latency for workloads where the caller does not need a result: streaming media frames, LLM inference token delivery, telemetry events, log records, or any high-throughput notification pattern.
+
+---
+
+<div align="center">
+<pre>
+                   ┌──[i_foo]──▶ zone A
+  [remote object]──┼──[i_bar]──▶ zone B
+                   └──[i_baz]──▶ zone C
+     cast performed against live object
+</pre>
+</div>
+
+**Polymorphism across zone boundaries.** A single remote object can implement multiple interfaces simultaneously. Callers hold a proxy to one interface and can remotely cast to any other interface the object supports — the cast is performed against the live object in its zone, not a local copy. This gives you the full expressiveness of C++ polymorphism over any transport, without being limited to the single flat contracts that most RPC systems impose.
+
+---
+
+<div align="center">
+<pre>
+  [zone] ──── discover ────▶  { i_calculator }
+    ?                          { i_logger     }  ──▶ 🤖 MCP
+                               { i_storage    }
+</pre>
+</div>
+
+**Remote reflection.** Canopy carries interface metadata across zone boundaries, making it possible to discover what interfaces a remote object supports at runtime. This opens the door to generic tooling, dynamic proxies, and runtime composition — capabilities that are normally reserved for languages with built-in reflection and are unusual in a C++ RPC system. One practical application is implementing Model Context Protocol (MCP) services: because Canopy can enumerate the methods and types of a remote object at runtime, it can generate MCP tool descriptions dynamically, allowing AI assistants to discover and call C++ services without any hand-written schema.
 
 If you are building a C++ system that needs components to talk to each other — whether on the same machine, across a data centre, or inside a hardware security boundary — Canopy is designed to make that straightforward rather than painful.
 
@@ -55,7 +167,7 @@ If you are building a C++ system that needs components to talk to each other —
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
 - **SGX Enclave Support**: Secure computation in Intel SGX enclaves
 - **Comprehensive Telemetry**: Sequence diagrams, console output, HTML animations
-- **Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [13-coroutine-libraries.md](documents/13-coroutine-libraries.md))
+- **Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [08-coroutine-libraries.md](documents/08-coroutine-libraries.md))
 - **AddressSanitizer Support**: Full ASan integration with 972 tests passing (100% memory safety validated)
 
 ---
@@ -78,7 +190,7 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 11. [Best Practices](documents/11-best-practices.md) - Design guidelines and troubleshooting
 
 ### Architecture
-- [Architecture Overview](documents/architecture/) - Zones, services, transports, memory management
+- [Architecture Overview](documents/architecture/01-overview.md) - Zones, services, transports, memory management
   - Detailed guides: [Local](documents/transports/local.md), [TCP](documents/transports/tcp.md), [SPSC](documents/transports/spsc.md), [SGX](documents/transports/sgx.md), [Custom](documents/transports/custom.md)
 
 ### Serialization
@@ -249,9 +361,9 @@ CO_AWAIT tls_stm->client_handshake();
 // 3. Create transport and connect to the remote zone
 auto transport = rpc::stream_transport::make_client("calc_client", client_service, tls_stm);
 
-rpc::shared_ptr<i_calculator> local_iface;
+rpc::shared_ptr<i_calculator> input_iface;
 auto connect_result = CO_AWAIT client_service->connect_to_zone<i_calculator, i_calculator>(
-    "calc_server", transport, local_iface);
+    "calc_server", transport, input_iface);
 
 if (connect_result.error_code != rpc::error::OK())
 {
@@ -279,7 +391,7 @@ For a complete working example see `demos/stream_composition/src/tcp_spsc_tls_de
 | **SGX Enclave** | Secure enclave communication | SGX SDK |
 | **Custom** | User-defined transport implementations | Custom implementation |
 
-See [04-transports.md](documents/04-transports.md) for details.
+See [transport documentation](documents/transports/) for details.
 
 ---
 

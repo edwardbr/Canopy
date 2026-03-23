@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         default="",
-        help="Directory to write responses into. Defaults to scripts/llama_patch_runs/<timestamp>/",
+        help="Directory to write responses into. Defaults to scripts/llama_patch_runs/<input-name>/",
     )
     parser.add_argument(
         "--endpoint",
@@ -206,7 +206,7 @@ def main() -> int:
     if args.output_dir:
         output_dir = Path(args.output_dir).expanduser().resolve()
     else:
-        output_dir = Path(__file__).resolve().parents[1] / "scripts" / "llama_patch_runs" / input_path.stem
+        output_dir = Path(__file__).resolve().parents[2] / "scripts" / "llama_patch_runs" / input_path.stem
     output_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = {
