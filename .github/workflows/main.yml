@@ -6,8 +6,9 @@ on:
   pull_request:
     branches:
       - main
+
 jobs:
-  build-and-test:
+  lint:
     runs-on: ubuntu-latest
     container:
       image: fedora:43
@@ -22,22 +23,12 @@ jobs:
           mkdir -p /opt/llvm-22.1.1
           cp -r LLVM-22.1.1-Linux-X64/* /opt/llvm-22.1.1/
           echo "/opt/llvm-22.1.1/bin" >> $GITHUB_PATH
-      - name: Install Perl dependencies
-        run: |
-          dnf install -y perl-core
       - name: Install Python dependencies
         run: |
           dnf install -y python3-pip python3-virtualenv
-          echo "Python version: $(python3 --version)"
-          echo "Pip version: $(pip3 --version)"
           python3 -m venv /opt/venv
           /opt/venv/bin/pip install cmakelang PyYAML --no-cache-dir
           echo "/opt/venv/bin" >> $GITHUB_PATH
-      - name: Install CMake 4.2.3
-        run: |
-          wget -q https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-linux-x86_64.tar.gz
-          tar -zxf cmake-4.2.3-linux-x86_64.tar.gz
-          cp -r cmake-4.2.3-linux-x86_64/* /usr/local/
       - name: Configure git safe directory
         run: git config --global --add safe.directory $GITHUB_WORKSPACE
       - name: Check out repository code
@@ -63,40 +54,55 @@ jobs:
               fi
             fi
           fi
-      - name: CMake configure (Debug)
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Debug
-      - name: Build (Debug)
-        run: cmake --build build_debug
-      - name: Test RPC (Debug)
-        working-directory: build_debug/output
-        run: ./rpc_test
-      - name: Test Serialiser (Debug)
-        working-directory: build_debug/output
-        run: ./serialiser_test
-      - name: Test JSON Schema Metadata (Debug)
-        working-directory: build_debug/output
-        run: ./json_schema_metadata_test
-      - name: CMake configure (Release)
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Release
-      - name: Build (Release)
-        run: cmake --build build_release
-      - name: Test RPC (Release)
-        working-directory: build_release/output
-        run: ./rpc_test
-      - name: CMake configure (Coroutine Debug)
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Debug_Coroutine
-      - name: Build (Coroutine Debug)
-        run: cmake --build build_debug_coroutine
-      - name: Test RPC (Coroutine Debug)
-        working-directory: build_debug_coroutine/output
-        run: ./rpc_test
-      - name: CMake configure (Coroutine Release)
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=Release_Coroutine_with_No_logging
-      - name: Build (Coroutine Release)
-        run: cmake --build build_release_coroutine
-      - name: Test RPC (Coroutine Release)
-        working-directory: build_release_coroutine/output
-        run: ./rpc_test
-      - name: Test Serialiser (Coroutine Release)
-        working-directory: build_release_coroutine/output
-        run: ./serialiser_test
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:43
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debug
+            preset: Debug
+            build_dir: build_debug
+            test_cmds: ./rpc_test && ./serialiser_test && ./json_schema_metadata_test
+          - name: Release
+            preset: Release
+            build_dir: build_release
+            test_cmds: ./rpc_test
+          - name: Debug Coroutine
+            preset: Debug_Coroutine
+            build_dir: build_debug_coroutine
+            test_cmds: ./rpc_test
+          - name: Release Coroutine
+            preset: Release_Coroutine_with_No_logging
+            build_dir: build_release_coroutine
+            test_cmds: ./rpc_test && ./serialiser_test
+    steps:
+      - name: Install system and C++ dependencies
+        run: |
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz
+      - name: Install Perl dependencies
+        run: |
+          dnf install -y perl-core
+      - name: Install CMake 4.2.3
+        run: |
+          wget -q https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-linux-x86_64.tar.gz
+          tar -zxf cmake-4.2.3-linux-x86_64.tar.gz
+          cp -r cmake-4.2.3-linux-x86_64/* /usr/local/
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: CMake configure (${{ matrix.name }})
+        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=${{ matrix.preset }}
+      - name: Build (${{ matrix.name }})
+        run: cmake --build ${{ matrix.build_dir }}
+      - name: Test (${{ matrix.name }})
+        working-directory: ${{ matrix.build_dir }}/output
+        run: ${{ matrix.test_cmds }}
