@@ -123,7 +123,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--repo-root",
-        default=str(Path(__file__).resolve().parents[1]),
+        default=str(Path(__file__).resolve().parents[2]),
         help="Repository root. Defaults to the parent of scripts/.",
     )
     parser.add_argument(
@@ -230,6 +230,23 @@ def parse_args() -> argparse.Namespace:
         "--strict-findings-only",
         action="store_true",
         help="Use a stricter JSON schema with only a findings array for easier downstream automation.",
+    )
+    parser.add_argument(
+        "--cache-prompt",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Request llama-server KV cache reuse for repeated prompt prefixes.",
+    )
+    parser.add_argument(
+        "--slot-id",
+        type=int,
+        default=None,
+        help="Optional llama-server slot to pin requests to for better KV reuse. Omit to let the server choose.",
+    )
+    parser.add_argument(
+        "--prewarm-slot",
+        action="store_true",
+        help="Prewarm the shared round prompt prefix into the selected llama-server slot before processing chunks.",
     )
     parser.add_argument(
         "--auto-retry-splits",
@@ -454,8 +471,11 @@ def call_llama(
     repeat_penalty: float,
     request_timeout: int,
     progress_interval: int,
+    cache_prompt: bool,
+    slot_id: int | None,
     system_prompt: str,
     user_prompt: str,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     payload = {
         "model": model,
@@ -464,11 +484,16 @@ def call_llama(
         "top_k": top_k,
         "repeat_penalty": repeat_penalty,
         "response_format": {"type": "json_object"},
+        "cache_prompt": cache_prompt,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
     }
+    if slot_id is not None:
+        payload["id_slot"] = slot_id
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         endpoint,
@@ -567,6 +592,43 @@ def dedupe_findings(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return output
 
 
+def aggregate_round_reports(run_dir: Path) -> dict[str, Any]:
+    reports = sorted(run_dir.glob("round_*/report.json"))
+    round_finding_counts: dict[str, int] = {}
+    findings: list[dict[str, Any]] = []
+
+    for report_path in reports:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        round_name = report_path.parent.name
+        round_finding_counts[round_name] = int(report.get("finding_count", 0))
+        report_findings = report.get("findings", [])
+        if isinstance(report_findings, list):
+            findings.extend(report_findings)
+
+    deduped = dedupe_findings(findings)
+    return {
+        "run_dir": str(run_dir),
+        "status": "aggregated_all_rounds",
+        "notes": [
+            "This file aggregates all round-level report.json outputs for the run.",
+            "Findings are deduplicated across rounds by kind, file, line, summary, and suggested_fix.",
+            "Round reports remain per-round outputs; this file is the cumulative view.",
+        ],
+        "source_reports": [str(path) for path in reports],
+        "summary": {
+            "round_count": len(reports),
+            "round_finding_counts": round_finding_counts,
+            "aggregated_unique_finding_count": len(deduped),
+        },
+        "findings": deduped,
+    }
+
+
+def write_master_report(run_dir: Path) -> None:
+    master_report = aggregate_round_reports(run_dir)
+    save_json(run_dir / "all_rounds_result.json", master_report)
+
+
 def summarise_findings(items: list[dict[str, Any]], limit: int = 25) -> str:
     lines = []
     for item in items[:limit]:
@@ -594,6 +656,27 @@ def build_user_prompt(
     prior_findings: list[dict[str, Any]],
     latest_check: dict[str, Any] | None,
 ) -> str:
+    prefix = build_prompt_prefix(
+        repo_root=repo_root,
+        focus=focus,
+        prior_findings=prior_findings,
+        latest_check=latest_check,
+    )
+    suffix = build_prompt_suffix(
+        round_index=round_index,
+        chunk_index=chunk_index,
+        chunk_count=chunk_count,
+        chunk_text=chunk_text,
+    )
+    return prefix + "\n\n" + suffix
+
+
+def build_prompt_prefix(
+    repo_root: Path,
+    focus: str,
+    prior_findings: list[dict[str, Any]],
+    latest_check: dict[str, Any] | None,
+) -> str:
     check_block = "No check output was provided for this round."
     if latest_check:
         check_block = textwrap.dedent(
@@ -612,8 +695,6 @@ def build_user_prompt(
         f"""\
         Repo root: {repo_root}
         Review focus: {focus}
-        Round: {round_index}
-        Chunk: {chunk_index} of {chunk_count}
 
         Prior findings summary:
         {summarise_findings(prior_findings)}
@@ -623,10 +704,23 @@ def build_user_prompt(
 
         Review the following repo material and return JSON only.
         Prefer findings that a maintainer could act on immediately.
+        """
+    ).strip()
+
+def build_prompt_suffix(
+    round_index: int,
+    chunk_index: int,
+    chunk_count: int,
+    chunk_text: str,
+) -> str:
+    return textwrap.dedent(
+        f"""\
+        Round: {round_index}
+        Chunk: {chunk_index} of {chunk_count}
 
         {chunk_text}
         """
-    )
+    ).strip()
 
 
 def save_json(path: Path, payload: Any) -> None:
@@ -670,6 +764,8 @@ def process_chunk(
         repeat_penalty=args.repeat_penalty,
         request_timeout=args.request_timeout,
         progress_interval=args.progress_interval,
+        cache_prompt=args.cache_prompt,
+        slot_id=args.slot_id,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
     )
@@ -709,6 +805,58 @@ def process_chunk(
 
     chunk_findings = parsed_content.get("findings", [])
     return chunk_findings if isinstance(chunk_findings, list) else []
+
+
+def prewarm_round_prefix(
+    *,
+    args: argparse.Namespace,
+    repo_root: Path,
+    round_dir: Path,
+    system_prompt: str,
+    focus: str,
+    prior_findings: list[dict[str, Any]],
+    latest_check: dict[str, Any] | None,
+    round_index: int,
+    chunk_count: int,
+) -> None:
+    if not args.prewarm_slot or args.slot_id is None:
+        return
+
+    user_prompt = build_prompt_prefix(
+        repo_root=repo_root,
+        focus=focus,
+        prior_findings=prior_findings,
+        latest_check=latest_check,
+    )
+    user_prompt += "\n\n" + build_prompt_suffix(
+        round_index=round_index,
+        chunk_index=0,
+        chunk_count=chunk_count,
+        chunk_text=(
+            "Warm this review prefix into the current slot. "
+            "Return an empty findings array and no additional commentary."
+        ),
+    )
+
+    print(f"Round {round_index}: prewarming slot {args.slot_id}", file=sys.stderr)
+    response = call_llama(
+        endpoint=args.endpoint,
+        model=args.model,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        top_k=args.top_k,
+        repeat_penalty=args.repeat_penalty,
+        request_timeout=args.request_timeout,
+        progress_interval=args.progress_interval,
+        cache_prompt=args.cache_prompt,
+        slot_id=args.slot_id,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        max_tokens=64,
+    )
+    save_json(round_dir / "prewarm_raw.json", response["raw_response"])
+    (round_dir / "prewarm_content.txt").write_text(response["content"], encoding="utf-8")
+    save_json(round_dir / "prewarm_parsed.json", response["parsed_content"])
 
 
 def main() -> int:
@@ -760,6 +908,18 @@ def main() -> int:
         round_dir = run_dir / f"round_{round_index:02d}"
         round_dir.mkdir(parents=True, exist_ok=True)
 
+        prewarm_round_prefix(
+            args=args,
+            repo_root=repo_root,
+            round_dir=round_dir,
+            system_prompt=system_prompt,
+            focus=args.focus,
+            prior_findings=prior_findings,
+            latest_check=latest_check,
+            round_index=round_index,
+            chunk_count=len(chunks),
+        )
+
         for chunk_index, chunk_text in enumerate(chunks, start=1):
             chunk_findings = process_chunk(
                 args=args,
@@ -796,10 +956,12 @@ def main() -> int:
 
         current_keys = {finding_key(item) for item in deduped}
         if not deduped:
+            write_master_report(run_dir)
             print("Review loop is clean.")
             return 0
 
         if current_keys == previous_finding_keys:
+            write_master_report(run_dir)
             print("Findings repeated unchanged. Stopping to avoid an infinite loop.")
             return 0
 
@@ -820,6 +982,7 @@ def main() -> int:
         if args.sleep_seconds > 0:
             time.sleep(args.sleep_seconds)
 
+    write_master_report(run_dir)
     print("Reached max rounds.")
     return 0
 

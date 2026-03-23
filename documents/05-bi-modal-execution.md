@@ -239,7 +239,7 @@ CORO_TASK(error_code) async_work()
 scheduler->spawn([&]() -> CORO_TASK(void)
 {
     auto error = CO_AWAIT async_work();
-    if (error == error::OK())
+    if (error == rpc::error::OK())
     {
         std::cout << "Success!\n";
     }
@@ -275,18 +275,18 @@ CORO_TASK(error_code) chained_operations()
 
     // Each error propagates up
     auto error = CO_AWAIT calculator_->add(10, 20, result);
-    if (error != error::OK())
+    if (error != rpc::error::OK())
     {
         CO_RETURN error;
     }
 
     error = CO_AWAIT calculator_->multiply(result, 2, result);
-    if (error != error::OK())
+    if (error != rpc::error::OK())
     {
         CO_RETURN error;
     }
 
-    CO_RETURN error::OK();
+    CO_RETURN rpc::error::OK();
 }
 ```
 

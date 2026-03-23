@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--repo-root",
-        default=str(Path(__file__).resolve().parents[1]),
+        default=str(Path(__file__).resolve().parents[2]),
         help="Repository root. Defaults to the parent of scripts/.",
     )
     parser.add_argument(
@@ -49,6 +50,40 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Optional cap per file. Zero means unlimited.",
+    )
+    parser.add_argument(
+        "--exclude-path-substring",
+        action="append",
+        default=[],
+        help="Drop findings whose file path contains this substring. Repeatable.",
+    )
+    parser.add_argument(
+        "--exclude-summary-regex",
+        action="append",
+        default=[],
+        help="Drop findings whose summary matches this regex. Repeatable.",
+    )
+    parser.add_argument(
+        "--exclude-evidence-regex",
+        action="append",
+        default=[],
+        help="Drop findings whose evidence matches this regex. Repeatable.",
+    )
+    parser.add_argument(
+        "--exclude-file",
+        action="append",
+        default=[],
+        help="Drop findings for this exact file path. Repeatable.",
+    )
+    parser.add_argument(
+        "--drop-llm-response",
+        action="store_true",
+        help="Drop synthetic __llm_response__ findings.",
+    )
+    parser.add_argument(
+        "--dedupe-by-summary",
+        action="store_true",
+        help="Collapse findings more aggressively by file, line, and summary before grouping.",
     )
     return parser.parse_args()
 
@@ -112,6 +147,58 @@ def normalize_findings(items: list[dict[str, Any]], min_confidence: float) -> li
                 "confidence": confidence,
             }
         )
+    return output
+
+
+def filter_findings(
+    findings: list[dict[str, Any]],
+    *,
+    exclude_path_substrings: list[str],
+    exclude_summary_regexes: list[str],
+    exclude_evidence_regexes: list[str],
+    exclude_files: list[str],
+    drop_llm_response: bool,
+) -> list[dict[str, Any]]:
+    compiled_regexes = [re.compile(pattern, re.IGNORECASE) for pattern in exclude_summary_regexes]
+    compiled_evidence_regexes = [re.compile(pattern, re.IGNORECASE) for pattern in exclude_evidence_regexes]
+    exact_files = set(exclude_files)
+    output: list[dict[str, Any]] = []
+
+    for item in findings:
+        file_path = item["file"]
+        summary = item["summary"]
+        evidence = item["evidence"]
+
+        if drop_llm_response and file_path == "__llm_response__":
+            continue
+        if file_path in exact_files:
+            continue
+        if any(part and part in file_path for part in exclude_path_substrings):
+            continue
+        if any(regex.search(summary) for regex in compiled_regexes):
+            continue
+        if any(regex.search(evidence) for regex in compiled_evidence_regexes):
+            continue
+
+        output.append(item)
+
+    return output
+
+
+def dedupe_findings(findings: list[dict[str, Any]], dedupe_by_summary: bool) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, ...]] = set()
+    output: list[dict[str, Any]] = []
+
+    for item in findings:
+        if dedupe_by_summary:
+            key = (item["file"], item["line"], item["summary"])
+        else:
+            key = (item["file"], item["line"], item["summary"], item["suggested_fix"], item["evidence"])
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(item)
+
     return output
 
 
@@ -179,6 +266,15 @@ def main() -> int:
 
     report = load_json(report_path)
     findings = normalize_findings(report.get("findings", []), args.min_confidence)
+    findings = filter_findings(
+        findings,
+        exclude_path_substrings=args.exclude_path_substring,
+        exclude_summary_regexes=args.exclude_summary_regex,
+        exclude_evidence_regexes=args.exclude_evidence_regex,
+        exclude_files=args.exclude_file,
+        drop_llm_response=args.drop_llm_response,
+    )
+    findings = dedupe_findings(findings, args.dedupe_by_summary)
     queue = group_findings(findings, args.max_items_per_file)
 
     payload = {

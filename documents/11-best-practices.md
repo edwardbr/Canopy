@@ -13,7 +13,7 @@ Guidelines for effective Canopy usage, common pitfalls, and troubleshooting tips
 
 - **Use descriptive names**: `i_payment_processor` not `pay`
 - **Keep interfaces focused**: Single responsibility principle
-- **Use meaningful parameters**: `[out]` for large return values
+- **Use meaningful parameters**: `[out]` for return values
 - **Document methods**: Add `[description="..."]` attributes
 - **Version with namespaces**: Use `[inline] namespace v1` for evolution
 
@@ -48,8 +48,8 @@ interface i_user_service_data_access_repository_cache_auth_session_logging
 
 - **Use `rpc::make_shared<T>()`** for creation
 - **Let reference counting handle cleanup**: Don't manually delete
-- **Use `rpc::weak_ptr`** for breaking cycles
-- **Use `rpc::optimistic_ptr`** for objects with independent lifetimes (databases, services)
+- **Use `rpc::weak_ptr`** not useful except for local objects, as it is a weak link to the prox and not to the remote object
+- **Use `rpc::optimistic_ptr`** for objects with independent lifetimes (databases, services, callbacks) or for breaking circular dependencies shared ptr going one way optimistic for the other the object owning the shared pointer goes out of scope it is cleaned up, as the optimist pointer to is has no control on its lifetime.
 - **Prefer passing by value** for small types
 
 ### Don't
@@ -544,26 +544,6 @@ interface i_object
 };
 ```
 
-### Mistake: connect_to_zone with Wrong Arguments
-
-**Problem**: Using 3 arguments instead of 4.
-
-**Incorrect**:
-```cpp
-rpc::shared_ptr<v1::i_demo_service> child_service;
-auto error = root_service->connect_to_zone("child", transport, child_service);
-```
-
-**Correct**:
-```cpp
-rpc::shared_ptr<v1::i_demo_service> input_service(
-    new demo_service_impl("input", child_zone, root_service));
-rpc::shared_ptr<v1::i_demo_service> output_service;
-
-auto error = CO_AWAIT root_service->connect_to_zone(
-    "child", transport, input_service, output_service);
-```
-
 ### Mistake: Mutex Not Mutable
 
 **Problem**: `lock_guard` fails in const method because mutex is not mutable.
@@ -681,8 +661,9 @@ auto error = CO_AWAIT root_service->connect_to_zone(
 // Use direct construction with rpc::shared_ptr
 rpc::shared_ptr<v1::i_demo_service> input_service(
     new demo_service_impl(name, zone, service_ptr));
-auto error = CO_AWAIT root_service->connect_to_zone(
-    "child", transport, input_service, output);
+auto connect_result = CO_AWAIT root_service->connect_to_zone<v1::i_demo_service, v1::i_demo_service>(
+    "child", transport, input_service);
+auto output = connect_result.output_interface;
 ```
 
 ### Mistake: Passing [in] Parameters by Reference in Coroutines
@@ -726,4 +707,3 @@ interface i_calculator
 ```
 
 If you encounter conflicts with duplicate parameter names, this indicates a bug in the code generator.
-
