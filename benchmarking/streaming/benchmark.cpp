@@ -380,7 +380,7 @@ namespace stream_bench
 {
     struct bench_config
     {
-        std::set<std::string> streams;       // empty = all
+        std::set<std::string> streams; // empty = all
         bool run_unidirectional = true;
         bool run_send_reply = true;
         bool run_stress = false;
@@ -394,19 +394,18 @@ namespace stream_bench
 
     static void print_usage(const char* prog)
     {
-        fmt::print(
-            "Usage: {} [options]\n"
-            "\n"
-            "  --stream <name>       Stream type to benchmark (repeat for multiple; default: all)\n"
-            "                        Valid: spsc, tcp, io_uring, tls+spsc, ws+spsc, tls+ws+spsc\n"
-            "  --scenario <s>        unidirectional | send_reply | stress | all  (default: all)\n"
-            "  --count <N>           Measurement iterations (default: 1000)\n"
-            "  --warmup <N>          Warmup iterations (default: 20)\n"
-            "  --blob-size <bytes>   Single blob size instead of the full sweep\n"
-            "  --timeout-ms <ms>     Per-receive timeout for send_reply in ms (default: 1000)\n"
-            "  --duration-s <N>      Stress test duration in seconds (default: 30)\n"
-            "  --watchdog-ms <ms>    Abort if no progress for this long; 0=disabled (default: 10000)\n"
-            "\n",
+        fmt::print("Usage: {} [options]\n"
+                   "\n"
+                   "  --stream <name>       Stream type to benchmark (repeat for multiple; default: all)\n"
+                   "                        Valid: spsc, tcp, io_uring, tls+spsc, ws+spsc, tls+ws+spsc\n"
+                   "  --scenario <s>        unidirectional | send_reply | stress | all  (default: all)\n"
+                   "  --count <N>           Measurement iterations (default: 1000)\n"
+                   "  --warmup <N>          Warmup iterations (default: 20)\n"
+                   "  --blob-size <bytes>   Single blob size instead of the full sweep\n"
+                   "  --timeout-ms <ms>     Per-receive timeout for send_reply in ms (default: 1000)\n"
+                   "  --duration-s <N>      Stress test duration in seconds (default: 30)\n"
+                   "  --watchdog-ms <ms>    Abort if no progress for this long; 0=disabled (default: 10000)\n"
+                   "\n",
             prog);
     }
 
@@ -451,9 +450,7 @@ namespace stream_bench
                 }
                 else
                 {
-                    fmt::print(stderr,
-                        "Unknown scenario '{}'; valid: unidirectional, send_reply, stress, all\n",
-                        s);
+                    fmt::print(stderr, "Unknown scenario '{}'; valid: unidirectional, send_reply, stress, all\n", s);
                     std::exit(1);
                 }
             }
@@ -520,10 +517,7 @@ namespace stream_bench
         watchdog(const watchdog&) = delete;
         auto operator=(const watchdog&) -> watchdog& = delete;
 
-        void heartbeat()
-        {
-            last_ns_.store(now_ns(), std::memory_order_relaxed);
-        }
+        void heartbeat() { last_ns_.store(now_ns(), std::memory_order_relaxed); }
 
         void set_context(const std::string& ctx)
         {
@@ -532,10 +526,7 @@ namespace stream_bench
         }
 
     private:
-        static int64_t now_ns()
-        {
-            return std::chrono::steady_clock::now().time_since_epoch().count();
-        }
+        static int64_t now_ns() { return std::chrono::steady_clock::now().time_since_epoch().count(); }
 
         void run()
         {
@@ -544,8 +535,7 @@ namespace stream_bench
                 std::this_thread::sleep_for(std::chrono::milliseconds{250});
                 if (stop_.load(std::memory_order_relaxed))
                     break;
-                const int64_t elapsed_ms =
-                    (now_ns() - last_ns_.load(std::memory_order_relaxed)) / 1'000'000LL;
+                const int64_t elapsed_ms = (now_ns() - last_ns_.load(std::memory_order_relaxed)) / 1'000'000LL;
                 if (elapsed_ms > timeout_.count())
                 {
                     std::string ctx;
@@ -719,9 +709,7 @@ namespace stream_bench
     }
 
     // Drains the stream until stop is set by the sender.
-    coro::task<void> run_drain(std::shared_ptr<streaming::stream> stm,
-        const std::atomic<bool>& stop,
-        watchdog& wd)
+    coro::task<void> run_drain(std::shared_ptr<streaming::stream> stm, const std::atomic<bool>& stop, watchdog& wd)
     {
         std::vector<uint8_t> buf(1 << 20);
         while (!stop.load(std::memory_order_acquire))
@@ -761,8 +749,7 @@ namespace stream_bench
             {
                 wd.heartbeat();
                 auto [status, span] = co_await stm->receive(
-                    rpc::mutable_byte_span(recv_buf.data() + received, recv_buf.size() - received),
-                    cfg.recv_timeout);
+                    rpc::mutable_byte_span(recv_buf.data() + received, recv_buf.size() - received), cfg.recv_timeout);
                 wd.heartbeat();
                 if (status.is_closed())
                 {
@@ -786,9 +773,7 @@ namespace stream_bench
     }
 
     // Echo server: receives and echoes back until stop is set.
-    coro::task<void> run_echo(std::shared_ptr<streaming::stream> stm,
-        const std::atomic<bool>& stop,
-        watchdog& wd)
+    coro::task<void> run_echo(std::shared_ptr<streaming::stream> stm, const std::atomic<bool>& stop, watchdog& wd)
     {
         std::vector<uint8_t> buf(1 << 20);
         while (!stop.load(std::memory_order_acquire))
@@ -840,10 +825,8 @@ namespace stream_bench
     }
 
     // Drains and counts bytes received during a stress run.
-    coro::task<stress_stats> run_stress_drain(std::shared_ptr<streaming::stream> stm,
-        const std::atomic<bool>& stop,
-        const bench_config& cfg,
-        watchdog& wd)
+    coro::task<stress_stats> run_stress_drain(
+        std::shared_ptr<streaming::stream> stm, const std::atomic<bool>& stop, const bench_config& cfg, watchdog& wd)
     {
         stress_stats s;
         std::vector<uint8_t> buf(1 << 20);
@@ -878,8 +861,7 @@ namespace stream_bench
 
     void print_unidirectional_header(const bench_config& cfg)
     {
-        fmt::print(
-            "\n=== Unidirectional (send throughput) — {} sends, middle 80%, warmup {}\n", cfg.count, cfg.warmup);
+        fmt::print("\n=== Unidirectional (send throughput) — {} sends, middle 80%, warmup {}\n", cfg.count, cfg.warmup);
         fmt::print("Units: send time in ns\n");
         fmt::print("{:-<28}+{:-<12}+{:-<15}+{:-<12}+{:-<12}+{:-<12}+{:-<12}+{:-<13}\n", "", "", "", "", "", "", "", "");
         fmt::print("{:<27} | {:>10} | {:>13} | {:>10} | {:>10} | {:>10} | {:>10} | {:>11}\n",
@@ -954,13 +936,11 @@ namespace stream_bench
 
     void print_stress_header(const bench_config& cfg)
     {
-        fmt::print(
-            "\n=== Stress Test — {} s per run, watchdog {}ms, blob size {}\n",
+        fmt::print("\n=== Stress Test — {} s per run, watchdog {}ms, blob size {}\n",
             cfg.stress_duration.count(),
             cfg.watchdog_timeout.count() > 0 ? fmt::format("{}ms", cfg.watchdog_timeout.count()) : "disabled",
             cfg.blob_size_override ? fmt::format("{} bytes", *cfg.blob_size_override) : "4096 bytes (default)");
-        fmt::print("{:-<28}+{:-<12}+{:-<14}+{:-<14}+{:-<14}+{:-<14}+{:-<12}\n",
-            "", "", "", "", "", "", "");
+        fmt::print("{:-<28}+{:-<12}+{:-<14}+{:-<14}+{:-<14}+{:-<14}+{:-<12}\n", "", "", "", "", "", "", "");
         fmt::print("{:<27} | {:>10} | {:>12} | {:>12} | {:>12} | {:>12} | {:>10}\n",
             "stream_type",
             "blob_bytes",
@@ -969,8 +949,7 @@ namespace stream_bench
             "ops_sent",
             "ops_recvd",
             "timeouts");
-        fmt::print("{:-<28}+{:-<12}+{:-<14}+{:-<14}+{:-<14}+{:-<14}+{:-<12}\n",
-            "", "", "", "", "", "", "");
+        fmt::print("{:-<28}+{:-<12}+{:-<14}+{:-<14}+{:-<14}+{:-<14}+{:-<12}\n", "", "", "", "", "", "", "");
     }
 
     void print_stress_row(const char* type, const stress_stats& send_s, const stress_stats& recv_s)
@@ -981,8 +960,7 @@ namespace stream_bench
             return;
         }
         const char* verdict = (recv_s.recv_timeouts == 0) ? "PASS" : "WARN";
-        fmt::print(
-            "{:<27} | {:>10} | {:>12.2f} | {:>12.2f} | {:>12} | {:>12} | {:>10} [{}]\n",
+        fmt::print("{:<27} | {:>10} | {:>12.2f} | {:>12.2f} | {:>12} | {:>12} | {:>10} [{}]\n",
             type,
             send_s.blob_size,
             send_s.send_mbps(),
@@ -1012,8 +990,7 @@ namespace stream_bench
         {
             std::atomic<bool> stop{false};
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            coro::sync_wait(coro::when_all(
-                [&]() -> coro::task<void>
+            coro::sync_wait(coro::when_all([&]() -> coro::task<void>
                 { out_unidirectional = co_await run_unidirectional_sender(side_a, payload, stop, cfg, wd); }(),
                 run_drain(side_b, stop, wd)));
         }
@@ -1022,8 +999,7 @@ namespace stream_bench
         {
             std::atomic<bool> stop{false};
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            coro::sync_wait(coro::when_all(
-                [&]() -> coro::task<void>
+            coro::sync_wait(coro::when_all([&]() -> coro::task<void>
                 { out_send_reply = co_await run_send_reply(side_a, payload, stop, cfg, wd); }(),
                 run_echo(side_b, stop, wd)));
         }
@@ -1044,11 +1020,9 @@ namespace stream_bench
         std::atomic<bool> stop{false};
 
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        coro::sync_wait(coro::when_all(
-            [&]() -> coro::task<void>
+        coro::sync_wait(coro::when_all([&]() -> coro::task<void>
             { out_send = co_await run_stress_sender(side_a, payload, stop, cfg, wd); }(),
-            [&]() -> coro::task<void>
-            { out_recv = co_await run_stress_drain(side_b, stop, cfg, wd); }()));
+            [&]() -> coro::task<void> { out_recv = co_await run_stress_drain(side_b, stop, cfg, wd); }()));
 
         (void)name;
     }
@@ -1220,8 +1194,7 @@ namespace stream_bench
                 stop,
                 ready,
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void>
-                { co_await run_drain(stm, stop, wd); },
+                [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void> { co_await run_drain(stm, stop, wd); },
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void>
                 { out_uni = co_await run_unidirectional_sender(stm, payload, stop, cfg, wd); });
@@ -1235,8 +1208,7 @@ namespace stream_bench
                 stop,
                 ready,
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void>
-                { co_await run_echo(stm, stop, wd); },
+                [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void> { co_await run_echo(stm, stop, wd); },
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](std::shared_ptr<streaming::stream> stm) -> coro::task<void>
                 { out_reply = co_await run_send_reply(stm, payload, stop, cfg, wd); });
@@ -1358,10 +1330,7 @@ int main(int argc, char** argv)
     watchdog wd{cfg.watchdog_timeout};
     wd.heartbeat();
 
-    const auto should_run = [&](const char* name) -> bool
-    {
-        return cfg.streams.empty() || cfg.streams.count(name) > 0;
-    };
+    const auto should_run = [&](const char* name) -> bool { return cfg.streams.empty() || cfg.streams.count(name) > 0; };
 
     const std::vector<size_t> blob_sizes = get_blob_sizes(cfg);
 
@@ -1594,8 +1563,7 @@ int main(int argc, char** argv)
         {
             uint16_t port = 19600;
             collect_stress("tcp",
-                [&](stress_stats& send_s, stress_stats& recv_s)
-                { run_tcp_stress_bench(port, cfg, wd, send_s, recv_s); });
+                [&](stress_stats& send_s, stress_stats& recv_s) { run_tcp_stress_bench(port, cfg, wd, send_s, recv_s); });
         }
 
 #ifdef __linux__

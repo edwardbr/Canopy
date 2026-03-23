@@ -55,7 +55,7 @@ protected:
     }
 
     CORO_TASK(bool)
-    connect_child(const std::string& child_name,
+    connect_child(std::string child_name,
         rpc::zone dll_zone,
         std::shared_ptr<rpc::ipc_transport::transport>& transport,
         rpc::shared_ptr<yyy::i_example>& example)
@@ -77,7 +77,7 @@ protected:
     }
 
     CORO_TASK(bool)
-    connect_direct_child(const std::string& child_name,
+    connect_direct_child(std::string child_name,
         rpc::zone child_zone,
         std::shared_ptr<rpc::ipc_transport::transport>& transport,
         rpc::shared_ptr<yyy::i_example>& example)

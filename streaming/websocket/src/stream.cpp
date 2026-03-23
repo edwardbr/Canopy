@@ -63,8 +63,9 @@ namespace streaming::websocket
             if (!co_await drive_send())
                 co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
 
-            auto [status, span] = co_await underlying_->receive(rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()),
-                single_attempt ? std::chrono::milliseconds{0} : remaining_timeout(deadline));
+            auto [status, span]
+                = co_await underlying_->receive(rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()),
+                    single_attempt ? std::chrono::milliseconds{0} : remaining_timeout(deadline));
             if (status.is_closed())
             {
                 closed_ = true;
@@ -133,8 +134,7 @@ namespace streaming::websocket
         return underlying_->get_peer_info();
     }
 
-    auto stream::serve_decoded(rpc::mutable_byte_span buffer)
-        -> std::pair<coro::net::io_status, rpc::mutable_byte_span>
+    auto stream::serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<coro::net::io_status, rpc::mutable_byte_span>
     {
         auto& msg = decoded_messages_.front();
         size_t available = msg.size() - current_msg_offset_;
@@ -172,8 +172,8 @@ namespace streaming::websocket
         while (offset < outgoing_raw_.size())
         {
             size_t chunk_size = std::min(io_chunk_size, outgoing_raw_.size() - offset);
-            auto status = co_await underlying_->send(rpc::byte_span(
-                reinterpret_cast<const char*>(outgoing_raw_.data() + offset), chunk_size));
+            auto status = co_await underlying_->send(
+                rpc::byte_span(reinterpret_cast<const char*>(outgoing_raw_.data() + offset), chunk_size));
             if (!status.is_ok())
                 co_return false;
             offset += chunk_size;

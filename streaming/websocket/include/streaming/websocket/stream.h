@@ -38,8 +38,7 @@ namespace streaming::websocket
     private:
         static constexpr size_t io_chunk_size = 8192;
 
-        auto serve_decoded(rpc::mutable_byte_span buffer)
-            -> std::pair<coro::net::io_status, rpc::mutable_byte_span>;
+        auto serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<coro::net::io_status, rpc::mutable_byte_span>;
 
         // Drive wslay's outgoing queue until it has nothing left to send.
         auto drive_send() -> coro::task<bool>;
