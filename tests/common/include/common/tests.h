@@ -16,8 +16,8 @@
 #  define CORO_ASSERT_EQ(x, y)                                                                                         \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x != _coro_temp_y)                                                                            \
           {                                                                                                            \
@@ -27,8 +27,8 @@
 #  define CORO_ASSERT_NE(x, y)                                                                                         \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x == _coro_temp_y)                                                                            \
           {                                                                                                            \
@@ -38,8 +38,8 @@
 #  define CORO_VOID_ASSERT_EQ(x, y)                                                                                    \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x != _coro_temp_y)                                                                            \
           {                                                                                                            \
@@ -50,8 +50,8 @@
 #  define CORO_VOID_ASSERT_NE(x, y)                                                                                    \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x == _coro_temp_y)                                                                            \
           {                                                                                                            \
@@ -63,8 +63,8 @@
 #  define CORO_ASSERT_EQ(x, y)                                                                                         \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x != _coro_temp_y)                                                                            \
           {                                                                                                            \
@@ -74,8 +74,8 @@
 #  define CORO_ASSERT_NE(x, y)                                                                                         \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x == _coro_temp_y)                                                                            \
           {                                                                                                            \
@@ -85,8 +85,8 @@
 #  define CORO_VOID_ASSERT_EQ(x, y)                                                                                    \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_EQ(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x != _coro_temp_y)                                                                            \
           {                                                                                                            \
@@ -96,8 +96,8 @@
 #  define CORO_VOID_ASSERT_NE(x, y)                                                                                    \
       do                                                                                                               \
       {                                                                                                                \
-          const auto& _coro_temp_x = (x);                                                                              \
-          const auto& _coro_temp_y = (y);                                                                              \
+          auto _coro_temp_x = (x);                                                                                     \
+          auto _coro_temp_y = (y);                                                                                     \
           EXPECT_NE(_coro_temp_x, _coro_temp_y);                                                                       \
           if (_coro_temp_x == _coro_temp_y)                                                                            \
           {                                                                                                            \

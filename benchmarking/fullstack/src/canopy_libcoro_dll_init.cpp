@@ -16,8 +16,8 @@ namespace rpc::libcoro_dynamic_library
         return init_child_zone<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(transport_ctx,
             settings,
             scheduler,
-            [](rpc::shared_ptr<comprehensive::v1::i_data_processor>,
-                std::shared_ptr<rpc::child_service>) -> CORO_TASK(rpc::service_connect_result<comprehensive::v1::i_data_processor>)
+            [](rpc::shared_ptr<comprehensive::v1::i_data_processor>, std::shared_ptr<rpc::child_service>)
+                -> CORO_TASK(rpc::service_connect_result<comprehensive::v1::i_data_processor>)
             {
                 CO_RETURN rpc::service_connect_result<comprehensive::v1::i_data_processor>{
                     rpc::error::OK(), comprehensive::v1::make_benchmark_data_processor()};
