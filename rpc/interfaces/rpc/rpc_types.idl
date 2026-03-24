@@ -118,58 +118,66 @@ namespace rpc
     //     conventional internet byte order.
     //   - Other scalar/header fields are packed little-endian to keep the bit helpers cheap.
     //
-    // Shared prefix for version 3:
-    //   - version               : 8 bits
-    //   - address_type          : 3 bits
+    // Shared capability header for version 3 (4 bytes = 32 bits):
+    //   - version               : 8 bits  (offset  0)
+    //   - address_type          : 3 bits  (offset  8)
     //       0 = local
     //       1 = ipv4
     //       2 = ipv6
     //       3 = ipv6_tun
     //       4..7 reserved for future schemes
-    //   - has_port              : 1 bit
-    //   - subnet_size_bits      : 8 bits
-    //   - object_id_size_bits   : 8 bits
-    //   - validation_size_bits  : 16 bits
-    //   - port                  : 16 bits, present only when has_port == 1 and address_type != local
+    //   - has_port              : 1 bit   (offset 11)
+    //   - has_validation        : 1 bit   (offset 12)
+    //   - reserved              : 3 bits  (offset 13)
+    //   - subnet_size_bits      : 8 bits  (offset 16)
+    //   - object_id_size_bits   : 8 bits  (offset 24)
+    //
+    // Fields that follow the capability header:
+    //   - port                  : 16 bits, present only when has_port == 1
     //
     // Layout by address_type:
     //
     // local:
-    //   - shared prefix
+    //   - capability header
     //   - has_port must be 0
     //   - no routing prefix bytes
     //   - subnet                : subnet_size_bits
     //   - object_id             : object_id_size_bits
-    //   - no validation payload bits
+    //   - no validation block
     //
     // ipv4:
-    //   - shared prefix
+    //   - capability header
     //   - optional port
     //   - routing_prefix_ipv4   : 32 bits, big-endian
-    //   - subnet                : subnet_size_bits
-    //   - object_id             : object_id_size_bits
-    //   - validation            : validation_size_bits
-    //   - subnet/object/validation payloads are external to the 32-bit internet address
+    //   - subnet                : subnet_size_bits (LE-packed, external to the address)
+    //   - object_id             : object_id_size_bits (LE-packed, external to the address)
+    //   - validation block      : variable length, present when has_validation == 1
     //
     // ipv6:
-    //   - shared prefix
+    //   - capability header
     //   - optional port
     //   - routing_prefix_ipv6   : 128 bits, big-endian
-    //   - subnet                : subnet_size_bits
-    //   - object_id             : object_id_size_bits
-    //   - validation            : validation_size_bits
-    //   - subnet/object/validation payloads are external to the 128-bit internet address
+    //   - subnet                : subnet_size_bits (LE-packed, external to the address)
+    //   - object_id             : object_id_size_bits (LE-packed, external to the address)
+    //   - validation block      : variable length, present when has_validation == 1
     //
     // ipv6_tun:
-    //   - shared prefix
+    //   - capability header
     //   - optional port
     //   - tunneled_ipv6_bits    : 128 bits, big-endian
-    //   - validation            : validation_size_bits
+    //   - validation block      : variable length, present when has_validation == 1
     //   - subnet_size_bits and object_id_size_bits describe contiguous regions inside the
     //     128-bit tunneled IPv6 field
     //   - object_id occupies the least-significant object_id_size_bits
     //   - subnet occupies the subnet_size_bits immediately above the object field
     //   - the remaining most-significant bits are the routing prefix
+    //
+    // Validation block:
+    //   - present only when has_validation == 1
+    //   - always appended at the end of the blob, after the object_id field
+    //   - length derived from blob: blob.size() - validation_offset_bits()/8
+    //   - first byte is a type discriminator (e.g. CRC, hash, HMAC variant)
+    //   - remaining bytes are the payload as defined by the discriminator
     //
     // Existing helper methods such as get_routing_prefix(), get_subnet(), set_subnet(),
     // get_object_id(), set_object_id(), zone_only() and with_object() are preserved as
@@ -183,8 +191,10 @@ namespace rpc
 
     public:
         static constexpr uint8_t version_3 = 3u;
-        static constexpr uint8_t default_local_subnet_size_bits = 64u;
-        static constexpr uint8_t capability_blob_bytes = 6u;
+        static constexpr uint8_t default_subnet_size_bits = 64u;
+        static constexpr uint8_t default_object_id_size_bits = 64u;
+        static constexpr uint8_t capability_blob_bytes = 4u;
+        using capability_bits = std::array<uint8_t, capability_blob_bytes>;
         zone_address() = default;
         zone_address(const zone_address&) = default;
         zone_address(zone_address&&) noexcept = default;
@@ -197,10 +207,10 @@ namespace rpc
 
         enum class address_type : uint8_t
         {
-            local = 0,
-            ipv4 = 1,
-            ipv6 = 2,
-            ipv6_tun = 3
+            local = 0,      // no internet routing prefix only the subnet and object id have any data
+            ipv4 = 1,       // the routing prefix is a full 32 bit ipv4 address with validaton data
+            ipv6 = 2,       // the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id are not in the 128 bits
+            ipv6_tun = 3    // under review for tun server implementation where every object has an ip address: the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id ARE in the 128 bits
         };
 
         struct construction_args
@@ -209,7 +219,7 @@ namespace rpc
             address_type type = address_type::local;
             uint16_t port = 0;
             std::vector<uint8_t> routing_prefix;
-            uint8_t subnet_size_bits = default_local_subnet_size_bits;
+            uint8_t subnet_size_bits = default_subnet_size_bits;
             uint64_t subnet = 0;
             uint8_t object_id_size_bits = 64u;
             uint64_t object_id = 0;
@@ -232,47 +242,8 @@ namespace rpc
         };
 
     private:
-        static constexpr uint16_t internet_address_bytes = 16u; // IPv6 and ipv6_tun always carry 128 network bits.
-        static constexpr uint8_t version_bits = 8u; // The leading version field.
-        static constexpr uint8_t address_type_bits = 3u; // The address_type field inside the capability bits.
-        static constexpr uint8_t has_port_bits = 1u; // The single has_port flag bit.
-        static constexpr uint8_t reserved_capability_bits = 4u; // Unused capability-bit space reserved for future formats.
-        static constexpr uint8_t size_field_bits = 8u; // Width of subnet_size_bits and object_id_size_bits fields.
-        static constexpr uint8_t validation_size_field_bits = 16u; // Width of validation_size_bits in the capability bits.
-        static constexpr uint8_t port_bits = 16u; // Width of the optional port field after the capability bits.
-        static constexpr uint16_t version_offset_bits = 0u; // Version starts at the beginning of the blob.
-        static constexpr uint16_t address_type_offset_bits = version_offset_bits + version_bits; // address_type follows the version byte.
-        static constexpr uint16_t has_port_offset_bits = address_type_offset_bits + address_type_bits; // has_port follows address_type inside the second byte.
-        static constexpr uint16_t subnet_size_offset_bits = 16u; // subnet_size_bits starts at byte 2 of the capability bits.
-        static constexpr uint16_t object_id_size_offset_bits = 24u; // object_id_size_bits starts at byte 3 of the capability bits.
-        static constexpr uint16_t validation_size_offset_bits = 32u; // validation_size_bits starts at byte 4 of the capability bits.
-        static constexpr uint16_t capability_blob_bits = capability_blob_bytes * 8u; // Total width of version + capability bits.
-        static constexpr uint16_t header_bits = capability_blob_bits; // The fixed prefix before optional port and address payloads.
-        static constexpr uint8_t address_type_mask = 0x7u; // Mask for the low 3 bits of the capability header byte.
-        static constexpr uint8_t has_port_mask = 0x8u; // Mask for the has_port bit within the capability header byte.
-
-        static uint64_t get_bits_le(const std::vector<uint8_t>& data, uint16_t offset, uint16_t width);
-        static bool set_bits_le(std::vector<uint8_t>& data, uint16_t offset, uint16_t width, uint64_t value);
-        static uint64_t get_bits_be(const std::vector<uint8_t>& data, uint16_t offset, uint16_t width);
-        static bool set_bits_be(std::vector<uint8_t>& data, uint16_t offset, uint16_t width, uint64_t value);
-        static uint16_t address_bits_for_type(address_type type);
-        static void validate_prefix_bits(const std::vector<uint8_t>& data, uint16_t width, const char* field_name);
-        static std::vector<uint8_t> build_fixed_width_prefix(const std::vector<uint8_t>& data, uint16_t width);
-        static std::vector<uint8_t> build_tunnel_host(
-            const std::vector<uint8_t>& routing_prefix, uint16_t routing_bits, uint8_t subnet_size_bits, uint64_t subnet, uint8_t object_id_size_bits,
-            uint64_t object_id);
-        static uint8_t capability_version(const std::array<uint8_t, capability_blob_bytes>& capability_bits);
-        static uint8_t capability_header_byte(const std::array<uint8_t, capability_blob_bytes>& capability_bits);
-        static address_type capability_address_type(const std::array<uint8_t, capability_blob_bytes>& capability_bits);
-        static bool capability_has_port(const std::array<uint8_t, capability_blob_bytes>& capability_bits);
-        static uint8_t capability_subnet_size_bits(const std::array<uint8_t, capability_blob_bytes>& capability_bits);
-        static uint8_t capability_object_id_size_bits(const std::array<uint8_t, capability_blob_bytes>& capability_bits);
-        static uint16_t capability_validation_size_bits(const std::array<uint8_t, capability_blob_bytes>& capability_bits);
-        static std::array<uint8_t, capability_blob_bytes> make_capability_bits(
-            uint8_t version, address_type type, bool has_port, uint8_t subnet_size_bits, uint8_t object_id_size_bits, uint16_t validation_size_bits);
-        static void validate_constructor_args(const std::array<uint8_t, capability_blob_bytes>& capability_bits, uint16_t port,
-            const std::vector<uint8_t>& routing_prefix, uint64_t subnet, uint64_t object_id, const std::vector<uint8_t>& validation_bits);
-        void initialise_blob(const std::array<uint8_t, capability_blob_bytes>& capability_bits, uint16_t port, const std::vector<uint8_t>& routing_prefix,
+        [[nodiscard]] rpc::expected<void, std::string> initialise_blob(const capability_bits& caps, uint16_t port,
+            const std::vector<uint8_t>& routing_prefix,
             uint64_t subnet, uint64_t object_id, const std::vector<uint8_t>& validation_bits);
         [[nodiscard]] uint16_t address_offset_bits() const;
         [[nodiscard]] uint16_t subnet_offset_bits() const;
@@ -283,31 +254,38 @@ namespace rpc
         void clear_validation_bits();
 
     public:
-        explicit zone_address(const construction_args& args);
-        zone_address(const std::array<uint8_t, capability_blob_bytes>& capability_bits, uint16_t port, const std::vector<uint8_t>& routing_prefix, uint64_t subnet,
+        [[nodiscard]] static rpc::expected<zone_address, std::string> create(const construction_args& args);
+        [[nodiscard]] static rpc::expected<zone_address, std::string> create(const capability_bits& caps,
+            uint16_t port, const std::vector<uint8_t>& routing_prefix, uint64_t subnet,
             uint64_t object_id, const std::vector<uint8_t>& validation_bits = {});
 
+        [[nodiscard]] const std::vector<uint8_t>& get_blob() const { return blob; }
+        [[nodiscard]] capability_bits get_capability_bits() const;
+
+        //metadata
         [[nodiscard]] uint8_t get_version() const;
         [[nodiscard]] address_type get_address_type() const;
-        [[nodiscard]] std::array<uint8_t, capability_blob_bytes> get_capability_bits() const;
         [[nodiscard]] bool has_port() const;
-        [[nodiscard]] uint16_t get_port() const;
+        [[nodiscard]] bool has_validation() const;
         [[nodiscard]] uint8_t get_subnet_size_bits() const;
         [[nodiscard]] uint8_t get_object_id_size_bits() const;
-        [[nodiscard]] uint16_t get_validation_size_bits() const;
+        [[nodiscard]] uint32_t get_validation_size_bytes() const; //returns a 32bit number just incase you want zk-STARK proofs
+        
+        [[nodiscard]] uint16_t get_port() const;
         [[nodiscard]] std::vector<uint8_t> get_routing_prefix() const;
-        [[nodiscard]] const std::vector<uint8_t>& get_blob() const { return blob; }
-        [[nodiscard]] static constexpr uint8_t get_default_local_object_id_size_bits() { return 64u; }
-
         [[nodiscard]] uint64_t get_subnet() const;
         [[nodiscard]] uint64_t get_object_id() const;
-        bool set_subnet(uint64_t val);
-        bool set_object_id(uint64_t val);
+
+        [[nodiscard]] rpc::expected<void, std::string> set_subnet(uint64_t val);
+        [[nodiscard]] rpc::expected<void, std::string> set_object_id(uint64_t val);
+
+        //extract a copy without object_id and validation
         [[nodiscard]] zone_address zone_only() const;
-        [[nodiscard]] zone_address with_object(uint64_t obj) const;
+        //construct a copy with object_id no validation
+        [[nodiscard]] rpc::expected<zone_address, std::string> with_object(uint64_t obj) const;
         [[nodiscard]] bool same_zone(const zone_address& other) const;
         [[nodiscard]] bool is_set() const noexcept;
-        bool operator<(const zone_address& other) const;
+        [[nodiscard]] bool operator<(const zone_address& other) const;
     )__^)
     };
 
@@ -339,15 +317,7 @@ namespace rpc
 
         // compare
         friend inline bool operator==(const zone& lhs, const zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
-        {
-            return addr_.get_subnet() == static_cast<uint64_t>(val);
-        }
         friend inline bool operator!=(const zone& lhs, const zone& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
-        {
-            return addr_.get_subnet() != static_cast<uint64_t>(val);
-        }
 
         // less
         bool operator<(const zone& val) const { return addr_ < val.addr_; }
@@ -355,7 +325,7 @@ namespace rpc
         [[nodiscard]] bool is_set() const noexcept { return addr_.is_set(); }
 
         // create a remote_object from this zone and the given object_id
-        [[nodiscard]] inline remote_object with_object(object obj) const;
+        [[nodiscard]] inline rpc::expected<remote_object, std::string> with_object(object obj) const;
             )__^)
     };
 
@@ -434,23 +404,14 @@ namespace rpc
 
         // compare
         friend inline bool operator==(const remote_object& lhs, const remote_object& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator==(T val) const
-        {
-            return addr_.get_subnet() == static_cast<uint64_t>(val);
-        }
         friend inline bool operator!=(const remote_object& lhs, const remote_object& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0> bool operator!=(T val) const
-        {
-            return addr_.get_subnet() != static_cast<uint64_t>(val);
-        }
-
         bool operator<(const remote_object& val) const { return addr_ < val.addr_; }
 
         [[nodiscard]] bool is_set() const noexcept { return addr_.is_set(); }
 
         // object accessors
         [[nodiscard]] inline object get_object_id() const;
-        [[nodiscard]] inline remote_object with_object(object obj) const;
+        [[nodiscard]] inline rpc::expected<remote_object, std::string> with_object(object obj) const;
 
         // zone conversion methods
         [[nodiscard]] inline zone as_zone() const;
@@ -554,9 +515,12 @@ namespace rpc
 #cpp_quote(R^__(
     // converters
 
-    [[nodiscard]] inline remote_object zone::with_object(object obj) const
+    [[nodiscard]] inline rpc::expected<remote_object, std::string> zone::with_object(object obj) const
     {
-        return remote_object(addr_.with_object(obj.get_val()));
+        auto r = addr_.with_object(obj.get_val());
+        if (!r)
+            return rpc::unexpected<std::string>(std::move(r.error()));
+        return remote_object(*r);
     }
 
     // remote_object implementations
@@ -565,9 +529,12 @@ namespace rpc
         return object(addr_.get_object_id());
     }
 
-    [[nodiscard]] inline remote_object remote_object::with_object(object obj) const
+    [[nodiscard]] inline rpc::expected<remote_object, std::string> remote_object::with_object(object obj) const
     {
-        return remote_object(addr_.with_object(obj.get_val()));
+        auto r = addr_.with_object(obj.get_val());
+        if (!r)
+            return rpc::unexpected<std::string>(std::move(r.error()));
+        return remote_object(*r);
     }
 
     [[nodiscard]] inline zone remote_object::as_zone() const
@@ -582,19 +549,19 @@ namespace rpc
 
     // Cross-type comparisons: remote_object vs destination_zone
     // destination_zone is zone-only, so compare zone fields using same_zone()
-    inline bool operator==(const remote_object& lhs, const destination_zone& rhs)
+    inline bool operator==(const remote_object& lhs, const zone& rhs)
     {
         return lhs.get_address().same_zone(rhs.get_address());
     }
-    inline bool operator!=(const remote_object& lhs, const destination_zone& rhs)
+    inline bool operator!=(const remote_object& lhs, const zone& rhs)
     {
         return !lhs.get_address().same_zone(rhs.get_address());
     }
-    inline bool operator==(const destination_zone& lhs, const remote_object& rhs)
+    inline bool operator==(const zone& lhs, const remote_object& rhs)
     {
         return lhs.get_address().same_zone(rhs.get_address());
     }
-    inline bool operator!=(const destination_zone& lhs, const remote_object& rhs)
+    inline bool operator!=(const zone& lhs, const remote_object& rhs)
     {
         return !lhs.get_address().same_zone(rhs.get_address());
     }
@@ -603,8 +570,10 @@ namespace rpc
 // does not specify a routing prefix explicitly.
     inline const zone_address DEFAULT_PREFIX = []()
     {
-        return zone_address(zone_address::construction_args(zone_address::version_3, zone_address::address_type::local, 0, {},
-            zone_address::default_local_subnet_size_bits, 1, zone_address::get_default_local_object_id_size_bits(), 0, {}));
+        auto r = zone_address::create(zone_address::construction_args(zone_address::version_3,
+            zone_address::address_type::local, 0, {},
+            zone_address::default_subnet_size_bits, 1, zone_address::default_object_id_size_bits, 0, {}));
+        return std::move(*r);
     }();
     )__^)
 

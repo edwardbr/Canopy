@@ -889,12 +889,16 @@ namespace rpc
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                {
+                    auto inbound_obj_r = zone_id.with_object(input_descr.get_object_id());
+                    RPC_ASSERT(inbound_obj_r.has_value());
                     telemetry_service->on_transport_inbound_add_ref(zone_id,
                         adjacent_zone_id,
-                        zone_id.with_object(input_descr.get_object_id()),
+                        *inbound_obj_r,
                         adjacent_zone_id,
                         adjacent_zone_id,
                         rpc::add_ref_options::normal);
+                }
 #endif
             }
             auto child_result = CO_AWAIT fn(parent_ptr, child_svc);
@@ -915,12 +919,16 @@ namespace rpc
                 {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                     if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                    {
+                        auto outbound_obj_r = zone_id.with_object(result.descriptor.get_object_id());
+                        RPC_ASSERT(outbound_obj_r.has_value());
                         telemetry_service->on_transport_outbound_add_ref(zone_id,
                             adjacent_zone_id,
-                            zone_id.with_object(result.descriptor.get_object_id()),
+                            *outbound_obj_r,
                             adjacent_zone_id,
                             zone_id,
                             rpc::add_ref_options::build_caller_route);
+                    }
 #endif
                 }
                 CO_RETURN result;
@@ -951,8 +959,14 @@ namespace rpc
             if (!input_interface->__rpc_is_local()
                 && casting_interface::get_destination_zone(*input_interface) != get_zone_id())
             {
-                input_descr.remote_object_id = casting_interface::get_destination_zone(*input_interface)
-                                                   .with_object(casting_interface::get_object_id(*input_interface));
+                auto r = casting_interface::get_destination_zone(*input_interface)
+                             .with_object(casting_interface::get_object_id(*input_interface));
+                if (!r)
+                {
+                    result.error_code = rpc::error::INVALID_DATA();
+                    CO_RETURN result;
+                }
+                input_descr.remote_object_id = std::move(*r);
             }
             else
             {
@@ -974,7 +988,15 @@ namespace rpc
                     result.error_code = err_code;
                     CO_RETURN result;
                 }
-                input_descr.remote_object_id = zone_id_.with_object(input_stub->get_id());
+                {
+                    auto r = zone_id_.with_object(input_stub->get_id());
+                    if (!r)
+                    {
+                        result.error_code = rpc::error::INVALID_DATA();
+                        CO_RETURN result;
+                    }
+                    input_descr.remote_object_id = std::move(*r);
+                }
             }
         }
         else
@@ -1112,12 +1134,12 @@ namespace rpc
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_transport_inbound_add_ref(zone_id_,
-                    adjacent_zone_id,
-                    zone_id_.with_object(input_descr.get_object_id()),
-                    adjacent_zone_id,
-                    adjacent_zone_id,
-                    rpc::add_ref_options::normal);
+            {
+                auto inbound_obj_r = zone_id_.with_object(input_descr.get_object_id());
+                RPC_ASSERT(inbound_obj_r.has_value());
+                telemetry_service->on_transport_inbound_add_ref(
+                    zone_id_, adjacent_zone_id, *inbound_obj_r, adjacent_zone_id, adjacent_zone_id, rpc::add_ref_options::normal);
+            }
 #endif
         }
 
@@ -1141,12 +1163,16 @@ namespace rpc
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                {
+                    auto outbound_obj_r = zone_id_.with_object(result.descriptor.get_object_id());
+                    RPC_ASSERT(outbound_obj_r.has_value());
                     telemetry_service->on_transport_outbound_add_ref(zone_id_,
                         adjacent_zone_id,
-                        zone_id_.with_object(result.descriptor.get_object_id()),
+                        *outbound_obj_r,
                         adjacent_zone_id,
                         zone_id_,
                         rpc::add_ref_options::build_caller_route);
+                }
 #endif
             }
             CO_RETURN result;
@@ -1202,9 +1228,14 @@ namespace rpc
             destination_transport ? destination_transport->get_adjacent_zone_id().get_subnet() : 0);
 
         auto dest_with_obj = destination_zone_id.with_object(object_id);
+        if (!dest_with_obj)
+        {
+            result.error_code = error::INVALID_DATA();
+            CO_RETURN result;
+        }
         add_ref_params ar_params;
         ar_params.protocol_version = protocol_version;
-        ar_params.remote_object_id = dest_with_obj;
+        ar_params.remote_object_id = *dest_with_obj;
         ar_params.caller_zone_id = caller_zone_id;
         ar_params.requesting_zone_id = known_direction;
         ar_params.build_out_param_channel = rpc::add_ref_options::build_destination_route
@@ -1223,7 +1254,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_add_ref(zone_id_,
-                destination_zone_id.with_object(object_id),
+                *dest_with_obj,
                 caller_zone_id,
                 known_direction,
                 rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
@@ -1231,7 +1262,7 @@ namespace rpc
         }
 #endif
 
-        result.descriptor = destination_zone_id.with_object(object_id);
+        result.descriptor = std::move(*dest_with_obj);
         CO_RETURN result;
     }
 
@@ -1284,7 +1315,15 @@ namespace rpc
             result.error_code = ret;
             CO_RETURN result;
         }
-        result.descriptor = zone_id_.with_object(stub->get_id());
+        {
+            auto r = zone_id_.with_object(stub->get_id());
+            if (!r)
+            {
+                result.error_code = error::INVALID_DATA();
+                CO_RETURN result;
+            }
+            result.descriptor = std::move(*r);
+        }
         CO_RETURN result;
     }
 

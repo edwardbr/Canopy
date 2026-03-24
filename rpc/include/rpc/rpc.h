@@ -15,6 +15,7 @@
 
 // needed for uint128_t and int128_t serialisation support protobuffers are sending pairs of uint64_t's
 #include <rpc/internal/int128.h>
+#include <rpc/internal/expected.h>
 #include <rpc/rpc_types.h>
 #include <rpc/internal/zone_authenticator.h>
 

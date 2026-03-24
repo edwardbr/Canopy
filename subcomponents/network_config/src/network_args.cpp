@@ -294,7 +294,7 @@ namespace canopy::network_config
 
         cfg.object_offset = static_cast<uint8_t>(args::get(object_offset_));
 
-        constexpr uint8_t object_limit = rpc::zone_address::get_default_local_object_id_size_bits();
+        constexpr uint8_t object_limit = rpc::zone_address::default_object_id_size_bits;
 
         if (cfg.object_offset > object_limit)
         {

@@ -65,8 +65,7 @@ namespace rpc
         // this is to check that an interface is belonging to another zone and not the operating zone
         if (!iface->__rpc_is_local() && casting_interface::get_destination_zone(*iface) != operating_service->get_zone_id())
         {
-            result.descriptor
-                = casting_interface::get_destination_zone(*iface).with_object(casting_interface::get_object_id(*iface));
+            result.descriptor = casting_interface::get_remote_object(*iface);
             CO_RETURN result;
         }
 
@@ -368,8 +367,10 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
+            auto encap_remote_r = encap.with_object(encap.get_object_id());
+            RPC_ASSERT(encap_remote_r.has_value());
             telemetry_service->on_service_proxy_add_ref(service_proxy->get_zone_id(),
-                encap.with_object(encap.get_object_id()),
+                *encap_remote_r,
                 service_proxy->get_zone_id(),
                 rpc::requesting_zone(),
                 rpc::add_ref_options::normal);

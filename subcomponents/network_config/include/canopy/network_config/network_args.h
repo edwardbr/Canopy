@@ -145,16 +145,31 @@ namespace canopy::network_config
     {
         if (cfg.routing_prefix_addr == ip_address{})
         {
-            return rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3, rpc::zone_address::address_type::local, 0, {},
-                rpc::zone_address::default_local_subnet_size_bits, 0, rpc::zone_address::get_default_local_object_id_size_bits(), 0, {}));
+            return *rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
+                rpc::zone_address::address_type::local,
+                0,
+                {},
+                rpc::zone_address::default_subnet_size_bits,
+                0,
+                rpc::zone_address::default_object_id_size_bits,
+                0,
+                {}));
         }
 
         auto type = cfg.routing_prefix_family == ip_address_family::ipv4 ? rpc::zone_address::address_type::ipv4
                                                                          : rpc::zone_address::address_type::ipv6;
-        auto routing_prefix = std::vector<uint8_t>(
-            cfg.routing_prefix_addr.begin(), cfg.routing_prefix_family == ip_address_family::ipv4 ? cfg.routing_prefix_addr.begin() + 4 : cfg.routing_prefix_addr.end());
-        return rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3, type, cfg.port, routing_prefix, cfg.object_offset, 0,
-            static_cast<uint8_t>(rpc::zone_address::get_default_local_object_id_size_bits() - cfg.object_offset), 0, {}));
+        auto routing_prefix = std::vector<uint8_t>(cfg.routing_prefix_addr.begin(),
+            cfg.routing_prefix_family == ip_address_family::ipv4 ? cfg.routing_prefix_addr.begin() + 4
+                                                                 : cfg.routing_prefix_addr.end());
+        return *rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
+            type,
+            cfg.port,
+            routing_prefix,
+            cfg.object_offset,
+            0,
+            static_cast<uint8_t>(rpc::zone_address::default_object_id_size_bits - cfg.object_offset),
+            0,
+            {}));
     }
 
     // Build a rpc::zone_id_allocator from a network_config.

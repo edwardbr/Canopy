@@ -119,7 +119,7 @@ namespace comprehensive::v1
         benchmark_result result{};
         auto zone_1 = rpc::DEFAULT_PREFIX;
         auto zone_2 = rpc::DEFAULT_PREFIX;
-        zone_2.set_subnet(zone_2.get_subnet() + 1);
+        std::ignore = zone_2.set_subnet(zone_2.get_subnet() + 1);
         auto queues = std::make_shared<spsc_queues>();
         pin_spsc_benchmark_queues(queues);
 

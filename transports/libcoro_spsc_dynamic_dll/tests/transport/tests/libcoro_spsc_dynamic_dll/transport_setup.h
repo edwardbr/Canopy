@@ -27,7 +27,7 @@ class libcoro_spsc_dll_transport_setup
     rpc::zone dll_zone_ = []
     {
         auto address = rpc::DEFAULT_PREFIX;
-        [[maybe_unused]] bool ok = address.set_subnet(address.get_subnet() + 1);
+        [[maybe_unused]] auto ok = address.set_subnet(address.get_subnet() + 1);
         RPC_ASSERT(ok);
         return rpc::zone(address);
     }();

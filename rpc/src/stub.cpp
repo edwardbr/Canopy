@@ -103,7 +103,12 @@ namespace rpc
             {
                 add_ref_params ar_params;
                 ar_params.protocol_version = rpc::get_version();
-                ar_params.remote_object_id = get_zone()->get_zone_id().with_object(id_);
+                {
+                    auto r = get_zone()->get_zone_id().with_object(id_);
+                    if (!r)
+                        CO_RETURN rpc::error::INVALID_DATA();
+                    ar_params.remote_object_id = std::move(*r);
+                }
                 ar_params.caller_zone_id = caller_zone_id;
                 ar_params.requesting_zone_id = get_zone()->get_zone_id();
                 ar_params.build_out_param_channel = rpc::add_ref_options::build_caller_route;

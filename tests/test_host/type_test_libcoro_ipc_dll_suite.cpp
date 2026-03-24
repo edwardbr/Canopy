@@ -128,7 +128,7 @@ namespace
                     .pool = coro::thread_pool::options{.thread_count = 1}}));
             auto service = std::make_shared<rpc::root_service>("pdeathsig_host", rpc::DEFAULT_PREFIX, scheduler);
             auto dll_zone = rpc::DEFAULT_PREFIX;
-            [[maybe_unused]] bool ok = dll_zone.set_subnet(dll_zone.get_subnet() + 10);
+            [[maybe_unused]] auto ok = dll_zone.set_subnet(dll_zone.get_subnet() + 10);
             RPC_ASSERT(ok);
 
             auto transport = rpc::ipc_transport::make_client("pdeathsig child",

@@ -90,7 +90,14 @@ namespace websocket_demo
             }
 
             // make a client object id from the client-supplied object id and the server-assigned zone id
-            auto client_object = get_adjacent_zone_id().with_object(req.client_object.object_id);
+            auto client_object_r = get_adjacent_zone_id().with_object(req.client_object.object_id);
+            if (!client_object_r)
+            {
+                RPC_ERROR("[WS] with_object failed: {}", client_object_r.error());
+                co_await stream_->set_closed();
+                co_return;
+            }
+            auto client_object = std::move(*client_object_r);
 
             rpc::connection_settings cs;
             cs.inbound_interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version());

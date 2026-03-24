@@ -83,8 +83,15 @@ namespace
 {
     rpc::zone_address make_local_zone_address(uint64_t subnet, uint64_t object_id = 0)
     {
-        return rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3, rpc::zone_address::address_type::local, 0, {},
-            rpc::zone_address::default_local_subnet_size_bits, subnet, rpc::zone_address::get_default_local_object_id_size_bits(), object_id, {}));
+        return rpc::zone_address(rpc::zone_address::construction_args(rpc::zone_address::version_3,
+            rpc::zone_address::address_type::local,
+            0,
+            {},
+            rpc::zone_address::default_subnet_size_bits,
+            subnet,
+            rpc::zone_address::default_object_id_size_bits,
+            object_id,
+            {}));
     }
 } // namespace
 

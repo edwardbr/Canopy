@@ -440,7 +440,13 @@ namespace rpc
             result.error_code = ret;
             CO_RETURN result;
         }
-        result.descriptor = zone_id_.with_object(result.stub->get_id());
+        if (auto r = zone_id_.with_object(result.stub->get_id()); r)
+            result.descriptor = std::move(*r);
+        else
+        {
+            result.error_code = rpc::error::INVALID_DATA();
+            CO_RETURN result;
+        }
         CO_RETURN result;
     }
 
@@ -643,7 +649,12 @@ namespace rpc
                     // This is a fire-and-forget operation
                     object_released_params or_params;
                     or_params.protocol_version = rpc::get_version();
-                    or_params.remote_object_id = zone_id_.with_object(object_id); // destination with embedded object_id
+                    {
+                        auto r = zone_id_.with_object(object_id); // destination with embedded object_id
+                        if (!r)
+                            CO_RETURN count;
+                        or_params.remote_object_id = std::move(*r);
+                    }
                     or_params.caller_zone_id = caller_zone_id;
                     CO_AWAIT transport->object_released(std::move(or_params));
                 }
@@ -1128,7 +1139,8 @@ namespace rpc
                         obj_id.get_val(),
                         remote_zone.get_subnet());
 
-                    objects_to_notify.push_back(remote_zone.with_object(obj_id));
+                    if (auto r = remote_zone.with_object(obj_id); r)
+                        objects_to_notify.push_back(std::move(*r));
                     stub->dont_keep_alive();
                 }
             }

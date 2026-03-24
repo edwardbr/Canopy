@@ -129,11 +129,14 @@ namespace rpc
 
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
+        auto dest_with_obj_send = destination_zone_id_.with_object(object_id);
+        if (!dest_with_obj_send)
+            CO_RETURN rpc::send_result{rpc::error::INVALID_DATA(), {}, {}};
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_send(
-                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id(), interface_id, method_id);
+                get_zone_id(), *dest_with_obj_send, get_zone_id(), interface_id, method_id);
         }
 #endif
         send_params params;
@@ -141,7 +144,7 @@ namespace rpc
         params.encoding_type = encoding;
         params.tag = tag;
         params.caller_zone_id = get_zone_id();
-        params.remote_object_id = destination_zone_id_.with_object(object_id);
+        params.remote_object_id = std::move(*dest_with_obj_send);
         params.interface_id = interface_id;
         params.method_id = method_id;
         params.in_data.assign(in_data.begin(), in_data.end());
@@ -181,11 +184,14 @@ namespace rpc
 
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
+        auto dest_with_obj_post = destination_zone_id_.with_object(object_id);
+        if (!dest_with_obj_post)
+            CO_RETURN rpc::error::INVALID_DATA();
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_post(
-                get_zone_id(), destination_zone_id_.with_object(object_id), get_zone_id(), interface_id, method_id);
+                get_zone_id(), *dest_with_obj_post, get_zone_id(), interface_id, method_id);
         }
 #endif
         post_params params;
@@ -193,7 +199,7 @@ namespace rpc
         params.encoding_type = encoding;
         params.tag = tag;
         params.caller_zone_id = get_zone_id();
-        params.remote_object_id = destination_zone_id_.with_object(object_id);
+        params.remote_object_id = std::move(*dest_with_obj_post);
         params.interface_id = interface_id;
         params.method_id = method_id;
         params.in_data.assign(in_data.begin(), in_data.end());
@@ -220,21 +226,22 @@ namespace rpc
         {
             auto if_id = id_getter(version);
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            {
-                telemetry_service->on_service_proxy_try_cast(
-                    get_zone_id(), destination_zone_id.with_object(object_id), get_zone_id(), if_id);
-            }
-#endif
-
             // Call the outbound function on the service to allow derived classes to add extra functionality
             // such as processing back_channel data
             auto dest_with_obj = destination_zone_id.with_object(object_id);
+            if (!dest_with_obj)
+                CO_RETURN rpc::error::INVALID_DATA();
+
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            {
+                telemetry_service->on_service_proxy_try_cast(get_zone_id(), *dest_with_obj, get_zone_id(), if_id);
+            }
+#endif
             try_cast_params tc_params;
             tc_params.protocol_version = version;
             tc_params.caller_zone_id = get_zone_id();
-            tc_params.remote_object_id = dest_with_obj;
+            tc_params.remote_object_id = *dest_with_obj;
             tc_params.interface_id = if_id;
             auto tc_result = CO_AWAIT service_->outbound_try_cast(std::move(tc_params), transport);
             auto ret = tc_result.error_code;
@@ -276,9 +283,11 @@ namespace rpc
             // such as processing back_channel data
 
             auto dest_with_obj = destination_zone_id_.with_object(object_id);
+            if (!dest_with_obj)
+                CO_RETURN rpc::error::INVALID_DATA();
             add_ref_params ar_params;
             ar_params.protocol_version = version;
-            ar_params.remote_object_id = dest_with_obj;
+            ar_params.remote_object_id = *dest_with_obj;
             ar_params.caller_zone_id = zone_id_;
             ar_params.requesting_zone_id = requesting_zone_id;
             ar_params.build_out_param_channel = build_out_param_channel;
@@ -289,11 +298,8 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
-                    telemetry_service->on_service_proxy_add_ref(get_zone_id(),
-                        destination_zone_id_.with_object(object_id),
-                        zone_id_,
-                        requesting_zone_id,
-                        build_out_param_channel);
+                    telemetry_service->on_service_proxy_add_ref(
+                        get_zone_id(), *dest_with_obj, zone_id_, requesting_zone_id, build_out_param_channel);
                 }
 #endif
                 if (original_version != version)
@@ -331,9 +337,11 @@ namespace rpc
             // Call the outbound function on the service to allow derived classes to add extra functionality
             // such as processing back_channel data
             auto dest_with_obj = destination_zone_id_.with_object(object_id);
+            if (!dest_with_obj)
+                CO_RETURN rpc::error::INVALID_DATA();
             release_params rel_params;
             rel_params.protocol_version = version;
-            rel_params.remote_object_id = dest_with_obj;
+            rel_params.remote_object_id = *dest_with_obj;
             rel_params.caller_zone_id = zone_id_;
             rel_params.options = options;
             auto rel_result = CO_AWAIT service_->outbound_release(std::move(rel_params), transport);
@@ -343,8 +351,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
-                    telemetry_service->on_service_proxy_release(
-                        get_zone_id(), destination_zone_id_.with_object(object_id), zone_id_, options);
+                    telemetry_service->on_service_proxy_release(get_zone_id(), *dest_with_obj, zone_id_, options);
                 }
 #endif
                 if (original_version != version)
@@ -382,9 +389,11 @@ namespace rpc
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
         auto dest_with_obj = destination_zone_id.with_object(object_id);
+        if (!dest_with_obj)
+            CO_RETURN;
         release_params rel_params;
         rel_params.protocol_version = version;
-        rel_params.remote_object_id = dest_with_obj;
+        rel_params.remote_object_id = *dest_with_obj;
         rel_params.caller_zone_id = caller_id;
         rel_params.options = is_optimistic ? release_options::optimistic : release_options::normal;
         auto rel_result = CO_AWAIT svc->outbound_release(std::move(rel_params), transport);
@@ -393,7 +402,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_release(svc->get_zone_id(),
-                destination_zone_id.with_object(object_id),
+                *dest_with_obj,
                 svc->get_zone_id(),
                 is_optimistic ? release_options::optimistic : release_options::normal);
         }
@@ -444,8 +453,10 @@ namespace rpc
         {
             auto transport = transport_.get_nullable();
             RPC_ASSERT(transport);
+            auto release_obj_r = destination_zone_id_.with_object(object_id);
+            RPC_ASSERT(release_obj_r.has_value());
             telemetry_service->on_service_proxy_release(get_zone_id(),
-                destination_zone_id_.with_object(object_id),
+                *release_obj_r,
                 zone_id_,
                 is_optimistic ? release_options::optimistic : release_options::normal);
         }

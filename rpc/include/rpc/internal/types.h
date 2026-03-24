@@ -36,7 +36,8 @@ namespace std
         auto routing_prefix = val.get_routing_prefix();
         if (routing_prefix.empty() && val.get_object_id() == 0)
             return std::to_string(val.get_subnet());
-        return std::to_string(routing_prefix) + ":" + std::to_string(val.get_subnet()) + "/" + std::to_string(val.get_object_id());
+        return std::to_string(routing_prefix) + ":" + std::to_string(val.get_subnet()) + "/"
+               + std::to_string(val.get_object_id());
     }
     inline std::string to_string(const rpc::zone& val)
     {

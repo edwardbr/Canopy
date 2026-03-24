@@ -149,7 +149,7 @@ auto main(int argc, char* argv[]) -> int
     auto scheduler = make_scheduler();
 
     auto address = canopy::network_config::get_zone_address(cfg);
-    address.set_subnet(1);
+    std::ignore = address.set_subnet(1);
 
     auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", address, scheduler);
     const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6 ? coro::net::domain_t::ipv6

@@ -21,7 +21,7 @@ namespace comprehensive::v1
         root_service->set_default_encoding(enc);
 
         auto child_zone = rpc::DEFAULT_PREFIX;
-        [[maybe_unused]] bool ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
+        [[maybe_unused]] auto ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
         RPC_ASSERT(ok);
 
         auto transport = rpc::ipc_transport::make_client("benchmark_ipc_direct",
@@ -70,7 +70,7 @@ namespace comprehensive::v1
         root_service->set_default_encoding(enc);
 
         auto child_zone = rpc::DEFAULT_PREFIX;
-        [[maybe_unused]] bool ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
+        [[maybe_unused]] auto ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
         RPC_ASSERT(ok);
 
         auto transport = rpc::ipc_transport::make_client("benchmark_ipc_dll",

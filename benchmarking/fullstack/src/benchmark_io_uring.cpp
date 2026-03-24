@@ -19,9 +19,15 @@ namespace comprehensive::v1
     {
         rpc::zone_address make_client_zone_address()
         {
-            return rpc::zone_address(rpc::zone_address::construction_args(
-                rpc::zone_address::version_3, rpc::zone_address::address_type::local, 0, {}, rpc::zone_address::default_local_subnet_size_bits, 2,
-                rpc::zone_address::get_default_local_object_id_size_bits(), 1, {}));
+            return *rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
+                rpc::zone_address::address_type::local,
+                0,
+                {},
+                rpc::zone_address::default_subnet_size_bits,
+                2,
+                rpc::zone_address::default_object_id_size_bits,
+                1,
+                {}));
         }
 
         CORO_TASK(void)
@@ -71,7 +77,8 @@ namespace comprehensive::v1
         {
             CO_AWAIT server_ready.wait();
 
-            auto client_service = std::make_shared<rpc::root_service>("io_uring_client", make_client_zone_address(), scheduler);
+            auto client_service
+                = std::make_shared<rpc::root_service>("io_uring_client", make_client_zone_address(), scheduler);
             client_service->set_default_encoding(enc);
             auto shutdown_event = std::make_shared<rpc::event>();
             client_service->set_shutdown_event(shutdown_event);

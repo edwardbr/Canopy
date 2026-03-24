@@ -83,13 +83,18 @@ namespace rpc::stream_transport
         if (!connection_handler_)
         {
             // Client side: send init message to server
-            auto init_result = CO_AWAIT call_peer<init_client_channel_send, init_client_channel_response>(
-                rpc::get_version(),
-                init_client_channel_send{.inbound_remote_object = get_zone_id().with_object(input_descr.get_object_id()),
-                    .inbound_interface_id = input_descr.inbound_interface_id,
-                    .destination_zone_id = get_adjacent_zone_id(),
-                    .outbound_interface_id = input_descr.outbound_interface_id,
-                    .adjacent_zone_id = get_zone_id()});
+            auto inbound_remote_object_r = get_zone_id().with_object(input_descr.get_object_id());
+            if (!inbound_remote_object_r)
+            {
+                CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
+            }
+            auto init_result
+                = CO_AWAIT call_peer<init_client_channel_send, init_client_channel_response>(rpc::get_version(),
+                    init_client_channel_send{.inbound_remote_object = std::move(*inbound_remote_object_r),
+                        .inbound_interface_id = input_descr.inbound_interface_id,
+                        .destination_zone_id = get_adjacent_zone_id(),
+                        .outbound_interface_id = input_descr.outbound_interface_id,
+                        .adjacent_zone_id = get_zone_id()});
             int ret = init_result.error_code;
             if (ret != rpc::error::OK())
             {

@@ -24,8 +24,15 @@ namespace websocket_demo
         {
             std::vector<uint8_t> host(16, 0);
             inet_pton(AF_INET6, addr.routing_prefix.c_str(), host.data());
-            return rpc::zone_address(rpc::zone_address::construction_args(
-                rpc::zone_address::version_3, rpc::zone_address::address_type::ipv6, 0, host, 64, addr.subnet, 56, addr.object_id, {}));
+            return *rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
+                rpc::zone_address::address_type::ipv6,
+                0,
+                host,
+                64,
+                addr.subnet,
+                56,
+                addr.object_id,
+                {}));
         }
     }
 }

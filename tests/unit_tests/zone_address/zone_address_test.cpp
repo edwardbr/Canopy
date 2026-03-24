@@ -9,8 +9,17 @@
 
 TEST(zone_address_test, zone_only_clears_object_id)
 {
-    rpc::zone_address addr(rpc::zone_address::construction_args(rpc::zone_address::version_3, rpc::zone_address::address_type::ipv6, 0,
-        {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0, 0, 0, 0, 0, 0, 0, 0}, 64, 42, 56, 99, {}));
+    auto result = rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
+        rpc::zone_address::address_type::ipv6,
+        0,
+        {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0, 0, 0, 0, 0, 0, 0, 0},
+        64,
+        42,
+        56,
+        99,
+        {}));
+    ASSERT_TRUE(result.has_value());
+    rpc::zone_address addr = std::move(*result);
 
     auto zone_only = addr.zone_only();
 

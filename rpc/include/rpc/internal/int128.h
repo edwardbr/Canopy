@@ -11,7 +11,7 @@ YAS_WARNINGS_PUSH
 
 YAS_WARNINGS_POP
 
-namespace canopy::detail
+namespace rpc
 {
     inline std::string uint128_to_string(unsigned __int128 v)
     {
@@ -76,7 +76,7 @@ namespace yas
             {
                 if (F & yas::json)
                 {
-                    auto tmp = canopy::detail::int128_to_string(obj);
+                    auto tmp = rpc::int128_to_string(obj);
                     ar & tmp;
                 }
                 else
@@ -104,7 +104,7 @@ namespace yas
                     {
                         load_string(str, ar);
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "\"");
-                        obj = canopy::detail::string_to_int128(str);
+                        obj = rpc::string_to_int128(str);
                     }
 
                     else
@@ -130,7 +130,7 @@ namespace yas
             {
                 if (F & yas::json)
                 {
-                    auto tmp = canopy::detail::uint128_to_string(obj);
+                    auto tmp = rpc::uint128_to_string(obj);
                     ar & tmp;
                 }
                 else
@@ -158,7 +158,7 @@ namespace yas
                     {
                         load_string(str, ar);
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "\"");
-                        obj = canopy::detail::string_to_uint128(str);
+                        obj = rpc::string_to_uint128(str);
                     }
 
                     else

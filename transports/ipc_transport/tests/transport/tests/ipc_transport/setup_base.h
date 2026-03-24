@@ -49,7 +49,7 @@ protected:
     static rpc::zone make_dll_zone(uint64_t offset)
     {
         auto address = rpc::DEFAULT_PREFIX;
-        [[maybe_unused]] bool ok = address.set_subnet(address.get_subnet() + offset);
+        [[maybe_unused]] auto ok = address.set_subnet(address.get_subnet() + offset);
         RPC_ASSERT(ok);
         return rpc::zone(address);
     }

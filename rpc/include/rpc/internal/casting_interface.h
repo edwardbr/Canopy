@@ -50,6 +50,10 @@ namespace rpc
         static std::shared_ptr<rpc::service> get_service(const casting_interface& iface);
         static zone get_zone(const casting_interface& iface);
         static destination_zone get_destination_zone(const casting_interface& iface);
+        // Combines get_destination_zone and get_object_id into a remote_object.
+        // An interface always carries both pieces of information so this should never fail;
+        // an assertion fires in debug builds if it unexpectedly does.
+        static remote_object get_remote_object(const casting_interface& iface);
     };
 
     bool are_in_same_zone(const casting_interface* first, const casting_interface* second);

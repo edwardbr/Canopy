@@ -20,6 +20,7 @@ endif()
 if(CANOPY_BUILD_ENCLAVE)
   add_library(
     rpc_enclave
+    include/rpc/internal/address_utils.h
     include/rpc/internal/assert.h
     include/rpc/internal/casting_interface.h
     include/rpc/internal/error_codes.h
@@ -34,6 +35,7 @@ if(CANOPY_BUILD_ENCLAVE)
     include/rpc/internal/types.h
     include/rpc/internal/transport.h
     include/rpc/internal/version.h
+    src/address_utils.cpp
     src/rpc_types.cpp
     src/casting_interface.cpp
     src/error_codes.cpp
@@ -68,6 +70,7 @@ endif()
 # ######################################################################################################################
 add_library(
   rpc
+  include/rpc/internal/address_utils.h
   include/rpc/internal/assert.h
   include/rpc/internal/casting_interface.h
   include/rpc/internal/error_codes.h
@@ -82,6 +85,7 @@ add_library(
   include/rpc/internal/transport.h
   include/rpc/internal/types.h
   include/rpc/internal/version.h
+  src/address_utils.cpp
   src/rpc_types.cpp
   src/casting_interface.cpp
   src/error_codes.cpp

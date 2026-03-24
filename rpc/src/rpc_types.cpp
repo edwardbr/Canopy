@@ -3,318 +3,261 @@
  *   All rights reserved.
  */
 
-#include <stdexcept>
-
 #include <rpc/rpc.h>
+#include <rpc/internal/address_utils.h>
 
 namespace rpc
 {
     namespace
     {
-        std::vector<uint8_t> capability_bytes_to_vector(const std::array<uint8_t, zone_address::capability_blob_bytes>& capability_bits)
+        // bit layout constants (previously private statics inside zone_address)
+        constexpr uint16_t internet_address_bytes = 16u;
+        constexpr uint8_t version_bits = 8u;
+        constexpr uint8_t address_type_bits = 3u;
+        constexpr uint8_t has_port_bits = 1u;
+        constexpr uint8_t has_validation_bits = 1u;
+        constexpr uint8_t reserved_capability_bits = 3u;
+        constexpr uint8_t size_field_bits = 8u;
+        constexpr uint8_t port_bits = 16u;
+        constexpr uint16_t version_offset_bits = 0u;
+        constexpr uint16_t address_type_offset_bits = version_offset_bits + version_bits;
+        constexpr uint16_t subnet_size_offset_bits = 16u;
+        constexpr uint16_t object_id_size_offset_bits = 24u;
+        constexpr uint16_t header_bits = zone_address::capability_blob_bytes * 8u;
+        constexpr uint8_t address_type_mask = 0x7u;
+        constexpr uint8_t has_port_mask = 0x8u;
+        constexpr uint8_t has_validation_mask = 0x10u;
+
+        std::vector<uint8_t> capability_bytes_to_vector(const zone_address::capability_bits& caps)
         {
-            return std::vector<uint8_t>(capability_bits.begin(), capability_bits.end());
+            return std::vector<uint8_t>(caps.begin(), caps.end());
+        }
+
+        uint16_t address_bits_for_type(zone_address::address_type type)
+        {
+            switch (type)
+            {
+            case zone_address::address_type::local:
+                return 0;
+            case zone_address::address_type::ipv4:
+                return 32;
+            case zone_address::address_type::ipv6:
+            case zone_address::address_type::ipv6_tun:
+                return 128;
+            }
+            return 0;
+        }
+
+        [[nodiscard]] rpc::expected<void, std::string> validate_prefix_bits(
+            const std::vector<uint8_t>& data, uint16_t width, const char* field_name)
+        {
+            auto required_bytes = static_cast<size_t>((width + 7u) / 8u);
+            if (data.size() != required_bytes)
+                return rpc::unexpected<std::string>(std::string(field_name) + " has the wrong byte width");
+            if (width == 0 && !data.empty())
+                return rpc::unexpected<std::string>(std::string(field_name) + " must be empty");
+            if (width == 0)
+                return {};
+
+            auto leading_unused_bits = static_cast<uint8_t>((required_bytes * 8u) - width);
+            if (leading_unused_bits == 0)
+                return {};
+            auto mask = static_cast<uint8_t>(0xffu << (8u - leading_unused_bits));
+            if ((data.front() & mask) != 0)
+                return rpc::unexpected<std::string>(std::string(field_name) + " does not fit in the declared bit width");
+            return {};
+        }
+
+        rpc::expected<std::vector<uint8_t>, std::string> build_fixed_width_prefix(
+            const std::vector<uint8_t>& data, uint16_t width)
+        {
+            if (auto r = validate_prefix_bits(data, width, "routing_prefix"); !r)
+                return rpc::unexpected<std::string>(std::move(r.error()));
+            auto byte_width = static_cast<size_t>((width + 7u) / 8u);
+            std::vector<uint8_t> result(byte_width, 0);
+            for (size_t i = 0; i < data.size(); ++i)
+                result[i] = data[i];
+            return result;
+        }
+
+        rpc::expected<std::vector<uint8_t>, std::string> build_tunnel_host(const std::vector<uint8_t>& routing_prefix,
+            uint16_t routing_bits,
+            uint8_t subnet_size_bits,
+            uint64_t subnet,
+            uint8_t object_id_size_bits,
+            uint64_t object_id)
+        {
+            auto host = std::vector<uint8_t>(internet_address_bytes, 0);
+            auto prefix = build_fixed_width_prefix(routing_prefix, routing_bits);
+            if (!prefix)
+                return rpc::unexpected<std::string>(std::move(prefix.error()));
+            for (size_t i = 0; i < prefix->size(); ++i)
+                host[i] = (*prefix)[i];
+            if (!set_bits_be(host, routing_bits, subnet_size_bits, subnet))
+                return rpc::unexpected<std::string>(std::string("subnet does not fit in subnet_size_bits"));
+            if (!set_bits_be(host, static_cast<uint16_t>(routing_bits + subnet_size_bits), object_id_size_bits, object_id))
+                return rpc::unexpected<std::string>(std::string("object_id does not fit in object_id_size_bits"));
+            return host;
+        }
+
+        uint8_t capability_version(const zone_address::capability_bits& caps)
+        {
+            return static_cast<uint8_t>(get_bits_le(capability_bytes_to_vector(caps), version_offset_bits, version_bits));
+        }
+
+        uint8_t capability_header_byte(const zone_address::capability_bits& caps)
+        {
+            return static_cast<uint8_t>(get_bits_le(capability_bytes_to_vector(caps),
+                address_type_offset_bits,
+                static_cast<uint16_t>(address_type_bits + has_port_bits + has_validation_bits + reserved_capability_bits)));
+        }
+
+        zone_address::address_type capability_address_type(const zone_address::capability_bits& caps)
+        {
+            return static_cast<zone_address::address_type>(capability_header_byte(caps) & address_type_mask);
+        }
+
+        bool capability_has_port(const zone_address::capability_bits& caps)
+        {
+            return (capability_header_byte(caps) & has_port_mask) != 0;
+        }
+
+        uint8_t capability_subnet_size_bits(const zone_address::capability_bits& caps)
+        {
+            return static_cast<uint8_t>(
+                get_bits_le(capability_bytes_to_vector(caps), subnet_size_offset_bits, size_field_bits));
+        }
+
+        uint8_t capability_object_id_size_bits(const zone_address::capability_bits& caps)
+        {
+            return static_cast<uint8_t>(
+                get_bits_le(capability_bytes_to_vector(caps), object_id_size_offset_bits, size_field_bits));
+        }
+
+        bool capability_has_validation(const zone_address::capability_bits& caps)
+        {
+            return (capability_header_byte(caps) & has_validation_mask) != 0;
+        }
+
+        zone_address::capability_bits make_capability_bits(uint8_t version,
+            zone_address::address_type type,
+            bool has_port,
+            bool has_validation,
+            uint8_t subnet_size_bits,
+            uint8_t object_id_size_bits)
+        {
+            zone_address::capability_bits bits = {};
+            auto data = capability_bytes_to_vector(bits);
+            [[maybe_unused]] bool ok = set_bits_le(data, version_offset_bits, version_bits, version);
+            ok = set_bits_le(data,
+                address_type_offset_bits,
+                static_cast<uint16_t>(address_type_bits + has_port_bits + has_validation_bits + reserved_capability_bits),
+                static_cast<uint8_t>(type) | (has_port ? has_port_mask : 0u) | (has_validation ? has_validation_mask : 0u));
+            ok = set_bits_le(data, subnet_size_offset_bits, size_field_bits, subnet_size_bits);
+            ok = set_bits_le(data, object_id_size_offset_bits, size_field_bits, object_id_size_bits);
+            (void)ok;
+            for (size_t i = 0; i < bits.size(); ++i)
+                bits[i] = data[i];
+            return bits;
+        }
+
+        [[nodiscard]] rpc::expected<void, std::string> validate_constructor_args(const zone_address::capability_bits& caps,
+            uint16_t port,
+            const std::vector<uint8_t>& routing_prefix,
+            uint64_t subnet,
+            uint64_t object_id,
+            const std::vector<uint8_t>& validation_bits)
+        {
+            auto version = capability_version(caps);
+            auto header_byte = capability_header_byte(caps);
+            auto type_code = capability_address_type(caps);
+            auto subnet_size_bits = capability_subnet_size_bits(caps);
+            auto object_id_size_bits = capability_object_id_size_bits(caps);
+            auto has_val = capability_has_validation(caps);
+            auto include_port = capability_has_port(caps);
+
+            if (version != zone_address::version_3)
+                return rpc::unexpected<std::string>("zone_address only supports version 3");
+
+            if ((header_byte & static_cast<uint8_t>(~(address_type_mask | has_port_mask | has_validation_mask))) != 0)
+                return rpc::unexpected<std::string>("zone_address capability bits use reserved values");
+
+            if (static_cast<uint8_t>(type_code) > static_cast<uint8_t>(zone_address::address_type::ipv6_tun))
+                return rpc::unexpected<std::string>("zone_address address_type is not supported");
+
+            if (!include_port && port != 0)
+                return rpc::unexpected<std::string>("zone_address port provided without has_port capability");
+
+            if (has_val && validation_bits.empty())
+                return rpc::unexpected<std::string>("zone_address has_validation set but no validation bytes provided");
+            if (!has_val && !validation_bits.empty())
+                return rpc::unexpected<std::string>(
+                    "zone_address validation bytes provided without has_validation capability");
+
+            if (subnet_size_bits > 64u)
+                return rpc::unexpected<std::string>("zone_address subnet_size_bits must be <= 64");
+            if (object_id_size_bits > 64u)
+                return rpc::unexpected<std::string>("zone_address object_id_size_bits must be <= 64");
+            if (subnet_size_bits < 64u && subnet >= (uint64_t(1) << subnet_size_bits) && subnet_size_bits != 0)
+                return rpc::unexpected<std::string>("zone_address subnet does not fit in subnet_size_bits");
+            if (object_id_size_bits < 64u && object_id >= (uint64_t(1) << object_id_size_bits) && object_id_size_bits != 0)
+                return rpc::unexpected<std::string>("zone_address object_id does not fit in object_id_size_bits");
+
+            switch (type_code)
+            {
+            case zone_address::address_type::local:
+                if (include_port)
+                    return rpc::unexpected<std::string>("local zone_address cannot contain a port");
+                if (!routing_prefix.empty())
+                    return rpc::unexpected<std::string>("local zone_address cannot contain a routing prefix");
+                if (!validation_bits.empty())
+                    return rpc::unexpected<std::string>("local zone_address cannot contain validation bits");
+                break;
+            case zone_address::address_type::ipv4:
+                if (auto r = validate_prefix_bits(routing_prefix, 32u, "routing_prefix"); !r)
+                    return r;
+                break;
+            case zone_address::address_type::ipv6:
+                if (auto r = validate_prefix_bits(routing_prefix, 128u, "routing_prefix"); !r)
+                    return r;
+                break;
+            case zone_address::address_type::ipv6_tun:
+            {
+                if (subnet_size_bits + object_id_size_bits > 128u)
+                    return rpc::unexpected<std::string>("ipv6_tun subnet/object bits exceed 128 bits");
+                auto routing_bits = static_cast<uint16_t>(128u - subnet_size_bits - object_id_size_bits);
+                if (auto r = validate_prefix_bits(routing_prefix, routing_bits, "routing_prefix"); !r)
+                    return r;
+                break;
+            }
+            }
+            return {};
         }
     } // namespace
 
-    uint64_t zone_address::get_bits_le(const std::vector<uint8_t>& data, uint16_t offset, uint16_t width)
+    rpc::expected<void, std::string> zone_address::initialise_blob(const capability_bits& caps,
+        uint16_t port,
+        const std::vector<uint8_t>& routing_prefix,
+        uint64_t subnet,
+        uint64_t object_id,
+        const std::vector<uint8_t>& validation_bits)
     {
-        if (width == 0)
-            return 0;
-
-        if (width > 64u)
-            width = 64u;
-
-        uint64_t value = 0;
-        for (uint16_t i = 0; i < width; ++i)
-        {
-            auto bit = offset + i;
-            auto byte_index = static_cast<size_t>(bit / 8u);
-            if (byte_index >= data.size())
-                break;
-
-            auto mask = static_cast<uint8_t>(1u << (bit % 8u));
-            if ((data[byte_index] & mask) != 0)
-                value |= (uint64_t(1) << i);
-        }
-        return value;
-    }
-
-    bool zone_address::set_bits_le(std::vector<uint8_t>& data, uint16_t offset, uint16_t width, uint64_t value)
-    {
-        if (width == 0)
-            return value == 0;
-
-        if (width < 64u && value >= (uint64_t(1) << width))
-            return false;
-
-        auto required_bits = static_cast<uint32_t>(offset) + static_cast<uint32_t>(width);
-        auto required_bytes = static_cast<size_t>((required_bits + 7u) / 8u);
-        if (data.size() < required_bytes)
-            data.resize(required_bytes, 0);
-
-        for (uint16_t i = 0; i < width; ++i)
-        {
-            auto bit = offset + i;
-            auto& byte = data[bit / 8u];
-            auto mask = static_cast<uint8_t>(1u << (bit % 8u));
-            if (((value >> i) & 1u) != 0)
-                byte = static_cast<uint8_t>(byte | mask);
-            else
-                byte = static_cast<uint8_t>(byte & ~mask);
-        }
-        return true;
-    }
-
-    uint64_t zone_address::get_bits_be(const std::vector<uint8_t>& data, uint16_t offset, uint16_t width)
-    {
-        if (width == 0)
-            return 0;
-
-        if (width > 64u)
-            width = 64u;
-
-        uint64_t value = 0;
-        for (uint16_t i = 0; i < width; ++i)
-        {
-            auto bit = offset + i;
-            auto byte_index = static_cast<size_t>(bit / 8u);
-            auto bit_index = static_cast<uint8_t>(7u - (bit % 8u));
-            value <<= 1u;
-            value |= static_cast<uint64_t>((data[byte_index] >> bit_index) & 1u);
-        }
-        return value;
-    }
-
-    bool zone_address::set_bits_be(std::vector<uint8_t>& data, uint16_t offset, uint16_t width, uint64_t value)
-    {
-        if (width == 0)
-            return value == 0;
-
-        if (width < 64u && value >= (uint64_t(1) << width))
-            return false;
-
-        for (uint16_t i = 0; i < width; ++i)
-        {
-            auto bit = static_cast<uint16_t>(offset + width - 1u - i);
-            auto byte_index = static_cast<size_t>(bit / 8u);
-            auto bit_index = static_cast<uint8_t>(7u - (bit % 8u));
-            auto mask = static_cast<uint8_t>(1u << bit_index);
-            if (((value >> i) & 1u) != 0)
-                data[byte_index] = static_cast<uint8_t>(data[byte_index] | mask);
-            else
-                data[byte_index] = static_cast<uint8_t>(data[byte_index] & ~mask);
-        }
-        return true;
-    }
-
-    uint16_t zone_address::address_bits_for_type(address_type type)
-    {
-        switch (type)
-        {
-        case address_type::local:
-            return 0;
-        case address_type::ipv4:
-            return 32;
-        case address_type::ipv6:
-        case address_type::ipv6_tun:
-            return 128;
-        }
-        return 0;
-    }
-
-    void zone_address::validate_prefix_bits(const std::vector<uint8_t>& data, uint16_t width, const char* field_name)
-    {
-        auto required_bytes = static_cast<size_t>((width + 7u) / 8u);
-        if (data.size() != required_bytes)
-            throw std::invalid_argument(std::string(field_name) + " has the wrong byte width");
-        if (width == 0 && !data.empty())
-            throw std::invalid_argument(std::string(field_name) + " must be empty");
-        if (width == 0)
-            return;
-
-        auto leading_unused_bits = static_cast<uint8_t>((required_bytes * 8u) - width);
-        if (leading_unused_bits == 0)
-            return;
-        auto mask = static_cast<uint8_t>(0xffu << (8u - leading_unused_bits));
-        if ((data.front() & mask) != 0)
-            throw std::invalid_argument(std::string(field_name) + " does not fit in the declared bit width");
-    }
-
-    std::vector<uint8_t> zone_address::build_fixed_width_prefix(const std::vector<uint8_t>& data, uint16_t width)
-    {
-        validate_prefix_bits(data, width, "routing_prefix");
-        auto byte_width = static_cast<size_t>((width + 7u) / 8u);
-        std::vector<uint8_t> result(byte_width, 0);
-        for (size_t i = 0; i < data.size(); ++i)
-        {
-            result[i] = data[i];
-        }
-        return result;
-    }
-
-    std::vector<uint8_t> zone_address::build_tunnel_host(
-        const std::vector<uint8_t>& routing_prefix, uint16_t routing_bits, uint8_t subnet_size_bits, uint64_t subnet, uint8_t object_id_size_bits,
-        uint64_t object_id)
-    {
-        auto host = std::vector<uint8_t>(internet_address_bytes, 0);
-        auto prefix = build_fixed_width_prefix(routing_prefix, routing_bits);
-        for (size_t i = 0; i < prefix.size(); ++i)
-        {
-            host[i] = prefix[i];
-        }
-
-        if (!set_bits_be(host, routing_bits, subnet_size_bits, subnet))
-            throw std::invalid_argument("subnet does not fit in subnet_size_bits");
-        if (!set_bits_be(host, static_cast<uint16_t>(routing_bits + subnet_size_bits), object_id_size_bits, object_id))
-            throw std::invalid_argument("object_id does not fit in object_id_size_bits");
-        return host;
-    }
-
-    uint8_t zone_address::capability_version(const std::array<uint8_t, capability_blob_bytes>& capability_bits)
-    {
-        return static_cast<uint8_t>(get_bits_le(capability_bytes_to_vector(capability_bits), version_offset_bits, version_bits));
-    }
-
-    uint8_t zone_address::capability_header_byte(const std::array<uint8_t, capability_blob_bytes>& capability_bits)
-    {
-        return static_cast<uint8_t>(get_bits_le(capability_bytes_to_vector(capability_bits), address_type_offset_bits,
-            static_cast<uint16_t>(address_type_bits + has_port_bits + reserved_capability_bits)));
-    }
-
-    zone_address::address_type zone_address::capability_address_type(const std::array<uint8_t, capability_blob_bytes>& capability_bits)
-    {
-        return static_cast<address_type>(capability_header_byte(capability_bits) & address_type_mask);
-    }
-
-    bool zone_address::capability_has_port(const std::array<uint8_t, capability_blob_bytes>& capability_bits)
-    {
-        return (capability_header_byte(capability_bits) & has_port_mask) != 0;
-    }
-
-    uint8_t zone_address::capability_subnet_size_bits(const std::array<uint8_t, capability_blob_bytes>& capability_bits)
-    {
-        return static_cast<uint8_t>(get_bits_le(capability_bytes_to_vector(capability_bits), subnet_size_offset_bits, size_field_bits));
-    }
-
-    uint8_t zone_address::capability_object_id_size_bits(const std::array<uint8_t, capability_blob_bytes>& capability_bits)
-    {
-        return static_cast<uint8_t>(get_bits_le(capability_bytes_to_vector(capability_bits), object_id_size_offset_bits, size_field_bits));
-    }
-
-    uint16_t zone_address::capability_validation_size_bits(const std::array<uint8_t, capability_blob_bytes>& capability_bits)
-    {
-        return static_cast<uint16_t>(get_bits_le(capability_bytes_to_vector(capability_bits), validation_size_offset_bits, validation_size_field_bits));
-    }
-
-    std::array<uint8_t, zone_address::capability_blob_bytes> zone_address::make_capability_bits(
-        uint8_t version, address_type type, bool has_port, uint8_t subnet_size_bits, uint8_t object_id_size_bits, uint16_t validation_size_bits)
-    {
-        std::array<uint8_t, capability_blob_bytes> bits = {};
-        auto data = capability_bytes_to_vector(bits);
-        [[maybe_unused]] bool ok = set_bits_le(data, version_offset_bits, version_bits, version);
-        ok = set_bits_le(data, address_type_offset_bits,
-            static_cast<uint16_t>(address_type_bits + has_port_bits + reserved_capability_bits),
-            static_cast<uint8_t>(type) | (has_port ? has_port_mask : 0u));
-        ok = set_bits_le(data, subnet_size_offset_bits, size_field_bits, subnet_size_bits);
-        ok = set_bits_le(data, object_id_size_offset_bits, size_field_bits, object_id_size_bits);
-        ok = set_bits_le(data, validation_size_offset_bits, validation_size_field_bits, validation_size_bits);
-        (void)ok;
-        for (size_t i = 0; i < bits.size(); ++i)
-            bits[i] = data[i];
-        return bits;
-    }
-
-    void zone_address::validate_constructor_args(const std::array<uint8_t, capability_blob_bytes>& capability_bits, uint16_t port,
-        const std::vector<uint8_t>& routing_prefix, uint64_t subnet, uint64_t object_id, const std::vector<uint8_t>& validation_bits)
-    {
-        auto version = capability_version(capability_bits);
-        auto header_byte = capability_header_byte(capability_bits);
-        auto type_code = capability_address_type(capability_bits);
-        auto subnet_size_bits = capability_subnet_size_bits(capability_bits);
-        auto object_id_size_bits = capability_object_id_size_bits(capability_bits);
-        auto validation_size_bits = capability_validation_size_bits(capability_bits);
-        auto include_port = capability_has_port(capability_bits);
-
-        if (version != version_3)
-            throw std::invalid_argument("zone_address only supports version 3");
-
-        if ((header_byte & static_cast<uint8_t>(~(address_type_mask | has_port_mask))) != 0)
-            throw std::invalid_argument("zone_address capability bits use reserved values");
-
-        if (static_cast<uint8_t>(type_code) > static_cast<uint8_t>(address_type::ipv6_tun))
-            throw std::invalid_argument("zone_address address_type is not supported");
-
-        if (!include_port && port != 0)
-            throw std::invalid_argument("zone_address port provided without has_port capability");
-
-        if (validation_bits.size() > (UINT16_MAX / 8u))
-            throw std::invalid_argument("zone_address validation_bits exceed uint16 bit count");
-        if (validation_size_bits != validation_bits.size() * 8u)
-            throw std::invalid_argument("zone_address validation_bits size does not match capability bits");
-
-        if (subnet_size_bits > 64u)
-            throw std::invalid_argument("zone_address subnet_size_bits must be <= 64");
-        if (object_id_size_bits > 64u)
-            throw std::invalid_argument("zone_address object_id_size_bits must be <= 64");
-        if (subnet_size_bits < 64u && subnet >= (uint64_t(1) << subnet_size_bits) && subnet_size_bits != 0)
-            throw std::invalid_argument("zone_address subnet does not fit in subnet_size_bits");
-        if (object_id_size_bits < 64u && object_id >= (uint64_t(1) << object_id_size_bits) && object_id_size_bits != 0)
-            throw std::invalid_argument("zone_address object_id does not fit in object_id_size_bits");
-
-        switch (type_code)
-        {
-        case address_type::local:
-            if (include_port)
-                throw std::invalid_argument("local zone_address cannot contain a port");
-            if (!routing_prefix.empty())
-                throw std::invalid_argument("local zone_address cannot contain a routing prefix");
-            if (!validation_bits.empty())
-                throw std::invalid_argument("local zone_address cannot contain validation bits");
-            break;
-        case address_type::ipv4:
-            validate_prefix_bits(routing_prefix, 32u, "routing_prefix");
-            break;
-        case address_type::ipv6:
-            validate_prefix_bits(routing_prefix, 128u, "routing_prefix");
-            break;
-        case address_type::ipv6_tun:
-        {
-            auto routing_bits = static_cast<uint16_t>(128u - subnet_size_bits - object_id_size_bits);
-            if (subnet_size_bits + object_id_size_bits > 128u)
-                throw std::invalid_argument("ipv6_tun subnet/object bits exceed 128 bits");
-            validate_prefix_bits(routing_prefix, routing_bits, "routing_prefix");
-            break;
-        }
-        }
-    }
-
-    void zone_address::initialise_blob(const std::array<uint8_t, capability_blob_bytes>& capability_bits, uint16_t port,
-        const std::vector<uint8_t>& routing_prefix, uint64_t subnet, uint64_t object_id, const std::vector<uint8_t>& validation_bits)
-    {
-        auto type = capability_address_type(capability_bits);
-        auto include_port = capability_has_port(capability_bits);
-        auto subnet_bits = capability_subnet_size_bits(capability_bits);
-        auto object_bits = capability_object_id_size_bits(capability_bits);
-        auto validation_size_bits = capability_validation_size_bits(capability_bits);
-        if (type == address_type::local)
-        {
-            include_port = false;
-            validation_size_bits = 0;
-        }
+        auto type = capability_address_type(caps);
+        auto include_port = capability_has_port(caps);
+        auto subnet_bits = capability_subnet_size_bits(caps);
+        auto object_bits = capability_object_id_size_bits(caps);
 
         uint32_t total_bits = header_bits;
         if (include_port)
             total_bits += port_bits;
         total_bits += address_bits_for_type(type);
-        if (type == address_type::ipv6_tun)
-            total_bits += validation_size_bits;
-        else
-            total_bits += subnet_bits + object_bits + validation_size_bits;
+        if (type != address_type::ipv6_tun)
+            total_bits += subnet_bits + object_bits;
+        total_bits += static_cast<uint32_t>(validation_bits.size() * 8u);
 
         blob.assign((total_bits + 7u) / 8u, 0);
-        auto capability_data = capability_bytes_to_vector(capability_bits);
-        for (size_t i = 0; i < capability_bits.size(); ++i)
+        auto capability_data = capability_bytes_to_vector(caps);
+        for (size_t i = 0; i < caps.size(); ++i)
             blob[i] = capability_data[i];
         [[maybe_unused]] bool ok = true;
         if (include_port)
@@ -323,30 +266,35 @@ namespace rpc
 
         if (type == address_type::ipv4 || type == address_type::ipv6)
         {
-            write_host_bytes(build_fixed_width_prefix(routing_prefix, address_bits_for_type(type)));
+            auto prefix = build_fixed_width_prefix(routing_prefix, address_bits_for_type(type));
+            if (!prefix)
+                return rpc::unexpected<std::string>(std::move(prefix.error()));
+            write_host_bytes(*prefix);
         }
         else if (type == address_type::ipv6_tun)
         {
             auto routing_bits = static_cast<uint16_t>(128u - subnet_bits - object_bits);
-            write_host_bytes(build_tunnel_host(routing_prefix, routing_bits, subnet_bits, subnet, object_bits, object_id));
+            auto host = build_tunnel_host(routing_prefix, routing_bits, subnet_bits, subnet, object_bits, object_id);
+            if (!host)
+                return rpc::unexpected<std::string>(std::move(host.error()));
+            write_host_bytes(*host);
         }
 
         if (type != address_type::ipv6_tun)
         {
-            [[maybe_unused]] bool subnet_ok = set_subnet(subnet);
-            [[maybe_unused]] bool object_ok = set_object_id(object_id);
-            (void)subnet_ok;
-            (void)object_ok;
+            if (auto r = set_subnet(subnet); !r)
+                return r;
+            if (auto r = set_object_id(object_id); !r)
+                return r;
         }
 
         if (!validation_bits.empty())
         {
             auto offset = validation_offset_bits();
             for (size_t i = 0; i < validation_bits.size(); ++i)
-            {
                 blob[(offset / 8u) + i] = validation_bits[i];
-            }
         }
+        return {};
     }
 
     uint16_t zone_address::address_offset_bits() const
@@ -404,26 +352,38 @@ namespace rpc
 
     void zone_address::clear_validation_bits()
     {
-        auto validation_bits = get_validation_size_bits();
-        if (validation_bits == 0)
+        if (!has_validation())
             return;
-
-        [[maybe_unused]] bool ok = set_bits_le(blob, validation_offset_bits(), validation_bits, 0);
-        (void)ok;
+        auto new_size = static_cast<size_t>(validation_offset_bits() / 8u);
+        blob.resize(new_size);
+        if (blob.size() > 1u)
+            blob[1] = static_cast<uint8_t>(blob[1] & ~has_validation_mask);
     }
 
-    zone_address::zone_address(const construction_args& args)
-        : zone_address(make_capability_bits(args.version, args.type, args.port != 0, args.subnet_size_bits, args.object_id_size_bits,
-              static_cast<uint16_t>(args.validation_bits.size() * 8u)),
-              args.port, args.routing_prefix, args.subnet, args.object_id, args.validation_bits)
+    rpc::expected<zone_address, std::string> zone_address::create(const capability_bits& caps,
+        uint16_t port,
+        const std::vector<uint8_t>& routing_prefix,
+        uint64_t subnet,
+        uint64_t object_id,
+        const std::vector<uint8_t>& validation_bits)
     {
+        if (auto r = validate_constructor_args(caps, port, routing_prefix, subnet, object_id, validation_bits); !r)
+            return rpc::unexpected<std::string>(std::move(r.error()));
+        zone_address result;
+        if (auto r = result.initialise_blob(caps, port, routing_prefix, subnet, object_id, validation_bits); !r)
+            return rpc::unexpected<std::string>(std::move(r.error()));
+        return result;
     }
 
-    zone_address::zone_address(const std::array<uint8_t, capability_blob_bytes>& capability_bits, uint16_t port,
-        const std::vector<uint8_t>& routing_prefix, uint64_t subnet, uint64_t object_id, const std::vector<uint8_t>& validation_bits)
+    rpc::expected<zone_address, std::string> zone_address::create(const construction_args& args)
     {
-        validate_constructor_args(capability_bits, port, routing_prefix, subnet, object_id, validation_bits);
-        initialise_blob(capability_bits, port, routing_prefix, subnet, object_id, validation_bits);
+        auto caps = make_capability_bits(args.version,
+            args.type,
+            args.port != 0,
+            !args.validation_bits.empty(),
+            args.subnet_size_bits,
+            args.object_id_size_bits);
+        return create(caps, args.port, args.routing_prefix, args.subnet, args.object_id, args.validation_bits);
     }
 
     uint8_t zone_address::get_version() const
@@ -435,12 +395,13 @@ namespace rpc
     {
         if (blob.empty())
             return address_type::local;
-        return static_cast<address_type>(get_bits_le(blob, address_type_offset_bits, address_type_bits) & address_type_mask);
+        return static_cast<address_type>(
+            get_bits_le(blob, address_type_offset_bits, address_type_bits) & address_type_mask);
     }
 
-    std::array<uint8_t, zone_address::capability_blob_bytes> zone_address::get_capability_bits() const
+    zone_address::capability_bits zone_address::get_capability_bits() const
     {
-        std::array<uint8_t, capability_blob_bytes> bits = {};
+        capability_bits bits = {};
         for (size_t i = 0; i < bits.size() && i < blob.size(); ++i)
             bits[i] = blob[i];
         return bits;
@@ -468,9 +429,19 @@ namespace rpc
         return blob.empty() ? 0u : static_cast<uint8_t>(get_bits_le(blob, object_id_size_offset_bits, size_field_bits));
     }
 
-    uint16_t zone_address::get_validation_size_bits() const
+    bool zone_address::has_validation() const
     {
-        return blob.empty() ? 0u : static_cast<uint16_t>(get_bits_le(blob, validation_size_offset_bits, validation_size_field_bits));
+        return capability_has_validation(get_capability_bits());
+    }
+
+    uint32_t zone_address::get_validation_size_bytes() const
+    {
+        if (blob.empty())
+            return 0u;
+        auto offset_bytes = static_cast<size_t>(validation_offset_bits() / 8u);
+        if (blob.size() <= offset_bytes)
+            return 0u;
+        return static_cast<uint32_t>(blob.size() - offset_bytes);
     }
 
     std::vector<uint8_t> zone_address::get_routing_prefix() const
@@ -536,64 +507,75 @@ namespace rpc
         return get_bits_le(blob, object_offset_bits(), object_bits);
     }
 
-    bool zone_address::set_subnet(uint64_t val)
+    rpc::expected<void, std::string> zone_address::set_subnet(uint64_t val)
     {
         auto subnet_bits = get_subnet_size_bits();
         if (subnet_bits == 0)
-            return val == 0;
+        {
+            if (val != 0)
+                return rpc::unexpected<std::string>("subnet value is non-zero but subnet_size_bits is 0");
+            return {};
+        }
 
         if (subnet_bits < 64u && val >= (uint64_t(1) << subnet_bits))
-            return false;
+            return rpc::unexpected<std::string>("subnet value does not fit in subnet_size_bits");
 
         if (get_address_type() == address_type::ipv6_tun)
         {
             auto host = read_host_bytes();
             auto start = static_cast<uint16_t>(128u - get_object_id_size_bits() - subnet_bits);
             if (!set_bits_be(host, start, subnet_bits, val))
-                return false;
+                return rpc::unexpected<std::string>("subnet value does not fit in subnet_size_bits");
             write_host_bytes(host);
-            return true;
+            return {};
         }
 
-        return set_bits_le(blob, subnet_offset_bits(), subnet_bits, val);
+        if (!set_bits_le(blob, subnet_offset_bits(), subnet_bits, val))
+            return rpc::unexpected<std::string>("subnet value does not fit in subnet_size_bits");
+        return {};
     }
 
-    bool zone_address::set_object_id(uint64_t val)
+    rpc::expected<void, std::string> zone_address::set_object_id(uint64_t val)
     {
         auto object_bits = get_object_id_size_bits();
         if (object_bits == 0)
-            return val == 0;
+        {
+            if (val != 0)
+                return rpc::unexpected<std::string>("object_id value is non-zero but object_id_size_bits is 0");
+            return {};
+        }
 
         if (object_bits < 64u && val >= (uint64_t(1) << object_bits))
-            return false;
+            return rpc::unexpected<std::string>("object_id value does not fit in object_id_size_bits");
 
         if (get_address_type() == address_type::ipv6_tun)
         {
             auto host = read_host_bytes();
             auto start = static_cast<uint16_t>(128u - object_bits);
             if (!set_bits_be(host, start, object_bits, val))
-                return false;
+                return rpc::unexpected<std::string>("object_id value does not fit in object_id_size_bits");
             write_host_bytes(host);
-            return true;
+            return {};
         }
 
-        return set_bits_le(blob, object_offset_bits(), object_bits, val);
+        if (!set_bits_le(blob, object_offset_bits(), object_bits, val))
+            return rpc::unexpected<std::string>("object_id value does not fit in object_id_size_bits");
+        return {};
     }
 
     zone_address zone_address::zone_only() const
     {
         zone_address copy(*this);
-        [[maybe_unused]] bool ok = copy.set_object_id(0);
+        [[maybe_unused]] auto r = copy.set_object_id(0);
         copy.clear_validation_bits();
-        (void)ok;
         return copy;
     }
 
-    zone_address zone_address::with_object(uint64_t obj) const
+    rpc::expected<zone_address, std::string> zone_address::with_object(uint64_t obj) const
     {
-        zone_address copy(*this);
-        [[maybe_unused]] bool ok = copy.set_object_id(obj);
-        (void)ok;
+        zone_address copy(zone_only());
+        if (auto r = copy.set_object_id(obj); !r)
+            return rpc::unexpected<std::string>(std::move(r.error()));
         return copy;
     }
 

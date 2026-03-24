@@ -61,5 +61,14 @@ namespace rpc
         return proxy->get_destination_zone_id();
     }
 
+    remote_object casting_interface::get_remote_object(const casting_interface& iface)
+    {
+        auto dest = get_destination_zone(iface);
+        auto obj = get_object_id(iface);
+        auto r = dest.with_object(obj);
+        RPC_ASSERT(r.has_value());
+        return std::move(*r);
+    }
+
     // (Removed dead commented-out function get_channel_zone)
 }
