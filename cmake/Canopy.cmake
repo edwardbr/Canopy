@@ -257,6 +257,16 @@ if(NOT DEPENDENCIES_LOADED)
         message(FATAL_ERROR "submodule init failed")
       endif()
 
+      # Clear any 'update = none' config that prevents submodule update from fetching
+      foreach(submodule ${CANOPY_REQUIRED_SUBMODULES})
+        execute_process(
+          COMMAND ${GIT_EXECUTABLE} config --local --unset submodule.${submodule}.update
+          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+          RESULT_VARIABLE GIT_UNSET_RESULT
+          OUTPUT_QUIET
+          ERROR_QUIET)
+      endforeach()
+
       # Update all required submodules except llama.cpp (handled separately with --depth 1)
       set(CANOPY_STANDARD_SUBMODULES ${CANOPY_REQUIRED_SUBMODULES})
       list(REMOVE_ITEM CANOPY_STANDARD_SUBMODULES submodules/llama.cpp)
