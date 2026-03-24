@@ -100,7 +100,7 @@ jobs:
           fetch-depth: 0
           submodules: false
       - name: CMake configure (${{ matrix.name }})
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ --preset=${{ matrix.preset }}
+        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ -DGIT_SUBMODULE=ON --preset=${{ matrix.preset }}
       - name: Build (${{ matrix.name }})
         run: cmake --build ${{ matrix.build_dir }}
       - name: Test (${{ matrix.name }})

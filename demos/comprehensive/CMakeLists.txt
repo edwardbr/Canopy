@@ -20,7 +20,9 @@ file(GLOB_RECURSE DEMO_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src
 # Create executables for each demo category Note: These require the generated websocket_demo.h header which is created
 # by generator
 
-# Transport demos (require Debug_Coroutine for TCP and SPSC)
+# ######################################################################################################################
+# local
+
 add_executable(local_transport_demo src/transport/local_transport_demo.cpp)
 target_compile_definitions(local_transport_demo PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
@@ -33,6 +35,11 @@ target_link_options(local_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET local_transport_demo PROPERTY COMPILE_PDB_NAME local_transport_demo)
 
 if(CANOPY_BUILD_COROUTINE)
+  # Transport demos (require Debug_Coroutine for TCP and SPSC)
+
+  # ####################################################################################################################
+  # tcp
+
   add_executable(tcp_transport_demo src/transport/tcp/tcp_transport_demo.cpp)
   target_compile_definitions(tcp_transport_demo PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
@@ -51,9 +58,10 @@ if(CANOPY_BUILD_COROUTINE)
   target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(tcp_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET tcp_transport_demo PROPERTY COMPILE_PDB_NAME tcp_transport_demo)
-endif()
 
-if(CANOPY_BUILD_COROUTINE)
+  # ####################################################################################################################
+  # spsc
+
   add_executable(spsc_transport_demo src/transport/spsc_transport_demo.cpp)
   target_compile_definitions(spsc_transport_demo PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
