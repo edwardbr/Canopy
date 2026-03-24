@@ -22,7 +22,9 @@ if(CANOPY_STANDALONE)
 
   add_subdirectory(args)
   add_library(args::args ALIAS args)
-  add_subdirectory(googletest)
+  if(CANOPY_BUILD_TEST)
+    add_subdirectory(googletest)
+  endif()
 
   add_library(yas_common INTERFACE)
 
@@ -45,30 +47,32 @@ if(CANOPY_STANDALONE)
   add_subdirectory(json)
   add_subdirectory(json-schema-validator)
 
-  # Protocol Buffers - C++ only
-  message("Protocol Buffers - building C++ components only")
-  set(protobuf_INSTALL
-      OFF
-      CACHE BOOL "Install protobuf" FORCE)
-  set(protobuf_BUILD_TESTS
-      OFF
-      CACHE BOOL "Build protobuf tests" FORCE)
-  set(protobuf_BUILD_CONFORMANCE
-      OFF
-      CACHE BOOL "Build conformance tests" FORCE)
-  set(protobuf_BUILD_EXAMPLES
-      OFF
-      CACHE BOOL "Build examples" FORCE)
-  set(protobuf_BUILD_PROTOBUF_BINARIES
-      ON
-      CACHE BOOL "Build protobuf libraries and protoc" FORCE)
-  set(protobuf_BUILD_PROTOC_BINARIES
-      ON
-      CACHE BOOL "Build protoc compiler" FORCE)
-  set(protobuf_BUILD_LIBUPB
-      ON
-      CACHE BOOL "Build libupb (required for protoc)" FORCE)
-  add_subdirectory(protobuf)
+  if(CANOPY_BUILD_PROTOCOL_BUFFERS)
+    # Protocol Buffers - C++ only
+    message("Protocol Buffers - building C++ components only")
+    set(protobuf_INSTALL
+        OFF
+        CACHE BOOL "Install protobuf" FORCE)
+    set(protobuf_BUILD_TESTS
+        OFF
+        CACHE BOOL "Build protobuf tests" FORCE)
+    set(protobuf_BUILD_CONFORMANCE
+        OFF
+        CACHE BOOL "Build conformance tests" FORCE)
+    set(protobuf_BUILD_EXAMPLES
+        OFF
+        CACHE BOOL "Build examples" FORCE)
+    set(protobuf_BUILD_PROTOBUF_BINARIES
+        ON
+        CACHE BOOL "Build protobuf libraries and protoc" FORCE)
+    set(protobuf_BUILD_PROTOC_BINARIES
+        ON
+        CACHE BOOL "Build protoc compiler" FORCE)
+    set(protobuf_BUILD_LIBUPB
+        ON
+        CACHE BOOL "Build libupb (required for protoc)" FORCE)
+    add_subdirectory(protobuf)
+  endif()
 
   if(CANOPY_BUILD_COROUTINE)
     set(CARES_STATIC
@@ -90,45 +94,71 @@ if(CANOPY_STANDALONE)
     # "${CMAKE_SOURCE_DIR}/submodules/c-ares")
     add_subdirectory(c-ares)
     add_subdirectory(libcoro_for_enclaves)
-    add_subdirectory(wslay)
+    if(CANOPY_BUILD_WEBSOCKET)
+      add_subdirectory(wslay)
 
-    # llhttp for HTTP parsing - build as simple static library Install dependencies and generate llhttp.c from
-    # TypeScript source
-    find_program(NODE_EXECUTABLE node)
-    find_program(NPM_EXECUTABLE npm)
+      # llhttp for HTTP parsing - build as simple static library Install dependencies and generate llhttp.c from
+      # TypeScript source
+      find_program(NODE_EXECUTABLE node)
+      find_program(NPM_EXECUTABLE npm)
 
-    if(NOT NODE_EXECUTABLE)
-      message(FATAL_ERROR "node executable not found")
+      if(NOT NODE_EXECUTABLE)
+        message(FATAL_ERROR "node executable not found")
+      endif()
+
+      add_custom_target(
+        llhttp_install_deps
+        COMMAND ${CMAKE_COMMAND} -E env NPM_CONFIG_LOGLEVEL=error ${NPM_EXECUTABLE} install --ignore-scripts
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
+        COMMENT "Installing llhttp dependencies")
+
+      add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h
+        COMMAND ${CMAKE_COMMAND} -E env NODE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/llhttp/node_modules ${NODE_EXECUTABLE}
+                --import tsx bin/generate.ts
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
+        DEPENDS llhttp_install_deps
+        COMMENT "Generating llhttp.c and llhttp.h")
+
+      add_library(
+        llhttp_static STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c)
+      add_custom_target(llhttp_generate DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c
+                                                ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h)
+      add_dependencies(llhttp_static llhttp_generate)
+      target_include_directories(llhttp_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build
+                                                      ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native)
     endif()
 
-    add_custom_target(
-      llhttp_install_deps
-      COMMAND ${CMAKE_COMMAND} -E env NPM_CONFIG_LOGLEVEL=error ${NPM_EXECUTABLE} install --ignore-scripts
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
-      COMMENT "Installing llhttp dependencies")
-
-    add_custom_command(
-      OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h
-      COMMAND ${CMAKE_COMMAND} -E env NODE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/llhttp/node_modules ${NODE_EXECUTABLE}
-              --import tsx bin/generate.ts
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
-      DEPENDS llhttp_install_deps
-      COMMENT "Generating llhttp.c and llhttp.h")
-
-    add_library(
-      llhttp_static STATIC
-      ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
-      ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c)
-    add_custom_target(llhttp_generate DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c
-                                              ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h)
-    add_dependencies(llhttp_static llhttp_generate)
-    target_include_directories(llhttp_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build
-                                                    ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native)
-
     if(CANOPY_BUILD_DEMOS)
+      # llama.cpp is an optional submodule (update = none in .gitmodules). Initialise it on
+      # demand so that users who do not need demos skip the large download entirely.
+      if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/CMakeLists.txt")
+        find_package(Git QUIET)
+        if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+          message(STATUS "Initializing llama.cpp submodule (this may take a moment)...")
+          execute_process(
+            COMMAND ${GIT_EXECUTABLE} submodule update --init --depth 1 submodules/llama.cpp
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            RESULT_VARIABLE LLAMA_SUBMODULE_RESULT)
+          if(NOT LLAMA_SUBMODULE_RESULT EQUAL 0)
+            message(
+              FATAL_ERROR
+                "Failed to initialize the llama.cpp submodule (exit ${LLAMA_SUBMODULE_RESULT}).\n"
+                "Run manually: git submodule update --init submodules/llama.cpp")
+          endif()
+        else()
+          message(
+            FATAL_ERROR
+              "llama.cpp submodule is not initialized and git is not available.\n"
+              "Run: git submodule update --init submodules/llama.cpp")
+        endif()
+      endif()
       set(LLAMA_BUILD_COMMON ON)
-      # set(GGML_CUDA ON) set(CMAKE_CUDA_ARCHITECTURES 61) set(GGML_CUDA_F16 OFF) set(CMAKE_CUDA_COMPILER
-      # /usr/local/cuda/bin/nvcc) set(CMAKE_CUDA_FLAGS "-allow-unsupported-compiler")
+      # set(GGML_CUDA ON) set(CMAKE_CUDA_ARCHITECTURES 61) set(GGML_CUDA_F16 OFF)
+      # set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc) set(CMAKE_CUDA_FLAGS
+      # "-allow-unsupported-compiler")
       add_subdirectory(llama.cpp)
     endif()
   endif()

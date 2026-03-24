@@ -151,7 +151,22 @@ function(
   endif()
 
   if(${params_protocol_buffers})
-    set(generate_protobuf TRUE)
+    if(CANOPY_BUILD_PROTOCOL_BUFFERS)
+      set(generate_protobuf TRUE)
+    elseif(generate_yas)
+      message(
+        STATUS
+          "Protocol Buffers generation requested for '${name}', but CANOPY_BUILD_PROTOCOL_BUFFERS is OFF. "
+          "Continuing with the requested YAS format(s) only.")
+    else()
+      message(
+        FATAL_ERROR
+          "Protocol Buffers generation was requested for '${name}', but CANOPY_BUILD_PROTOCOL_BUFFERS is OFF "
+          "and no alternative generated serialization format was requested.")
+    endif()
+  endif()
+
+  if(generate_protobuf)
     set(protobuf_path ${sub_directory}/protobuf/${base_filename}.proto)
     set(full_protobuf_path ${output_path}/src/${protobuf_path})
     set(protobuf_cpp_path ${sub_directory}/protobuf/${base_filename}.cpp)

@@ -12,9 +12,12 @@ add_library(
   core/src/stream.cpp
   tcp/src/stream.cpp
   tls/src/stream.cpp
-  websocket/src/stream.cpp
   spsc_queue/src/stream.cpp
   spsc_wrapping/src/stream.cpp)
+
+if(CANOPY_BUILD_WEBSOCKET)
+  target_sources(streaming PRIVATE websocket/src/stream.cpp)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(streaming PRIVATE io_uring_tcp/src/stream.cpp)
@@ -26,12 +29,15 @@ target_include_directories(
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tcp/include>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tls/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/websocket/include>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/spsc_queue/include>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/spsc_wrapping/include>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/io_uring/include>"
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/io_uring_tcp/include>"
   PRIVATE ${CANOPY_INCLUDES})
+
+if(CANOPY_BUILD_WEBSOCKET)
+  target_include_directories(streaming PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/websocket/include>")
+endif()
 
 target_compile_definitions(streaming PRIVATE ${CANOPY_DEFINES})
 if(CANOPY_IO_URING_SQPOLL)
@@ -45,10 +51,13 @@ target_link_libraries(
   PUBLIC libcoro
          OpenSSL::Crypto
          OpenSSL::SSL
-         wslay
          rpc
          canopy_network_config
          spsc_queue)
+
+if(CANOPY_BUILD_WEBSOCKET)
+  target_link_libraries(streaming PUBLIC wslay)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(streaming PUBLIC uring)
