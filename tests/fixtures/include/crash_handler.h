@@ -134,11 +134,16 @@ namespace crash_handler
         ~crash_handler() = default;
 
         // Signal handlers
-        static void handle_crash(int signal, siginfo_t* info, void* context);
+        static void handle_crash(
+            int signal,
+            siginfo_t* info,
+            void* context);
 
         // Stack trace collection
         static std::vector<void*> collect_stack_trace(int max_frames);
-        static std::vector<thread_info> collect_all_thread_stacks(int max_threads, int max_frames);
+        static std::vector<thread_info> collect_all_thread_stacks(
+            int max_threads,
+            int max_frames);
         static std::string get_thread_name(pid_t thread_id);
         static std::string get_thread_state(pid_t thread_id);
 

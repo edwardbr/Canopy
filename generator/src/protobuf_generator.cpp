@@ -42,7 +42,8 @@ namespace protobuf_generator
 
     // Forward declarations
     std::string sanitize_type_name(const std::string& type_name);
-    void write_single_interface_service(const class_entity& lib,
+    void write_single_interface_service(
+        const class_entity& lib,
         const std::shared_ptr<class_entity>& interface_entity,
         writer& proto,
         std::set<std::shared_ptr<class_entity>>& referenced_interfaces,
@@ -72,7 +73,9 @@ namespace protobuf_generator
     // Helper function to get full namespace prefix for an interface entity
     // Walks up the owner chain to build the full namespace path
     std::string get_interface_namespace_prefix(
-        const std::string& module_name, const class_entity& lib, const class_entity& interface_entity)
+        const std::string& module_name,
+        const class_entity& lib,
+        const class_entity& interface_entity)
     {
         std::vector<std::string> namespace_parts;
 
@@ -134,7 +137,10 @@ namespace protobuf_generator
 
     // Helper function to extract template arguments, properly handling nested templates
     // Returns the position after the closing '>' bracket
-    size_t extract_template_content(const std::string& type, size_t start_pos, std::string& content)
+    size_t extract_template_content(
+        const std::string& type,
+        size_t start_pos,
+        std::string& content)
     {
         if (start_pos >= type.length() || type[start_pos] != '<')
             return std::string::npos;
@@ -160,7 +166,10 @@ namespace protobuf_generator
 
     // Helper function to split template arguments at the top-level comma
     // Handles nested templates like std::map<std::string, std::vector<int>>
-    bool split_template_args(const std::string& args, std::string& first, std::string& second)
+    bool split_template_args(
+        const std::string& args,
+        std::string& first,
+        std::string& second)
     {
         int bracket_count = 0;
         for (size_t i = 0; i < args.length(); ++i)
@@ -182,7 +191,9 @@ namespace protobuf_generator
 
     // Helper function to check if a type is a map container type
     // Supports std::map, std::unordered_map, and std::flat_map
-    bool is_map_type(const std::string& type, std::string& prefix)
+    bool is_map_type(
+        const std::string& type,
+        std::string& prefix)
     {
         if (type.find("std::map<") == 0)
         {
@@ -203,7 +214,9 @@ namespace protobuf_generator
     }
 
     // Helper function to check if a type is a vector/array container type
-    bool is_sequence_type(const std::string& type, std::string& prefix)
+    bool is_sequence_type(
+        const std::string& type,
+        std::string& prefix)
     {
         if (type.find("std::vector<") == 0)
         {
@@ -501,7 +514,9 @@ namespace protobuf_generator
     }
 
     // Helper function to get the fully scoped name for a type
-    void build_fully_scoped_name(const class_entity* entity, std::string& name)
+    void build_fully_scoped_name(
+        const class_entity* entity,
+        std::string& name)
     {
         auto* owner = entity->get_owner();
         if (owner && !owner->get_name().empty())
@@ -513,7 +528,10 @@ namespace protobuf_generator
     }
 
     // Helper function to write a message definition for a struct/class
-    void write_message_definition(const class_entity& entity, writer& proto, int& field_number)
+    void write_message_definition(
+        const class_entity& entity,
+        writer& proto,
+        int& field_number)
     {
         // Start the message definition
         proto("message {} {{", sanitize_type_name(entity.get_name()));
@@ -579,7 +597,8 @@ namespace protobuf_generator
     }
 
     // Helper function to write a concrete template instantiation message
-    void write_template_instantiation(const class_entity& template_entity,
+    void write_template_instantiation(
+        const class_entity& template_entity,
         const std::string& template_param,
         const std::string& concrete_name,
         writer& proto,
@@ -648,7 +667,9 @@ namespace protobuf_generator
     // the unified rpc.remote_object type instead
 
     // Helper function to process imports from IDL imports
-    void write_imports(const class_entity& lib, writer& proto)
+    void write_imports(
+        const class_entity& lib,
+        writer& proto)
     {
         // Process imported entities to generate import statements
         // We'll collect unique import libraries from the classes in the entity
@@ -727,7 +748,9 @@ namespace protobuf_generator
     }
 
     // Helper function to collect template instantiations from a class/namespace (recursive)
-    void collect_template_instantiations(const class_entity& lib, std::set<TemplateInstantiation>& instantiations)
+    void collect_template_instantiations(
+        const class_entity& lib,
+        std::set<TemplateInstantiation>& instantiations)
     {
         // Scan all interfaces for template usage
         for (auto& interface_elem : lib.get_elements(entity_type::INTERFACE))
@@ -852,13 +875,16 @@ namespace protobuf_generator
     }
 
     // Operator for set comparison of TemplateInstantiation
-    bool operator<(const TemplateInstantiation& a, const TemplateInstantiation& b)
+    bool operator<(
+        const TemplateInstantiation& a,
+        const TemplateInstantiation& b)
     {
         return a.concrete_name < b.concrete_name;
     }
 
     // Process a namespace and its contents
-    void write_namespace(bool from_host,
+    void write_namespace(
+        bool from_host,
         const class_entity& lib,
         std::string prefix,
         writer& proto,
@@ -1017,7 +1043,8 @@ namespace protobuf_generator
     }
 
     // Helper function to write a single namespace to a file
-    void write_single_namespace(const class_entity& lib,
+    void write_single_namespace(
+        const class_entity& lib,
         const class_entity& current_lib,
         const std::filesystem::path& output_path,
         const std::filesystem::path& sub_directory,
@@ -1238,7 +1265,8 @@ namespace protobuf_generator
     }
 
     // Helper function to write a single interface service to a file
-    void write_single_interface_service(const class_entity& lib,
+    void write_single_interface_service(
+        const class_entity& lib,
         const std::shared_ptr<class_entity>& interface_entity,
         writer& proto,
         std::set<std::shared_ptr<class_entity>>& referenced_interfaces,
@@ -1513,7 +1541,8 @@ namespace protobuf_generator
 
     // entry point - generates multiple files for nested namespaces
     // Returns a vector of generated .proto file paths (relative to output_path/src)
-    std::vector<std::string> write_files(const class_entity& lib,
+    std::vector<std::string> write_files(
+        const class_entity& lib,
         const std::filesystem::path& output_path,
         const std::filesystem::path& sub_directory,
         const std::filesystem::path& base_filename)
@@ -1822,7 +1851,9 @@ namespace protobuf_generator
     }
 
     // Helper to check if a type is an enum defined in the IDL
-    bool is_enum_type(const class_entity& lib, const std::string& type_str)
+    bool is_enum_type(
+        const class_entity& lib,
+        const std::string& type_str)
     {
         std::string norm_type = normalize_type(type_str);
 
@@ -1857,7 +1888,8 @@ namespace protobuf_generator
     }
 
     // Helper to write a single proxy serialization function for protobuf
-    void write_proxy_protobuf_method(const class_entity& lib,
+    void write_proxy_protobuf_method(
+        const class_entity& lib,
         const class_entity& interface_entity,
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
@@ -1954,9 +1986,10 @@ namespace protobuf_generator
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
-            bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
-                                 || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::remote_object") != std::string::npos);
+            bool is_interface
+                = (param_type.find("rpc::shared_ptr") != std::string::npos
+                    || param_type.find("rpc::optimistic_ptr") != std::string::npos
+                    || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
@@ -2039,7 +2072,8 @@ namespace protobuf_generator
     }
 
     // Helper to write protobuf deserializer (response parsing) method
-    void write_proxy_protobuf_deserializer(const class_entity& lib,
+    void write_proxy_protobuf_deserializer(
+        const class_entity& lib,
         const class_entity& interface_entity,
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
@@ -2136,9 +2170,10 @@ namespace protobuf_generator
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
-            bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
-                                 || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::remote_object") != std::string::npos);
+            bool is_interface
+                = (param_type.find("rpc::shared_ptr") != std::string::npos
+                    || param_type.find("rpc::optimistic_ptr") != std::string::npos
+                    || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
@@ -2216,7 +2251,8 @@ namespace protobuf_generator
     }
 
     // Helper to write protobuf stub deserializer (request parsing) method
-    void write_stub_protobuf_deserializer(const class_entity& lib,
+    void write_stub_protobuf_deserializer(
+        const class_entity& lib,
         const class_entity& interface_entity,
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
@@ -2324,9 +2360,10 @@ namespace protobuf_generator
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
-            bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
-                                 || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::remote_object") != std::string::npos);
+            bool is_interface
+                = (param_type.find("rpc::shared_ptr") != std::string::npos
+                    || param_type.find("rpc::optimistic_ptr") != std::string::npos
+                    || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
@@ -2404,7 +2441,8 @@ namespace protobuf_generator
     }
 
     // Helper to write protobuf stub serializer (response creation) method
-    void write_stub_protobuf_serializer(const class_entity& lib,
+    void write_stub_protobuf_serializer(
+        const class_entity& lib,
         const class_entity& interface_entity,
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
@@ -2501,9 +2539,10 @@ namespace protobuf_generator
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
-            bool is_interface = (param_type.find("rpc::shared_ptr") != std::string::npos
-                                 || param_type.find("rpc::optimistic_ptr") != std::string::npos
-                                 || param_type.find("rpc::remote_object") != std::string::npos);
+            bool is_interface
+                = (param_type.find("rpc::shared_ptr") != std::string::npos
+                    || param_type.find("rpc::optimistic_ptr") != std::string::npos
+                    || param_type.find("rpc::remote_object") != std::string::npos);
 
             if (is_interface)
             {
@@ -2592,7 +2631,10 @@ namespace protobuf_generator
 
     // Helper to write protobuf C++ implementation for an interface
     void write_interface_protobuf_cpp(
-        const class_entity& lib, const class_entity& interface_entity, const std::string& package_name, writer& cpp)
+        const class_entity& lib,
+        const class_entity& interface_entity,
+        const std::string& package_name,
+        writer& cpp)
     {
         std::string interface_name = interface_entity.get_name();
 
@@ -2670,7 +2712,10 @@ namespace protobuf_generator
     }
 
     // Helper to extract map key and value types
-    std::pair<std::string, std::string> extract_map_types(const std::string& type_str)
+    std::pair<
+        std::string,
+        std::string>
+    extract_map_types(const std::string& type_str)
     {
         size_t start = type_str.find('<');
         if (start == std::string::npos)
@@ -2720,7 +2765,8 @@ namespace protobuf_generator
     }
 
     // Forward declaration
-    void generate_struct_to_proto_copy(const class_entity& root_entity,
+    void generate_struct_to_proto_copy(
+        const class_entity& root_entity,
         const class_entity* struct_entity,
         const std::string& cpp_var,
         const std::string& proto_var,
@@ -2728,7 +2774,9 @@ namespace protobuf_generator
         const std::string& indent);
 
     // Helper to find a struct entity by name in the class hierarchy
-    const class_entity* find_struct_by_name(const class_entity& root, const std::string& name)
+    const class_entity* find_struct_by_name(
+        const class_entity& root,
+        const std::string& name)
     {
         // Extract unqualified name for cross-namespace lookup (e.g. "rpc::remote_object" -> "remote_object")
         std::string unqualified = name;
@@ -2764,7 +2812,8 @@ namespace protobuf_generator
     }
 
     // Helper to generate code that copies fields from C++ struct to protobuf message
-    void generate_struct_to_proto_copy(const class_entity& root_entity,
+    void generate_struct_to_proto_copy(
+        const class_entity& root_entity,
         const class_entity* struct_entity,
         const std::string& cpp_var,
         const std::string& proto_var,
@@ -2800,7 +2849,8 @@ namespace protobuf_generator
                     if (nested_struct)
                     {
                         cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
-                        generate_struct_to_proto_copy(root_entity,
+                        generate_struct_to_proto_copy(
+                            root_entity,
                             nested_struct,
                             cpp_var + "." + member_name,
                             "(*" + proto_var + ".mutable_" + field_name + "())",
@@ -2813,7 +2863,8 @@ namespace protobuf_generator
     }
 
     // Helper to generate code that copies fields from protobuf message to C++ struct
-    void generate_proto_to_struct_copy(const class_entity& root_entity,
+    void generate_proto_to_struct_copy(
+        const class_entity& root_entity,
         const class_entity* struct_entity,
         const std::string& proto_var,
         const std::string& cpp_var,
@@ -2849,7 +2900,8 @@ namespace protobuf_generator
                     if (nested_struct)
                     {
                         cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
-                        generate_proto_to_struct_copy(root_entity,
+                        generate_proto_to_struct_copy(
+                            root_entity,
                             nested_struct,
                             proto_var + "." + field_name + "()",
                             cpp_var + "." + member_name,
@@ -2884,7 +2936,10 @@ namespace protobuf_generator
 
     // Helper to write protobuf struct member serialization implementations
     void write_struct_protobuf_cpp(
-        const class_entity& root_entity, const class_entity& struct_entity, const std::string& package_name, writer& cpp)
+        const class_entity& root_entity,
+        const class_entity& struct_entity,
+        const std::string& package_name,
+        writer& cpp)
     {
         std::string struct_name = struct_entity.get_name();
         std::string proto_message_name = sanitize_type_name(struct_name);
@@ -3373,7 +3428,8 @@ namespace protobuf_generator
     }
 
     // Helper to write explicit template instantiation protobuf implementations
-    void write_template_instantiation_protobuf_cpp(const class_entity& struct_entity,
+    void write_template_instantiation_protobuf_cpp(
+        const class_entity& struct_entity,
         const std::string& template_param,
         const std::string& concrete_name,
         const std::string& package_name,
@@ -3464,7 +3520,10 @@ namespace protobuf_generator
 
     // Helper to write protobuf C++ for a namespace
     void write_namespace_protobuf_cpp(
-        const class_entity& root_entity, const class_entity& lib, const std::string& package_name, writer& cpp)
+        const class_entity& root_entity,
+        const class_entity& lib,
+        const std::string& package_name,
+        writer& cpp)
     {
         // Generate explicit template specializations FIRST so they are defined before any struct
         // implementation that might call them, preventing "explicit specialization after instantiation" errors.
@@ -3559,7 +3618,8 @@ namespace protobuf_generator
     }
 
     // entry point - generates protobuf C++ serialization implementation
-    void write_cpp_files(const class_entity& lib,
+    void write_cpp_files(
+        const class_entity& lib,
         std::ostream& cpp_stream,
         const std::vector<std::string>& namespaces,
         const std::filesystem::path& header_filename,

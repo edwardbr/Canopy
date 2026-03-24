@@ -63,7 +63,9 @@ namespace canopy::network_config
             return true;
         }
 
-        void store_ipv4_bytes(uint32_t host_order, ip_address& out)
+        void store_ipv4_bytes(
+            uint32_t host_order,
+            ip_address& out)
         {
             out = {};
             out[0] = static_cast<uint8_t>(host_order >> 24);
@@ -73,7 +75,9 @@ namespace canopy::network_config
         }
 
         bool detect_routing_prefix_impl(
-            ip_address& addr, ip_address_family& family, const ip_address_family* preferred_family)
+            ip_address& addr,
+            ip_address_family& family,
+            const ip_address_family* preferred_family)
         {
 #ifndef _WIN32
             ifaddrs* ifa_list = nullptr;
@@ -171,7 +175,10 @@ namespace canopy::network_config
             return false;
         }
 
-        bool detect_host_impl(ip_address& addr, ip_address_family& family, const ip_address_family* preferred_family)
+        bool detect_host_impl(
+            ip_address& addr,
+            ip_address_family& family,
+            const ip_address_family* preferred_family)
         {
 #ifndef _WIN32
             ifaddrs* ifa_list = nullptr;
@@ -280,27 +287,40 @@ namespace canopy::network_config
         }
     } // anonymous namespace
 
-    bool detect_routing_prefix(ip_address& addr, ip_address_family& family)
+    bool detect_routing_prefix(
+        ip_address& addr,
+        ip_address_family& family)
     {
         return detect_routing_prefix_impl(addr, family, nullptr);
     }
 
-    bool detect_routing_prefix(ip_address& addr, ip_address_family& family, ip_address_family preferred_family)
+    bool detect_routing_prefix(
+        ip_address& addr,
+        ip_address_family& family,
+        ip_address_family preferred_family)
     {
         return detect_routing_prefix_impl(addr, family, &preferred_family);
     }
 
-    bool detect_host(ip_address& addr, ip_address_family& family)
+    bool detect_host(
+        ip_address& addr,
+        ip_address_family& family)
     {
         return detect_host_impl(addr, family, nullptr);
     }
 
-    bool detect_host(ip_address& addr, ip_address_family& family, ip_address_family preferred_family)
+    bool detect_host(
+        ip_address& addr,
+        ip_address_family& family,
+        ip_address_family preferred_family)
     {
         return detect_host_impl(addr, family, &preferred_family);
     }
 
-    bool parse_ip_address(const std::string& str, ip_address& addr, ip_address_family family)
+    bool parse_ip_address(
+        const std::string& str,
+        ip_address& addr,
+        ip_address_family family)
     {
 #ifndef _WIN32
         addr = {};

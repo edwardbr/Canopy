@@ -52,7 +52,8 @@ namespace streaming
         using connection_callback
             = std::function<CORO_TASK(void)(const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<stream>)>;
 
-        listener(std::string name,
+        listener(
+            std::string name,
             std::shared_ptr<stream_acceptor> acceptor,
             connection_callback on_connection,
             stream_transformer transform_stream = {})
@@ -142,7 +143,10 @@ namespace streaming
             CO_RETURN;
         }
 
-        CORO_TASK(void) handle_connection(std::shared_ptr<rpc::service> service, std::shared_ptr<stream> stm)
+        CORO_TASK(void)
+        handle_connection(
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<stream> stm)
         {
             if (stopping_.load(std::memory_order_acquire))
             {

@@ -18,19 +18,22 @@ namespace comprehensive::v1
     {
         rpc::zone_address make_client_zone_address()
         {
-            return *rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
-                rpc::zone_address::address_type::local,
-                0,
-                {},
-                rpc::zone_address::default_subnet_size_bits,
-                2,
-                rpc::zone_address::default_object_id_size_bits,
-                1,
-                {}));
+            return *rpc::zone_address::create(
+                rpc::zone_address::construction_args(
+                    rpc::zone_address::version_3,
+                    rpc::zone_address::address_type::local,
+                    0,
+                    {},
+                    rpc::zone_address::default_subnet_size_bits,
+                    2,
+                    rpc::zone_address::default_object_id_size_bits,
+                    1,
+                    {}));
         }
 
         CORO_TASK(void)
-        tcp_server_task(std::shared_ptr<coro::scheduler> scheduler,
+        tcp_server_task(
+            std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
             const rpc::event& client_finished,
             std::atomic<bool>& server_started,
@@ -51,15 +54,15 @@ namespace comprehensive::v1
             }
 
             auto tcp_stream = std::make_shared<streaming::tcp::stream>(std::move(*accepted), scheduler);
-            auto server_transport
-                = CO_AWAIT service->make_acceptor<i_data_processor, i_data_processor>("server_transport",
-                    rpc::stream_transport::transport_factory(std::move(tcp_stream)),
-                    [](const rpc::shared_ptr<i_data_processor>&,
-                        const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
-                    {
-                        auto local = make_benchmark_data_processor();
-                        CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local)};
-                    });
+            auto server_transport = CO_AWAIT service->make_acceptor<i_data_processor, i_data_processor>(
+                "server_transport",
+                rpc::stream_transport::transport_factory(std::move(tcp_stream)),
+                [](const rpc::shared_ptr<i_data_processor>&,
+                    const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
+                {
+                    auto local = make_benchmark_data_processor();
+                    CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local)};
+                });
 
             CO_AWAIT server_transport->accept();
             CO_AWAIT client_finished.wait();
@@ -68,7 +71,8 @@ namespace comprehensive::v1
         }
 
         CORO_TASK(void)
-        tcp_client_task(std::shared_ptr<coro::scheduler> scheduler,
+        tcp_client_task(
+            std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
             rpc::event& client_finished,
             std::atomic<bool>& server_started,
@@ -134,7 +138,10 @@ namespace comprehensive::v1
         }
     }
 
-    benchmark_result run_tcp_benchmark(rpc::encoding enc, size_t blob_size, uint16_t port)
+    benchmark_result run_tcp_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port)
     {
         benchmark_result result{};
 
@@ -147,8 +154,10 @@ namespace comprehensive::v1
         rpc::event client_finished;
         std::atomic<bool> server_started = false;
 
-        coro::sync_wait(coro::when_all(tcp_server_task(scheduler_1, server_ready, client_finished, server_started, enc, port),
-            tcp_client_task(scheduler_2, server_ready, client_finished, server_started, enc, blob_size, port, result)));
+        coro::sync_wait(
+            coro::when_all(
+                tcp_server_task(scheduler_1, server_ready, client_finished, server_started, enc, port),
+                tcp_client_task(scheduler_2, server_ready, client_finished, server_started, enc, blob_size, port, result)));
 
         scheduler_1.reset();
         scheduler_2.reset();

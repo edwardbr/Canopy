@@ -48,8 +48,13 @@ namespace rpc
             return 0;
         }
 
-        [[nodiscard]] rpc::expected<void, std::string> validate_prefix_bits(
-            const std::vector<uint8_t>& data, uint16_t width, const char* field_name)
+        [[nodiscard]] rpc::expected<
+            void,
+            std::string>
+        validate_prefix_bits(
+            const std::vector<uint8_t>& data,
+            uint16_t width,
+            const char* field_name)
         {
             auto required_bytes = static_cast<size_t>((width + 7u) / 8u);
             if (data.size() != required_bytes)
@@ -68,8 +73,12 @@ namespace rpc
             return {};
         }
 
-        rpc::expected<std::vector<uint8_t>, std::string> build_fixed_width_prefix(
-            const std::vector<uint8_t>& data, uint16_t width)
+        rpc::expected<
+            std::vector<uint8_t>,
+            std::string>
+        build_fixed_width_prefix(
+            const std::vector<uint8_t>& data,
+            uint16_t width)
         {
             if (auto r = validate_prefix_bits(data, width, "routing_prefix"); !r)
                 return rpc::unexpected<std::string>(std::move(r.error()));
@@ -80,7 +89,11 @@ namespace rpc
             return result;
         }
 
-        rpc::expected<std::vector<uint8_t>, std::string> build_tunnel_host(const std::vector<uint8_t>& routing_prefix,
+        rpc::expected<
+            std::vector<uint8_t>,
+            std::string>
+        build_tunnel_host(
+            const std::vector<uint8_t>& routing_prefix,
             uint16_t routing_bits,
             uint8_t subnet_size_bits,
             uint64_t subnet,
@@ -107,7 +120,8 @@ namespace rpc
 
         uint8_t capability_header_byte(const zone_address::capability_bits& caps)
         {
-            return static_cast<uint8_t>(get_bits_le(capability_bytes_to_vector(caps),
+            return static_cast<uint8_t>(get_bits_le(
+                capability_bytes_to_vector(caps),
                 address_type_offset_bits,
                 static_cast<uint16_t>(address_type_bits + has_port_bits + has_validation_bits + reserved_capability_bits)));
         }
@@ -139,7 +153,8 @@ namespace rpc
             return (capability_header_byte(caps) & has_validation_mask) != 0;
         }
 
-        zone_address::capability_bits make_capability_bits(uint8_t version,
+        zone_address::capability_bits make_capability_bits(
+            uint8_t version,
             zone_address::address_type type,
             bool has_port,
             bool has_validation,
@@ -149,7 +164,8 @@ namespace rpc
             zone_address::capability_bits bits = {};
             auto data = capability_bytes_to_vector(bits);
             [[maybe_unused]] bool ok = set_bits_le(data, version_offset_bits, version_bits, version);
-            ok = set_bits_le(data,
+            ok = set_bits_le(
+                data,
                 address_type_offset_bits,
                 static_cast<uint16_t>(address_type_bits + has_port_bits + has_validation_bits + reserved_capability_bits),
                 static_cast<uint8_t>(type) | (has_port ? has_port_mask : 0u) | (has_validation ? has_validation_mask : 0u));
@@ -161,7 +177,11 @@ namespace rpc
             return bits;
         }
 
-        [[nodiscard]] rpc::expected<void, std::string> validate_constructor_args(const zone_address::capability_bits& caps,
+        [[nodiscard]] rpc::expected<
+            void,
+            std::string>
+        validate_constructor_args(
+            const zone_address::capability_bits& caps,
             uint16_t port,
             const std::vector<uint8_t>& routing_prefix,
             uint64_t subnet,
@@ -235,7 +255,11 @@ namespace rpc
         }
     } // namespace
 
-    rpc::expected<void, std::string> zone_address::initialise_blob(const capability_bits& caps,
+    rpc::expected<
+        void,
+        std::string>
+    zone_address::initialise_blob(
+        const capability_bits& caps,
         uint16_t port,
         const std::vector<uint8_t>& routing_prefix,
         uint64_t subnet,
@@ -360,7 +384,11 @@ namespace rpc
             blob[1] = static_cast<uint8_t>(blob[1] & ~has_validation_mask);
     }
 
-    rpc::expected<zone_address, std::string> zone_address::create(const capability_bits& caps,
+    rpc::expected<
+        zone_address,
+        std::string>
+    zone_address::create(
+        const capability_bits& caps,
         uint16_t port,
         const std::vector<uint8_t>& routing_prefix,
         uint64_t subnet,
@@ -375,14 +403,13 @@ namespace rpc
         return result;
     }
 
-    rpc::expected<zone_address, std::string> zone_address::create(const construction_args& args)
+    rpc::expected<
+        zone_address,
+        std::string>
+    zone_address::create(const construction_args& args)
     {
-        auto caps = make_capability_bits(args.version,
-            args.type,
-            args.port != 0,
-            !args.validation_bits.empty(),
-            args.subnet_size_bits,
-            args.object_id_size_bits);
+        auto caps = make_capability_bits(
+            args.version, args.type, args.port != 0, !args.validation_bits.empty(), args.subnet_size_bits, args.object_id_size_bits);
         return create(caps, args.port, args.routing_prefix, args.subnet, args.object_id, args.validation_bits);
     }
 
@@ -507,7 +534,10 @@ namespace rpc
         return get_bits_le(blob, object_offset_bits(), object_bits);
     }
 
-    rpc::expected<void, std::string> zone_address::set_subnet(uint64_t val)
+    rpc::expected<
+        void,
+        std::string>
+    zone_address::set_subnet(uint64_t val)
     {
         auto subnet_bits = get_subnet_size_bits();
         if (subnet_bits == 0)
@@ -535,7 +565,10 @@ namespace rpc
         return {};
     }
 
-    rpc::expected<void, std::string> zone_address::set_object_id(uint64_t val)
+    rpc::expected<
+        void,
+        std::string>
+    zone_address::set_object_id(uint64_t val)
     {
         auto object_bits = get_object_id_size_bits();
         if (object_bits == 0)
@@ -571,7 +604,10 @@ namespace rpc
         return copy;
     }
 
-    rpc::expected<zone_address, std::string> zone_address::with_object(uint64_t obj) const
+    rpc::expected<
+        zone_address,
+        std::string>
+    zone_address::with_object(uint64_t obj) const
     {
         zone_address copy(zone_only());
         if (auto r = copy.set_object_id(obj); !r)

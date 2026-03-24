@@ -57,34 +57,65 @@ namespace rpc::libcoro_dynamic_library
     // Provided by child_transport, called by parent_transport's outbound_*.
     // The DLL CO_AWAITs these directly — no sync_wait wrapper.
     // -----------------------------------------------------------------------
-    using host_coro_send_fn = coro::task<rpc::send_result> (*)(void* host_ctx, rpc::send_params params);
-    using host_coro_post_fn = coro::task<void> (*)(void* host_ctx, rpc::post_params params);
-    using host_coro_try_cast_fn = coro::task<rpc::standard_result> (*)(void* host_ctx, rpc::try_cast_params params);
-    using host_coro_add_ref_fn = coro::task<rpc::standard_result> (*)(void* host_ctx, rpc::add_ref_params params);
-    using host_coro_release_fn = coro::task<rpc::standard_result> (*)(void* host_ctx, rpc::release_params params);
-    using host_coro_object_released_fn = coro::task<void> (*)(void* host_ctx, rpc::object_released_params params);
-    using host_coro_transport_down_fn = coro::task<void> (*)(void* host_ctx, rpc::transport_down_params params);
-    using host_coro_get_new_zone_id_fn
-        = coro::task<rpc::new_zone_id_result> (*)(void* host_ctx, rpc::get_new_zone_id_params params);
+    using host_coro_send_fn = coro::task<rpc::send_result> (*)(
+        void* host_ctx,
+        rpc::send_params params);
+    using host_coro_post_fn = coro::task<void> (*)(
+        void* host_ctx,
+        rpc::post_params params);
+    using host_coro_try_cast_fn = coro::task<rpc::standard_result> (*)(
+        void* host_ctx,
+        rpc::try_cast_params params);
+    using host_coro_add_ref_fn = coro::task<rpc::standard_result> (*)(
+        void* host_ctx,
+        rpc::add_ref_params params);
+    using host_coro_release_fn = coro::task<rpc::standard_result> (*)(
+        void* host_ctx,
+        rpc::release_params params);
+    using host_coro_object_released_fn = coro::task<void> (*)(
+        void* host_ctx,
+        rpc::object_released_params params);
+    using host_coro_transport_down_fn = coro::task<void> (*)(
+        void* host_ctx,
+        rpc::transport_down_params params);
+    using host_coro_get_new_zone_id_fn = coro::task<rpc::new_zone_id_result> (*)(
+        void* host_ctx,
+        rpc::get_new_zone_id_params params);
     using host_coro_release_parent_fn = void (*)(void* host_ctx);
 
     // -----------------------------------------------------------------------
     // Host → DLL coroutine function pointer types
     // Returned via dll_create_result; stored and called by child_transport.
     // -----------------------------------------------------------------------
-    using dll_coro_send_fn = coro::task<rpc::send_result> (*)(void* dll_ctx, rpc::send_params params);
-    using dll_coro_post_fn = coro::task<void> (*)(void* dll_ctx, rpc::post_params params);
-    using dll_coro_try_cast_fn = coro::task<rpc::standard_result> (*)(void* dll_ctx, rpc::try_cast_params params);
-    using dll_coro_add_ref_fn = coro::task<rpc::standard_result> (*)(void* dll_ctx, rpc::add_ref_params params);
-    using dll_coro_release_fn = coro::task<rpc::standard_result> (*)(void* dll_ctx, rpc::release_params params);
-    using dll_coro_object_released_fn = coro::task<void> (*)(void* dll_ctx, rpc::object_released_params params);
-    using dll_coro_transport_down_fn = coro::task<void> (*)(void* dll_ctx, rpc::transport_down_params params);
+    using dll_coro_send_fn = coro::task<rpc::send_result> (*)(
+        void* dll_ctx,
+        rpc::send_params params);
+    using dll_coro_post_fn = coro::task<void> (*)(
+        void* dll_ctx,
+        rpc::post_params params);
+    using dll_coro_try_cast_fn = coro::task<rpc::standard_result> (*)(
+        void* dll_ctx,
+        rpc::try_cast_params params);
+    using dll_coro_add_ref_fn = coro::task<rpc::standard_result> (*)(
+        void* dll_ctx,
+        rpc::add_ref_params params);
+    using dll_coro_release_fn = coro::task<rpc::standard_result> (*)(
+        void* dll_ctx,
+        rpc::release_params params);
+    using dll_coro_object_released_fn = coro::task<void> (*)(
+        void* dll_ctx,
+        rpc::object_released_params params);
+    using dll_coro_transport_down_fn = coro::task<void> (*)(
+        void* dll_ctx,
+        rpc::transport_down_params params);
 
     // Coroutine that sets up the child zone.  Called by the host's
     // inner_connect after canopy_libcoro_dll_create.  Adopts transport_ctx,
     // runs create_child_zone, releases all temporaries before returning.
     using dll_coro_init_fn = coro::task<rpc::connect_result> (*)(
-        void* transport_ctx, const rpc::connection_settings* settings, std::shared_ptr<coro::scheduler>* scheduler);
+        void* transport_ctx,
+        const rpc::connection_settings* settings,
+        std::shared_ptr<coro::scheduler>* scheduler);
 
     // -----------------------------------------------------------------------
     // Parameters passed to canopy_libcoro_dll_create
@@ -129,7 +160,9 @@ namespace rpc::libcoro_dynamic_library
     };
 
     // Type of the single extern "C" entry point resolved via dlsym
-    using dll_create_fn = void (*)(dll_create_params* params, dll_create_result* result);
+    using dll_create_fn = void (*)(
+        dll_create_params* params,
+        dll_create_result* result);
 
 } // namespace rpc::libcoro_dynamic_library
 

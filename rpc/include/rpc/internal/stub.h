@@ -116,7 +116,10 @@ namespace rpc
         std::shared_ptr<service> zone_;
 
     public:
-        object_stub(object id, const std::shared_ptr<service>& zone, const rpc::shared_ptr<rpc::casting_interface>& target);
+        object_stub(
+            object id,
+            const std::shared_ptr<service>& zone,
+            const rpc::shared_ptr<rpc::casting_interface>& target);
         ~object_stub();
 
         object get_id() const { return id_; }
@@ -168,7 +171,11 @@ namespace rpc
          *
          * Thread-Safety: Uses atomic operations for counts, mutex for per-zone maps
          */
-        CORO_TASK(int) add_ref(bool is_optimistic, bool outcall, caller_zone caller_zone_id);
+        CORO_TASK(int)
+        add_ref(
+            bool is_optimistic,
+            bool outcall,
+            caller_zone caller_zone_id);
 
         /**
          * @brief Release reference to this stub
@@ -180,7 +187,9 @@ namespace rpc
          *
          * Thread-Safety: Uses atomic operations for counts, mutex for per-zone maps
          */
-        uint64_t release(bool is_optimistic, caller_zone caller_zone_id);
+        uint64_t release(
+            bool is_optimistic,
+            caller_zone caller_zone_id);
 
         /**
          * @brief Release all references from a specific zone (called by service)

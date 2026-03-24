@@ -43,7 +43,9 @@ namespace secret_llama
         {
             virtual ~context() = default;
             virtual int add_prompt(const std::string& prompt) = 0;
-            virtual int get_piece(std::string& piece, bool& complete) = 0;
+            virtual int get_piece(
+                std::string& piece,
+                bool& complete) = 0;
         };
 
         class loaded_model
@@ -70,12 +72,14 @@ namespace secret_llama
         public:
             virtual ~llm_engine() = default;
 
-            virtual error_types create_context(const std::shared_ptr<loaded_model>& model_data,
+            virtual error_types create_context(
+                const std::shared_ptr<loaded_model>& model_data,
                 uint64_t seed,
                 const std::string& overrides, // json::v1::map
                 std::shared_ptr<context>& context) = 0;
 
-            virtual error_types infer(const std::string& prompt,
+            virtual error_types infer(
+                const std::string& prompt,
                 const std::string& overrides, // json::v1::map
                 uint64_t rng_seed,
                 const std::shared_ptr<loaded_tokenizer>& tokenizer_bin,
@@ -83,9 +87,15 @@ namespace secret_llama
                 std::string& output) = 0;
 
             virtual error_types parse_model(
-                const llm_model& modl, void* data, uint64_t size, std::shared_ptr<loaded_model>& loaded_model) = 0;
+                const llm_model& modl,
+                void* data,
+                uint64_t size,
+                std::shared_ptr<loaded_model>& loaded_model) = 0;
             virtual error_types parse_tokenizer(
-                const tokenizer& tok, void* data, uint64_t size, std::shared_ptr<loaded_tokenizer>& loaded_tokeniser)
+                const tokenizer& tok,
+                void* data,
+                uint64_t size,
+                std::shared_ptr<loaded_tokenizer>& loaded_tokeniser)
             {
                 std::ignore = tok;
                 std::ignore = data;
@@ -95,12 +105,16 @@ namespace secret_llama
             }
         };
 
-        int create_context(const std::shared_ptr<loaded_model>& model,
+        int create_context(
+            const std::shared_ptr<loaded_model>& model,
             uint64_t seed,
             const std::string& overrides, // json::v1::map
             std::shared_ptr<context>& context);
 
         error_types parse_model(
-            const llm_model& modl, void* data, uint64_t size, std::shared_ptr<loaded_model>& loaded_model);
+            const llm_model& modl,
+            void* data,
+            uint64_t size,
+            std::shared_ptr<loaded_model>& loaded_model);
     }
 }

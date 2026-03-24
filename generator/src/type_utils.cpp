@@ -96,7 +96,9 @@ namespace generator
     }
 
     // Type cleaning utilities
-    void strip_reference_modifiers(std::string& type, std::string& modifiers)
+    void strip_reference_modifiers(
+        std::string& type,
+        std::string& modifiers)
     {
         modifiers.clear();
 
@@ -239,7 +241,10 @@ namespace generator
     }
 
     // Unified parameter analysis (replaces scattered logic across generators)
-    parameter_info analyze_parameter(const class_entity& lib, const std::string& type, const attributes& attribs)
+    parameter_info analyze_parameter(
+        const class_entity& lib,
+        const std::string& type,
+        const attributes& attribs)
     {
         parameter_info info;
 
@@ -267,7 +272,8 @@ namespace generator
     }
 
     // Determine parameter type from analysis
-    param_type classify_parameter_type(const std::string& /* type_name */,
+    param_type classify_parameter_type(
+        const std::string& /* type_name */,
         const std::string& reference_modifiers,
         bool is_interface,
         bool is_out,
@@ -319,7 +325,9 @@ namespace generator
 
     // Unified parameter analysis and filtering (replaces duplicate logic)
     param_analysis_result analyze_parameter_with_context(
-        const class_entity& lib, const std::string& type, const attributes& attribs)
+        const class_entity& lib,
+        const std::string& type,
+        const attributes& attribs)
     {
         param_analysis_result result;
 
@@ -334,7 +342,8 @@ namespace generator
     }
 
     // Implementation of base_renderer::render_param_type
-    std::string base_renderer::render_param_type(param_type type,
+    std::string base_renderer::render_param_type(
+        param_type type,
         int option,
         bool from_host,
         const class_entity& lib,
@@ -369,7 +378,8 @@ namespace generator
     }
 
     // Unified do_in_param function using polymorphic base_renderer
-    bool do_in_param_unified(base_renderer& renderer,
+    bool do_in_param_unified(
+        base_renderer& renderer,
         int option,
         bool from_host,
         const class_entity& lib,
@@ -402,7 +412,8 @@ namespace generator
     }
 
     // Unified do_out_param function using polymorphic base_renderer
-    bool do_out_param_unified(base_renderer& renderer,
+    bool do_out_param_unified(
+        base_renderer& renderer,
         int option,
         bool from_host,
         const class_entity& lib,

@@ -56,7 +56,8 @@ public:
         this->i_host_ptr_ = hst;
         this->local_host_ptr_ = hst;
 
-        loaded_ = rpc::libcoro_spsc_dynamic_dll::loaded_library::load(CANOPY_TEST_LIBCORO_SPSC_DLL_PATH,
+        loaded_ = rpc::libcoro_spsc_dynamic_dll::loaded_library::load(
+            CANOPY_TEST_LIBCORO_SPSC_DLL_PATH,
             "libcoro_spsc_dynamic_dll",
             dll_zone_,
             host_zone_,

@@ -11,15 +11,18 @@
 
 namespace streaming::spsc_wrapping
 {
-    stream::stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<coro::scheduler> scheduler)
+    stream::stream(
+        std::shared_ptr<::streaming::stream> underlying,
+        std::shared_ptr<coro::scheduler> scheduler)
         : state_(std::make_shared<proxy_state>())
     {
         state_->underlying = std::move(underlying);
         state_->scheduler = std::move(scheduler);
     }
 
-    auto stream::create(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<coro::scheduler> scheduler)
-        -> std::shared_ptr<stream>
+    auto stream::create(
+        std::shared_ptr<::streaming::stream> underlying,
+        std::shared_ptr<coro::scheduler> scheduler) -> std::shared_ptr<stream>
     {
         auto obj = std::shared_ptr<stream>(new stream(std::move(underlying), std::move(scheduler)));
         obj->start_proxy_loops();
@@ -138,8 +141,12 @@ namespace streaming::spsc_wrapping
 
     // Inbound: pop from recv_q_.  Yields once and returns timeout if the queue
     // is empty so the scheduler can run recv_proxy_loop to fill it.
-    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
+    auto stream::receive(
+        rpc::mutable_byte_span buffer,
+        std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>>
     {
         if (state_->closed.load(std::memory_order_acquire))
             co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
@@ -174,7 +181,8 @@ namespace streaming::spsc_wrapping
 
             if (to_copy < static_cast<size_t>(len))
             {
-                leftover_.assign(blob.data() + streaming::spsc_queue::header_size + to_copy,
+                leftover_.assign(
+                    blob.data() + streaming::spsc_queue::header_size + to_copy,
                     blob.data() + streaming::spsc_queue::header_size + static_cast<size_t>(len));
                 leftover_offset_ = 0;
             }

@@ -49,7 +49,9 @@ namespace rpc::libcoro_spsc_dynamic_dll
         dll_stop_fn stop_fn = nullptr;
     };
 
-    using dll_start_fn = void (*)(dll_start_params* params, dll_start_result* result);
+    using dll_start_fn = void (*)(
+        dll_start_params* params,
+        dll_start_result* result);
 
 } // namespace rpc::libcoro_spsc_dynamic_dll
 

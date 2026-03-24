@@ -26,31 +26,41 @@ namespace rpc
         {
         }
 
-        byte_span(const uint8_t* data, size_t size) noexcept
+        byte_span(
+            const uint8_t* data,
+            size_t size) noexcept
             : data_(data)
             , size_(size)
         {
         }
 
-        byte_span(const uint8_t* begin, const uint8_t* end) noexcept
+        byte_span(
+            const uint8_t* begin,
+            const uint8_t* end) noexcept
             : data_(begin)
             , size_(static_cast<size_t>(end - begin))
         {
         }
 
-        byte_span(const char* data, size_t size) noexcept
+        byte_span(
+            const char* data,
+            size_t size) noexcept
             : data_(reinterpret_cast<const uint8_t*>(data))
             , size_(size)
         {
         }
 
-        byte_span(const char* begin, const char* end) noexcept
+        byte_span(
+            const char* begin,
+            const char* end) noexcept
             : data_(reinterpret_cast<const uint8_t*>(begin))
             , size_(static_cast<size_t>(end - begin))
         {
         }
 
-        byte_span(const int8_t* begin, const int8_t* end) noexcept
+        byte_span(
+            const int8_t* begin,
+            const int8_t* end) noexcept
             : data_(reinterpret_cast<const uint8_t*>(begin))
             , size_(static_cast<size_t>(end - begin))
         {
@@ -78,16 +88,26 @@ namespace rpc
             static_assert(sizeof(ByteType) == 1, "ByteType must be a single-byte type");
         }
 
-        template<class ByteType, size_t N>
-        byte_span(const std::array<ByteType, N>& a) noexcept
+        template<
+            class ByteType,
+            size_t N>
+        byte_span(
+            const std::array<
+                ByteType,
+                N>& a) noexcept
             : data_(reinterpret_cast<const uint8_t*>(a.data()))
             , size_(N)
         {
             static_assert(sizeof(ByteType) == 1, "ByteType must be a single-byte type");
         }
 
-        template<class ByteType, size_t N>
-        byte_span(std::array<ByteType, N>& a) noexcept
+        template<
+            class ByteType,
+            size_t N>
+        byte_span(
+            std::array<
+                ByteType,
+                N>& a) noexcept
             : data_(reinterpret_cast<const uint8_t*>(a.data()))
             , size_(N)
         {
@@ -106,7 +126,9 @@ namespace rpc
         const uint8_t& operator[](size_t idx) const noexcept { return data_[idx]; }
 
         // subspan(offset, count): count == size_t(-1) means "to end"
-        [[nodiscard]] byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) const noexcept
+        [[nodiscard]] byte_span subspan(
+            size_t offset,
+            size_t count = static_cast<size_t>(-1)) const noexcept
         {
             if (offset > size_)
                 offset = size_;
@@ -134,25 +156,33 @@ namespace rpc
         {
         }
 
-        mutable_byte_span(uint8_t* data, size_t size) noexcept
+        mutable_byte_span(
+            uint8_t* data,
+            size_t size) noexcept
             : data_(data)
             , size_(size)
         {
         }
 
-        mutable_byte_span(uint8_t* begin, uint8_t* end) noexcept
+        mutable_byte_span(
+            uint8_t* begin,
+            uint8_t* end) noexcept
             : data_(begin)
             , size_(static_cast<size_t>(end - begin))
         {
         }
 
-        mutable_byte_span(char* data, size_t size) noexcept
+        mutable_byte_span(
+            char* data,
+            size_t size) noexcept
             : data_(reinterpret_cast<uint8_t*>(data))
             , size_(size)
         {
         }
 
-        mutable_byte_span(char* begin, char* end) noexcept
+        mutable_byte_span(
+            char* begin,
+            char* end) noexcept
             : data_(reinterpret_cast<uint8_t*>(begin))
             , size_(static_cast<size_t>(end - begin))
         {
@@ -172,8 +202,13 @@ namespace rpc
             static_assert(sizeof(ByteType) == 1, "ByteType must be a single-byte type");
         }
 
-        template<class ByteType, size_t N>
-        mutable_byte_span(std::array<ByteType, N>& a) noexcept
+        template<
+            class ByteType,
+            size_t N>
+        mutable_byte_span(
+            std::array<
+                ByteType,
+                N>& a) noexcept
             : data_(reinterpret_cast<uint8_t*>(a.data()))
             , size_(N)
         {
@@ -200,7 +235,9 @@ namespace rpc
         const uint8_t& operator[](size_t idx) const noexcept { return data_[idx]; }
 
         // subspan(offset, count): count == size_t(-1) means "to end"
-        [[nodiscard]] mutable_byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) noexcept
+        [[nodiscard]] mutable_byte_span subspan(
+            size_t offset,
+            size_t count = static_cast<size_t>(-1)) noexcept
         {
             if (offset > size_)
                 offset = size_;
@@ -209,7 +246,9 @@ namespace rpc
             return mutable_byte_span(data_ + offset, n);
         }
 
-        [[nodiscard]] byte_span subspan(size_t offset, size_t count = static_cast<size_t>(-1)) const noexcept
+        [[nodiscard]] byte_span subspan(
+            size_t offset,
+            size_t count = static_cast<size_t>(-1)) const noexcept
         {
             if (offset > size_)
                 offset = size_;

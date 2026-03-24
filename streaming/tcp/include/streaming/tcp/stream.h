@@ -10,10 +10,16 @@ namespace streaming::tcp
     class stream : public ::streaming::stream
     {
     public:
-        explicit stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler);
+        explicit stream(
+            coro::net::tcp::client&& client,
+            std::shared_ptr<coro::scheduler> scheduler);
 
-        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override;
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
 

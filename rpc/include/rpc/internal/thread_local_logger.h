@@ -47,7 +47,12 @@ namespace rpc
         const char* function;
 
         log_entry() = default;
-        log_entry(int lvl, const std::string& msg, const char* f, int l, const char* func);
+        log_entry(
+            int lvl,
+            const std::string& msg,
+            const char* f,
+            int l,
+            const char* func);
     };
 
     // Thread-local circular buffer for logging
@@ -64,7 +69,12 @@ namespace rpc
         explicit thread_local_circular_buffer(size_t size);
 
         // Add a log entry to the circular buffer
-        void add_entry(int level, const std::string& message, const char* file, int line, const char* function);
+        void add_entry(
+            int level,
+            const std::string& message,
+            const char* file,
+            int line,
+            const char* function);
 
         // Freeze the buffer to prevent further writes
         void freeze();
@@ -103,11 +113,17 @@ namespace rpc
         void freeze_all_buffers();
 
         // Dump all buffers to files with stack trace
-        void dump_all_buffers_with_stacktrace(const std::string& assert_message, const char* file, int line);
+        void dump_all_buffers_with_stacktrace(
+            const std::string& assert_message,
+            const char* file,
+            int line);
 
         // Enhanced version that includes detailed stack trace information
         void dump_all_buffers_with_enhanced_stacktrace(
-            const std::string& assert_message, const char* file, int line, const std::string& stack_trace);
+            const std::string& assert_message,
+            const char* file,
+            int line,
+            const std::string& stack_trace);
 
         // Configure the logger
         void configure(const thread_local_logger_config& config);
@@ -117,7 +133,12 @@ namespace rpc
     };
 
     // Global functions for logging (inline for performance)
-    inline void thread_local_log(int level, const std::string& message, const char* file, int line, const char* function)
+    inline void thread_local_log(
+        int level,
+        const std::string& message,
+        const char* file,
+        int line,
+        const char* function)
     {
         auto& manager = thread_local_logger_manager::get_instance();
         auto* buffer = manager.get_thread_buffer();
@@ -127,7 +148,10 @@ namespace rpc
         }
     }
 
-    inline void thread_local_dump_on_assert(const std::string& assert_message, const char* file, int line)
+    inline void thread_local_dump_on_assert(
+        const std::string& assert_message,
+        const char* file,
+        int line)
     {
         auto& manager = thread_local_logger_manager::get_instance();
         manager.dump_all_buffers_with_stacktrace(assert_message, file, line);
@@ -135,7 +159,10 @@ namespace rpc
 
     // Enhanced version that accepts stack trace information
     inline void thread_local_dump_on_assert_with_stacktrace(
-        const std::string& assert_message, const char* file, int line, const std::string& stack_trace)
+        const std::string& assert_message,
+        const char* file,
+        int line,
+        const std::string& stack_trace)
     {
         auto& manager = thread_local_logger_manager::get_instance();
         manager.dump_all_buffers_with_enhanced_stacktrace(assert_message, file, line, stack_trace);

@@ -7,7 +7,9 @@
 
 namespace rpc
 {
-    bool are_in_same_zone(const casting_interface* first, const casting_interface* second)
+    bool are_in_same_zone(
+        const casting_interface* first,
+        const casting_interface* second)
     {
         // Consolidated null and locality checks
         if (!first || !second)

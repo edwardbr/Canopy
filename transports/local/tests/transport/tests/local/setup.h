@@ -42,7 +42,8 @@ public:
     {
         this->start_telemetry_test();
 
-        this->root_service_ = std::make_shared<rpc::root_service>("host",
+        this->root_service_ = std::make_shared<rpc::root_service>(
+            "host",
             rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
             ,
@@ -85,10 +86,11 @@ public:
     virtual void set_up()
     {
 #ifdef CANOPY_BUILD_COROUTINE
-        this->io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(coro::scheduler::options{
-            .thread_strategy = coro::scheduler::thread_strategy_t::manual, .pool = coro::thread_pool::options {
-                .thread_count = 1,
-            }}));
+        this->io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{
+                .thread_strategy = coro::scheduler::thread_strategy_t::manual, .pool = coro::thread_pool::options {
+                    .thread_count = 1,
+                }}));
 
         RPC_ASSERT(this->io_scheduler_->spawn_detached(check_for_error(CoroSetUp())));
         while (startup_complete_ == false)

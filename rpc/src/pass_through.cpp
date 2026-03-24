@@ -7,7 +7,8 @@
 namespace rpc
 {
 
-    pass_through::pass_through(std::shared_ptr<transport> forward,
+    pass_through::pass_through(
+        std::shared_ptr<transport> forward,
         std::shared_ptr<transport> reverse,
         std::shared_ptr<service> service,
         destination_zone forward_dest,
@@ -21,7 +22,8 @@ namespace rpc
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_pass_through_creation(zone_id_,
+            telemetry_service->on_pass_through_creation(
+                zone_id_,
                 forward_dest,
                 reverse_dest,
                 shared_count_.load(std::memory_order_acquire),
@@ -29,19 +31,20 @@ namespace rpc
 #endif
     }
 
-    std::shared_ptr<pass_through> pass_through::create(std::shared_ptr<transport> forward,
+    std::shared_ptr<pass_through> pass_through::create(
+        std::shared_ptr<transport> forward,
         std::shared_ptr<transport> reverse,
         std::shared_ptr<service> service,
         destination_zone forward_dest,
         destination_zone reverse_dest)
     {
-        std::shared_ptr<pass_through> pt(
-            new rpc::pass_through(forward, // forward_transport: handles messages TO final destination
-                reverse,                   // reverse_transport: handles messages back to caller
-                service,                   // service
-                forward_dest,
-                reverse_dest // reverse_destination: where reverse messages go
-                ));
+        std::shared_ptr<pass_through> pt(new rpc::pass_through(
+            forward, // forward_transport: handles messages TO final destination
+            reverse, // reverse_transport: handles messages back to caller
+            service, // service
+            forward_dest,
+            reverse_dest // reverse_destination: where reverse messages go
+            ));
         pt->self_ref_ = pt; // keep self alive based on reference counts
         return pt;
     }
@@ -175,8 +178,9 @@ namespace rpc
         std::shared_ptr<rpc::transport> caller_transport;
         std::shared_ptr<rpc::transport> destination_transport;
 
-        RPC_DEBUG("pass_through::add_ref zone={}, fwd={}, rev={}, dest={}, caller={}, options={}, build_dest={}, "
-                  "build_caller={}, no_local={}",
+        RPC_DEBUG(
+            "pass_through::add_ref zone={}, fwd={}, rev={}, dest={}, caller={}, options={}, build_dest={}, "
+            "build_caller={}, no_local={}",
             zone_id_.get_subnet(),
             forward_destination_.get_subnet(),
             reverse_destination_.get_subnet(),
@@ -268,7 +272,8 @@ namespace rpc
                 CO_RETURN caller_result;
             }
             // merge out_back_channels
-            final_result.out_back_channel.insert(final_result.out_back_channel.end(),
+            final_result.out_back_channel.insert(
+                final_result.out_back_channel.end(),
                 std::make_move_iterator(caller_result.out_back_channel.begin()),
                 std::make_move_iterator(caller_result.out_back_channel.end()));
         }
@@ -309,7 +314,8 @@ namespace rpc
         [[maybe_unused]] caller_zone caller_zone_id = params.caller_zone_id;
         release_options options = params.options;
 
-        RPC_DEBUG("pass_through::release zone={}, fwd={}, rev={}, dest={}, caller={}, options={}",
+        RPC_DEBUG(
+            "pass_through::release zone={}, fwd={}, rev={}, dest={}, caller={}, options={}",
             zone_id_.get_subnet(),
             forward_destination_.get_subnet(),
             reverse_destination_.get_subnet(),
@@ -502,8 +508,9 @@ namespace rpc
             return;
         }
 
-        RPC_DEBUG("pass_through: trigger_self_destruction for passthrough {}->{}, zone={}, shared={}, optimistic={}, "
-                  "active={}",
+        RPC_DEBUG(
+            "pass_through: trigger_self_destruction for passthrough {}->{}, zone={}, shared={}, optimistic={}, "
+            "active={}",
             reverse_destination_.get_subnet(),
             forward_destination_.get_subnet(),
             zone_id_.get_subnet(),

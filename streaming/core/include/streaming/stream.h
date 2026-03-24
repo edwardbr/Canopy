@@ -24,8 +24,11 @@ namespace streaming
 
         // Receive data into buffer
         virtual auto receive(
-            rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> = 0;
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> = 0;
 
         // Async send-all: keeps sending until entire span is consumed or error.
         virtual auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> = 0;

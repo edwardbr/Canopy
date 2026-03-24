@@ -50,7 +50,9 @@ namespace streaming::io_uring
     public:
         static constexpr uint64_t timeout_user_data_flag = 1ULL << 63;
 
-        stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler)
+        stream(
+            coro::net::tcp::client&& client,
+            std::shared_ptr<coro::scheduler> scheduler)
             : fd_(client.socket().native_handle())
             , scheduler_(std::move(scheduler))
             , state_(std::make_shared<ring_state>())
@@ -61,8 +63,12 @@ namespace streaming::io_uring
 
         ~stream() override = default;
 
-        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override
         {
             if (closed_.load(std::memory_order_acquire))
             {
@@ -261,7 +267,10 @@ namespace streaming::io_uring
         {
         };
 
-        stream(accepted_socket_tag, int fd, std::shared_ptr<coro::scheduler> scheduler)
+        stream(
+            accepted_socket_tag,
+            int fd,
+            std::shared_ptr<coro::scheduler> scheduler)
             : fd_(fd)
             , scheduler_(std::move(scheduler))
             , state_(std::make_shared<ring_state>())
@@ -269,8 +278,9 @@ namespace streaming::io_uring
             initialise_stream();
         }
 
-        static auto create_from_accepted_socket(int fd, std::shared_ptr<coro::scheduler> scheduler)
-            -> std::shared_ptr<stream>
+        static auto create_from_accepted_socket(
+            int fd,
+            std::shared_ptr<coro::scheduler> scheduler) -> std::shared_ptr<stream>
         {
             return std::shared_ptr<stream>(new stream(accepted_socket_tag{}, fd, std::move(scheduler)));
         }
@@ -413,7 +423,9 @@ namespace streaming::io_uring
             io_uring_queue_exit(&state_->ring);
         }
 
-        auto submit_recv(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout) -> std::shared_ptr<pending_op>
+        auto submit_recv(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout) -> std::shared_ptr<pending_op>
         {
             auto op = std::make_shared<pending_op>();
             op->id = state_->next_id.fetch_add(1, std::memory_order_relaxed);
@@ -552,8 +564,9 @@ namespace streaming::io_uring
             }
         }
 
-        static auto completion_pump(std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler)
-            -> coro::task<void>
+        static auto completion_pump(
+            std::shared_ptr<ring_state> state,
+            std::shared_ptr<coro::scheduler> scheduler) -> coro::task<void>
         {
             state->pump_stopped.reset();
             state->pump_running.store(true, std::memory_order_release);

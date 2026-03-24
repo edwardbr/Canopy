@@ -97,7 +97,8 @@ extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-co
 // Type list for local type_test instantiations.
 // Requires the various setup helpers to be included before this header.
 
-using local_implementations = ::testing::Types<in_memory_setup<false>,
+using local_implementations = ::testing::Types<
+    in_memory_setup<false>,
     in_memory_setup<true>,
     inproc_setup<false, false, false>,
     inproc_setup<false, false, true>,
@@ -149,11 +150,19 @@ using local_implementations = ::testing::Types<in_memory_setup<false>,
 #endif
     >;
 
-TYPED_TEST_SUITE(type_test, local_implementations);
+TYPED_TEST_SUITE(
+    type_test,
+    local_implementations);
 
-TYPED_TEST(type_test, initialisation_test) { }
+TYPED_TEST(
+    type_test,
+    initialisation_test)
+{
+}
 
-TYPED_TEST(type_test, standard_tests)
+TYPED_TEST(
+    type_test,
+    standard_tests)
 {
     run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
 }
@@ -194,11 +203,14 @@ CORO_TASK(bool) dyanmic_cast_tests(std::shared_ptr<rpc::service> root_service)
     CO_RETURN true;
 }
 
-TYPED_TEST(type_test, dyanmic_cast_tests)
+TYPED_TEST(
+    type_test,
+    dyanmic_cast_tests)
 {
     auto& lib = this->get_lib();
     auto root_service = lib.get_root_service();
-    run_coro_test(*this,
+    run_coro_test(
+        *this,
         [root_service](auto& lib)
         {
             (void)lib; // lib not used in dyanmic_cast_tests

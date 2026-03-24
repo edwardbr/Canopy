@@ -15,7 +15,8 @@
 
 namespace rpc
 {
-    service_proxy::service_proxy(const std::string& name,
+    service_proxy::service_proxy(
+        const std::string& name,
         const zone zone_id,
         destination_zone destination_zone_id,
         std::shared_ptr<service> service,
@@ -32,12 +33,14 @@ namespace rpc
     {
     }
 
-    std::shared_ptr<service_proxy> service_proxy::create(const std::string& name,
+    std::shared_ptr<service_proxy> service_proxy::create(
+        const std::string& name,
         std::shared_ptr<service> service,
         const std::shared_ptr<transport>& transport,
         destination_zone destination_zone_id)
     {
-        auto ret = std::shared_ptr<service_proxy>(new service_proxy(name,
+        auto ret = std::shared_ptr<service_proxy>(new service_proxy(
+            name,
             service->get_zone_id(),
             destination_zone_id,
             service,
@@ -73,7 +76,8 @@ namespace rpc
 
         if (!proxies_.empty())
         {
-            RPC_WARNING("service_proxy destructor: {} proxies still in map for destination_zone={}",
+            RPC_WARNING(
+                "service_proxy destructor: {} proxies still in map for destination_zone={}",
                 proxies_.size(),
                 destination_zone_id_.get_subnet());
 
@@ -96,7 +100,8 @@ namespace rpc
         version_.store(std::clamp(version, min_version, max_version));
     }
 
-    [[nodiscard]] CORO_TASK(send_result) service_proxy::send_from_this_zone(uint64_t protocol_version,
+    [[nodiscard]] CORO_TASK(send_result) service_proxy::send_from_this_zone(
+        uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::object object_id,
@@ -151,7 +156,8 @@ namespace rpc
         CO_RETURN CO_AWAIT service_->outbound_send(std::move(params), transport);
     }
 
-    [[nodiscard]] CORO_TASK(int) service_proxy::post_from_this_zone(uint64_t protocol_version,
+    [[nodiscard]] CORO_TASK(int) service_proxy::post_from_this_zone(
+        uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::object object_id,
@@ -209,7 +215,9 @@ namespace rpc
     }
 
     [[nodiscard]] CORO_TASK(int) service_proxy::sp_try_cast(
-        destination_zone destination_zone_id, object object_id, std::function<interface_ordinal(uint64_t)> id_getter)
+        destination_zone destination_zone_id,
+        object object_id,
+        std::function<interface_ordinal(uint64_t)> id_getter)
     {
         auto original_version = version_.load();
         auto version = original_version;
@@ -265,7 +273,9 @@ namespace rpc
     }
 
     [[nodiscard]] CORO_TASK(int) service_proxy::sp_add_ref(
-        object object_id, add_ref_options build_out_param_channel, requesting_zone requesting_zone_id)
+        object object_id,
+        add_ref_options build_out_param_channel,
+        requesting_zone requesting_zone_id)
     {
         auto transport = transport_.get_nullable();
         if (!transport)
@@ -319,7 +329,10 @@ namespace rpc
         CO_RETURN last_error;
     }
 
-    CORO_TASK(int) service_proxy::sp_release(object object_id, release_options options)
+    CORO_TASK(int)
+    service_proxy::sp_release(
+        object object_id,
+        release_options options)
     {
         auto transport = transport_.get_nullable();
         if (!transport)
@@ -372,7 +385,8 @@ namespace rpc
     }
 
     CORO_TASK(void)
-    send_object_release(std::shared_ptr<rpc::service> svc,
+    send_object_release(
+        std::shared_ptr<rpc::service> svc,
         rpc::object object_id,
         std::shared_ptr<rpc::transport> transport,
         uint64_t version,
@@ -401,7 +415,8 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_proxy_release(svc->get_zone_id(),
+            telemetry_service->on_service_proxy_release(
+                svc->get_zone_id(),
                 *dest_with_obj,
                 svc->get_zone_id(),
                 is_optimistic ? release_options::optimistic : release_options::normal);
@@ -422,8 +437,9 @@ namespace rpc
         }
         else if (ret == rpc::error::ZONE_NOT_FOUND() || ret == rpc::error::TRANSPORT_ERROR())
         {
-            RPC_DEBUG("Zone {} not reachable during cleanup ({}), intermediate zone may have been cleaned up "
-                      "(normal during multi-level hierarchy cleanup)",
+            RPC_DEBUG(
+                "Zone {} not reachable during cleanup ({}), intermediate zone may have been cleaned up "
+                "(normal during multi-level hierarchy cleanup)",
                 destination_zone_id.get_subnet(),
                 rpc::error::to_string(ret));
         }
@@ -437,12 +453,15 @@ namespace rpc
         CO_RETURN;
     }
 
-    void service_proxy::on_object_proxy_released(const std::shared_ptr<object_proxy>& op, bool is_optimistic)
+    void service_proxy::on_object_proxy_released(
+        const std::shared_ptr<object_proxy>& op,
+        bool is_optimistic)
     {
         auto object_id = op->get_object_id();
 
-        RPC_DEBUG("on_object_proxy_released service zone: {} destination_zone={}, object_id = {} "
-                  "decrement={})",
+        RPC_DEBUG(
+            "on_object_proxy_released service zone: {} destination_zone={}, object_id = {} "
+            "decrement={})",
             get_zone_id().get_subnet(),
             destination_zone_id_.get_subnet(),
             object_id.get_val(),
@@ -455,10 +474,8 @@ namespace rpc
             RPC_ASSERT(transport);
             auto release_obj_r = destination_zone_id_.with_object(object_id);
             RPC_ASSERT(release_obj_r.has_value());
-            telemetry_service->on_service_proxy_release(get_zone_id(),
-                *release_obj_r,
-                zone_id_,
-                is_optimistic ? release_options::optimistic : release_options::normal);
+            telemetry_service->on_service_proxy_release(
+                get_zone_id(), *release_obj_r, zone_id_, is_optimistic ? release_options::optimistic : release_options::normal);
         }
 #endif
 
@@ -479,8 +496,9 @@ namespace rpc
             }
         }
 
-        RPC_DEBUG("cleanup_after_object service zone: {} destination_zone={}, object_id = {} "
-                  "decrement={}",
+        RPC_DEBUG(
+            "cleanup_after_object service zone: {} destination_zone={}, object_id = {} "
+            "decrement={}",
             get_zone_id().get_subnet(),
             destination_zone_id_.get_subnet(),
             object_id.get_val(),
@@ -511,14 +529,16 @@ namespace rpc
     }
 
     CORO_TASK(object_proxy_lookup_result)
-    service_proxy::get_or_create_object_proxy(object object_id,
+    service_proxy::get_or_create_object_proxy(
+        object object_id,
         object_proxy_creation_rule rule,
         bool new_proxy_added,
         requesting_zone requesting_zone_id,
         bool is_optimistic)
     {
         object_proxy_lookup_result result{error::OK(), nullptr};
-        RPC_DEBUG("get_or_create_object_proxy service zone: {} destination_zone={}, caller_zone={}, object_id = {}",
+        RPC_DEBUG(
+            "get_or_create_object_proxy service zone: {} destination_zone={}, caller_zone={}, object_id = {}",
             zone_id_.get_subnet(),
             destination_zone_id_.get_subnet(),
             zone_id_.get_subnet(),
@@ -561,11 +581,13 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->message(rpc::i_telemetry_service::level_enum::info,
+                telemetry_service->message(
+                    rpc::i_telemetry_service::level_enum::info,
                     "get_or_create_object_proxy calling sp_add_ref with normal options for new object_proxy");
             }
 #endif
-            auto ret = CO_AWAIT sp_add_ref(object_id,
+            auto ret = CO_AWAIT sp_add_ref(
+                object_id,
                 is_optimistic ? rpc::add_ref_options::optimistic : rpc::add_ref_options::normal,
                 requesting_zone_id);
             if (ret != error::OK())

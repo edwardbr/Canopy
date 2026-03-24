@@ -25,7 +25,10 @@ namespace rpc::ipc_transport
         constexpr auto CHILD_PROCESS_SCHEDULER_THREAD_COUNT_ARG = "scheduler-thread-count";
     }
 
-    queue_pair_bootstrap::queue_pair_bootstrap(std::string mapped_file, rpc::zone child_zone, size_t scheduler_thread_count)
+    queue_pair_bootstrap::queue_pair_bootstrap(
+        std::string mapped_file,
+        rpc::zone child_zone,
+        size_t scheduler_thread_count)
         : mapped_file_(std::move(mapped_file))
         , child_zone_(child_zone)
         , scheduler_thread_count_(scheduler_thread_count)
@@ -72,8 +75,14 @@ namespace rpc::ipc_transport
     }
 
     child_host_bootstrap::child_host_bootstrap(
-        std::string dll_path, std::string mapped_file, rpc::zone dll_zone, size_t scheduler_thread_count)
-        : queue_pair_bootstrap(std::move(mapped_file), dll_zone, scheduler_thread_count)
+        std::string dll_path,
+        std::string mapped_file,
+        rpc::zone dll_zone,
+        size_t scheduler_thread_count)
+        : queue_pair_bootstrap(
+              std::move(mapped_file),
+              dll_zone,
+              scheduler_thread_count)
         , dll_path_(std::move(dll_path))
     {
     }
@@ -98,7 +107,9 @@ namespace rpc::ipc_transport
         return CHILD_HOST_SCHEDULER_THREAD_COUNT_ARG;
     }
 
-    std::shared_ptr<child_host_bootstrap> child_host_bootstrap::from_command_line(int argc, char** argv)
+    std::shared_ptr<child_host_bootstrap> child_host_bootstrap::from_command_line(
+        int argc,
+        char** argv)
     {
         args::ArgumentParser parser("Canopy IPC child host process");
         args::HelpFlag help(parser, "help", "Display this help menu", {'h', "help"});
@@ -108,7 +119,8 @@ namespace rpc::ipc_transport
             parser, "path", "Path to the mapped SPSC queue file", {mapped_file_arg_name()}, args::Options::Required);
         args::ValueFlag<uint64_t> dll_subnet_arg(
             parser, "subnet", "Subnet for the DLL zone", {dll_subnet_arg_name()}, args::Options::Required);
-        args::ValueFlag<size_t> scheduler_thread_count_arg(parser,
+        args::ValueFlag<size_t> scheduler_thread_count_arg(
+            parser,
             "thread-count",
             "Scheduler thread count for the child runtime",
             {scheduler_thread_count_arg_name()},
@@ -160,8 +172,13 @@ namespace rpc::ipc_transport
     }
 
     child_process_bootstrap::child_process_bootstrap(
-        std::string mapped_file, rpc::zone child_zone, size_t scheduler_thread_count)
-        : queue_pair_bootstrap(std::move(mapped_file), child_zone, scheduler_thread_count)
+        std::string mapped_file,
+        rpc::zone child_zone,
+        size_t scheduler_thread_count)
+        : queue_pair_bootstrap(
+              std::move(mapped_file),
+              child_zone,
+              scheduler_thread_count)
     {
     }
 
@@ -180,7 +197,9 @@ namespace rpc::ipc_transport
         return CHILD_PROCESS_SCHEDULER_THREAD_COUNT_ARG;
     }
 
-    std::shared_ptr<child_process_bootstrap> child_process_bootstrap::from_command_line(int argc, char** argv)
+    std::shared_ptr<child_process_bootstrap> child_process_bootstrap::from_command_line(
+        int argc,
+        char** argv)
     {
         args::ArgumentParser parser("Canopy IPC child process");
         args::HelpFlag help(parser, "help", "Display this help menu", {'h', "help"});
@@ -188,7 +207,8 @@ namespace rpc::ipc_transport
             parser, "path", "Path to the mapped SPSC queue file", {mapped_file_arg_name()}, args::Options::Required);
         args::ValueFlag<uint64_t> child_subnet_arg(
             parser, "subnet", "Subnet for the child zone", {child_subnet_arg_name()}, args::Options::Required);
-        args::ValueFlag<size_t> scheduler_thread_count_arg(parser,
+        args::ValueFlag<size_t> scheduler_thread_count_arg(
+            parser,
             "thread-count",
             "Scheduler thread count for the child runtime",
             {scheduler_thread_count_arg_name()},

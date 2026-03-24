@@ -27,7 +27,8 @@ protected:
     auto make_interface_setup_factory()
     {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [use_host_in_child = this->use_host_in_child_](rpc::shared_ptr<yyy::i_host> host,
+        return [use_host_in_child = this->use_host_in_child_](
+                   rpc::shared_ptr<yyy::i_host> host,
                    std::shared_ptr<rpc::service> svc) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
         {
             auto example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(svc, host));

@@ -55,12 +55,14 @@ protected:
     }
 
     CORO_TASK(bool)
-    connect_child(std::string child_name,
+    connect_child(
+        std::string child_name,
         rpc::zone dll_zone,
         std::shared_ptr<rpc::ipc_transport::transport>& transport,
         rpc::shared_ptr<yyy::i_example>& example)
     {
-        transport = rpc::ipc_transport::make_client(child_name,
+        transport = rpc::ipc_transport::make_client(
+            child_name,
             this->root_service_,
             rpc::ipc_transport::options{
                 .process_executable = CANOPY_TEST_IPC_CHILD_HOST_PROCESS_PATH,
@@ -77,12 +79,14 @@ protected:
     }
 
     CORO_TASK(bool)
-    connect_direct_child(std::string child_name,
+    connect_direct_child(
+        std::string child_name,
         rpc::zone child_zone,
         std::shared_ptr<rpc::ipc_transport::transport>& transport,
         rpc::shared_ptr<yyy::i_example>& example)
     {
-        transport = rpc::ipc_transport::make_client(child_name,
+        transport = rpc::ipc_transport::make_client(
+            child_name,
             this->root_service_,
             rpc::ipc_transport::options{
                 .process_executable = CANOPY_TEST_IPC_CHILD_PROCESS_PATH,

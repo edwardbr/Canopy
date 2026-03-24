@@ -98,7 +98,9 @@ namespace rpc
         std::vector<rpc::back_channel_entry> out_back_channel;
 
         standard_result() = default;
-        standard_result(int error_code, std::vector<rpc::back_channel_entry> out_back_channel)
+        standard_result(
+            int error_code,
+            std::vector<rpc::back_channel_entry> out_back_channel)
             : error_code(error_code)
             , out_back_channel(std::move(out_back_channel))
         {
@@ -110,8 +112,13 @@ namespace rpc
         std::vector<char> out_buf;
 
         send_result() = default;
-        send_result(int ec, std::vector<char> buf, std::vector<rpc::back_channel_entry> bce)
-            : standard_result(ec, std::move(bce))
+        send_result(
+            int ec,
+            std::vector<char> buf,
+            std::vector<rpc::back_channel_entry> bce)
+            : standard_result(
+                  ec,
+                  std::move(bce))
             , out_buf(std::move(buf))
         {
         }
@@ -122,8 +129,13 @@ namespace rpc
         zone zone_id;
 
         new_zone_id_result() = default;
-        new_zone_id_result(int ec, zone z, std::vector<rpc::back_channel_entry> bce)
-            : standard_result(ec, std::move(bce))
+        new_zone_id_result(
+            int ec,
+            zone z,
+            std::vector<rpc::back_channel_entry> bce)
+            : standard_result(
+                  ec,
+                  std::move(bce))
             , zone_id(z)
         {
         }

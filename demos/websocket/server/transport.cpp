@@ -11,11 +11,14 @@ namespace websocket_demo
     namespace v1
     {
 
-        transport::transport(const std::shared_ptr<rpc::service>& service,
+        transport::transport(
+            const std::shared_ptr<rpc::service>& service,
             rpc::zone adjacent_zone_id,
             std::shared_ptr<streaming::stream> stream,
             connection_handler&& handler)
-            : rpc::transport("websocket", service)
+            : rpc::transport(
+                  "websocket",
+                  service)
             , stream_(std::move(stream))
             , handler_(std::move(handler))
         {
@@ -25,7 +28,8 @@ namespace websocket_demo
         }
 
         CORO_TASK(std::shared_ptr<transport>)
-        transport::make_server(const std::shared_ptr<rpc::service>& service,
+        transport::make_server(
+            const std::shared_ptr<rpc::service>& service,
             const std::shared_ptr<streaming::stream>& stream,
             connection_handler&& handler)
         {
@@ -164,7 +168,8 @@ namespace websocket_demo
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_transport_outbound_send(get_zone_id(),
+                telemetry_service->on_transport_outbound_send(
+                    get_zone_id(),
                     get_adjacent_zone_id(),
                     params.remote_object_id,
                     params.caller_zone_id,
@@ -200,7 +205,8 @@ namespace websocket_demo
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_transport_outbound_post(get_zone_id(),
+                telemetry_service->on_transport_outbound_post(
+                    get_zone_id(),
                     get_adjacent_zone_id(),
                     params.remote_object_id,
                     params.caller_zone_id,
@@ -281,17 +287,18 @@ namespace websocket_demo
                 CO_RETURN; // no reply.
             }
 
-            auto send_result = CO_AWAIT inbound_send(rpc::send_params{
-                .protocol_version = rpc::get_version(),
-                .encoding_type = rpc::encoding::protocol_buffers,
-                .tag = request.tag,
-                .caller_zone_id = get_adjacent_zone_id(),
-                .remote_object_id = rpc::remote_object(to_zone_address(request.destination_zone_id)),
-                .interface_id = request.interface_id,
-                .method_id = request.method_id,
-                .in_data = request.data,
-                .in_back_channel = {},
-            });
+            auto send_result = CO_AWAIT inbound_send(
+                rpc::send_params{
+                    .protocol_version = rpc::get_version(),
+                    .encoding_type = rpc::encoding::protocol_buffers,
+                    .tag = request.tag,
+                    .caller_zone_id = get_adjacent_zone_id(),
+                    .remote_object_id = rpc::remote_object(to_zone_address(request.destination_zone_id)),
+                    .interface_id = request.interface_id,
+                    .method_id = request.method_id,
+                    .in_data = request.data,
+                    .in_back_channel = {},
+                });
 
             if (send_result.error_code != rpc::error::OK())
             {

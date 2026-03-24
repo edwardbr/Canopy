@@ -181,8 +181,12 @@ namespace rpc
 
     protected:
         // Constructor for derived transport classes
-        transport(std::string name, std::shared_ptr<service> service);
-        transport(std::string name, zone zone_id);
+        transport(
+            std::string name,
+            std::shared_ptr<service> service);
+        transport(
+            std::string name,
+            zone zone_id);
 
         // lock free version - adds handler for zone pair and increments passthrough counts
 
@@ -190,11 +194,15 @@ namespace rpc
         // outbound_dest: zone reachable via this transport (increments outbound_passthrough_count)
         // inbound_source: zone routing through this transport (increments inbound_passthrough_count)
         bool inner_add_passthrough(
-            std::weak_ptr<pass_through> handler, destination_zone outbound_dest, destination_zone inbound_source);
+            std::weak_ptr<pass_through> handler,
+            destination_zone outbound_dest,
+            destination_zone inbound_source);
 
         // Helper to route incoming messages to registered handlers
         // Gets handler for specific zone pair
-        std::shared_ptr<pass_through> inner_get_passthrough(destination_zone zone1, destination_zone zone2) const;
+        std::shared_ptr<pass_through> inner_get_passthrough(
+            destination_zone zone1,
+            destination_zone zone2) const;
 
         std::shared_ptr<transport> inner_get_transport_from_passthroughs(destination_zone destination_zone_id) const;
 
@@ -203,7 +211,9 @@ namespace rpc
 
         void inner_increment_inbound_stub_count(caller_zone dest);
         bool inner_decrement_inbound_stub_count(caller_zone dest);
-        bool inner_decrement_inbound_stub_count_by(caller_zone dest, uint64_t count);
+        bool inner_decrement_inbound_stub_count_by(
+            caller_zone dest,
+            uint64_t count);
 
         /**
          * @brief Called when destination_count_ drops to zero
@@ -224,9 +234,13 @@ namespace rpc
 
         // Destination management for zone pairs
         // For local service, use add_passthrough(local_zone, local_zone, service)
-        std::shared_ptr<pass_through> get_passthrough(destination_zone zone1, destination_zone zone2) const;
+        std::shared_ptr<pass_through> get_passthrough(
+            destination_zone zone1,
+            destination_zone zone2) const;
 
-        void remove_passthrough(destination_zone outbound_dest, destination_zone inbound_source);
+        void remove_passthrough(
+            destination_zone outbound_dest,
+            destination_zone inbound_source);
 
         /**
          * @brief Increment reference count for proxies pointing to destination zone
@@ -279,7 +293,9 @@ namespace rpc
          *
          * Thread-Safety: Uses destinations_mutex_
          */
-        void decrement_inbound_stub_count_by(caller_zone dest, uint64_t count);
+        void decrement_inbound_stub_count_by(
+            caller_zone dest,
+            uint64_t count);
 
         /**
          * @brief Get total count of destinations reachable through this transport
@@ -287,7 +303,8 @@ namespace rpc
          */
         int64_t get_destination_count() { return destination_count_.load(); }
 
-        static std::shared_ptr<pass_through> create_pass_through(std::shared_ptr<transport> forward,
+        static std::shared_ptr<pass_through> create_pass_through(
+            std::shared_ptr<transport> forward,
             const std::shared_ptr<transport>& reverse,
             const std::shared_ptr<service>& service,
             destination_zone forward_dest,
@@ -344,7 +361,9 @@ namespace rpc
          * Thread-Safety: Implementation-specific (varies by derived class)
          */
         CORO_TASK(connect_result)
-        connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr);
+        connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr);
 
         /**
          * @brief Initiate a transport about to receive a connection request
@@ -441,8 +460,9 @@ namespace rpc
          *
          * Thread-Safety: Implementation-specific
          */
-        virtual CORO_TASK(connect_result)
-            inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) = 0;
+        virtual CORO_TASK(connect_result) inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr) = 0;
 
         virtual CORO_TASK(int) inner_accept() = 0;
 

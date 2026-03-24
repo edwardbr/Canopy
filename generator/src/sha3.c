@@ -123,7 +123,9 @@ static void keccakf(uint64_t s[25])
 /* *************************** Public Inteface ************************ */
 
 /* For Init or Reset call these: */
-sha3_return_t sha3_Init(void* priv, unsigned bitSize)
+sha3_return_t sha3_Init(
+    void* priv,
+    unsigned bitSize)
 {
     sha3_context* ctx = (sha3_context*)priv;
     if (bitSize != 256 && bitSize != 384 && bitSize != 512)
@@ -148,7 +150,9 @@ void sha3_Init512(void* priv)
     sha3_Init(priv, 512);
 }
 
-enum SHA3_FLAGS sha3_SetFlags(void* priv, enum SHA3_FLAGS flags)
+enum SHA3_FLAGS sha3_SetFlags(
+    void* priv,
+    enum SHA3_FLAGS flags)
 {
     sha3_context* ctx = (sha3_context*)priv;
     flags &= SHA3_FLAGS_KECCAK;
@@ -156,7 +160,10 @@ enum SHA3_FLAGS sha3_SetFlags(void* priv, enum SHA3_FLAGS flags)
     return flags;
 }
 
-void sha3_Update(void* priv, void const* bufIn, size_t len)
+void sha3_Update(
+    void* priv,
+    void const* bufIn,
+    size_t len)
 {
     sha3_context* ctx = (sha3_context*)priv;
 
@@ -304,7 +311,12 @@ void const* sha3_Finalize(void* priv)
 }
 
 sha3_return_t sha3_HashBuffer(
-    unsigned bitSize, enum SHA3_FLAGS flags, const void* in, unsigned inBytes, void* out, unsigned outBytes)
+    unsigned bitSize,
+    enum SHA3_FLAGS flags,
+    const void* in,
+    unsigned inBytes,
+    void* out,
+    unsigned outBytes)
 {
     sha3_return_t err;
     sha3_context c;

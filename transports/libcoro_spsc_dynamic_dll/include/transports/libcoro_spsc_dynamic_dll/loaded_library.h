@@ -37,7 +37,8 @@ namespace rpc::libcoro_spsc_dynamic_dll
         loaded_library& operator=(const loaded_library&) = delete;
         ~loaded_library();
 
-        static std::shared_ptr<loaded_library> load(const std::string& library_path,
+        static std::shared_ptr<loaded_library> load(
+            const std::string& library_path,
             const std::string& name,
             rpc::zone dll_zone,
             rpc::zone host_zone,

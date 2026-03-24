@@ -71,7 +71,8 @@ extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-co
 template<typename SetupType> using post_functionality_test = type_test<SetupType>;
 
 // Define the test types for different transport mechanisms
-using post_test_implementations = ::testing::Types<in_memory_setup<false>,
+using post_test_implementations = ::testing::Types<
+    in_memory_setup<false>,
     in_memory_setup<true>,
     inproc_setup<false, false, false>,
     inproc_setup<false, false, true>,
@@ -122,7 +123,9 @@ using post_test_implementations = ::testing::Types<in_memory_setup<false>,
 #endif
     >;
 
-TYPED_TEST_SUITE(post_functionality_test, post_test_implementations);
+TYPED_TEST_SUITE(
+    post_functionality_test,
+    post_test_implementations);
 
 // Test for [post] attribute - fire-and-forget one-way messaging with ordering guarantee
 template<class T> CORO_TASK(bool) coro_test_post_with_shared_ptr(T& lib)
@@ -213,7 +216,9 @@ template<class T> CORO_TASK(bool) coro_test_post_with_shared_ptr(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(post_functionality_test, post_with_shared_ptr)
+TYPED_TEST(
+    post_functionality_test,
+    post_with_shared_ptr)
 {
     run_coro_test(*this, [](auto& lib) { return coro_test_post_with_shared_ptr<TypeParam>(lib); });
 }

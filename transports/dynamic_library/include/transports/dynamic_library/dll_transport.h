@@ -74,7 +74,8 @@ namespace rpc::dynamic_library
         host_get_new_zone_id_fn host_get_new_zone_id_;
 
     public:
-        parent_transport(std::string name,
+        parent_transport(
+            std::string name,
             rpc::zone dll_zone,
             rpc::zone host_zone,
             void* host_ctx,
@@ -93,7 +94,9 @@ namespace rpc::dynamic_library
         void set_status(rpc::transport_status status) override;
 
         CORO_TASK(rpc::connect_result)
-        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override
+        inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr) override
         {
             std::ignore = stub;
             std::ignore = input_descr;
@@ -134,15 +137,20 @@ namespace rpc::dynamic_library
     // and child_service, invokes the user factory, and writes outputs back into
     // *params.  Returns rpc::error::OK() on success.
     // -------------------------------------------------------------------------
-    template<class PARENT_INTERFACE, class CHILD_INTERFACE>
-    int init_child_zone(dll_init_params* params,
+    template<
+        class PARENT_INTERFACE,
+        class CHILD_INTERFACE>
+    int init_child_zone(
+        dll_init_params* params,
         std::function<rpc::service_connect_result<CHILD_INTERFACE>(
-            rpc::shared_ptr<PARENT_INTERFACE>, std::shared_ptr<rpc::child_service>)> factory)
+            rpc::shared_ptr<PARENT_INTERFACE>,
+            std::shared_ptr<rpc::child_service>)> factory)
     {
         // Create the parent_transport for the DLL zone.
         // zone_id   = the DLL's own zone
         // adjacent  = the host zone
-        auto pt = std::make_shared<parent_transport>(params->name,
+        auto pt = std::make_shared<parent_transport>(
+            params->name,
             params->dll_zone,
             params->host_zone,
             params->host_ctx,
@@ -185,22 +193,42 @@ extern "C"
 {
     CANOPY_DLL_EXPORT void canopy_dll_destroy(void* dll_ctx);
 
-    CANOPY_DLL_EXPORT int canopy_dll_send(void* dll_ctx, rpc::send_params* params, rpc::send_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_send(
+        void* dll_ctx,
+        rpc::send_params* params,
+        rpc::send_result* result);
 
-    CANOPY_DLL_EXPORT void canopy_dll_post(void* dll_ctx, rpc::post_params* params);
+    CANOPY_DLL_EXPORT void canopy_dll_post(
+        void* dll_ctx,
+        rpc::post_params* params);
 
-    CANOPY_DLL_EXPORT int canopy_dll_try_cast(void* dll_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_try_cast(
+        void* dll_ctx,
+        rpc::try_cast_params* params,
+        rpc::standard_result* result);
 
-    CANOPY_DLL_EXPORT int canopy_dll_add_ref(void* dll_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_add_ref(
+        void* dll_ctx,
+        rpc::add_ref_params* params,
+        rpc::standard_result* result);
 
-    CANOPY_DLL_EXPORT int canopy_dll_release(void* dll_ctx, rpc::release_params* params, rpc::standard_result* result);
+    CANOPY_DLL_EXPORT int canopy_dll_release(
+        void* dll_ctx,
+        rpc::release_params* params,
+        rpc::standard_result* result);
 
-    CANOPY_DLL_EXPORT void canopy_dll_object_released(void* dll_ctx, rpc::object_released_params* params);
+    CANOPY_DLL_EXPORT void canopy_dll_object_released(
+        void* dll_ctx,
+        rpc::object_released_params* params);
 
-    CANOPY_DLL_EXPORT void canopy_dll_transport_down(void* dll_ctx, rpc::transport_down_params* params);
+    CANOPY_DLL_EXPORT void canopy_dll_transport_down(
+        void* dll_ctx,
+        rpc::transport_down_params* params);
 
     CANOPY_DLL_EXPORT int canopy_dll_get_new_zone_id(
-        void* dll_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result);
+        void* dll_ctx,
+        rpc::get_new_zone_id_params* params,
+        rpc::new_zone_id_result* result);
 }
 
 #endif // !CANOPY_BUILD_COROUTINE

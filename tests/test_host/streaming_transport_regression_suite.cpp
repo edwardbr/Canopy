@@ -27,13 +27,16 @@ template<class T> using streaming_transport_regression_test = type_test<T>;
 // Keep this suite on the in-process SPSC streaming path for now. TCP and io_uring
 // need separate host-level coverage once their heavier setup/teardown characteristics
 // are accounted for in the test harness.
-using streaming_transport_regression_implementations
-    = ::testing::Types<streaming_tcp_setup<false, false, false>, streaming_spsc_setup<false, false, false>
-        // ,
-        // streaming_iouring_setup<false, false, false>
-        >;
+using streaming_transport_regression_implementations = ::testing::Types<
+    streaming_tcp_setup<false, false, false>,
+    streaming_spsc_setup<false, false, false>
+    // ,
+    // streaming_iouring_setup<false, false, false>
+    >;
 
-TYPED_TEST_SUITE(streaming_transport_regression_test, streaming_transport_regression_implementations);
+TYPED_TEST_SUITE(
+    streaming_transport_regression_test,
+    streaming_transport_regression_implementations);
 
 template<class T> CORO_TASK(bool) coro_large_blob_round_trip_progress(T& lib)
 {
@@ -57,7 +60,9 @@ template<class T> CORO_TASK(bool) coro_large_blob_round_trip_progress(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(streaming_transport_regression_test, large_blob_round_trip_progress)
+TYPED_TEST(
+    streaming_transport_regression_test,
+    large_blob_round_trip_progress)
 {
     run_coro_test(*this, [](auto& lib) { return coro_large_blob_round_trip_progress<TypeParam>(lib); });
 }

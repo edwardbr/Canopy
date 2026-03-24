@@ -12,7 +12,10 @@
 namespace comprehensive::v1
 {
     CORO_TASK(benchmark_result)
-    run_libcoro_dynamic_library_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size)
+    run_libcoro_dynamic_library_benchmark(
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::encoding enc,
+        size_t blob_size)
     {
         benchmark_result result{};
 

@@ -36,14 +36,21 @@ namespace rpc
     }
 
 #ifdef CANOPY_BUILD_COROUTINE
-    service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler)
+    service::service(
+        const char* name,
+        zone zone_id,
+        const std::shared_ptr<coro::scheduler>& scheduler)
         : zone_id_(zone_id)
         , name_(name)
         , io_scheduler_(scheduler)
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
     }
-    service::service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler, child_service_tag)
+    service::service(
+        const char* name,
+        zone zone_id,
+        const std::shared_ptr<coro::scheduler>& scheduler,
+        child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
         , io_scheduler_(scheduler)
@@ -53,13 +60,18 @@ namespace rpc
     }
 
 #else
-    service::service(const char* name, zone zone_id)
+    service::service(
+        const char* name,
+        zone zone_id)
         : zone_id_(zone_id)
         , name_(name)
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
     }
-    service::service(const char* name, zone zone_id, child_service_tag)
+    service::service(
+        const char* name,
+        zone zone_id,
+        child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
     {
@@ -73,8 +85,14 @@ namespace rpc
     // root_service
 
 #ifdef CANOPY_BUILD_COROUTINE
-    root_service::root_service(const char* name, zone zone_id, const std::shared_ptr<coro::scheduler>& scheduler)
-        : service(name, zone_id, scheduler)
+    root_service::root_service(
+        const char* name,
+        zone zone_id,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+        : service(
+              name,
+              zone_id,
+              scheduler)
         , zone_allocator_(zone_id.get_address())
     {
 #  ifdef CANOPY_USE_TELEMETRY
@@ -84,13 +102,22 @@ namespace rpc
     }
 
     root_service::root_service(
-        const char* name, const service_config& config, const std::shared_ptr<coro::scheduler>& scheduler)
-        : root_service(name, config.initial_zone, scheduler)
+        const char* name,
+        const service_config& config,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+        : root_service(
+              name,
+              config.initial_zone,
+              scheduler)
     {
     }
 #else
-    root_service::root_service(const char* name, zone zone_id)
-        : service(name, zone_id)
+    root_service::root_service(
+        const char* name,
+        zone zone_id)
+        : service(
+              name,
+              zone_id)
         , zone_allocator_(zone_id.get_address())
     {
 #  ifdef CANOPY_USE_TELEMETRY
@@ -99,8 +126,12 @@ namespace rpc
 #  endif
     }
 
-    root_service::root_service(const char* name, const service_config& config)
-        : root_service(name, config.initial_zone)
+    root_service::root_service(
+        const char* name,
+        const service_config& config)
+        : root_service(
+              name,
+              config.initial_zone)
     {
     }
 #endif
@@ -177,15 +208,17 @@ namespace rpc
             auto stub = item.second.lock();
             if (!stub)
             {
-                RPC_WARNING("stub zone_id {}, object stub {} has been released but not deregistered in the service "
-                            "suspected unclean shutdown",
+                RPC_WARNING(
+                    "stub zone_id {}, object stub {} has been released but not deregistered in the service "
+                    "suspected unclean shutdown",
                     std::to_string(zone_id_),
                     std::to_string(item.first));
             }
             else
             {
-                RPC_WARNING("stub zone_id {}, object stub {} has not been released, there is a strong pointer "
-                            "maintaining a positive reference count suspected unclean shutdown",
+                RPC_WARNING(
+                    "stub zone_id {}, object stub {} has not been released, there is a strong pointer "
+                    "maintaining a positive reference count suspected unclean shutdown",
                     std::to_string(zone_id_),
                     std::to_string(item.first));
             }
@@ -197,15 +230,17 @@ namespace rpc
             auto svcproxy = item.second.lock();
             if (!svcproxy)
             {
-                RPC_WARNING("service proxy zone_id {}, destination_zone_id {}, has been released "
-                            "but not deregistered in the service",
+                RPC_WARNING(
+                    "service proxy zone_id {}, destination_zone_id {}, has been released "
+                    "but not deregistered in the service",
                     std::to_string(zone_id_),
                     std::to_string(item.first));
             }
             else
             {
-                RPC_WARNING("service proxy zone_id {}, destination_zone_id {} "
-                            "has not been released in the service suspected unclean shutdown",
+                RPC_WARNING(
+                    "service proxy zone_id {}, destination_zone_id {} "
+                    "has not been released in the service suspected unclean shutdown",
                     std::to_string(zone_id_),
                     std::to_string(item.first));
 
@@ -243,8 +278,9 @@ namespace rpc
             auto transport_ptr = item.second.lock();
             if (!transport_ptr)
             {
-                RPC_WARNING("transport zone_id {}, destination_zone_id {} has been released "
-                            "but not deregistered in the service",
+                RPC_WARNING(
+                    "transport zone_id {}, destination_zone_id {} has been released "
+                    "but not deregistered in the service",
                     std::to_string(zone_id_),
                     std::to_string(item.first));
                 success = false;
@@ -254,15 +290,17 @@ namespace rpc
                 // For child_service, allow the parent transport to still exist during shutdown
                 if (child_svc && expected_parent_transport == transport_ptr && item.first == expected_parent_zone_id)
                 {
-                    RPC_DEBUG("transport zone_id {}, parent_zone_id {} still active during child_service shutdown "
-                              "(expected behavior)",
+                    RPC_DEBUG(
+                        "transport zone_id {}, parent_zone_id {} still active during child_service shutdown "
+                        "(expected behavior)",
                         std::to_string(zone_id_),
                         std::to_string(item.first));
                     continue;
                 }
 
-                RPC_WARNING("transport zone_id {}, destination_zone_id {} (adjacent_zone={}) "
-                            "has not been released suspected unclean shutdown",
+                RPC_WARNING(
+                    "transport zone_id {}, destination_zone_id {} (adjacent_zone={}) "
+                    "has not been released suspected unclean shutdown",
                     std::to_string(zone_id_),
                     std::to_string(item.first),
                     std::to_string(transport_ptr->get_adjacent_zone_id()));
@@ -341,7 +379,8 @@ namespace rpc
         current_service_tracker tracker(this);
 
         // Log that post was received
-        RPC_TRACE("service::post received for destination_zone={} object_id={}",
+        RPC_TRACE(
+            "service::post received for destination_zone={} object_id={}",
             params.remote_object_id.get_subnet(),
             object_id.get_val());
 
@@ -375,16 +414,16 @@ namespace rpc
         CO_AWAIT stub->call(std::move(send));
 
         // Log that post was delivered to local stub
-        RPC_TRACE("service::post delivered to local stub for object_id={} in zone={}",
-            object_id.get_val(),
-            zone_id_.get_subnet());
+        RPC_TRACE(
+            "service::post delivered to local stub for object_id={} in zone={}", object_id.get_val(), zone_id_.get_subnet());
 
         CO_RETURN;
     }
 
     CORO_TASK(void)
     service::clean_up_on_failed_connection(
-        std::shared_ptr<rpc::service_proxy> destination_zone, rpc::shared_ptr<rpc::casting_interface> input_interface)
+        std::shared_ptr<rpc::service_proxy> destination_zone,
+        rpc::shared_ptr<rpc::casting_interface> input_interface)
     {
         if (destination_zone && input_interface)
         {
@@ -406,7 +445,9 @@ namespace rpc
     // or if the interface is a proxy to add ref it
     CORO_TASK(remote_object_bind_result)
     service::get_descriptor_from_interface_stub(
-        caller_zone caller_zone_id, rpc::shared_ptr<rpc::casting_interface> iface, bool optimistic)
+        caller_zone caller_zone_id,
+        rpc::shared_ptr<rpc::casting_interface> iface,
+        bool optimistic)
     {
         remote_object_bind_result result{error::OK(), nullptr, {}};
         if (!iface)
@@ -617,7 +658,10 @@ namespace rpc
     }
 
     CORO_TASK(uint64_t)
-    service::release_local_stub(std::shared_ptr<rpc::object_stub> stub, bool is_optimistic, caller_zone caller_zone_id)
+    service::release_local_stub(
+        std::shared_ptr<rpc::object_stub> stub,
+        bool is_optimistic,
+        caller_zone caller_zone_id)
     {
         uint64_t count = stub->release(is_optimistic, caller_zone_id);
         if (!count && !is_optimistic)
@@ -783,7 +827,8 @@ namespace rpc
             CO_RETURN;
         }
 
-        RPC_INFO("Transport down notification received from caller_zone={} to destination_zone={}",
+        RPC_INFO(
+            "Transport down notification received from caller_zone={} to destination_zone={}",
             caller_zone_id.get_subnet(),
             destination_zone_id.get_subnet());
 
@@ -801,7 +846,8 @@ namespace rpc
                 }
             }
 
-            RPC_INFO("transport_down: Found {} stubs with references from zone {}",
+            RPC_INFO(
+                "transport_down: Found {} stubs with references from zone {}",
                 stubs_to_cleanup.size(),
                 caller_zone_id.get_subnet());
 
@@ -847,7 +893,8 @@ namespace rpc
 
         RPC_ASSERT(transports_.find(destination_zone_id) != transports_.end());
         // transports_[destination_zone_id] = service_proxy->get_transport();
-        RPC_DEBUG("inner_add_zone_proxy service zone: {} destination_zone={} adjacent_zone={}",
+        RPC_DEBUG(
+            "inner_add_zone_proxy service zone: {} destination_zone={} adjacent_zone={}",
             std::to_string(zone_id_),
             std::to_string(service_proxy->destination_zone_id_),
             std::to_string(service_proxy->get_transport()->get_adjacent_zone_id()));
@@ -860,12 +907,15 @@ namespace rpc
         inner_add_zone_proxy(service_proxy);
     }
 
-    void service::inner_add_transport(destination_zone destination_zone_id, const std::shared_ptr<transport>& transport_ptr)
+    void service::inner_add_transport(
+        destination_zone destination_zone_id,
+        const std::shared_ptr<transport>& transport_ptr)
     {
         RPC_ASSERT(destination_zone_id.get_subnet());
         RPC_ASSERT(transports_.find(destination_zone_id) == transports_.end());
         transports_[destination_zone_id] = transport_ptr;
-        RPC_DEBUG("inner_add_transport service zone: {} destination_zone={} adjacent_zone={}",
+        RPC_DEBUG(
+            "inner_add_transport service zone: {} destination_zone={} adjacent_zone={}",
             std::to_string(zone_id_),
             std::to_string(destination_zone_id),
             std::to_string(transport_ptr->get_adjacent_zone_id()));
@@ -880,12 +930,14 @@ namespace rpc
             auto dest = it->second.lock();
             if (!dest)
             {
-                RPC_ERROR("inner_remove_transport: Transport for zone={} is in registry but already expired",
+                RPC_ERROR(
+                    "inner_remove_transport: Transport for zone={} is in registry but already expired",
                     destination_zone_id.get_subnet());
                 RPC_ASSERT(false);
             }
             transports_.erase(it);
-            RPC_DEBUG("remove_transport service zone: {} destination_zone_id={}",
+            RPC_DEBUG(
+                "remove_transport service zone: {} destination_zone_id={}",
                 std::to_string(zone_id_),
                 std::to_string(destination_zone_id));
         }
@@ -906,7 +958,9 @@ namespace rpc
         return nullptr;
     }
 
-    void service::add_transport(destination_zone destination_zone_id, const std::shared_ptr<transport>& transport_ptr)
+    void service::add_transport(
+        destination_zone destination_zone_id,
+        const std::shared_ptr<transport>& transport_ptr)
     {
         std::lock_guard g(service_proxy_control_);
         inner_add_transport(destination_zone_id, transport_ptr);
@@ -932,7 +986,8 @@ namespace rpc
         new_proxy_added = false;
         std::lock_guard g(service_proxy_control_);
 
-        RPC_DEBUG("get_zone_proxy: svc_zone={}, dest={}, caller_zone={}, num_transports={}",
+        RPC_DEBUG(
+            "get_zone_proxy: svc_zone={}, dest={}, caller_zone={}, num_transports={}",
             zone_id_.get_subnet(),
             destination_zone_id.get_subnet(),
             caller_zone_id.is_set() ? caller_zone_id.get_subnet() : 0,
@@ -954,7 +1009,8 @@ namespace rpc
                 auto transport = item->second.lock();
                 if (transport)
                 {
-                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_subnet()),
+                    auto proxy = service_proxy::create(
+                        fmt::format("SP#{}", destination_zone_id.get_subnet()),
                         shared_from_this(),
                         transport,
                         destination_zone_id);
@@ -973,7 +1029,8 @@ namespace rpc
                 auto transport = item->second.lock();
                 if (transport)
                 {
-                    auto proxy = service_proxy::create(fmt::format("SP#{}", destination_zone_id.get_subnet()),
+                    auto proxy = service_proxy::create(
+                        fmt::format("SP#{}", destination_zone_id.get_subnet()),
                         shared_from_this(),
                         transport,
                         destination_zone_id);
@@ -985,7 +1042,8 @@ namespace rpc
             }
         }
 
-        RPC_ERROR("get_zone_proxy: Could not find route! svc_zone={}, dest={}, caller_zone={}",
+        RPC_ERROR(
+            "get_zone_proxy: Could not find route! svc_zone={}, dest={}, caller_zone={}",
             zone_id_.get_subnet(),
             destination_zone_id.get_subnet(),
             caller_zone_id.is_set() ? caller_zone_id.get_subnet() : 0);
@@ -995,7 +1053,8 @@ namespace rpc
 
     void service::remove_zone_proxy(destination_zone destination_zone_id)
     {
-        RPC_DEBUG("remove_zone_proxy service zone: {} destination_zone={}",
+        RPC_DEBUG(
+            "remove_zone_proxy service zone: {} destination_zone={}",
             std::to_string(zone_id_),
             std::to_string(destination_zone_id));
 
@@ -1003,7 +1062,8 @@ namespace rpc
         auto item = service_proxies_.find(destination_zone_id);
         if (item == service_proxies_.end())
         {
-            RPC_ERROR("remove_zone_proxy: destination_zone {} not found in service {}",
+            RPC_ERROR(
+                "remove_zone_proxy: destination_zone {} not found in service {}",
                 std::to_string(destination_zone_id),
                 std::to_string(zone_id_));
             return;
@@ -1021,7 +1081,10 @@ namespace rpc
         std::lock_guard g(service_events_control_);
         service_events_.erase(event);
     }
-    CORO_TASK(void) service::notify_object_gone_event(object object_id, destination_zone destination)
+    CORO_TASK(void)
+    service::notify_object_gone_event(
+        object object_id,
+        destination_zone destination)
     {
         std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_copy;
         {
@@ -1064,35 +1127,45 @@ namespace rpc
     ///////////////////////////////////////////////////////////////////////////////
 
     CORO_TASK(send_result)
-    service::outbound_send(send_params params, std::shared_ptr<transport> transport)
+    service::outbound_send(
+        send_params params,
+        std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->send(std::move(params));
     }
 
     CORO_TASK(void)
-    service::outbound_post(post_params params, std::shared_ptr<transport> transport)
+    service::outbound_post(
+        post_params params,
+        std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_AWAIT transport->post(std::move(params));
     }
 
     CORO_TASK(standard_result)
-    service::outbound_try_cast(try_cast_params params, std::shared_ptr<transport> transport)
+    service::outbound_try_cast(
+        try_cast_params params,
+        std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->try_cast(std::move(params));
     }
 
     CORO_TASK(standard_result)
-    service::outbound_add_ref(add_ref_params params, std::shared_ptr<transport> transport)
+    service::outbound_add_ref(
+        add_ref_params params,
+        std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->add_ref(std::move(params));
     }
 
     CORO_TASK(standard_result)
-    service::outbound_release(release_params params, std::shared_ptr<transport> transport)
+    service::outbound_release(
+        release_params params,
+        std::shared_ptr<transport> transport)
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->release(std::move(params));
@@ -1101,7 +1174,9 @@ namespace rpc
     // Efficient targeted cleanup for a specific remote zone
     // This version is called when the transport knows exactly which zone connection failed
     CORO_TASK(void)
-    service::notify_transport_down([[maybe_unused]] std::shared_ptr<transport> transport, destination_zone remote_zone)
+    service::notify_transport_down(
+        [[maybe_unused]] std::shared_ptr<transport> transport,
+        destination_zone remote_zone)
     {
         std::vector<remote_object> objects_to_notify;
 
@@ -1135,7 +1210,8 @@ namespace rpc
                 if (should_delete)
                 {
                     // Shared count reached zero - stub should be deleted
-                    RPC_DEBUG("transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
+                    RPC_DEBUG(
+                        "transport_down: Object {} ref count from zone {} dropped to zero, cleaning up",
                         obj_id.get_val(),
                         remote_zone.get_subnet());
 
@@ -1165,7 +1241,8 @@ namespace rpc
             CO_AWAIT notify_object_gone_event(obj.get_object_id(), obj.as_zone());
     }
 
-    int service::get_or_create_link_between_source_and_destination(caller_zone caller_zone_id,
+    int service::get_or_create_link_between_source_and_destination(
+        caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         const std::shared_ptr<rpc::transport>& destination_transport,
         std::shared_ptr<rpc::i_marshaller>& marshaller)

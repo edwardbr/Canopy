@@ -18,7 +18,8 @@ namespace canopy::http_server
     using accepted_stream_handler
         = std::function<coro::task<std::shared_ptr<rpc::transport>>(std::shared_ptr<streaming::stream>)>;
 
-    auto run_server(coro::net::ip_address bind_address,
+    auto run_server(
+        coro::net::ip_address bind_address,
         uint16_t port,
         std::shared_ptr<coro::scheduler> scheduler,
         accepted_stream_handler stream_handler,

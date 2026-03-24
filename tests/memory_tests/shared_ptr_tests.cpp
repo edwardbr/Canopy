@@ -60,7 +60,9 @@ namespace
     };
 } // namespace
 
-TEST(SharedPtrBasic, DefaultAndRawPointerConstruction)
+TEST(
+    SharedPtrBasic,
+    DefaultAndRawPointerConstruction)
 {
     rpc::shared_ptr<TestObject> empty;
     EXPECT_FALSE(empty);
@@ -99,7 +101,9 @@ TEST(SharedPtrBasic, DefaultAndRawPointerConstruction)
     EXPECT_TRUE(deleter_called);
 }
 
-TEST(SharedPtrCustomDeleter, StoresAndInvokesDeleter)
+TEST(
+    SharedPtrCustomDeleter,
+    StoresAndInvokesDeleter)
 {
     bool deleted = false;
 
@@ -112,7 +116,9 @@ TEST(SharedPtrCustomDeleter, StoresAndInvokesDeleter)
     EXPECT_TRUE(deleted);
 }
 
-TEST(SharedPtrAliasing, SharesControlBlock)
+TEST(
+    SharedPtrAliasing,
+    SharesControlBlock)
 {
     rpc::shared_ptr<TestObject> owner(new TestObject);
     TestObject* raw = owner.get();
@@ -127,7 +133,9 @@ TEST(SharedPtrAliasing, SharesControlBlock)
     EXPECT_EQ(alias.get(), raw);
 }
 
-TEST(SharedPtrOwnerBefore, EstablishesStrictWeakOrdering)
+TEST(
+    SharedPtrOwnerBefore,
+    EstablishesStrictWeakOrdering)
 {
     rpc::shared_ptr<TestObject> first(new TestObject);
     rpc::shared_ptr<TestObject> second(new TestObject);
@@ -142,7 +150,9 @@ TEST(SharedPtrOwnerBefore, EstablishesStrictWeakOrdering)
     EXPECT_FALSE(alias.owner_before(first));
 }
 
-TEST(WeakPtrOwnerBefore, MirrorsSharedPtrOrdering)
+TEST(
+    WeakPtrOwnerBefore,
+    MirrorsSharedPtrOrdering)
 {
     rpc::shared_ptr<TestObject> first(new TestObject);
     rpc::shared_ptr<TestObject> second(new TestObject);
@@ -155,7 +165,9 @@ TEST(WeakPtrOwnerBefore, MirrorsSharedPtrOrdering)
     EXPECT_FALSE(first.owner_before(weak_first));
 }
 
-TEST(SharedPtrEnableSharedFromThis, MakeSharedInitialisesWeakThis)
+TEST(
+    SharedPtrEnableSharedFromThis,
+    MakeSharedInitialisesWeakThis)
 {
     auto sample = rpc::make_shared<SharedBaz>();
     EXPECT_EQ(sample->payload, 99);
@@ -171,7 +183,9 @@ TEST(SharedPtrEnableSharedFromThis, MakeSharedInitialisesWeakThis)
     EXPECT_EQ(sample.use_count(), locked.use_count());
 }
 
-TEST(SharedPtrEnableSharedFromThis, WorksThroughBaseConstruction)
+TEST(
+    SharedPtrEnableSharedFromThis,
+    WorksThroughBaseConstruction)
 {
     rpc::shared_ptr<BaseBaz> base_ptr(new DerivedBaz);
     auto derived_ptr = rpc::static_pointer_cast<DerivedBaz>(base_ptr);
@@ -181,7 +195,9 @@ TEST(SharedPtrEnableSharedFromThis, WorksThroughBaseConstruction)
     EXPECT_EQ(derived_ptr.use_count(), again.use_count());
 }
 
-TEST(SharedPtrPolymorphism, UpcastsAndDowncastsInterfaces)
+TEST(
+    SharedPtrPolymorphism,
+    UpcastsAndDowncastsInterfaces)
 {
     auto derived = rpc::make_shared<foo_derived>();
     rpc::shared_ptr<Foo> base = derived;
@@ -198,7 +214,9 @@ TEST(SharedPtrPolymorphism, UpcastsAndDowncastsInterfaces)
     EXPECT_EQ(derived.use_count(), 2);
 }
 
-TEST(SharedPtrPolymorphism, SupportsMultipleInheritanceInterfaces)
+TEST(
+    SharedPtrPolymorphism,
+    SupportsMultipleInheritanceInterfaces)
 {
     rpc::shared_ptr<Multi> multi(new Multi);
     rpc::shared_ptr<xxx::i_bar> as_bar = multi;
@@ -209,7 +227,9 @@ TEST(SharedPtrPolymorphism, SupportsMultipleInheritanceInterfaces)
     EXPECT_EQ(multi.use_count(), 3);
 }
 
-TEST(WeakPtrLock, IncrementsAndRestoresUseCount)
+TEST(
+    WeakPtrLock,
+    IncrementsAndRestoresUseCount)
 {
     rpc::shared_ptr<TestObject> shared(new TestObject);
     rpc::weak_ptr<TestObject> weak(shared);
@@ -224,7 +244,9 @@ TEST(WeakPtrLock, IncrementsAndRestoresUseCount)
     EXPECT_EQ(shared.use_count(), 1);
 }
 
-TEST(SharedPtrHash, MatchesRawPointerHash)
+TEST(
+    SharedPtrHash,
+    MatchesRawPointerHash)
 {
     rpc::shared_ptr<TestObject> ptr(new TestObject);
 
@@ -237,7 +259,9 @@ TEST(SharedPtrHash, MatchesRawPointerHash)
     EXPECT_EQ(hash_shared(alias), hash_shared(ptr));
 }
 
-TEST(SharedPtrUnique, ReflectsExclusiveOwnership)
+TEST(
+    SharedPtrUnique,
+    ReflectsExclusiveOwnership)
 {
     rpc::shared_ptr<TestObject> ptr(new TestObject);
     EXPECT_TRUE(ptr.unique());

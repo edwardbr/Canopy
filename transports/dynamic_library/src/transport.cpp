@@ -26,8 +26,13 @@ namespace rpc::dynamic_library
     // -------------------------------------------------------------------------
     // Construction / destruction
     // -------------------------------------------------------------------------
-    child_transport::child_transport(std::string name, std::shared_ptr<rpc::service> service, std::string library_path)
-        : rpc::transport(name, service)
+    child_transport::child_transport(
+        std::string name,
+        std::shared_ptr<rpc::service> service,
+        std::string library_path)
+        : rpc::transport(
+              name,
+              service)
         , library_path_(std::move(library_path))
     {
         // Status remains at its base-class default (CONNECTING) until inner_connect
@@ -174,7 +179,9 @@ namespace rpc::dynamic_library
     // inner_connect
     // -------------------------------------------------------------------------
     CORO_TASK(rpc::connect_result)
-    child_transport::inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
+    child_transport::inner_connect(
+        std::shared_ptr<rpc::object_stub> stub,
+        connection_settings input_descr)
     {
         auto svc = get_service();
 
@@ -316,47 +323,65 @@ namespace rpc::dynamic_library
     // by the DLL's parent_transport to reach the host inbound handlers.
     // They must NOT trigger dlclose (the DLL stack is active when they run).
     // -------------------------------------------------------------------------
-    int child_transport::cb_send(void* host_ctx, rpc::send_params* params, rpc::send_result* result)
+    int child_transport::cb_send(
+        void* host_ctx,
+        rpc::send_params* params,
+        rpc::send_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         *result = t->inbound_send(std::move(*params));
         return result->error_code;
     }
 
-    void child_transport::cb_post(void* host_ctx, rpc::post_params* params)
+    void child_transport::cb_post(
+        void* host_ctx,
+        rpc::post_params* params)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         t->inbound_post(std::move(*params));
     }
 
-    int child_transport::cb_try_cast(void* host_ctx, rpc::try_cast_params* params, rpc::standard_result* result)
+    int child_transport::cb_try_cast(
+        void* host_ctx,
+        rpc::try_cast_params* params,
+        rpc::standard_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         *result = t->inbound_try_cast(std::move(*params));
         return result->error_code;
     }
 
-    int child_transport::cb_add_ref(void* host_ctx, rpc::add_ref_params* params, rpc::standard_result* result)
+    int child_transport::cb_add_ref(
+        void* host_ctx,
+        rpc::add_ref_params* params,
+        rpc::standard_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         *result = t->inbound_add_ref(std::move(*params));
         return result->error_code;
     }
 
-    int child_transport::cb_release(void* host_ctx, rpc::release_params* params, rpc::standard_result* result)
+    int child_transport::cb_release(
+        void* host_ctx,
+        rpc::release_params* params,
+        rpc::standard_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         *result = t->inbound_release(std::move(*params));
         return result->error_code;
     }
 
-    void child_transport::cb_object_released(void* host_ctx, rpc::object_released_params* params)
+    void child_transport::cb_object_released(
+        void* host_ctx,
+        rpc::object_released_params* params)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         t->inbound_object_released(std::move(*params));
     }
 
-    void child_transport::cb_transport_down(void* host_ctx, rpc::transport_down_params* params)
+    void child_transport::cb_transport_down(
+        void* host_ctx,
+        rpc::transport_down_params* params)
     {
         // Propagate the DLL-initiated transport-down notification to the host
         // service so it can clean up its proxy objects.  We do NOT trigger
@@ -368,7 +393,9 @@ namespace rpc::dynamic_library
     }
 
     int child_transport::cb_get_new_zone_id(
-        void* host_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result)
+        void* host_ctx,
+        rpc::get_new_zone_id_params* params,
+        rpc::new_zone_id_result* result)
     {
         auto* t = static_cast<child_transport*>(host_ctx);
         auto svc = t->get_service();

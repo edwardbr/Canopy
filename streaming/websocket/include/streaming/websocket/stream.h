@@ -27,8 +27,12 @@ namespace streaming::websocket
         stream(stream&&) = delete;
         auto operator=(stream&&) -> stream& = delete;
 
-        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override;
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         bool is_closed() const override;
@@ -38,18 +42,30 @@ namespace streaming::websocket
     private:
         static constexpr size_t io_chunk_size = 8192;
 
-        auto serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<coro::net::io_status, rpc::mutable_byte_span>;
+        auto serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>;
 
         // Drive wslay's outgoing queue until it has nothing left to send.
         auto drive_send() -> coro::task<bool>;
         auto flush_outgoing_raw() -> coro::task<bool>;
 
         static auto send_callback(
-            wslay_event_context_ptr ctx, const uint8_t* data, size_t len, int flags, void* user_data) -> ssize_t;
-        static auto recv_callback(wslay_event_context_ptr ctx, uint8_t* buf, size_t len, int flags, void* user_data)
-            -> ssize_t;
+            wslay_event_context_ptr ctx,
+            const uint8_t* data,
+            size_t len,
+            int flags,
+            void* user_data) -> ssize_t;
+        static auto recv_callback(
+            wslay_event_context_ptr ctx,
+            uint8_t* buf,
+            size_t len,
+            int flags,
+            void* user_data) -> ssize_t;
         static void on_msg_recv_callback(
-            wslay_event_context_ptr ctx, const wslay_event_on_msg_recv_arg* arg, void* user_data);
+            wslay_event_context_ptr ctx,
+            const wslay_event_on_msg_recv_arg* arg,
+            void* user_data);
 
         std::shared_ptr<::streaming::stream> underlying_;
         wslay_event_context_ptr wslay_ctx_{nullptr};

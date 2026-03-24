@@ -10,7 +10,8 @@ host::host()
 {
 #ifdef CANOPY_USE_TELEMETRY
     if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        telemetry_service->on_impl_creation("host",
+        telemetry_service->on_impl_creation(
+            "host",
             reinterpret_cast<std::uintptr_t>(this),
             rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
@@ -20,7 +21,8 @@ host::~host()
 {
 #ifdef CANOPY_USE_TELEMETRY
     if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
+        telemetry_service->on_impl_deletion(
+            reinterpret_cast<std::uintptr_t>(this),
             rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
 }
@@ -40,7 +42,10 @@ CORO_TASK(error_code) host::create_enclave(rpc::shared_ptr<yyy::i_example>& targ
 };
 
 // live app registry, it should have sole responsibility for the long term storage of app shared ptrs
-CORO_TASK(error_code) host::look_up_app(const std::string& app_name, rpc::shared_ptr<yyy::i_example>& app)
+CORO_TASK(error_code)
+host::look_up_app(
+    const std::string& app_name,
+    rpc::shared_ptr<yyy::i_example>& app)
 {
     {
         std::scoped_lock lock(cached_apps_mux_);
@@ -53,7 +58,10 @@ CORO_TASK(error_code) host::look_up_app(const std::string& app_name, rpc::shared
     CO_RETURN rpc::error::OK();
 }
 
-CORO_TASK(error_code) host::set_app(const std::string& name, const rpc::shared_ptr<yyy::i_example>& app)
+CORO_TASK(error_code)
+host::set_app(
+    const std::string& name,
+    const rpc::shared_ptr<yyy::i_example>& app)
 {
     {
         std::scoped_lock lock(cached_apps_mux_);

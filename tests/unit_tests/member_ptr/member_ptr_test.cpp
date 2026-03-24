@@ -22,7 +22,10 @@ int destruction_count = 0;
 
 extern "C"
 {
-    void rpc_log(int level, const char* str, size_t sz)
+    void rpc_log(
+        int level,
+        const char* str,
+        size_t sz)
     {
         std::string message(str, sz);
         switch (level)
@@ -95,7 +98,9 @@ public:
 };
 
 // Test default constructor for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcDefaultConstructor)
+TEST_F(
+    MemberPtrTest,
+    RpcDefaultConstructor)
 {
     rpc::member_ptr<test_impl> ptr;
     auto retrieved = ptr.get_nullable();
@@ -103,7 +108,9 @@ TEST_F(MemberPtrTest, RpcDefaultConstructor)
 }
 
 // Test constructor from rpc::shared_ptr for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcConstructFromSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    RpcConstructFromSharedPtr)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> ptr(resource);
@@ -118,7 +125,9 @@ TEST_F(MemberPtrTest, RpcConstructFromSharedPtr)
 }
 
 // Test move constructor from rpc::shared_ptr for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcConstructFromMovedSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    RpcConstructFromMovedSharedPtr)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> ptr(std::move(resource));
@@ -132,7 +141,9 @@ TEST_F(MemberPtrTest, RpcConstructFromMovedSharedPtr)
 }
 
 // Test copy constructor for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcCopyConstructor)
+TEST_F(
+    MemberPtrTest,
+    RpcCopyConstructor)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> original(resource);
@@ -154,7 +165,9 @@ TEST_F(MemberPtrTest, RpcCopyConstructor)
 }
 
 // Test move constructor for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcMoveConstructor)
+TEST_F(
+    MemberPtrTest,
+    RpcMoveConstructor)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> original(resource);
@@ -172,7 +185,9 @@ TEST_F(MemberPtrTest, RpcMoveConstructor)
 }
 
 // Test copy assignment for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcCopyAssignment)
+TEST_F(
+    MemberPtrTest,
+    RpcCopyAssignment)
 {
     auto resource1 = rpc::make_shared<test_impl>(42);
     auto resource2 = rpc::make_shared<test_impl>(84);
@@ -198,7 +213,9 @@ TEST_F(MemberPtrTest, RpcCopyAssignment)
 }
 
 // Test move assignment for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcMoveAssignment)
+TEST_F(
+    MemberPtrTest,
+    RpcMoveAssignment)
 {
     auto resource1 = rpc::make_shared<test_impl>(42);
     auto resource2 = rpc::make_shared<test_impl>(84);
@@ -220,7 +237,9 @@ TEST_F(MemberPtrTest, RpcMoveAssignment)
 }
 
 // Test assignment from rpc::shared_ptr for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcAssignSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    RpcAssignSharedPtr)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> ptr;
@@ -236,7 +255,9 @@ TEST_F(MemberPtrTest, RpcAssignSharedPtr)
 }
 
 // Test move assignment from rpc::shared_ptr for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcAssignMovedSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    RpcAssignMovedSharedPtr)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> ptr;
@@ -252,7 +273,9 @@ TEST_F(MemberPtrTest, RpcAssignMovedSharedPtr)
 }
 
 // Test get_nullable for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcGetNullable)
+TEST_F(
+    MemberPtrTest,
+    RpcGetNullable)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> ptr(resource);
@@ -270,7 +293,9 @@ TEST_F(MemberPtrTest, RpcGetNullable)
 }
 
 // Test reset for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcReset)
+TEST_F(
+    MemberPtrTest,
+    RpcReset)
 {
     auto resource = rpc::make_shared<test_impl>(42);
     rpc::member_ptr<test_impl> ptr(resource);
@@ -282,7 +307,9 @@ TEST_F(MemberPtrTest, RpcReset)
 }
 
 // Test destructor behavior for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcDestructor)
+TEST_F(
+    MemberPtrTest,
+    RpcDestructor)
 {
     rpc::shared_ptr<test_impl> resource;
     {
@@ -305,7 +332,9 @@ TEST_F(MemberPtrTest, RpcDestructor)
 }
 
 // Test concurrent access to rpc::member_ptr
-TEST_F(MemberPtrTest, RpcConcurrentAccess)
+TEST_F(
+    MemberPtrTest,
+    RpcConcurrentAccess)
 {
     rpc::member_ptr<test_impl> ptr(rpc::make_shared<test_impl>(42));
     std::atomic<int> success_count{0};
@@ -347,7 +376,9 @@ TEST_F(MemberPtrTest, RpcConcurrentAccess)
 }
 
 // Test concurrent access with resets for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcConcurrentAccessWithReset)
+TEST_F(
+    MemberPtrTest,
+    RpcConcurrentAccessWithReset)
 {
     rpc::member_ptr<test_impl> ptr(rpc::make_shared<test_impl>(42));
     std::atomic<int> read_success_count{0};
@@ -415,7 +446,9 @@ TEST_F(MemberPtrTest, RpcConcurrentAccessWithReset)
 }
 
 // Test assignment during concurrent access for rpc::member_ptr
-TEST_F(MemberPtrTest, RpcConcurrentAssignment)
+TEST_F(
+    MemberPtrTest,
+    RpcConcurrentAssignment)
 {
     rpc::member_ptr<test_impl> ptr(rpc::make_shared<test_impl>(42));
     std::atomic<int> success_count{0};
@@ -480,7 +513,9 @@ struct TestResource
 };
 
 // Test default constructor for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexDefaultConstructor)
+TEST_F(
+    MemberPtrTest,
+    StdexDefaultConstructor)
 {
     stdex::member_ptr<TestResource> ptr;
     auto retrieved = ptr.get_nullable();
@@ -488,7 +523,9 @@ TEST_F(MemberPtrTest, StdexDefaultConstructor)
 }
 
 // Test constructor from shared_ptr for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexConstructFromSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    StdexConstructFromSharedPtr)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> ptr(resource);
@@ -500,7 +537,9 @@ TEST_F(MemberPtrTest, StdexConstructFromSharedPtr)
 }
 
 // Test move constructor from shared_ptr for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexConstructFromMovedSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    StdexConstructFromMovedSharedPtr)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> ptr(std::move(resource));
@@ -511,7 +550,9 @@ TEST_F(MemberPtrTest, StdexConstructFromMovedSharedPtr)
 }
 
 // Test copy constructor for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexCopyConstructor)
+TEST_F(
+    MemberPtrTest,
+    StdexCopyConstructor)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> original(resource);
@@ -528,7 +569,9 @@ TEST_F(MemberPtrTest, StdexCopyConstructor)
 }
 
 // Test move constructor for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexMoveConstructor)
+TEST_F(
+    MemberPtrTest,
+    StdexMoveConstructor)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> original(resource);
@@ -543,7 +586,9 @@ TEST_F(MemberPtrTest, StdexMoveConstructor)
 }
 
 // Test copy assignment for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexCopyAssignment)
+TEST_F(
+    MemberPtrTest,
+    StdexCopyAssignment)
 {
     auto resource1 = std::make_shared<TestResource>(42);
     auto resource2 = std::make_shared<TestResource>(84);
@@ -564,7 +609,9 @@ TEST_F(MemberPtrTest, StdexCopyAssignment)
 }
 
 // Test move assignment for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexMoveAssignment)
+TEST_F(
+    MemberPtrTest,
+    StdexMoveAssignment)
 {
     auto resource1 = std::make_shared<TestResource>(42);
     auto resource2 = std::make_shared<TestResource>(84);
@@ -583,7 +630,9 @@ TEST_F(MemberPtrTest, StdexMoveAssignment)
 }
 
 // Test assignment from shared_ptr for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexAssignSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    StdexAssignSharedPtr)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> ptr;
@@ -596,7 +645,9 @@ TEST_F(MemberPtrTest, StdexAssignSharedPtr)
 }
 
 // Test move assignment from shared_ptr for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexAssignMovedSharedPtr)
+TEST_F(
+    MemberPtrTest,
+    StdexAssignMovedSharedPtr)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> ptr;
@@ -609,7 +660,9 @@ TEST_F(MemberPtrTest, StdexAssignMovedSharedPtr)
 }
 
 // Test get_nullable for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexGetNullable)
+TEST_F(
+    MemberPtrTest,
+    StdexGetNullable)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> ptr(resource);
@@ -624,7 +677,9 @@ TEST_F(MemberPtrTest, StdexGetNullable)
 }
 
 // Test reset for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexReset)
+TEST_F(
+    MemberPtrTest,
+    StdexReset)
 {
     auto resource = std::make_shared<TestResource>(42);
     stdex::member_ptr<TestResource> ptr(resource);
@@ -636,7 +691,9 @@ TEST_F(MemberPtrTest, StdexReset)
 }
 
 // Test destructor behavior for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexDestructor)
+TEST_F(
+    MemberPtrTest,
+    StdexDestructor)
 {
     std::shared_ptr<TestResource> resource;
     {
@@ -653,7 +710,9 @@ TEST_F(MemberPtrTest, StdexDestructor)
 }
 
 // Test concurrent access to stdex::member_ptr
-TEST_F(MemberPtrTest, StdexConcurrentAccess)
+TEST_F(
+    MemberPtrTest,
+    StdexConcurrentAccess)
 {
     stdex::member_ptr<TestResource> ptr(std::make_shared<TestResource>(42));
     std::atomic<int> success_count{0};
@@ -689,7 +748,9 @@ TEST_F(MemberPtrTest, StdexConcurrentAccess)
 }
 
 // Test concurrent access with resets for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexConcurrentAccessWithReset)
+TEST_F(
+    MemberPtrTest,
+    StdexConcurrentAccessWithReset)
 {
     stdex::member_ptr<TestResource> ptr(std::make_shared<TestResource>(42));
     std::atomic<int> read_success_count{0};
@@ -751,7 +812,9 @@ TEST_F(MemberPtrTest, StdexConcurrentAccessWithReset)
 }
 
 // Test assignment during concurrent access for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexConcurrentAssignment)
+TEST_F(
+    MemberPtrTest,
+    StdexConcurrentAssignment)
 {
     stdex::member_ptr<TestResource> ptr(std::make_shared<TestResource>(42));
     std::atomic<int> success_count{0};
@@ -797,7 +860,9 @@ TEST_F(MemberPtrTest, StdexConcurrentAssignment)
 }
 
 // Test self-assignment for stdex::member_ptr
-TEST_F(MemberPtrTest, StdexSelfAssignment)
+TEST_F(
+    MemberPtrTest,
+    StdexSelfAssignment)
 {
     stdex::member_ptr<TestResource> ptr(std::make_shared<TestResource>(42));
 
@@ -810,7 +875,9 @@ TEST_F(MemberPtrTest, StdexSelfAssignment)
 }
 
 // Test equality comparison between member_ptr instances
-TEST_F(MemberPtrTest, StdexEqualityComparison)
+TEST_F(
+    MemberPtrTest,
+    StdexEqualityComparison)
 {
     auto resource1 = std::make_shared<TestResource>(42);
     auto resource2 = std::make_shared<TestResource>(84);

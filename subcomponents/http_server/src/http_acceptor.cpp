@@ -9,7 +9,8 @@ namespace canopy::http_server
 {
     namespace
     {
-        auto handle_client(coro::net::tcp::client client,
+        auto handle_client(
+            coro::net::tcp::client client,
             std::shared_ptr<coro::scheduler> scheduler,
             accepted_stream_handler stream_handler) -> coro::task<void>
         {
@@ -22,7 +23,8 @@ namespace canopy::http_server
             co_return;
         }
 
-        auto handle_tls_client(coro::net::tcp::client client,
+        auto handle_tls_client(
+            coro::net::tcp::client client,
             std::shared_ptr<coro::scheduler> scheduler,
             std::shared_ptr<streaming::tls::context> tls_context,
             accepted_stream_handler stream_handler) -> coro::task<void>
@@ -46,7 +48,8 @@ namespace canopy::http_server
         }
     } // namespace
 
-    auto run_server(coro::net::ip_address bind_address,
+    auto run_server(
+        coro::net::ip_address bind_address,
         uint16_t port,
         std::shared_ptr<coro::scheduler> scheduler,
         accepted_stream_handler stream_handler,

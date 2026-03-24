@@ -108,7 +108,10 @@ namespace crash_handler
         analysis_callback_ = callback;
     }
 
-    void crash_handler::handle_crash(int signal, siginfo_t* info, void* context)
+    void crash_handler::handle_crash(
+        int signal,
+        siginfo_t* info,
+        void* context)
     {
         std::ignore = info;
         std::ignore = context;
@@ -302,7 +305,9 @@ namespace crash_handler
         return frames;
     }
 
-    std::vector<crash_handler::thread_info> crash_handler::collect_all_thread_stacks(int max_threads, int max_frames)
+    std::vector<crash_handler::thread_info> crash_handler::collect_all_thread_stacks(
+        int max_threads,
+        int max_frames)
     {
         std::vector<thread_info> thread_infos;
         auto thread_ids = enumerate_threads();

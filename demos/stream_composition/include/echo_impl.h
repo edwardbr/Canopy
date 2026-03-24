@@ -17,7 +17,10 @@ namespace stream_composition
     class echo_impl : public rpc::base<echo_impl, i_echo>
     {
     public:
-        CORO_TASK(int) echo(const std::string& message, std::string& response) override
+        CORO_TASK(int)
+        echo(
+            const std::string& message,
+            std::string& response) override
         {
             response = "Echo: " + message;
             CO_RETURN rpc::error::OK();

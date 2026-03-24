@@ -60,18 +60,25 @@ namespace rpc::mock_test
         send_handler send_handler_;
         std::mutex send_handler_mtx_;
 
-        void record_call(call_record::call_type type,
+        void record_call(
+            call_record::call_type type,
             uint64_t protocol_version,
             rpc::remote_object destination_zone_id,
             rpc::caller_zone caller_zone_id);
 
     public:
-        mock_transport(std::string name, std::shared_ptr<rpc::service> service);
-        mock_transport(std::string name, rpc::zone zone_id);
+        mock_transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service);
+        mock_transport(
+            std::string name,
+            rpc::zone zone_id);
         ~mock_transport() override = default;
 
         // Control methods for testing
-        void set_force_failure(bool force_failure, int error_code = rpc::error::TRANSPORT_ERROR());
+        void set_force_failure(
+            bool force_failure,
+            int error_code = rpc::error::TRANSPORT_ERROR());
         void clear_call_history();
         std::vector<call_record> get_call_history() const;
         void mark_as_down();
@@ -101,7 +108,9 @@ namespace rpc::mock_test
 
         // outbound i_marshaller implementations
         CORO_TASK(rpc::connect_result)
-        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override;
+        inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr) override;
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
         CORO_TASK(send_result) outbound_send(send_params params) override;

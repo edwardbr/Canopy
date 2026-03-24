@@ -56,7 +56,9 @@ namespace rpc
         static remote_object get_remote_object(const casting_interface& iface);
     };
 
-    bool are_in_same_zone(const casting_interface* first, const casting_interface* second);
+    bool are_in_same_zone(
+        const casting_interface* first,
+        const casting_interface* second);
 
     // T is a class derived from casting_interface its role is to provide access to the object proxy to the remote zone
     template<class T> class interface_proxy : public T

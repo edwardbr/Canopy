@@ -59,7 +59,9 @@ namespace comprehensive
             std::cout << std::string(60, '=') << "\n";
         }
 
-        void print_result(const std::string& operation, int error)
+        void print_result(
+            const std::string& operation,
+            int error)
         {
             RPC_INFO("{}: ", operation);
             if (error == rpc::error::OK())
@@ -225,7 +227,10 @@ namespace comprehensive
     }
 }
 
-void rpc_log(int level, const char* str, size_t sz)
+void rpc_log(
+    int level,
+    const char* str,
+    size_t sz)
 {
     std::string message(str, sz);
     switch (level)

@@ -21,7 +21,10 @@
 
 namespace marshalled_tests
 {
-    CORO_TASK(bool) standard_tests(xxx::i_foo& foo, bool enclave);
+    CORO_TASK(bool)
+    standard_tests(
+        xxx::i_foo& foo,
+        bool enclave);
 
     class baz : public rpc::base<baz, xxx::i_baz, xxx::i_bar>
     {
@@ -30,7 +33,8 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation("baz",
+                telemetry_service->on_impl_creation(
+                    "baz",
                     reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
@@ -40,7 +44,8 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
+                telemetry_service->on_impl_deletion(
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -50,7 +55,10 @@ namespace marshalled_tests
             RPC_DEBUG("callback {}", val);
             CO_RETURN rpc::error::OK();
         }
-        CORO_TASK(error_code) blob_test(const std::vector<uint8_t>& inval, std::vector<uint8_t>& out_val) override
+        CORO_TASK(error_code)
+        blob_test(
+            const std::vector<uint8_t>& inval,
+            std::vector<uint8_t>& out_val) override
         {
             RPC_DEBUG("baz blob_test {}", inval.size());
             out_val = inval;
@@ -75,7 +83,8 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation("foo",
+                telemetry_service->on_impl_creation(
+                    "foo",
                     reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
@@ -84,7 +93,8 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
+                telemetry_service->on_impl_deletion(
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -234,7 +244,10 @@ namespace marshalled_tests
             val.map_val["22"] = xxx::something_complicated{FLD(int_val) 33, FLD(string_val) "23"};
             CO_RETURN rpc::error::OK();
         }
-        CORO_TASK(error_code) do_multi_val(int val1, int val2) override
+        CORO_TASK(error_code)
+        do_multi_val(
+            int val1,
+            int val2) override
         {
             std::ignore = val1;
             std::ignore = val2;
@@ -242,7 +255,9 @@ namespace marshalled_tests
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code)
-        do_multi_complicated_val(const xxx::something_more_complicated val1, const xxx::something_more_complicated val2) override
+        do_multi_complicated_val(
+            const xxx::something_more_complicated val1,
+            const xxx::something_more_complicated val2) override
         {
             std::ignore = val1;
             std::ignore = val2;
@@ -354,7 +369,8 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation("multiple_inheritance",
+                telemetry_service->on_impl_creation(
+                    "multiple_inheritance",
                     reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
@@ -363,7 +379,8 @@ namespace marshalled_tests
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
+                telemetry_service->on_impl_deletion(
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -379,7 +396,10 @@ namespace marshalled_tests
             RPC_DEBUG("callback {}", val);
             CO_RETURN rpc::error::OK();
         }
-        CORO_TASK(error_code) blob_test(const std::vector<uint8_t>& inval, std::vector<uint8_t>& out_val) override
+        CORO_TASK(error_code)
+        blob_test(
+            const std::vector<uint8_t>& inval,
+            std::vector<uint8_t>& out_val) override
         {
             out_val = inval;
             CO_RETURN rpc::error::OK();
@@ -393,25 +413,30 @@ namespace marshalled_tests
         std::weak_ptr<rpc::service> this_service_;
 
     public:
-        example(std::shared_ptr<rpc::service> this_service, rpc::shared_ptr<yyy::i_host> host)
+        example(
+            std::shared_ptr<rpc::service> this_service,
+            rpc::shared_ptr<yyy::i_host> host)
             : host_(host)
             , this_service_(this_service)
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation("example",
+                telemetry_service->on_impl_creation(
+                    "example",
                     reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
         ~example() override
         {
-            RPC_DEBUG("example::~example zone={} retained_peer={}",
+            RPC_DEBUG(
+                "example::~example zone={} retained_peer={}",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0,
                 retained_peer_.get_nullable() != nullptr);
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(reinterpret_cast<std::uintptr_t>(this),
+                telemetry_service->on_impl_deletion(
+                    reinterpret_cast<std::uintptr_t>(this),
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
 #endif
         }
@@ -447,7 +472,8 @@ namespace marshalled_tests
 
         CORO_TASK(error_code)
         inner_create_example_in_subordinate_zone(
-            rpc::shared_ptr<yyy::i_example>& target, const rpc::shared_ptr<yyy::i_host>& host_ptr)
+            rpc::shared_ptr<yyy::i_example>& target,
+            const rpc::shared_ptr<yyy::i_host>& host_ptr)
         {
             auto this_service = this_service_.lock();
 
@@ -471,13 +497,15 @@ namespace marshalled_tests
 
         CORO_TASK(error_code)
         create_example_in_subordinate_zone(
-            rpc::shared_ptr<yyy::i_example>& target, const rpc::shared_ptr<yyy::i_host>& host_ptr) override
+            rpc::shared_ptr<yyy::i_example>& target,
+            const rpc::shared_ptr<yyy::i_host>& host_ptr) override
         {
             CO_RETURN CO_AWAIT inner_create_example_in_subordinate_zone(target, host_ptr);
         }
         CORO_TASK(error_code)
         create_example_in_subordinate_zone_and_set_in_host(
-            const std::string& name, const rpc::shared_ptr<yyy::i_host>& host_ptr) override
+            const std::string& name,
+            const rpc::shared_ptr<yyy::i_host>& host_ptr) override
         {
             rpc::shared_ptr<yyy::i_example> target;
             auto ret = CO_AWAIT inner_create_example_in_subordinate_zone(target, host_ptr);
@@ -488,7 +516,10 @@ namespace marshalled_tests
             CO_RETURN CO_AWAIT host->set_app(name, target);
         }
 
-        CORO_TASK(error_code) add(int a, int b, int& c) override
+        CORO_TASK(error_code)
+        add(int a,
+            int b,
+            int& c) override
         {
             c = a + b;
             CO_RETURN rpc::error::OK();
@@ -542,7 +573,9 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
-        call_host_create_enclave(rpc::shared_ptr<i_example>& target, bool run_standard_tests) override
+        call_host_create_enclave(
+            rpc::shared_ptr<i_example>& target,
+            bool run_standard_tests) override
         {
             auto host = host_.get_nullable();
             if (!host)
@@ -565,7 +598,9 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
-        call_host_look_up_app_not_return(const std::string& name, bool run_standard_tests) override
+        call_host_look_up_app_not_return(
+            const std::string& name,
+            bool run_standard_tests) override
         {
             auto host = host_.get_nullable();
             if (!host)
@@ -601,7 +636,10 @@ namespace marshalled_tests
 
         // live app registry, it should have sole responsibility for the long term storage of app shared ptrs
         CORO_TASK(error_code)
-        call_host_look_up_app(const std::string& name, rpc::shared_ptr<i_example>& app, bool run_standard_tests) override
+        call_host_look_up_app(
+            const std::string& name,
+            rpc::shared_ptr<i_example>& app,
+            bool run_standard_tests) override
         {
             auto host = host_.get_nullable();
             if (!host)
@@ -638,7 +676,9 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
-        call_host_look_up_app_not_return_and_delete(const std::string& name, bool run_standard_tests) override
+        call_host_look_up_app_not_return_and_delete(
+            const std::string& name,
+            bool run_standard_tests) override
         {
             auto host = host_.get_nullable();
             if (!host)
@@ -675,7 +715,9 @@ namespace marshalled_tests
 
         CORO_TASK(error_code)
         call_host_look_up_app_and_delete(
-            const std::string& name, rpc::shared_ptr<i_example>& app, bool run_standard_tests) override
+            const std::string& name,
+            rpc::shared_ptr<i_example>& app,
+            bool run_standard_tests) override
         {
             auto host = host_.get_nullable();
             if (!host)
@@ -711,7 +753,10 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
-        call_host_set_app(const std::string& name, const rpc::shared_ptr<i_example>& app, bool run_standard_tests) override
+        call_host_set_app(
+            const std::string& name,
+            const rpc::shared_ptr<i_example>& app,
+            bool run_standard_tests) override
         {
             auto host = host_.get_nullable();
             if (!host)
@@ -755,7 +800,9 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
-        send_interface_back(const rpc::shared_ptr<xxx::i_baz>& input, rpc::shared_ptr<xxx::i_baz>& output) override
+        send_interface_back(
+            const rpc::shared_ptr<xxx::i_baz>& input,
+            rpc::shared_ptr<xxx::i_baz>& output) override
         {
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
@@ -766,14 +813,16 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
-        create_fork_and_return_object(rpc::shared_ptr<yyy::i_example> zone_factory,
+        create_fork_and_return_object(
+            rpc::shared_ptr<yyy::i_example> zone_factory,
             const std::vector<uint64_t>& fork_zone_ids,
             rpc::shared_ptr<yyy::i_example>& object_from_forked_zone) override
         {
             // This method runs in the current zone and autonomously creates a chain of zones through the factory
             // The zone_factory is a reference to an intermediate zone that can create new zones
             // fork_zone_ids specifies the chain of zones to create and which zone to get the object from
-            RPC_DEBUG("example::create_fork_and_return_object - Zone {} creating fork chain through zone factory",
+            RPC_DEBUG(
+                "example::create_fork_and_return_object - Zone {} creating fork chain through zone factory",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (fork_zone_ids.empty())
@@ -859,8 +908,9 @@ namespace marshalled_tests
     public:
         CORO_TASK(error_code) cache_object_from_autonomous_zone(const std::vector<uint64_t>& zone_ids) override
         {
-            RPC_DEBUG("example::cache_object_from_autonomous_zone - Zone {} autonomously creating and caching object "
-                      "from unknown zone",
+            RPC_DEBUG(
+                "example::cache_object_from_autonomous_zone - Zone {} autonomously creating and caching object "
+                "from unknown zone",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (zone_ids.empty())
@@ -888,16 +938,20 @@ namespace marshalled_tests
             // Cache the object locally
             cached_autonomous_object_ = autonomous_object;
 
-            RPC_DEBUG("Successfully cached object from autonomous zone {} in zone {}",
+            RPC_DEBUG(
+                "Successfully cached object from autonomous zone {} in zone {}",
                 zone_ids.back(),
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
             CO_RETURN rpc::error::OK();
         }
 
         CORO_TASK(error_code)
-        create_y_topology_fork(rpc::shared_ptr<yyy::i_example> factory_zone, const std::vector<uint64_t>& fork_zone_ids) override
+        create_y_topology_fork(
+            rpc::shared_ptr<yyy::i_example> factory_zone,
+            const std::vector<uint64_t>& fork_zone_ids) override
         {
-            RPC_DEBUG("example::create_y_topology_fork - Zone {} creating Y-topology fork via factory zone",
+            RPC_DEBUG(
+                "example::create_y_topology_fork - Zone {} creating Y-topology fork via factory zone",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (fork_zone_ids.empty())
@@ -918,7 +972,8 @@ namespace marshalled_tests
             // and other zones in the original chain are NOT notified.
             // This creates the true Y-topology where one prong creates a fork at an earlier point.
 
-            RPC_DEBUG("Zone {} asking factory zone to create autonomous fork with {} zones",
+            RPC_DEBUG(
+                "Zone {} asking factory zone to create autonomous fork with {} zones",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0,
                 fork_zone_ids.size());
 
@@ -933,19 +988,22 @@ namespace marshalled_tests
             // Cache it locally so we can later pass it to zones that have no route to the fork
             cached_autonomous_object_ = object_from_forked_zone;
 
-            RPC_DEBUG("Successfully created Y-topology fork - Zone {} now has object from factory's autonomous zones",
+            RPC_DEBUG(
+                "Successfully created Y-topology fork - Zone {} now has object from factory's autonomous zones",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
             CO_RETURN rpc::error::OK();
         }
 
         CORO_TASK(error_code) retrieve_cached_autonomous_object(rpc::shared_ptr<yyy::i_example>& cached_object) override
         {
-            RPC_DEBUG("example::retrieve_cached_autonomous_object - Zone {} retrieving cached autonomous object",
+            RPC_DEBUG(
+                "example::retrieve_cached_autonomous_object - Zone {} retrieving cached autonomous object",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (!cached_autonomous_object_)
             {
-                RPC_ERROR("No cached autonomous object available in zone {}",
+                RPC_ERROR(
+                    "No cached autonomous object available in zone {}",
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet()
                                                         : 0);
                 CO_RETURN rpc::error::ZONE_NOT_FOUND();
@@ -953,7 +1011,8 @@ namespace marshalled_tests
 
             cached_object = cached_autonomous_object_;
 
-            RPC_DEBUG("Successfully retrieved cached autonomous object in zone {}",
+            RPC_DEBUG(
+                "Successfully retrieved cached autonomous object in zone {}",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             // CRITICAL: This is where the routing bug should trigger
@@ -966,12 +1025,14 @@ namespace marshalled_tests
 
         CORO_TASK(error_code) give_host_cached_object() override
         {
-            RPC_DEBUG("example::give_host_cached_object - Zone {} giving host cached autonomous object",
+            RPC_DEBUG(
+                "example::give_host_cached_object - Zone {} giving host cached autonomous object",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             if (!cached_autonomous_object_)
             {
-                RPC_ERROR("No cached autonomous object available in zone {}",
+                RPC_ERROR(
+                    "No cached autonomous object available in zone {}",
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet()
                                                         : 0);
                 CO_RETURN rpc::error::ZONE_NOT_FOUND();
@@ -980,7 +1041,8 @@ namespace marshalled_tests
             auto host = host_.get_nullable();
             if (!host)
             {
-                RPC_ERROR("No cached host object available in zone {}",
+                RPC_ERROR(
+                    "No cached host object available in zone {}",
                     rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet()
                                                         : 0);
                 CO_RETURN rpc::error::OBJECT_NOT_FOUND();
@@ -992,7 +1054,8 @@ namespace marshalled_tests
                 CO_RETURN err;
             }
 
-            RPC_DEBUG("Successfully retrieved cached autonomous object in zone {}",
+            RPC_DEBUG(
+                "Successfully retrieved cached autonomous object in zone {}",
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0);
 
             // CRITICAL: This is where the routing bug should trigger

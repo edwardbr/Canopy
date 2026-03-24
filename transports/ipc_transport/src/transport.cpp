@@ -64,7 +64,10 @@ namespace rpc::ipc_transport
             return ::kill(pid, 0) == 0 || errno == EPERM;
         }
 
-        [[nodiscard]] bool wait_for_child_exit(pid_t child_pid, int& status, std::chrono::milliseconds timeout)
+        [[nodiscard]] bool wait_for_child_exit(
+            pid_t child_pid,
+            int& status,
+            std::chrono::milliseconds timeout)
         {
             const auto deadline = std::chrono::steady_clock::now() + timeout;
             for (;;)
@@ -90,7 +93,9 @@ namespace rpc::ipc_transport
 
     }
 
-    transport::construction_bundle transport::create_bundle(const std::shared_ptr<rpc::service>& service, const options&)
+    transport::construction_bundle transport::create_bundle(
+        const std::shared_ptr<rpc::service>& service,
+        const options&)
     {
         RPC_ASSERT(service);
 
@@ -120,7 +125,9 @@ namespace rpc::ipc_transport
         return construction_bundle{.state = std::move(result_state), .stream = std::move(stream)};
     }
 
-    void transport::spawn_child(const std::shared_ptr<state>& state, const options& options)
+    void transport::spawn_child(
+        const std::shared_ptr<state>& state,
+        const options& options)
     {
         RPC_ASSERT(state);
         RPC_ASSERT(state->queues);
@@ -247,14 +254,30 @@ namespace rpc::ipc_transport
         }
     }
 
-    transport::transport(std::string name, const std::shared_ptr<rpc::service>& service, options options)
-        : transport(std::move(name), service, std::move(options), create_bundle(service, options))
+    transport::transport(
+        std::string name,
+        const std::shared_ptr<rpc::service>& service,
+        options options)
+        : transport(
+              std::move(name),
+              service,
+              std::move(options),
+              create_bundle(
+                  service,
+                  options))
     {
     }
 
     transport::transport(
-        std::string name, const std::shared_ptr<rpc::service>& service, options options, construction_bundle bundle)
-        : rpc::stream_transport::transport(std::move(name), service, std::move(bundle.stream), nullptr)
+        std::string name,
+        const std::shared_ptr<rpc::service>& service,
+        options options,
+        construction_bundle bundle)
+        : rpc::stream_transport::transport(
+              std::move(name),
+              service,
+              std::move(bundle.stream),
+              nullptr)
         , state_(std::move(bundle.state))
     {
         spawn_child(state_, options);
@@ -297,7 +320,10 @@ namespace rpc::ipc_transport
             reap_child(state_);
     }
 
-    std::shared_ptr<transport> make_client(std::string name, const std::shared_ptr<rpc::service>& service, options options)
+    std::shared_ptr<transport> make_client(
+        std::string name,
+        const std::shared_ptr<rpc::service>& service,
+        options options)
     {
         auto result = std::shared_ptr<transport>(new transport(std::move(name), service, std::move(options)));
         result->initialise();

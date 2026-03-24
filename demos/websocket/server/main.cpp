@@ -14,7 +14,10 @@
 #include <rpc/rpc.h>
 #include <streaming/tls/stream.h>
 
-extern "C" void rpc_log(int level, const char* str, size_t sz)
+extern "C" void rpc_log(
+    int level,
+    const char* str,
+    size_t sz)
 {
     std::string message(str, sz);
     switch (level)
@@ -66,7 +69,8 @@ namespace
     }
 }
 
-auto run_http_server(std::shared_ptr<coro::scheduler> scheduler,
+auto run_http_server(
+    std::shared_ptr<coro::scheduler> scheduler,
     coro::net::ip_address bind_address,
     uint16_t port,
     std::shared_ptr<websocket_demo::v1::websocket_service> service,
@@ -84,7 +88,9 @@ auto run_http_server(std::shared_ptr<coro::scheduler> scheduler,
     co_return;
 }
 
-auto main(int argc, char* argv[]) -> int
+auto main(
+    int argc,
+    char* argv[]) -> int
 {
     args::ArgumentParser parser("WebSocket demo server with static pages, REST endpoints, and websocket RPC.");
     args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});

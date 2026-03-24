@@ -42,7 +42,8 @@ namespace comprehensive
         };
 
         CORO_TASK(bool)
-        process_1_task(bool& success,
+        process_1_task(
+            bool& success,
             std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
             rpc::zone zone_2,
@@ -120,7 +121,8 @@ namespace comprehensive
         }
 
         CORO_TASK(void)
-        process_2_task(std::shared_ptr<coro::scheduler> scheduler,
+        process_2_task(
+            std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_2,
             rpc::zone zone_1,
             spsc_queues* queues,
@@ -136,7 +138,8 @@ namespace comprehensive
 
             auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2 = CO_AWAIT service_2->make_acceptor<i_calculator, i_calculator>("transport_2",
+            auto transport_2 = CO_AWAIT service_2->make_acceptor<i_calculator, i_calculator>(
+                "transport_2",
                 rpc::stream_transport::transport_factory(std::move(stream_2)),
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&](const rpc::shared_ptr<i_calculator>&,
@@ -203,9 +206,10 @@ namespace comprehensive
             rpc::event client_finished;
 
             bool success = true;
-            coro::sync_wait(coro::when_all(
-                process_1_task(success, scheduler_1, zone_1, zone_2, queues.get(), is_loaded, client_finished),
-                process_2_task(scheduler_2, zone_2, zone_1, queues.get(), is_loaded, server_ready, client_finished)));
+            coro::sync_wait(
+                coro::when_all(
+                    process_1_task(success, scheduler_1, zone_1, zone_2, queues.get(), is_loaded, client_finished),
+                    process_2_task(scheduler_2, zone_2, zone_1, queues.get(), is_loaded, server_ready, client_finished)));
 
             // Explicitly shutdown schedulers to terminate and join their spawned threads
             // This prevents thread accumulation across multiple iterations
@@ -219,7 +223,10 @@ namespace comprehensive
 
 extern "C"
 {
-    void rpc_log(int level, const char* str, size_t sz)
+    void rpc_log(
+        int level,
+        const char* str,
+        size_t sz)
     {
         std::string message(str, sz);
         switch (level)

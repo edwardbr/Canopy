@@ -147,14 +147,18 @@ public:
     }
 
     // Writes a full key-value pair with string value
-    void write_string_property(const std::string& key, const std::string& value)
+    void write_string_property(
+        const std::string& key,
+        const std::string& value)
     {
         write_key(key);
         write_string_value(value);
     }
 
     // Writes a full key-value pair with raw value (number, boolean, null, object, array)
-    void write_raw_property(const std::string& key, const std::string& raw_value)
+    void write_raw_property(
+        const std::string& key,
+        const std::string& raw_value)
     {
         write_key(key);
         write_raw_value(raw_value);

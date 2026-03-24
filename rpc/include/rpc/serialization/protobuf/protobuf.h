@@ -24,42 +24,56 @@ namespace rpc
         namespace protobuf
         {
             // Helper to serialize std::vector<uint8_t> to protobuf bytes field (std::string)
-            inline void serialize_bytes(const std::vector<uint8_t>& data, std::string& proto_bytes)
+            inline void serialize_bytes(
+                const std::vector<uint8_t>& data,
+                std::string& proto_bytes)
             {
                 proto_bytes.assign(reinterpret_cast<const char*>(data.data()), data.size());
             }
 
             // Helper to deserialize protobuf bytes field (std::string) to std::vector<uint8_t>
-            inline void deserialize_bytes(const std::string& proto_bytes, std::vector<uint8_t>& data)
+            inline void deserialize_bytes(
+                const std::string& proto_bytes,
+                std::vector<uint8_t>& data)
             {
                 data.assign(proto_bytes.begin(), proto_bytes.end());
             }
 
             // Overloads for std::vector<char> (char and uint8_t are compatible)
-            inline void serialize_bytes(const std::vector<int8_t>& data, std::string& proto_bytes)
+            inline void serialize_bytes(
+                const std::vector<int8_t>& data,
+                std::string& proto_bytes)
             {
                 proto_bytes.assign(reinterpret_cast<const char*>(data.data()), data.size());
             }
 
-            inline void deserialize_bytes(const std::string& proto_bytes, std::vector<int8_t>& data)
+            inline void deserialize_bytes(
+                const std::string& proto_bytes,
+                std::vector<int8_t>& data)
             {
                 data.assign(proto_bytes.begin(), proto_bytes.end());
             }
 
             // Overloads for std::vector<char> (char and uint8_t are compatible)
-            inline void serialize_bytes(const std::vector<char>& data, std::string& proto_bytes)
+            inline void serialize_bytes(
+                const std::vector<char>& data,
+                std::string& proto_bytes)
             {
                 proto_bytes.assign(data.data(), data.size());
             }
 
-            inline void deserialize_bytes(const std::string& proto_bytes, std::vector<char>& data)
+            inline void deserialize_bytes(
+                const std::string& proto_bytes,
+                std::vector<char>& data)
             {
                 data.assign(proto_bytes.begin(), proto_bytes.end());
             }
 
             // Helper to serialize std::vector<T> to protobuf repeated field for integer types
             template<typename T>
-            inline void serialize_integer_vector(const std::vector<T>& data, google::protobuf::RepeatedField<T>& proto_field)
+            inline void serialize_integer_vector(
+                const std::vector<T>& data,
+                google::protobuf::RepeatedField<T>& proto_field)
             {
                 static_assert(std::is_integral<T>::value, "serialize_integer_vector requires an integral type");
                 proto_field.Clear();
@@ -73,7 +87,8 @@ namespace rpc
             // Helper to deserialize protobuf repeated field to std::vector<T> for integer types
             template<typename T>
             inline void deserialize_integer_vector(
-                const google::protobuf::RepeatedField<T>& proto_field, std::vector<T>& data)
+                const google::protobuf::RepeatedField<T>& proto_field,
+                std::vector<T>& data)
             {
                 static_assert(std::is_integral<T>::value, "deserialize_integer_vector requires an integral type");
                 data.clear();

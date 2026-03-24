@@ -58,7 +58,8 @@ namespace comprehensive
     namespace v1
     {
         CORO_TASK(bool)
-        run_tcp_server(std::shared_ptr<coro::scheduler> scheduler,
+        run_tcp_server(
+            std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
             const rpc::event& client_finished,
             const canopy::network_config::network_config& cfg,
@@ -82,7 +83,8 @@ namespace comprehensive
                                     : coro::net::domain_t::ipv4;
             const coro::net::socket_address endpoint{coro::net::ip_address::from_string(host, domain), port};
 
-            auto listener = std::make_shared<streaming::listener>("server_transport",
+            auto listener = std::make_shared<streaming::listener>(
+                "server_transport",
                 std::make_shared<streaming::tcp::acceptor>(endpoint),
                 rpc::stream_transport::make_connection_callback<i_calculator, i_calculator>(
                     [](const rpc::shared_ptr<i_calculator>&,
@@ -120,7 +122,8 @@ namespace comprehensive
         }
 
         CORO_TASK(bool)
-        run_tcp_client(std::shared_ptr<coro::scheduler> scheduler,
+        run_tcp_client(
+            std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
             rpc::event& client_finished,
             const canopy::network_config::network_config& cfg,
@@ -138,7 +141,8 @@ namespace comprehensive
                 // Wait for server to be ready before connecting.
                 co_await server_ready.wait();
 
-                RPC_INFO("Client zone ID (address): {}",
+                RPC_INFO(
+                    "Client zone ID (address): {}",
                     rpc::to_yas_json<std::string>(client_service->get_zone_id().get_address()));
 
                 RPC_INFO("Client: Connecting to {}:{}...", host, port);
@@ -150,8 +154,8 @@ namespace comprehensive
                 const auto client_domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
                                                ? coro::net::domain_t::ipv6
                                                : coro::net::domain_t::ipv4;
-                coro::net::tcp::client client(scheduler,
-                    coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
+                coro::net::tcp::client client(
+                    scheduler, coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
 
                 auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
                 if (connection_status != coro::net::connect_status::connected)
@@ -210,7 +214,10 @@ namespace comprehensive
     }
 }
 
-void rpc_log(int level, const char* str, size_t sz)
+void rpc_log(
+    int level,
+    const char* str,
+    size_t sz)
 {
     std::string message(str, sz);
     switch (level)
@@ -239,7 +246,9 @@ void rpc_log(int level, const char* str, size_t sz)
     }
 }
 
-int main(int argc, char* argv[])
+int main(
+    int argc,
+    char* argv[])
 {
     RPC_INFO("RPC++ Comprehensive Demo - TCP Transport");
     RPC_INFO("========================================");
@@ -312,12 +321,14 @@ int main(int argc, char* argv[])
         rpc::event server_ready;
         rpc::event client_finished;
 
-        coro::sync_wait(coro::when_all(
-            // the server
-            comprehensive::v1::run_tcp_server(scheduler_1, server_ready, client_finished, cfg, rpc::zone{server_zone_addr}),
-            // the client
-            comprehensive::v1::run_tcp_client(
-                scheduler_2, server_ready, client_finished, cfg, rpc::zone{client_zone_addr})));
+        coro::sync_wait(
+            coro::when_all(
+                // the server
+                comprehensive::v1::run_tcp_server(
+                    scheduler_1, server_ready, client_finished, cfg, rpc::zone{server_zone_addr}),
+                // the client
+                comprehensive::v1::run_tcp_client(
+                    scheduler_2, server_ready, client_finished, cfg, rpc::zone{client_zone_addr})));
     }
 
     print_separator("TCP TRANSPORT DEMO COMPLETED");

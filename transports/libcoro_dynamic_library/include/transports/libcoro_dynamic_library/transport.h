@@ -59,42 +59,58 @@ namespace rpc::libcoro_dynamic_library
         // These are passed as host_coro_*_fn callbacks to canopy_libcoro_dll_create.
         // The DLL's parent_transport CO_AWAITs them to call into the host.
         // -----------------------------------------------------------------------
-        static coro::task<send_result> host_inbound_send(void* ctx, send_params params)
+        static coro::task<send_result> host_inbound_send(
+            void* ctx,
+            send_params params)
         {
             return static_cast<child_transport*>(ctx)->inbound_send(std::move(params));
         }
 
-        static coro::task<void> host_inbound_post(void* ctx, post_params params)
+        static coro::task<void> host_inbound_post(
+            void* ctx,
+            post_params params)
         {
             return static_cast<child_transport*>(ctx)->inbound_post(std::move(params));
         }
 
-        static coro::task<standard_result> host_inbound_try_cast(void* ctx, try_cast_params params)
+        static coro::task<standard_result> host_inbound_try_cast(
+            void* ctx,
+            try_cast_params params)
         {
             return static_cast<child_transport*>(ctx)->inbound_try_cast(std::move(params));
         }
 
-        static coro::task<standard_result> host_inbound_add_ref(void* ctx, add_ref_params params)
+        static coro::task<standard_result> host_inbound_add_ref(
+            void* ctx,
+            add_ref_params params)
         {
             return static_cast<child_transport*>(ctx)->inbound_add_ref(std::move(params));
         }
 
-        static coro::task<standard_result> host_inbound_release(void* ctx, release_params params)
+        static coro::task<standard_result> host_inbound_release(
+            void* ctx,
+            release_params params)
         {
             return static_cast<child_transport*>(ctx)->inbound_release(std::move(params));
         }
 
-        static coro::task<void> host_inbound_object_released(void* ctx, object_released_params params)
+        static coro::task<void> host_inbound_object_released(
+            void* ctx,
+            object_released_params params)
         {
             return static_cast<child_transport*>(ctx)->inbound_object_released(std::move(params));
         }
 
-        static coro::task<void> host_inbound_transport_down(void* ctx, transport_down_params params)
+        static coro::task<void> host_inbound_transport_down(
+            void* ctx,
+            transport_down_params params)
         {
             return static_cast<child_transport*>(ctx)->inbound_transport_down(std::move(params));
         }
 
-        static coro::task<new_zone_id_result> host_inbound_get_new_zone_id(void* ctx, get_new_zone_id_params params)
+        static coro::task<new_zone_id_result> host_inbound_get_new_zone_id(
+            void* ctx,
+            get_new_zone_id_params params)
         {
             auto* t = static_cast<child_transport*>(ctx);
             auto svc = t->get_service();
@@ -120,14 +136,19 @@ namespace rpc::libcoro_dynamic_library
         void on_destination_count_zero() override;
 
     public:
-        child_transport(std::string name, std::shared_ptr<rpc::service> service, std::string library_path);
+        child_transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service,
+            std::string library_path);
 
         ~child_transport() override;
 
         void set_status(rpc::transport_status status) override;
 
         CORO_TASK(rpc::connect_result)
-        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override;
+        inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr) override;
 
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 

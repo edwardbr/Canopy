@@ -12,7 +12,9 @@
 namespace rpc::libcoro_spsc_dynamic_dll
 {
     std::shared_ptr<rpc::stream_transport::transport> make_client(
-        std::string name, const std::shared_ptr<rpc::service>& service, queue_pair* queues)
+        std::string name,
+        const std::shared_ptr<rpc::service>& service,
+        queue_pair* queues)
     {
         auto stream = std::make_shared<streaming::spsc_queue::stream>(
             &queues->host_to_dll, &queues->dll_to_host, service->get_scheduler());

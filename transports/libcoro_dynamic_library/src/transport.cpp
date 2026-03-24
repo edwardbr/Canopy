@@ -16,8 +16,13 @@ namespace rpc::libcoro_dynamic_library
     // -------------------------------------------------------------------------
     // Construction / destruction
     // -------------------------------------------------------------------------
-    child_transport::child_transport(std::string name, std::shared_ptr<rpc::service> service, std::string library_path)
-        : rpc::transport(name, service)
+    child_transport::child_transport(
+        std::string name,
+        std::shared_ptr<rpc::service> service,
+        std::string library_path)
+        : rpc::transport(
+              name,
+              service)
         , library_path_(std::move(library_path))
     {
     }
@@ -121,7 +126,9 @@ namespace rpc::libcoro_dynamic_library
     // Step 2 (coro): CO_AWAIT init_fn to run create_child_zone inside the DLL.
     // -------------------------------------------------------------------------
     CORO_TASK(rpc::connect_result)
-    child_transport::inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
+    child_transport::inner_connect(
+        std::shared_ptr<rpc::object_stub> stub,
+        connection_settings input_descr)
     {
         auto p_this = shared_from_this();
         auto svc = get_service();

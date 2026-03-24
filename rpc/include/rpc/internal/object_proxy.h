@@ -44,10 +44,14 @@ namespace rpc
         // Track optimistic references from control block transitions (public for telemetry)
         std::atomic<int> optimistic_count_{0};
 
-        object_proxy(object object_id, std::shared_ptr<rpc::service_proxy> service_proxy);
+        object_proxy(
+            object object_id,
+            std::shared_ptr<rpc::service_proxy> service_proxy);
 
         // note the interface pointer may change if there is already an interface inserted successfully
-        void register_interface(interface_ordinal interface_id, rpc::weak_ptr<casting_interface>& value);
+        void register_interface(
+            interface_ordinal interface_id,
+            rpc::weak_ptr<casting_interface>& value);
 
         CORO_TASK(int) try_cast(std::function<interface_ordinal(uint64_t)> id_getter);
 
@@ -78,7 +82,8 @@ namespace rpc
         object get_object_id() const { return {object_id_}; }
         destination_zone get_destination_zone_id() const;
 
-        [[nodiscard]] CORO_TASK(send_result) send(uint64_t protocol_version,
+        [[nodiscard]] CORO_TASK(send_result) send(
+            uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::interface_ordinal interface_id,
@@ -86,7 +91,8 @@ namespace rpc
             rpc::byte_span in_data);
 
         CORO_TASK(int)
-        post(uint64_t protocol_version,
+        post(
+            uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::interface_ordinal interface_id,
@@ -101,11 +107,15 @@ namespace rpc
 
         template<class T> void create_interface_proxy(rpc::shared_ptr<T>& inface);
 
-        template<class T, template<class> class PtrType = rpc::shared_ptr, bool default_do_remote_check = true>
+        template<
+            class T,
+            template<class> class PtrType = rpc::shared_ptr,
+            bool default_do_remote_check = true>
         CORO_TASK(query_interface_result<PtrType<T>>)
         query_interface(bool do_remote_check = default_do_remote_check)
         {
-            static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
+            static_assert(
+                __rpc_pointer_traits::is_supported_v<PtrType<T>>,
                 "query_interface only supports rpc::shared_ptr and rpc::optimistic_ptr");
             query_interface_result<PtrType<T>> result{rpc::error::OK(), {}};
 

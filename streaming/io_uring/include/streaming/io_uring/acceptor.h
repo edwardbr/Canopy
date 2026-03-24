@@ -26,7 +26,9 @@ namespace streaming::io_uring
     class acceptor : public ::streaming::stream_acceptor
     {
     public:
-        acceptor(canopy::network_config::ip_address address, uint16_t port)
+        acceptor(
+            canopy::network_config::ip_address address,
+            uint16_t port)
             : address_(address)
             , port_(port)
         {
@@ -67,7 +69,8 @@ namespace streaming::io_uring
 
             if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
             {
-                RPC_ERROR("io_uring::acceptor bind failed on {}.{}.{}.{}:{}: {}",
+                RPC_ERROR(
+                    "io_uring::acceptor bind failed on {}.{}.{}.{}:{}: {}",
                     static_cast<int>(address_[0]),
                     static_cast<int>(address_[1]),
                     static_cast<int>(address_[2]),

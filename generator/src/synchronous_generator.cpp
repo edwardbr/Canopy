@@ -74,7 +74,8 @@ namespace synchronous_generator
         calling_renderer() = default;
 
         // Implement pure virtual functions from base_renderer
-        std::string render_by_value(int option,
+        std::string render_by_value(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -84,7 +85,8 @@ namespace synchronous_generator
             const std::string& type_name,
             uint64_t& count) override;
 
-        std::string render_reference(int option,
+        std::string render_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -94,7 +96,8 @@ namespace synchronous_generator
             const std::string& type_name,
             uint64_t& count) override;
 
-        std::string render_move(int option,
+        std::string render_move(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -104,7 +107,8 @@ namespace synchronous_generator
             const std::string& type_name,
             uint64_t& count) override;
 
-        std::string render_pointer(int option,
+        std::string render_pointer(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -114,7 +118,8 @@ namespace synchronous_generator
             const std::string& type_name,
             uint64_t& count) override;
 
-        std::string render_pointer_reference(int option,
+        std::string render_pointer_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -124,7 +129,8 @@ namespace synchronous_generator
             const std::string& type_name,
             uint64_t& count) override;
 
-        std::string render_pointer_pointer(int option,
+        std::string render_pointer_pointer(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -134,7 +140,8 @@ namespace synchronous_generator
             const std::string& type_name,
             uint64_t& count) override;
 
-        std::string render_interface(int option,
+        std::string render_interface(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -144,7 +151,8 @@ namespace synchronous_generator
             const std::string& type_name,
             uint64_t& count) override;
 
-        std::string render_interface_reference(int option,
+        std::string render_interface_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -156,7 +164,8 @@ namespace synchronous_generator
     };
 
     // Implementation functions for calling_renderer
-    std::string calling_renderer::render_by_value(int option,
+    std::string calling_renderer::render_by_value(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -196,7 +205,8 @@ namespace synchronous_generator
         }
     }
 
-    std::string calling_renderer::render_reference(int option,
+    std::string calling_renderer::render_reference(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -236,7 +246,8 @@ namespace synchronous_generator
         }
     }
 
-    std::string calling_renderer::render_move(int option,
+    std::string calling_renderer::render_move(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -282,7 +293,8 @@ namespace synchronous_generator
         }
     }
 
-    std::string calling_renderer::render_pointer(int option,
+    std::string calling_renderer::render_pointer(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -322,7 +334,8 @@ namespace synchronous_generator
         }
     }
 
-    std::string calling_renderer::render_pointer_reference(int option,
+    std::string calling_renderer::render_pointer_reference(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -365,7 +378,8 @@ namespace synchronous_generator
         }
     }
 
-    std::string calling_renderer::render_pointer_pointer(int option,
+    std::string calling_renderer::render_pointer_pointer(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -406,7 +420,8 @@ namespace synchronous_generator
         }
     }
 
-    std::string calling_renderer::render_interface(int option,
+    std::string calling_renderer::render_interface(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -478,8 +493,9 @@ namespace synchronous_generator
             return fmt::format("{0}_, ", name);
 
         case PROXY_CLEAN_IN:
-            return fmt::format("if({0}_stub_) CO_AWAIT "
-                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id());",
+            return fmt::format(
+                "if({0}_stub_) CO_AWAIT "
+                "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id());",
                 name);
 
         case STUB_DEMARSHALL_DECLARATION:
@@ -491,7 +507,8 @@ namespace synchronous_generator
             return ret;
         }
         case STUB_PARAM_WRAP:
-            return fmt::format(R"__(
+            return fmt::format(
+                R"__(
                 {0} {1};
                 if(!rpc::error::is_error(__rpc_ret) && {1}_object_.is_set() && {1}_object_.get_object_id().is_set())
                 {{
@@ -528,7 +545,8 @@ namespace synchronous_generator
         }
     }
 
-    std::string calling_renderer::render_interface_reference(int option,
+    std::string calling_renderer::render_interface_reference(
+        int option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -595,8 +613,9 @@ namespace synchronous_generator
             return fmt::format("{0}_, ", name);
 
         case PROXY_CLEAN_IN:
-            return fmt::format("if({0}_stub_) CO_AWAIT "
-                               "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id());",
+            return fmt::format(
+                "if({0}_stub_) CO_AWAIT "
+                "{0}_stub_->release_from_service(__rpc_sp->get_destination_zone_id());",
                 name);
 
         case STUB_DEMARSHALL_DECLARATION:
@@ -604,9 +623,10 @@ namespace synchronous_generator
         case STUB_PARAM_CAST:
             return name;
         case PROXY_VALUE_RETURN:
-            return fmt::format("\t\t\t\tauto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, {0}_);\n"
-                               "\t\t\t\t__rpc_ret = {0}_ret.error_code;\n"
-                               "\t\t\t\t{0} = std::move({0}_ret.iface);\n",
+            return fmt::format(
+                "\t\t\t\tauto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, {0}_);\n"
+                "\t\t\t\t__rpc_ret = {0}_ret.error_code;\n"
+                "\t\t\t\t{0} = std::move({0}_ret.iface);\n",
                 name,
                 bind_template_args);
         case PROXY_OUT_DECLARATION:
@@ -629,7 +649,8 @@ namespace synchronous_generator
         }
     };
 
-    bool do_in_param(print_type option,
+    bool do_in_param(
+        print_type option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -644,7 +665,8 @@ namespace synchronous_generator
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
-    bool do_out_param(print_type option,
+    bool do_out_param(
+        print_type option,
         bool from_host,
         const class_entity& lib,
         const std::string& name,
@@ -661,7 +683,10 @@ namespace synchronous_generator
 
     // Lambda to emit PROXY_CLEAN_IN cleanup code - used at early return points and at end of function
     void emit_proxy_clean_in(
-        bool from_host, const class_entity& m_ob, writer& proxy, const std::shared_ptr<function_entity>& function)
+        bool from_host,
+        const class_entity& m_ob,
+        writer& proxy,
+        const std::shared_ptr<function_entity>& function)
     {
         proxy("//PROXY_CLEAN_IN");
         uint64_t clean_count = 1;
@@ -677,7 +702,8 @@ namespace synchronous_generator
         }
     };
 
-    void write_method(bool from_host,
+    void write_method(
+        bool from_host,
         const class_entity& m_ob,
         writer& proxy,
         writer& stub,
@@ -783,10 +809,11 @@ namespace synchronous_generator
             proxy("#ifdef CANOPY_USE_TELEMETRY");
             proxy("if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)");
             proxy("{{");
-            proxy("telemetry_service->on_interface_proxy_send(\"{0}::{1}\", "
-                  "__rpc_sp->get_zone_id(), "
-                  "__rpc_sp->get_destination_zone_id(), "
-                  "__rpc_op->get_object_id(), {{{0}_proxy::get_id(rpc::get_version())}}, {{{2}}});",
+            proxy(
+                "telemetry_service->on_interface_proxy_send(\"{0}::{1}\", "
+                "__rpc_sp->get_zone_id(), "
+                "__rpc_sp->get_destination_zone_id(), "
+                "__rpc_op->get_object_id(), {{{0}_proxy::get_id(rpc::get_version())}}, {{{2}}});",
                 interface_name,
                 function->get_name(),
                 function_count);
@@ -799,7 +826,8 @@ namespace synchronous_generator
                 for (auto& parameter : function->get_parameters())
                 {
                     std::string output;
-                    if (do_in_param(STUB_DEMARSHALL_DECLARATION,
+                    if (do_in_param(
+                            STUB_DEMARSHALL_DECLARATION,
                             from_host,
                             m_ob,
                             parameter.get_name(),
@@ -809,7 +837,8 @@ namespace synchronous_generator
                             output))
                         ;
                     else
-                        do_out_param(STUB_DEMARSHALL_DECLARATION,
+                        do_out_param(
+                            STUB_DEMARSHALL_DECLARATION,
                             from_host,
                             m_ob,
                             parameter.get_name(),
@@ -823,8 +852,9 @@ namespace synchronous_generator
 
             if (!function->has_value("post"))
             {
-                proxy("std::vector<char> __rpc_out_buf(CANOPY_OUT_BUFFER_SIZE); //max size using short string "
-                      "optimisation");
+                proxy(
+                    "std::vector<char> __rpc_out_buf(CANOPY_OUT_BUFFER_SIZE); //max size using short string "
+                    "optimisation");
             }
             proxy("auto __rpc_ret = rpc::error::OK();");
 
@@ -844,7 +874,8 @@ namespace synchronous_generator
                         continue;
                     proxy(output);
 
-                    if (!do_in_param(PROXY_PREPARE_IN_INTERFACE_ID,
+                    if (!do_in_param(
+                            PROXY_PREPARE_IN_INTERFACE_ID,
                             from_host,
                             m_ob,
                             parameter.get_name(),
@@ -874,7 +905,8 @@ namespace synchronous_generator
                 proxy("{{");
                 {
                     proxy.print_tabs();
-                    proxy.raw("__rpc_ret = {}proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
+                    proxy.raw(
+                        "__rpc_ret = {}proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
                         scoped_namespace,
                         function->get_name());
                     count = 1;
@@ -882,7 +914,8 @@ namespace synchronous_generator
                     {
                         std::string output;
                         {
-                            if (!do_in_param(PROXY_MARSHALL_IN,
+                            if (!do_in_param(
+                                    PROXY_MARSHALL_IN,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -907,7 +940,8 @@ namespace synchronous_generator
                 proxy("{{");
                 {
                     proxy.print_tabs();
-                    proxy.raw("__rpc_ret = {}proxy_serialiser<rpc::serialiser::protocol_buffers>::{}(",
+                    proxy.raw(
+                        "__rpc_ret = {}proxy_serialiser<rpc::serialiser::protocol_buffers>::{}(",
                         scoped_namespace,
                         function->get_name());
                     count = 1;
@@ -915,7 +949,8 @@ namespace synchronous_generator
                     {
                         std::string output;
                         {
-                            if (!do_in_param(PROXY_MARSHALL_IN,
+                            if (!do_in_param(
+                                    PROXY_MARSHALL_IN,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -957,7 +992,8 @@ namespace synchronous_generator
                 stub("{{");
                 {
                     stub.print_tabs();
-                    stub.raw("__rpc_ret = {}stub_deserialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
+                    stub.raw(
+                        "__rpc_ret = {}stub_deserialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
                         scoped_namespace,
                         function->get_name());
                     count = 1;
@@ -965,7 +1001,8 @@ namespace synchronous_generator
                     {
                         std::string output;
                         {
-                            if (!do_in_param(STUB_MARSHALL_IN,
+                            if (!do_in_param(
+                                    STUB_MARSHALL_IN,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -990,7 +1027,8 @@ namespace synchronous_generator
                 stub("{{");
                 {
                     stub.print_tabs();
-                    stub.raw("__rpc_ret = {}stub_deserialiser<rpc::serialiser::protocol_buffers>::{}(",
+                    stub.raw(
+                        "__rpc_ret = {}stub_deserialiser<rpc::serialiser::protocol_buffers>::{}(",
                         scoped_namespace,
                         function->get_name());
                     count = 1;
@@ -998,7 +1036,8 @@ namespace synchronous_generator
                     {
                         std::string output;
                         {
-                            if (!do_in_param(STUB_MARSHALL_IN,
+                            if (!do_in_param(
+                                    STUB_MARSHALL_IN,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -1032,16 +1071,18 @@ namespace synchronous_generator
 
             if (function->has_value("post"))
             {
-                proxy("__rpc_ret = CO_AWAIT __rpc_op->post(__rpc_version, __rpc_encoding, static_cast<uint64_t>({}), "
-                      "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
+                proxy(
+                    "__rpc_ret = CO_AWAIT __rpc_op->post(__rpc_version, __rpc_encoding, static_cast<uint64_t>({}), "
+                    "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
                     tag,
                     interface_name,
                     function_count);
             }
             else
             {
-                proxy("auto __rpc_send_result = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, "
-                      "static_cast<uint64_t>({}), {}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
+                proxy(
+                    "auto __rpc_send_result = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, "
+                    "static_cast<uint64_t>({}), {}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
                     tag,
                     interface_name,
                     function_count);
@@ -1100,8 +1141,9 @@ namespace synchronous_generator
 
             proxy("if(rpc::error::is_critical(__rpc_ret))");
             proxy("{{");
-            proxy("//if you fall into this rabbit hole ensure that you have added any error offsets compatible with "
-                  "your error code system to the rpc library");
+            proxy(
+                "//if you fall into this rabbit hole ensure that you have added any error offsets compatible with "
+                "your error code system to the rpc library");
             proxy("//this is only here to handle rpc generated errors and not application errors");
             proxy("//clean up any input stubs, this code has to assume that the destination is behaving correctly");
             proxy("RPC_ERROR(\"failed in {}\");", function->get_name());
@@ -1177,7 +1219,8 @@ namespace synchronous_generator
                 stub("#ifdef CANOPY_USE_LOGGING");
                 stub("catch(const std::exception& ex)");
                 stub("{{");
-                stub("RPC_ERROR(\"Exception has occurred in an {} implementation in function {} {{}}\", ex.what());",
+                stub(
+                    "RPC_ERROR(\"Exception has occurred in an {} implementation in function {} {{}}\", ex.what());",
                     interface_name,
                     function->get_name());
                 stub("__rpc_ret = rpc::error::EXCEPTION();");
@@ -1185,7 +1228,8 @@ namespace synchronous_generator
                 stub("#endif");
                 stub("catch(...)");
                 stub("{{");
-                stub("RPC_ERROR(\"Exception has occurred in an {} implementation in function {}\");",
+                stub(
+                    "RPC_ERROR(\"Exception has occurred in an {} implementation in function {}\");",
                     interface_name,
                     function->get_name());
                 stub("__rpc_ret = rpc::error::EXCEPTION();");
@@ -1219,7 +1263,8 @@ namespace synchronous_generator
                     count++;
                     std::string output;
 
-                    if (!do_out_param(STUB_ADD_REF_OUT_PREDECLARE,
+                    if (!do_out_param(
+                            STUB_ADD_REF_OUT_PREDECLARE,
                             from_host,
                             m_ob,
                             parameter.get_name(),
@@ -1283,7 +1328,8 @@ namespace synchronous_generator
                     proxy("{{");
                     {
                         proxy.print_tabs();
-                        proxy.raw("__rpc_ret = {}proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
+                        proxy.raw(
+                            "__rpc_ret = {}proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
                             scoped_namespace,
                             function->get_name());
 
@@ -1291,7 +1337,8 @@ namespace synchronous_generator
                         {
                             count++;
                             std::string output;
-                            if (!do_out_param(PROXY_MARSHALL_OUT,
+                            if (!do_out_param(
+                                    PROXY_MARSHALL_OUT,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -1313,7 +1360,8 @@ namespace synchronous_generator
                     proxy("{{");
                     {
                         proxy.print_tabs();
-                        proxy.raw("__rpc_ret = {}proxy_deserialiser<rpc::serialiser::protocol_buffers>::{}(",
+                        proxy.raw(
+                            "__rpc_ret = {}proxy_deserialiser<rpc::serialiser::protocol_buffers>::{}(",
                             scoped_namespace,
                             function->get_name());
                         count = 1;
@@ -1321,7 +1369,8 @@ namespace synchronous_generator
                         {
                             count++;
                             std::string output;
-                            if (!do_out_param(PROXY_MARSHALL_OUT,
+                            if (!do_out_param(
+                                    PROXY_MARSHALL_OUT,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -1357,7 +1406,8 @@ namespace synchronous_generator
                     {
                         count = 1;
                         stub.print_tabs();
-                        stub.raw("{}stub_serialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
+                        stub.raw(
+                            "{}stub_serialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
                             scoped_namespace,
                             function->get_name());
 
@@ -1365,7 +1415,8 @@ namespace synchronous_generator
                         {
                             count++;
                             std::string output;
-                            if (!do_out_param(STUB_MARSHALL_OUT,
+                            if (!do_out_param(
+                                    STUB_MARSHALL_OUT,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -1389,7 +1440,8 @@ namespace synchronous_generator
                     {
                         count = 1;
                         stub.print_tabs();
-                        stub.raw("{}stub_serialiser<rpc::serialiser::protocol_buffers>::{}(",
+                        stub.raw(
+                            "{}stub_serialiser<rpc::serialiser::protocol_buffers>::{}(",
                             scoped_namespace,
                             function->get_name());
 
@@ -1397,7 +1449,8 @@ namespace synchronous_generator
                         {
                             count++;
                             std::string output;
-                            if (!do_out_param(STUB_MARSHALL_OUT,
+                            if (!do_out_param(
+                                    STUB_MARSHALL_OUT,
                                     from_host,
                                     m_ob,
                                     parameter.get_name(),
@@ -1454,7 +1507,8 @@ namespace synchronous_generator
         }
     }
 
-    void write_interface(bool from_host,
+    void write_interface(
+        bool from_host,
         const class_entity& m_ob,
         writer& proxy,
         writer& stub,
@@ -1562,9 +1616,10 @@ namespace synchronous_generator
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
             proxy("~__{0}_local_proxy() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
-            proxy("[[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal "
-                  "interface_id) const "
-                  "override");
+            proxy(
+                "[[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal "
+                "interface_id) const "
+                "override");
             proxy("{{");
             proxy("std::ignore = interface_id;");
             proxy("return nullptr;");
@@ -1625,7 +1680,8 @@ namespace synchronous_generator
                     has_parameter = true;
 
                     std::string output;
-                    if (do_in_param(LOCAL_OPTIMISTIC_PTR_CALL,
+                    if (do_in_param(
+                            LOCAL_OPTIMISTIC_PTR_CALL,
                             from_host,
                             m_ob,
                             parameter.get_name(),
@@ -1635,7 +1691,8 @@ namespace synchronous_generator
                             output))
                         ;
                     else
-                        do_out_param(LOCAL_OPTIMISTIC_PTR_CALL,
+                        do_out_param(
+                            LOCAL_OPTIMISTIC_PTR_CALL,
                             from_host,
                             m_ob,
                             parameter.get_name(),
@@ -1652,7 +1709,8 @@ namespace synchronous_generator
             proxy("}};");
 
             proxy("//RAII responsibilities are managed by the optimistic_ptr");
-            proxy("std::shared_ptr<rpc::local_proxy<{0}>> {0}::create_local_proxy(const rpc::weak_ptr<{0}>& ptr)",
+            proxy(
+                "std::shared_ptr<rpc::local_proxy<{0}>> {0}::create_local_proxy(const rpc::weak_ptr<{0}>& ptr)",
                 interface_name);
             proxy("{{");
             proxy("return std::make_shared<__{}_local_proxy>(ptr);", interface_name);
@@ -1671,10 +1729,11 @@ namespace synchronous_generator
         proxy("auto __rpc_sp = __rpc_op->get_service_proxy();");
         proxy("if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)");
         proxy("{{");
-        proxy("telemetry_service->on_interface_proxy_creation(\"{0}\", "
-              "__rpc_sp->get_zone_id(), "
-              "__rpc_sp->get_destination_zone_id(), __rpc_op->get_object_id(), "
-              "{{{0}_proxy::get_id(rpc::get_version())}});",
+        proxy(
+            "telemetry_service->on_interface_proxy_creation(\"{0}\", "
+            "__rpc_sp->get_zone_id(), "
+            "__rpc_sp->get_destination_zone_id(), __rpc_op->get_object_id(), "
+            "{{{0}_proxy::get_id(rpc::get_version())}});",
             interface_name);
         proxy("}}");
         proxy("#endif");
@@ -1689,29 +1748,31 @@ namespace synchronous_generator
         proxy("{{");
         proxy("auto __rpc_op = get_object_proxy();");
         proxy("auto __rpc_sp = __rpc_op->get_service_proxy();");
-        proxy("telemetry_service->on_interface_proxy_deletion("
-              "__rpc_sp->get_zone_id(), "
-              "__rpc_sp->get_destination_zone_id(), __rpc_op->get_object_id(), "
-              "{{{0}_proxy::get_id(rpc::get_version())}});",
+        proxy(
+            "telemetry_service->on_interface_proxy_deletion("
+            "__rpc_sp->get_zone_id(), "
+            "__rpc_sp->get_destination_zone_id(), __rpc_op->get_object_id(), "
+            "{{{0}_proxy::get_id(rpc::get_version())}});",
             interface_name);
         proxy("}}");
         proxy("#endif");
         proxy("}}");
-        proxy("[[nodiscard]] static rpc::shared_ptr<{}> create(std::shared_ptr<rpc::object_proxy>&& "
-              "object_proxy)",
+        proxy(
+            "[[nodiscard]] static rpc::shared_ptr<{}> create(std::shared_ptr<rpc::object_proxy>&& "
+            "object_proxy)",
             interface_name);
         proxy("{{");
         proxy("auto __rpc_ret = rpc::shared_ptr<{0}_proxy>(new {0}_proxy(std::move(object_proxy)));", interface_name);
         proxy("__rpc_ret->weak_this_ = __rpc_ret;", interface_name);
         proxy("return rpc::static_pointer_cast<{}>(__rpc_ret);", interface_name);
         proxy("}}");
-        proxy("rpc::shared_ptr<{0}_proxy> shared_from_this(){{return "
-              "rpc::shared_ptr<{0}_proxy>(weak_this_);}}",
+        proxy(
+            "rpc::shared_ptr<{0}_proxy> shared_from_this(){{return "
+            "rpc::shared_ptr<{0}_proxy>(weak_this_);}}",
             interface_name);
         proxy("");
 
-        stub("CORO_TASK(rpc::send_result) {0}::stub_caller::call({0}* __rpc_target_, rpc::send_params params)",
-            interface_name);
+        stub("CORO_TASK(rpc::send_result) {0}::stub_caller::call({0}* __rpc_target_, rpc::send_params params)", interface_name);
         stub("{{");
         stub("if(!__rpc_target_)");
         stub("{{");
@@ -1736,7 +1797,8 @@ namespace synchronous_generator
             for (auto& function : m_ob.get_functions())
             {
                 if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
-                    write_method(from_host,
+                    write_method(
+                        from_host,
                         m_ob,
                         proxy,
                         stub,
@@ -1763,13 +1825,18 @@ namespace synchronous_generator
         stub("");
     };
 
-    void write_interface_forward_declaration(const class_entity& m_ob, writer& header, writer& proxy)
+    void write_interface_forward_declaration(
+        const class_entity& m_ob,
+        writer& header,
+        writer& proxy)
     {
         header("class {};", m_ob.get_name());
         proxy("class {}_proxy;", m_ob.get_name());
     }
 
-    void write_enum_forward_declaration(const entity& ent, writer& header)
+    void write_enum_forward_declaration(
+        const entity& ent,
+        writer& header)
     {
         if (!ent.is_in_import())
         {
@@ -1791,7 +1858,9 @@ namespace synchronous_generator
         }
     }
 
-    void write_typedef_forward_declaration(const entity& ent, writer& header)
+    void write_typedef_forward_declaration(
+        const entity& ent,
+        writer& header)
     {
         if (!ent.is_in_import())
         {
@@ -1800,7 +1869,9 @@ namespace synchronous_generator
         }
     }
 
-    void write_struct_id(const class_entity& m_ob, writer& header)
+    void write_struct_id(
+        const class_entity& m_ob,
+        writer& header)
     {
         if (m_ob.is_in_import())
             return;
@@ -1916,7 +1987,11 @@ namespace synchronous_generator
         header("");
     }
 
-    void write_struct(const class_entity& m_ob, writer& header, bool enable_yas, bool enable_protobuf)
+    void write_struct(
+        const class_entity& m_ob,
+        writer& header,
+        bool enable_yas,
+        bool enable_protobuf)
     {
         if (m_ob.is_in_import())
             return;
@@ -2167,7 +2242,9 @@ namespace synchronous_generator
     };
 
     void write_encapsulate_outbound_interfaces(
-        const class_entity& obj, writer& header, const std::vector<std::string>& namespaces)
+        const class_entity& obj,
+        writer& header,
+        const std::vector<std::string>& namespaces)
     {
         auto interface_name = obj.get_name();
         std::string ns;
@@ -2183,20 +2260,25 @@ namespace synchronous_generator
             interface_declaration_generator::build_scoped_name(owner, ns);
         }
 
-        header("template<> CORO_TASK(rpc::remote_object_bind_result) "
-               "rpc::service::bind_in_proxy(uint64_t protocol_version, rpc::shared_ptr<::{}{}> "
-               "iface, caller_zone caller_zone_id);",
+        header(
+            "template<> CORO_TASK(rpc::remote_object_bind_result) "
+            "rpc::service::bind_in_proxy(uint64_t protocol_version, rpc::shared_ptr<::{}{}> "
+            "iface, caller_zone caller_zone_id);",
             ns,
             interface_name);
-        header("template<> CORO_TASK(rpc::remote_object_bind_result) "
-               "rpc::service::bind_in_proxy(uint64_t protocol_version, rpc::optimistic_ptr<::{}{}> "
-               "iface, caller_zone caller_zone_id);",
+        header(
+            "template<> CORO_TASK(rpc::remote_object_bind_result) "
+            "rpc::service::bind_in_proxy(uint64_t protocol_version, rpc::optimistic_ptr<::{}{}> "
+            "iface, caller_zone caller_zone_id);",
             ns,
             interface_name);
     }
 
     void write_library_proxy_factory(
-        writer& proxy, writer& stub, const class_entity& obj, const std::vector<std::string>& namespaces)
+        writer& proxy,
+        writer& stub,
+        const class_entity& obj,
+        const std::vector<std::string>& namespaces)
     {
         auto interface_name = obj.get_name();
         std::string ns;
@@ -2211,8 +2293,9 @@ namespace synchronous_generator
             interface_declaration_generator::build_scoped_name(owner, ns);
         }
 
-        proxy("template<> void object_proxy::create_interface_proxy(rpc::shared_ptr<::{}{}>& "
-              "inface)",
+        proxy(
+            "template<> void object_proxy::create_interface_proxy(rpc::shared_ptr<::{}{}>& "
+            "inface)",
             ns,
             interface_name);
         proxy("{{");
@@ -2220,8 +2303,9 @@ namespace synchronous_generator
         proxy("}}");
         proxy("");
 
-        stub("template<> CORO_TASK(rpc::remote_object_bind_result) service::bind_in_proxy([[maybe_unused]] "
-             "uint64_t protocol_version, rpc::shared_ptr<::{}{}> iface, caller_zone caller_zone_id)",
+        stub(
+            "template<> CORO_TASK(rpc::remote_object_bind_result) service::bind_in_proxy([[maybe_unused]] "
+            "uint64_t protocol_version, rpc::shared_ptr<::{}{}> iface, caller_zone caller_zone_id)",
             ns,
             interface_name);
         stub("{{");
@@ -2233,8 +2317,9 @@ namespace synchronous_generator
         stub("CO_RETURN CO_AWAIT get_descriptor_from_interface_stub(caller_zone_id, iface_cast, false);");
         stub("}}");
 
-        stub("template<> CORO_TASK(rpc::remote_object_bind_result) service::bind_in_proxy([[maybe_unused]] "
-             "uint64_t protocol_version, rpc::optimistic_ptr<::{}{}> iface, caller_zone caller_zone_id)",
+        stub(
+            "template<> CORO_TASK(rpc::remote_object_bind_result) service::bind_in_proxy([[maybe_unused]] "
+            "uint64_t protocol_version, rpc::optimistic_ptr<::{}{}> iface, caller_zone caller_zone_id)",
             ns,
             interface_name);
         stub("{{");
@@ -2255,7 +2340,11 @@ namespace synchronous_generator
     }
 
     // entry point
-    void write_namespace_predeclaration(const class_entity& lib, writer& header, writer& proxy, writer& stub)
+    void write_namespace_predeclaration(
+        const class_entity& lib,
+        writer& header,
+        writer& proxy,
+        writer& stub)
     {
         for (const auto& cls : lib.get_classes())
         {
@@ -2299,7 +2388,8 @@ namespace synchronous_generator
     }
 
     // entry point
-    void write_namespace(bool from_host,
+    void write_namespace(
+        bool from_host,
         const class_entity& lib,
         std::string prefix,
         writer& header,
@@ -2338,7 +2428,8 @@ namespace synchronous_generator
                 proxy("{{");
                 stub("{{");
                 auto& ent = static_cast<const class_entity&>(*elem);
-                write_namespace(from_host,
+                write_namespace(
+                    from_host,
                     ent,
                     prefix + elem->get_name() + "::",
                     header,
@@ -2380,7 +2471,8 @@ namespace synchronous_generator
         }
     }
 
-    void write_epilog(bool from_host,
+    void write_epilog(
+        bool from_host,
         const class_entity& lib,
         writer& header,
         writer& proxy,
@@ -2413,7 +2505,8 @@ namespace synchronous_generator
     }
 
     // entry point
-    void write_files(bool from_host,
+    void write_files(
+        bool from_host,
         const class_entity& lib,
         std::ostream& hos,
         std::ostream& pos,
@@ -2439,11 +2532,13 @@ namespace synchronous_generator
         header("#pragma once");
         header("");
 
-        std::for_each(additional_headers.begin(),
+        std::for_each(
+            additional_headers.begin(),
             additional_headers.end(),
             [&](const std::string& additional_header) { header("#include <{}>", additional_header); });
 
-        std::for_each(additional_stub_headers.begin(),
+        std::for_each(
+            additional_stub_headers.begin(),
             additional_stub_headers.end(),
             [&](const std::string& additional_stub_header) { stub("#include <{}>", additional_stub_header); });
 

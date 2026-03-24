@@ -35,7 +35,13 @@ public:
     host();
     ~host() override;
     CORO_TASK(error_code) create_enclave(rpc::shared_ptr<yyy::i_example>& target) override;
-    CORO_TASK(error_code) look_up_app(const std::string& app_name, rpc::shared_ptr<yyy::i_example>& app) override;
-    CORO_TASK(error_code) set_app(const std::string& name, const rpc::shared_ptr<yyy::i_example>& app) override;
+    CORO_TASK(error_code)
+    look_up_app(
+        const std::string& app_name,
+        rpc::shared_ptr<yyy::i_example>& app) override;
+    CORO_TASK(error_code)
+    set_app(
+        const std::string& name,
+        const rpc::shared_ptr<yyy::i_example>& app) override;
     CORO_TASK(error_code) unload_app(const std::string& name) override;
 };

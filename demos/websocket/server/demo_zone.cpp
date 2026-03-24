@@ -53,24 +53,24 @@ namespace websocket_demo
                 uint64_t size = 0;
 
                 // https://huggingface.co/unsloth/Qwen3-0.6B-GGUF?show_file_info=Qwen3-0.6B-BF16.gguf
-                auto err
-                    = parse_model(secret_llama::v1_0::llm_model{.name = "Qwen3-0.6B-BF16",
-                                      .local_path = "/var/home/edward/Models/Qwen3-0.6B.gguf/BF16/Qwen3-0.6B-BF16.gguf",
-                                      .url = "",
-                                      .description = "",
-                                      .engine_type = secret_llama::llm_engine_type::LLAMA_CPP,
-                                      .engine_config = {},
-                                      .encryption_type = secret_llama::encryption_type::NONE,
-                                      .encryption_key = "",
-                                      .hash_type = secret_llama::hash_type::NONE,
-                                      .hash = {},
-                                      // file_system::download_status    status;
-                                      .is_loaded = true,
-                                      .access = secret_llama::access::PUBLIC,
-                                      .inactivitiy_timeout = 10000000000},
-                        data,
-                        size,
-                        loaded_model_);
+                auto err = parse_model(
+                    secret_llama::v1_0::llm_model{.name = "Qwen3-0.6B-BF16",
+                        .local_path = "/var/home/edward/Models/Qwen3-0.6B.gguf/BF16/Qwen3-0.6B-BF16.gguf",
+                        .url = "",
+                        .description = "",
+                        .engine_type = secret_llama::llm_engine_type::LLAMA_CPP,
+                        .engine_config = {},
+                        .encryption_type = secret_llama::encryption_type::NONE,
+                        .encryption_key = "",
+                        .hash_type = secret_llama::hash_type::NONE,
+                        .hash = {},
+                        // file_system::download_status    status;
+                        .is_loaded = true,
+                        .access = secret_llama::access::PUBLIC,
+                        .inactivitiy_timeout = 10000000000},
+                    data,
+                    size,
+                    loaded_model_);
                 if (err != secret_llama::v1_0::error_types::OK)
                 {
                     return nullptr;
@@ -79,14 +79,25 @@ namespace websocket_demo
             return loaded_model_;
         }
 
-        websocket_service::websocket_service(std::string name, rpc::zone zone_id, std::shared_ptr<coro::scheduler> scheduler)
-            : rpc::root_service(name.data(), zone_id, scheduler)
+        websocket_service::websocket_service(
+            std::string name,
+            rpc::zone zone_id,
+            std::shared_ptr<coro::scheduler> scheduler)
+            : rpc::root_service(
+                  name.data(),
+                  zone_id,
+                  scheduler)
         {
         }
 
         websocket_service::websocket_service(
-            std::string name, const rpc::service_config& config, std::shared_ptr<coro::scheduler> scheduler)
-            : rpc::root_service(name.data(), config, scheduler)
+            std::string name,
+            const rpc::service_config& config,
+            std::shared_ptr<coro::scheduler> scheduler)
+            : rpc::root_service(
+                  name.data(),
+                  config,
+                  scheduler)
         {
         }
 

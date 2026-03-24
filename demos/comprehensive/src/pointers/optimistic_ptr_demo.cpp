@@ -81,7 +81,9 @@ namespace comprehensive
             std::cout << std::string(60, '=') << "\n";
         }
 
-        void print_result(const std::string& operation, int error)
+        void print_result(
+            const std::string& operation,
+            int error)
         {
             RPC_INFO("{}: ", operation);
             if (error == rpc::error::OK())
@@ -112,7 +114,8 @@ namespace comprehensive
             print_separator("OPTIMISTIC PTR DEMO");
 
             // Create root service
-            auto service = std::make_shared<rpc::root_service>("optimistic_ptr_demo_service",
+            auto service = std::make_shared<rpc::root_service>(
+                "optimistic_ptr_demo_service",
                 rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
                 ,
@@ -285,7 +288,10 @@ namespace comprehensive
 #include <iostream>
 
 // RPC logging function - called by RPC library for logging
-extern "C" void rpc_log(int level, const char* str, size_t sz)
+extern "C" void rpc_log(
+    int level,
+    const char* str,
+    size_t sz)
 {
     std::string message(str, sz);
     switch (level)

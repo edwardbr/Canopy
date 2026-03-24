@@ -24,10 +24,17 @@ namespace streaming::spsc_queue
     class stream : public ::streaming::stream
     {
     public:
-        stream(queue_type* send_q, queue_type* recv_q, std::shared_ptr<coro::scheduler> scheduler);
+        stream(
+            queue_type* send_q,
+            queue_type* recv_q,
+            std::shared_ptr<coro::scheduler> scheduler);
 
-        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override;
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         [[nodiscard]] bool is_closed() const override;

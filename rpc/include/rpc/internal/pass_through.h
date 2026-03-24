@@ -126,14 +126,16 @@ namespace rpc
 
         rpc::zone zone_id_;
 
-        pass_through(std::shared_ptr<transport> forward,
+        pass_through(
+            std::shared_ptr<transport> forward,
             std::shared_ptr<transport> reverse,
             std::shared_ptr<service> service,
             destination_zone forward_dest,
             destination_zone reverse_dest);
 
     public:
-        static std::shared_ptr<pass_through> create(std::shared_ptr<transport> forward,
+        static std::shared_ptr<pass_through> create(
+            std::shared_ptr<transport> forward,
             std::shared_ptr<transport> reverse,
             std::shared_ptr<service> service,
             destination_zone forward_dest,

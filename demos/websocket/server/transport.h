@@ -25,22 +25,27 @@ namespace websocket_demo
             using connection_handler = rpc::connection_handler;
 
             // Server-side make_server: zone factory replaces the raw connection_handler.
-            template<class Remote, class Local>
-            static CORO_TASK(std::shared_ptr<transport>) make_server(const std::shared_ptr<rpc::service>& service,
+            template<
+                class Remote,
+                class Local>
+            static CORO_TASK(std::shared_ptr<transport>) make_server(
+                const std::shared_ptr<rpc::service>& service,
                 const std::shared_ptr<streaming::stream>& stream,
                 std::function<CORO_TASK(rpc::service_connect_result<Local>)(
-                    const rpc::shared_ptr<Remote>&, const std::shared_ptr<rpc::service>&)> factory)
+                    const rpc::shared_ptr<Remote>&,
+                    const std::shared_ptr<rpc::service>&)> factory)
             {
-                CO_RETURN CO_AWAIT make_server(service,
-                    stream,
-                    rpc::make_new_zone_connection_handler<Remote, Local>("websocket", std::move(factory)));
+                CO_RETURN CO_AWAIT make_server(
+                    service, stream, rpc::make_new_zone_connection_handler<Remote, Local>("websocket", std::move(factory)));
             }
 
-            static CORO_TASK(std::shared_ptr<transport>) make_server(const std::shared_ptr<rpc::service>& service,
+            static CORO_TASK(std::shared_ptr<transport>) make_server(
+                const std::shared_ptr<rpc::service>& service,
                 const std::shared_ptr<streaming::stream>& stream,
                 connection_handler&& handler);
 
-            transport(const std::shared_ptr<rpc::service>& service,
+            transport(
+                const std::shared_ptr<rpc::service>& service,
                 rpc::zone adjacent_zone_id,
                 std::shared_ptr<streaming::stream> stream,
                 connection_handler&& handler);
@@ -50,7 +55,9 @@ namespace websocket_demo
             CORO_TASK(void) receive_consumer_loop();
 
             CORO_TASK(rpc::connect_result)
-            inner_connect(std::shared_ptr<rpc::object_stub> stub, rpc::connection_settings input_descr) override
+            inner_connect(
+                std::shared_ptr<rpc::object_stub> stub,
+                rpc::connection_settings input_descr) override
             {
                 std::ignore = stub;
                 std::ignore = input_descr;
@@ -59,11 +66,17 @@ namespace websocket_demo
             }
             CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 
-            template<class in_param_type, class out_param_type>
+            template<
+                class in_param_type,
+                class out_param_type>
             static std::function<CORO_TASK(int)(
-                rpc::remote_object input_descr, rpc::remote_object& output_descr, std::shared_ptr<transport>& child)>
-            bind(rpc::zone new_zone_id,
-                std::function<CORO_TASK(rpc::service_connect_result<out_param_type>)(const rpc::shared_ptr<in_param_type>&,
+                rpc::remote_object input_descr,
+                rpc::remote_object& output_descr,
+                std::shared_ptr<transport>& child)>
+            bind(
+                rpc::zone new_zone_id,
+                std::function<CORO_TASK(rpc::service_connect_result<out_param_type>)(
+                    const rpc::shared_ptr<in_param_type>&,
                     const std::shared_ptr<rpc::child_service>&)>&& child_entry_point_fn);
 
             // Outbound i_marshaller interface - sends from child to parent

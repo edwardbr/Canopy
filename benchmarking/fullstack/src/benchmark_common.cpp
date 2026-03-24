@@ -55,7 +55,11 @@ namespace comprehensive::v1
         return stats;
     }
 
-    void print_stats(const char* transport, const char* encoding, size_t blob_size, const benchmark_stats& stats)
+    void print_stats(
+        const char* transport,
+        const char* encoding,
+        size_t blob_size,
+        const benchmark_stats& stats)
     {
         const double size_mb = static_cast<double>(blob_size) / (1024.0 * 1024.0);
         constexpr double min_time_us = 0.5;
@@ -65,8 +69,9 @@ namespace comprehensive::v1
         {
             const double payload_mb_per_sec = size_mb / (stats.avg_us / 1e6);
             const double round_trip_mb_per_sec = (size_mb * 2.0) / (stats.avg_us / 1e6);
-            fmt::print("{:>10} | {:>18} | {:>9} | avg {:>8.2f} us | p50 {:>8.2f} | p90 {:>8.2f} | p95 {:>8.2f} | min "
-                       "{:>8.2f} | max {:>8.2f} | payload {:>7.2f} MB/s | round-trip {:>7.2f} MB/s\n",
+            fmt::print(
+                "{:>10} | {:>18} | {:>9} | avg {:>8.2f} us | p50 {:>8.2f} | p90 {:>8.2f} | p95 {:>8.2f} | min "
+                "{:>8.2f} | max {:>8.2f} | payload {:>7.2f} MB/s | round-trip {:>7.2f} MB/s\n",
                 transport,
                 encoding,
                 blob_size,
@@ -98,7 +103,8 @@ namespace comprehensive::v1
     }
 
     CORO_TASK(int)
-    run_benchmark_calls(rpc::shared_ptr<i_data_processor> remote,
+    run_benchmark_calls(
+        rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,
         std::vector<int64_t>& durations_us,
         size_t warmup_count)
@@ -182,28 +188,32 @@ namespace comprehensive::v1
     {
         fmt::print("Benchmark: 1000 RPC calls per test, middle 80% (drop first/last 10%)\n");
 #ifdef CANOPY_BUILD_COROUTINE
-        fmt::print("Warmup: local=10 calls, libcoro_dll=20 calls, ipc=30 calls, spsc=20 calls, io_uring=100 calls, "
-                   "tcp=100 calls (not included in timing)\n");
+        fmt::print(
+            "Warmup: local=10 calls, libcoro_dll=20 calls, ipc=30 calls, spsc=20 calls, io_uring=100 calls, "
+            "tcp=100 calls (not included in timing)\n");
 #else
         fmt::print("Warmup: local=10 calls, dynamic_library=20 calls (not included in timing)\n");
 #endif
         fmt::print("Note: Throughput shown as 'N/A' when avg time < 0.5us (insufficient timing precision)\n");
         fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");
-        fmt::print("---------------------------------------------------------------------------------------------------"
-                   "---------"
-                   "----------------\n");
+        fmt::print(
+            "---------------------------------------------------------------------------------------------------"
+            "---------"
+            "----------------\n");
         fmt::print(
             "transport   | serialization       | blob bytes | avg (us)     | p50       | p90       | p95       | "
             "min       | max       | payload MB/s | round-trip MB/s\n");
-        fmt::print("---------------------------------------------------------------------------------------------------"
-                   "---------"
-                   "----------------\n");
+        fmt::print(
+            "---------------------------------------------------------------------------------------------------"
+            "---------"
+            "----------------\n");
     }
 
     void print_footer()
     {
-        fmt::print("---------------------------------------------------------------------------------------------------"
-                   "---------"
-                   "----------------\n");
+        fmt::print(
+            "---------------------------------------------------------------------------------------------------"
+            "---------"
+            "----------------\n");
     }
 }

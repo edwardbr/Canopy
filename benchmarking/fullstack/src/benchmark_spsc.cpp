@@ -28,7 +28,8 @@ namespace comprehensive::v1
         }
 
         CORO_TASK(void)
-        spsc_client_task(std::shared_ptr<coro::scheduler> scheduler,
+        spsc_client_task(
+            std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
             spsc_queues* queues,
             rpc::event& server_ready,
@@ -76,7 +77,8 @@ namespace comprehensive::v1
         }
 
         CORO_TASK(void)
-        spsc_server_task(std::shared_ptr<coro::scheduler> scheduler,
+        spsc_server_task(
+            std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_2,
             spsc_queues* queues,
             rpc::event& server_ready,
@@ -92,10 +94,11 @@ namespace comprehensive::v1
 
             auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
                 &queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport = CO_AWAIT service->make_acceptor<i_data_processor, i_data_processor>("spsc_transport_2",
+            auto transport = CO_AWAIT service->make_acceptor<i_data_processor, i_data_processor>(
+                "spsc_transport_2",
                 rpc::stream_transport::transport_factory(std::move(stream_2)),
-                [&on_connected](const rpc::shared_ptr<i_data_processor>&,
-                    const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
+                [&on_connected](const rpc::shared_ptr<i_data_processor>&, const std::shared_ptr<rpc::service>&)
+                    -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
                 {
                     auto local = make_benchmark_data_processor();
                     on_connected.set();
@@ -114,7 +117,9 @@ namespace comprehensive::v1
         }
     }
 
-    benchmark_result run_spsc_benchmark(rpc::encoding enc, size_t blob_size)
+    benchmark_result run_spsc_benchmark(
+        rpc::encoding enc,
+        size_t blob_size)
     {
         benchmark_result result{};
         auto zone_1 = rpc::DEFAULT_PREFIX;
@@ -130,9 +135,10 @@ namespace comprehensive::v1
         rpc::event server_ready;
         rpc::event client_finished;
 
-        coro::sync_wait(coro::when_all(
-            spsc_client_task(scheduler_1, zone_1, queues.get(), server_ready, client_finished, enc, blob_size, result),
-            spsc_server_task(scheduler_2, zone_2, queues.get(), server_ready, client_finished, enc)));
+        coro::sync_wait(
+            coro::when_all(
+                spsc_client_task(scheduler_1, zone_1, queues.get(), server_ready, client_finished, enc, blob_size, result),
+                spsc_server_task(scheduler_2, zone_2, queues.get(), server_ready, client_finished, enc)));
 
         scheduler_1.reset();
         scheduler_2.reset();

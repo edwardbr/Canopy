@@ -108,7 +108,10 @@
 
 namespace marshalled_tests
 {
-    CORO_TASK(bool) standard_tests(xxx::i_foo& foo, bool enclave);
+    CORO_TASK(bool)
+    standard_tests(
+        xxx::i_foo& foo,
+        bool enclave);
 
     template<class T> inline CORO_TASK(bool) coro_standard_tests(T& lib)
     {
@@ -120,7 +123,10 @@ namespace marshalled_tests
         CO_RETURN !lib.error_has_occurred();
     }
 
-    CORO_TASK(bool) remote_tests(bool use_host_in_child, rpc::shared_ptr<yyy::i_example> example_ptr);
+    CORO_TASK(bool)
+    remote_tests(
+        bool use_host_in_child,
+        rpc::shared_ptr<yyy::i_example> example_ptr);
 
     template<class T> inline CORO_TASK(bool) coro_remote_standard_tests(T& lib)
     {

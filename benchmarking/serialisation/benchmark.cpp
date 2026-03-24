@@ -98,7 +98,10 @@ namespace serialisation_benchmark
             return rpc::serialise(obj, enc);
         }
 
-        template<typename T> std::string deserialise(const rpc::byte_span& data, T& obj) const
+        template<typename T>
+        std::string deserialise(
+            const rpc::byte_span& data,
+            T& obj) const
         {
             return rpc::deserialise(enc, data, obj);
         }
@@ -115,7 +118,10 @@ namespace serialisation_benchmark
     // Core measurement loop: round-trip serialize+deserialize call_count times
     // -------------------------------------------------------------------------
 
-    template<typename T> benchmark_stats measure(const encoding_info& enc, const T& value)
+    template<typename T>
+    benchmark_stats measure(
+        const encoding_info& enc,
+        const T& value)
     {
         std::vector<int64_t> samples;
         samples.reserve(call_count);
@@ -148,10 +154,15 @@ namespace serialisation_benchmark
     // Reporting
     // -------------------------------------------------------------------------
 
-    void print_row(const char* type_name, const char* enc_name, size_t serialised_bytes, const benchmark_stats& stats)
+    void print_row(
+        const char* type_name,
+        const char* enc_name,
+        size_t serialised_bytes,
+        const benchmark_stats& stats)
     {
-        fmt::print("{:<36} | {:<18} | {:>8} B | avg {:>8.1f} ns | p50 {:>8.1f} | p90 {:>8.1f} | p95 {:>8.1f} | min "
-                   "{:>8.1f} | max {:>9.1f}\n",
+        fmt::print(
+            "{:<36} | {:<18} | {:>8} B | avg {:>8.1f} ns | p50 {:>8.1f} | p90 {:>8.1f} | p95 {:>8.1f} | min "
+            "{:>8.1f} | max {:>9.1f}\n",
             type_name,
             enc_name,
             serialised_bytes,
@@ -169,7 +180,8 @@ namespace serialisation_benchmark
         fmt::print("Warmup: 100 calls (not included in timing)\n");
         fmt::print(
             "{:-<37}+{:-<20}+{:-<11}+{:-<14}+{:-<12}+{:-<12}+{:-<12}+{:-<12}+{:-<13}\n", "", "", "", "", "", "", "", "", "");
-        fmt::print("{:<36} | {:<18} | {:>10} | {:<13} | {:<11} | {:<11} | {:<11} | {:<11} | {:<11}\n",
+        fmt::print(
+            "{:<36} | {:<18} | {:>10} | {:<13} | {:<11} | {:<11} | {:<11} | {:<11} | {:<11}\n",
             "type",
             "encoding",
             "wire bytes",
@@ -193,7 +205,10 @@ namespace serialisation_benchmark
     // Benchmark a single value across all encodings
     // -------------------------------------------------------------------------
 
-    template<typename T> void bench_type(const char* type_name, const T& value)
+    template<typename T>
+    void bench_type(
+        const char* type_name,
+        const T& value)
     {
         for (const auto& enc : all_encodings)
         {
@@ -222,7 +237,8 @@ namespace serialisation_benchmark
         bench_type("int64_holder (max)", scalar_test::int64_holder{std::numeric_limits<int64_t>::max()});
         bench_type("uint64_holder (max)", scalar_test::uint64_holder{std::numeric_limits<uint64_t>::max()});
         bench_type("int128_holder (positive)", scalar_test::int128_holder{__int128{1} << 100});
-        bench_type("uint128_holder (typical)",
+        bench_type(
+            "uint128_holder (typical)",
             scalar_test::uint128_holder{
                 (static_cast<unsigned __int128>(0xDEADBEEFCAFEBABEULL) << 64) | 0x0123456789ABCDEFULL});
         bench_type("float_holder (typical)", scalar_test::float_holder{3.14159265f});
@@ -231,25 +247,32 @@ namespace serialisation_benchmark
         bench_type("string_holder (13 chars)", scalar_test::string_holder{"hello, world!"});
 
         // ---- Vector holders ----
-        bench_type("int8_vec_holder (5 elems)",
+        bench_type(
+            "int8_vec_holder (5 elems)",
             scalar_test::int8_vec_holder{
                 {std::numeric_limits<int8_t>::min(), -1, 0, 1, std::numeric_limits<int8_t>::max()}});
-        bench_type("uint8_vec_holder (4 elems)",
-            scalar_test::uint8_vec_holder{{0, 1, 127, std::numeric_limits<uint8_t>::max()}});
-        bench_type("int16_vec_holder (4 elems)",
+        bench_type(
+            "uint8_vec_holder (4 elems)", scalar_test::uint8_vec_holder{{0, 1, 127, std::numeric_limits<uint8_t>::max()}});
+        bench_type(
+            "int16_vec_holder (4 elems)",
             scalar_test::int16_vec_holder{
                 {std::numeric_limits<int16_t>::min(), -1, 0, std::numeric_limits<int16_t>::max()}});
-        bench_type("uint16_vec_holder (4 elems)",
+        bench_type(
+            "uint16_vec_holder (4 elems)",
             scalar_test::uint16_vec_holder{{0, 1, 1000, std::numeric_limits<uint16_t>::max()}});
-        bench_type("int32_vec_holder (4 elems)",
+        bench_type(
+            "int32_vec_holder (4 elems)",
             scalar_test::int32_vec_holder{
                 {std::numeric_limits<int32_t>::min(), -1, 0, std::numeric_limits<int32_t>::max()}});
-        bench_type("uint32_vec_holder (4 elems)",
+        bench_type(
+            "uint32_vec_holder (4 elems)",
             scalar_test::uint32_vec_holder{{0, 1, 123456, std::numeric_limits<uint32_t>::max()}});
-        bench_type("int64_vec_holder (4 elems)",
+        bench_type(
+            "int64_vec_holder (4 elems)",
             scalar_test::int64_vec_holder{
                 {std::numeric_limits<int64_t>::min(), -1LL, 0LL, std::numeric_limits<int64_t>::max()}});
-        bench_type("uint64_vec_holder (4 elems)",
+        bench_type(
+            "uint64_vec_holder (4 elems)",
             scalar_test::uint64_vec_holder{{0ULL, 1ULL, 42ULL, std::numeric_limits<uint64_t>::max()}});
         {
             scalar_test::int128_vec_holder h;
@@ -266,32 +289,39 @@ namespace serialisation_benchmark
                 static_cast<unsigned __int128>(-1)};
             bench_type("uint128_vec_holder (3 elems)", h);
         }
-        bench_type("float_vec_holder (4 elems)",
+        bench_type(
+            "float_vec_holder (4 elems)",
             scalar_test::float_vec_holder{
                 {std::numeric_limits<float>::lowest(), -1.0f, 0.0f, std::numeric_limits<float>::max()}});
-        bench_type("double_vec_holder (4 elems)",
+        bench_type(
+            "double_vec_holder (4 elems)",
             scalar_test::double_vec_holder{
                 {std::numeric_limits<double>::lowest(), -1.0, 0.0, std::numeric_limits<double>::max()}});
         bench_type("string_vec_holder (4 elems)", scalar_test::string_vec_holder{{"", "hello", "world", "test"}});
 
         // ---- Array holders (size 4) ----
-        bench_type("int8_arr_holder",
+        bench_type(
+            "int8_arr_holder",
             scalar_test::int8_arr_holder{{{std::numeric_limits<int8_t>::min(), -1, 0, std::numeric_limits<int8_t>::max()}}});
         bench_type("uint8_arr_holder", scalar_test::uint8_arr_holder{{{0, 1, 127, std::numeric_limits<uint8_t>::max()}}});
-        bench_type("int16_arr_holder",
+        bench_type(
+            "int16_arr_holder",
             scalar_test::int16_arr_holder{
                 {{std::numeric_limits<int16_t>::min(), -1, 0, std::numeric_limits<int16_t>::max()}}});
         bench_type(
             "uint16_arr_holder", scalar_test::uint16_arr_holder{{{0, 1, 1000, std::numeric_limits<uint16_t>::max()}}});
-        bench_type("int32_arr_holder",
+        bench_type(
+            "int32_arr_holder",
             scalar_test::int32_arr_holder{
                 {{std::numeric_limits<int32_t>::min(), -1, 0, std::numeric_limits<int32_t>::max()}}});
-        bench_type("uint32_arr_holder",
-            scalar_test::uint32_arr_holder{{{0, 1, 123456, std::numeric_limits<uint32_t>::max()}}});
-        bench_type("int64_arr_holder",
+        bench_type(
+            "uint32_arr_holder", scalar_test::uint32_arr_holder{{{0, 1, 123456, std::numeric_limits<uint32_t>::max()}}});
+        bench_type(
+            "int64_arr_holder",
             scalar_test::int64_arr_holder{
                 {{std::numeric_limits<int64_t>::min(), -1LL, 0LL, std::numeric_limits<int64_t>::max()}}});
-        bench_type("uint64_arr_holder",
+        bench_type(
+            "uint64_arr_holder",
             scalar_test::uint64_arr_holder{{{0ULL, 1ULL, 42ULL, std::numeric_limits<uint64_t>::max()}}});
         {
             scalar_test::int128_arr_holder h;
@@ -309,10 +339,12 @@ namespace serialisation_benchmark
                 static_cast<unsigned __int128>(1) << 64};
             bench_type("uint128_arr_holder", h);
         }
-        bench_type("float_arr_holder",
+        bench_type(
+            "float_arr_holder",
             scalar_test::float_arr_holder{
                 {{std::numeric_limits<float>::lowest(), -1.0f, 0.0f, std::numeric_limits<float>::max()}}});
-        bench_type("double_arr_holder",
+        bench_type(
+            "double_arr_holder",
             scalar_test::double_arr_holder{
                 {{std::numeric_limits<double>::lowest(), -1.0, 0.0, std::numeric_limits<double>::max()}}});
         bench_type("string_arr_holder", scalar_test::string_arr_holder{{{"", "hello", "world", "test"}}});
@@ -358,7 +390,10 @@ int main()
     return 0;
 }
 
-void rpc_log(int level, const char* str, size_t sz)
+void rpc_log(
+    int level,
+    const char* str,
+    size_t sz)
 {
     std::string message(str, sz);
     switch (level)

@@ -16,7 +16,8 @@ AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterReturnType: None
 BinPackArguments: false
-BinPackParameters: false
+BinPackParameters: AlwaysOnePerLine
+BreakAfterOpenBracketFunction: true
 BreakBeforeBraces: Allman
 BreakBeforeTernaryOperators: true
 IndentPPDirectives: AfterHash

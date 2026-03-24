@@ -9,8 +9,9 @@ namespace websocket_demo
 {
     namespace v1
     {
-        auto http_client_connection::create_error_response(int status_code, const std::string& message)
-            -> canopy::http_server::response
+        auto http_client_connection::create_error_response(
+            int status_code,
+            const std::string& message) -> canopy::http_server::response
         {
             std::string json_body = fmt::format(R"({{"error":"{}","status":{}}})", message, status_code);
             return canopy::http_server::make_json_response(status_code, json_body);
@@ -62,8 +63,9 @@ namespace websocket_demo
             return create_error_response(404, "API endpoint not found");
         }
 
-        auto http_client_connection::handle_post(const std::string& path, const std::string& body)
-            -> canopy::http_server::response
+        auto http_client_connection::handle_post(
+            const std::string& path,
+            const std::string& body) -> canopy::http_server::response
         {
             if (path == "/api/resource")
             {
@@ -80,8 +82,9 @@ namespace websocket_demo
             return create_error_response(404, "API endpoint not found");
         }
 
-        auto http_client_connection::handle_put(const std::string& path, const std::string& body)
-            -> canopy::http_server::response
+        auto http_client_connection::handle_put(
+            const std::string& path,
+            const std::string& body) -> canopy::http_server::response
         {
             if (path.starts_with("/api/resource/"))
             {

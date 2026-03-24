@@ -54,7 +54,9 @@ namespace secret_llama
             llama_model* model_ = nullptr;
 
         public:
-            llama_cpp_loaded_model(llama_model* model, const llm_model& model_config)
+            llama_cpp_loaded_model(
+                llama_model* model,
+                const llm_model& model_config)
                 : loaded_model(model_config)
                 , model_(model)
             {
@@ -125,7 +127,10 @@ namespace secret_llama
 
             // In the constructor, initialize the stop strings:
             llama_cpp_context(
-                uint64_t seed, std::shared_ptr<llama_cpp_loaded_model> model, const std::string& overrides, uint64_t context_id)
+                uint64_t seed,
+                std::shared_ptr<llama_cpp_loaded_model> model,
+                const std::string& overrides,
+                uint64_t context_id)
                 : seed_(seed)
                 , model_(model)
                 , context_id_(context_id)
@@ -266,7 +271,8 @@ namespace secret_llama
                     }
 
                     chat_templates_ = common_chat_templates_init(model_->get(), chat_template_str);
-                    RPC_DEBUG("[CTX {}] Chat template: is explicit {}, value: \"{}\"",
+                    RPC_DEBUG(
+                        "[CTX {}] Chat template: is explicit {}, value: \"{}\"",
                         std::to_string(context_id_),
                         common_chat_templates_was_explicit(chat_templates_.get()) ? "true" : "false",
                         common_chat_templates_source(chat_templates_.get()));
@@ -339,7 +345,8 @@ namespace secret_llama
                     }
 
                     formatted_.resize(llama_n_ctx(ctx_.get()));
-                    RPC_DEBUG("[CTX {}] Initialization complete. Context size: {}",
+                    RPC_DEBUG(
+                        "[CTX {}] Initialization complete. Context size: {}",
                         std::to_string(context_id_),
                         llama_n_ctx(ctx_.get()));
                     return error_types::OK;
@@ -361,7 +368,9 @@ namespace secret_llama
              * @param ctx A constant pointer to the llama_context to be inspected.
              * @return The total size of the KV cache in bytes as a size_t. Returns 0 if the context is invalid.
              */
-            size_t calculate_kv_cache_size(const llama_context* ctx, const llama_context_params& ctx_params)
+            size_t calculate_kv_cache_size(
+                const llama_context* ctx,
+                const llama_context_params& ctx_params)
             {
                 if (!ctx)
                 {
@@ -403,11 +412,18 @@ namespace secret_llama
             }
 
             // Add a message to `messages` and store its content in `msg_strs`
-            void add_message(const char* role, const std::string& text) { msg_strs_.push_back({role, text}); }
+            void add_message(
+                const char* role,
+                const std::string& text)
+            {
+                msg_strs_.push_back({role, text});
+            }
 
             // Helper function to apply the chat template and handle errors
             int apply_chat_template_with_error_handling(
-                const common_chat_templates* tmpls, const bool append, int& output_length)
+                const common_chat_templates* tmpls,
+                const bool append,
+                int& output_length)
             {
                 const int new_len = apply_chat_template(tmpls, append);
                 if (new_len < 0)
@@ -420,7 +436,9 @@ namespace secret_llama
             }
 
             // Function to apply the chat template and resize `formatted` if needed
-            int apply_chat_template(const struct common_chat_templates* tmpls, const bool append)
+            int apply_chat_template(
+                const struct common_chat_templates* tmpls,
+                const bool append)
             {
                 common_chat_templates_inputs inputs;
                 for (const auto& msg : msg_strs_)
@@ -449,7 +467,8 @@ namespace secret_llama
                 const int n_prompt_tokens = -llama_tokenize(
                     vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()), nullptr, 0, is_first, true);
                 batch_tokens_.resize(n_prompt_tokens);
-                if (llama_tokenize(vocab,
+                if (llama_tokenize(
+                        vocab,
                         prompt.c_str(),
                         static_cast<int32_t>(prompt.size()),
                         batch_tokens_.data(),
@@ -471,7 +490,8 @@ namespace secret_llama
                 const int n_ctx_used = llama_memory_seq_pos_max(llama_get_memory(ctx_.get()), 0) + 1;
                 if (n_ctx_used + batch_.n_tokens > n_ctx)
                 {
-                    RPC_ERROR("[CTX {}] LOG: context size exceeded. Used: {}, Batch: {}, Total Ctx: {}",
+                    RPC_ERROR(
+                        "[CTX {}] LOG: context size exceeded. Used: {}, Batch: {}, Total Ctx: {}",
                         std::to_string(context_id_),
                         n_ctx_used,
                         batch_.n_tokens,
@@ -482,7 +502,9 @@ namespace secret_llama
             }
 
             // convert the token to a string
-            int convert_token_to_string(const llama_token token_id, std::string& piece)
+            int convert_token_to_string(
+                const llama_token token_id,
+                std::string& piece)
             {
                 const llama_vocab* vocab = llama_model_get_vocab(model_->get());
                 char buf[256];
@@ -505,7 +527,8 @@ namespace secret_llama
                 RPC_DEBUG("\n[CTX {}] START", std::to_string(context_id_));
                 try
                 {
-                    RPC_DEBUG("[CTX {}] user_turn_={}, first_pass_={}",
+                    RPC_DEBUG(
+                        "[CTX {}] user_turn_={}, first_pass_={}",
                         std::to_string(context_id_),
                         user_turn_ ? "true" : "false",
                         first_pass_ ? "true" : "false");
@@ -523,14 +546,16 @@ namespace secret_llama
 
                     if (!first_pass_)
                     {
-                        RPC_DEBUG("[CTX {}] Not first pass. Adding previous assistant response to history: \"{}\"",
+                        RPC_DEBUG(
+                            "[CTX {}] Not first pass. Adding previous assistant response to history: \"{}\"",
                             std::to_string(context_id_),
                             current_response_.c_str());
                         add_message("assistant", current_response_);
                         current_response_.clear();
                         if (apply_chat_template_with_error_handling(chat_templates_.get(), false, prev_len_) < 0)
                         {
-                            RPC_ERROR("[CTX {}] Unable to apply chat template for assistant message.",
+                            RPC_ERROR(
+                                "[CTX {}] Unable to apply chat template for assistant message.",
                                 std::to_string(context_id_));
                             return to_standard_return_type(error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE);
                         }
@@ -544,7 +569,8 @@ namespace secret_llama
                             auto system_prompt = it->second.get<std::string>();
                             if (!system_prompt.empty())
                             {
-                                RPC_DEBUG("[CTX {}] First pass. Adding system prompt: \"{}\"",
+                                RPC_DEBUG(
+                                    "[CTX {}] First pass. Adding system prompt: \"{}\"",
                                     std::to_string(context_id_),
                                     system_prompt.c_str());
                                 add_message("system", system_prompt);
@@ -562,13 +588,15 @@ namespace secret_llama
                         RPC_ERROR("[CTX {}] Unable to apply chat template for user message.", std::to_string(context_id_));
                         return to_standard_return_type(error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE);
                     }
-                    RPC_DEBUG("[CTX {}] Chat template applied. prev_len_={}, new_len={}",
+                    RPC_DEBUG(
+                        "[CTX {}] Chat template applied. prev_len_={}, new_len={}",
                         std::to_string(context_id_),
                         prev_len_,
                         new_len);
 
                     std::string prompt_to_tokenize(formatted_.begin() + prev_len_, formatted_.begin() + new_len);
-                    RPC_DEBUG("[CTX {}] Final prompt segment to tokenize: \"{}\"",
+                    RPC_DEBUG(
+                        "[CTX {}] Final prompt segment to tokenize: \"{}\"",
                         std::to_string(context_id_),
                         prompt_to_tokenize.c_str());
 
@@ -601,7 +629,9 @@ namespace secret_llama
             }
 
             // Add this helper method to check for stop strings:
-            bool check_stop_strings(const std::string& text, std::string& matched_stop_str)
+            bool check_stop_strings(
+                const std::string& text,
+                std::string& matched_stop_str)
             {
                 for (const auto& stop_str : stop_strs_)
                 {
@@ -615,7 +645,9 @@ namespace secret_llama
             }
 
             // Replace the stop string checking section in get_piece() with this:
-            int get_piece(std::string& piece, bool& complete) override
+            int get_piece(
+                std::string& piece,
+                bool& complete) override
             {
                 RPC_DEBUG("\n[CTX {}] START", std::to_string(context_id_));
                 try
@@ -639,7 +671,8 @@ namespace secret_llama
                         return to_standard_return_type(error_types::CONTEXT_SIZE_EXCEEDED);
                     }
 
-                    RPC_DEBUG("Decoding batch... n_tokens={}, KV cache used={}",
+                    RPC_DEBUG(
+                        "Decoding batch... n_tokens={}, KV cache used={}",
                         batch_.n_tokens,
                         (int)(llama_memory_seq_pos_max(llama_get_memory(ctx_.get()), 0) + 1));
 
@@ -648,7 +681,8 @@ namespace secret_llama
                         RPC_ERROR("[CTX {}] llama_decode failed.", std::to_string(context_id_));
                         return to_standard_return_type(error_types::DECODE_FAILURE);
                     }
-                    RPC_DEBUG("[CTX {}] Decode successful. KV cache now used={}",
+                    RPC_DEBUG(
+                        "[CTX {}] Decode successful. KV cache now used={}",
                         std::to_string(context_id_),
                         (int)(llama_memory_seq_pos_max(llama_get_memory(ctx_.get()), 0) + 1));
 
@@ -686,7 +720,8 @@ namespace secret_llama
                     std::string matched_stop_str;
                     if (check_stop_strings(accumulated_response_, matched_stop_str))
                     {
-                        RPC_DEBUG("[CTX {}] Stop string '{}' found in accumulated response.",
+                        RPC_DEBUG(
+                            "[CTX {}] Stop string '{}' found in accumulated response.",
                             std::to_string(context_id_),
                             matched_stop_str.c_str());
 
@@ -747,7 +782,8 @@ namespace secret_llama
         public:
             ~llama_cpp_engine() override = default;
 
-            error_types create_context(const std::shared_ptr<loaded_model>& model,
+            error_types create_context(
+                const std::shared_ptr<loaded_model>& model,
                 uint64_t seed,
                 const std::string& overrides, // std::string
                 std::shared_ptr<context>& context) override
@@ -763,7 +799,10 @@ namespace secret_llama
             }
 
             error_types parse_model(
-                const llm_model& modl, void* data, uint64_t size, std::shared_ptr<loaded_model>& loaded_model) override
+                const llm_model& modl,
+                void* data,
+                uint64_t size,
+                std::shared_ptr<loaded_model>& loaded_model) override
             {
                 try
                 {
@@ -791,7 +830,8 @@ namespace secret_llama
                 }
             }
 
-            error_types infer(const std::string& prompt,
+            error_types infer(
+                const std::string& prompt,
                 const std::string& overrides,
                 uint64_t rng_seed,
                 const std::shared_ptr<loaded_tokenizer>&,
@@ -816,7 +856,8 @@ namespace secret_llama
                         vocab, prompt.data(), static_cast<int32_t>(prompt.size()), nullptr, 0, true, true);
 
                     std::vector<llama_token> prompt_tokens(n_prompt);
-                    if (llama_tokenize(vocab,
+                    if (llama_tokenize(
+                            vocab,
                             prompt.data(),
                             static_cast<int32_t>(prompt.size()),
                             prompt_tokens.data(),
@@ -931,7 +972,11 @@ namespace secret_llama
             return error_types::OK;
         }
 
-        error_types parse_model(const llm_model& modl, void* data, uint64_t size, std::shared_ptr<loaded_model>& loaded_model)
+        error_types parse_model(
+            const llm_model& modl,
+            void* data,
+            uint64_t size,
+            std::shared_ptr<loaded_model>& loaded_model)
         {
             auto engine = std::make_shared<llama_cpp_engine>();
             return engine->parse_model(modl, data, size, loaded_model);

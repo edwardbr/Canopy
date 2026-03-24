@@ -34,7 +34,9 @@ namespace websocket_demo
             std::shared_ptr<rpc::event> evt_stopped_;
 
         public:
-            demo(const std::shared_ptr<rpc::service>& service, const std::shared_ptr<secret_llama::v1_0::context>& context)
+            demo(
+                const std::shared_ptr<rpc::service>& service,
+                const std::shared_ptr<secret_llama::v1_0::context>& context)
                 : context_(context)
                 , service_(service)
             {
@@ -45,28 +47,44 @@ namespace websocket_demo
 
             ~demo() override = default;
 
-            CORO_TASK(int) add(double first_val, double second_val, double& response) override
+            CORO_TASK(int)
+            add(double first_val,
+                double second_val,
+                double& response) override
             {
                 response = first_val + second_val;
                 CO_RETURN rpc::error::OK();
             }
-            CORO_TASK(int) subtract(double first_val, double second_val, double& response) override
+            CORO_TASK(int)
+            subtract(
+                double first_val,
+                double second_val,
+                double& response) override
             {
                 response = first_val - second_val;
                 CO_RETURN rpc::error::OK();
             }
-            CORO_TASK(int) multiply(double first_val, double second_val, double& response) override
+            CORO_TASK(int)
+            multiply(
+                double first_val,
+                double second_val,
+                double& response) override
             {
                 response = first_val * second_val;
                 CO_RETURN rpc::error::OK();
             }
-            CORO_TASK(int) divide(double first_val, double second_val, double& response) override
+            CORO_TASK(int)
+            divide(
+                double first_val,
+                double second_val,
+                double& response) override
             {
                 response = first_val / second_val;
                 CO_RETURN rpc::error::OK();
             }
 
-            static CORO_TASK(void) get_next(std::shared_ptr<secret_llama::v1_0::context> context,
+            static CORO_TASK(void) get_next(
+                std::shared_ptr<secret_llama::v1_0::context> context,
                 rpc::shared_ptr<i_context_event> event,
                 std::shared_ptr<rpc::event> evt_stopped,
                 std::shared_ptr<bool> complete,

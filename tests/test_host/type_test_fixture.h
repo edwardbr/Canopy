@@ -73,8 +73,11 @@ public:
 
     // Schedule the verification to run - either immediately (local) or after async cleanup (remote)
     // Captures are passed as variadic arguments to ensure they live in the coroutine frame
-    template<typename Lambda, typename... Args>
-    void schedule(std::shared_ptr<rpc::service> service,
+    template<
+        typename Lambda,
+        typename... Args>
+    void schedule(
+        std::shared_ptr<rpc::service> service,
         const rpc::shared_ptr<rpc::casting_interface>& obj,
         Lambda&& verification_lambda,
         Args&&... args)
@@ -128,7 +131,10 @@ public:
         CO_RETURN;
     }
 
-    CORO_TASK(void) on_object_released(rpc::object object_id, rpc::destination_zone destination) override
+    CORO_TASK(void)
+    on_object_released(
+        rpc::object object_id,
+        rpc::destination_zone destination) override
     {
         if (object_id == expected_object_id_ && continuation_scheduled_ && !is_local_)
         {
@@ -150,8 +156,14 @@ inline std::set<object_deletion_waiter*> object_deletion_waiter::active_waiters_
 // All coroutines now return CORO_TASK(bool) and use check_for_error
 // The lambda wrapper sets is_ready = true when the coroutine completes
 // After the main coroutine completes, keeps processing events until all object_deletion_waiters complete
-template<typename TestFixture, typename CoroFunc, typename... Args>
-void run_coro_test(TestFixture& test_fixture, CoroFunc&& coro_function, Args&&... args)
+template<
+    typename TestFixture,
+    typename CoroFunc,
+    typename... Args>
+void run_coro_test(
+    TestFixture& test_fixture,
+    CoroFunc&& coro_function,
+    Args&&... args)
 {
     auto& lib = test_fixture.get_lib();
 #ifdef CANOPY_BUILD_COROUTINE
