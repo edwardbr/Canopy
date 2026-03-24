@@ -57,12 +57,11 @@ namespace rpc::libcoro_spsc_dynamic_dll
         size_t scheduler_thread_count)
     {
         auto result = std::shared_ptr<loaded_library>(new loaded_library());
-        result->keep_alive_ = result;
 
 #  if defined(_WIN32)
         result->lib_handle_ = LoadLibraryA(library_path.c_str());
 #  else
-        result->lib_handle_ = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
+        result->lib_handle_ = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
 #  endif
         if (!result->lib_handle_)
         {
@@ -99,6 +98,9 @@ namespace rpc::libcoro_spsc_dynamic_dll
 
         result->runtime_ctx_ = start_result.runtime_ctx;
         result->stop_fn_ = start_result.stop_fn;
+        // Set keep_alive_ only after successful init so that error paths above do not
+        // create a circular reference that prevents the object from being destroyed.
+        result->keep_alive_ = result;
         return result;
     }
 

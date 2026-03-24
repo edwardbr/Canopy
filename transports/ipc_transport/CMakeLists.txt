@@ -19,7 +19,8 @@ target_include_directories(
 target_link_libraries(
   transport_ipc_transport_impl
   PUBLIC transport_streaming
-         transport_libcoro_spsc_dynamic_dll
+         streaming_spsc_queue
+         transport_libcoro_spsc_dll_host
          yas_common
          spsc_queue
          args::args

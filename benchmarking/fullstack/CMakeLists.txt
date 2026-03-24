@@ -44,6 +44,7 @@ if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     canopy_benchmark_ipc_child_process
     PRIVATE transport_ipc_transport
+            streaming_spsc_queue
             transport_streaming
             transport_local
             comprehensive_idl
@@ -89,7 +90,14 @@ target_include_directories(benchmark PRIVATE "${CMAKE_SOURCE_DIR}/benchmarking/f
                                              "${CMAKE_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})
 target_link_libraries(benchmark PUBLIC comprehensive_idl transport_local rpc ${CANOPY_LIBRARIES})
 if(CANOPY_BUILD_COROUTINE)
-  target_link_libraries(benchmark PUBLIC transport_streaming transport_libcoro_dynamic_library transport_ipc_transport)
+  target_link_libraries(
+    benchmark
+    PUBLIC transport_streaming
+           transport_libcoro_dynamic_library
+           transport_ipc_transport
+           streaming_spsc_queue
+           streaming_tcp
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>)
 else()
   target_link_libraries(benchmark PUBLIC transport_dynamic_library)
 endif()

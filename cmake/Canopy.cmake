@@ -24,8 +24,6 @@ if(NOT DEPENDENCIES_LOADED)
   # ####################################################################################################################
   # Core Build Options
   # ####################################################################################################################
-  option(CANOPY_BUILD "Build host code" ON)
-  option(CANOPY_BUILD_EXE "Build executable code" ON)
   option(CANOPY_BUILD_TEST "Build test code" OFF)
   option(CANOPY_BUILD_DEMOS "Build demo code" OFF)
   option(CANOPY_BUILD_BENCHMARKING "Build benchmarking code" OFF)
@@ -36,8 +34,7 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_BUILD_WEBSOCKET_DEFAULT ON)
   endif()
   option(CANOPY_BUILD_WEBSOCKET "Include websocket support" ${CANOPY_BUILD_WEBSOCKET_DEFAULT})
-  option(CANOPY_STANDALONE "Build Canopy stand alone" OFF)
-  option(CANOPY_DEBUG_GEN "Get the generator produce verbose messages" OFF)
+  option(CANOPY_VERBOSE_GENERATOR "Get the generator produce verbose messages" OFF)
   option(CANOPY_DEBUG_DEFAULT_DESTRUCTOR "Get the generator produce verbose messages" OFF)
   # SGX Enclave support (disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
@@ -149,7 +146,6 @@ if(NOT DEPENDENCIES_LOADED)
   # ####################################################################################################################
   message("CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE}")
   message("CANOPY_BUILD_ENCLAVE ${CANOPY_BUILD_ENCLAVE}")
-  message("CANOPY_BUILD ${CANOPY_BUILD}")
   message("CANOPY_BUILD_EXE ${CANOPY_BUILD_EXE}")
   message("CANOPY_BUILD_TEST ${CANOPY_BUILD_TEST}")
   message("CANOPY_BUILD_DEMOS ${CANOPY_BUILD_DEMOS}")
@@ -213,18 +209,17 @@ if(NOT DEPENDENCIES_LOADED)
     message("doing GIT_SUBMODULE ${GIT_SUBMODULE}")
 
     if(GIT_SUBMODULE)
-      set(
-        CANOPY_REQUIRED_SUBMODULES
-        submodules/yas
-        submodules/fmt
-        submodules/idlparser
-        submodules/spdlog
-        submodules/args
-        submodules/json
-        submodules/json-schema-validator)
+      set(CANOPY_REQUIRED_SUBMODULES
+          submodules/yas
+          submodules/fmt
+          submodules/idlparser
+          submodules/spdlog
+          submodules/args
+          submodules/json
+          submodules/json-schema-validator)
 
       if(CANOPY_BUILD_COROUTINE)
-        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/libcoro_for_enclaves submodules/libcoro submodules/c-ares)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/libcoro_for_enclaves submodules/c-ares)
       endif()
       if(CANOPY_BUILD_PROTOCOL_BUFFERS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/protobuf)
@@ -234,6 +229,9 @@ if(NOT DEPENDENCIES_LOADED)
       endif()
       if(CANOPY_BUILD_WEBSOCKET)
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/wslay submodules/llhttp)
+      endif()
+      if(CANOPY_BUILD_DEMOS)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/llama.cpp)
       endif()
 
       message(STATUS "Submodule init")
@@ -246,14 +244,33 @@ if(NOT DEPENDENCIES_LOADED)
         message(FATAL_ERROR "submodule init failed")
       endif()
 
-      message(STATUS "Submodule update")
-      execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule update -- ${CANOPY_REQUIRED_SUBMODULES}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        RESULT_VARIABLE GIT_SUBMOD_RESULT)
+      # Update all required submodules except llama.cpp (handled separately with --depth 1)
+      set(CANOPY_STANDARD_SUBMODULES ${CANOPY_REQUIRED_SUBMODULES})
+      list(REMOVE_ITEM CANOPY_STANDARD_SUBMODULES submodules/llama.cpp)
 
-      if(NOT GIT_SUBMOD_RESULT EQUAL "0")
-        message(FATAL_ERROR "git submodule update --init failed with ${GIT_SUBMOD_RESULT}, please checkout submodules")
+      if(CANOPY_STANDARD_SUBMODULES)
+        message(STATUS "Submodule update")
+        execute_process(
+          COMMAND ${GIT_EXECUTABLE} submodule update -- ${CANOPY_STANDARD_SUBMODULES}
+          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+          RESULT_VARIABLE GIT_SUBMOD_RESULT)
+
+        if(NOT GIT_SUBMOD_RESULT EQUAL "0")
+          message(FATAL_ERROR "git submodule update failed with ${GIT_SUBMOD_RESULT}, please checkout submodules")
+        endif()
+      endif()
+
+      if(CANOPY_BUILD_DEMOS)
+        # llama.cpp is a very large repository; use --depth 1 to avoid downloading the full history
+        message(STATUS "Submodule update (shallow): submodules/llama.cpp")
+        execute_process(
+          COMMAND ${GIT_EXECUTABLE} submodule update --init --depth 1 -- submodules/llama.cpp
+          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+          RESULT_VARIABLE GIT_LLAMA_RESULT)
+
+        if(NOT GIT_LLAMA_RESULT EQUAL "0")
+          message(FATAL_ERROR "git submodule update --depth 1 for llama.cpp failed with ${GIT_LLAMA_RESULT}")
+        endif()
       endif()
     endif()
   endif()

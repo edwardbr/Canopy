@@ -17,8 +17,8 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_DLL_TRANSPORT_TEST_LIB transport_libcoro_dynamic_library_test)
   set(LIBCORO_DLL_TEST_TARGET canopy_libcoro_example_dll)
   set(LIBCORO_IPC_DLL_TRANSPORT_SOURCES type_test_libcoro_ipc_dll_suite.cpp)
-  set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_spsc_dynamic_dll)
-  set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_spsc_dynamic_dll_test)
+  set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_spsc_dll_host)
+  set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_spsc_dll_host_test)
   set(LIBCORO_IPC_DLL_TEST_TARGET canopy_libcoro_spsc_example_dll)
   set(LIBCORO_IPC_DLL_LOADER_TARGET canopy_ipc_child_host_process)
   set(IPC_TRANSPORT_TEST_LIB transport_ipc_transport_test)
@@ -110,7 +110,13 @@ target_link_libraries(
          ${CANOPY_LIBRARIES})
 
 if(CANOPY_BUILD_COROUTINE)
-  target_link_libraries(rpc_test PUBLIC transport_ipc_transport)
+  target_link_libraries(
+    rpc_test
+    PUBLIC transport_ipc_transport
+           streaming
+           streaming_tcp
+           streaming_spsc_queue
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>)
 endif()
 
 target_compile_options(rpc_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

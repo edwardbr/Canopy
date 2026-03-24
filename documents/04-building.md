@@ -101,9 +101,8 @@ All presets inherit these defaults:
 CANOPY_BUILD_COROUTINE=OFF              # Coroutines disabled by default
 CANOPY_BUILD_ENCLAVE=OFF                # SGX enclave support disabled
 CANOPY_BUILD_TEST=ON                    # Test building enabled
-CANOPY_DEBUG_GEN=OFF                # Debug code generation disabled
+CANOPY_VERBOSE_GENERATOR=OFF                # Debug code generation disabled
 CMAKE_EXPORT_COMPILE_COMMANDS=ON # Export compile commands
-CANOPY_STANDALONE=ON                # Standalone build mode
 ```
 
 ### CMake Module Structure
@@ -207,7 +206,7 @@ cmake --preset Debug -DCANOPY_BUILD_DEMOS=ON/OFF
 # Debugging
 cmake --preset Debug -DCANOPY_USE_LOGGING=ON/OFF
 cmake --preset Debug -DCANOPY_USE_TELEMETRY=ON/OFF
-cmake --preset Debug -DCANOPY_DEBUG_GEN=ON/OFF
+cmake --preset Debug -DCANOPY_VERBOSE_GENERATOR=ON/OFF
 
 # Sanitizers (when CANOPY_BUILD_TEST=ON)
 cmake --preset Debug -DCANOPY_DEBUG_ADDRESS=ON/OFF
@@ -224,11 +223,10 @@ option(CANOPY_BUILD_COROUTINE "Enable C++20 coroutine support" OFF)
 option(CANOPY_BUILD_ENCLAVE "Enable SGX enclave support" OFF)
 option(CANOPY_BUILD_TEST "Build tests" ON)
 option(CANOPY_BUILD_DEMOS "Build demos" ON)
-option(CANOPY_BUILD "Build host library" ON)
 option(BUILD_GENERATOR "Build IDL generator" ON)
 
 # Debug options
-option(CANOPY_DEBUG_GEN "Enable debug output for code generation" OFF)
+option(CANOPY_VERBOSE_GENERATOR "Enable debug output for code generation" OFF)
 option(CANOPY_USE_LOGGING "Enable RPC logging" OFF)
 option(CANOPY_USE_TELEMETRY "Enable RPC telemetry" OFF)
 option(CANOPY_USE_CONSOLE_TELEMETRY "Enable console telemetry output" OFF)

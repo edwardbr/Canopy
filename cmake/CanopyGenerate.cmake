@@ -154,15 +154,12 @@ function(
     if(CANOPY_BUILD_PROTOCOL_BUFFERS)
       set(generate_protobuf TRUE)
     elseif(generate_yas)
-      message(
-        STATUS
-          "Protocol Buffers generation requested for '${name}', but CANOPY_BUILD_PROTOCOL_BUFFERS is OFF. "
-          "Continuing with the requested YAS format(s) only.")
+      message(STATUS "Protocol Buffers generation requested for '${name}', but CANOPY_BUILD_PROTOCOL_BUFFERS is OFF. "
+                     "Continuing with the requested YAS format(s) only.")
     else()
       message(
-        FATAL_ERROR
-          "Protocol Buffers generation was requested for '${name}', but CANOPY_BUILD_PROTOCOL_BUFFERS is OFF "
-          "and no alternative generated serialization format was requested.")
+        FATAL_ERROR "Protocol Buffers generation was requested for '${name}', but CANOPY_BUILD_PROTOCOL_BUFFERS is OFF "
+                    "and no alternative generated serialization format was requested.")
     endif()
   endif()
 
@@ -182,7 +179,7 @@ function(
     set(full_protobuf_manifest_path "")
   endif()
 
-  if(${CANOPY_DEBUG_GEN})
+  if(${CANOPY_VERBOSE_GENERATOR})
     message("CanopyGenerate name ${name}")
     message("idl ${idl}")
     message("base_dir ${base_dir}")
@@ -361,7 +358,7 @@ function(
     DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
     COMMENT "Running generator ${idl}")
 
-  if(${CANOPY_DEBUG_GEN})
+  if(${CANOPY_VERBOSE_GENERATOR})
     message(
       "
     ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name}
@@ -606,7 +603,7 @@ function(
   endif()
 
   foreach(dep ${params_dependencies})
-    if(${CANOPY_DEBUG_GEN})
+    if(${CANOPY_VERBOSE_GENERATOR})
       message("dep ${dep}")
     endif()
     if(TARGET ${dep}_generate)

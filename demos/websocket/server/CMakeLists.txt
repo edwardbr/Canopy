@@ -48,6 +48,7 @@ target_include_directories(
 target_link_libraries(
   websocket_server
   PUBLIC streaming
+         streaming_tls
          transport_streaming
          streaming_transport_idl
          websocket_demo_idl

@@ -273,7 +273,7 @@ CANOPY_BUILD_DEMOS=ON        # Demo applications
 # Development
 CANOPY_USE_LOGGING=ON        # Comprehensive logging
 CANOPY_USE_TELEMETRY=ON      # Debugging and visualization
-CANOPY_DEBUG_GEN=ON          # Code generation debugging
+CANOPY_VERBOSE_GENERATOR=ON          # Code generation debugging
 
 # Memory Safety
 CANOPY_DEBUG_ADDRESS=ON      # AddressSanitizer (detect memory errors)

@@ -41,7 +41,7 @@ The library exports `canopy_libcoro_spsc_dll_start` and the runtime plumbing.
 
 - host process uses `rpc::ipc_transport`
 - child process executable is `ipc_child_host_process`
-- that executable loads a DLL linked against `transport_libcoro_spsc_dynamic_dll`
+- that executable loads a DLL linked against `transport_libcoro_spsc_dll_host`
 
 ## Related transports
 

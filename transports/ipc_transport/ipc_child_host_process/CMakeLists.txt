@@ -11,7 +11,7 @@ target_include_directories(canopy_ipc_child_host_process PRIVATE ${CANOPY_INCLUD
 target_link_libraries(
   canopy_ipc_child_host_process
   PRIVATE transport_ipc_transport
-          transport_libcoro_spsc_dynamic_dll
+          transport_libcoro_spsc_dll_host
           transport_streaming
           spsc_queue
           yas_common

@@ -109,13 +109,18 @@ namespace streaming::spsc_wrapping
 
             uint32_t len = 0;
             std::memcpy(&len, blob.data(), streaming::spsc_queue::header_size);
-            state->pending_send_blobs.fetch_sub(1, std::memory_order_release);
             if (len == 0)
+            {
+                state->pending_send_blobs.fetch_sub(1, std::memory_order_release);
                 continue;
+            }
 
             // Send the blob even if closed_ is set — the queue must be drained.
             auto status = co_await state->underlying->send(
                 rpc::byte_span{reinterpret_cast<const char*>(blob.data() + streaming::spsc_queue::header_size), len});
+            // Decrement only after the underlying send completes so that set_closed()
+            // waiting on pending_send_blobs == 0 cannot race past an in-flight send.
+            state->pending_send_blobs.fetch_sub(1, std::memory_order_release);
             if (!status.is_ok())
             {
                 state->send_failure_type.store(static_cast<int>(status.type), std::memory_order_release);

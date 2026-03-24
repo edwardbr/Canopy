@@ -98,7 +98,8 @@
       "Bash(sed -i 's/\\\\[\\\\[maybe_unused\\\\]\\\\] bool ok = address\\\\.set_subnet/[[maybe_unused]] auto ok = address.set_subnet/' /var/home/edward/projects/Canopy/transports/libcoro_spsc_dynamic_dll/tests/transport/tests/libcoro_spsc_dynamic_dll/transport_setup.h)",
       "Bash(sed -i 's/\\\\[\\\\[maybe_unused\\\\]\\\\] bool ok = dll_zone\\\\.set_subnet/[[maybe_unused]] auto ok = dll_zone.set_subnet/' /var/home/edward/projects/Canopy/tests/test_host/type_test_libcoro_ipc_dll_suite.cpp)",
       "Bash(sed -i 's/\\\\[\\\\[maybe_unused\\\\]\\\\] bool ok = child_zone\\\\.set_subnet/[[maybe_unused]] auto ok = child_zone.set_subnet/g' /var/home/edward/projects/Canopy/benchmarking/fullstack/src/benchmark_ipc.cpp)",
-      "Bash(./build_debug/output/zone_address_test 2>&1)"
+      "Bash(./build_debug/output/zone_address_test 2>&1)",
+      "Bash(ldd /var/home/edward/projects/Canopy2/build_debug_coroutine/output/libcanopy_libcoro_spsc_example_dll.so)"
     ]
   },
   "enabledPlugins": {}
