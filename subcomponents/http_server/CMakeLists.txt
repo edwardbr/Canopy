@@ -21,8 +21,17 @@ target_link_options(canopy_http_server PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 target_link_libraries(
   canopy_http_server
-  PUBLIC streaming transport_streaming llhttp_static rpc
-  PRIVATE OpenSSL::SSL OpenSSL::Crypto ${CANOPY_FMT_LIB} ${CANOPY_LIBRARIES})
+  PUBLIC streaming
+         streaming_tls
+         transport_streaming
+         llhttp_static
+         rpc
+  PRIVATE streaming_tcp
+          streaming_websocket
+          OpenSSL::SSL
+          OpenSSL::Crypto
+          ${CANOPY_FMT_LIB}
+          ${CANOPY_LIBRARIES})
 
 set_property(TARGET canopy_http_server PROPERTY COMPILE_PDB_NAME canopy_http_server)
 

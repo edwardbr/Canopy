@@ -34,6 +34,9 @@ if(CANOPY_BUILD_COROUTINE)
     tcp_spsc_tls_demo
     PUBLIC echo_idl
            streaming
+           streaming_tcp
+           streaming_tls
+           streaming_spsc_wrapping
            transport_streaming
            rpc
            canopy_network_config

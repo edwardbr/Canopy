@@ -15,13 +15,9 @@ project(
 message("configuring RPC")
 
 if("${CMAKE_CURRENT_SOURCE_DIR}" PATH_EQUAL "${CMAKE_SOURCE_DIR}")
-  set(CANOPY_STANDALONE ON)
-else()
-  set(CANOPY_STANDALONE OFF)
-endif()
-
-if(CANOPY_STANDALONE)
   message("RPC standalone")
+  project(rpc_standalone VERSION 3.0.0)
+
   set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
   set(CMAKE_PDB_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
   set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
@@ -33,8 +29,6 @@ if(CANOPY_STANDALONE)
     set(CMAKE_CXX_STANDARD 20)
   endif()
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-  project(rpc_tests VERSION 2.2.0)
 
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
   include(Canopy)

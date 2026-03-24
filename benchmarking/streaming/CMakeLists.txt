@@ -24,11 +24,22 @@ target_include_directories(streaming_benchmark PRIVATE ${CANOPY_INCLUDES})
 target_link_libraries(
   streaming_benchmark
   PUBLIC streaming
+         streaming_tcp
+         streaming_tls
+         streaming_spsc_queue
          rpc
          OpenSSL::SSL
          OpenSSL::Crypto
          fmt::fmt-header-only
          ${CANOPY_LIBRARIES})
+
+if(CANOPY_BUILD_WEBSOCKET)
+  target_link_libraries(streaming_benchmark PUBLIC streaming_websocket)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(streaming_benchmark PUBLIC streaming_io_uring)
+endif()
 target_compile_options(streaming_benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(streaming_benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET streaming_benchmark PROPERTY COMPILE_PDB_NAME streaming_benchmark)

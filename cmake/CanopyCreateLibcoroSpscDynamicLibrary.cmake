@@ -38,8 +38,9 @@ function(CanopyCreateLibcoroSpscDynamicLibrary target_name)
   target_link_libraries(
     ${target_name}
     PRIVATE -Wl,--whole-archive
-            transport_libcoro_spsc_dynamic_dll_dll
+            transport_libcoro_spsc_dll_runtime
             -Wl,--no-whole-archive
+            streaming_spsc_queue
             ${CANOPY_PLUGIN_LINK_LIBRARIES}
             yas_common
             rpc::rpc

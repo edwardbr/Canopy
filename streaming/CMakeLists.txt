@@ -5,68 +5,22 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-find_package(OpenSSL REQUIRED)
-
-add_library(
-  streaming SHARED
-  core/src/stream.cpp
-  tcp/src/stream.cpp
-  tls/src/stream.cpp
-  spsc_queue/src/stream.cpp
-  spsc_wrapping/src/stream.cpp)
+add_subdirectory(core)
+add_subdirectory(tcp)
+add_subdirectory(tls)
+add_subdirectory(spsc_queue)
+add_subdirectory(spsc_wrapping)
 
 if(CANOPY_BUILD_WEBSOCKET)
-  target_sources(streaming PRIVATE websocket/src/stream.cpp)
+  add_subdirectory(websocket)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_sources(streaming PRIVATE io_uring_tcp/src/stream.cpp)
-endif()
-
-target_include_directories(
-  streaming
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tcp/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tls/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/spsc_queue/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/spsc_wrapping/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/io_uring/include>"
-         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/io_uring_tcp/include>"
-  PRIVATE ${CANOPY_INCLUDES})
-
-if(CANOPY_BUILD_WEBSOCKET)
-  target_include_directories(streaming PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/websocket/include>")
-endif()
-
-target_compile_definitions(streaming PRIVATE ${CANOPY_DEFINES})
-if(CANOPY_IO_URING_SQPOLL)
-  target_compile_definitions(streaming PRIVATE CANOPY_IO_URING_SQPOLL)
-endif()
-target_compile_options(streaming PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-target_link_options(streaming PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-
-target_link_libraries(
-  streaming
-  PUBLIC libcoro
-         OpenSSL::Crypto
-         OpenSSL::SSL
-         rpc
-         canopy_network_config
-         spsc_queue)
-
-if(CANOPY_BUILD_WEBSOCKET)
-  target_link_libraries(streaming PUBLIC wslay)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_libraries(streaming PUBLIC uring)
-endif()
-
-set_property(TARGET streaming PROPERTY COMPILE_PDB_NAME streaming)
-
-if(CANOPY_ENABLE_CLANG_TIDY)
-  set_target_properties(streaming PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  # io_uring and io_uring_tcp are INTERFACE / header-only targets; they impose no build cost and are excluded on
+  # non-Linux because io_uring is a Linux kernel API. They do not require CANOPY_BUILD_COROUTINE here because the
+  # coroutine guard is applied at the consumer level (transport targets and io_uring_stream_test below).
+  add_subdirectory(io_uring)
+  add_subdirectory(io_uring_tcp)
 endif()
 
 if(CANOPY_BUILD_TEST
@@ -77,7 +31,7 @@ if(CANOPY_BUILD_TEST
   target_compile_definitions(io_uring_stream_test PRIVATE ${CANOPY_DEFINES})
   target_compile_options(io_uring_stream_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(io_uring_stream_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_libraries(io_uring_stream_test PRIVATE streaming GTest::gtest_main)
+  target_link_libraries(io_uring_stream_test PRIVATE streaming streaming_io_uring GTest::gtest_main)
   add_test(NAME io_uring_stream_test COMMAND io_uring_stream_test)
   message(STATUS "io_uring_stream_test configured")
 
@@ -86,7 +40,7 @@ if(CANOPY_BUILD_TEST
   target_compile_definitions(streaming_regression_test PRIVATE ${CANOPY_DEFINES})
   target_compile_options(streaming_regression_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(streaming_regression_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_libraries(streaming_regression_test PRIVATE streaming GTest::gtest_main)
+  target_link_libraries(streaming_regression_test PRIVATE streaming streaming_spsc_wrapping GTest::gtest_main)
   add_test(NAME streaming_regression_test COMMAND streaming_regression_test)
   message(STATUS "streaming_regression_test configured")
 endif()

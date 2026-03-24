@@ -83,7 +83,7 @@ In this mode the child process maps the queue pair and hosts a
 |--------|-------------------------|------------|---------------------|--------------------|
 | Blocking DLL | `rpc::dynamic_library` | `CANOPY_BUILD_COROUTINE=OFF` | `transport_dynamic_library` | `transport_dynamic_library_dll` inside the loaded DLL |
 | Coroutine DLL | `rpc::libcoro_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_dynamic_library` | `transport_libcoro_dynamic_library_dll` inside the loaded DLL |
-| Coroutine SPSC DLL | `rpc::libcoro_spsc_dynamic_dll` | `CANOPY_BUILD_COROUTINE=ON` | usually reached via `rpc::ipc_transport` | `transport_libcoro_spsc_dynamic_dll` inside the loaded DLL |
+| Coroutine SPSC DLL | `rpc::libcoro_spsc_dynamic_dll` | `CANOPY_BUILD_COROUTINE=ON` | usually reached via `rpc::ipc_transport` | `transport_libcoro_spsc_dll_host` inside the loaded DLL |
 | Process-owned SPSC transport | `rpc::ipc_transport` | `CANOPY_BUILD_COROUTINE=ON` | `transport_ipc_transport` | `ipc_child_host_process` or `ipc_child_process` |
 
 ## Entry Points At A Glance

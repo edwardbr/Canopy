@@ -47,6 +47,7 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC comprehensive_idl
            transport_local
            transport_streaming
+           streaming_tcp
            rpc
            canopy_network_config
            ${CANOPY_LIBRARIES})
@@ -67,6 +68,8 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC comprehensive_idl
            transport_local
            transport_streaming
+           streaming_spsc_queue
+           spsc_queue
            rpc
            ${CANOPY_LIBRARIES})
   target_compile_options(spsc_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

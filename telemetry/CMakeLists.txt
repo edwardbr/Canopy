@@ -36,7 +36,7 @@ if(CANOPY_USE_TELEMETRY)
   endif()
 
 endif()
-if(${CANOPY_BUILD})
+if(${CANOPY_USE_TELEMETRY})
 
   message("rpc_telemetry")
   add_library(
