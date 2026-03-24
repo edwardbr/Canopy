@@ -204,7 +204,15 @@ if(NOT DEPENDENCIES_LOADED)
   find_package(Git QUIET)
   message("submodules GIT_FOUND ${GIT_FOUND}")
 
-  if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+  if(GIT_FOUND)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+      message("found .git directory")
+    elseif(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+      message("found .git file")
+    else()
+      message("NO .git file or directory")
+    endif()
+    
     option(GIT_SUBMODULE "Check submodules during build" ON)
     message("doing GIT_SUBMODULE ${GIT_SUBMODULE}")
 
@@ -254,9 +262,9 @@ if(NOT DEPENDENCIES_LOADED)
       list(REMOVE_ITEM CANOPY_STANDARD_SUBMODULES submodules/llama.cpp)
 
       if(CANOPY_STANDARD_SUBMODULES)
-        message(STATUS "Submodule update")
+        message(STATUS "Submodule update (force)")
         execute_process(
-          COMMAND ${GIT_EXECUTABLE} submodule update --init -- ${CANOPY_STANDARD_SUBMODULES}
+          COMMAND ${GIT_EXECUTABLE} submodule update --init --force -- ${CANOPY_STANDARD_SUBMODULES}
           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
           RESULT_VARIABLE GIT_SUBMOD_RESULT)
 
