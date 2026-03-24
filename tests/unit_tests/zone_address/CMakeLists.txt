@@ -16,9 +16,6 @@ if(NOT CANOPY_BUILD_COROUTINE)
   target_compile_options(zone_address_test PRIVATE ${CANOPY_COMPILE_OPTIONS})
   target_link_options(zone_address_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
-  set_property(TARGET zone_address_test PROPERTY CXX_STANDARD 17)
-  set_property(TARGET zone_address_test PROPERTY CXX_STANDARD_REQUIRED ON)
-
   add_test(NAME zone_address_test COMMAND zone_address_test)
 
   add_executable(zone_address_benchmark zone_address_benchmark.cpp)
@@ -29,8 +26,6 @@ if(NOT CANOPY_BUILD_COROUTINE)
 
   target_compile_options(zone_address_benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS})
   target_link_options(zone_address_benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  set_property(TARGET zone_address_benchmark PROPERTY CXX_STANDARD 17)
-  set_property(TARGET zone_address_benchmark PROPERTY CXX_STANDARD_REQUIRED ON)
 
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(zone_address_test PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")

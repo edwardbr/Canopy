@@ -13,9 +13,6 @@ project(
   VERSION 1.0.0
   LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # test_types_idl is defined in tests/idls/ when CANOPY_BUILD_TEST=ON. When building benchmarking without tests, generate
 # it here.
 if(NOT TARGET test_types_idl)

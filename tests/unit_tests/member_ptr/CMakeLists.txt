@@ -45,10 +45,6 @@ if(NOT CANOPY_BUILD_COROUTINE)
     set_target_properties(member_ptr_test PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
   endif()
 
-  # Set C++ standard
-  set_property(TARGET member_ptr_test PROPERTY CXX_STANDARD 17)
-  set_property(TARGET member_ptr_test PROPERTY CXX_STANDARD_REQUIRED ON)
-
   # Add the tests to CTest
   add_test(NAME member_ptr_test COMMAND member_ptr_test)
 

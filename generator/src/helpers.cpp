@@ -47,7 +47,7 @@ std::string get_smart_ptr_type(const std::string& type_name, bool& is_optimistic
             std::cerr << fmt::format("template parameter is malformed {}", type_name);
             throw fmt::format("template parameter is malformed {}", type_name);
         }
-        std::string_view interface_name(data, &type_name[rpos]);
+        std::string_view interface_name(data, rpos - (data - type_name.data()));
         // auto interface_name = type_name.substr(pos, rpos - pos);
         if (interface_name.find('<') != std::string::npos && interface_name.find('>') != std::string::npos
             && interface_name.find(' ') != std::string::npos)
