@@ -50,7 +50,9 @@ template<> xxx::something_more_complicated create_dummy_value<xxx::something_mor
 }
 
 // Test all functions in i_foo for schema validation with actual serialized data
-TEST(JSONSchemaValidationTest, IFooAllFunctionsSchemaValidation)
+TEST(
+    JSONSchemaValidationTest,
+    IFooAllFunctionsSchemaValidation)
 {
     // Get function info for i_foo
     auto fi = xxx::i_foo::get_function_info();
@@ -405,7 +407,9 @@ TEST(JSONSchemaValidationTest, IFooAllFunctionsSchemaValidation)
 }
 
 // Test all functions in i_foo for output schema validation with stub_serialiser
-TEST(JSONSchemaValidationTest, IFooAllFunctionsOutputSchemaValidation)
+TEST(
+    JSONSchemaValidationTest,
+    IFooAllFunctionsOutputSchemaValidation)
 {
     // Get function info for i_foo
     auto fi = xxx::i_foo::get_function_info();

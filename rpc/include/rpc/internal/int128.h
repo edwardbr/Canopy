@@ -72,7 +72,10 @@ namespace yas
         template<std::size_t F>
         struct serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, __int128>
         {
-            template<typename Archive> static Archive& save(Archive& ar, const __int128& obj)
+            template<typename Archive>
+            static Archive& save(
+                Archive& ar,
+                const __int128& obj)
             {
                 if (F & yas::json)
                 {
@@ -90,7 +93,10 @@ namespace yas
                 return ar;
             }
 
-            template<typename Archive> static Archive& load(Archive& ar, __int128& obj)
+            template<typename Archive>
+            static Archive& load(
+                Archive& ar,
+                __int128& obj)
             {
                 if (F & yas::json)
                 {
@@ -126,7 +132,10 @@ namespace yas
         template<std::size_t F>
         struct serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, unsigned __int128>
         {
-            template<typename Archive> static Archive& save(Archive& ar, const unsigned __int128& obj)
+            template<typename Archive>
+            static Archive& save(
+                Archive& ar,
+                const unsigned __int128& obj)
             {
                 if (F & yas::json)
                 {
@@ -144,7 +153,10 @@ namespace yas
                 return ar;
             }
 
-            template<typename Archive> static Archive& load(Archive& ar, unsigned __int128& obj)
+            template<typename Archive>
+            static Archive& load(
+                Archive& ar,
+                unsigned __int128& obj)
             {
                 if (F & yas::json)
                 {

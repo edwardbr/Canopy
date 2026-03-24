@@ -11,9 +11,12 @@
 namespace rpc::libcoro_dynamic_library
 {
     coro::task<rpc::connect_result> canopy_libcoro_dll_init(
-        void* transport_ctx, const rpc::connection_settings* settings, std::shared_ptr<coro::scheduler>* scheduler)
+        void* transport_ctx,
+        const rpc::connection_settings* settings,
+        std::shared_ptr<coro::scheduler>* scheduler)
     {
-        return init_child_zone<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(transport_ctx,
+        return init_child_zone<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(
+            transport_ctx,
             settings,
             scheduler,
             [](rpc::shared_ptr<comprehensive::v1::i_data_processor>, std::shared_ptr<rpc::child_service>)

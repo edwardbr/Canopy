@@ -7,7 +7,10 @@
 
 namespace rpc
 {
-    uint64_t get_bits_le(const std::vector<uint8_t>& data, uint16_t offset, uint16_t width)
+    uint64_t get_bits_le(
+        const std::vector<uint8_t>& data,
+        uint16_t offset,
+        uint16_t width)
     {
         if (width == 0)
             return 0;
@@ -30,7 +33,11 @@ namespace rpc
         return value;
     }
 
-    bool set_bits_le(std::vector<uint8_t>& data, uint16_t offset, uint16_t width, uint64_t value)
+    bool set_bits_le(
+        std::vector<uint8_t>& data,
+        uint16_t offset,
+        uint16_t width,
+        uint64_t value)
     {
         if (width == 0)
             return value == 0;
@@ -56,7 +63,10 @@ namespace rpc
         return true;
     }
 
-    uint64_t get_bits_be(const std::vector<uint8_t>& data, uint16_t offset, uint16_t width)
+    uint64_t get_bits_be(
+        const std::vector<uint8_t>& data,
+        uint16_t offset,
+        uint16_t width)
     {
         if (width == 0)
             return 0;
@@ -76,7 +86,11 @@ namespace rpc
         return value;
     }
 
-    bool set_bits_be(std::vector<uint8_t>& data, uint16_t offset, uint16_t width, uint64_t value)
+    bool set_bits_be(
+        std::vector<uint8_t>& data,
+        uint16_t offset,
+        uint16_t width,
+        uint64_t value)
     {
         if (width == 0)
             return value == 0;

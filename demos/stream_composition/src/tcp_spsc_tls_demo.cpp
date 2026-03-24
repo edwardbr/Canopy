@@ -57,7 +57,9 @@
 
 // Writes a self-signed RSA-2048 certificate and private key to the given
 // paths using the OpenSSL API.  Used only for demo / testing purposes.
-static bool generate_demo_cert(const std::string& cert_path, const std::string& key_path)
+static bool generate_demo_cert(
+    const std::string& cert_path,
+    const std::string& key_path)
 {
     if (std::filesystem::exists(cert_path) && std::filesystem::exists(key_path))
         return true; // already generated
@@ -128,7 +130,8 @@ namespace stream_composition
 #ifdef CANOPY_BUILD_COROUTINE
 
     CORO_TASK(void)
-    run_server(std::shared_ptr<coro::scheduler> scheduler,
+    run_server(
+        std::shared_ptr<coro::scheduler> scheduler,
         rpc::event& server_ready,
         const rpc::event& client_finished,
         const canopy::network_config::network_config& cfg,
@@ -177,7 +180,8 @@ namespace stream_composition
             CO_RETURN tls_stm;
         };
 
-        auto lst = std::make_shared<streaming::listener>("server_transport",
+        auto lst = std::make_shared<streaming::listener>(
+            "server_transport",
             std::make_shared<streaming::tcp::acceptor>(endpoint),
             rpc::stream_transport::make_connection_callback<i_echo, i_echo>(
                 [](const rpc::shared_ptr<i_echo>&,
@@ -213,7 +217,8 @@ namespace stream_composition
     }
 
     CORO_TASK(void)
-    run_client(std::shared_ptr<coro::scheduler> scheduler,
+    run_client(
+        std::shared_ptr<coro::scheduler> scheduler,
         const rpc::event& server_ready,
         rpc::event& client_finished,
         const canopy::network_config::network_config& cfg,
@@ -231,7 +236,8 @@ namespace stream_composition
         const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
                                 ? coro::net::domain_t::ipv6
                                 : coro::net::domain_t::ipv4;
-        coro::net::tcp::client tcp_client(scheduler,
+        coro::net::tcp::client tcp_client(
+            scheduler,
             coro::net::socket_address{coro::net::ip_address::from_string(cfg.get_host_string(), domain), cfg.port});
 
         auto conn_status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds{5000});
@@ -325,7 +331,10 @@ namespace stream_composition
 
 extern "C"
 {
-    void rpc_log(int level, const char* str, size_t sz)
+    void rpc_log(
+        int level,
+        const char* str,
+        size_t sz)
     {
         std::string message(str, sz);
         const char* prefix = nullptr;
@@ -359,7 +368,9 @@ extern "C"
 // main
 // ---------------------------------------------------------------------------
 
-int main(int argc, char* argv[])
+int main(
+    int argc,
+    char* argv[])
 {
     RPC_INFO("Stream Composition Demo — TCP → SPSC → TLS");
     RPC_INFO("============================================");
@@ -442,11 +453,12 @@ int main(int argc, char* argv[])
         rpc::event client_finished;
         std::atomic<bool> iteration_ok{true};
 
-        coro::sync_wait(coro::when_all(
-            stream_composition::run_server(
-                scheduler_server, server_ready, client_finished, cfg, rpc::zone{server_addr}, cert_path, key_path, iteration_ok),
-            stream_composition::run_client(
-                scheduler_client, server_ready, client_finished, cfg, rpc::zone{client_addr}, iteration_ok)));
+        coro::sync_wait(
+            coro::when_all(
+                stream_composition::run_server(
+                    scheduler_server, server_ready, client_finished, cfg, rpc::zone{server_addr}, cert_path, key_path, iteration_ok),
+                stream_composition::run_client(
+                    scheduler_client, server_ready, client_finished, cfg, rpc::zone{client_addr}, iteration_ok)));
 
         if (!iteration_ok.load())
         {

@@ -8,7 +8,10 @@
 
 extern "C"
 {
-    void rpc_log(int level, const char* str, size_t sz)
+    void rpc_log(
+        int level,
+        const char* str,
+        size_t sz)
     {
         std::string message(str, sz);
         if (level >= 4)

@@ -11,9 +11,12 @@
 namespace rpc::libcoro_spsc_dynamic_dll
 {
     coro::task<std::shared_ptr<rpc::stream_transport::transport>> canopy_libcoro_spsc_dll_init(
-        const std::string& name, std::shared_ptr<rpc::root_service> service, std::shared_ptr<streaming::stream> stream)
+        const std::string& name,
+        std::shared_ptr<rpc::root_service> service,
+        std::shared_ptr<streaming::stream> stream)
     {
-        CO_RETURN CO_AWAIT create_acceptor<yyy::i_host, yyy::i_example>(name,
+        CO_RETURN CO_AWAIT create_acceptor<yyy::i_host, yyy::i_example>(
+            name,
             std::move(service),
             std::move(stream),
             [](rpc::shared_ptr<yyy::i_host> host,

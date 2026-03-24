@@ -29,7 +29,11 @@ using namespace marshalled_tests;
 
 std::shared_ptr<rpc::child_service> rpc_server;
 
-int marshal_test_init_enclave(uint64_t host_zone_id, uint64_t host_id, uint64_t child_zone_id, uint64_t* example_object_id)
+int marshal_test_init_enclave(
+    uint64_t host_zone_id,
+    uint64_t host_id,
+    uint64_t child_zone_id,
+    uint64_t* example_object_id)
 {
     rpc::connection_settings input_descr{};
     rpc::remote_object output_descr{};
@@ -71,9 +75,10 @@ void marshal_test_destroy_enclave()
     rpc_server.reset();
 }
 
-int call_enclave(uint64_t protocol_version, // version of the rpc call protocol
-    uint64_t encoding,                      // format of the serialised data
-    uint64_t tag,                           // info on the type of the call passed from the idl generator
+int call_enclave(
+    uint64_t protocol_version, // version of the rpc call protocol
+    uint64_t encoding,         // format of the serialised data
+    uint64_t tag,              // info on the type of the call passed from the idl generator
     uint64_t caller_zone_id,
     uint64_t zone_id,
     uint64_t object_id,
@@ -141,8 +146,9 @@ int call_enclave(uint64_t protocol_version, // version of the rpc call protocol
     tmp.resize(sz_out);
     std::vector<rpc::back_channel_entry> out_back_channel;
 
-    int ret = rpc_server->send(protocol_version, // version of the rpc call protocol
-        rpc::encoding(encoding),                 // format of the serialised data
+    int ret = rpc_server->send(
+        protocol_version,        // version of the rpc call protocol
+        rpc::encoding(encoding), // format of the serialised data
         tag,
         {caller_zone_id},
         {zone_id},
@@ -181,9 +187,10 @@ int call_enclave(uint64_t protocol_version, // version of the rpc call protocol
     return rpc::error::NEED_MORE_MEMORY();
 }
 
-int post_enclave(uint64_t protocol_version, // version of the rpc call protocol
-    uint64_t encoding,                      // format of the serialised data
-    uint64_t tag,                           // info on the type of the call passed from the idl generator
+int post_enclave(
+    uint64_t protocol_version, // version of the rpc call protocol
+    uint64_t encoding,         // format of the serialised data
+    uint64_t tag,              // info on the type of the call passed from the idl generator
     uint64_t caller_zone_id,
     uint64_t zone_id,
     uint64_t object_id,
@@ -217,8 +224,9 @@ int post_enclave(uint64_t protocol_version, // version of the rpc call protocol
         ia & in_back_channel;                      // Read back-channel
     }
 
-    rpc_server->post(protocol_version, // version of the rpc call protocol
-        rpc::encoding(encoding),       // format of the serialised data
+    rpc_server->post(
+        protocol_version,        // version of the rpc call protocol
+        rpc::encoding(encoding), // format of the serialised data
         tag,
         {caller_zone_id},
         {zone_id},
@@ -234,7 +242,8 @@ int post_enclave(uint64_t protocol_version, // version of the rpc call protocol
     return rpc::error::OK();
 }
 
-int try_cast_enclave(uint64_t protocol_version,
+int try_cast_enclave(
+    uint64_t protocol_version,
     uint64_t zone_id,
     uint64_t object_id,
     uint64_t interface_id,
@@ -285,7 +294,8 @@ int try_cast_enclave(uint64_t protocol_version,
     return ret;
 }
 
-int add_ref_enclave(uint64_t protocol_version,
+int add_ref_enclave(
+    uint64_t protocol_version,
     uint64_t destination_zone_id,
     uint64_t object_id,
     uint64_t caller_zone_id,
@@ -312,7 +322,8 @@ int add_ref_enclave(uint64_t protocol_version,
     }
 
     std::vector<rpc::back_channel_entry> out_back_channel;
-    auto err_code = rpc_server->add_ref(protocol_version,
+    auto err_code = rpc_server->add_ref(
+        protocol_version,
         {destination_zone_id},
         {object_id},
         {caller_zone_id},
@@ -343,7 +354,8 @@ int add_ref_enclave(uint64_t protocol_version,
     return err_code;
 }
 
-int release_enclave(uint64_t protocol_version,
+int release_enclave(
+    uint64_t protocol_version,
     uint64_t zone_id,
     uint64_t object_id,
     uint64_t caller_zone_id,
@@ -369,7 +381,8 @@ int release_enclave(uint64_t protocol_version,
     }
 
     std::vector<rpc::back_channel_entry> out_back_channel;
-    auto err_code = rpc_server->release(protocol_version,
+    auto err_code = rpc_server->release(
+        protocol_version,
         {zone_id},
         {object_id},
         {caller_zone_id},

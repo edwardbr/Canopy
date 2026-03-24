@@ -17,7 +17,10 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-void rpc_log(int level, const char* str, size_t sz)
+void rpc_log(
+    int level,
+    const char* str,
+    size_t sz)
 {
     std::string message(str, sz);
     switch (level)
@@ -64,7 +67,10 @@ struct yas_binary_enc
 
     template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_yas_binary(obj); }
 
-    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
+    template<typename T>
+    static std::string deserialise(
+        const rpc::byte_span& data,
+        T& obj)
     {
         return rpc::from_yas_binary(data, obj);
     }
@@ -80,7 +86,10 @@ struct yas_compressed_binary_enc
         return rpc::to_compressed_yas_binary(obj);
     }
 
-    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
+    template<typename T>
+    static std::string deserialise(
+        const rpc::byte_span& data,
+        T& obj)
     {
         return rpc::from_yas_compressed_binary(data, obj);
     }
@@ -93,7 +102,10 @@ struct yas_json_enc
 
     template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_yas_json(obj); }
 
-    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
+    template<typename T>
+    static std::string deserialise(
+        const rpc::byte_span& data,
+        T& obj)
     {
         return rpc::from_yas_json(data, obj);
     }
@@ -106,7 +118,10 @@ struct protocol_buffers_enc
 
     template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_protobuf(obj); }
 
-    template<typename T> static std::string deserialise(const rpc::byte_span& data, T& obj)
+    template<typename T>
+    static std::string deserialise(
+        const rpc::byte_span& data,
+        T& obj)
     {
         return rpc::from_protobuf(data, obj);
     }
@@ -143,197 +158,283 @@ protected:
     }
 };
 
-TYPED_TEST_SUITE(WrappedScalarSerialiserTest, AllEncodings);
+TYPED_TEST_SUITE(
+    WrappedScalarSerialiserTest,
+    AllEncodings);
 
 // ---- int8_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, Int8Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int8Zero)
 {
     this->roundtrip_wrapper(scalar_test::int8_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int8Min)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int8Min)
 {
     this->roundtrip_wrapper(scalar_test::int8_holder{std::numeric_limits<int8_t>::min()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int8Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int8Max)
 {
     this->roundtrip_wrapper(scalar_test::int8_holder{std::numeric_limits<int8_t>::max()});
 }
 
 // ---- uint8_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, UInt8Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt8Zero)
 {
     this->roundtrip_wrapper(scalar_test::uint8_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt8Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt8Max)
 {
     this->roundtrip_wrapper(scalar_test::uint8_holder{std::numeric_limits<uint8_t>::max()});
 }
 
 // ---- int16_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, Int16Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int16Zero)
 {
     this->roundtrip_wrapper(scalar_test::int16_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int16Min)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int16Min)
 {
     this->roundtrip_wrapper(scalar_test::int16_holder{std::numeric_limits<int16_t>::min()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int16Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int16Max)
 {
     this->roundtrip_wrapper(scalar_test::int16_holder{std::numeric_limits<int16_t>::max()});
 }
 
 // ---- uint16_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, UInt16Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt16Zero)
 {
     this->roundtrip_wrapper(scalar_test::uint16_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt16Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt16Max)
 {
     this->roundtrip_wrapper(scalar_test::uint16_holder{std::numeric_limits<uint16_t>::max()});
 }
 
 // ---- int32_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, Int32Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int32Zero)
 {
     this->roundtrip_wrapper(scalar_test::int32_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int32Min)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int32Min)
 {
     this->roundtrip_wrapper(scalar_test::int32_holder{std::numeric_limits<int32_t>::min()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int32Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int32Max)
 {
     this->roundtrip_wrapper(scalar_test::int32_holder{std::numeric_limits<int32_t>::max()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int32Typical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int32Typical)
 {
     this->roundtrip_wrapper(scalar_test::int32_holder{123456789});
 }
 
 // ---- uint32_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, UInt32Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt32Zero)
 {
     this->roundtrip_wrapper(scalar_test::uint32_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt32Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt32Max)
 {
     this->roundtrip_wrapper(scalar_test::uint32_holder{std::numeric_limits<uint32_t>::max()});
 }
 
 // ---- int64_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, Int64Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int64Zero)
 {
     this->roundtrip_wrapper(scalar_test::int64_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int64Min)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int64Min)
 {
     this->roundtrip_wrapper(scalar_test::int64_holder{std::numeric_limits<int64_t>::min()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int64Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int64Max)
 {
     this->roundtrip_wrapper(scalar_test::int64_holder{std::numeric_limits<int64_t>::max()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int64Typical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int64Typical)
 {
     this->roundtrip_wrapper(scalar_test::int64_holder{-9876543210LL});
 }
 
 // ---- uint64_t ----
-TYPED_TEST(WrappedScalarSerialiserTest, UInt64Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt64Zero)
 {
     this->roundtrip_wrapper(scalar_test::uint64_holder{0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt64Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt64Max)
 {
     this->roundtrip_wrapper(scalar_test::uint64_holder{std::numeric_limits<uint64_t>::max()});
 }
 
 // ---- __int128 ----
-TYPED_TEST(WrappedScalarSerialiserTest, Int128Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int128Zero)
 {
     this->roundtrip_wrapper(scalar_test::int128_holder{__int128{0}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int128Positive)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int128Positive)
 {
     this->roundtrip_wrapper(scalar_test::int128_holder{__int128{1} << 100});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int128Negative)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int128Negative)
 {
     this->roundtrip_wrapper(scalar_test::int128_holder{-(__int128{1} << 100)});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int128Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int128Max)
 {
     this->roundtrip_wrapper(scalar_test::int128_holder{static_cast<__int128>(static_cast<unsigned __int128>(-1) >> 1)});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int128Min)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int128Min)
 {
     this->roundtrip_wrapper(scalar_test::int128_holder{static_cast<__int128>(static_cast<unsigned __int128>(1) << 127)});
 }
 
 // ---- unsigned __int128 ----
-TYPED_TEST(WrappedScalarSerialiserTest, UInt128Zero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt128Zero)
 {
     this->roundtrip_wrapper(scalar_test::uint128_holder{static_cast<unsigned __int128>(0)});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt128Typical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt128Typical)
 {
     unsigned __int128 val = (static_cast<unsigned __int128>(0xDEADBEEFCAFEBABEULL) << 64) | 0x0123456789ABCDEFULL;
     this->roundtrip_wrapper(scalar_test::uint128_holder{val});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt128Max)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt128Max)
 {
     this->roundtrip_wrapper(scalar_test::uint128_holder{static_cast<unsigned __int128>(-1)});
 }
 
 // ---- float ----
-TYPED_TEST(WrappedScalarSerialiserTest, FloatZero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatZero)
 {
     this->roundtrip_wrapper(scalar_test::float_holder{0.0f});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, FloatMin)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatMin)
 {
     this->roundtrip_wrapper(scalar_test::float_holder{std::numeric_limits<float>::lowest()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, FloatMax)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatMax)
 {
     this->roundtrip_wrapper(scalar_test::float_holder{std::numeric_limits<float>::max()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, FloatSmallest)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatSmallest)
 {
     this->roundtrip_wrapper(scalar_test::float_holder{std::numeric_limits<float>::min()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, FloatTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatTypical)
 {
     this->roundtrip_wrapper(scalar_test::float_holder{3.14159265f});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, FloatNegative)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatNegative)
 {
     this->roundtrip_wrapper(scalar_test::float_holder{-2.71828182f});
 }
 
 // ---- double ----
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleZero)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleZero)
 {
     this->roundtrip_wrapper(scalar_test::double_holder{0.0});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleMin)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleMin)
 {
     this->roundtrip_wrapper(scalar_test::double_holder{std::numeric_limits<double>::lowest()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleMax)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleMax)
 {
     this->roundtrip_wrapper(scalar_test::double_holder{std::numeric_limits<double>::max()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleSmallest)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleSmallest)
 {
     this->roundtrip_wrapper(scalar_test::double_holder{std::numeric_limits<double>::min()});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleTypical)
 {
     this->roundtrip_wrapper(scalar_test::double_holder{3.14159265358979323846});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleNegative)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleNegative)
 {
     this->roundtrip_wrapper(scalar_test::double_holder{-2.71828182845904523536});
 }
@@ -343,61 +444,88 @@ TYPED_TEST(WrappedScalarSerialiserTest, DoubleNegative)
 // ============================================================
 
 // ---- std::string ----
-TYPED_TEST(WrappedScalarSerialiserTest, StringEmpty)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    StringEmpty)
 {
     this->roundtrip_wrapper(scalar_test::string_holder{""});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, StringTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    StringTypical)
 {
     this->roundtrip_wrapper(scalar_test::string_holder{"hello, world!"});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, StringUnicode)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    StringUnicode)
 {
     this->roundtrip_wrapper(scalar_test::string_holder{"\xc3\xa9\xc3\xa0\xc3\xbc"});
 }
 
 // ---- std::vector<T> ----
-TYPED_TEST(WrappedScalarSerialiserTest, Int8VecEmpty)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int8VecEmpty)
 {
     this->roundtrip_wrapper(scalar_test::int8_vec_holder{{}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int8VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int8VecTypical)
 {
     this->roundtrip_wrapper(
         scalar_test::int8_vec_holder{{std::numeric_limits<int8_t>::min(), -1, 0, 1, std::numeric_limits<int8_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt8VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt8VecTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint8_vec_holder{{0, 1, 127, std::numeric_limits<uint8_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int16VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int16VecTypical)
 {
     this->roundtrip_wrapper(
         scalar_test::int16_vec_holder{{std::numeric_limits<int16_t>::min(), -1, 0, std::numeric_limits<int16_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt16VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt16VecTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint16_vec_holder{{0, 1, 1000, std::numeric_limits<uint16_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int32VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int32VecTypical)
 {
     this->roundtrip_wrapper(
         scalar_test::int32_vec_holder{{std::numeric_limits<int32_t>::min(), -1, 0, std::numeric_limits<int32_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt32VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt32VecTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint32_vec_holder{{0, 1, 123456, std::numeric_limits<uint32_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int64VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int64VecTypical)
 {
-    this->roundtrip_wrapper(scalar_test::int64_vec_holder{
-        {std::numeric_limits<int64_t>::min(), -1LL, 0LL, std::numeric_limits<int64_t>::max()}});
+    this->roundtrip_wrapper(
+        scalar_test::int64_vec_holder{
+            {std::numeric_limits<int64_t>::min(), -1LL, 0LL, std::numeric_limits<int64_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt64VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt64VecTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint64_vec_holder{{0ULL, 1ULL, 42ULL, std::numeric_limits<uint64_t>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int128VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int128VecTypical)
 {
     scalar_test::int128_vec_holder h;
     h.value = {__int128{0},
@@ -406,7 +534,9 @@ TYPED_TEST(WrappedScalarSerialiserTest, Int128VecTypical)
         static_cast<__int128>(static_cast<unsigned __int128>(-1) >> 1)};
     this->roundtrip_wrapper(h);
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt128VecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt128VecTypical)
 {
     scalar_test::uint128_vec_holder h;
     h.value = {static_cast<unsigned __int128>(0),
@@ -414,59 +544,86 @@ TYPED_TEST(WrappedScalarSerialiserTest, UInt128VecTypical)
         static_cast<unsigned __int128>(-1)};
     this->roundtrip_wrapper(h);
 }
-TYPED_TEST(WrappedScalarSerialiserTest, FloatVecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatVecTypical)
 {
-    this->roundtrip_wrapper(scalar_test::float_vec_holder{
-        {std::numeric_limits<float>::lowest(), -1.0f, 0.0f, std::numeric_limits<float>::max()}});
+    this->roundtrip_wrapper(
+        scalar_test::float_vec_holder{
+            {std::numeric_limits<float>::lowest(), -1.0f, 0.0f, std::numeric_limits<float>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleVecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleVecTypical)
 {
-    this->roundtrip_wrapper(scalar_test::double_vec_holder{
-        {std::numeric_limits<double>::lowest(), -1.0, 0.0, std::numeric_limits<double>::max()}});
+    this->roundtrip_wrapper(
+        scalar_test::double_vec_holder{
+            {std::numeric_limits<double>::lowest(), -1.0, 0.0, std::numeric_limits<double>::max()}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, StringVecTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    StringVecTypical)
 {
     this->roundtrip_wrapper(scalar_test::string_vec_holder{{"", "hello", "world", "test"}});
 }
 
 // ---- std::array<T, 4> ----
-TYPED_TEST(WrappedScalarSerialiserTest, Int8ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int8ArrTypical)
 {
     this->roundtrip_wrapper(
         scalar_test::int8_arr_holder{{{std::numeric_limits<int8_t>::min(), -1, 0, std::numeric_limits<int8_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt8ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt8ArrTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint8_arr_holder{{{0, 1, 127, std::numeric_limits<uint8_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int16ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int16ArrTypical)
 {
-    this->roundtrip_wrapper(scalar_test::int16_arr_holder{
-        {{std::numeric_limits<int16_t>::min(), -1, 0, std::numeric_limits<int16_t>::max()}}});
+    this->roundtrip_wrapper(
+        scalar_test::int16_arr_holder{{{std::numeric_limits<int16_t>::min(), -1, 0, std::numeric_limits<int16_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt16ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt16ArrTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint16_arr_holder{{{0, 1, 1000, std::numeric_limits<uint16_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int32ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int32ArrTypical)
 {
-    this->roundtrip_wrapper(scalar_test::int32_arr_holder{
-        {{std::numeric_limits<int32_t>::min(), -1, 0, std::numeric_limits<int32_t>::max()}}});
+    this->roundtrip_wrapper(
+        scalar_test::int32_arr_holder{{{std::numeric_limits<int32_t>::min(), -1, 0, std::numeric_limits<int32_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt32ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt32ArrTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint32_arr_holder{{{0, 1, 123456, std::numeric_limits<uint32_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int64ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int64ArrTypical)
 {
-    this->roundtrip_wrapper(scalar_test::int64_arr_holder{
-        {{std::numeric_limits<int64_t>::min(), -1LL, 0LL, std::numeric_limits<int64_t>::max()}}});
+    this->roundtrip_wrapper(
+        scalar_test::int64_arr_holder{
+            {{std::numeric_limits<int64_t>::min(), -1LL, 0LL, std::numeric_limits<int64_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt64ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt64ArrTypical)
 {
     this->roundtrip_wrapper(scalar_test::uint64_arr_holder{{{0ULL, 1ULL, 42ULL, std::numeric_limits<uint64_t>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, Int128ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    Int128ArrTypical)
 {
     scalar_test::int128_arr_holder h;
     h.value = {__int128{0},
@@ -475,7 +632,9 @@ TYPED_TEST(WrappedScalarSerialiserTest, Int128ArrTypical)
         static_cast<__int128>(static_cast<unsigned __int128>(-1) >> 1)};
     this->roundtrip_wrapper(h);
 }
-TYPED_TEST(WrappedScalarSerialiserTest, UInt128ArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    UInt128ArrTypical)
 {
     scalar_test::uint128_arr_holder h;
     h.value = {static_cast<unsigned __int128>(0),
@@ -484,17 +643,25 @@ TYPED_TEST(WrappedScalarSerialiserTest, UInt128ArrTypical)
         static_cast<unsigned __int128>(1) << 64};
     this->roundtrip_wrapper(h);
 }
-TYPED_TEST(WrappedScalarSerialiserTest, FloatArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    FloatArrTypical)
 {
-    this->roundtrip_wrapper(scalar_test::float_arr_holder{
-        {{std::numeric_limits<float>::lowest(), -1.0f, 0.0f, std::numeric_limits<float>::max()}}});
+    this->roundtrip_wrapper(
+        scalar_test::float_arr_holder{
+            {{std::numeric_limits<float>::lowest(), -1.0f, 0.0f, std::numeric_limits<float>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, DoubleArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    DoubleArrTypical)
 {
-    this->roundtrip_wrapper(scalar_test::double_arr_holder{
-        {{std::numeric_limits<double>::lowest(), -1.0, 0.0, std::numeric_limits<double>::max()}}});
+    this->roundtrip_wrapper(
+        scalar_test::double_arr_holder{
+            {{std::numeric_limits<double>::lowest(), -1.0, 0.0, std::numeric_limits<double>::max()}}});
 }
-TYPED_TEST(WrappedScalarSerialiserTest, StringArrTypical)
+TYPED_TEST(
+    WrappedScalarSerialiserTest,
+    StringArrTypical)
 {
     this->roundtrip_wrapper(scalar_test::string_arr_holder{{{"", "hello", "world", "test"}}});
 }
@@ -513,7 +680,9 @@ protected:
 };
 
 // Test to_yas_json serialization with generated structure
-TEST_F(SerialiserTest, ToYasJson)
+TEST_F(
+    SerialiserTest,
+    ToYasJson)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -526,7 +695,9 @@ TEST_F(SerialiserTest, ToYasJson)
 }
 
 // Test to_yas_binary serialization with generated structure
-TEST_F(SerialiserTest, ToYasBinary)
+TEST_F(
+    SerialiserTest,
+    ToYasBinary)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -538,7 +709,9 @@ TEST_F(SerialiserTest, ToYasBinary)
 }
 
 // Test to_compressed_yas_binary serialization with generated structure
-TEST_F(SerialiserTest, ToCompressedYasBinary)
+TEST_F(
+    SerialiserTest,
+    ToCompressedYasBinary)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -550,7 +723,9 @@ TEST_F(SerialiserTest, ToCompressedYasBinary)
 }
 
 // Test to_protobuf serialization with generated structure
-TEST_F(SerialiserTest, ToProtobuf)
+TEST_F(
+    SerialiserTest,
+    ToProtobuf)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -563,7 +738,9 @@ TEST_F(SerialiserTest, ToProtobuf)
 }
 
 // Test from_yas_json deserialization with generated structure
-TEST_F(SerialiserTest, FromYasJson)
+TEST_F(
+    SerialiserTest,
+    FromYasJson)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -581,7 +758,9 @@ TEST_F(SerialiserTest, FromYasJson)
 }
 
 // Test from_yas_binary deserialization with generated structure
-TEST_F(SerialiserTest, FromYasBinary)
+TEST_F(
+    SerialiserTest,
+    FromYasBinary)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -599,7 +778,9 @@ TEST_F(SerialiserTest, FromYasBinary)
 }
 
 // Test from_yas_compressed_binary deserialization with generated structure
-TEST_F(SerialiserTest, FromYasCompressedBinary)
+TEST_F(
+    SerialiserTest,
+    FromYasCompressedBinary)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -617,7 +798,9 @@ TEST_F(SerialiserTest, FromYasCompressedBinary)
 }
 
 // Test from_protobuf deserialization with generated structure
-TEST_F(SerialiserTest, FromProtobuf)
+TEST_F(
+    SerialiserTest,
+    FromProtobuf)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 100;
@@ -635,7 +818,9 @@ TEST_F(SerialiserTest, FromProtobuf)
 }
 
 // Test serialise function with all encodings using generated structure
-TEST_F(SerialiserTest, SerialiseAllEncodings)
+TEST_F(
+    SerialiserTest,
+    SerialiseAllEncodings)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -655,7 +840,9 @@ TEST_F(SerialiserTest, SerialiseAllEncodings)
 }
 
 // Test deserialise function with all encodings using generated structure
-TEST_F(SerialiserTest, DeserialiseAllEncodings)
+TEST_F(
+    SerialiserTest,
+    DeserialiseAllEncodings)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -703,7 +890,9 @@ TEST_F(SerialiserTest, DeserialiseAllEncodings)
 }
 
 // Test get_saved_size function with all encodings
-TEST_F(SerialiserTest, GetSavedSizeAllEncodings)
+TEST_F(
+    SerialiserTest,
+    GetSavedSizeAllEncodings)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -732,7 +921,9 @@ TEST_F(SerialiserTest, GetSavedSizeAllEncodings)
 }
 
 // Test with complex structure
-TEST_F(SerialiserTest, ComplexStructProtobuf)
+TEST_F(
+    SerialiserTest,
+    ComplexStructProtobuf)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 123;
@@ -751,7 +942,9 @@ TEST_F(SerialiserTest, ComplexStructProtobuf)
 }
 
 // Test with nested structure
-TEST_F(SerialiserTest, NestedStructProtobuf)
+TEST_F(
+    SerialiserTest,
+    NestedStructProtobuf)
 {
     scalar_test::something_more_complicated obj;
     obj.vector_val.push_back({1, "first"});
@@ -772,7 +965,9 @@ TEST_F(SerialiserTest, NestedStructProtobuf)
 }
 
 // Test roundtrip for all encodings with generated structure
-TEST_F(SerialiserTest, RoundtripAllEncodings)
+TEST_F(
+    SerialiserTest,
+    RoundtripAllEncodings)
 {
     scalar_test::something_complicated original;
     original.int_val = 999;
@@ -800,7 +995,9 @@ TEST_F(SerialiserTest, RoundtripAllEncodings)
 }
 
 // Test with template structure
-TEST_F(SerialiserTest, TemplateStructProtobuf)
+TEST_F(
+    SerialiserTest,
+    TemplateStructProtobuf)
 {
     scalar_test::test_template<int> obj;
     obj.type_t = 42;
@@ -817,7 +1014,9 @@ TEST_F(SerialiserTest, TemplateStructProtobuf)
 }
 
 // Test protobuf_saved_size function
-TEST_F(SerialiserTest, ProtobufSavedSize)
+TEST_F(
+    SerialiserTest,
+    ProtobufSavedSize)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -831,7 +1030,9 @@ TEST_F(SerialiserTest, ProtobufSavedSize)
 }
 
 // Test edge cases - empty string
-TEST_F(SerialiserTest, EmptyStringProtobuf)
+TEST_F(
+    SerialiserTest,
+    EmptyStringProtobuf)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 0;
@@ -849,7 +1050,9 @@ TEST_F(SerialiserTest, EmptyStringProtobuf)
 }
 
 // Test edge cases - large values
-TEST_F(SerialiserTest, LargeValuesProtobuf)
+TEST_F(
+    SerialiserTest,
+    LargeValuesProtobuf)
 {
     scalar_test::something_complicated obj;
     obj.int_val = INT_MAX;
@@ -867,7 +1070,9 @@ TEST_F(SerialiserTest, LargeValuesProtobuf)
 }
 
 // Test to_yas_json with std::array
-TEST_F(SerialiserTest, ToYasJsonWithArray)
+TEST_F(
+    SerialiserTest,
+    ToYasJsonWithArray)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;
@@ -880,7 +1085,9 @@ TEST_F(SerialiserTest, ToYasJsonWithArray)
 }
 
 // Test to_yas_binary with std::array
-TEST_F(SerialiserTest, ToYasBinaryWithArray)
+TEST_F(
+    SerialiserTest,
+    ToYasBinaryWithArray)
 {
     scalar_test::something_complicated obj;
     obj.int_val = 42;

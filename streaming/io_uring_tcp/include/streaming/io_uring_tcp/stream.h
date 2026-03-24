@@ -13,7 +13,9 @@ namespace streaming::io_uring_tcp
     class stream : public ::streaming::stream
     {
     public:
-        explicit stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler);
+        explicit stream(
+            coro::net::tcp::client&& client,
+            std::shared_ptr<coro::scheduler> scheduler);
         ~stream() override;
 
         stream(const stream&) = delete;
@@ -21,8 +23,12 @@ namespace streaming::io_uring_tcp
         stream(stream&&) = delete;
         auto operator=(stream&&) -> stream& = delete;
 
-        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override;
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
 
@@ -34,8 +40,9 @@ namespace streaming::io_uring_tcp
         struct ring_state;
 
     private:
-        static auto completion_pump(std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler)
-            -> coro::task<void>;
+        static auto completion_pump(
+            std::shared_ptr<ring_state> state,
+            std::shared_ptr<coro::scheduler> scheduler) -> coro::task<void>;
         void request_close();
 
         coro::net::tcp::client client_;

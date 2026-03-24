@@ -32,7 +32,8 @@ namespace json_schema
     using DefinitionInfoVariant = std::variant<const class_entity*, SyntheticMethodInfo>;
     using OrderedDefinitionItem = std::pair<std::string, DefinitionInfoVariant>;
 
-    void map_idl_type_to_json_schema(const class_entity& root,
+    void map_idl_type_to_json_schema(
+        const class_entity& root,
         const class_entity* current_context,
         const std::string& idl_type_name,
         const attributes& attribs,
@@ -40,22 +41,32 @@ namespace json_schema
         std::set<std::string>& definitions_needed,
         std::set<std::string>& definitions_written,
         const std::set<std::string>& currently_processing,
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map);
-    void write_schema_definition(const class_entity& root,
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map);
+    void write_schema_definition(
+        const class_entity& root,
         const class_entity& ent,
         json_writer& writer,
         std::set<std::string>& definitions_needed,
         std::set<std::string>& definitions_written,
         const std::set<std::string>& currently_processing,
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map);
-    void write_synthetic_method_struct_definition(const class_entity& root,
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map);
+    void write_synthetic_method_struct_definition(
+        const class_entity& root,
         const SyntheticMethodInfo& info,
         json_writer& writer,
         std::set<std::string>& definitions_needed,
         std::set<std::string>& definitions_written,
         const std::set<std::string>& currently_processing,
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map);
-    void find_definable_entities(const class_entity& current_entity, std::vector<OrderedDefinitionItem>& ordered_defs);
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map);
+    void find_definable_entities(
+        const class_entity& current_entity,
+        std::vector<OrderedDefinitionItem>& ordered_defs);
 
     // --- Struct to hold info for synthetic method structs ---
     struct SyntheticMethodInfo
@@ -65,7 +76,10 @@ namespace json_schema
         bool is_send_struct = true;
     };
 
-    bool parse_template_args(const std::string& type_name, std::string& container_name, std::vector<std::string>& args)
+    bool parse_template_args(
+        const std::string& type_name,
+        std::string& container_name,
+        std::vector<std::string>& args)
     {
         args.clear();
         size_t open_bracket = type_name.find('<');
@@ -143,7 +157,9 @@ namespace json_schema
         }
         return qualified_name;
     }
-    const class_entity* find_type_entity_upwards(const class_entity* start_scope, const std::string& type_name_cleaned)
+    const class_entity* find_type_entity_upwards(
+        const class_entity* start_scope,
+        const std::string& type_name_cleaned)
     {
         const class_entity* current_scope = start_scope;
         while (current_scope != nullptr)
@@ -170,7 +186,9 @@ namespace json_schema
         return nullptr;
     }
 
-    bool try_parse_integer_literal(const std::string& expr, long long& value)
+    bool try_parse_integer_literal(
+        const std::string& expr,
+        long long& value)
     {
         if (expr.empty())
             return false;
@@ -187,7 +205,8 @@ namespace json_schema
 
         size_t start = (cleaned[0] == '+' || cleaned[0] == '-') ? 1u : 0u;
         if (start >= cleaned.size()
-            || !std::all_of(cleaned.begin() + static_cast<std::ptrdiff_t>(start),
+            || !std::all_of(
+                cleaned.begin() + static_cast<std::ptrdiff_t>(start),
                 cleaned.end(),
                 [](unsigned char c) { return std::isdigit(c); }))
         {
@@ -198,7 +217,9 @@ namespace json_schema
         return true;
     }
 
-    const function_entity* find_constexpr_entity_upwards(const class_entity* start_scope, const std::string& name_cleaned)
+    const function_entity* find_constexpr_entity_upwards(
+        const class_entity* start_scope,
+        const std::string& name_cleaned)
     {
         const class_entity* current_scope = start_scope;
         while (current_scope != nullptr)
@@ -217,7 +238,10 @@ namespace json_schema
     }
 
     bool try_resolve_integer_constant(
-        const class_entity* current_context, const std::string& expr, long long& value, int depth = 0)
+        const class_entity* current_context,
+        const std::string& expr,
+        long long& value,
+        int depth = 0)
     {
         if (depth > 16)
             return false;
@@ -243,8 +267,11 @@ namespace json_schema
         return false;
     }
 
-    bool find_class_in_map(const std::string& type_name_cleaned,
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map,
+    bool find_class_in_map(
+        const std::string& type_name_cleaned,
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map,
         const class_entity*& found_entity)
     {
         auto it = definition_info_map.find(type_name_cleaned);
@@ -268,13 +295,16 @@ namespace json_schema
     }
 
     // Main function to write the definition for a specific NON-SYNTHETIC entity
-    void write_schema_definition(const class_entity& root,
+    void write_schema_definition(
+        const class_entity& root,
         const class_entity& ent,
         json_writer& writer,
         std::set<std::string>& definitions_needed,
         std::set<std::string>& definitions_written,
         const std::set<std::string>& currently_processing,
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map)
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map)
     {
         if (ent.get_is_template())
         {
@@ -329,7 +359,8 @@ namespace json_schema
                 for (const auto& pair : properties)
                 {
                     writer.write_key(pair.first);
-                    map_idl_type_to_json_schema(root,
+                    map_idl_type_to_json_schema(
+                        root,
                         &ent,
                         pair.second.first,
                         pair.second.second,
@@ -368,9 +399,9 @@ namespace json_schema
             int64_t next_value = 0;
             std::vector<std::string> value_descriptions;
             using underlying = std::underlying_type<entity_type>::type;
-            const auto all_possible_members
-                = static_cast<entity_type>(static_cast<underlying>(entity_type::NAMESPACE_MEMBERS)
-                                           | static_cast<underlying>(entity_type::STRUCTURE_MEMBERS));
+            const auto all_possible_members = static_cast<entity_type>(
+                static_cast<underlying>(entity_type::NAMESPACE_MEMBERS)
+                | static_cast<underlying>(entity_type::STRUCTURE_MEMBERS));
             for (const auto& element_ptr : ent.get_elements(all_possible_members))
             {
                 if (!element_ptr)
@@ -433,7 +464,8 @@ namespace json_schema
                 writer.write_string_property("description", attr_description);
             }
             writer.write_string_property("type", "null");
-            writer.write_string_property("description",
+            writer.write_string_property(
+                "description",
                 "Error: Unexpected entity type in write_schema_definition: "
                     + std::to_string(static_cast<int>(ent.get_entity_type())));
             break;
@@ -444,13 +476,16 @@ namespace json_schema
 
     // Writes definition for synthetic _send or _receive structs
     // ** RESTORED **
-    void write_synthetic_method_struct_definition(const class_entity& root,
+    void write_synthetic_method_struct_definition(
+        const class_entity& root,
         const SyntheticMethodInfo& info,
         json_writer& writer,
         std::set<std::string>& definitions_needed,
         std::set<std::string>& definitions_written,
         const std::set<std::string>& currently_processing,
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map)
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map)
     {
         if (!info.interface_entity || !info.method_entity)
         {
@@ -497,7 +532,8 @@ namespace json_schema
             for (const auto& pair : properties)
             {
                 writer.write_key(pair.first);
-                map_idl_type_to_json_schema(root,
+                map_idl_type_to_json_schema(
+                    root,
                     info.interface_entity,
                     pair.second.first,
                     pair.second.second,
@@ -531,7 +567,8 @@ namespace json_schema
 
     // Maps an IDL type name to its JSON schema representation
     // ** RESTORED **
-    void map_idl_type_to_json_schema(const class_entity& root,
+    void map_idl_type_to_json_schema(
+        const class_entity& root,
         const class_entity* current_context,
         const std::string& idl_type_name_in,
         const attributes& attribs,
@@ -539,7 +576,9 @@ namespace json_schema
         std::set<std::string>& definitions_needed,
         std::set<std::string>& definitions_written,
         const std::set<std::string>& currently_processing,
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map)
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map)
     {
         std::string idl_type_name_cleaned = generator::clean_type_name(idl_type_name_in);
         if (idl_type_name_cleaned.empty())
@@ -584,7 +623,8 @@ namespace json_schema
                 if (attribs.has_value("deprecated"))
                     writer.write_raw_property("deprecated", "true");
                 writer.write_key("items");
-                map_idl_type_to_json_schema(root,
+                map_idl_type_to_json_schema(
+                    root,
                     current_context,
                     template_args[0],
                     {},
@@ -622,7 +662,8 @@ namespace json_schema
                         "description", current_desc.empty() ? size_note : (current_desc + " " + size_note));
                 }
                 writer.write_key("items");
-                map_idl_type_to_json_schema(root,
+                map_idl_type_to_json_schema(
+                    root,
                     current_context,
                     template_args[0],
                     {},
@@ -649,7 +690,8 @@ namespace json_schema
                 writer.write_key("properties");
                 writer.open_object();
                 writer.write_key("k");
-                map_idl_type_to_json_schema(root,
+                map_idl_type_to_json_schema(
+                    root,
                     current_context,
                     template_args[0],
                     {},
@@ -659,7 +701,8 @@ namespace json_schema
                     currently_processing,
                     definition_info_map);
                 writer.write_key("v");
-                map_idl_type_to_json_schema(root,
+                map_idl_type_to_json_schema(
+                    root,
                     current_context,
                     template_args[1],
                     {},
@@ -706,7 +749,8 @@ namespace json_schema
                 std::string underlying_type = generator::clean_type_name(found_entity.get_alias_name());
                 if (!underlying_type.empty())
                 {
-                    map_idl_type_to_json_schema(root,
+                    map_idl_type_to_json_schema(
+                        root,
                         current_context,
                         underlying_type,
                         attribs,
@@ -801,7 +845,9 @@ namespace json_schema
 
     // Finds interfaces and adds synthetic struct info, populates ordered list
     // ** RESTORED **
-    void find_definable_entities(const class_entity& current_entity, std::vector<OrderedDefinitionItem>& ordered_defs)
+    void find_definable_entities(
+        const class_entity& current_entity,
+        std::vector<OrderedDefinitionItem>& ordered_defs)
     {
         entity_type et = current_entity.get_entity_type();
         if (current_entity.is_in_import())
@@ -840,12 +886,16 @@ namespace json_schema
                         continue;
                     std::string send_struct_name = qualified_name + "_" + method_name + "_send";
                     std::string receive_struct_name = qualified_name + "_" + method_name + "_receive";
-                    ordered_defs.push_back({send_struct_name,
-                        SyntheticMethodInfo{
-                            FLD(interface_entity) & current_entity, FLD(method_entity) method, FLD(is_send_struct) true}});
-                    ordered_defs.push_back({receive_struct_name,
-                        SyntheticMethodInfo{
-                            FLD(interface_entity) & current_entity, FLD(method_entity) method, FLD(is_send_struct) false}});
+                    ordered_defs.push_back(
+                        {send_struct_name,
+                            SyntheticMethodInfo{FLD(interface_entity) & current_entity,
+                                FLD(method_entity) method,
+                                FLD(is_send_struct) true}});
+                    ordered_defs.push_back(
+                        {receive_struct_name,
+                            SyntheticMethodInfo{FLD(interface_entity) & current_entity,
+                                FLD(method_entity) method,
+                                FLD(is_send_struct) false}});
                 }
             }
         }
@@ -878,7 +928,10 @@ namespace json_schema
 
     // Entry point function
     // ** RESTORED **
-    void write_json_schema(const class_entity& root_entity, std::ostream& os, const std::string& schema_title)
+    void write_json_schema(
+        const class_entity& root_entity,
+        std::ostream& os,
+        const std::string& schema_title)
     {
         json_writer writer(os);
         std::set<std::string> definitions_needed;
@@ -916,7 +969,8 @@ namespace json_schema
                         using T = std::decay_t<decltype(arg)>;
                         if constexpr (std::is_same_v<T, const class_entity*>)
                         {
-                            write_schema_definition(root_entity,
+                            write_schema_definition(
+                                root_entity,
                                 *arg,
                                 writer,
                                 definitions_needed,
@@ -926,7 +980,8 @@ namespace json_schema
                         }
                         else if constexpr (std::is_same_v<T, SyntheticMethodInfo>)
                         {
-                            write_synthetic_method_struct_definition(root_entity,
+                            write_synthetic_method_struct_definition(
+                                root_entity,
                                 arg,
                                 writer,
                                 definitions_needed,

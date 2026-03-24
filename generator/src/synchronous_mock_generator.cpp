@@ -33,7 +33,9 @@ namespace synchronous_mock_generator
         {FLD(macro) "RPC_V2", FLD(symbol) "rpc::VERSION_2", FLD(value) 2},
     };
 
-    void write_interface(const class_entity& m_ob, writer& header)
+    void write_interface(
+        const class_entity& m_ob,
+        writer& header)
     {
         auto interface_name = m_ob.get_name();
 
@@ -55,8 +57,7 @@ namespace synchronous_mock_generator
         header("class {0}_mock : public {0}", interface_name);
         header("{{");
         header("public:");
-        header(
-            "const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override ");
+        header("const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override ");
         header("{{");
         for (const auto& version : protocol_versions)
         {
@@ -90,12 +91,14 @@ namespace synchronous_mock_generator
                 if (function->has_value("const"))
                     is_const_func = true;
                 if (is_const_func)
-                    header.raw("MOCK_CONST_METHOD{}({}, {}(",
+                    header.raw(
+                        "MOCK_CONST_METHOD{}({}, {}(",
                         function->get_parameters().size(),
                         function->get_name(),
                         function->get_return_type());
                 else
-                    header.raw("MOCK_METHOD{}({}, {}(",
+                    header.raw(
+                        "MOCK_METHOD{}({}, {}(",
                         function->get_parameters().size(),
                         function->get_name(),
                         function->get_return_type());
@@ -117,7 +120,9 @@ namespace synchronous_mock_generator
         header("");
     };
 
-    void write_struct(const class_entity& m_ob, writer& header)
+    void write_struct(
+        const class_entity& m_ob,
+        writer& header)
     {
         auto interface_name = m_ob.get_name();
 
@@ -218,7 +223,9 @@ namespace synchronous_mock_generator
         header("");
     }
 
-    void write_marshalling_logic_nested(const class_entity& cls, writer& header)
+    void write_marshalling_logic_nested(
+        const class_entity& cls,
+        writer& header)
     {
         if (cls.get_entity_type() == entity_type::INTERFACE)
             write_interface(cls, header);
@@ -228,7 +235,11 @@ namespace synchronous_mock_generator
     }
 
     // entry point
-    void write_namespace(bool from_host, const class_entity& lib, int& id, writer& header)
+    void write_namespace(
+        bool from_host,
+        const class_entity& lib,
+        int& id,
+        writer& header)
     {
         for (const auto& cls : lib.get_classes())
         {
@@ -257,7 +268,8 @@ namespace synchronous_mock_generator
     }
 
     // entry point
-    void write_files(bool from_host,
+    void write_files(
+        bool from_host,
         const class_entity& lib,
         std::ostream& hos,
         const std::vector<std::string>& namespaces,

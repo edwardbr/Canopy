@@ -45,7 +45,9 @@ namespace
 {
 }
 
-int main(int argc, char* argv[])
+int main(
+    int argc,
+    char* argv[])
 {
     args::ArgumentParser parser("RPC++ Test Suite - Comprehensive RPC testing framework");
 
@@ -232,6 +234,6 @@ static_assert(rpc::id<std::string>::get(rpc::VERSION_2) == rpc::STD_STRING_ID);
 
 static_assert(rpc::id<xxx::test_template<std::string>>::get(rpc::VERSION_2) == 0xAFFFFFEB79FBFBFB);
 static_assert(rpc::id<xxx::test_template_without_params_in_id<std::string>>::get(rpc::VERSION_2) == 0x62C84BEB07545E2B);
-static_assert(rpc::id<xxx::test_template_use_legacy_empty_template_struct_id<std::string>>::get(rpc::VERSION_2)
-              == 0x2E7E56276F6E36BE);
+static_assert(
+    rpc::id<xxx::test_template_use_legacy_empty_template_struct_id<std::string>>::get(rpc::VERSION_2) == 0x2E7E56276F6E36BE);
 static_assert(rpc::id<xxx::test_template_use_old<std::string>>::get(rpc::VERSION_2) == 0x66D71EBFF8C6FFA7);

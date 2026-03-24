@@ -47,7 +47,8 @@ namespace interface_declaration_generator
         interface_renderer() = default;
 
         // Implement pure virtual functions from base_renderer
-        std::string render_by_value(int option,
+        std::string render_by_value(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -82,7 +83,8 @@ namespace interface_declaration_generator
             }
         }
 
-        std::string render_reference(int option,
+        std::string render_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -117,7 +119,8 @@ namespace interface_declaration_generator
             }
         }
 
-        std::string render_move(int option,
+        std::string render_move(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -155,7 +158,8 @@ namespace interface_declaration_generator
             }
         }
 
-        std::string render_pointer(int option,
+        std::string render_pointer(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -190,7 +194,8 @@ namespace interface_declaration_generator
             }
         }
 
-        std::string render_pointer_reference(int option,
+        std::string render_pointer_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -226,7 +231,8 @@ namespace interface_declaration_generator
             }
         }
 
-        std::string render_pointer_pointer(int option,
+        std::string render_pointer_pointer(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -259,7 +265,8 @@ namespace interface_declaration_generator
             }
         }
 
-        std::string render_interface(int option,
+        std::string render_interface(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -297,7 +304,8 @@ namespace interface_declaration_generator
             }
         }
 
-        std::string render_interface_reference(int option,
+        std::string render_interface_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -332,7 +340,8 @@ namespace interface_declaration_generator
         }
     };
 
-    bool do_in_param(print_type option,
+    bool do_in_param(
+        print_type option,
         const class_entity& lib,
         const std::string& name,
         const std::string& type,
@@ -345,7 +354,8 @@ namespace interface_declaration_generator
         return generator::do_in_param_unified(r, static_cast<int>(option), false, lib, name, type, attribs, count, output);
     }
 
-    bool do_out_param(print_type option,
+    bool do_out_param(
+        print_type option,
         const class_entity& lib,
         const std::string& name,
         const std::string& type,
@@ -358,7 +368,9 @@ namespace interface_declaration_generator
         return generator::do_out_param_unified(r, static_cast<int>(option), false, lib, name, type, attribs, count, output);
     }
 
-    void build_scoped_name(const class_entity* entity, std::string& name)
+    void build_scoped_name(
+        const class_entity* entity,
+        std::string& name)
     {
         auto* owner = entity->get_owner();
         if (owner && !owner->get_name().empty())
@@ -368,7 +380,9 @@ namespace interface_declaration_generator
         name += entity->get_name() + "::";
     }
 
-    void write_constexpr(writer& header, const entity& constexpression)
+    void write_constexpr(
+        writer& header,
+        const entity& constexpression)
     {
         if (constexpression.is_in_import())
             return;
@@ -385,7 +399,8 @@ namespace interface_declaration_generator
         }
     }
 
-    std::string write_proxy_send_declaration(const class_entity& m_ob,
+    std::string write_proxy_send_declaration(
+        const class_entity& m_ob,
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_inparams,
@@ -426,7 +441,8 @@ namespace interface_declaration_generator
         return stream.str();
     }
 
-    std::string write_proxy_receive_declaration(const class_entity& m_ob,
+    std::string write_proxy_receive_declaration(
+        const class_entity& m_ob,
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_inparams,
@@ -463,7 +479,8 @@ namespace interface_declaration_generator
         return stream.str();
     }
 
-    std::string write_stub_receive_declaration(const class_entity& m_ob,
+    std::string write_stub_receive_declaration(
+        const class_entity& m_ob,
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_outparams,
@@ -501,7 +518,8 @@ namespace interface_declaration_generator
         return stream.str();
     }
 
-    std::string write_stub_reply_declaration(const class_entity& m_ob,
+    std::string write_stub_reply_declaration(
+        const class_entity& m_ob,
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_outparams,
@@ -541,7 +559,9 @@ namespace interface_declaration_generator
     }
 
     std::string client_sender_declaration(
-        const class_entity& m_ob, const std::shared_ptr<function_entity>& function, bool& is_suitable)
+        const class_entity& m_ob,
+        const std::shared_ptr<function_entity>& function,
+        bool& is_suitable)
     {
         std::stringstream stream;
         writer header(stream);
@@ -589,7 +609,10 @@ namespace interface_declaration_generator
         return stream.str();
     }
 
-    void write_method(const class_entity& m_ob, writer& header, const std::shared_ptr<function_entity>& function)
+    void write_method(
+        const class_entity& m_ob,
+        writer& header,
+        const std::shared_ptr<function_entity>& function)
     {
         if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
         {
@@ -633,7 +656,9 @@ namespace interface_declaration_generator
         }
     }
 
-    void write_interface(const class_entity& m_ob, writer& header)
+    void write_interface(
+        const class_entity& m_ob,
+        writer& header)
     {
         if (m_ob.is_in_import())
             return;
@@ -676,7 +701,8 @@ namespace interface_declaration_generator
         header("}}");
         header("");
         header("static std::vector<rpc::function_info> get_function_info();");
-        header("static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
+        header(
+            "static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
             interface_name);
         header("");
         header("~{}() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
@@ -866,17 +892,20 @@ namespace interface_declaration_generator
                                 output("std::vector<char> __buffer;");
                                 output("auto __this = static_cast<subclass*>(this);");
                                 output("auto __rpc_sp = rpc::casting_interface::get_service_proxy(*__this);");
-                                output("auto __rpc_version = __rpc_sp ? __rpc_sp->get_remote_rpc_version() : "
-                                       "rpc::get_version();");
+                                output(
+                                    "auto __rpc_version = __rpc_sp ? __rpc_sp->get_remote_rpc_version() : "
+                                    "rpc::get_version();");
                                 output("auto __rpc_encoding = __rpc_sp->get_encoding();");
                                 output.print_tabs();
-                                output.raw("auto __err = proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
+                                output.raw(
+                                    "auto __err = proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::{}(",
                                     function->get_name());
                                 for (auto& parameter : function->get_parameters())
                                 {
                                     std::string mshl_val;
                                     {
-                                        if (!do_in_param(SEND_PARAM_IN,
+                                        if (!do_in_param(
+                                                SEND_PARAM_IN,
                                                 m_ob,
                                                 parameter.get_name(),
                                                 parameter.get_type(),
@@ -896,7 +925,8 @@ namespace interface_declaration_generator
                                 if (tag.empty())
                                     tag = "0";
 
-                                output("return __this->register_call(__err, \"{}.{}\", {{{}}}, {}, __buffer);\n",
+                                output(
+                                    "return __this->register_call(__err, \"{}.{}\", {{{}}}, {}, __buffer);\n",
                                     class_alias,
                                     function->get_name(),
                                     function_count,

@@ -56,9 +56,14 @@ namespace comprehensive::v1
 
     std::vector<uint8_t> make_blob(size_t size);
     benchmark_stats compute_stats(const std::vector<int64_t>& samples);
-    void print_stats(const char* transport, const char* encoding, size_t blob_size, const benchmark_stats& stats);
+    void print_stats(
+        const char* transport,
+        const char* encoding,
+        size_t blob_size,
+        const benchmark_stats& stats);
     CORO_TASK(int)
-    run_benchmark_calls(rpc::shared_ptr<i_data_processor> remote,
+    run_benchmark_calls(
+        rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,
         std::vector<int64_t>& durations_us,
         size_t warmup_count = 0);
@@ -71,21 +76,45 @@ namespace comprehensive::v1
 
 #ifdef CANOPY_BUILD_COROUTINE
     CORO_TASK(benchmark_result)
-    run_local_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size);
+    run_local_benchmark(
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::encoding enc,
+        size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_libcoro_dynamic_library_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size);
+    run_libcoro_dynamic_library_benchmark(
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::encoding enc,
+        size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_ipc_direct_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size);
+    run_ipc_direct_benchmark(
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::encoding enc,
+        size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_ipc_dll_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size);
-    benchmark_result run_spsc_benchmark(rpc::encoding enc, size_t blob_size);
-    benchmark_result run_tcp_benchmark(rpc::encoding enc, size_t blob_size, uint16_t port);
-    benchmark_result run_io_uring_benchmark(rpc::encoding enc, size_t blob_size, uint16_t port);
+    run_ipc_dll_benchmark(
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::encoding enc,
+        size_t blob_size);
+    benchmark_result run_spsc_benchmark(
+        rpc::encoding enc,
+        size_t blob_size);
+    benchmark_result run_tcp_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
+    benchmark_result run_io_uring_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
 #else
     CORO_TASK(benchmark_result)
-    run_local_benchmark(rpc::encoding enc, size_t blob_size);
+    run_local_benchmark(
+        rpc::encoding enc,
+        size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_dynamic_library_benchmark(rpc::encoding enc, size_t blob_size);
+    run_dynamic_library_benchmark(
+        rpc::encoding enc,
+        size_t blob_size);
 #endif
 
     void print_header();

@@ -25,31 +25,42 @@ namespace json_schema
 
     // Helper function to substitute template parameters in a type name
     std::string substitute_template_parameters(
-        const std::string& type_with_params, const std::string& member_type, const class_entity& template_def);
+        const std::string& type_with_params,
+        const std::string& member_type,
+        const class_entity& template_def);
 
     // Helper function to trim whitespace from strings
     void trim_string(std::string& str);
 
     // Generate detailed schema for complex types (structs/classes)
-    void generate_complex_type_schema(const std::string& clean_type_name,
+    void generate_complex_type_schema(
+        const std::string& clean_type_name,
         const class_entity& root,
         json_writer& writer,
         std::set<std::string>& visited_types);
 
     // Recursively generate schema for any type
     void generate_type_schema_recursive(
-        const std::string& type_name, const class_entity& root, json_writer& writer, std::set<std::string>& visited_types);
+        const std::string& type_name,
+        const class_entity& root,
+        json_writer& writer,
+        std::set<std::string>& visited_types);
 
     // Enhanced JSON schema generation for input parameters with recursive complex type support
     std::string generate_function_input_parameter_schema_with_recursion(
-        const class_entity& root, const class_entity& interface, const function_entity& function);
+        const class_entity& root,
+        const class_entity& interface,
+        const function_entity& function);
 
     // Enhanced JSON schema generation for output parameters with recursive complex type support
     std::string generate_function_output_parameter_schema_with_recursion(
-        const class_entity& root, const class_entity& interface, const function_entity& function);
+        const class_entity& root,
+        const class_entity& interface,
+        const function_entity& function);
 
     // Enhanced type mapping with attribute support (from comprehensive system)
-    void map_idl_type_to_json_schema_enhanced(const class_entity& root,
+    void map_idl_type_to_json_schema_enhanced(
+        const class_entity& root,
         const class_entity* current_context,
         const std::string& idl_type_name,
         const attributes& attribs,

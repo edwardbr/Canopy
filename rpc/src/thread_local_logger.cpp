@@ -26,7 +26,12 @@ namespace rpc
     std::mutex thread_local_logger_manager::instance_mutex_;
 
     // log_entry implementation
-    log_entry::log_entry(int lvl, const std::string& msg, const char* f, int l, const char* func)
+    log_entry::log_entry(
+        int lvl,
+        const std::string& msg,
+        const char* f,
+        int l,
+        const char* func)
         : timestamp(std::chrono::high_resolution_clock::now())
         , level(lvl)
         , message(msg)
@@ -44,7 +49,11 @@ namespace rpc
     }
 
     void thread_local_circular_buffer::add_entry(
-        int level, const std::string& message, const char* file, int line, const char* function)
+        int level,
+        const std::string& message,
+        const char* file,
+        int line,
+        const char* function)
     {
         if (frozen_.load(std::memory_order_acquire))
         {
@@ -175,13 +184,18 @@ namespace rpc
     }
 
     void thread_local_logger_manager::dump_all_buffers_with_stacktrace(
-        const std::string& assert_message, const char* file, int line)
+        const std::string& assert_message,
+        const char* file,
+        int line)
     {
         dump_all_buffers_with_enhanced_stacktrace(assert_message, file, line, "");
     }
 
     void thread_local_logger_manager::dump_all_buffers_with_enhanced_stacktrace(
-        const std::string& assert_message, const char* file, int line, const std::string& stack_trace)
+        const std::string& assert_message,
+        const char* file,
+        int line,
+        const std::string& stack_trace)
     {
         freeze_all_buffers();
 

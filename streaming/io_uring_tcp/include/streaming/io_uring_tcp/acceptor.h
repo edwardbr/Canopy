@@ -28,7 +28,9 @@ namespace streaming::io_uring_tcp
     class acceptor : public ::streaming::stream_acceptor
     {
     public:
-        acceptor(const coro::net::socket_address& endpoint, coro::net::tcp::server::options opts = {})
+        acceptor(
+            const coro::net::socket_address& endpoint,
+            coro::net::tcp::server::options opts = {})
             : endpoint_(endpoint)
             , opts_(std::move(opts))
         {
@@ -183,7 +185,9 @@ namespace streaming::io_uring_tcp
             accept_pending_ = false;
         }
 
-        bool submit_accept(sockaddr_storage& client_storage, socklen_t& client_len)
+        bool submit_accept(
+            sockaddr_storage& client_storage,
+            socklen_t& client_len)
         {
             std::lock_guard<std::mutex> lock(ring_mutex_);
             if (!ring_ready_ || accept_pending_ || listen_fd_ == -1)

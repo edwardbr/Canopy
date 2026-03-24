@@ -36,15 +36,35 @@ namespace rpc::dynamic_library
     // Host -> DLL callback types
     // Provided by host child_transport, called by DLL parent_transport
     // ---------------------------------------------------------------------------
-    using host_send_fn = int (*)(void* host_ctx, rpc::send_params* params, rpc::send_result* result);
-    using host_post_fn = void (*)(void* host_ctx, rpc::post_params* params);
-    using host_try_cast_fn = int (*)(void* host_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
-    using host_add_ref_fn = int (*)(void* host_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
-    using host_release_fn = int (*)(void* host_ctx, rpc::release_params* params, rpc::standard_result* result);
-    using host_object_released_fn = void (*)(void* host_ctx, rpc::object_released_params* params);
-    using host_transport_down_fn = void (*)(void* host_ctx, rpc::transport_down_params* params);
-    using host_get_new_zone_id_fn
-        = int (*)(void* host_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result);
+    using host_send_fn = int (*)(
+        void* host_ctx,
+        rpc::send_params* params,
+        rpc::send_result* result);
+    using host_post_fn = void (*)(
+        void* host_ctx,
+        rpc::post_params* params);
+    using host_try_cast_fn = int (*)(
+        void* host_ctx,
+        rpc::try_cast_params* params,
+        rpc::standard_result* result);
+    using host_add_ref_fn = int (*)(
+        void* host_ctx,
+        rpc::add_ref_params* params,
+        rpc::standard_result* result);
+    using host_release_fn = int (*)(
+        void* host_ctx,
+        rpc::release_params* params,
+        rpc::standard_result* result);
+    using host_object_released_fn = void (*)(
+        void* host_ctx,
+        rpc::object_released_params* params);
+    using host_transport_down_fn = void (*)(
+        void* host_ctx,
+        rpc::transport_down_params* params);
+    using host_get_new_zone_id_fn = int (*)(
+        void* host_ctx,
+        rpc::get_new_zone_id_params* params,
+        rpc::new_zone_id_result* result);
 
     // ---------------------------------------------------------------------------
     // Parameters passed to canopy_dll_init
@@ -78,15 +98,35 @@ namespace rpc::dynamic_library
     // ---------------------------------------------------------------------------
     using dll_init_fn = int (*)(dll_init_params* params);
     using dll_destroy_fn = void (*)(void* dll_ctx);
-    using dll_send_fn = int (*)(void* dll_ctx, rpc::send_params* params, rpc::send_result* result);
-    using dll_post_fn = void (*)(void* dll_ctx, rpc::post_params* params);
-    using dll_try_cast_fn = int (*)(void* dll_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
-    using dll_add_ref_fn = int (*)(void* dll_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
-    using dll_release_fn = int (*)(void* dll_ctx, rpc::release_params* params, rpc::standard_result* result);
-    using dll_object_released_fn = void (*)(void* dll_ctx, rpc::object_released_params* params);
-    using dll_transport_down_fn = void (*)(void* dll_ctx, rpc::transport_down_params* params);
-    using dll_get_new_zone_id_fn
-        = int (*)(void* dll_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result);
+    using dll_send_fn = int (*)(
+        void* dll_ctx,
+        rpc::send_params* params,
+        rpc::send_result* result);
+    using dll_post_fn = void (*)(
+        void* dll_ctx,
+        rpc::post_params* params);
+    using dll_try_cast_fn = int (*)(
+        void* dll_ctx,
+        rpc::try_cast_params* params,
+        rpc::standard_result* result);
+    using dll_add_ref_fn = int (*)(
+        void* dll_ctx,
+        rpc::add_ref_params* params,
+        rpc::standard_result* result);
+    using dll_release_fn = int (*)(
+        void* dll_ctx,
+        rpc::release_params* params,
+        rpc::standard_result* result);
+    using dll_object_released_fn = void (*)(
+        void* dll_ctx,
+        rpc::object_released_params* params);
+    using dll_transport_down_fn = void (*)(
+        void* dll_ctx,
+        rpc::transport_down_params* params);
+    using dll_get_new_zone_id_fn = int (*)(
+        void* dll_ctx,
+        rpc::get_new_zone_id_params* params,
+        rpc::new_zone_id_result* result);
 
 } // namespace rpc::dynamic_library
 

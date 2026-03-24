@@ -13,7 +13,10 @@
 
 namespace marshalled_tests
 {
-    CORO_TASK(bool) standard_tests(xxx::i_foo& foo, bool enclave)
+    CORO_TASK(bool)
+    standard_tests(
+        xxx::i_foo& foo,
+        bool enclave)
     {
         {
             CORO_ASSERT_EQ(CO_AWAIT foo.do_something_in_val(33), rpc::error::OK());
@@ -169,7 +172,10 @@ namespace marshalled_tests
         CO_RETURN true;
     }
 
-    CORO_TASK(bool) remote_tests(bool use_host_in_child, rpc::shared_ptr<yyy::i_example> example_ptr)
+    CORO_TASK(bool)
+    remote_tests(
+        bool use_host_in_child,
+        rpc::shared_ptr<yyy::i_example> example_ptr)
     {
         int val = 0;
         CO_AWAIT example_ptr->add(1, 2, val);

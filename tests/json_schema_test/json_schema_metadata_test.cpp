@@ -21,7 +21,9 @@
 #include <example/example.h>
 
 // Test using inproc_setup to call standard_tests for schema validation
-TEST(JSONSchemaValidationTest, InprocSetupStandardTests)
+TEST(
+    JSONSchemaValidationTest,
+    InprocSetupStandardTests)
 {
     // Serialize a call to call_host_create_enclave_and_throw_away with parameter false
     std::vector<char> buffer;
@@ -90,7 +92,9 @@ TEST(JSONSchemaValidationTest, InprocSetupStandardTests)
 }
 
 // Test that input and output schemas are properly separated
-TEST(JSONSchemaValidationTest, InputOutputSchemaSeparation)
+TEST(
+    JSONSchemaValidationTest,
+    InputOutputSchemaSeparation)
 {
     // Get function info
     auto fi = yyy::i_example::get_function_info();
@@ -129,7 +133,9 @@ TEST(JSONSchemaValidationTest, InputOutputSchemaSeparation)
 }
 
 // Test that functions with only input parameters have empty output schema
-TEST(JSONSchemaValidationTest, InputOnlyFunctionSchemas)
+TEST(
+    JSONSchemaValidationTest,
+    InputOnlyFunctionSchemas)
 {
     // Get function info
     auto fi = yyy::i_example::get_function_info();

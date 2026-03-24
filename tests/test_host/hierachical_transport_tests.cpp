@@ -93,7 +93,8 @@ template<class T> class hierachical_transport_tests : public type_test<T>
 {
 };
 
-using hierachical_transport_tests_implementations = ::testing::Types<inproc_setup<true, false, false>,
+using hierachical_transport_tests_implementations = ::testing::Types<
+    inproc_setup<true, false, false>,
     inproc_setup<true, false, true>,
     inproc_setup<true, true, false>,
     inproc_setup<true, true, true>
@@ -107,7 +108,9 @@ using hierachical_transport_tests_implementations = ::testing::Types<inproc_setu
 #endif
     >;
 
-TYPED_TEST_SUITE(hierachical_transport_tests, hierachical_transport_tests_implementations);
+TYPED_TEST_SUITE(
+    hierachical_transport_tests,
+    hierachical_transport_tests_implementations);
 
 #ifdef CANOPY_BUILD_ENCLAVE
 template<class T> CORO_TASK(bool) coro_call_host_create_enclave_and_throw_away(T& lib)
@@ -118,7 +121,9 @@ template<class T> CORO_TASK(bool) coro_call_host_create_enclave_and_throw_away(T
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, call_host_create_enclave_and_throw_away)
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_create_enclave_and_throw_away)
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_create_enclave_and_throw_away<TypeParam>(lib); });
 }
@@ -133,7 +138,9 @@ template<class T> CORO_TASK(bool) coro_call_host_create_enclave(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, call_host_create_enclave)
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_create_enclave)
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_create_enclave<TypeParam>(lib); });
 }
@@ -150,7 +157,9 @@ template<class T> CORO_TASK(bool) coro_look_up_app_and_return_with_nothing(T& li
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, look_up_app_and_return_with_nothing)
+TYPED_TEST(
+    hierachical_transport_tests,
+    look_up_app_and_return_with_nothing)
 {
     run_coro_test(*this, [](auto& lib) { return coro_look_up_app_and_return_with_nothing<TypeParam>(lib); });
 }
@@ -161,7 +170,9 @@ template<class T> CORO_TASK(bool) coro_call_host_unload_app_not_there(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, call_host_unload_app_not_there)
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_unload_app_not_there)
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_unload_app_not_there<TypeParam>(lib); });
 }
@@ -181,7 +192,9 @@ template<class T> CORO_TASK(bool) coro_call_host_look_up_app_unload_app(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, call_host_look_up_app_unload_app)
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_look_up_app_unload_app)
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_look_up_app_unload_app<TypeParam>(lib); });
 }
@@ -202,7 +215,9 @@ template<class T> CORO_TASK(bool) coro_call_host_look_up_app_not_return(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, call_host_look_up_app_not_return)
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_look_up_app_not_return)
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_look_up_app_not_return<TypeParam>(lib); });
 }
@@ -226,7 +241,9 @@ template<class T> CORO_TASK(bool) coro_create_store_fetch_delete(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, create_store_fetch_delete)
+TYPED_TEST(
+    hierachical_transport_tests,
+    create_store_fetch_delete)
 {
     run_coro_test(*this, [](auto& lib) { return coro_create_store_fetch_delete<TypeParam>(lib); });
 }
@@ -240,13 +257,16 @@ template<class T> CORO_TASK(bool) coro_create_store_not_return_delete(T& lib)
     CORO_ASSERT_NE(target, nullptr);
 
     CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_look_up_app_not_return_and_delete("target", run_standard_tests),
+    CORO_ASSERT_EQ(
+        CO_AWAIT lib.get_example()->call_host_look_up_app_not_return_and_delete("target", run_standard_tests),
         rpc::error::OK());
     target = nullptr;
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, create_store_not_return_delete)
+TYPED_TEST(
+    hierachical_transport_tests,
+    create_store_not_return_delete)
 {
     run_coro_test(*this, [](auto& lib) { return coro_create_store_not_return_delete<TypeParam>(lib); });
 }
@@ -261,7 +281,8 @@ template<class T> CORO_TASK(bool) coro_create_store_delete(T& lib)
     CORO_ASSERT_NE(target, nullptr);
 
     CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_look_up_app_and_delete("target", target2, run_standard_tests),
+    CORO_ASSERT_EQ(
+        CO_AWAIT lib.get_example()->call_host_look_up_app_and_delete("target", target2, run_standard_tests),
         rpc::error::OK());
     CORO_ASSERT_EQ(target, target2);
     target = nullptr;
@@ -269,7 +290,9 @@ template<class T> CORO_TASK(bool) coro_create_store_delete(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, create_store_delete)
+TYPED_TEST(
+    hierachical_transport_tests,
+    create_store_delete)
 {
     run_coro_test(*this, [](auto& lib) { return coro_create_store_delete<TypeParam>(lib); });
 }
@@ -278,12 +301,14 @@ TYPED_TEST(hierachical_transport_tests, create_store_delete)
 template<class T> CORO_TASK(bool) coro_create_subordinate_zone(T& lib)
 {
     rpc::shared_ptr<yyy::i_example> target;
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->create_example_in_subordinate_zone(target, lib.get_local_host_ptr()),
-        rpc::error::OK());
+    CORO_ASSERT_EQ(
+        CO_AWAIT lib.get_example()->create_example_in_subordinate_zone(target, lib.get_local_host_ptr()), rpc::error::OK());
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, create_subordinate_zone) // TODO: Missing test suite definition
+TYPED_TEST(
+    hierachical_transport_tests,
+    create_subordinate_zone) // TODO: Missing test suite definition
 {
     run_coro_test(*this, [](auto& lib) { return coro_create_subordinate_zone<TypeParam>(lib); });
 }
@@ -300,7 +325,9 @@ template<class T> CORO_TASK(bool) coro_create_subordinate_zone_and_set_in_host(T
     CO_RETURN true;
 }
 
-TYPED_TEST(hierachical_transport_tests, create_subordinate_zone_and_set_in_host)
+TYPED_TEST(
+    hierachical_transport_tests,
+    create_subordinate_zone_and_set_in_host)
 {
     run_coro_test(*this, [](auto& lib) { return coro_create_subordinate_zone_and_set_in_host<TypeParam>(lib); });
 }

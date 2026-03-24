@@ -19,7 +19,9 @@ namespace streaming::tls
     class context
     {
     public:
-        context(const std::string& cert_file, const std::string& key_file);
+        context(
+            const std::string& cert_file,
+            const std::string& key_file);
         ~context();
 
         context(const context&) = delete;
@@ -51,8 +53,12 @@ namespace streaming::tls
     class stream : public ::streaming::stream
     {
     public:
-        stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<context> tls_ctx);
-        stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<client_context> client_ctx);
+        stream(
+            std::shared_ptr<::streaming::stream> underlying,
+            std::shared_ptr<context> tls_ctx);
+        stream(
+            std::shared_ptr<::streaming::stream> underlying,
+            std::shared_ptr<client_context> client_ctx);
         ~stream() override;
 
         stream(const stream&) = delete;
@@ -61,8 +67,12 @@ namespace streaming::tls
         auto handshake() -> coro::task<bool>;
         auto client_handshake() -> coro::task<bool>;
 
-        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override;
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         [[nodiscard]] auto is_closed() const -> bool override { return closed_; }

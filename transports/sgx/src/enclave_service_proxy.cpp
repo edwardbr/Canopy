@@ -17,8 +17,14 @@
 namespace rpc
 {
     enclave_service_proxy::enclave_service_proxy(
-        const char* name, destination_zone destination_zone_id, std::string filename, const std::shared_ptr<rpc::service>& svc)
-        : service_proxy(name, destination_zone_id, svc)
+        const char* name,
+        destination_zone destination_zone_id,
+        std::string filename,
+        const std::shared_ptr<rpc::service>& svc)
+        : service_proxy(
+              name,
+              destination_zone_id,
+              svc)
         , filename_(filename)
     {
         // This proxy is for a child service, so hold a strong reference to the parent service
@@ -38,7 +44,10 @@ namespace rpc
     }
 
     std::shared_ptr<enclave_service_proxy> enclave_service_proxy::create(
-        const char* name, destination_zone destination_zone_id, const std::shared_ptr<rpc::service>& svc, std::string filename)
+        const char* name,
+        destination_zone destination_zone_id,
+        const std::shared_ptr<rpc::service>& svc,
+        std::string filename)
     {
         RPC_ASSERT(svc);
         auto ret
@@ -47,7 +56,9 @@ namespace rpc
     }
 
     CORO_TASK(connect_result)
-    enclave_service_proxy::inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
+    enclave_service_proxy::inner_connect(
+        std::shared_ptr<rpc::object_stub> stub,
+        connection_settings input_descr)
     {
         std::ignore = stub;
         sgx_launch_token_t token = {0};
@@ -71,7 +82,8 @@ namespace rpc
         }
         int err_code = error::OK();
         uint64_t output_object_id = 0;
-        status = marshal_test_init_enclave(eid_,
+        status = marshal_test_init_enclave(
+            eid_,
             &err_code,
             get_zone_id().get_subnet(),
             input_descr.object_id.get_val(),
@@ -100,7 +112,8 @@ namespace rpc
         CO_RETURN connect_result{err_code, get_destination_zone_id().with_object({output_object_id})};
     }
 
-    int enclave_service_proxy::send(uint64_t protocol_version,
+    int enclave_service_proxy::send(
+        uint64_t protocol_version,
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
@@ -138,7 +151,8 @@ namespace rpc
         int err_code = 0;
         size_t data_out_sz = 0;
         void* tls = nullptr;
-        sgx_status_t status = ::call_enclave(eid_,
+        sgx_status_t status = ::call_enclave(
+            eid_,
             &err_code,
             protocol_version,
             (uint64_t)encoding,
@@ -174,7 +188,8 @@ namespace rpc
             // data too small reallocate memory and try again
             combined_out.resize(data_out_sz);
 
-            status = ::call_enclave(eid_,
+            status = ::call_enclave(
+                eid_,
                 &err_code,
                 protocol_version,
                 (uint64_t)encoding,
@@ -221,7 +236,8 @@ namespace rpc
         return err_code;
     }
 
-    void enclave_service_proxy::post(uint64_t protocol_version,
+    void enclave_service_proxy::post(
+        uint64_t protocol_version,
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
@@ -255,7 +271,8 @@ namespace rpc
         void* tls = nullptr;
 
         int err_code = 0;
-        sgx_status_t status = ::post_enclave(eid_,
+        sgx_status_t status = ::post_enclave(
+            eid_,
             &err_code,
             protocol_version,
             (uint64_t)encoding,
@@ -284,7 +301,8 @@ namespace rpc
         // Fire and forget - ignore err_code for post
     }
 
-    int enclave_service_proxy::try_cast(uint64_t protocol_version,
+    int enclave_service_proxy::try_cast(
+        uint64_t protocol_version,
         destination_zone destination_zone_id,
         object object_id,
         interface_ordinal interface_id,
@@ -303,7 +321,8 @@ namespace rpc
 
         int err_code = 0;
         size_t out_bc_sz = 0;
-        sgx_status_t status = ::try_cast_enclave(eid_,
+        sgx_status_t status = ::try_cast_enclave(
+            eid_,
             &err_code,
             protocol_version,
             destination_zone_id.get_subnet(),
@@ -319,7 +338,8 @@ namespace rpc
             auto task = std::thread(
                 [&]()
                 {
-                    status = ::try_cast_enclave(eid_,
+                    status = ::try_cast_enclave(
+                        eid_,
                         &err_code,
                         protocol_version,
                         destination_zone_id.get_subnet(),
@@ -357,7 +377,8 @@ namespace rpc
         return err_code;
     }
 
-    int enclave_service_proxy::add_ref(uint64_t protocol_version,
+    int enclave_service_proxy::add_ref(
+        uint64_t protocol_version,
         destination_zone destination_zone_id,
         object object_id,
         caller_zone caller_zone_id,
@@ -378,7 +399,8 @@ namespace rpc
 
         int err_code = 0;
         size_t out_bc_sz = 0;
-        sgx_status_t status = ::add_ref_enclave(eid_,
+        sgx_status_t status = ::add_ref_enclave(
+            eid_,
             &err_code,
             protocol_version,
             destination_zone_id.get_subnet(),
@@ -396,7 +418,8 @@ namespace rpc
             auto task = std::thread(
                 [&]()
                 {
-                    status = ::add_ref_enclave(eid_,
+                    status = ::add_ref_enclave(
+                        eid_,
                         &err_code,
                         protocol_version,
                         destination_zone_id.get_subnet(),
@@ -442,7 +465,8 @@ namespace rpc
         return err_code;
     }
 
-    int enclave_service_proxy::release(uint64_t protocol_version,
+    int enclave_service_proxy::release(
+        uint64_t protocol_version,
         destination_zone destination_zone_id,
         object object_id,
         caller_zone caller_zone_id,
@@ -462,7 +486,8 @@ namespace rpc
 
         int err_code = 0;
         size_t out_bc_sz = 0;
-        sgx_status_t status = ::release_enclave(eid_,
+        sgx_status_t status = ::release_enclave(
+            eid_,
             &err_code,
             protocol_version,
             destination_zone_id.get_subnet(),
@@ -479,7 +504,8 @@ namespace rpc
             auto task = std::thread(
                 [&]()
                 {
-                    status = ::release_enclave(eid_,
+                    status = ::release_enclave(
+                        eid_,
                         &err_code,
                         protocol_version,
                         destination_zone_id.get_subnet(),

@@ -11,7 +11,9 @@
 
 namespace streaming::tcp
 {
-    stream::stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler)
+    stream::stream(
+        coro::net::tcp::client&& client,
+        std::shared_ptr<coro::scheduler> scheduler)
         : client_(std::move(client))
         , scheduler_(std::move(scheduler))
     {
@@ -23,8 +25,12 @@ namespace streaming::tcp
             client_.socket().native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
     }
 
-    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
+    auto stream::receive(
+        rpc::mutable_byte_span buffer,
+        std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>>
     {
         auto [status, s] = co_await client_.read_some(buffer, timeout);
         if (status.is_closed())
@@ -58,7 +64,8 @@ namespace streaming::tcp
             {
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
-                    RPC_WARNING("tcp::stream::send EAGAIN: {} bytes remaining, fd={}",
+                    RPC_WARNING(
+                        "tcp::stream::send EAGAIN: {} bytes remaining, fd={}",
                         buffer.size(),
                         client_.socket().native_handle());
                     co_await scheduler_->schedule();

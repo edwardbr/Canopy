@@ -24,7 +24,9 @@ public:
     {
     }
 
-    writer(std::ostream& strm, int tab_count)
+    writer(
+        std::ostream& strm,
+        int tab_count)
         : strm_(strm)
         , count_(tab_count)
     {
@@ -33,10 +35,16 @@ public:
     [[nodiscard]] int get_tab_count() const { return count_; }
     void set_tab_count(int count) { count_ = count; }
 
-    template<typename S, typename... Args> void operator()(S&& format_str, Args&&... args)
+    template<
+        typename S,
+        typename... Args>
+    void operator()(
+        S&& format_str,
+        Args&&... args)
     {
         int tmp = 0;
-        std::for_each(std::begin(format_str),
+        std::for_each(
+            std::begin(format_str),
             std::end(format_str),
             [&](char val)
             {
@@ -59,7 +67,12 @@ public:
         fmt::vformat_to(std::back_inserter(buffer), format_str, fmt::make_format_args(args...));
         strm_ << buffer << "\n";
     }
-    template<typename S, typename... Args> void raw(S&& format_str, Args&&... args)
+    template<
+        typename S,
+        typename... Args>
+    void raw(
+        S&& format_str,
+        Args&&... args)
     {
         std::string buffer;
         fmt::vformat_to(std::back_inserter(buffer), format_str, fmt::make_format_args(args...));

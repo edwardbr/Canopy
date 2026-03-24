@@ -17,12 +17,16 @@ namespace rpc
         [[nodiscard]] virtual bool validate(const zone_address& address) const = 0;
     };
 
-    inline bool update_zone_address(zone_address& address, const zone_authenticator& authenticator)
+    inline bool update_zone_address(
+        zone_address& address,
+        const zone_authenticator& authenticator)
     {
         return authenticator.update(address);
     }
 
-    inline bool validate_zone_address(const zone_address& address, const zone_authenticator& authenticator)
+    inline bool validate_zone_address(
+        const zone_address& address,
+        const zone_authenticator& authenticator)
     {
         return authenticator.validate(address);
     }

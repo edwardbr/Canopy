@@ -18,7 +18,8 @@ namespace rpc::libcoro_dynamic_library
     // -------------------------------------------------------------------------
     // parent_transport
     // -------------------------------------------------------------------------
-    parent_transport::parent_transport(std::string name,
+    parent_transport::parent_transport(
+        std::string name,
         rpc::zone dll_zone,
         rpc::zone host_zone,
         void* host_ctx,
@@ -31,7 +32,9 @@ namespace rpc::libcoro_dynamic_library
         host_coro_transport_down_fn transport_down,
         host_coro_get_new_zone_id_fn get_new_zone_id,
         host_coro_release_parent_fn host_coro_release_parent)
-        : rpc::transport(name, dll_zone)
+        : rpc::transport(
+              name,
+              dll_zone)
         , host_ctx_(host_ctx)
         , host_send_(send)
         , host_post_(post)
@@ -122,11 +125,13 @@ namespace rpc::libcoro_dynamic_library
 } // namespace rpc::libcoro_dynamic_library
 
 extern "C" CANOPY_LIBCORO_DLL_EXPORT void canopy_libcoro_dll_create(
-    rpc::libcoro_dynamic_library::dll_create_params* params, rpc::libcoro_dynamic_library::dll_create_result* result)
+    rpc::libcoro_dynamic_library::dll_create_params* params,
+    rpc::libcoro_dynamic_library::dll_create_result* result)
 {
     using namespace rpc::libcoro_dynamic_library;
 
-    auto* pt = new parent_transport(params->name,
+    auto* pt = new parent_transport(
+        params->name,
         params->dll_zone,
         params->host_zone,
         params->host_ctx,

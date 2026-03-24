@@ -20,7 +20,9 @@ namespace streaming::tls
     }
 
     // TLS context implementation
-    context::context(const std::string& cert_file, const std::string& key_file)
+    context::context(
+        const std::string& cert_file,
+        const std::string& key_file)
     {
         ctx_ = SSL_CTX_new(TLS_server_method());
         if (!ctx_)
@@ -96,7 +98,9 @@ namespace streaming::tls
     }
 
     // TLS stream implementation
-    stream::stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<context> tls_ctx)
+    stream::stream(
+        std::shared_ptr<::streaming::stream> underlying,
+        std::shared_ptr<context> tls_ctx)
         : underlying_(std::move(underlying))
         , tls_ctx_(std::move(tls_ctx))
     {
@@ -115,7 +119,9 @@ namespace streaming::tls
         }
     }
 
-    stream::stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<client_context> client_ctx)
+    stream::stream(
+        std::shared_ptr<::streaming::stream> underlying,
+        std::shared_ptr<client_context> client_ctx)
         : underlying_(std::move(underlying))
         , tls_client_ctx_(std::move(client_ctx))
     {
@@ -289,8 +295,12 @@ namespace streaming::tls
     // Stream interface
     // -----------------------------------------------------------------------
 
-    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
+    auto stream::receive(
+        rpc::mutable_byte_span buffer,
+        std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>>
     {
         if (!ssl_ || !handshake_complete_ || closed_)
             co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};

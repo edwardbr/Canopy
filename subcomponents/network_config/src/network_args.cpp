@@ -28,7 +28,9 @@ namespace canopy::network_config
     // Conversion: binary routing_prefix_addr → internal uint64_t for zone_address
     // ---------------------------------------------------------------------------
 
-    uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family)
+    uint64_t ip_address_to_uint64(
+        const ip_address& addr,
+        ip_address_family family)
     {
         // All-zero means local-only mode.
         bool all_zero = true;
@@ -130,7 +132,9 @@ namespace canopy::network_config
     // Routing prefix helpers
     // ---------------------------------------------------------------------------
 
-    void ipv4_to_ip_address(const std::string& dotted_decimal, ip_address& addr)
+    void ipv4_to_ip_address(
+        const std::string& dotted_decimal,
+        ip_address& addr)
     {
         unsigned int a = 0;
         unsigned int b = 0;
@@ -149,7 +153,9 @@ namespace canopy::network_config
         addr[3] = static_cast<uint8_t>(d);
     }
 
-    void ipv6_to_ip_address(const std::string& colon_hex, ip_address& addr)
+    void ipv6_to_ip_address(
+        const std::string& colon_hex,
+        ip_address& addr)
     {
         // Parse the first 64 bits of an IPv6 address (the /64 network prefix).
         // Handles full form (2001:db8:0:0:...) and compressed (::1, 2001:db8::1).
@@ -224,20 +230,43 @@ namespace canopy::network_config
     // ---------------------------------------------------------------------------
 
     network_args_context::network_args_context(args::ArgumentParser& parser)
-        : address_family_group_(parser, "Address family for --routing-prefix", args::Group::Validators::AtMostOne)
+        : address_family_group_(
+              parser,
+              "Address family for --routing-prefix",
+              args::Group::Validators::AtMostOne)
         , flag_ipv4_(
-              address_family_group_, "ipv4", "Interpret --routing-prefix as an IPv4 dotted-decimal address", {'4', "ipv4"})
+              address_family_group_,
+              "ipv4",
+              "Interpret --routing-prefix as an IPv4 dotted-decimal address",
+              {'4',
+                  "ipv4"})
         , flag_ipv6_(
-              address_family_group_, "ipv6", "Interpret --routing-prefix as an IPv6 colon-hex address", {'6', "ipv6"})
-        , routing_prefix_(parser,
+              address_family_group_,
+              "ipv6",
+              "Interpret --routing-prefix as an IPv6 colon-hex address",
+              {'6',
+                  "ipv6"})
+        , routing_prefix_(
+              parser,
               "addr",
               "This node's routing prefix. Format determined by -4/-6. "
               "Auto-detected from network interfaces when omitted.",
               {"routing-prefix"},
               "")
-        , host_(parser, "addr", "TCP address to bind/connect. \"detect\" derives it from --routing-prefix.", {"host"}, "detect")
-        , port_(parser, "n", "TCP port (0 = not specified)", {"port"}, uint32_t{8000})
-        , object_offset_(parser,
+        , host_(
+              parser,
+              "addr",
+              "TCP address to bind/connect. \"detect\" derives it from --routing-prefix.",
+              {"host"},
+              "detect")
+        , port_(
+              parser,
+              "n",
+              "TCP port (0 = not specified)",
+              {"port"},
+              uint32_t{8000})
+        , object_offset_(
+              parser,
               "bits",
               "Bit offset where object_id begins in zone_address::local_address (flexible layout, default 64)",
               {"object-offset"},
@@ -343,7 +372,10 @@ namespace canopy::network_config
         return ctx.get_config();
     }
 
-    network_config parse_network_args(int argc, char* argv[], args::ArgumentParser& parser)
+    network_config parse_network_args(
+        int argc,
+        char* argv[],
+        args::ArgumentParser& parser)
     {
         network_args_context ctx{parser};
         try

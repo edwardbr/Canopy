@@ -12,7 +12,8 @@ namespace websocket_demo
     namespace v1
     {
         http_client_connection::http_client_connection(
-            std::shared_ptr<streaming::stream> stream, std::shared_ptr<websocket_service> service)
+            std::shared_ptr<streaming::stream> stream,
+            std::shared_ptr<websocket_service> service)
             : stream_(std::move(stream))
             , service_(std::move(service))
         {
@@ -37,7 +38,8 @@ namespace websocket_demo
             };
             handlers.websocket_upgrade_handler
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                = [this](const canopy::http_server::request& request,
+                = [this](
+                      const canopy::http_server::request& request,
                       std::shared_ptr<streaming::stream> websocket_stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
             {
                 // handle web socket delivery

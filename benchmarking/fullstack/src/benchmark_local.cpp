@@ -24,7 +24,8 @@ namespace comprehensive::v1
     {
         benchmark_result result{};
 
-        auto root_service = std::make_shared<rpc::root_service>("benchmark_root",
+        auto root_service = std::make_shared<rpc::root_service>(
+            "benchmark_root",
             rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
             ,
@@ -66,7 +67,10 @@ namespace comprehensive::v1
     }
 
 #ifndef CANOPY_BUILD_COROUTINE
-    CORO_TASK(benchmark_result) run_dynamic_library_benchmark(rpc::encoding enc, size_t blob_size)
+    CORO_TASK(benchmark_result)
+    run_dynamic_library_benchmark(
+        rpc::encoding enc,
+        size_t blob_size)
     {
         benchmark_result result{};
 

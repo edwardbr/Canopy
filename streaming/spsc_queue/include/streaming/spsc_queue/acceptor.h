@@ -17,7 +17,10 @@ namespace streaming::spsc_queue
     class acceptor : public ::streaming::stream_acceptor
     {
     public:
-        acceptor(queue_type* send_q, queue_type* recv_q, std::shared_ptr<coro::scheduler> scheduler)
+        acceptor(
+            queue_type* send_q,
+            queue_type* recv_q,
+            std::shared_ptr<coro::scheduler> scheduler)
             : send_q_(send_q)
             , recv_q_(recv_q)
             , scheduler_(std::move(scheduler))

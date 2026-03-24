@@ -35,7 +35,9 @@ namespace fingerprint
         }
     }
 
-    const class_entity* find_type(std::string type_name, const class_entity& cls)
+    const class_entity* find_type(
+        std::string type_name,
+        const class_entity& cls)
     {
         auto type_namespace = split_namespaces(type_name);
 
@@ -84,7 +86,10 @@ namespace fingerprint
     };
 
     std::string extract_subsituted_templates(
-        const std::string& source, const class_entity& cls, std::vector<const class_entity*> entity_stack, uint64_t rpc_version)
+        const std::string& source,
+        const class_entity& cls,
+        std::vector<const class_entity*> entity_stack,
+        uint64_t rpc_version)
     {
         std::stringstream sstr;
         std::stringstream temp;
@@ -137,7 +142,9 @@ namespace fingerprint
     }
 
     // this is too simplistic, it only supports one template parameter without nested templates
-    std::string substitute_template_params(const std::string& type, const std::string& alternative)
+    std::string substitute_template_params(
+        const std::string& type,
+        const std::string& alternative)
     {
         std::string output;
         int inBrackets = 0;
@@ -172,7 +179,10 @@ namespace fingerprint
     }
 
     uint64_t generate(
-        const class_entity& cls, std::vector<const class_entity*> entity_stack, writer* comment, uint64_t rpc_version)
+        const class_entity& cls,
+        std::vector<const class_entity*> entity_stack,
+        writer* comment,
+        uint64_t rpc_version)
     {
         for (const auto* tmp : entity_stack)
         {

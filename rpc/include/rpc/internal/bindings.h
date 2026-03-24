@@ -33,11 +33,17 @@ namespace rpc
         }
     }
 
-    template<class T, template<class> class PtrType>
+    template<
+        class T,
+        template<class> class PtrType>
     CORO_TASK(remote_object_bind_result)
-    proxy_bind_in_param(std::shared_ptr<rpc::object_proxy> object_p, uint64_t protocol_version, PtrType<T> iface)
+    proxy_bind_in_param(
+        std::shared_ptr<rpc::object_proxy> object_p,
+        uint64_t protocol_version,
+        PtrType<T> iface)
     {
-        static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
+        static_assert(
+            __rpc_pointer_traits::is_supported_v<PtrType<T>>,
             "proxy_bind_in_param only supports rpc::shared_ptr and rpc::optimistic_ptr");
 
         remote_object_bind_result result{error::OK(), nullptr, {}};
@@ -73,13 +79,19 @@ namespace rpc
         CO_RETURN CO_AWAIT operating_service->bind_in_proxy(protocol_version, iface, sp->get_destination_zone_id());
     }
 
-    template<class T, template<class> class PtrType>
+    template<
+        class T,
+        template<class> class PtrType>
     CORO_TASK(remote_object_bind_result)
     stub_bind_out_param(
-        std::shared_ptr<rpc::service> zone, uint64_t protocol_version, caller_zone caller_zone_id, PtrType<T> iface)
+        std::shared_ptr<rpc::service> zone,
+        uint64_t protocol_version,
+        caller_zone caller_zone_id,
+        PtrType<T> iface)
     {
         RPC_ASSERT(caller_zone_id.is_set());
-        static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
+        static_assert(
+            __rpc_pointer_traits::is_supported_v<PtrType<T>>,
             "stub_bind_out_param only supports rpc::shared_ptr and rpc::optimistic_ptr");
 
         remote_object_bind_result result{rpc::error::OK(), nullptr, {}};
@@ -112,12 +124,18 @@ namespace rpc
     }
 
     // do not use directly it is for the interface generator use rpc::create_interface_proxy if you want to get a proxied pointer to a remote implementation
-    template<class T, template<class> class PtrType>
+    template<
+        class T,
+        template<class> class PtrType>
     CORO_TASK(interface_bind_result<PtrType<T>>)
     stub_bind_in_param(
-        uint64_t protocol_version, std::shared_ptr<rpc::service> serv, caller_zone caller_zone_id, rpc::remote_object encap)
+        uint64_t protocol_version,
+        std::shared_ptr<rpc::service> serv,
+        caller_zone caller_zone_id,
+        rpc::remote_object encap)
     {
-        static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
+        static_assert(
+            __rpc_pointer_traits::is_supported_v<PtrType<T>>,
             "stub_bind_in_param only supports rpc::shared_ptr and rpc::optimistic_ptr");
         interface_bind_result<PtrType<T>> result{rpc::error::OK(), {}};
 
@@ -171,7 +189,8 @@ namespace rpc
                 CO_RETURN result;
             }
 
-            auto proxy_result = CO_AWAIT service_proxy->get_or_create_object_proxy(encap.get_object_id(),
+            auto proxy_result = CO_AWAIT service_proxy->get_or_create_object_proxy(
+                encap.get_object_id(),
                 service_proxy::object_proxy_creation_rule::ADD_REF_IF_NEW,
                 new_proxy_added,
                 caller_zone_id,
@@ -198,11 +217,16 @@ namespace rpc
     }
 
     // do not use directly it is for the interface generator use rpc::create_interface_proxy if you want to get a proxied pointer to a remote implementation
-    template<class T, template<class> class PtrType>
+    template<
+        class T,
+        template<class> class PtrType>
     CORO_TASK(interface_bind_result<PtrType<T>>)
-    proxy_bind_out_param(std::shared_ptr<rpc::service_proxy> sp, rpc::remote_object encap)
+    proxy_bind_out_param(
+        std::shared_ptr<rpc::service_proxy> sp,
+        rpc::remote_object encap)
     {
-        static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
+        static_assert(
+            __rpc_pointer_traits::is_supported_v<PtrType<T>>,
             "proxy_bind_out_param only supports rpc::shared_ptr and rpc::optimistic_ptr");
         interface_bind_result<PtrType<T>> result{rpc::error::OK(), {}};
 
@@ -273,7 +297,8 @@ namespace rpc
             }
         }
 
-        auto proxy_result = CO_AWAIT service_proxy->get_or_create_object_proxy(encap.get_object_id(),
+        auto proxy_result = CO_AWAIT service_proxy->get_or_create_object_proxy(
+            encap.get_object_id(),
             service_proxy::object_proxy_creation_rule::RELEASE_IF_NOT_NEW,
             new_proxy_added,
             {},
@@ -298,11 +323,17 @@ namespace rpc
         CO_RETURN result;
     }
 
-    template<class T, template<class> class PtrType>
+    template<
+        class T,
+        template<class> class PtrType>
     CORO_TASK(interface_bind_result<PtrType<T>>)
-    demarshall_interface_proxy(uint64_t protocol_version, std::shared_ptr<rpc::service_proxy> sp, rpc::remote_object encap)
+    demarshall_interface_proxy(
+        uint64_t protocol_version,
+        std::shared_ptr<rpc::service_proxy> sp,
+        rpc::remote_object encap)
     {
-        static_assert(__rpc_pointer_traits::is_supported_v<PtrType<T>>,
+        static_assert(
+            __rpc_pointer_traits::is_supported_v<PtrType<T>>,
             "demarshall_interface_proxy only supports rpc::shared_ptr and rpc::optimistic_ptr");
         interface_bind_result<PtrType<T>> result{rpc::error::OK(), {}};
 
@@ -369,7 +400,8 @@ namespace rpc
         {
             auto encap_remote_r = encap.with_object(encap.get_object_id());
             RPC_ASSERT(encap_remote_r.has_value());
-            telemetry_service->on_service_proxy_add_ref(service_proxy->get_zone_id(),
+            telemetry_service->on_service_proxy_add_ref(
+                service_proxy->get_zone_id(),
                 *encap_remote_r,
                 service_proxy->get_zone_id(),
                 rpc::requesting_zone(),
@@ -383,7 +415,10 @@ namespace rpc
 
     template<class T>
     CORO_TASK(remote_object_bind_result)
-    create_interface_stub(rpc::service* serv, rpc::shared_ptr<T> iface, caller_zone caller_zone_id)
+    create_interface_stub(
+        rpc::service* serv,
+        rpc::shared_ptr<T> iface,
+        caller_zone caller_zone_id)
     {
         // caller_zone caller_zone_id = serv.get_zone_id();
         remote_object_bind_result result{error::OK(), nullptr, {}};

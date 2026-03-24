@@ -27,15 +27,22 @@ namespace streaming::spsc_queue
         }
     } // namespace
 
-    stream::stream(queue_type* send_q, queue_type* recv_q, std::shared_ptr<coro::scheduler> scheduler)
+    stream::stream(
+        queue_type* send_q,
+        queue_type* recv_q,
+        std::shared_ptr<coro::scheduler> scheduler)
         : send_queue_(send_q)
         , recv_queue_(recv_q)
         , scheduler_(std::move(scheduler))
     {
     }
 
-    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
+    auto stream::receive(
+        rpc::mutable_byte_span buffer,
+        std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>>
     {
         if (closed_.load(std::memory_order_acquire))
             co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};

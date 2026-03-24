@@ -64,7 +64,9 @@ namespace rpc
         rpc::remote_object output_descriptor;
 
         connect_result() = default;
-        connect_result(int error_code, rpc::remote_object output_descriptor)
+        connect_result(
+            int error_code,
+            rpc::remote_object output_descriptor)
             : error_code(error_code)
             , output_descriptor(output_descriptor)
         {

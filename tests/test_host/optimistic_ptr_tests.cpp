@@ -68,7 +68,8 @@ using namespace marshalled_tests;
 extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Type list for optimistic_ptr test instantiations.
-using optimistic_ptr_implementations = ::testing::Types<in_memory_setup<false>,
+using optimistic_ptr_implementations = ::testing::Types<
+    in_memory_setup<false>,
     in_memory_setup<true>,
     inproc_setup<false, false, false>,
     inproc_setup<false, false, true>,
@@ -123,7 +124,9 @@ template<class T> class optimistic_ptr_test : public type_test<T>
 {
 };
 
-TYPED_TEST_SUITE(optimistic_ptr_test, optimistic_ptr_implementations);
+TYPED_TEST_SUITE(
+    optimistic_ptr_test,
+    optimistic_ptr_implementations);
 
 // ============================================================================
 // Optimistic Pointer Tests
@@ -150,7 +153,8 @@ CORO_TASK(bool) optimistic_ptr_basic_lifecycle_test(std::shared_ptr<rpc::service
     // Test move constructor
     rpc::optimistic_ptr<xxx::i_foo> opt_f_move(std::move(opt_f_copy));
     CORO_ASSERT_NE(opt_f_move.get_unsafe_only_for_testing(), nullptr);
-    CORO_ASSERT_EQ(opt_f_move.get_unsafe_only_for_testing(),
+    CORO_ASSERT_EQ(
+        opt_f_move.get_unsafe_only_for_testing(),
         opt_f.get_unsafe_only_for_testing()); // Should point to same local_proxy
 
     // Test assignment
@@ -167,11 +171,14 @@ CORO_TASK(bool) optimistic_ptr_basic_lifecycle_test(std::shared_ptr<rpc::service
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_basic_lifecycle_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_basic_lifecycle_test)
 {
     auto& lib = this->get_lib();
     auto root_service = lib.get_root_service();
-    run_coro_test(*this,
+    run_coro_test(
+        *this,
         [root_service](auto& lib)
         {
             (void)lib;
@@ -209,11 +216,14 @@ CORO_TASK(bool) optimistic_ptr_weak_semantics_local_test(std::shared_ptr<rpc::se
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_weak_semantics_local_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_weak_semantics_local_test)
 {
     auto& lib = this->get_lib();
     auto root_service = lib.get_root_service();
-    run_coro_test(*this,
+    run_coro_test(
+        *this,
         [root_service](auto& lib)
         {
             (void)lib;
@@ -257,11 +267,14 @@ CORO_TASK(bool) optimistic_ptr_local_proxy_test(std::shared_ptr<rpc::service> ro
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_local_proxy_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_local_proxy_test)
 {
     auto& lib = this->get_lib();
     auto root_service = lib.get_root_service();
-    run_coro_test(*this,
+    run_coro_test(
+        *this,
         [root_service](auto& lib)
         {
             (void)lib;
@@ -296,11 +309,14 @@ CORO_TASK(bool) optimistic_ptr_local_rvalue_invocation_test(std::shared_ptr<rpc:
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_local_rvalue_invocation_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_local_rvalue_invocation_test)
 {
     auto& lib = this->get_lib();
     auto root_service = lib.get_root_service();
-    run_coro_test(*this,
+    run_coro_test(
+        *this,
         [root_service](auto& lib)
         {
             (void)lib;
@@ -316,7 +332,8 @@ class waiter : public rpc::service_event
     std::function<CORO_TASK(void)()> callback_;
     std::shared_ptr<rpc::event> ev_;
 
-    waiter(rpc::object object_id,
+    waiter(
+        rpc::object object_id,
         rpc::destination_zone destination,
         const std::shared_ptr<rpc::service>& svc,
         std::function<CORO_TASK(void)()>&& callback,
@@ -330,7 +347,8 @@ class waiter : public rpc::service_event
     }
 
 public:
-    static std::shared_ptr<waiter> create(rpc::object object_id,
+    static std::shared_ptr<waiter> create(
+        rpc::object object_id,
         rpc::destination_zone destination,
         const std::shared_ptr<rpc::service>& svc,
         std::function<CORO_TASK(void)()>&& callback,
@@ -343,7 +361,10 @@ public:
 
     ~waiter() override { svc_->remove_service_event(weak_from_this()); }
 
-    CORO_TASK(void) on_object_released(rpc::object object_id, rpc::destination_zone destination) override
+    CORO_TASK(void)
+    on_object_released(
+        rpc::object object_id,
+        rpc::destination_zone destination) override
     {
         if (object_id == object_id_ && destination == destination_id_)
         {
@@ -424,7 +445,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_remote_shared_semantics_test(T&
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_remote_shared_semantics_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_remote_shared_semantics_test)
 {
     if (!this->get_lib().has_service())
         GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
@@ -473,7 +496,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_transparent_access_test(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_transparent_access_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_transparent_access_test)
 {
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_transparent_access_test(lib); });
 }
@@ -534,7 +559,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_circular_dependency_test(T& lib
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_circular_dependency_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_circular_dependency_test)
 {
     if (!this->get_lib().has_service())
         GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
@@ -584,7 +611,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_comparison_test(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_comparison_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_comparison_test)
 {
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_comparison_test(lib); });
 }
@@ -623,7 +652,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_heterogeneous_upcast_test(T& li
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_heterogeneous_upcast_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_heterogeneous_upcast_test)
 {
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_heterogeneous_upcast_test(lib); });
 }
@@ -664,7 +695,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_multiple_refs_test(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_multiple_refs_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_multiple_refs_test)
 {
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_multiple_refs_test(lib); });
 }
@@ -734,7 +767,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_object_gone_test(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_object_gone_test)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_object_gone_test)
 {
     if (!this->get_lib().has_service())
         GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
@@ -828,13 +863,16 @@ template<class T> CORO_TASK(bool) coro_post_with_optimistic_ptr(T& lib)
         CORO_ASSERT_EQ(recorded_messages[i], i * 3);
     }
 
-    RPC_INFO("Post with optimistic_ptr test completed - all {} messages received in order through optimistic pointer",
+    RPC_INFO(
+        "Post with optimistic_ptr test completed - all {} messages received in order through optimistic pointer",
         large_batch);
 
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, post_with_optimistic_ptr)
+TYPED_TEST(
+    optimistic_ptr_test,
+    post_with_optimistic_ptr)
 {
     run_coro_test(*this, [](auto& lib) { return coro_post_with_optimistic_ptr<TypeParam>(lib); });
 }
@@ -876,7 +914,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_set_and_get_via_idl_test(T& lib
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_set_and_get_via_idl)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_set_and_get_via_idl)
 {
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_set_and_get_via_idl_test(lib); });
 }
@@ -933,7 +973,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_get_returns_object_gone_when_shared_released)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_get_returns_object_gone_when_shared_released)
 {
     if (!this->get_lib().has_service())
         GTEST_SKIP() << "in memory tests do not apply to remote release symantics";
@@ -966,7 +1008,9 @@ template<class T> CORO_TASK(bool) optimistic_ptr_null_roundtrip_test(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(optimistic_ptr_test, optimistic_ptr_null_roundtrip)
+TYPED_TEST(
+    optimistic_ptr_test,
+    optimistic_ptr_null_roundtrip)
 {
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_null_roundtrip_test(lib); });
 }

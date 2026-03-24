@@ -17,7 +17,9 @@ namespace rpc::libcoro_spsc_dynamic_dll
 {
     namespace
     {
-        void* load_symbol(void* lib_handle, const char* symbol)
+        void* load_symbol(
+            void* lib_handle,
+            const char* symbol)
         {
 #  if defined(_WIN32)
             return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(lib_handle), symbol));
@@ -48,7 +50,8 @@ namespace rpc::libcoro_spsc_dynamic_dll
         stop();
     }
 
-    std::shared_ptr<loaded_library> loaded_library::load(const std::string& library_path,
+    std::shared_ptr<loaded_library> loaded_library::load(
+        const std::string& library_path,
         const std::string& name,
         rpc::zone dll_zone,
         rpc::zone host_zone,

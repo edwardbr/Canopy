@@ -111,7 +111,9 @@ namespace bench_helpers
     public:
         explicit ws_client_stream(std::shared_ptr<::streaming::stream> underlying)
             : underlying_(std::move(underlying))
-            , raw_recv_buffer_(websocket_io_chunk_size, '\0')
+            , raw_recv_buffer_(
+                  websocket_io_chunk_size,
+                  '\0')
         {
             wslay_event_callbacks cbs;
             std::memset(&cbs, 0, sizeof(cbs));
@@ -132,8 +134,12 @@ namespace bench_helpers
         ws_client_stream(const ws_client_stream&) = delete;
         auto operator=(const ws_client_stream&) -> ws_client_stream& = delete;
 
-        auto receive(rpc::mutable_byte_span buf, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override
+        auto receive(
+            rpc::mutable_byte_span buf,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override
         {
             if (!decoded_.empty())
                 co_return serve_decoded(buf);
@@ -206,7 +212,10 @@ namespace bench_helpers
         auto get_peer_info() const -> streaming::peer_info override { return underlying_->get_peer_info(); }
 
     private:
-        std::pair<coro::net::io_status, rpc::mutable_byte_span> serve_decoded(rpc::mutable_byte_span buf)
+        std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>
+        serve_decoded(rpc::mutable_byte_span buf)
         {
             auto& msg = decoded_.front();
             size_t avail = msg.size() - msg_offset_;
@@ -242,7 +251,11 @@ namespace bench_helpers
             co_return true;
         }
 
-        static int genmask_cb(wslay_event_context_ptr, uint8_t* buf, size_t len, void*)
+        static int genmask_cb(
+            wslay_event_context_ptr,
+            uint8_t* buf,
+            size_t len,
+            void*)
         {
             // Generate random masking key bytes (required by RFC 6455 for client frames)
             for (size_t i = 0; i < len; ++i)
@@ -250,14 +263,24 @@ namespace bench_helpers
             return 0;
         }
 
-        static ssize_t send_cb(wslay_event_context_ptr, const uint8_t* data, size_t len, int, void* ud)
+        static ssize_t send_cb(
+            wslay_event_context_ptr,
+            const uint8_t* data,
+            size_t len,
+            int,
+            void* ud)
         {
             auto* self = static_cast<ws_client_stream*>(ud);
             self->outgoing_raw_.insert(self->outgoing_raw_.end(), data, data + len);
             return static_cast<ssize_t>(len);
         }
 
-        static ssize_t recv_cb(wslay_event_context_ptr ctx, uint8_t* out, size_t len, int, void* ud)
+        static ssize_t recv_cb(
+            wslay_event_context_ptr ctx,
+            uint8_t* out,
+            size_t len,
+            int,
+            void* ud)
         {
             auto* self = static_cast<ws_client_stream*>(ud);
             size_t avail = self->raw_recv_size_ - self->raw_recv_pos_;
@@ -272,7 +295,10 @@ namespace bench_helpers
             return static_cast<ssize_t>(n);
         }
 
-        static void on_msg_cb(wslay_event_context_ptr, const wslay_event_on_msg_recv_arg* arg, void* ud)
+        static void on_msg_cb(
+            wslay_event_context_ptr,
+            const wslay_event_on_msg_recv_arg* arg,
+            void* ud)
         {
             auto* self = static_cast<ws_client_stream*>(ud);
             if (!wslay_is_ctrl_frame(arg->opcode) && arg->opcode == WSLAY_BINARY_FRAME)
@@ -394,22 +420,25 @@ namespace stream_bench
 
     static void print_usage(const char* prog)
     {
-        fmt::print("Usage: {} [options]\n"
-                   "\n"
-                   "  --stream <name>       Stream type to benchmark (repeat for multiple; default: all)\n"
-                   "                        Valid: spsc, tcp, io_uring, tls+spsc, ws+spsc, tls+ws+spsc\n"
-                   "  --scenario <s>        unidirectional | send_reply | stress | all  (default: all)\n"
-                   "  --count <N>           Measurement iterations (default: 1000)\n"
-                   "  --warmup <N>          Warmup iterations (default: 20)\n"
-                   "  --blob-size <bytes>   Single blob size instead of the full sweep\n"
-                   "  --timeout-ms <ms>     Per-receive timeout for send_reply in ms (default: 1000)\n"
-                   "  --duration-s <N>      Stress test duration in seconds (default: 30)\n"
-                   "  --watchdog-ms <ms>    Abort if no progress for this long; 0=disabled (default: 10000)\n"
-                   "\n",
+        fmt::print(
+            "Usage: {} [options]\n"
+            "\n"
+            "  --stream <name>       Stream type to benchmark (repeat for multiple; default: all)\n"
+            "                        Valid: spsc, tcp, io_uring, tls+spsc, ws+spsc, tls+ws+spsc\n"
+            "  --scenario <s>        unidirectional | send_reply | stress | all  (default: all)\n"
+            "  --count <N>           Measurement iterations (default: 1000)\n"
+            "  --warmup <N>          Warmup iterations (default: 20)\n"
+            "  --blob-size <bytes>   Single blob size instead of the full sweep\n"
+            "  --timeout-ms <ms>     Per-receive timeout for send_reply in ms (default: 1000)\n"
+            "  --duration-s <N>      Stress test duration in seconds (default: 30)\n"
+            "  --watchdog-ms <ms>    Abort if no progress for this long; 0=disabled (default: 10000)\n"
+            "\n",
             prog);
     }
 
-    static bench_config parse_args(int argc, char** argv)
+    static bench_config parse_args(
+        int argc,
+        char** argv)
     {
         bench_config cfg;
         bool scenario_set = false;
@@ -543,7 +572,8 @@ namespace stream_bench
                         std::lock_guard<std::mutex> lk(ctx_mx_);
                         ctx = context_;
                     }
-                    fmt::print(stderr,
+                    fmt::print(
+                        stderr,
                         "\n[WATCHDOG] No progress for {}ms (limit {}ms){} — aborting\n"
                         "           This indicates a permanent hang (likely a send-side deadlock).\n"
                         "           Hint: if the stream is legitimately slow, increase --watchdog-ms.\n",
@@ -585,7 +615,10 @@ namespace stream_bench
         bool valid = false;
     };
 
-    bench_stats compute_stats(std::vector<int64_t> samples, size_t blob_size, size_t trim_count)
+    bench_stats compute_stats(
+        std::vector<int64_t> samples,
+        size_t blob_size,
+        size_t trim_count)
     {
         bench_stats s{};
         s.blob_size = blob_size;
@@ -679,7 +712,8 @@ namespace stream_bench
     // ============================================================
 
     // Unidirectional sender: sends count blobs, records per-send timing.
-    coro::task<bench_stats> run_unidirectional_sender(std::shared_ptr<streaming::stream> stm,
+    coro::task<bench_stats> run_unidirectional_sender(
+        std::shared_ptr<streaming::stream> stm,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
         const bench_config& cfg,
@@ -709,7 +743,10 @@ namespace stream_bench
     }
 
     // Drains the stream until stop is set by the sender.
-    coro::task<void> run_drain(std::shared_ptr<streaming::stream> stm, const std::atomic<bool>& stop, watchdog& wd)
+    coro::task<void> run_drain(
+        std::shared_ptr<streaming::stream> stm,
+        const std::atomic<bool>& stop,
+        watchdog& wd)
     {
         std::vector<uint8_t> buf(1 << 20);
         while (!stop.load(std::memory_order_acquire))
@@ -722,7 +759,8 @@ namespace stream_bench
     }
 
     // Send-reply sender: one send + full receive echo per measurement.
-    coro::task<bench_stats> run_send_reply(std::shared_ptr<streaming::stream> stm,
+    coro::task<bench_stats> run_send_reply(
+        std::shared_ptr<streaming::stream> stm,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
         const bench_config& cfg,
@@ -773,7 +811,10 @@ namespace stream_bench
     }
 
     // Echo server: receives and echoes back until stop is set.
-    coro::task<void> run_echo(std::shared_ptr<streaming::stream> stm, const std::atomic<bool>& stop, watchdog& wd)
+    coro::task<void> run_echo(
+        std::shared_ptr<streaming::stream> stm,
+        const std::atomic<bool>& stop,
+        watchdog& wd)
     {
         std::vector<uint8_t> buf(1 << 20);
         while (!stop.load(std::memory_order_acquire))
@@ -796,7 +837,8 @@ namespace stream_bench
     // ============================================================
 
     // Saturates a stream for cfg.stress_duration then signals stop.
-    coro::task<stress_stats> run_stress_sender(std::shared_ptr<streaming::stream> stm,
+    coro::task<stress_stats> run_stress_sender(
+        std::shared_ptr<streaming::stream> stm,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
         const bench_config& cfg,
@@ -826,7 +868,10 @@ namespace stream_bench
 
     // Drains and counts bytes received during a stress run.
     coro::task<stress_stats> run_stress_drain(
-        std::shared_ptr<streaming::stream> stm, const std::atomic<bool>& stop, const bench_config& cfg, watchdog& wd)
+        std::shared_ptr<streaming::stream> stm,
+        const std::atomic<bool>& stop,
+        const bench_config& cfg,
+        watchdog& wd)
     {
         stress_stats s;
         std::vector<uint8_t> buf(1 << 20);
@@ -864,7 +909,8 @@ namespace stream_bench
         fmt::print("\n=== Unidirectional (send throughput) — {} sends, middle 80%, warmup {}\n", cfg.count, cfg.warmup);
         fmt::print("Units: send time in ns\n");
         fmt::print("{:-<28}+{:-<12}+{:-<15}+{:-<12}+{:-<12}+{:-<12}+{:-<12}+{:-<13}\n", "", "", "", "", "", "", "", "");
-        fmt::print("{:<27} | {:>10} | {:>13} | {:>10} | {:>10} | {:>10} | {:>10} | {:>11}\n",
+        fmt::print(
+            "{:<27} | {:>10} | {:>13} | {:>10} | {:>10} | {:>10} | {:>10} | {:>11}\n",
             "stream_type",
             "blob_bytes",
             "throughput MB/s",
@@ -876,7 +922,9 @@ namespace stream_bench
         fmt::print("{:-<28}+{:-<12}+{:-<15}+{:-<12}+{:-<12}+{:-<12}+{:-<12}+{:-<13}\n", "", "", "", "", "", "", "", "");
     }
 
-    void print_unidirectional_row(const char* type, const bench_stats& s)
+    void print_unidirectional_row(
+        const char* type,
+        const bench_stats& s)
     {
         if (!s.valid)
         {
@@ -885,7 +933,8 @@ namespace stream_bench
         }
         // throughput: blob_size bytes per send / avg_ns per send = bytes/ns = GB/s → * 1000 = MB/s
         const double throughput = (s.avg > 0.0) ? (static_cast<double>(s.blob_size) / s.avg * 1000.0) : 0.0;
-        fmt::print("{:<27} | {:>10} | {:>13.2f} | {:>10.1f} | {:>10.1f} | {:>10.1f} | {:>10.1f} | {:>11.1f}\n",
+        fmt::print(
+            "{:<27} | {:>10} | {:>13.2f} | {:>10.1f} | {:>10.1f} | {:>10.1f} | {:>10.1f} | {:>11.1f}\n",
             type,
             s.blob_size,
             throughput,
@@ -902,7 +951,8 @@ namespace stream_bench
             "\n=== Send-Reply (round-trip latency) — {} round-trips, middle 80%, warmup {}\n", cfg.count, cfg.warmup);
         fmt::print("Units: latency in µs\n");
         fmt::print("{:-<28}+{:-<12}+{:-<15}+{:-<12}+{:-<12}+{:-<12}+{:-<12}+{:-<13}\n", "", "", "", "", "", "", "", "");
-        fmt::print("{:<27} | {:>10} | {:>13} | {:>10} | {:>10} | {:>10} | {:>10} | {:>11}\n",
+        fmt::print(
+            "{:<27} | {:>10} | {:>13} | {:>10} | {:>10} | {:>10} | {:>10} | {:>11}\n",
             "stream_type",
             "blob_bytes",
             "throughput MB/s",
@@ -914,7 +964,9 @@ namespace stream_bench
         fmt::print("{:-<28}+{:-<12}+{:-<15}+{:-<12}+{:-<12}+{:-<12}+{:-<12}+{:-<13}\n", "", "", "", "", "", "", "", "");
     }
 
-    void print_send_reply_row(const char* type, const bench_stats& s)
+    void print_send_reply_row(
+        const char* type,
+        const bench_stats& s)
     {
         if (!s.valid)
         {
@@ -923,7 +975,8 @@ namespace stream_bench
         }
         // throughput: blob_size bytes / avg_µs = bytes/µs = MB/s (SI)
         const double throughput = (s.avg > 0.0) ? (static_cast<double>(s.blob_size) / s.avg) : 0.0;
-        fmt::print("{:<27} | {:>10} | {:>13.2f} | {:>10.2f} | {:>10.2f} | {:>10.2f} | {:>10.2f} | {:>11.2f}\n",
+        fmt::print(
+            "{:<27} | {:>10} | {:>13.2f} | {:>10.2f} | {:>10.2f} | {:>10.2f} | {:>10.2f} | {:>11.2f}\n",
             type,
             s.blob_size,
             throughput,
@@ -936,12 +989,14 @@ namespace stream_bench
 
     void print_stress_header(const bench_config& cfg)
     {
-        fmt::print("\n=== Stress Test — {} s per run, watchdog {}ms, blob size {}\n",
+        fmt::print(
+            "\n=== Stress Test — {} s per run, watchdog {}ms, blob size {}\n",
             cfg.stress_duration.count(),
             cfg.watchdog_timeout.count() > 0 ? fmt::format("{}ms", cfg.watchdog_timeout.count()) : "disabled",
             cfg.blob_size_override ? fmt::format("{} bytes", *cfg.blob_size_override) : "4096 bytes (default)");
         fmt::print("{:-<28}+{:-<12}+{:-<14}+{:-<14}+{:-<14}+{:-<14}+{:-<12}\n", "", "", "", "", "", "", "");
-        fmt::print("{:<27} | {:>10} | {:>12} | {:>12} | {:>12} | {:>12} | {:>10}\n",
+        fmt::print(
+            "{:<27} | {:>10} | {:>12} | {:>12} | {:>12} | {:>12} | {:>10}\n",
             "stream_type",
             "blob_bytes",
             "send MB/s",
@@ -952,7 +1007,10 @@ namespace stream_bench
         fmt::print("{:-<28}+{:-<12}+{:-<14}+{:-<14}+{:-<14}+{:-<14}+{:-<12}\n", "", "", "", "", "", "", "");
     }
 
-    void print_stress_row(const char* type, const stress_stats& send_s, const stress_stats& recv_s)
+    void print_stress_row(
+        const char* type,
+        const stress_stats& send_s,
+        const stress_stats& recv_s)
     {
         if (!send_s.valid)
         {
@@ -960,7 +1018,8 @@ namespace stream_bench
             return;
         }
         const char* verdict = (recv_s.recv_timeouts == 0) ? "PASS" : "WARN";
-        fmt::print("{:<27} | {:>10} | {:>12.2f} | {:>12.2f} | {:>12} | {:>12} | {:>10} [{}]\n",
+        fmt::print(
+            "{:<27} | {:>10} | {:>12.2f} | {:>12.2f} | {:>12} | {:>12} | {:>10} [{}]\n",
             type,
             send_s.blob_size,
             send_s.send_mbps(),
@@ -975,7 +1034,8 @@ namespace stream_bench
     // SPSC-based benchmark helpers
     // ============================================================
 
-    void run_spsc_based_bench(const char* name,
+    void run_spsc_based_bench(
+        const char* name,
         std::shared_ptr<streaming::stream> side_a,
         std::shared_ptr<streaming::stream> side_b,
         const bench_config& cfg,
@@ -990,24 +1050,29 @@ namespace stream_bench
         {
             std::atomic<bool> stop{false};
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            coro::sync_wait(coro::when_all([&]() -> coro::task<void>
-                { out_unidirectional = co_await run_unidirectional_sender(side_a, payload, stop, cfg, wd); }(),
-                run_drain(side_b, stop, wd)));
+            coro::sync_wait(
+                coro::when_all(
+                    [&]() -> coro::task<void>
+                    { out_unidirectional = co_await run_unidirectional_sender(side_a, payload, stop, cfg, wd); }(),
+                    run_drain(side_b, stop, wd)));
         }
 
         if (cfg.run_send_reply)
         {
             std::atomic<bool> stop{false};
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            coro::sync_wait(coro::when_all([&]() -> coro::task<void>
-                { out_send_reply = co_await run_send_reply(side_a, payload, stop, cfg, wd); }(),
-                run_echo(side_b, stop, wd)));
+            coro::sync_wait(
+                coro::when_all(
+                    [&]() -> coro::task<void>
+                    { out_send_reply = co_await run_send_reply(side_a, payload, stop, cfg, wd); }(),
+                    run_echo(side_b, stop, wd)));
         }
 
         (void)name;
     }
 
-    void run_spsc_based_stress_bench(const char* name,
+    void run_spsc_based_stress_bench(
+        const char* name,
         std::shared_ptr<streaming::stream> side_a,
         std::shared_ptr<streaming::stream> side_b,
         const bench_config& cfg,
@@ -1020,9 +1085,10 @@ namespace stream_bench
         std::atomic<bool> stop{false};
 
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        coro::sync_wait(coro::when_all([&]() -> coro::task<void>
-            { out_send = co_await run_stress_sender(side_a, payload, stop, cfg, wd); }(),
-            [&]() -> coro::task<void> { out_recv = co_await run_stress_drain(side_b, stop, cfg, wd); }()));
+        coro::sync_wait(
+            coro::when_all(
+                [&]() -> coro::task<void> { out_send = co_await run_stress_sender(side_a, payload, stop, cfg, wd); }(),
+                [&]() -> coro::task<void> { out_recv = co_await run_stress_drain(side_b, stop, cfg, wd); }()));
 
         (void)name;
     }
@@ -1032,7 +1098,12 @@ namespace stream_bench
     // ============================================================
 
     void run_tcp_bench(
-        size_t blob_size, uint16_t port, const bench_config& cfg, watchdog& wd, bench_stats& out_uni, bench_stats& out_reply)
+        size_t blob_size,
+        uint16_t port,
+        const bench_config& cfg,
+        watchdog& wd,
+        bench_stats& out_uni,
+        bench_stats& out_reply)
     {
         const std::vector<uint8_t> payload(blob_size, 0xAB);
         const coro::net::socket_address endpoint{"127.0.0.1", port};
@@ -1044,56 +1115,58 @@ namespace stream_bench
         {
             std::atomic<bool> stop{false};
             rpc::event server_ready;
-            coro::sync_wait(coro::when_all(
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&]() -> coro::task<void>
-                {
-                    auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
-                    server_ready.set();
-                    auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
-                    if (!accepted)
-                        co_return;
-                    auto stm = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
-                    co_await run_drain(stm, stop, wd);
-                }(),
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&]() -> coro::task<void>
-                {
-                    co_await server_ready.wait();
-                    coro::net::tcp::client client(sched_client, endpoint);
-                    if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
-                        co_return;
-                    auto stm = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
-                    out_uni = co_await run_unidirectional_sender(stm, payload, stop, cfg, wd);
-                }()));
+            coro::sync_wait(
+                coro::when_all(
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                    [&]() -> coro::task<void>
+                    {
+                        auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
+                        server_ready.set();
+                        auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
+                        if (!accepted)
+                            co_return;
+                        auto stm = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
+                        co_await run_drain(stm, stop, wd);
+                    }(),
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                    [&]() -> coro::task<void>
+                    {
+                        co_await server_ready.wait();
+                        coro::net::tcp::client client(sched_client, endpoint);
+                        if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
+                            co_return;
+                        auto stm = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
+                        out_uni = co_await run_unidirectional_sender(stm, payload, stop, cfg, wd);
+                    }()));
         }
 
         if (cfg.run_send_reply)
         {
             std::atomic<bool> stop{false};
             rpc::event server_ready;
-            coro::sync_wait(coro::when_all(
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&]() -> coro::task<void>
-                {
-                    auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
-                    server_ready.set();
-                    auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
-                    if (!accepted)
-                        co_return;
-                    auto stm = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
-                    co_await run_echo(stm, stop, wd);
-                }(),
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&]() -> coro::task<void>
-                {
-                    co_await server_ready.wait();
-                    coro::net::tcp::client client(sched_client, endpoint);
-                    if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
-                        co_return;
-                    auto stm = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
-                    out_reply = co_await run_send_reply(stm, payload, stop, cfg, wd);
-                }()));
+            coro::sync_wait(
+                coro::when_all(
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                    [&]() -> coro::task<void>
+                    {
+                        auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
+                        server_ready.set();
+                        auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
+                        if (!accepted)
+                            co_return;
+                        auto stm = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
+                        co_await run_echo(stm, stop, wd);
+                    }(),
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                    [&]() -> coro::task<void>
+                    {
+                        co_await server_ready.wait();
+                        coro::net::tcp::client client(sched_client, endpoint);
+                        if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
+                            co_return;
+                        auto stm = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
+                        out_reply = co_await run_send_reply(stm, payload, stop, cfg, wd);
+                    }()));
         }
 
         sched_server->shutdown();
@@ -1101,7 +1174,11 @@ namespace stream_bench
     }
 
     void run_tcp_stress_bench(
-        uint16_t port, const bench_config& cfg, watchdog& wd, stress_stats& out_send, stress_stats& out_recv)
+        uint16_t port,
+        const bench_config& cfg,
+        watchdog& wd,
+        stress_stats& out_send,
+        stress_stats& out_recv)
     {
         const size_t blob_size = cfg.blob_size_override.value_or(4096);
         const std::vector<uint8_t> payload(blob_size, 0xAB);
@@ -1112,28 +1189,29 @@ namespace stream_bench
         std::atomic<bool> stop{false};
         rpc::event server_ready;
 
-        coro::sync_wait(coro::when_all(
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            [&]() -> coro::task<void>
-            {
-                auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
-                server_ready.set();
-                auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
-                if (!accepted)
-                    co_return;
-                auto stm = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
-                out_recv = co_await run_stress_drain(stm, stop, cfg, wd);
-            }(),
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            [&]() -> coro::task<void>
-            {
-                co_await server_ready.wait();
-                coro::net::tcp::client client(sched_client, endpoint);
-                if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
-                    co_return;
-                auto stm = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
-                out_send = co_await run_stress_sender(stm, payload, stop, cfg, wd);
-            }()));
+        coro::sync_wait(
+            coro::when_all(
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                [&]() -> coro::task<void>
+                {
+                    auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
+                    server_ready.set();
+                    auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
+                    if (!accepted)
+                        co_return;
+                    auto stm = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
+                    out_recv = co_await run_stress_drain(stm, stop, cfg, wd);
+                }(),
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                [&]() -> coro::task<void>
+                {
+                    co_await server_ready.wait();
+                    coro::net::tcp::client client(sched_client, endpoint);
+                    if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
+                        co_return;
+                    auto stm = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
+                    out_send = co_await run_stress_sender(stm, payload, stop, cfg, wd);
+                }()));
 
         sched_server->shutdown();
         sched_client->shutdown();
@@ -1145,7 +1223,12 @@ namespace stream_bench
     // ============================================================
 
     void run_io_uring_bench(
-        size_t blob_size, uint16_t port, const bench_config& cfg, watchdog& wd, bench_stats& out_uni, bench_stats& out_reply)
+        size_t blob_size,
+        uint16_t port,
+        const bench_config& cfg,
+        watchdog& wd,
+        bench_stats& out_uni,
+        bench_stats& out_reply)
     {
         const std::vector<uint8_t> payload(blob_size, 0xAB);
         canopy::network_config::ip_address addr{};
@@ -1163,27 +1246,28 @@ namespace stream_bench
             auto acc = std::make_shared<streaming::io_uring::acceptor>(addr, port);
             acc->init(sched_server);
 
-            coro::sync_wait(coro::when_all(
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&]() -> coro::task<void>
-                {
-                    server_ready.set();
-                    auto maybe = co_await acc->accept();
-                    if (!maybe)
-                        co_return;
-                    co_await server_fn(*maybe);
-                    acc->stop();
-                }(),
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&]() -> coro::task<void>
-                {
-                    co_await server_ready.wait();
-                    coro::net::tcp::client client(sched_client, coro::net::socket_address{"127.0.0.1", port});
-                    if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
-                        co_return;
-                    auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), sched_client);
-                    co_await client_fn(stm);
-                }()));
+            coro::sync_wait(
+                coro::when_all(
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                    [&]() -> coro::task<void>
+                    {
+                        server_ready.set();
+                        auto maybe = co_await acc->accept();
+                        if (!maybe)
+                            co_return;
+                        co_await server_fn(*maybe);
+                        acc->stop();
+                    }(),
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                    [&]() -> coro::task<void>
+                    {
+                        co_await server_ready.wait();
+                        coro::net::tcp::client client(sched_client, coro::net::socket_address{"127.0.0.1", port});
+                        if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
+                            co_return;
+                        auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), sched_client);
+                        co_await client_fn(stm);
+                    }()));
         };
 
         if (cfg.run_unidirectional)
@@ -1219,7 +1303,11 @@ namespace stream_bench
     }
 
     void run_io_uring_stress_bench(
-        uint16_t port, const bench_config& cfg, watchdog& wd, stress_stats& out_send, stress_stats& out_recv)
+        uint16_t port,
+        const bench_config& cfg,
+        watchdog& wd,
+        stress_stats& out_send,
+        stress_stats& out_recv)
     {
         const size_t blob_size = cfg.blob_size_override.value_or(4096);
         const std::vector<uint8_t> payload(blob_size, 0xAB);
@@ -1237,27 +1325,28 @@ namespace stream_bench
         auto acc = std::make_shared<streaming::io_uring::acceptor>(addr, port);
         acc->init(sched_server);
 
-        coro::sync_wait(coro::when_all(
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            [&]() -> coro::task<void>
-            {
-                server_ready.set();
-                auto maybe = co_await acc->accept();
-                if (!maybe)
-                    co_return;
-                out_recv = co_await run_stress_drain(*maybe, stop, cfg, wd);
-                acc->stop();
-            }(),
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-            [&]() -> coro::task<void>
-            {
-                co_await server_ready.wait();
-                coro::net::tcp::client client(sched_client, coro::net::socket_address{"127.0.0.1", port});
-                if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
-                    co_return;
-                auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), sched_client);
-                out_send = co_await run_stress_sender(stm, payload, stop, cfg, wd);
-            }()));
+        coro::sync_wait(
+            coro::when_all(
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                [&]() -> coro::task<void>
+                {
+                    server_ready.set();
+                    auto maybe = co_await acc->accept();
+                    if (!maybe)
+                        co_return;
+                    out_recv = co_await run_stress_drain(*maybe, stop, cfg, wd);
+                    acc->stop();
+                }(),
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                [&]() -> coro::task<void>
+                {
+                    co_await server_ready.wait();
+                    coro::net::tcp::client client(sched_client, coro::net::socket_address{"127.0.0.1", port});
+                    if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
+                        co_return;
+                    auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), sched_client);
+                    out_send = co_await run_stress_sender(stm, payload, stop, cfg, wd);
+                }()));
 
         sched_server->shutdown();
         sched_client->shutdown();
@@ -1270,7 +1359,9 @@ namespace stream_bench
 // Main
 // ============================================================
 
-int main(int argc, char** argv)
+int main(
+    int argc,
+    char** argv)
 {
     using namespace stream_bench;
     using namespace bench_helpers;
@@ -1289,7 +1380,8 @@ int main(int argc, char** argv)
 
         fmt::print("Configuration:\n");
         fmt::print("  streams:    {}\n", stream_list);
-        fmt::print("  scenarios:  {}{}{}\n",
+        fmt::print(
+            "  scenarios:  {}{}{}\n",
             cfg.run_unidirectional ? "unidirectional " : "",
             cfg.run_send_reply ? "send_reply " : "",
             cfg.run_stress ? "stress" : "");
@@ -1302,7 +1394,8 @@ int main(int argc, char** argv)
         fmt::print("  timeout:    {}ms\n", cfg.recv_timeout.count());
         if (cfg.run_stress)
             fmt::print("  duration:   {}s\n", cfg.stress_duration.count());
-        fmt::print("  watchdog:   {}\n",
+        fmt::print(
+            "  watchdog:   {}\n",
             cfg.watchdog_timeout.count() > 0 ? fmt::format("{}ms", cfg.watchdog_timeout.count()) : "disabled");
         fmt::print("\n");
     }
@@ -1312,7 +1405,8 @@ int main(int argc, char** argv)
     // --timeout-ms so that watchdog-ms > timeout-ms.
     if (cfg.watchdog_timeout.count() > 0 && cfg.recv_timeout > cfg.watchdog_timeout)
     {
-        fmt::print(stderr,
+        fmt::print(
+            stderr,
             "WARNING: --timeout-ms ({}) > --watchdog-ms ({}).\n"
             "         A slow but legitimate receive can trigger the watchdog before it times out.\n"
             "         Consider: --watchdog-ms {}\n\n",
@@ -1363,7 +1457,8 @@ int main(int argc, char** argv)
         };
 
         // --- spsc ---
-        collect("spsc",
+        collect(
+            "spsc",
             [&](size_t blob_size, bench_stats& uni, bench_stats& reply)
             {
                 auto sched_a = make_scheduler();
@@ -1379,7 +1474,8 @@ int main(int argc, char** argv)
         // --- tcp ---
         {
             uint16_t port = 19200;
-            collect("tcp",
+            collect(
+                "tcp",
                 [&](size_t blob_size, bench_stats& uni, bench_stats& reply)
                 {
                     run_tcp_bench(blob_size, port, cfg, wd, uni, reply);
@@ -1391,7 +1487,8 @@ int main(int argc, char** argv)
         // --- io_uring ---
         {
             uint16_t port = 19400;
-            collect("io_uring",
+            collect(
+                "io_uring",
                 [&](size_t blob_size, bench_stats& uni, bench_stats& reply)
                 {
                     run_io_uring_bench(blob_size, port, cfg, wd, uni, reply);
@@ -1403,7 +1500,8 @@ int main(int argc, char** argv)
         // --- tls+spsc ---
         if (tls_cert.valid)
         {
-            collect("tls+spsc",
+            collect(
+                "tls+spsc",
                 [&](size_t blob_size, bench_stats& uni, bench_stats& reply)
                 {
                     auto sched_a = make_scheduler();
@@ -1419,21 +1517,22 @@ int main(int argc, char** argv)
 
                     std::shared_ptr<streaming::stream> tls_a;
                     std::shared_ptr<streaming::stream> tls_b;
-                    coro::sync_wait(coro::when_all(
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
-                            if (co_await s->handshake())
-                                tls_a = s;
-                        }(),
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
-                            if (co_await s->client_handshake())
-                                tls_b = s;
-                        }()));
+                    coro::sync_wait(
+                        coro::when_all(
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
+                                if (co_await s->handshake())
+                                    tls_a = s;
+                            }(),
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
+                                if (co_await s->client_handshake())
+                                    tls_b = s;
+                            }()));
 
                     if (!tls_a || !tls_b)
                         return;
@@ -1445,7 +1544,8 @@ int main(int argc, char** argv)
         }
 
         // --- ws+spsc ---
-        collect("ws+spsc",
+        collect(
+            "ws+spsc",
             [&](size_t blob_size, bench_stats& uni, bench_stats& reply)
             {
                 auto sched_a = make_scheduler();
@@ -1462,7 +1562,8 @@ int main(int argc, char** argv)
         // --- tls+ws+spsc ---
         if (tls_cert.valid)
         {
-            collect("tls+ws+spsc",
+            collect(
+                "tls+ws+spsc",
                 [&](size_t blob_size, bench_stats& uni, bench_stats& reply)
                 {
                     auto sched_a = make_scheduler();
@@ -1478,21 +1579,22 @@ int main(int argc, char** argv)
 
                     std::shared_ptr<streaming::stream> tls_a;
                     std::shared_ptr<streaming::stream> tls_b;
-                    coro::sync_wait(coro::when_all(
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
-                            if (co_await s->handshake())
-                                tls_a = s;
-                        }(),
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
-                            if (co_await s->client_handshake())
-                                tls_b = s;
-                        }()));
+                    coro::sync_wait(
+                        coro::when_all(
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
+                                if (co_await s->handshake())
+                                    tls_a = s;
+                            }(),
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
+                                if (co_await s->client_handshake())
+                                    tls_b = s;
+                            }()));
 
                     if (!tls_a || !tls_b)
                         return;
@@ -1546,7 +1648,8 @@ int main(int argc, char** argv)
         };
 
         // --- spsc stress ---
-        collect_stress("spsc",
+        collect_stress(
+            "spsc",
             [&](stress_stats& send_s, stress_stats& recv_s)
             {
                 auto sched_a = make_scheduler();
@@ -1562,7 +1665,8 @@ int main(int argc, char** argv)
         // --- tcp stress ---
         {
             uint16_t port = 19600;
-            collect_stress("tcp",
+            collect_stress(
+                "tcp",
                 [&](stress_stats& send_s, stress_stats& recv_s) { run_tcp_stress_bench(port, cfg, wd, send_s, recv_s); });
         }
 
@@ -1570,7 +1674,8 @@ int main(int argc, char** argv)
         // --- io_uring stress ---
         {
             uint16_t port = 19700;
-            collect_stress("io_uring",
+            collect_stress(
+                "io_uring",
                 [&](stress_stats& send_s, stress_stats& recv_s)
                 { run_io_uring_stress_bench(port, cfg, wd, send_s, recv_s); });
         }
@@ -1579,7 +1684,8 @@ int main(int argc, char** argv)
         // --- tls+spsc stress ---
         if (tls_cert.valid)
         {
-            collect_stress("tls+spsc",
+            collect_stress(
+                "tls+spsc",
                 [&](stress_stats& send_s, stress_stats& recv_s)
                 {
                     auto sched_a = make_scheduler();
@@ -1595,21 +1701,22 @@ int main(int argc, char** argv)
 
                     std::shared_ptr<streaming::stream> tls_a;
                     std::shared_ptr<streaming::stream> tls_b;
-                    coro::sync_wait(coro::when_all(
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
-                            if (co_await s->handshake())
-                                tls_a = s;
-                        }(),
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
-                            if (co_await s->client_handshake())
-                                tls_b = s;
-                        }()));
+                    coro::sync_wait(
+                        coro::when_all(
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
+                                if (co_await s->handshake())
+                                    tls_a = s;
+                            }(),
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
+                                if (co_await s->client_handshake())
+                                    tls_b = s;
+                            }()));
 
                     if (!tls_a || !tls_b)
                         return;
@@ -1621,7 +1728,8 @@ int main(int argc, char** argv)
         }
 
         // --- ws+spsc stress ---
-        collect_stress("ws+spsc",
+        collect_stress(
+            "ws+spsc",
             [&](stress_stats& send_s, stress_stats& recv_s)
             {
                 auto sched_a = make_scheduler();
@@ -1637,7 +1745,8 @@ int main(int argc, char** argv)
         // --- tls+ws+spsc stress ---
         if (tls_cert.valid)
         {
-            collect_stress("tls+ws+spsc",
+            collect_stress(
+                "tls+ws+spsc",
                 [&](stress_stats& send_s, stress_stats& recv_s)
                 {
                     auto sched_a = make_scheduler();
@@ -1653,21 +1762,22 @@ int main(int argc, char** argv)
 
                     std::shared_ptr<streaming::stream> tls_a;
                     std::shared_ptr<streaming::stream> tls_b;
-                    coro::sync_wait(coro::when_all(
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
-                            if (co_await s->handshake())
-                                tls_a = s;
-                        }(),
-                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                        [&]() -> coro::task<void>
-                        {
-                            auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
-                            if (co_await s->client_handshake())
-                                tls_b = s;
-                        }()));
+                    coro::sync_wait(
+                        coro::when_all(
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_a, server_ctx);
+                                if (co_await s->handshake())
+                                    tls_a = s;
+                            }(),
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                            [&]() -> coro::task<void>
+                            {
+                                auto s = std::make_shared<streaming::tls::stream>(raw_b, client_ctx);
+                                if (co_await s->client_handshake())
+                                    tls_b = s;
+                            }()));
 
                     if (!tls_a || !tls_b)
                         return;
@@ -1691,7 +1801,10 @@ int main(int argc, char** argv)
     return 0;
 }
 
-void rpc_log(int level, const char* str, size_t sz)
+void rpc_log(
+    int level,
+    const char* str,
+    size_t sz)
 {
     std::string msg(str, sz);
     switch (level)

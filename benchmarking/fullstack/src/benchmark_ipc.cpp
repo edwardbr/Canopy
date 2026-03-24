@@ -12,7 +12,10 @@
 namespace comprehensive::v1
 {
     CORO_TASK(benchmark_result)
-    run_ipc_direct_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size)
+    run_ipc_direct_benchmark(
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::encoding enc,
+        size_t blob_size)
     {
         benchmark_result result{};
         constexpr size_t ipc_child_scheduler_thread_count = 1;
@@ -24,7 +27,8 @@ namespace comprehensive::v1
         [[maybe_unused]] auto ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
         RPC_ASSERT(ok);
 
-        auto transport = rpc::ipc_transport::make_client("benchmark_ipc_direct",
+        auto transport = rpc::ipc_transport::make_client(
+            "benchmark_ipc_direct",
             root_service,
             rpc::ipc_transport::options{
                 .process_executable = CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH,
@@ -61,7 +65,10 @@ namespace comprehensive::v1
     }
 
     CORO_TASK(benchmark_result)
-    run_ipc_dll_benchmark(std::shared_ptr<coro::scheduler> scheduler, rpc::encoding enc, size_t blob_size)
+    run_ipc_dll_benchmark(
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::encoding enc,
+        size_t blob_size)
     {
         benchmark_result result{};
         constexpr size_t ipc_child_scheduler_thread_count = 1;
@@ -73,7 +80,8 @@ namespace comprehensive::v1
         [[maybe_unused]] auto ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
         RPC_ASSERT(ok);
 
-        auto transport = rpc::ipc_transport::make_client("benchmark_ipc_dll",
+        auto transport = rpc::ipc_transport::make_client(
+            "benchmark_ipc_dll",
             root_service,
             rpc::ipc_transport::options{
                 .process_executable = CANOPY_BENCHMARK_IPC_CHILD_HOST_PROCESS_PATH,

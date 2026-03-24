@@ -26,7 +26,8 @@ protected:
         rpc::shared_ptr<yyy::i_host> hst(new host());
         this->local_host_ptr_ = hst;
 
-        this->listener_ = std::make_unique<streaming::listener>("responder_transport",
+        this->listener_ = std::make_unique<streaming::listener>(
+            "responder_transport",
             std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8080}),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
                 this->make_interface_setup_factory()));

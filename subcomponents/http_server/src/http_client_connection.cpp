@@ -46,27 +46,38 @@ namespace canopy::http_server
         }
     } // namespace
 
-    client_connection::client_connection(std::shared_ptr<streaming::stream> stream, handler_set handlers)
+    client_connection::client_connection(
+        std::shared_ptr<streaming::stream> stream,
+        handler_set handlers)
         : stream_(std::move(stream))
         , handlers_(std::move(handlers))
     {
     }
 
-    int client_connection::on_method(llhttp_t* parser, const char* at, size_t length)
+    int client_connection::on_method(
+        llhttp_t* parser,
+        const char* at,
+        size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->parsed_request.method.append(at, length);
         return 0;
     }
 
-    int client_connection::on_url(llhttp_t* parser, const char* at, size_t length)
+    int client_connection::on_url(
+        llhttp_t* parser,
+        const char* at,
+        size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->parsed_request.url.append(at, length);
         return 0;
     }
 
-    int client_connection::on_header_field(llhttp_t* parser, const char* at, size_t length)
+    int client_connection::on_header_field(
+        llhttp_t* parser,
+        const char* at,
+        size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
 
@@ -80,7 +91,10 @@ namespace canopy::http_server
         return 0;
     }
 
-    int client_connection::on_header_value(llhttp_t* parser, const char* at, size_t length)
+    int client_connection::on_header_value(
+        llhttp_t* parser,
+        const char* at,
+        size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->current_header_value.append(at, length);
@@ -96,7 +110,10 @@ namespace canopy::http_server
         return 0;
     }
 
-    int client_connection::on_body(llhttp_t* parser, const char* at, size_t length)
+    int client_connection::on_body(
+        llhttp_t* parser,
+        const char* at,
+        size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->parsed_request.body.append(at, length);
@@ -122,7 +139,9 @@ namespace canopy::http_server
         ctx.current_header_value.clear();
     }
 
-    auto client_connection::build_http_response(const response& input, bool keep_alive) -> std::string
+    auto client_connection::build_http_response(
+        const response& input,
+        bool keep_alive) -> std::string
     {
         response output = input;
         if (output.status_text.empty())
@@ -367,7 +386,10 @@ namespace canopy::http_server
         return std::string(target.substr(0, separator));
     }
 
-    auto make_text_response(int status_code, std::string body, std::string content_type) -> response
+    auto make_text_response(
+        int status_code,
+        std::string body,
+        std::string content_type) -> response
     {
         response output;
         output.status_code = status_code;
@@ -377,7 +399,9 @@ namespace canopy::http_server
         return output;
     }
 
-    auto make_json_response(int status_code, std::string json_body) -> response
+    auto make_json_response(
+        int status_code,
+        std::string json_body) -> response
     {
         return make_text_response(status_code, std::move(json_body), "application/json");
     }

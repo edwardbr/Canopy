@@ -20,8 +20,13 @@ namespace rpc::local
         stdex::member_ptr<child_transport> parent_;
 
     public:
-        parent_transport(std::string name, std::shared_ptr<rpc::service> service, std::shared_ptr<child_transport> parent);
-        parent_transport(std::string name, std::shared_ptr<child_transport> parent);
+        parent_transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<child_transport> parent);
+        parent_transport(
+            std::string name,
+            std::shared_ptr<child_transport> parent);
 
         ~parent_transport() override CANOPY_DEFAULT_DESTRUCTOR;
 
@@ -29,7 +34,9 @@ namespace rpc::local
         void set_status(rpc::transport_status status) override;
 
         CORO_TASK(rpc::connect_result)
-        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override
+        inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr) override
         {
             std::ignore = stub;
             std::ignore = input_descr;
@@ -68,7 +75,9 @@ namespace rpc::local
 
             child_entry_point_result() = default;
             child_entry_point_result(
-                int error_code, rpc::remote_object output_descriptor, std::shared_ptr<parent_transport> child)
+                int error_code,
+                rpc::remote_object output_descriptor,
+                std::shared_ptr<parent_transport> child)
                 : error_code(error_code)
                 , output_descriptor(output_descriptor)
                 , child(std::move(child))
@@ -83,8 +92,12 @@ namespace rpc::local
         child_entry_point_factory_fn child_entry_point_factory_fn_;
 
     public:
-        child_transport(std::string name, std::shared_ptr<rpc::service> service)
-            : rpc::transport(name, service)
+        child_transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service)
+            : rpc::transport(
+                  name,
+                  service)
         {
             set_status(rpc::transport_status::CONNECTED);
         }
@@ -95,7 +108,9 @@ namespace rpc::local
         void on_child_disconnected();
 
         CORO_TASK(rpc::connect_result)
-        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override
+        inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr) override
         {
             auto svc = get_service();
             // get a new adjacent_zone_id
@@ -157,28 +172,33 @@ namespace rpc::local
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
 
-        template<class in_param_type, class out_param_type>
-        void set_child_entry_point(std::function<CORO_TASK(rpc::service_connect_result<out_param_type>)(
-                rpc::shared_ptr<in_param_type>, std::shared_ptr<rpc::child_service>)>&& child_entry_point_fn)
+        template<
+            class in_param_type,
+            class out_param_type>
+        void set_child_entry_point(
+            std::function<CORO_TASK(rpc::service_connect_result<out_param_type>)(
+                rpc::shared_ptr<in_param_type>,
+                std::shared_ptr<rpc::child_service>)>&& child_entry_point_fn)
         {
 
             child_entry_point_factory_fn_
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                = [child_entry_point_fn = std::move(child_entry_point_fn)](rpc::connection_settings input_descr,
+                = [child_entry_point_fn = std::move(child_entry_point_fn)](
+                      rpc::connection_settings input_descr,
                       std::shared_ptr<child_transport> parent) mutable -> CORO_TASK(child_entry_point_result)
             {
                 child_entry_point_result result{rpc::error::OK(), {}, std::make_shared<parent_transport>("child", parent)};
 
-                auto create_result
-                    = CO_AWAIT rpc::child_service::create_child_zone<in_param_type, out_param_type>("child",
-                        result.child,
-                        input_descr,
-                        std::move(child_entry_point_fn)
+                auto create_result = CO_AWAIT rpc::child_service::create_child_zone<in_param_type, out_param_type>(
+                    "child",
+                    result.child,
+                    input_descr,
+                    std::move(child_entry_point_fn)
 #ifdef CANOPY_BUILD_COROUTINE
-                            ,
-                        parent->get_service()->get_scheduler()
+                        ,
+                    parent->get_service()->get_scheduler()
 #endif
-                    );
+                );
                 result.error_code = create_result.error_code;
                 result.output_descriptor = create_result.descriptor;
                 if (result.error_code != rpc::error::OK())

@@ -70,14 +70,35 @@ namespace rpc::dynamic_library
         // Static host-callback shims: passed as function pointers to canopy_dll_init
         // The DLL's parent_transport calls these to reach the host inbound handlers.
         // -----------------------------------------------------------------------
-        static int cb_send(void* host_ctx, rpc::send_params* params, rpc::send_result* result);
-        static void cb_post(void* host_ctx, rpc::post_params* params);
-        static int cb_try_cast(void* host_ctx, rpc::try_cast_params* params, rpc::standard_result* result);
-        static int cb_add_ref(void* host_ctx, rpc::add_ref_params* params, rpc::standard_result* result);
-        static int cb_release(void* host_ctx, rpc::release_params* params, rpc::standard_result* result);
-        static void cb_object_released(void* host_ctx, rpc::object_released_params* params);
-        static void cb_transport_down(void* host_ctx, rpc::transport_down_params* params);
-        static int cb_get_new_zone_id(void* host_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result);
+        static int cb_send(
+            void* host_ctx,
+            rpc::send_params* params,
+            rpc::send_result* result);
+        static void cb_post(
+            void* host_ctx,
+            rpc::post_params* params);
+        static int cb_try_cast(
+            void* host_ctx,
+            rpc::try_cast_params* params,
+            rpc::standard_result* result);
+        static int cb_add_ref(
+            void* host_ctx,
+            rpc::add_ref_params* params,
+            rpc::standard_result* result);
+        static int cb_release(
+            void* host_ctx,
+            rpc::release_params* params,
+            rpc::standard_result* result);
+        static void cb_object_released(
+            void* host_ctx,
+            rpc::object_released_params* params);
+        static void cb_transport_down(
+            void* host_ctx,
+            rpc::transport_down_params* params);
+        static int cb_get_new_zone_id(
+            void* host_ctx,
+            rpc::get_new_zone_id_params* params,
+            rpc::new_zone_id_result* result);
 
         // Load a symbol from the shared object; returns nullptr on failure
         void* resolve_symbol(const char* name) const;
@@ -93,7 +114,10 @@ namespace rpc::dynamic_library
         void on_destination_count_zero() override;
 
     public:
-        child_transport(std::string name, std::shared_ptr<rpc::service> service, std::string library_path);
+        child_transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service,
+            std::string library_path);
 
         ~child_transport() override;
 
@@ -101,7 +125,9 @@ namespace rpc::dynamic_library
         void set_status(rpc::transport_status status) override;
 
         CORO_TASK(rpc::connect_result)
-        inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr) override;
+        inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            connection_settings input_descr) override;
 
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
 

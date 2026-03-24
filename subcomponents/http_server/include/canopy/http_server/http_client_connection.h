@@ -52,7 +52,9 @@ namespace canopy::http_server
     class client_connection
     {
     public:
-        explicit client_connection(std::shared_ptr<streaming::stream> stream, handler_set handlers);
+        explicit client_connection(
+            std::shared_ptr<streaming::stream> stream,
+            handler_set handlers);
 
         auto handle() -> coro::task<std::shared_ptr<rpc::transport>>;
 
@@ -67,16 +69,33 @@ namespace canopy::http_server
             bool message_complete{false};
         };
 
-        static int on_method(llhttp_t* parser, const char* at, size_t length);
-        static int on_url(llhttp_t* parser, const char* at, size_t length);
-        static int on_header_field(llhttp_t* parser, const char* at, size_t length);
-        static int on_header_value(llhttp_t* parser, const char* at, size_t length);
+        static int on_method(
+            llhttp_t* parser,
+            const char* at,
+            size_t length);
+        static int on_url(
+            llhttp_t* parser,
+            const char* at,
+            size_t length);
+        static int on_header_field(
+            llhttp_t* parser,
+            const char* at,
+            size_t length);
+        static int on_header_value(
+            llhttp_t* parser,
+            const char* at,
+            size_t length);
         static int on_headers_complete(llhttp_t* parser);
-        static int on_body(llhttp_t* parser, const char* at, size_t length);
+        static int on_body(
+            llhttp_t* parser,
+            const char* at,
+            size_t length);
         static int on_message_complete(llhttp_t* parser);
 
         static void flush_header(parser_request_context& ctx);
-        static auto build_http_response(const response& response, bool keep_alive) -> std::string;
+        static auto build_http_response(
+            const response& response,
+            bool keep_alive) -> std::string;
         static auto build_websocket_handshake_response(const std::string& accept_key) -> std::string;
 
         [[nodiscard]] auto dispatch_request(const request& request) const -> std::optional<response>;
@@ -88,6 +107,11 @@ namespace canopy::http_server
 
     auto status_text(int status_code) -> std::string;
     auto request_path(std::string_view target) -> std::string;
-    auto make_text_response(int status_code, std::string body, std::string content_type = "text/plain") -> response;
-    auto make_json_response(int status_code, std::string json_body) -> response;
+    auto make_text_response(
+        int status_code,
+        std::string body,
+        std::string content_type = "text/plain") -> response;
+    auto make_json_response(
+        int status_code,
+        std::string json_body) -> response;
 } // namespace canopy::http_server

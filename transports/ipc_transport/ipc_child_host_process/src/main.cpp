@@ -13,7 +13,9 @@
 #  include <transports/ipc_transport/bootstrap.h>
 #  include <transports/libcoro_spsc_dynamic_dll/loaded_library.h>
 
-int main(int argc, char** argv)
+int main(
+    int argc,
+    char** argv)
 {
     auto bootstrap = rpc::ipc_transport::child_host_bootstrap::from_command_line(argc, argv);
     if (!bootstrap)
@@ -26,7 +28,8 @@ int main(int argc, char** argv)
     rpc::zone host_zone = rpc::DEFAULT_PREFIX;
     rpc::zone dll_zone = bootstrap->dll_zone();
 
-    auto loaded = rpc::libcoro_spsc_dynamic_dll::loaded_library::load(bootstrap->dll_path(),
+    auto loaded = rpc::libcoro_spsc_dynamic_dll::loaded_library::load(
+        bootstrap->dll_path(),
         "ipc_child_host_process",
         dll_zone,
         host_zone,

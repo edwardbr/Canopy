@@ -45,15 +45,25 @@ namespace rpc::ipc_transport
             std::shared_ptr<streaming::stream> stream;
         };
 
-        static construction_bundle create_bundle(const std::shared_ptr<rpc::service>& service, const options& options);
-        static void spawn_child(const std::shared_ptr<state>& state, const options& options);
+        static construction_bundle create_bundle(
+            const std::shared_ptr<rpc::service>& service,
+            const options& options);
+        static void spawn_child(
+            const std::shared_ptr<state>& state,
+            const options& options);
         static void reap_child(const std::shared_ptr<state>& state);
 
         transport(
-            std::string name, const std::shared_ptr<rpc::service>& service, options options, construction_bundle bundle);
+            std::string name,
+            const std::shared_ptr<rpc::service>& service,
+            options options,
+            construction_bundle bundle);
 
     public:
-        transport(std::string name, const std::shared_ptr<rpc::service>& service, options options);
+        transport(
+            std::string name,
+            const std::shared_ptr<rpc::service>& service,
+            options options);
         ~transport() override;
         void initialise();
 #  ifdef CANOPY_BUILD_TEST
@@ -63,7 +73,10 @@ namespace rpc::ipc_transport
         void set_status(rpc::transport_status new_status) override;
     };
 
-    std::shared_ptr<transport> make_client(std::string name, const std::shared_ptr<rpc::service>& service, options options);
+    std::shared_ptr<transport> make_client(
+        std::string name,
+        const std::shared_ptr<rpc::service>& service,
+        options options);
 
 } // namespace rpc::ipc_transport
 

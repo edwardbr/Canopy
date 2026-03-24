@@ -15,12 +15,17 @@ namespace streaming::spsc_wrapping
     class stream : public ::streaming::stream
     {
     public:
-        static auto create(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<coro::scheduler> scheduler)
-            -> std::shared_ptr<stream>;
+        static auto create(
+            std::shared_ptr<::streaming::stream> underlying,
+            std::shared_ptr<coro::scheduler> scheduler) -> std::shared_ptr<stream>;
         ~stream() override = default;
 
-        auto receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override;
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override;
 
         auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
         bool is_closed() const override;
@@ -42,7 +47,9 @@ namespace streaming::spsc_wrapping
             std::atomic<size_t> pending_send_blobs{0};
         };
 
-        stream(std::shared_ptr<::streaming::stream> underlying, std::shared_ptr<coro::scheduler> scheduler);
+        stream(
+            std::shared_ptr<::streaming::stream> underlying,
+            std::shared_ptr<coro::scheduler> scheduler);
 
         void start_proxy_loops();
         void request_stop() const;

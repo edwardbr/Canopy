@@ -11,7 +11,10 @@ namespace rpc
     // This is for enclaves to call the host
     class host_service_proxy : public service_proxy
     {
-        host_service_proxy(const char* name, destination_zone host_zone_id, const std::shared_ptr<rpc::child_service>& svc);
+        host_service_proxy(
+            const char* name,
+            destination_zone host_zone_id,
+            const std::shared_ptr<rpc::child_service>& svc);
         host_service_proxy(const host_service_proxy& other) = default;
 
         std::shared_ptr<rpc::service_proxy> clone() override
@@ -20,11 +23,14 @@ namespace rpc
         }
 
         static std::shared_ptr<rpc::service_proxy> create(
-            const char* name, destination_zone host_zone_id, const std::shared_ptr<rpc::child_service>& svc);
+            const char* name,
+            destination_zone host_zone_id,
+            const std::shared_ptr<rpc::child_service>& svc);
 
         int initialise();
 
-        int send(uint64_t protocol_version,
+        int send(
+            uint64_t protocol_version,
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
@@ -36,7 +42,8 @@ namespace rpc
             std::vector<char>& out_buf_,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
-        void post(uint64_t protocol_version,
+        void post(
+            uint64_t protocol_version,
             encoding encoding,
             uint64_t tag,
             caller_zone caller_zone_id,
@@ -46,13 +53,15 @@ namespace rpc
             method method_id,
             const rpc::byte_span& in_data,
             const std::vector<rpc::back_channel_entry>& in_back_channel) override;
-        int try_cast(uint64_t protocol_version,
+        int try_cast(
+            uint64_t protocol_version,
             destination_zone destination_zone_id,
             object object_id,
             interface_ordinal interface_id,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
-        int add_ref(uint64_t protocol_version,
+        int add_ref(
+            uint64_t protocol_version,
             destination_zone destination_zone_id,
             object object_id,
             caller_zone caller_zone_id,
@@ -60,7 +69,8 @@ namespace rpc
             add_ref_options build_out_param_channel,
             const std::vector<rpc::back_channel_entry>& in_back_channel,
             std::vector<rpc::back_channel_entry>& out_back_channel) override;
-        int release(uint64_t protocol_version,
+        int release(
+            uint64_t protocol_version,
             destination_zone destination_zone_id,
             object object_id,
             caller_zone caller_zone_id,

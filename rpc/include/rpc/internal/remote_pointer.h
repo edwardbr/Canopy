@@ -94,7 +94,11 @@ namespace rpc
     {
         constexpr default_delete() noexcept = default;
 
-        template<typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
+        template<
+            typename U,
+            typename = std::enable_if_t<std::is_convertible_v<
+                U*,
+                T*>>>
         default_delete(const default_delete<U>&) noexcept
         {
         }
@@ -128,9 +132,11 @@ namespace rpc
         };
 
         template<typename T>
-        struct is_casting_interface_derived<T,
-            std::void_t<std::enable_if_t<std::is_base_of_v<rpc::casting_interface, std::remove_cv_t<T>>
-                                         || std::is_same_v<std::remove_cv_t<T>, void>>>> : std::true_type
+        struct is_casting_interface_derived<
+            T,
+            std::void_t<std::enable_if_t<
+                std::is_base_of_v<rpc::casting_interface, std::remove_cv_t<T>> || std::is_same_v<std::remove_cv_t<T>, void>>>>
+            : std::true_type
         {
         };
 #endif
@@ -326,11 +332,17 @@ namespace rpc
             // forward declarations implemented in object_proxy.cpp
             // add_ref is async because object_proxy::add_ref() makes RPC calls on 0→1 transitions
             CORO_TASK(int)
-            object_proxy_add_ref(std::shared_ptr<rpc::object_proxy> ob, rpc::add_ref_options options);
+            object_proxy_add_ref(
+                std::shared_ptr<rpc::object_proxy> ob,
+                rpc::add_ref_options options);
             // release is synchronous - just decrements local counters
-            void object_proxy_release(const std::shared_ptr<rpc::object_proxy>& ob, bool is_optimistic);
+            void object_proxy_release(
+                const std::shared_ptr<rpc::object_proxy>& ob,
+                bool is_optimistic);
             void get_object_proxy_reference_counts(
-                const std::shared_ptr<rpc::object_proxy>& ob, int& shared_count, int& optimistic_count);
+                const std::shared_ptr<rpc::object_proxy>& ob,
+                int& shared_count,
+                int& optimistic_count);
             // Synchronous direct increment for control block construction (no remote calls)
             void object_proxy_add_ref_shared(const std::shared_ptr<rpc::object_proxy>& ob);
 #endif
@@ -451,7 +463,8 @@ namespace rpc
 
                     if (prev_weak <= 0)
                     {
-                        RPC_ERROR("decrement_weak_and_destroy_if_zero: weak_count_ was {} before decrement (now {})",
+                        RPC_ERROR(
+                            "decrement_weak_and_destroy_if_zero: weak_count_ was {} before decrement (now {})",
                             prev_weak,
                             weak_count_.load());
                         RPC_ASSERT(!*"Negative weak_count_ count detected");
@@ -509,7 +522,8 @@ namespace rpc
                             long prev_rollback = optimistic_count_.fetch_sub(1, std::memory_order_relaxed);
                             if (prev_rollback <= 0)
                             {
-                                RPC_ERROR("try_increment_optimistic rollback: optimistic_count_ was {} before rollback",
+                                RPC_ERROR(
+                                    "try_increment_optimistic rollback: optimistic_count_ was {} before rollback",
                                     prev_rollback);
                                 RPC_ASSERT(!*"Negative optimistic_count_ in rollback");
                             }
@@ -533,8 +547,9 @@ namespace rpc
 
                     if (prev <= 0)
                     {
-                        RPC_ERROR("decrement_optimistic_and_dispose_if_zero: optimistic_count_ was {} before decrement "
-                                  "(now {})",
+                        RPC_ERROR(
+                            "decrement_optimistic_and_dispose_if_zero: optimistic_count_ was {} before decrement "
+                            "(now {})",
                             prev,
                             optimistic_count_.load());
                         RPC_ASSERT(!*"Negative optimistic_count_ count detected");
@@ -623,7 +638,9 @@ namespace rpc
             template<typename T, typename Deleter> struct control_block_impl_with_deleter : public control_block_base
             {
                 Deleter object_deleter_; // NOLINT(misc-non-private-member-variables-in-classes)
-                control_block_impl_with_deleter(T* p, Deleter d)
+                control_block_impl_with_deleter(
+                    T* p,
+                    Deleter d)
                     : control_block_base(to_void_ptr(p))
                     , object_deleter_(std::move(d))
                 {
@@ -664,7 +681,10 @@ namespace rpc
             {
                 Deleter object_deleter_;        // NOLINT(misc-non-private-member-variables-in-classes)
                 Alloc control_block_allocator_; // NOLINT(misc-non-private-member-variables-in-classes)
-                control_block_impl_with_deleter_alloc(T* p, Deleter d, Alloc a)
+                control_block_impl_with_deleter_alloc(
+                    T* p,
+                    Deleter d,
+                    Alloc a)
                     : control_block_base(to_void_ptr(p))
                     , object_deleter_(std::move(d))
                     , control_block_allocator_(std::move(a))
@@ -718,7 +738,9 @@ namespace rpc
                 };
 
                 template<typename... ConcreteArgs>
-                control_block_make_shared(Alloc alloc_for_t, ConcreteArgs&&... args_for_t)
+                control_block_make_shared(
+                    Alloc alloc_for_t,
+                    ConcreteArgs&&... args_for_t)
                     : control_block_base()
                     , allocator_instance_(std::move(alloc_for_t))
                 {
@@ -755,12 +777,22 @@ namespace rpc
 
         namespace __shared_ptr_make_support
         {
-            template<typename T, typename ValueAlloc, typename... Args>
-            shared_ptr<T> make_shared_with_value_alloc(const ValueAlloc&, Args&&...);
+            template<
+                typename T,
+                typename ValueAlloc,
+                typename... Args>
+            shared_ptr<T> make_shared_with_value_alloc(
+                const ValueAlloc&,
+                Args&&...);
         }
 
         // Forward declaration - definition moved after enable_shared_from_this
-        template<typename T, typename Y> void try_enable_shared_from_this(shared_ptr<T>& sp, Y* ptr) noexcept;
+        template<
+            typename T,
+            typename Y>
+        void try_enable_shared_from_this(
+            shared_ptr<T>& sp,
+            Y* ptr) noexcept;
 
     } // namespace __rpc_internal
 
@@ -828,13 +860,16 @@ namespace rpc
     {
         using element_type_impl = std::remove_extent_t<T>;
 
-        static_assert(!std::is_array_v<T>, "shared_ptr no longer supports array types");
+        static_assert(
+            !std::is_array_v<T>,
+            "shared_ptr no longer supports array types");
 
 #ifndef TEST_STL_COMPLIANCE
         template<typename Candidate> static constexpr void assert_casting_interface()
         {
             using clean_t = std::remove_cv_t<std::remove_reference_t<Candidate>>;
-            static_assert(__rpc_internal::is_casting_interface_derived<clean_t>::value,
+            static_assert(
+                __rpc_internal::is_casting_interface_derived<clean_t>::value,
                 "rpc::shared_ptr can only manage casting_interface-derived types");
         }
 #endif
@@ -862,7 +897,9 @@ namespace rpc
                 cb_->decrement_shared_and_dispose_if_zero();
         }
 
-        shared_ptr(__rpc_internal::__shared_ptr_control_block::control_block_base* cb, element_type_impl* p)
+        shared_ptr(
+            __rpc_internal::__shared_ptr_control_block::control_block_base* cb,
+            element_type_impl* p)
             : ptr_(p)
             , cb_(cb)
         {
@@ -876,7 +913,9 @@ namespace rpc
         {
         };
         shared_ptr(
-            __rpc_internal::__shared_ptr_control_block::control_block_base* cb, element_type_impl* p, for_enable_shared_tag)
+            __rpc_internal::__shared_ptr_control_block::control_block_base* cb,
+            element_type_impl* p,
+            for_enable_shared_tag)
             : ptr_(p)
             , cb_(cb)
         {
@@ -896,9 +935,13 @@ namespace rpc
         constexpr shared_ptr() noexcept = default;
         constexpr shared_ptr(std::nullptr_t) noexcept { }
 
-        template<typename Y,
-            typename = std::enable_if_t<is_ptr_convertible<Y>::value
-                                        && !std::is_same_v<std::remove_cv_t<Y>, __rpc_internal::__shared_ptr_control_block::control_block_base>>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<
+                is_ptr_convertible<Y>::value
+                && !std::is_same_v<
+                    std::remove_cv_t<Y>,
+                    __rpc_internal::__shared_ptr_control_block::control_block_base>>>
         explicit shared_ptr(Y* p)
             : ptr_(static_cast<element_type_impl*>(p))
         {
@@ -920,11 +963,17 @@ namespace rpc
                 __rpc_internal::try_enable_shared_from_this(*this, p);
         }
 
-        template<typename Y,
+        template<
+            typename Y,
             typename Deleter,
-            typename = std::enable_if_t<is_ptr_convertible<Y>::value
-                                        && !std::is_same_v<std::remove_cv_t<Y>, __rpc_internal::__shared_ptr_control_block::control_block_base>>>
-        shared_ptr(Y* p, Deleter d)
+            typename = std::enable_if_t<
+                is_ptr_convertible<Y>::value
+                && !std::is_same_v<
+                    std::remove_cv_t<Y>,
+                    __rpc_internal::__shared_ptr_control_block::control_block_base>>>
+        shared_ptr(
+            Y* p,
+            Deleter d)
             : ptr_(static_cast<element_type_impl*>(p))
         {
 #ifndef TEST_STL_COMPLIANCE
@@ -948,7 +997,9 @@ namespace rpc
         }
 
         template<typename Deleter>
-        shared_ptr(std::nullptr_t, Deleter d)
+        shared_ptr(
+            std::nullptr_t,
+            Deleter d)
             : ptr_(nullptr)
         {
             try
@@ -968,12 +1019,19 @@ namespace rpc
             }
         }
 
-        template<typename Y,
+        template<
+            typename Y,
             typename Deleter,
             typename Alloc,
-            typename = std::enable_if_t<is_ptr_convertible<Y>::value
-                                        && !std::is_same_v<std::remove_cv_t<Y>, __rpc_internal::__shared_ptr_control_block::control_block_base>>>
-        shared_ptr(Y* p, Deleter d, Alloc cb_alloc)
+            typename = std::enable_if_t<
+                is_ptr_convertible<Y>::value
+                && !std::is_same_v<
+                    std::remove_cv_t<Y>,
+                    __rpc_internal::__shared_ptr_control_block::control_block_base>>>
+        shared_ptr(
+            Y* p,
+            Deleter d,
+            Alloc cb_alloc)
             : ptr_(static_cast<element_type_impl*>(p))
         {
 #ifndef TEST_STL_COMPLIANCE
@@ -1020,8 +1078,13 @@ namespace rpc
                 __rpc_internal::try_enable_shared_from_this(*this, p);
         }
 
-        template<typename Deleter, typename Alloc>
-        shared_ptr(std::nullptr_t, Deleter d, Alloc cb_alloc)
+        template<
+            typename Deleter,
+            typename Alloc>
+        shared_ptr(
+            std::nullptr_t,
+            Deleter d,
+            Alloc cb_alloc)
             : ptr_(nullptr)
         {
             try
@@ -1058,7 +1121,9 @@ namespace rpc
         }
 
         template<typename Y>
-        shared_ptr(const shared_ptr<Y>& r, element_type* p_alias) noexcept
+        shared_ptr(
+            const shared_ptr<Y>& r,
+            element_type* p_alias) noexcept
             : ptr_(p_alias)
             , cb_(r.internal_get_cb())
         {
@@ -1066,7 +1131,9 @@ namespace rpc
         }
 
         template<typename Y>
-        shared_ptr(shared_ptr<Y>&& r, element_type* p_alias) noexcept
+        shared_ptr(
+            shared_ptr<Y>&& r,
+            element_type* p_alias) noexcept
             : ptr_(p_alias)
             , cb_(r.internal_get_cb())
         {
@@ -1088,14 +1155,18 @@ namespace rpc
             r.ptr_ = nullptr;
         }
 
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         shared_ptr(const shared_ptr<Y>& r) noexcept
             : ptr_(static_cast<element_type_impl*>(r.internal_get_ptr()))
             , cb_(r.internal_get_cb())
         {
             acquire_this();
         }
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         shared_ptr(shared_ptr<Y>&& r) noexcept
             : ptr_(static_cast<element_type_impl*>(r.internal_get_ptr()))
             , cb_(r.internal_get_cb())
@@ -1104,7 +1175,9 @@ namespace rpc
             r.ptr_ = nullptr;
         }
 
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         explicit shared_ptr(const weak_ptr<Y>& r)
         {
             shared_ptr<Y> temp = r.lock();
@@ -1131,7 +1204,9 @@ namespace rpc
             shared_ptr(r).swap(*this);
             return *this;
         }
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         shared_ptr& operator=(const shared_ptr<Y>& r) noexcept
         {
             shared_ptr(r).swap(*this);
@@ -1142,7 +1217,9 @@ namespace rpc
             shared_ptr(std::move(r)).swap(*this);
             return *this;
         }
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         shared_ptr& operator=(shared_ptr<Y>&& r) noexcept
         {
             shared_ptr(std::move(r)).swap(*this);
@@ -1155,11 +1232,15 @@ namespace rpc
         }
 
         void reset() noexcept { shared_ptr().swap(*this); }
-        template<typename Y,
+        template<
+            typename Y,
             typename Deleter = default_delete<Y>,
             typename Alloc = std::allocator<char>,
             typename = std::enable_if_t<is_ptr_convertible<Y>::value>>
-        void reset(Y* p, Deleter d = Deleter(), Alloc cb_alloc = Alloc())
+        void reset(
+            Y* p,
+            Deleter d = Deleter(),
+            Alloc cb_alloc = Alloc())
         {
             shared_ptr(p, std::move(d), std::move(cb_alloc)).swap(*this);
         }
@@ -1173,14 +1254,20 @@ namespace rpc
         [[nodiscard]] element_type_impl* get() const noexcept { return ptr_; }
 
         template<typename U = T>
-        std::enable_if_t<!std::is_void_v<U> && !std::is_array_v<U>, std::remove_extent_t<U>&> operator*() const noexcept
+        std::enable_if_t<
+            !std::is_void_v<U> && !std::is_array_v<U>,
+            std::remove_extent_t<U>&>
+        operator*() const noexcept
         {
             using result_type = std::remove_extent_t<U>;
             return *static_cast<result_type*>(ptr_);
         }
 
         template<typename U = T>
-        std::enable_if_t<!std::is_void_v<U> && !std::is_array_v<U>, std::remove_extent_t<U>*> operator->() const noexcept
+        std::enable_if_t<
+            !std::is_void_v<U> && !std::is_array_v<U>,
+            std::remove_extent_t<U>*>
+        operator->() const noexcept
         {
             using result_type = std::remove_extent_t<U>;
             return static_cast<result_type*>(ptr_);
@@ -1210,7 +1297,8 @@ namespace rpc
         }
         [[nodiscard]] element_type_impl* internal_get_ptr() const { return ptr_; }
         // Private constructor for constructing from existing control block (for friends only)
-        shared_ptr(__rpc_internal::__shared_ptr_control_block::control_block_base* cb,
+        shared_ptr(
+            __rpc_internal::__shared_ptr_control_block::control_block_base* cb,
             element_type_impl* ptr,
             internal_construct_tag) noexcept
             : ptr_(ptr)
@@ -1223,18 +1311,39 @@ namespace rpc
         template<typename U> friend class weak_ptr;
         template<typename U>
         friend class shared_ptr; // Allow different template instantiations to access private members
-        template<typename U, typename... Args> friend shared_ptr<U> make_shared(Args&&... args);
-        template<typename U, typename Alloc, typename... Args>
-        friend shared_ptr<U> allocate_shared(const Alloc& alloc, Args&&... args);
-        template<typename U, typename ValueAlloc, typename... Args>
+        template<
+            typename U,
+            typename... Args>
+        friend shared_ptr<U> make_shared(Args&&... args);
+        template<
+            typename U,
+            typename Alloc,
+            typename... Args>
+        friend shared_ptr<U> allocate_shared(
+            const Alloc& alloc,
+            Args&&... args);
+        template<
+            typename U,
+            typename ValueAlloc,
+            typename... Args>
         friend shared_ptr<U> __rpc_internal::__shared_ptr_make_support::make_shared_with_value_alloc(
-            const ValueAlloc&, Args&&...);
-        template<class T1_cast, class T2_cast>
+            const ValueAlloc&,
+            Args&&...);
+        template<
+            class T1_cast,
+            class T2_cast>
         friend shared_ptr<T1_cast> dynamic_pointer_cast(const shared_ptr<T2_cast>& from) noexcept;
         template<typename U> friend class enable_shared_from_this;
-        template<typename T2, typename Y2>
-        friend void __rpc_internal::try_enable_shared_from_this(shared_ptr<T2>& sp, Y2* ptr) noexcept;
-        template<typename Deleter, typename U> friend Deleter* get_deleter(const shared_ptr<U>& p) noexcept;
+        template<
+            typename T2,
+            typename Y2>
+        friend void __rpc_internal::try_enable_shared_from_this(
+            shared_ptr<T2>& sp,
+            Y2* ptr) noexcept;
+        template<
+            typename Deleter,
+            typename U>
+        friend Deleter* get_deleter(const shared_ptr<U>& p) noexcept;
 #ifndef TEST_STL_COMPLIANCE
         template<typename U> friend class optimistic_ptr;
         // Friend declarations for factory functions
@@ -1283,7 +1392,9 @@ namespace rpc
     {
         using element_type_impl = std::remove_extent_t<T>;
 
-        static_assert(!std::is_array_v<T>, "weak_ptr no longer supports array types");
+        static_assert(
+            !std::is_array_v<T>,
+            "weak_ptr no longer supports array types");
 
         __rpc_internal::__shared_ptr_control_block::control_block_base* cb_{nullptr};
         element_type_impl* ptr_for_lock_{nullptr};
@@ -1293,7 +1404,8 @@ namespace rpc
 
         template<typename SourceElement>
         static element_type_impl* convert_ptr_for_lock(
-            __rpc_internal::__shared_ptr_control_block::control_block_base* source_cb, SourceElement* source_ptr) noexcept
+            __rpc_internal::__shared_ptr_control_block::control_block_base* source_cb,
+            SourceElement* source_ptr) noexcept
         {
             if (!source_ptr)
                 return nullptr;
@@ -1416,7 +1528,9 @@ namespace rpc
 
         constexpr weak_ptr() noexcept = default;
 
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         weak_ptr(const shared_ptr<Y>& r) noexcept
             : cb_(r.internal_get_cb())
             , ptr_for_lock_(r.internal_get_ptr())
@@ -1432,7 +1546,9 @@ namespace rpc
             if (cb_)
                 cb_->increment_weak();
         }
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         weak_ptr(const weak_ptr<Y>& r) noexcept
         {
             // Use thread-safe conversion for virtual inheritance cases, fast path otherwise
@@ -1454,8 +1570,11 @@ namespace rpc
             r.cb_ = nullptr;
             r.ptr_for_lock_ = nullptr;
         }
-        template<typename Y,
-            typename = std::enable_if_t<std::is_convertible_v<typename weak_ptr<Y>::element_type*, element_type_impl*>>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<std::is_convertible_v<
+                typename weak_ptr<Y>::element_type*,
+                element_type_impl*>>>
         weak_ptr(weak_ptr<Y>&& r) noexcept
         {
             // Use thread-safe conversion for virtual inheritance cases, fast path otherwise
@@ -1486,13 +1605,17 @@ namespace rpc
             weak_ptr(r).swap(*this);
             return *this;
         }
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         weak_ptr& operator=(const weak_ptr<Y>& r) noexcept
         {
             weak_ptr(r).swap(*this);
             return *this;
         }
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         weak_ptr& operator=(const shared_ptr<Y>& r) noexcept
         {
             weak_ptr(r).swap(*this);
@@ -1503,7 +1626,9 @@ namespace rpc
             weak_ptr(std::move(r)).swap(*this);
             return *this;
         }
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         weak_ptr& operator=(weak_ptr<Y>&& r) noexcept
         {
             weak_ptr(std::move(r)).swap(*this);
@@ -1574,19 +1699,30 @@ namespace rpc
     {
         using is_transparent = void;
 
-        bool operator()(const shared_ptr<T>& lhs, const shared_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const shared_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const shared_ptr<T>& lhs, const weak_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const weak_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const weak_ptr<T>& lhs, const shared_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const shared_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const weak_ptr<T>& lhs, const weak_ptr<T>& rhs) const noexcept { return lhs.owner_before(rhs); }
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const weak_ptr<T>& rhs) const noexcept
+        {
+            return lhs.owner_before(rhs);
+        }
     };
 
     // STL-compliant specialization for shared_ptr<T>
@@ -1594,19 +1730,30 @@ namespace rpc
     {
         using is_transparent = void;
 
-        bool operator()(const shared_ptr<T>& lhs, const shared_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const shared_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const shared_ptr<T>& lhs, const weak_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const weak_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const weak_ptr<T>& lhs, const shared_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const shared_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const weak_ptr<T>& lhs, const weak_ptr<T>& rhs) const noexcept { return lhs.owner_before(rhs); }
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const weak_ptr<T>& rhs) const noexcept
+        {
+            return lhs.owner_before(rhs);
+        }
 
         // STL compatibility: deprecated nested types (until C++20)
         using result_type = bool;
@@ -1619,19 +1766,30 @@ namespace rpc
     {
         using is_transparent = void;
 
-        bool operator()(const shared_ptr<T>& lhs, const shared_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const shared_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const shared_ptr<T>& lhs, const weak_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const weak_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const weak_ptr<T>& lhs, const shared_ptr<T>& rhs) const noexcept
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const shared_ptr<T>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
-        bool operator()(const weak_ptr<T>& lhs, const weak_ptr<T>& rhs) const noexcept { return lhs.owner_before(rhs); }
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const weak_ptr<T>& rhs) const noexcept
+        {
+            return lhs.owner_before(rhs);
+        }
 
         // STL compatibility: deprecated nested types (until C++20)
         using result_type = bool;
@@ -1643,25 +1801,42 @@ namespace rpc
     {
         using is_transparent = void;
 
-        template<typename T, typename U>
-        bool operator()(const shared_ptr<T>& lhs, const shared_ptr<U>& rhs) const noexcept
+        template<
+            typename T,
+            typename U>
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const shared_ptr<U>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
 
-        template<typename T, typename U>
-        bool operator()(const shared_ptr<T>& lhs, const weak_ptr<U>& rhs) const noexcept
+        template<
+            typename T,
+            typename U>
+        bool operator()(
+            const shared_ptr<T>& lhs,
+            const weak_ptr<U>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
 
-        template<typename T, typename U>
-        bool operator()(const weak_ptr<T>& lhs, const shared_ptr<U>& rhs) const noexcept
+        template<
+            typename T,
+            typename U>
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const shared_ptr<U>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
 
-        template<typename T, typename U> bool operator()(const weak_ptr<T>& lhs, const weak_ptr<U>& rhs) const noexcept
+        template<
+            typename T,
+            typename U>
+        bool operator()(
+            const weak_ptr<T>& lhs,
+            const weak_ptr<U>& rhs) const noexcept
         {
             return lhs.owner_before(rhs);
         }
@@ -1685,8 +1860,13 @@ namespace rpc
     {
         namespace __shared_ptr_make_support
         {
-            template<typename T, typename ValueAlloc, typename... Args>
-            shared_ptr<T> make_shared_with_value_alloc(const ValueAlloc& value_alloc, Args&&... args)
+            template<
+                typename T,
+                typename ValueAlloc,
+                typename... Args>
+            shared_ptr<T> make_shared_with_value_alloc(
+                const ValueAlloc& value_alloc,
+                Args&&... args)
             {
 #ifndef TEST_STL_COMPLIANCE
                 shared_ptr<T>::template assert_casting_interface<std::remove_extent_t<T>>();
@@ -1710,7 +1890,8 @@ namespace rpc
 
                 cb_ptr->increment_shared();
                 using result_element_type = typename shared_ptr<T>::element_type;
-                shared_ptr<T> result(static_cast<__shared_ptr_control_block::control_block_base*>(cb_ptr),
+                shared_ptr<T> result(
+                    static_cast<__shared_ptr_control_block::control_block_base*>(cb_ptr),
                     static_cast<result_element_type*>(cb_ptr->get_managed_object_ptr()));
                 __rpc_internal::try_enable_shared_from_this(
                     result, static_cast<result_element_type*>(cb_ptr->get_managed_object_ptr()));
@@ -1722,49 +1903,88 @@ namespace rpc
     // --- Free Functions ---
 
     // Comparison operators for shared_ptr
-    template<typename T, typename U> bool operator==(const shared_ptr<T>& a, const shared_ptr<U>& b) noexcept
+    template<
+        typename T,
+        typename U>
+    bool operator==(
+        const shared_ptr<T>& a,
+        const shared_ptr<U>& b) noexcept
     {
         return a.get() == b.get();
     }
 
-    template<typename T, typename U> bool operator!=(const shared_ptr<T>& a, const shared_ptr<U>& b) noexcept
+    template<
+        typename T,
+        typename U>
+    bool operator!=(
+        const shared_ptr<T>& a,
+        const shared_ptr<U>& b) noexcept
     {
         return a.get() != b.get();
     }
 
-    template<typename T, typename U> bool operator<(const shared_ptr<T>& a, const shared_ptr<U>& b) noexcept
+    template<
+        typename T,
+        typename U>
+    bool operator<(
+        const shared_ptr<T>& a,
+        const shared_ptr<U>& b) noexcept
     {
         using APtr = typename shared_ptr<T>::element_type*;
         using BPtr = typename shared_ptr<U>::element_type*;
         return std::less<std::common_type_t<APtr, BPtr>>{}(a.get(), b.get());
     }
 
-    template<typename T, typename U> bool operator<=(const shared_ptr<T>& a, const shared_ptr<U>& b) noexcept
+    template<
+        typename T,
+        typename U>
+    bool operator<=(
+        const shared_ptr<T>& a,
+        const shared_ptr<U>& b) noexcept
     {
         return !(b < a);
     }
 
-    template<typename T, typename U> bool operator>(const shared_ptr<T>& a, const shared_ptr<U>& b) noexcept
+    template<
+        typename T,
+        typename U>
+    bool operator>(
+        const shared_ptr<T>& a,
+        const shared_ptr<U>& b) noexcept
     {
         return b < a;
     }
 
-    template<typename T, typename U> bool operator>=(const shared_ptr<T>& a, const shared_ptr<U>& b) noexcept
+    template<
+        typename T,
+        typename U>
+    bool operator>=(
+        const shared_ptr<T>& a,
+        const shared_ptr<U>& b) noexcept
     {
         return !(a < b);
     }
 
-    template<typename T> void swap(shared_ptr<T>& lhs, shared_ptr<T>& rhs) noexcept
+    template<typename T>
+    void swap(
+        shared_ptr<T>& lhs,
+        shared_ptr<T>& rhs) noexcept
     {
         lhs.swap(rhs);
     }
 
-    template<typename T> void swap(weak_ptr<T>& lhs, weak_ptr<T>& rhs) noexcept
+    template<typename T>
+    void swap(
+        weak_ptr<T>& lhs,
+        weak_ptr<T>& rhs) noexcept
     {
         lhs.swap(rhs);
     }
 
-    template<typename Deleter, typename T> Deleter* get_deleter(const shared_ptr<T>& p) noexcept
+    template<
+        typename Deleter,
+        typename T>
+    Deleter* get_deleter(const shared_ptr<T>& p) noexcept
     {
         if constexpr (std::is_reference_v<Deleter>)
         {
@@ -1788,7 +2008,10 @@ namespace rpc
         return static_cast<Deleter*>(result);
     }
 
-    template<typename T, typename... Args> shared_ptr<T> make_shared(Args&&... args)
+    template<
+        typename T,
+        typename... Args>
+    shared_ptr<T> make_shared(Args&&... args)
     {
         using ValueAlloc = std::allocator<std::remove_cv_t<T>>;
         ValueAlloc value_alloc;
@@ -1796,8 +2019,13 @@ namespace rpc
             value_alloc, std::forward<Args>(args)...);
     }
 
-    template<typename T, typename Alloc, typename... Args>
-    shared_ptr<T> allocate_shared(const Alloc& alloc, Args&&... args)
+    template<
+        typename T,
+        typename Alloc,
+        typename... Args>
+    shared_ptr<T> allocate_shared(
+        const Alloc& alloc,
+        Args&&... args)
     {
         using ValueAlloc = typename std::allocator_traits<Alloc>::template rebind_alloc<std::remove_cv_t<T>>;
         ValueAlloc value_alloc(alloc);
@@ -1817,7 +2045,8 @@ namespace rpc
         ~enable_shared_from_this() = default;
 
         template<typename ActualPtrType>
-        void internal_set_weak_this(__rpc_internal::__shared_ptr_control_block::control_block_base* cb_for_this_obj,
+        void internal_set_weak_this(
+            __rpc_internal::__shared_ptr_control_block::control_block_base* cb_for_this_obj,
             ActualPtrType* ptr_to_this_obj) const
         {
             using esft_element = typename shared_ptr<T>::element_type;
@@ -1848,17 +2077,29 @@ namespace rpc
         weak_ptr<T> weak_from_this() noexcept { return weak_this_; }
         weak_ptr<const T> weak_from_this() const noexcept { return weak_this_; }
 
-        template<typename U, typename... Args> friend shared_ptr<U> make_shared(Args&&...);
+        template<
+            typename U,
+            typename... Args>
+        friend shared_ptr<U> make_shared(Args&&...);
         template<typename U> friend class shared_ptr;
         template<typename U> friend class weak_ptr;
-        template<typename T2, typename Y2>
-        friend void __rpc_internal::try_enable_shared_from_this(shared_ptr<T2>& sp, Y2* ptr) noexcept;
+        template<
+            typename T2,
+            typename Y2>
+        friend void __rpc_internal::try_enable_shared_from_this(
+            shared_ptr<T2>& sp,
+            Y2* ptr) noexcept;
     };
 
     // Internal helper function to initialize enable_shared_from_this - definition
     namespace __rpc_internal
     {
-        template<typename T, typename Y> void try_enable_shared_from_this(shared_ptr<T>& sp, Y* ptr) noexcept
+        template<
+            typename T,
+            typename Y>
+        void try_enable_shared_from_this(
+            shared_ptr<T>& sp,
+            Y* ptr) noexcept
         {
             if constexpr (std::is_base_of_v<RPC_MEMORY::enable_shared_from_this<Y>, Y>)
             {
@@ -1872,14 +2113,20 @@ namespace rpc
     }
 
     // Pointer cast functions
-    template<typename T, typename U> shared_ptr<T> static_pointer_cast(const shared_ptr<U>& r) noexcept
+    template<
+        typename T,
+        typename U>
+    shared_ptr<T> static_pointer_cast(const shared_ptr<U>& r) noexcept
     {
         auto p = static_cast<T*>(r.get());
         return shared_ptr<T>(r, p);
     }
 
 #ifdef TEST_STL_COMPLIANCE
-    template<typename T, typename U> shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U>& r) noexcept
+    template<
+        typename T,
+        typename U>
+    shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U>& r) noexcept
     {
         if (auto p = dynamic_cast<T*>(r.get()))
         {
@@ -1890,7 +2137,11 @@ namespace rpc
 
 #else
 
-    template<typename T, typename U> CORO_TASK(shared_ptr<T>) dynamic_pointer_cast(shared_ptr<U> from) noexcept
+    template<
+        typename T,
+        typename U>
+    CORO_TASK(shared_ptr<T>)
+    dynamic_pointer_cast(shared_ptr<U> from) noexcept
     {
         if (!from)
             CO_RETURN shared_ptr<T>();
@@ -1921,83 +2172,128 @@ namespace rpc
     }
 #endif
 
-    template<typename T, typename U> shared_ptr<T> const_pointer_cast(const shared_ptr<U>& r) noexcept
+    template<
+        typename T,
+        typename U>
+    shared_ptr<T> const_pointer_cast(const shared_ptr<U>& r) noexcept
     {
         auto p = const_cast<T*>(r.get());
         return shared_ptr<T>(r, p);
     }
 
-    template<typename T, typename U> shared_ptr<T> reinterpret_pointer_cast(const shared_ptr<U>& r) noexcept
+    template<
+        typename T,
+        typename U>
+    shared_ptr<T> reinterpret_pointer_cast(const shared_ptr<U>& r) noexcept
     {
         auto p = reinterpret_cast<T*>(r.get());
         return shared_ptr<T>(r, p);
     }
 
     // Comparison operators with nullptr
-    template<typename T> bool operator==(const shared_ptr<T>& x, std::nullptr_t) noexcept
+    template<typename T>
+    bool operator==(
+        const shared_ptr<T>& x,
+        std::nullptr_t) noexcept
     {
         return !x;
     }
 
-    template<typename T> bool operator==(std::nullptr_t, const shared_ptr<T>& x) noexcept
+    template<typename T>
+    bool operator==(
+        std::nullptr_t,
+        const shared_ptr<T>& x) noexcept
     {
         return !x;
     }
 
-    template<typename T> bool operator!=(const shared_ptr<T>& x, std::nullptr_t) noexcept
+    template<typename T>
+    bool operator!=(
+        const shared_ptr<T>& x,
+        std::nullptr_t) noexcept
     {
         return static_cast<bool>(x);
     }
 
-    template<typename T> bool operator!=(std::nullptr_t, const shared_ptr<T>& x) noexcept
+    template<typename T>
+    bool operator!=(
+        std::nullptr_t,
+        const shared_ptr<T>& x) noexcept
     {
         return static_cast<bool>(x);
     }
 
-    template<typename T> bool operator<(const shared_ptr<T>& x, std::nullptr_t) noexcept
+    template<typename T>
+    bool operator<(
+        const shared_ptr<T>& x,
+        std::nullptr_t) noexcept
     {
         using Ptr = typename shared_ptr<T>::element_type*;
         return std::less<Ptr>()(x.get(), nullptr);
     }
 
-    template<typename T> bool operator<(std::nullptr_t, const shared_ptr<T>& x) noexcept
+    template<typename T>
+    bool operator<(
+        std::nullptr_t,
+        const shared_ptr<T>& x) noexcept
     {
         using Ptr = typename shared_ptr<T>::element_type*;
         return std::less<Ptr>()(nullptr, x.get());
     }
 
-    template<typename T> bool operator<=(const shared_ptr<T>& x, std::nullptr_t) noexcept
+    template<typename T>
+    bool operator<=(
+        const shared_ptr<T>& x,
+        std::nullptr_t) noexcept
     {
         return !(nullptr < x);
     }
 
-    template<typename T> bool operator<=(std::nullptr_t, const shared_ptr<T>& x) noexcept
+    template<typename T>
+    bool operator<=(
+        std::nullptr_t,
+        const shared_ptr<T>& x) noexcept
     {
         return !(x < nullptr);
     }
 
-    template<typename T> bool operator>(const shared_ptr<T>& x, std::nullptr_t) noexcept
+    template<typename T>
+    bool operator>(
+        const shared_ptr<T>& x,
+        std::nullptr_t) noexcept
     {
         return nullptr < x;
     }
 
-    template<typename T> bool operator>(std::nullptr_t, const shared_ptr<T>& x) noexcept
+    template<typename T>
+    bool operator>(
+        std::nullptr_t,
+        const shared_ptr<T>& x) noexcept
     {
         return x < nullptr;
     }
 
-    template<typename T> bool operator>=(const shared_ptr<T>& x, std::nullptr_t) noexcept
+    template<typename T>
+    bool operator>=(
+        const shared_ptr<T>& x,
+        std::nullptr_t) noexcept
     {
         return !(x < nullptr);
     }
 
-    template<typename T> bool operator>=(std::nullptr_t, const shared_ptr<T>& x) noexcept
+    template<typename T>
+    bool operator>=(
+        std::nullptr_t,
+        const shared_ptr<T>& x) noexcept
     {
         return !(nullptr < x);
     }
 
     // Output stream operator
-    template<typename T> std::ostream& operator<<(std::ostream& os, const shared_ptr<T>& ptr)
+    template<typename T>
+    std::ostream& operator<<(
+        std::ostream& os,
+        const shared_ptr<T>& ptr)
     {
         return os << ptr.get();
     }
@@ -2089,8 +2385,11 @@ namespace rpc
     {
         using element_type_impl = std::remove_extent_t<T>;
 
-        static_assert(!std::is_array_v<T>, "optimistic_ptr does not support array types");
-        static_assert(__rpc_internal::is_casting_interface_derived<T>::value,
+        static_assert(
+            !std::is_array_v<T>,
+            "optimistic_ptr does not support array types");
+        static_assert(
+            __rpc_internal::is_casting_interface_derived<T>::value,
             "optimistic_ptr can only manage casting_interface-derived types");
 
         // For local objects: local_proxy_holder_ holds the local_proxy (callable target), ptr_ and cb_ are nullptr
@@ -2152,7 +2451,9 @@ namespace rpc
         }
 
         // Heterogeneous copy constructor (upcasts)
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         optimistic_ptr(const optimistic_ptr<Y>& r) noexcept
             : ptr_(static_cast<element_type_impl*>(r.ptr_))
             , cb_(r.cb_)
@@ -2163,7 +2464,9 @@ namespace rpc
         }
 
         // Heterogeneous move constructor
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         optimistic_ptr(optimistic_ptr<Y>&& r) noexcept
             : ptr_(static_cast<element_type_impl*>(r.ptr_))
             , cb_(r.cb_)
@@ -2218,7 +2521,9 @@ namespace rpc
         }
 
         // Heterogeneous copy assignment
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         optimistic_ptr& operator=(const optimistic_ptr<Y>& r) noexcept
         {
             optimistic_ptr(r).swap(*this);
@@ -2226,7 +2531,9 @@ namespace rpc
         }
 
         // Heterogeneous move assignment
-        template<typename Y, typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        template<
+            typename Y,
+            typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
         optimistic_ptr& operator=(optimistic_ptr<Y>&& r) noexcept
         {
             optimistic_ptr(std::move(r)).swap(*this);
@@ -2240,7 +2547,10 @@ namespace rpc
         }
 
         template<typename U = T>
-        std::enable_if_t<!std::is_void_v<U> && !std::is_array_v<U>, std::remove_extent_t<U>&> operator*() const noexcept
+        std::enable_if_t<
+            !std::is_void_v<U> && !std::is_array_v<U>,
+            std::remove_extent_t<U>&>
+        operator*() const noexcept
         {
             using result_type = std::remove_extent_t<U>;
             if (local_proxy_holder_)
@@ -2315,7 +2625,9 @@ namespace rpc
     };
 
     // Dynamic pointer cast for optimistic_ptr (uses local query_interface)
-    template<typename T, typename U>
+    template<
+        typename T,
+        typename U>
     CORO_TASK(pointer_cast_result<optimistic_ptr<T>>)
     dynamic_pointer_cast(optimistic_ptr<U> from) noexcept
     {
@@ -2414,15 +2726,17 @@ namespace rpc
                     obj_proxy, unused_shared, inherited_optimistic_before);
             }
 
-            RPC_DEBUG("make_optimistic(shared_ptr→optimistic_ptr): BEFORE - control_block(optimistic={}), "
-                      "object_proxy(inherited_optimistic={})",
+            RPC_DEBUG(
+                "make_optimistic(shared_ptr→optimistic_ptr): BEFORE - control_block(optimistic={}), "
+                "object_proxy(inherited_optimistic={})",
                 cb_optimistic_before,
                 inherited_optimistic_before);
 
             if (obj_proxy && (cb_optimistic_before == 0) != (inherited_optimistic_before == 0))
             {
-                RPC_ERROR("make_optimistic: Control block optimistic count ({}) and object_proxy optimistic "
-                          "count ({}) disagree on whether a remote reference exists",
+                RPC_ERROR(
+                    "make_optimistic: Control block optimistic count ({}) and object_proxy optimistic "
+                    "count ({}) disagree on whether a remote reference exists",
                     cb_optimistic_before,
                     inherited_optimistic_before);
                 RPC_ASSERT(false);
@@ -2445,8 +2759,9 @@ namespace rpc
                     obj_proxy, unused_shared, inherited_optimistic_after);
             }
 
-            RPC_DEBUG("make_optimistic(shared_ptr→optimistic_ptr): AFTER - control_block(optimistic={}), "
-                      "object_proxy(inherited_optimistic={})",
+            RPC_DEBUG(
+                "make_optimistic(shared_ptr→optimistic_ptr): AFTER - control_block(optimistic={}), "
+                "object_proxy(inherited_optimistic={})",
                 cb_optimistic_after,
                 inherited_optimistic_after);
 
@@ -2458,8 +2773,9 @@ namespace rpc
 
             if (obj_proxy && (cb_optimistic_after == 0) != (inherited_optimistic_after == 0))
             {
-                RPC_ERROR("make_optimistic: Control block optimistic count ({}) and object_proxy optimistic "
-                          "count ({}) disagree on whether a remote reference exists AFTER increment",
+                RPC_ERROR(
+                    "make_optimistic: Control block optimistic count ({}) and object_proxy optimistic "
+                    "count ({}) disagree on whether a remote reference exists AFTER increment",
                     cb_optimistic_after,
                     inherited_optimistic_after);
                 RPC_ASSERT(false);
@@ -2511,8 +2827,9 @@ namespace rpc
                     obj_proxy, inherited_shared_before, inherited_optimistic_before);
             }
 
-            RPC_DEBUG("make_optimistic(weak_ptr→optimistic_ptr): BEFORE - control_block(shared={}, optimistic={}), "
-                      "object_proxy(inherited_shared={}, inherited_optimistic={})",
+            RPC_DEBUG(
+                "make_optimistic(weak_ptr→optimistic_ptr): BEFORE - control_block(shared={}, optimistic={}), "
+                "object_proxy(inherited_shared={}, inherited_optimistic={})",
                 cb_shared_before,
                 cb_optimistic_before,
                 inherited_shared_before,
@@ -2521,8 +2838,9 @@ namespace rpc
             // Verify both control block counts are either zero or both non-zero
             if ((cb_shared_before == 0) != (cb_optimistic_before == 0))
             {
-                RPC_ERROR("make_optimistic(weak_ptr): Control block reference count mismatch BEFORE - shared={} "
-                          "optimistic={} (should both be 0 or both be non-zero)",
+                RPC_ERROR(
+                    "make_optimistic(weak_ptr): Control block reference count mismatch BEFORE - shared={} "
+                    "optimistic={} (should both be 0 or both be non-zero)",
                     cb_shared_before,
                     cb_optimistic_before);
             }
@@ -2530,8 +2848,9 @@ namespace rpc
             // Verify both inherited counts are either zero or both non-zero
             if (obj_proxy && (inherited_shared_before == 0) != (inherited_optimistic_before == 0))
             {
-                RPC_ERROR("make_optimistic(weak_ptr): Object proxy inherited count mismatch BEFORE - "
-                          "inherited_shared={} inherited_optimistic={} (should both be 0 or both be non-zero)",
+                RPC_ERROR(
+                    "make_optimistic(weak_ptr): Object proxy inherited count mismatch BEFORE - "
+                    "inherited_shared={} inherited_optimistic={} (should both be 0 or both be non-zero)",
                     inherited_shared_before,
                     inherited_optimistic_before);
             }
@@ -2555,8 +2874,9 @@ namespace rpc
                     obj_proxy, inherited_shared_after, inherited_optimistic_after);
             }
 
-            RPC_DEBUG("make_optimistic(weak_ptr→optimistic_ptr): AFTER - control_block(shared={}, optimistic={}), "
-                      "object_proxy(inherited_shared={}, inherited_optimistic={})",
+            RPC_DEBUG(
+                "make_optimistic(weak_ptr→optimistic_ptr): AFTER - control_block(shared={}, optimistic={}), "
+                "object_proxy(inherited_shared={}, inherited_optimistic={})",
                 cb_shared_after,
                 cb_optimistic_after,
                 inherited_shared_after,
@@ -2565,8 +2885,9 @@ namespace rpc
             // Verify both control block counts are non-zero after increment
             if (cb_shared_after == 0 || cb_optimistic_after == 0)
             {
-                RPC_ERROR("make_optimistic(weak_ptr): Control block count zero AFTER increment - shared={} "
-                          "optimistic={} (both should be > 0)",
+                RPC_ERROR(
+                    "make_optimistic(weak_ptr): Control block count zero AFTER increment - shared={} "
+                    "optimistic={} (both should be > 0)",
                     cb_shared_after,
                     cb_optimistic_after);
             }
@@ -2574,8 +2895,9 @@ namespace rpc
             // Verify both inherited counts are either zero or both non-zero after increment
             if (obj_proxy && (inherited_shared_after == 0) != (inherited_optimistic_after == 0))
             {
-                RPC_ERROR("make_optimistic(weak_ptr): Object proxy inherited count mismatch AFTER - "
-                          "inherited_shared={} inherited_optimistic={} (should both be 0 or both be non-zero)",
+                RPC_ERROR(
+                    "make_optimistic(weak_ptr): Object proxy inherited count mismatch AFTER - "
+                    "inherited_shared={} inherited_optimistic={} (should both be 0 or both be non-zero)",
                     inherited_shared_after,
                     inherited_optimistic_after);
             }

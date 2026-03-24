@@ -20,7 +20,8 @@ using namespace marshalled_tests;
 
 template<class T> using dll_type_test = type_test<T>;
 
-using dll_implementations = ::testing::Types<dll_transport_setup<false, false, false>,
+using dll_implementations = ::testing::Types<
+    dll_transport_setup<false, false, false>,
     dll_transport_setup<false, false, true>,
     dll_transport_setup<false, true, false>,
     dll_transport_setup<false, true, true>,
@@ -29,11 +30,19 @@ using dll_implementations = ::testing::Types<dll_transport_setup<false, false, f
     dll_transport_setup<true, true, false>,
     dll_transport_setup<true, true, true>>;
 
-TYPED_TEST_SUITE(dll_type_test, dll_implementations);
+TYPED_TEST_SUITE(
+    dll_type_test,
+    dll_implementations);
 
-TYPED_TEST(dll_type_test, initialisation_test) { }
+TYPED_TEST(
+    dll_type_test,
+    initialisation_test)
+{
+}
 
-TYPED_TEST(dll_type_test, standard_tests)
+TYPED_TEST(
+    dll_type_test,
+    standard_tests)
 {
     run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
 }

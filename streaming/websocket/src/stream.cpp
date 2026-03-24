@@ -25,7 +25,9 @@ namespace streaming::websocket
 
     stream::stream(std::shared_ptr<::streaming::stream> underlying)
         : underlying_(std::move(underlying))
-        , raw_recv_buffer_(io_chunk_size, '\0')
+        , raw_recv_buffer_(
+              io_chunk_size,
+              '\0')
     {
         wslay_event_callbacks callbacks;
         std::memset(&callbacks, 0, sizeof(callbacks));
@@ -49,8 +51,12 @@ namespace streaming::websocket
         }
     }
 
-    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
+    auto stream::receive(
+        rpc::mutable_byte_span buffer,
+        std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>>
     {
         if (!decoded_messages_.empty())
             co_return serve_decoded(buffer);
@@ -63,9 +69,9 @@ namespace streaming::websocket
             if (!co_await drive_send())
                 co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
 
-            auto [status, span]
-                = co_await underlying_->receive(rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()),
-                    single_attempt ? std::chrono::milliseconds{0} : remaining_timeout(deadline));
+            auto [status, span] = co_await underlying_->receive(
+                rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()),
+                single_attempt ? std::chrono::milliseconds{0} : remaining_timeout(deadline));
             if (status.is_closed())
             {
                 closed_ = true;
@@ -134,7 +140,9 @@ namespace streaming::websocket
         return underlying_->get_peer_info();
     }
 
-    auto stream::serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<coro::net::io_status, rpc::mutable_byte_span>
+    auto stream::serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<
+        coro::net::io_status,
+        rpc::mutable_byte_span>
     {
         auto& msg = decoded_messages_.front();
         size_t available = msg.size() - current_msg_offset_;
@@ -187,7 +195,11 @@ namespace streaming::websocket
     // -----------------------------------------------------------------------
 
     auto stream::send_callback(
-        wslay_event_context_ptr ctx, const uint8_t* data, size_t len, int /*flags*/, void* user_data) -> ssize_t
+        wslay_event_context_ptr ctx,
+        const uint8_t* data,
+        size_t len,
+        int /*flags*/,
+        void* user_data) -> ssize_t
     {
         auto* self = static_cast<stream*>(user_data);
 
@@ -202,8 +214,12 @@ namespace streaming::websocket
         return static_cast<ssize_t>(len);
     }
 
-    auto stream::recv_callback(wslay_event_context_ptr ctx, uint8_t* buf, size_t len, int /*flags*/, void* user_data)
-        -> ssize_t
+    auto stream::recv_callback(
+        wslay_event_context_ptr ctx,
+        uint8_t* buf,
+        size_t len,
+        int /*flags*/,
+        void* user_data) -> ssize_t
     {
         auto* self = static_cast<stream*>(user_data);
 
@@ -220,7 +236,10 @@ namespace streaming::websocket
         return -1;
     }
 
-    void stream::on_msg_recv_callback(wslay_event_context_ptr ctx, const wslay_event_on_msg_recv_arg* arg, void* user_data)
+    void stream::on_msg_recv_callback(
+        wslay_event_context_ptr ctx,
+        const wslay_event_on_msg_recv_arg* arg,
+        void* user_data)
     {
         auto* self = static_cast<stream*>(user_data);
 

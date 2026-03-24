@@ -109,7 +109,9 @@ namespace json
             [[nodiscard]] type get_type() const { return static_cast<type>(index()); }
 
         private:
-            friend inline bool operator!=(const object& lhs, const object& rhs);
+            friend inline bool operator!=(
+                const object& lhs,
+                const object& rhs);
         };
 
         // a thin wrapper of std::unordered_map<std::string, object> unfornately you cannot have a collection of a type
@@ -241,7 +243,13 @@ namespace json
         }
 
         inline object::object(const object& other)
-            : VARIANT_NS::variant<std::string, double, bool, std::nullptr_t, std::unique_ptr<array>, std::unique_ptr<map>>()
+            : VARIANT_NS::variant<
+                  std::string,
+                  double,
+                  bool,
+                  std::nullptr_t,
+                  std::unique_ptr<array>,
+                  std::unique_ptr<map>>()
         {
             const container_type& ct_other = other;
             VARIANT_NS::visit(
@@ -422,14 +430,28 @@ namespace json
             return static_cast<T>(val);
         }
 
-        inline bool operator!=(const object& lhs, const object& rhs);
-        inline bool operator==(const object& lhs, const object& rhs);
-        inline bool operator!=(const array& lhs, const array& rhs);
-        inline bool operator==(const array& lhs, const array& rhs);
-        inline bool operator!=(const map& lhs, const map& rhs);
-        inline bool operator==(const map& lhs, const map& rhs);
+        inline bool operator!=(
+            const object& lhs,
+            const object& rhs);
+        inline bool operator==(
+            const object& lhs,
+            const object& rhs);
+        inline bool operator!=(
+            const array& lhs,
+            const array& rhs);
+        inline bool operator==(
+            const array& lhs,
+            const array& rhs);
+        inline bool operator!=(
+            const map& lhs,
+            const map& rhs);
+        inline bool operator==(
+            const map& lhs,
+            const map& rhs);
 
-        inline bool operator!=(const object& lhs, const object& rhs)
+        inline bool operator!=(
+            const object& lhs,
+            const object& rhs)
         {
             // match types
             if (lhs.get_type() != rhs.get_type())
@@ -456,32 +478,42 @@ namespace json
             }
         }
 
-        inline bool operator==(const object& lhs, const object& rhs)
+        inline bool operator==(
+            const object& lhs,
+            const object& rhs)
         {
             return !(lhs != rhs);
         }
 
-        inline bool operator!=(const array& lhs, const array& rhs)
+        inline bool operator!=(
+            const array& lhs,
+            const array& rhs)
         {
             const array::base& l = lhs;
             const array::base& r = rhs;
             return l != r;
         }
 
-        inline bool operator==(const array& lhs, const array& rhs)
+        inline bool operator==(
+            const array& lhs,
+            const array& rhs)
         {
             const array::base& l = lhs;
             const array::base& r = rhs;
             return l == r;
         }
 
-        inline bool operator!=(const map& lhs, const map& rhs)
+        inline bool operator!=(
+            const map& lhs,
+            const map& rhs)
         {
             const map::base& l = lhs;
             const map::base& r = rhs;
             return l != r;
         }
-        inline bool operator==(const map& lhs, const map& rhs)
+        inline bool operator==(
+            const map& lhs,
+            const map& rhs)
         {
             const map::base& l = lhs;
             const map::base& r = rhs;
@@ -501,25 +533,40 @@ namespace yas
         template<std::size_t F>
         struct serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, json::v1::map>
         {
-            template<typename Archive> static Archive& save(Archive& ar, const json::v1::map& map);
+            template<typename Archive>
+            static Archive& save(
+                Archive& ar,
+                const json::v1::map& map);
 
-            template<typename Archive> static Archive& load(Archive& ar, json::v1::map& map);
+            template<typename Archive>
+            static Archive& load(
+                Archive& ar,
+                json::v1::map& map);
         };
 
         // forward declare array serialisation
         template<std::size_t F>
         struct serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, json::v1::array>
         {
-            template<typename Archive> static Archive& save(Archive& ar, const json::v1::array& map);
+            template<typename Archive>
+            static Archive& save(
+                Archive& ar,
+                const json::v1::array& map);
 
-            template<typename Archive> static Archive& load(Archive& ar, json::v1::array& map);
+            template<typename Archive>
+            static Archive& load(
+                Archive& ar,
+                json::v1::array& map);
         };
 
         // serialise objects
         template<std::size_t F>
         struct serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, json::v1::object>
         {
-            template<typename Archive> static Archive& save(Archive& ar, const json::v1::object& obj)
+            template<typename Archive>
+            static Archive& save(
+                Archive& ar,
+                const json::v1::object& obj)
             {
                 auto type = obj.get_type();
                 if (F & yas::json)
@@ -611,7 +658,11 @@ namespace yas
 
             // copy numbers into a buffer returning the number type, if the first character is nan then return nan
             //  else it is an integer or floating point if there is rubbish further on expect yas to except anyway
-            template<typename Archive> static bool scan_numeric(Archive& ar, char ch, std::string& str)
+            template<typename Archive>
+            static bool scan_numeric(
+                Archive& ar,
+                char ch,
+                std::string& str)
             {
                 if (!is_numeric(ch))
                     return false;
@@ -648,7 +699,10 @@ namespace yas
                 return true;
             }
 
-            template<typename Archive> static Archive& load(Archive& ar, json::v1::object& obj)
+            template<typename Archive>
+            static Archive& load(
+                Archive& ar,
+                json::v1::object& obj)
             {
                 if (F & yas::json)
                 {
@@ -766,8 +820,14 @@ namespace yas
 
         template<std::size_t F>
         template<typename Archive>
-        Archive& serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, json::v1::map>::save(
-            Archive& ar, const json::v1::map& map)
+        Archive& serializer<
+            type_prop::not_a_fundamental,
+            ser_case::use_internal_serializer,
+            F,
+            json::v1::map>::
+            save(
+                Archive& ar,
+                const json::v1::map& map)
         {
             __YAS_CONSTEXPR_IF(F & yas::json)
             {
@@ -811,8 +871,14 @@ namespace yas
 
         template<std::size_t F>
         template<typename Archive>
-        Archive& serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, json::v1::map>::load(
-            Archive& ar, json::v1::map& map)
+        Archive& serializer<
+            type_prop::not_a_fundamental,
+            ser_case::use_internal_serializer,
+            F,
+            json::v1::map>::
+            load(
+                Archive& ar,
+                json::v1::map& map)
         {
             __YAS_CONSTEXPR_IF(F & yas::json)
             {
@@ -903,8 +969,14 @@ namespace yas
 
         template<std::size_t F>
         template<typename Archive>
-        Archive& serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, json::v1::array>::save(
-            Archive& ar, const json::v1::array& arr)
+        Archive& serializer<
+            type_prop::not_a_fundamental,
+            ser_case::use_internal_serializer,
+            F,
+            json::v1::array>::
+            save(
+                Archive& ar,
+                const json::v1::array& arr)
         {
             __YAS_CONSTEXPR_IF(F & yas::json)
             {
@@ -942,8 +1014,14 @@ namespace yas
 
         template<std::size_t F>
         template<typename Archive>
-        Archive& serializer<type_prop::not_a_fundamental, ser_case::use_internal_serializer, F, json::v1::array>::load(
-            Archive& ar, json::v1::array& arr)
+        Archive& serializer<
+            type_prop::not_a_fundamental,
+            ser_case::use_internal_serializer,
+            F,
+            json::v1::array>::
+            load(
+                Archive& ar,
+                json::v1::array& arr)
         {
             __YAS_CONSTEXPR_IF(F & yas::json)
             {

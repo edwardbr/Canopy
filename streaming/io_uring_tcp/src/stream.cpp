@@ -80,17 +80,27 @@ namespace streaming::io_uring_tcp
         // which drain_cq skips when not found in in_flight_.
         constexpr uint64_t linked_timeout_user_data = 0;
 
-        auto io_uring_setup(unsigned entries, io_uring_params* params) -> int
+        auto io_uring_setup(
+            unsigned entries,
+            io_uring_params* params) -> int
         {
             return static_cast<int>(::syscall(__NR_io_uring_setup, entries, params));
         }
 
-        auto io_uring_enter(unsigned ring_fd, unsigned to_submit, unsigned min_complete, unsigned flags) -> int
+        auto io_uring_enter(
+            unsigned ring_fd,
+            unsigned to_submit,
+            unsigned min_complete,
+            unsigned flags) -> int
         {
             return static_cast<int>(::syscall(__NR_io_uring_enter, ring_fd, to_submit, min_complete, flags, nullptr, 0));
         }
 
-        auto io_uring_register(unsigned ring_fd, unsigned opcode, const void* arg, unsigned nr_args) -> int
+        auto io_uring_register(
+            unsigned ring_fd,
+            unsigned opcode,
+            const void* arg,
+            unsigned nr_args) -> int
         {
             return static_cast<int>(::syscall(__NR_io_uring_register, ring_fd, opcode, arg, nr_args));
         }
@@ -108,7 +118,8 @@ namespace streaming::io_uring_tcp
         {
         public:
             operation_awaitable(
-                std::shared_ptr<stream::ring_state> state, std::shared_ptr<stream::ring_state::pending_op> op)
+                std::shared_ptr<stream::ring_state> state,
+                std::shared_ptr<stream::ring_state::pending_op> op)
                 : state_(std::move(state))
                 , op_(std::move(op))
             {
@@ -213,12 +224,8 @@ namespace streaming::io_uring_tcp
                 state->cq_ring_size = state->sq_ring_size;
             }
 
-            state->sq_ring_ptr = ::mmap(nullptr,
-                state->sq_ring_size,
-                PROT_READ | PROT_WRITE,
-                MAP_SHARED | MAP_POPULATE,
-                state->ring_fd,
-                IORING_OFF_SQ_RING);
+            state->sq_ring_ptr = ::mmap(
+                nullptr, state->sq_ring_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, state->ring_fd, IORING_OFF_SQ_RING);
             if (state->sq_ring_ptr == MAP_FAILED)
             {
                 state->sq_ring_ptr = nullptr;
@@ -231,7 +238,8 @@ namespace streaming::io_uring_tcp
             }
             else
             {
-                state->cq_ring_ptr = ::mmap(nullptr,
+                state->cq_ring_ptr = ::mmap(
+                    nullptr,
                     state->cq_ring_size,
                     PROT_READ | PROT_WRITE,
                     MAP_SHARED | MAP_POPULATE,
@@ -244,7 +252,8 @@ namespace streaming::io_uring_tcp
                 }
             }
 
-            state->sqes = static_cast<io_uring_sqe*>(::mmap(nullptr,
+            state->sqes = static_cast<io_uring_sqe*>(::mmap(
+                nullptr,
                 params.sq_entries * sizeof(io_uring_sqe),
                 PROT_READ | PROT_WRITE,
                 MAP_SHARED | MAP_POPULATE,
@@ -284,7 +293,9 @@ namespace streaming::io_uring_tcp
         }
 
         template<class FillSqe>
-        auto submit_sqe(const std::shared_ptr<stream::ring_state>& state, FillSqe&& fill) -> bool
+        auto submit_sqe(
+            const std::shared_ptr<stream::ring_state>& state,
+            FillSqe&& fill) -> bool
         {
             std::lock_guard<std::mutex> lock(state->mutex_);
             if (state->stopping.load(std::memory_order_acquire))
@@ -316,7 +327,8 @@ namespace streaming::io_uring_tcp
             return io_uring_enter(static_cast<unsigned>(state->ring_fd), 1, 0, flags) >= 0;
         }
 
-        auto submit_recv(const std::shared_ptr<stream::ring_state>& state,
+        auto submit_recv(
+            const std::shared_ptr<stream::ring_state>& state,
             int fd,
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout) -> std::shared_ptr<stream::ring_state::pending_op>
@@ -416,8 +428,10 @@ namespace streaming::io_uring_tcp
             return op;
         }
 
-        auto submit_send(const std::shared_ptr<stream::ring_state>& state, int fd, rpc::byte_span buffer)
-            -> std::shared_ptr<stream::ring_state::pending_op>
+        auto submit_send(
+            const std::shared_ptr<stream::ring_state>& state,
+            int fd,
+            rpc::byte_span buffer) -> std::shared_ptr<stream::ring_state::pending_op>
         {
             auto op = std::make_shared<stream::ring_state::pending_op>();
             op->id = next_user_data(state);
@@ -427,7 +441,8 @@ namespace streaming::io_uring_tcp
                 state->in_flight_.emplace(op->id, op);
             }
 
-            if (!submit_sqe(state,
+            if (!submit_sqe(
+                    state,
                     [fd, buffer, id = op->id](io_uring_sqe& sqe)
                     {
                         sqe.opcode = IORING_OP_SEND;
@@ -447,9 +462,12 @@ namespace streaming::io_uring_tcp
             return op;
         }
 
-        auto cancel_op(const std::shared_ptr<stream::ring_state>& state, uint64_t id) -> void
+        auto cancel_op(
+            const std::shared_ptr<stream::ring_state>& state,
+            uint64_t id) -> void
         {
-            (void)submit_sqe(state,
+            (void)submit_sqe(
+                state,
                 [id](io_uring_sqe& sqe)
                 {
                     sqe.opcode = IORING_OP_ASYNC_CANCEL;
@@ -487,7 +505,8 @@ namespace streaming::io_uring_tcp
             }
         }
 
-        auto mark_all_failed(const std::shared_ptr<stream::ring_state>& state,
+        auto mark_all_failed(
+            const std::shared_ptr<stream::ring_state>& state,
             std::shared_ptr<coro::scheduler> scheduler,
             int native_error) -> void
         {
@@ -514,7 +533,9 @@ namespace streaming::io_uring_tcp
             }
         }
 
-        auto drain_cq(const std::shared_ptr<stream::ring_state>& state, std::shared_ptr<coro::scheduler> scheduler) -> void
+        auto drain_cq(
+            const std::shared_ptr<stream::ring_state>& state,
+            std::shared_ptr<coro::scheduler> scheduler) -> void
         {
             std::vector<std::coroutine_handle<>> to_resume;
 
@@ -559,7 +580,9 @@ namespace streaming::io_uring_tcp
         }
     } // namespace
 
-    stream::stream(coro::net::tcp::client&& client, std::shared_ptr<coro::scheduler> scheduler)
+    stream::stream(
+        coro::net::tcp::client&& client,
+        std::shared_ptr<coro::scheduler> scheduler)
         : client_(std::move(client))
         , scheduler_(std::move(scheduler))
         , state_(std::make_shared<ring_state>())
@@ -602,7 +625,8 @@ namespace streaming::io_uring_tcp
         {
             constexpr auto shutdown_timeout = std::chrono::milliseconds(500);
             auto shutdown_start = std::chrono::steady_clock::now();
-            RPC_TRACE("io_uring destructor waiting for cleanup, inflight={} pump_running={}",
+            RPC_TRACE(
+                "io_uring destructor waiting for cleanup, inflight={} pump_running={}",
                 in_flight_count(state_),
                 state_->pump_running.load(std::memory_order_acquire));
             // Wait for inflight operations to complete
@@ -616,14 +640,16 @@ namespace streaming::io_uring_tcp
             {
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
-            RPC_TRACE("io_uring destructor cleanup done, inflight={} pump_running={}",
+            RPC_TRACE(
+                "io_uring destructor cleanup done, inflight={} pump_running={}",
                 in_flight_count(state_),
                 state_->pump_running.load(std::memory_order_acquire));
         }
     }
 
-    auto stream::completion_pump(std::shared_ptr<ring_state> state, std::shared_ptr<coro::scheduler> scheduler)
-        -> coro::task<void>
+    auto stream::completion_pump(
+        std::shared_ptr<ring_state> state,
+        std::shared_ptr<coro::scheduler> scheduler) -> coro::task<void>
     {
         state->pump_running.store(true, std::memory_order_release);
         RPC_TRACE("io_uring completion_pump start ring_fd={}", state->ring_fd);
@@ -641,7 +667,8 @@ namespace streaming::io_uring_tcp
                 ++iter;
                 if (iter % 100 == 0)
                 {
-                    RPC_TRACE("io_uring completion_pump iteration {} ring_fd={} stopping={}",
+                    RPC_TRACE(
+                        "io_uring completion_pump iteration {} ring_fd={} stopping={}",
                         iter,
                         state->ring_fd,
                         state->stopping.load());
@@ -745,8 +772,12 @@ namespace streaming::io_uring_tcp
         teardown_ring(state);
     }
 
-    auto stream::receive(rpc::mutable_byte_span buffer, std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>>
+    auto stream::receive(
+        rpc::mutable_byte_span buffer,
+        std::chrono::milliseconds timeout)
+        -> coro::task<std::pair<
+            coro::net::io_status,
+            rpc::mutable_byte_span>>
     {
         if (closed_)
         {

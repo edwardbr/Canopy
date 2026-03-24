@@ -87,7 +87,10 @@ namespace rpc
     }
 
     // Serialization functions - work with both std::vector-like containers and std::array
-    template<class OutputBlob = std::vector<std::uint8_t>, typename T> OutputBlob to_yas_json(const T& obj)
+    template<
+        class OutputBlob = std::vector<std::uint8_t>,
+        typename T>
+    OutputBlob to_yas_json(const T& obj)
     {
         YAS_WARNINGS_PUSH
         yas::shared_buffer yas_buffer = yas::save<::yas::mem | ::yas::json | ::yas::no_header>(obj);
@@ -110,7 +113,10 @@ namespace rpc
         YAS_WARNINGS_POP
     }
 
-    template<class OutputBlob = std::vector<std::uint8_t>, typename T> OutputBlob to_yas_binary(const T& obj)
+    template<
+        class OutputBlob = std::vector<std::uint8_t>,
+        typename T>
+    OutputBlob to_yas_binary(const T& obj)
     {
         YAS_WARNINGS_PUSH
         yas::shared_buffer yas_buffer = yas::save<::yas::mem | ::yas::binary | ::yas::no_header>(obj);
@@ -133,7 +139,10 @@ namespace rpc
         YAS_WARNINGS_POP
     }
 
-    template<class OutputBlob = std::vector<std::uint8_t>, typename T> OutputBlob to_compressed_yas_binary(const T& obj)
+    template<
+        class OutputBlob = std::vector<std::uint8_t>,
+        typename T>
+    OutputBlob to_compressed_yas_binary(const T& obj)
     {
         YAS_WARNINGS_PUSH
         yas::shared_buffer yas_buffer = yas::save<::yas::mem | ::yas::binary | ::yas::compacted | ::yas::no_header>(obj);
@@ -157,7 +166,10 @@ namespace rpc
     }
 
     // protobuf serialization using member function protobuf_serialise
-    template<class OutputBlob = std::vector<std::uint8_t>, typename T> OutputBlob to_protobuf(const T& obj)
+    template<
+        class OutputBlob = std::vector<std::uint8_t>,
+        typename T>
+    OutputBlob to_protobuf(const T& obj)
     {
         std::vector<char> buffer;
         obj.protobuf_serialise(buffer);
@@ -179,7 +191,12 @@ namespace rpc
         }
     }
 
-    template<class OutputBlob = std::vector<std::uint8_t>, typename T> OutputBlob serialise(const T& obj, encoding enc)
+    template<
+        class OutputBlob = std::vector<std::uint8_t>,
+        typename T>
+    OutputBlob serialise(
+        const T& obj,
+        encoding enc)
     {
         if (enc == encoding::yas_json)
             return to_yas_json<OutputBlob>(obj);
@@ -192,7 +209,10 @@ namespace rpc
         throw std::runtime_error("invalid encoding type");
     }
 
-    template<typename T> uint64_t get_saved_size(const T& obj, encoding enc)
+    template<typename T>
+    uint64_t get_saved_size(
+        const T& obj,
+        encoding enc)
     {
         if (enc == encoding::yas_json)
             return yas_json_saved_size(obj);
@@ -206,7 +226,10 @@ namespace rpc
     }
 
     // deserialisation primatives
-    template<typename T> std::string from_yas_json(const byte_span& data, T& obj)
+    template<typename T>
+    std::string from_yas_json(
+        const byte_span& data,
+        T& obj)
     {
         try
         {
@@ -219,8 +242,9 @@ namespace rpc
         catch (const std::exception& ex)
         {
             // an error has occurred so do the best one can and set the type_id to 0
-            return std::string("An exception has occurred a data blob was incompatible with the type that is "
-                               "deserialising to: ")
+            return std::string(
+                       "An exception has occurred a data blob was incompatible with the type that is "
+                       "deserialising to: ")
                    + ex.what();
         }
         catch (...)
@@ -230,7 +254,10 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string from_yas_binary(const byte_span& data, T& obj)
+    template<typename T>
+    std::string from_yas_binary(
+        const byte_span& data,
+        T& obj)
     {
         try
         {
@@ -243,8 +270,9 @@ namespace rpc
         catch (const std::exception& ex)
         {
             // an error has occurred so do the best one can and set the type_id to 0
-            return std::string("An exception has occurred a data blob was incompatible with the type that is "
-                               "deserialising to: ")
+            return std::string(
+                       "An exception has occurred a data blob was incompatible with the type that is "
+                       "deserialising to: ")
                    + ex.what();
         }
         catch (...)
@@ -254,7 +282,10 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string from_yas_compressed_binary(const byte_span& data, T& obj)
+    template<typename T>
+    std::string from_yas_compressed_binary(
+        const byte_span& data,
+        T& obj)
     {
         try
         {
@@ -267,8 +298,9 @@ namespace rpc
         catch (const std::exception& ex)
         {
             // an error has occurred so do the best one can and set the type_id to 0
-            return std::string("An exception has occurred a data blob was incompatible with the type that is "
-                               "deserialising to: ")
+            return std::string(
+                       "An exception has occurred a data blob was incompatible with the type that is "
+                       "deserialising to: ")
                    + ex.what();
         }
         catch (...)
@@ -278,19 +310,24 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string from_protobuf(const byte_span& data, T& obj)
+    template<typename T>
+    std::string from_protobuf(
+        const byte_span& data,
+        T& obj)
     {
         try
         {
-            obj.protobuf_deserialise(std::vector<char>(
-                reinterpret_cast<const char*>(data.data()), reinterpret_cast<const char*>(data.data()) + data.size()));
+            obj.protobuf_deserialise(
+                std::vector<char>(
+                    reinterpret_cast<const char*>(data.data()), reinterpret_cast<const char*>(data.data()) + data.size()));
             return "";
         }
         catch (const std::exception& ex)
         {
             // an error has occurred so do the best one can and set the type_id to 0
-            return std::string("An exception has occurred a data blob was incompatible with the type that is "
-                               "deserialising to: ")
+            return std::string(
+                       "An exception has occurred a data blob was incompatible with the type that is "
+                       "deserialising to: ")
                    + ex.what();
         }
         catch (...)
@@ -300,7 +337,11 @@ namespace rpc
         }
     }
 
-    template<typename T> std::string deserialise(encoding enc, const byte_span& data, T& obj)
+    template<typename T>
+    std::string deserialise(
+        encoding enc,
+        const byte_span& data,
+        T& obj)
     {
         if (enc == encoding::yas_json)
             return from_yas_json(data, obj);

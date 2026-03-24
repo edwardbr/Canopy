@@ -8,7 +8,9 @@
 
 namespace rpc
 {
-    object_proxy::object_proxy(object object_id, std::shared_ptr<rpc::service_proxy> service_proxy)
+    object_proxy::object_proxy(
+        object object_id,
+        std::shared_ptr<rpc::service_proxy> service_proxy)
         : object_id_(object_id)
         , service_proxy_(service_proxy)
     {
@@ -34,8 +36,9 @@ namespace rpc
 
         if (service_proxy)
         {
-            RPC_DEBUG("object_proxy::add_ref: {} reference for service zone={} destination_zone={} object_id={} "
-                      "(shared={}, optimistic={}) prev_count={}",
+            RPC_DEBUG(
+                "object_proxy::add_ref: {} reference for service zone={} destination_zone={} object_id={} "
+                "(shared={}, optimistic={}) prev_count={}",
                 is_optimistic ? "optimistic" : "shared",
                 service_proxy->get_zone_id().get_subnet(),
                 service_proxy->get_destination_zone_id().get_subnet(),
@@ -64,8 +67,9 @@ namespace rpc
                     shared_count_.fetch_sub(1, std::memory_order_relaxed);
                 }
 
-                RPC_ERROR("object_proxy::add_ref: Failed to establish remote reference: {} reference zone={} "
-                          "destination_zone={} object_id={} error={}",
+                RPC_ERROR(
+                    "object_proxy::add_ref: Failed to establish remote reference: {} reference zone={} "
+                    "destination_zone={} object_id={} error={}",
                     is_optimistic ? "optimistic" : "shared",
                     service_proxy->get_zone_id().get_subnet(),
                     service_proxy->get_destination_zone_id().get_subnet(),
@@ -96,8 +100,9 @@ namespace rpc
 
         if (service_proxy)
         {
-            RPC_DEBUG("object_proxy::release: {} reference for service zone={} destination_zone={} object_id={} "
-                      "(shared={}, optimistic={})",
+            RPC_DEBUG(
+                "object_proxy::release: {} reference for service zone={} destination_zone={} object_id={} "
+                "(shared={}, optimistic={})",
                 is_optimistic ? "optimistic" : "shared",
                 service_proxy->get_zone_id().get_subnet(),
                 service_proxy->get_destination_zone_id().get_subnet(),
@@ -112,7 +117,8 @@ namespace rpc
         {
             if (service_proxy)
             {
-                RPC_DEBUG("object_proxy::release: {} on_object_proxy_released cleanup for object_id={}",
+                RPC_DEBUG(
+                    "object_proxy::release: {} on_object_proxy_released cleanup for object_id={}",
                     is_optimistic ? "optimistic" : "shared",
                     object_id_.get_val());
                 service_proxy->on_object_proxy_released(this->shared_from_this(), is_optimistic);
@@ -129,8 +135,9 @@ namespace rpc
 
         if (service_proxy)
         {
-            RPC_DEBUG("object_proxy destructor: service zone={} destination_zone={} object_id={} "
-                      "(current: shared={}, optimistic={})",
+            RPC_DEBUG(
+                "object_proxy destructor: service zone={} destination_zone={} object_id={} "
+                "(current: shared={}, optimistic={})",
                 service_proxy->get_zone_id().get_subnet(),
                 service_proxy->get_destination_zone_id().get_subnet(),
                 object_id_.get_val(),
@@ -153,7 +160,8 @@ namespace rpc
     }
 
     CORO_TASK(send_result)
-    object_proxy::send(uint64_t protocol_version,
+    object_proxy::send(
+        uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::interface_ordinal interface_id,
@@ -169,7 +177,8 @@ namespace rpc
     }
 
     CORO_TASK(int)
-    object_proxy::post(uint64_t protocol_version,
+    object_proxy::post(
+        uint64_t protocol_version,
         rpc::encoding encoding,
         uint64_t tag,
         rpc::interface_ordinal interface_id,
@@ -202,7 +211,9 @@ namespace rpc
         return service_proxy->get_destination_zone_id();
     }
 
-    void object_proxy::register_interface(interface_ordinal interface_id, rpc::weak_ptr<casting_interface>& value)
+    void object_proxy::register_interface(
+        interface_ordinal interface_id,
+        rpc::weak_ptr<casting_interface>& value)
     {
         std::lock_guard guard(insert_control_);
         proxy_map[interface_id] = value;
@@ -214,19 +225,26 @@ namespace rpc
         {
             // forward declarations implemented in object_proxy.cpp
             // add_ref is async because object_proxy::add_ref() is async
-            CORO_TASK(int) object_proxy_add_ref(std::shared_ptr<rpc::object_proxy> ob, rpc::add_ref_options options)
+            CORO_TASK(int)
+            object_proxy_add_ref(
+                std::shared_ptr<rpc::object_proxy> ob,
+                rpc::add_ref_options options)
             {
                 CO_RETURN CO_AWAIT ob->add_ref(options);
             }
 
             // release remains synchronous
-            void object_proxy_release(const std::shared_ptr<rpc::object_proxy>& ob, bool is_optimistic)
+            void object_proxy_release(
+                const std::shared_ptr<rpc::object_proxy>& ob,
+                bool is_optimistic)
             {
                 ob->release(is_optimistic);
             }
 
             void get_object_proxy_reference_counts(
-                const std::shared_ptr<rpc::object_proxy>& ob, int& shared_count, int& optimistic_count)
+                const std::shared_ptr<rpc::object_proxy>& ob,
+                int& shared_count,
+                int& optimistic_count)
             {
                 shared_count = ob->get_shared_count();
                 optimistic_count = ob->get_optimistic_count();

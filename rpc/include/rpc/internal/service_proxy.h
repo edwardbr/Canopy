@@ -36,7 +36,9 @@ namespace rpc
         std::shared_ptr<object_proxy> object_proxy;
 
         object_proxy_lookup_result() = default;
-        object_proxy_lookup_result(int error_code, std::shared_ptr<rpc::object_proxy> object_proxy)
+        object_proxy_lookup_result(
+            int error_code,
+            std::shared_ptr<rpc::object_proxy> object_proxy)
             : error_code(error_code)
             , object_proxy(std::move(object_proxy))
         {
@@ -60,7 +62,8 @@ namespace rpc
         std::atomic<uint64_t> version_;
         encoding enc_;
 
-        service_proxy(const std::string& name,
+        service_proxy(
+            const std::string& name,
             zone zone_id,
             destination_zone destination_zone_id,
             std::shared_ptr<service> service,
@@ -69,7 +72,8 @@ namespace rpc
             encoding enc);
 
     public:
-        static std::shared_ptr<service_proxy> create(const std::string& name,
+        static std::shared_ptr<service_proxy> create(
+            const std::string& name,
             std::shared_ptr<service> service,
             const std::shared_ptr<transport>& transport,
             destination_zone destination_zone_id);
@@ -90,7 +94,8 @@ namespace rpc
 
         std::shared_ptr<transport> get_transport() const { return transport_.get_nullable(); }
 
-        [[nodiscard]] CORO_TASK(send_result) send_from_this_zone(uint64_t protocol_version,
+        [[nodiscard]] CORO_TASK(send_result) send_from_this_zone(
+            uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::object object_id,
@@ -98,7 +103,8 @@ namespace rpc
             rpc::method method_id,
             rpc::byte_span in_data);
 
-        [[nodiscard]] CORO_TASK(int) post_from_this_zone(uint64_t protocol_version,
+        [[nodiscard]] CORO_TASK(int) post_from_this_zone(
+            uint64_t protocol_version,
             rpc::encoding encoding,
             uint64_t tag,
             rpc::object object_id,
@@ -107,16 +113,31 @@ namespace rpc
             rpc::byte_span in_data);
 
         [[nodiscard]] CORO_TASK(int) sp_try_cast(
-            destination_zone destination_zone_id, object object_id, std::function<interface_ordinal(uint64_t)> id_getter);
+            destination_zone destination_zone_id,
+            object object_id,
+            std::function<interface_ordinal(uint64_t)> id_getter);
 
-        [[nodiscard]] CORO_TASK(int)
-            sp_add_ref(object object_id, add_ref_options build_out_param_channel, requesting_zone requesting_zone_id);
+        [[nodiscard]] CORO_TASK(int) sp_add_ref(
+            object object_id,
+            add_ref_options build_out_param_channel,
+            requesting_zone requesting_zone_id);
 
-        CORO_TASK(int) sp_release(object object_id, release_options options);
+        CORO_TASK(int)
+        sp_release(
+            object object_id,
+            release_options options);
 
-        void on_object_proxy_released(const std::shared_ptr<object_proxy>& op, bool optimistic);
+        void on_object_proxy_released(
+            const std::shared_ptr<object_proxy>& op,
+            bool optimistic);
 
-        std::unordered_map<object, std::weak_ptr<object_proxy>> get_proxies() { return proxies_; }
+        std::unordered_map<
+            object,
+            std::weak_ptr<object_proxy>>
+        get_proxies()
+        {
+            return proxies_;
+        }
 
         // std::shared_ptr<rpc::service_proxy> clone_for_zone(destination_zone destination_zone_id);
 
@@ -136,7 +157,8 @@ namespace rpc
         };
 
         CORO_TASK(object_proxy_lookup_result)
-        get_or_create_object_proxy(object object_id,
+        get_or_create_object_proxy(
+            object object_id,
             object_proxy_creation_rule rule,
             bool new_proxy_added,
             requesting_zone requesting_zone_id,

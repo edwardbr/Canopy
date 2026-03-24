@@ -21,61 +21,90 @@ using namespace marshalled_tests;
 
 template<class T> using libcoro_ipc_dll_type_test = type_test<T>;
 
-using libcoro_ipc_dll_implementations = ::testing::Types<libcoro_spsc_dll_transport_setup<false, false, false>,
+using libcoro_ipc_dll_implementations = ::testing::Types<
+    libcoro_spsc_dll_transport_setup<false, false, false>,
     libcoro_spsc_dll_transport_setup<false, true, false>,
     libcoro_spsc_dll_transport_setup<true, false, false>,
     libcoro_spsc_dll_transport_setup<true, true, false>>;
 
-using libcoro_ipc_dll_isolated_implementations = ::testing::Types<ipc_child_host_process_setup<false, false, false>,
+using libcoro_ipc_dll_isolated_implementations = ::testing::Types<
+    ipc_child_host_process_setup<false, false, false>,
     ipc_child_host_process_setup<false, true, false>,
     ipc_child_host_process_setup<true, false, false>,
     ipc_child_host_process_setup<true, true, false>>;
 
-using libcoro_ipc_process_isolated_implementations = ::testing::Types<ipc_child_process_setup<false, false, false>,
+using libcoro_ipc_process_isolated_implementations = ::testing::Types<
+    ipc_child_process_setup<false, false, false>,
     ipc_child_process_setup<false, true, false>,
     ipc_child_process_setup<true, false, false>,
     ipc_child_process_setup<true, true, false>>;
 
-using libcoro_ipc_dll_dual_isolated_implementations
-    = ::testing::Types<ipc_child_host_process_dual_setup<false, false, false>,
-        ipc_child_host_process_dual_setup<false, true, false>,
-        ipc_child_host_process_dual_setup<true, false, false>,
-        ipc_child_host_process_dual_setup<true, true, false>>;
+using libcoro_ipc_dll_dual_isolated_implementations = ::testing::Types<
+    ipc_child_host_process_dual_setup<false, false, false>,
+    ipc_child_host_process_dual_setup<false, true, false>,
+    ipc_child_host_process_dual_setup<true, false, false>,
+    ipc_child_host_process_dual_setup<true, true, false>>;
 
-TYPED_TEST_SUITE(libcoro_ipc_dll_type_test, libcoro_ipc_dll_implementations);
+TYPED_TEST_SUITE(
+    libcoro_ipc_dll_type_test,
+    libcoro_ipc_dll_implementations);
 
-TYPED_TEST(libcoro_ipc_dll_type_test, initialisation_test) { }
+TYPED_TEST(
+    libcoro_ipc_dll_type_test,
+    initialisation_test)
+{
+}
 
-TYPED_TEST(libcoro_ipc_dll_type_test, standard_tests)
+TYPED_TEST(
+    libcoro_ipc_dll_type_test,
+    standard_tests)
 {
     run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
 }
 
 template<class T> using libcoro_ipc_dll_isolated_type_test = type_test<T>;
 
-TYPED_TEST_SUITE(libcoro_ipc_dll_isolated_type_test, libcoro_ipc_dll_isolated_implementations);
+TYPED_TEST_SUITE(
+    libcoro_ipc_dll_isolated_type_test,
+    libcoro_ipc_dll_isolated_implementations);
 
-TYPED_TEST(libcoro_ipc_dll_isolated_type_test, initialisation_test) { }
+TYPED_TEST(
+    libcoro_ipc_dll_isolated_type_test,
+    initialisation_test)
+{
+}
 
-TYPED_TEST(libcoro_ipc_dll_isolated_type_test, standard_tests)
+TYPED_TEST(
+    libcoro_ipc_dll_isolated_type_test,
+    standard_tests)
 {
     run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
 }
 
 template<class T> using libcoro_ipc_process_isolated_type_test = type_test<T>;
 
-TYPED_TEST_SUITE(libcoro_ipc_process_isolated_type_test, libcoro_ipc_process_isolated_implementations);
+TYPED_TEST_SUITE(
+    libcoro_ipc_process_isolated_type_test,
+    libcoro_ipc_process_isolated_implementations);
 
-TYPED_TEST(libcoro_ipc_process_isolated_type_test, initialisation_test) { }
+TYPED_TEST(
+    libcoro_ipc_process_isolated_type_test,
+    initialisation_test)
+{
+}
 
-TYPED_TEST(libcoro_ipc_process_isolated_type_test, standard_tests)
+TYPED_TEST(
+    libcoro_ipc_process_isolated_type_test,
+    standard_tests)
 {
     run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
 }
 
 template<class T> using libcoro_ipc_dll_dual_isolated_type_test = type_test<T>;
 
-TYPED_TEST_SUITE(libcoro_ipc_dll_dual_isolated_type_test, libcoro_ipc_dll_dual_isolated_implementations);
+TYPED_TEST_SUITE(
+    libcoro_ipc_dll_dual_isolated_type_test,
+    libcoro_ipc_dll_dual_isolated_implementations);
 
 template<class T> CORO_TASK(bool) coro_call_baz_from_foo(T& lib)
 {
@@ -94,7 +123,9 @@ template<class T> CORO_TASK(bool) coro_call_baz_from_foo(T& lib)
     CO_RETURN true;
 }
 
-TYPED_TEST(libcoro_ipc_dll_dual_isolated_type_test, dll_to_dll_call_baz_from_foo)
+TYPED_TEST(
+    libcoro_ipc_dll_dual_isolated_type_test,
+    dll_to_dll_call_baz_from_foo)
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_baz_from_foo<TypeParam>(lib); });
 }
@@ -131,7 +162,8 @@ namespace
             [[maybe_unused]] auto ok = dll_zone.set_subnet(dll_zone.get_subnet() + 10);
             RPC_ASSERT(ok);
 
-            auto transport = rpc::ipc_transport::make_client("pdeathsig child",
+            auto transport = rpc::ipc_transport::make_client(
+                "pdeathsig child",
                 service,
                 rpc::ipc_transport::options{
                     .process_executable = CANOPY_TEST_IPC_CHILD_HOST_PROCESS_PATH,
@@ -163,7 +195,9 @@ namespace
     }
 }
 
-TEST(libcoro_ipc_transport_process_lifetime, child_dies_when_parent_dies_unexpectedly)
+TEST(
+    libcoro_ipc_transport_process_lifetime,
+    child_dies_when_parent_dies_unexpectedly)
 {
     // Become the subreaper so that when the harness dies the grandchild (IPC child process)
     // is reparented to us rather than to Docker's PID 1.  Without this, PID 1 in a container

@@ -13,7 +13,10 @@
 
 extern "C"
 {
-    void rpc_log(int level, const char* str, size_t sz)
+    void rpc_log(
+        int level,
+        const char* str,
+        size_t sz)
     {
         // Only print warnings and above to avoid flooding test output
         if (level >= 3)

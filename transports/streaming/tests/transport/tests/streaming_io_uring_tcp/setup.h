@@ -32,7 +32,8 @@ protected:
         addr[2] = 0;
         addr[3] = 1;
 
-        this->listener_ = std::make_unique<streaming::listener>("responder_transport",
+        this->listener_ = std::make_unique<streaming::listener>(
+            "responder_transport",
             std::make_shared<streaming::io_uring::acceptor>(addr, 8082),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
                 this->make_interface_setup_factory()));

@@ -22,7 +22,10 @@ namespace rpc::ipc_transport
         rpc::zone child_zone_;
         size_t scheduler_thread_count_ = 1;
 
-        queue_pair_bootstrap(std::string mapped_file, rpc::zone child_zone, size_t scheduler_thread_count);
+        queue_pair_bootstrap(
+            std::string mapped_file,
+            rpc::zone child_zone,
+            size_t scheduler_thread_count);
 
     public:
         [[nodiscard]] const std::string& mapped_file() const;
@@ -39,14 +42,19 @@ namespace rpc::ipc_transport
 
     public:
         child_host_bootstrap(
-            std::string dll_path, std::string mapped_file, rpc::zone dll_zone, size_t scheduler_thread_count);
+            std::string dll_path,
+            std::string mapped_file,
+            rpc::zone dll_zone,
+            size_t scheduler_thread_count);
 
         [[nodiscard]] static const char* dll_path_arg_name();
         [[nodiscard]] static const char* mapped_file_arg_name();
         [[nodiscard]] static const char* dll_subnet_arg_name();
         [[nodiscard]] static const char* scheduler_thread_count_arg_name();
 
-        [[nodiscard]] static std::shared_ptr<child_host_bootstrap> from_command_line(int argc, char** argv);
+        [[nodiscard]] static std::shared_ptr<child_host_bootstrap> from_command_line(
+            int argc,
+            char** argv);
 
         [[nodiscard]] const std::string& dll_path() const;
         [[nodiscard]] rpc::zone dll_zone() const;
@@ -57,13 +65,18 @@ namespace rpc::ipc_transport
     class child_process_bootstrap : public queue_pair_bootstrap
     {
     public:
-        child_process_bootstrap(std::string mapped_file, rpc::zone child_zone, size_t scheduler_thread_count);
+        child_process_bootstrap(
+            std::string mapped_file,
+            rpc::zone child_zone,
+            size_t scheduler_thread_count);
 
         [[nodiscard]] static const char* mapped_file_arg_name();
         [[nodiscard]] static const char* child_subnet_arg_name();
         [[nodiscard]] static const char* scheduler_thread_count_arg_name();
 
-        [[nodiscard]] static std::shared_ptr<child_process_bootstrap> from_command_line(int argc, char** argv);
+        [[nodiscard]] static std::shared_ptr<child_process_bootstrap> from_command_line(
+            int argc,
+            char** argv);
         [[nodiscard]] std::vector<std::string> make_command_line() const;
     };
 

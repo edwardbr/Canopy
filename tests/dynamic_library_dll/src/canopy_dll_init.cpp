@@ -15,7 +15,8 @@
 
 extern "C" CANOPY_DLL_EXPORT int canopy_dll_init(rpc::dynamic_library::dll_init_params* params)
 {
-    return rpc::dynamic_library::init_child_zone<yyy::i_host, yyy::i_example>(params,
+    return rpc::dynamic_library::init_child_zone<yyy::i_host, yyy::i_example>(
+        params,
         [](rpc::shared_ptr<yyy::i_host> host,
             std::shared_ptr<rpc::child_service> svc) -> rpc::service_connect_result<yyy::i_example>
         {

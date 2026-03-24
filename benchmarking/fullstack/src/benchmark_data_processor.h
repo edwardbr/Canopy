@@ -11,7 +11,10 @@ namespace comprehensive::v1
     class benchmark_data_processor_impl : public rpc::base<benchmark_data_processor_impl, i_data_processor>
     {
     public:
-        CORO_TASK(int) process_vector(const std::vector<int>& input, std::vector<int>& output) override
+        CORO_TASK(int)
+        process_vector(
+            const std::vector<int>& input,
+            std::vector<int>& output) override
         {
             output.clear();
             for (int value : input)
@@ -19,7 +22,14 @@ namespace comprehensive::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int) process_map(const std::map<std::string, int>& input, std::map<std::string, int>& output) override
+        CORO_TASK(int)
+        process_map(
+            const std::map<
+                std::string,
+                int>& input,
+            std::map<
+                std::string,
+                int>& output) override
         {
             output.clear();
             for (const auto& [key, value] : input)
@@ -27,13 +37,19 @@ namespace comprehensive::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int) process_struct(const std::string& input, std::string& output) override
+        CORO_TASK(int)
+        process_struct(
+            const std::string& input,
+            std::string& output) override
         {
             output = "Processed: " + input;
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int) echo_binary(const std::vector<uint8_t>& data, std::vector<uint8_t>& response) override
+        CORO_TASK(int)
+        echo_binary(
+            const std::vector<uint8_t>& data,
+            std::vector<uint8_t>& response) override
         {
             response = data;
             CO_RETURN rpc::error::OK();

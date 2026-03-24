@@ -13,7 +13,9 @@
 namespace
 {
     CORO_TASK(rpc::service_connect_result<comprehensive::v1::i_data_processor>)
-    make_data_processor(rpc::shared_ptr<comprehensive::v1::i_data_processor>, std::shared_ptr<rpc::service>)
+    make_data_processor(
+        rpc::shared_ptr<comprehensive::v1::i_data_processor>,
+        std::shared_ptr<rpc::service>)
     {
         CO_RETURN rpc::service_connect_result<comprehensive::v1::i_data_processor>{
             rpc::error::OK(), comprehensive::v1::make_benchmark_data_processor()};
@@ -21,7 +23,9 @@ namespace
 
     CORO_TASK(int)
     run_child_process(
-        std::shared_ptr<coro::scheduler> scheduler, rpc::zone child_zone, rpc::libcoro_spsc_dynamic_dll::queue_pair* queues)
+        std::shared_ptr<coro::scheduler> scheduler,
+        rpc::zone child_zone,
+        rpc::libcoro_spsc_dynamic_dll::queue_pair* queues)
     {
         auto service = std::make_shared<rpc::root_service>("benchmark_ipc_child_process", child_zone, scheduler);
 
@@ -46,7 +50,9 @@ namespace
     }
 }
 
-int main(int argc, char** argv)
+int main(
+    int argc,
+    char** argv)
 {
     auto bootstrap = rpc::ipc_transport::child_process_bootstrap::from_command_line(argc, argv);
     if (!bootstrap)
@@ -56,18 +62,19 @@ int main(int argc, char** argv)
     if (!queues)
         return 2;
 
-    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(coro::scheduler::options{
-        .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-        .pool = coro::thread_pool::options{.thread_count = static_cast<uint32_t>(bootstrap->scheduler_thread_count())},
-        .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+            .pool = coro::thread_pool::options{.thread_count = static_cast<uint32_t>(bootstrap->scheduler_thread_count())},
+            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
     int exit_code = 0;
-    coro::sync_wait(coro::when_all(
-        [&]() -> coro::task<void>
-        {
-            exit_code = CO_AWAIT run_child_process(scheduler, bootstrap->child_zone(), queues);
-            CO_RETURN;
-        }()));
+    coro::sync_wait(
+        coro::when_all(
+            [&]() -> coro::task<void>
+            {
+                exit_code = CO_AWAIT run_child_process(scheduler, bootstrap->child_zone(), queues);
+                CO_RETURN;
+            }()));
 
     scheduler->shutdown();
     rpc::ipc_transport::queue_pair_bootstrap::unmap_queue_pair(queues);

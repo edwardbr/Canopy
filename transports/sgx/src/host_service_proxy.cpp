@@ -14,18 +14,26 @@
 namespace rpc
 {
     host_service_proxy::host_service_proxy(
-        const char* name, destination_zone host_zone_id, const std::shared_ptr<rpc::child_service>& svc)
-        : service_proxy(name, host_zone_id, svc)
+        const char* name,
+        destination_zone host_zone_id,
+        const std::shared_ptr<rpc::child_service>& svc)
+        : service_proxy(
+              name,
+              host_zone_id,
+              svc)
     {
     }
 
     std::shared_ptr<rpc::service_proxy> host_service_proxy::create(
-        const char* name, destination_zone host_zone_id, const std::shared_ptr<rpc::child_service>& svc)
+        const char* name,
+        destination_zone host_zone_id,
+        const std::shared_ptr<rpc::child_service>& svc)
     {
         return std::shared_ptr<host_service_proxy>(new host_service_proxy(name, host_zone_id, svc));
     }
 
-    int host_service_proxy::send(uint64_t protocol_version,
+    int host_service_proxy::send(
+        uint64_t protocol_version,
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
@@ -62,7 +70,8 @@ namespace rpc
 
         int err_code = 0;
         size_t data_out_sz = 0;
-        sgx_status_t status = ::call_host(&err_code,
+        sgx_status_t status = ::call_host(
+            &err_code,
             protocol_version,
             (uint64_t)encoding,
             tag,
@@ -94,7 +103,8 @@ namespace rpc
             // data too small reallocate memory and try again
             combined_out.resize(data_out_sz);
 
-            status = ::call_host(&err_code,
+            status = ::call_host(
+                &err_code,
                 protocol_version,
                 (uint64_t)encoding,
                 tag,
@@ -138,7 +148,8 @@ namespace rpc
         return err_code;
     }
 
-    void host_service_proxy::post(uint64_t protocol_version,
+    void host_service_proxy::post(
+        uint64_t protocol_version,
         encoding encoding,
         uint64_t tag,
         caller_zone caller_zone_id,
@@ -171,7 +182,8 @@ namespace rpc
         size_t data_out_sz = 0;
 
         int err_code = 0;
-        sgx_status_t status = ::post_host(&err_code,
+        sgx_status_t status = ::post_host(
+            &err_code,
             protocol_version,
             (uint64_t)encoding,
             tag,
@@ -197,7 +209,8 @@ namespace rpc
         // Fire and forget - ignore err_code for post
     }
 
-    int host_service_proxy::try_cast(uint64_t protocol_version,
+    int host_service_proxy::try_cast(
+        uint64_t protocol_version,
         caller_zone caller_zone_id,
         destination_zone destination_zone_id,
         object object_id,
@@ -218,7 +231,8 @@ namespace rpc
 
         int err_code = 0;
         size_t out_bc_sz = 0;
-        sgx_status_t status = ::try_cast_host(&err_code,
+        sgx_status_t status = ::try_cast_host(
+            &err_code,
             protocol_version,
             caller_zone_id.get_subnet(),
             destination_zone_id.get_subnet(),
@@ -251,7 +265,8 @@ namespace rpc
         return err_code;
     }
 
-    int host_service_proxy::add_ref(uint64_t protocol_version,
+    int host_service_proxy::add_ref(
+        uint64_t protocol_version,
         destination_zone destination_zone_id,
         object object_id,
         caller_zone caller_zone_id,
@@ -272,7 +287,8 @@ namespace rpc
 
         int err_code = 0;
         size_t out_bc_sz = 0;
-        sgx_status_t status = ::add_ref_host(&err_code,
+        sgx_status_t status = ::add_ref_host(
+            &err_code,
             protocol_version,
             destination_zone_id.get_subnet(),
             object_id.get_val(),
@@ -317,7 +333,8 @@ namespace rpc
         return err_code;
     }
 
-    int host_service_proxy::release(uint64_t protocol_version,
+    int host_service_proxy::release(
+        uint64_t protocol_version,
         destination_zone destination_zone_id,
         object object_id,
         caller_zone caller_zone_id,
@@ -337,7 +354,8 @@ namespace rpc
 
         int err_code = 0;
         size_t out_bc_sz = 0;
-        sgx_status_t status = ::release_host(&err_code,
+        sgx_status_t status = ::release_host(
+            &err_code,
             protocol_version,
             destination_zone_id.get_subnet(),
             object_id.get_val(),

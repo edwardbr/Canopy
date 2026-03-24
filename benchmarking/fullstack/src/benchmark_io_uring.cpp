@@ -19,19 +19,22 @@ namespace comprehensive::v1
     {
         rpc::zone_address make_client_zone_address()
         {
-            return *rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
-                rpc::zone_address::address_type::local,
-                0,
-                {},
-                rpc::zone_address::default_subnet_size_bits,
-                2,
-                rpc::zone_address::default_object_id_size_bits,
-                1,
-                {}));
+            return *rpc::zone_address::create(
+                rpc::zone_address::construction_args(
+                    rpc::zone_address::version_3,
+                    rpc::zone_address::address_type::local,
+                    0,
+                    {},
+                    rpc::zone_address::default_subnet_size_bits,
+                    2,
+                    rpc::zone_address::default_object_id_size_bits,
+                    1,
+                    {}));
         }
 
         CORO_TASK(void)
-        io_uring_server_task(std::shared_ptr<coro::scheduler> scheduler,
+        io_uring_server_task(
+            std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
             const rpc::event& client_finished,
             rpc::encoding enc,
@@ -47,7 +50,8 @@ namespace comprehensive::v1
             addr[1] = 0;
             addr[2] = 0;
             addr[3] = 1;
-            auto io_uring_listener = std::make_shared<streaming::listener>("io_uring_server_transport",
+            auto io_uring_listener = std::make_shared<streaming::listener>(
+                "io_uring_server_transport",
                 std::make_shared<streaming::io_uring::acceptor>(addr, port),
                 rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
                     [](const rpc::shared_ptr<i_data_processor>&,
@@ -67,7 +71,8 @@ namespace comprehensive::v1
         }
 
         CORO_TASK(void)
-        io_uring_client_task(std::shared_ptr<coro::scheduler> scheduler,
+        io_uring_client_task(
+            std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
             rpc::event& client_finished,
             rpc::encoding enc,
@@ -131,7 +136,10 @@ namespace comprehensive::v1
         }
     }
 
-    benchmark_result run_io_uring_benchmark(rpc::encoding enc, size_t blob_size, uint16_t port)
+    benchmark_result run_io_uring_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port)
     {
         benchmark_result result{};
 
@@ -142,8 +150,10 @@ namespace comprehensive::v1
         rpc::event server_ready;
         rpc::event client_finished;
 
-        coro::sync_wait(coro::when_all(io_uring_server_task(scheduler_1, server_ready, client_finished, enc, port),
-            io_uring_client_task(scheduler_2, server_ready, client_finished, enc, blob_size, port, result)));
+        coro::sync_wait(
+            coro::when_all(
+                io_uring_server_task(scheduler_1, server_ready, client_finished, enc, port),
+                io_uring_client_task(scheduler_2, server_ready, client_finished, enc, blob_size, port, result)));
 
         scheduler_1.reset();
         scheduler_2.reset();

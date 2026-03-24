@@ -20,7 +20,8 @@ namespace rpc::dynamic_library
     // -------------------------------------------------------------------------
     // parent_transport — lives inside the DLL, calls back to host
     // -------------------------------------------------------------------------
-    parent_transport::parent_transport(std::string name,
+    parent_transport::parent_transport(
+        std::string name,
         rpc::zone dll_zone,
         rpc::zone host_zone,
         void* host_ctx,
@@ -32,7 +33,9 @@ namespace rpc::dynamic_library
         host_object_released_fn object_released,
         host_transport_down_fn transport_down,
         host_get_new_zone_id_fn get_new_zone_id)
-        : rpc::transport(name, dll_zone)
+        : rpc::transport(
+              name,
+              dll_zone)
         , host_ctx_(host_ctx)
         , host_send_(send)
         , host_post_(post)
@@ -185,7 +188,10 @@ extern "C"
         delete ctx;
     }
 
-    CANOPY_DLL_EXPORT int canopy_dll_send(void* dll_ctx, rpc::send_params* params, rpc::send_result* result)
+    CANOPY_DLL_EXPORT int canopy_dll_send(
+        void* dll_ctx,
+        rpc::send_params* params,
+        rpc::send_result* result)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)
@@ -197,7 +203,9 @@ extern "C"
         return result->error_code;
     }
 
-    CANOPY_DLL_EXPORT void canopy_dll_post(void* dll_ctx, rpc::post_params* params)
+    CANOPY_DLL_EXPORT void canopy_dll_post(
+        void* dll_ctx,
+        rpc::post_params* params)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)
@@ -205,7 +213,10 @@ extern "C"
         ctx->transport->inbound_post(std::move(*params));
     }
 
-    CANOPY_DLL_EXPORT int canopy_dll_try_cast(void* dll_ctx, rpc::try_cast_params* params, rpc::standard_result* result)
+    CANOPY_DLL_EXPORT int canopy_dll_try_cast(
+        void* dll_ctx,
+        rpc::try_cast_params* params,
+        rpc::standard_result* result)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)
@@ -217,7 +228,10 @@ extern "C"
         return result->error_code;
     }
 
-    CANOPY_DLL_EXPORT int canopy_dll_add_ref(void* dll_ctx, rpc::add_ref_params* params, rpc::standard_result* result)
+    CANOPY_DLL_EXPORT int canopy_dll_add_ref(
+        void* dll_ctx,
+        rpc::add_ref_params* params,
+        rpc::standard_result* result)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)
@@ -229,7 +243,10 @@ extern "C"
         return result->error_code;
     }
 
-    CANOPY_DLL_EXPORT int canopy_dll_release(void* dll_ctx, rpc::release_params* params, rpc::standard_result* result)
+    CANOPY_DLL_EXPORT int canopy_dll_release(
+        void* dll_ctx,
+        rpc::release_params* params,
+        rpc::standard_result* result)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)
@@ -241,7 +258,9 @@ extern "C"
         return result->error_code;
     }
 
-    CANOPY_DLL_EXPORT void canopy_dll_object_released(void* dll_ctx, rpc::object_released_params* params)
+    CANOPY_DLL_EXPORT void canopy_dll_object_released(
+        void* dll_ctx,
+        rpc::object_released_params* params)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)
@@ -249,7 +268,9 @@ extern "C"
         ctx->transport->inbound_object_released(std::move(*params));
     }
 
-    CANOPY_DLL_EXPORT void canopy_dll_transport_down(void* dll_ctx, rpc::transport_down_params* params)
+    CANOPY_DLL_EXPORT void canopy_dll_transport_down(
+        void* dll_ctx,
+        rpc::transport_down_params* params)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)
@@ -258,7 +279,9 @@ extern "C"
     }
 
     CANOPY_DLL_EXPORT int canopy_dll_get_new_zone_id(
-        void* dll_ctx, rpc::get_new_zone_id_params* params, rpc::new_zone_id_result* result)
+        void* dll_ctx,
+        rpc::get_new_zone_id_params* params,
+        rpc::new_zone_id_result* result)
     {
         auto* ctx = static_cast<rpc::dynamic_library::dll_context*>(dll_ctx);
         if (!ctx || !ctx->transport)

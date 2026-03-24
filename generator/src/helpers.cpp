@@ -12,7 +12,9 @@
 #include "attributes.h"
 #include "type_utils.h"
 
-std::string get_smart_ptr_type(const std::string& type_name, bool& is_optimistic)
+std::string get_smart_ptr_type(
+    const std::string& type_name,
+    bool& is_optimistic)
 {
     auto data = type_name.data();
     while (*data == ' ' || *data == '\t')
@@ -61,7 +63,10 @@ std::string get_smart_ptr_type(const std::string& type_name, bool& is_optimistic
 }
 
 bool is_interface_param(
-    const class_entity& lib, const std::string& type, bool& is_optimistic, std::shared_ptr<class_entity>& obj)
+    const class_entity& lib,
+    const std::string& type,
+    bool& is_optimistic,
+    std::shared_ptr<class_entity>& obj)
 {
     std::string reference_modifiers;
     std::string type_name = type;
@@ -136,7 +141,9 @@ bool is_pointer_to_pointer(std::string type_name)
     return reference_modifiers == "**";
 }
 
-bool is_type_and_parameter_the_same(std::string type, std::string name)
+bool is_type_and_parameter_the_same(
+    std::string type,
+    std::string name)
 {
     if (type.empty() || type.size() < name.size())
         return false;
@@ -157,7 +164,10 @@ bool is_type_and_parameter_the_same(std::string type, std::string name)
     return type == name;
 }
 
-void render_parameter(writer& wrtr, const class_entity& m_ob, const parameter_entity& parameter)
+void render_parameter(
+    writer& wrtr,
+    const class_entity& m_ob,
+    const parameter_entity& parameter)
 {
     std::string modifier;
     bool has_struct = false;
@@ -188,7 +198,10 @@ void render_parameter(writer& wrtr, const class_entity& m_ob, const parameter_en
     wrtr.raw("{}{} {}", modifier, parameter.get_type(), parameter.get_name());
 }
 
-void render_function(writer& wrtr, const class_entity& m_ob, const function_entity& function)
+void render_function(
+    writer& wrtr,
+    const class_entity& m_ob,
+    const function_entity& function)
 {
     std::string modifier;
     if (function.is_static())

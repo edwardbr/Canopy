@@ -101,14 +101,21 @@ using test_scenario_config = fuzz_test::test_scenario_config;
 using runner_target_pair = fuzz_test::runner_target_pair;
 
 // Function to dump test scenario for replay using YAS JSON serialization
-void dump_test_scenario(const test_scenario_config& config, const std::string& status = "STARTING");
-void dump_failure_scenario(const test_scenario_config& config, const std::string& error_msg);
+void dump_test_scenario(
+    const test_scenario_config& config,
+    const std::string& status = "STARTING");
+void dump_failure_scenario(
+    const test_scenario_config& config,
+    const std::string& error_msg);
 test_scenario_config load_test_scenario(const std::string& scenario_file);
 int replay_test_scenario(const std::string& scenario_file);
 void cleanup_successful_test(const test_scenario_config& config);
 
 // Forward declarations
-std::vector<instruction> generate_instruction_set(int max_instructions, bool has_parent, bool has_children);
+std::vector<instruction> generate_instruction_set(
+    int max_instructions,
+    bool has_parent,
+    bool has_children);
 
 // Shared object implementation
 class shared_object_impl : public rpc::base<shared_object_impl, i_shared_object, i_cleanup>,
@@ -122,7 +129,10 @@ private:
     bool cleanup_called_{false};
 
 public:
-    shared_object_impl(int id, const std::string& name, int initial_value)
+    shared_object_impl(
+        int id,
+        const std::string& name,
+        int initial_value)
         : id_(id)
         , name_(name)
         , value_(initial_value)
@@ -185,7 +195,11 @@ public:
     factory_impl() = default;
 
     CORO_TASK(int)
-    create_shared_object(int id, std::string name, int initial_value, rpc::shared_ptr<i_shared_object>& created_object) override
+    create_shared_object(
+        int id,
+        std::string name,
+        int initial_value,
+        rpc::shared_ptr<i_shared_object>& created_object) override
     {
         RPC_INFO("[FACTORY] create_shared_object(id={}, name={}, initial_value={})", id, name, initial_value);
         try
@@ -204,7 +218,9 @@ public:
     }
 
     CORO_TASK(int)
-    place_shared_object(rpc::shared_ptr<i_shared_object> new_object, rpc::shared_ptr<i_shared_object> target_object) override
+    place_shared_object(
+        rpc::shared_ptr<i_shared_object> new_object,
+        rpc::shared_ptr<i_shared_object> target_object) override
     {
         RPC_INFO("[FACTORY] place_shared_object() called");
         if (!new_object || !target_object)
@@ -223,7 +239,10 @@ public:
         CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(int) get_factory_stats(int& total_created, int& current_refs) override
+    CORO_TASK(int)
+    get_factory_stats(
+        int& total_created,
+        int& current_refs) override
     {
         total_created = objects_created_;
         current_refs = 0; // Simplified
@@ -257,7 +276,10 @@ private:
 public:
     cache_impl() = default;
 
-    CORO_TASK(int) store_object(int cache_key, rpc::shared_ptr<i_shared_object> object) override
+    CORO_TASK(int)
+    store_object(
+        int cache_key,
+        rpc::shared_ptr<i_shared_object> object) override
     {
         RPC_INFO("[CACHE] store_object(cache_key={})", cache_key);
         if (!object)
@@ -271,7 +293,10 @@ public:
         CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(int) retrieve_object(int cache_key, rpc::shared_ptr<i_shared_object>& object) override
+    CORO_TASK(int)
+    retrieve_object(
+        int cache_key,
+        rpc::shared_ptr<i_shared_object>& object) override
     {
         RPC_INFO("[CACHE] retrieve_object(cache_key={})", cache_key);
         auto it = cache_storage_.find(cache_key);
@@ -287,7 +312,10 @@ public:
         CO_RETURN rpc::error::OBJECT_NOT_FOUND();
     }
 
-    CORO_TASK(int) has_object(int cache_key, bool& exists) override
+    CORO_TASK(int)
+    has_object(
+        int cache_key,
+        bool& exists) override
     {
         exists = cache_storage_.find(cache_key) != cache_storage_.end();
         RPC_INFO("[CACHE] has_object(cache_key={}) -> exists={}", cache_key, exists);
@@ -343,7 +371,10 @@ private:
 public:
     worker_impl() = default;
 
-    CORO_TASK(int) process_object(rpc::shared_ptr<i_shared_object> object, int increment) override
+    CORO_TASK(int)
+    process_object(
+        rpc::shared_ptr<i_shared_object> object,
+        int increment) override
     {
         RPC_INFO("[WORKER] process_object(increment={})", increment);
         if (!object)
@@ -361,7 +392,8 @@ public:
             {
                 objects_processed_++;
                 total_increments_ += increment;
-                RPC_INFO("[WORKER] process_object completed, new value: {}, processed_count={}",
+                RPC_INFO(
+                    "[WORKER] process_object completed, new value: {}, processed_count={}",
                     current_value + increment,
                     objects_processed_);
                 CO_RETURN rpc::error::OK();
@@ -372,13 +404,15 @@ public:
         CO_RETURN rpc::error::INVALID_DATA();
     }
 
-    CORO_TASK(int) get_worker_stats(int& objects_processed, int& total_increments) override
+    CORO_TASK(int)
+    get_worker_stats(
+        int& objects_processed,
+        int& total_increments) override
     {
         objects_processed = objects_processed_;
         total_increments = total_increments_;
-        RPC_INFO("[WORKER] get_worker_stats() -> objects_processed={}, total_increments={}",
-            objects_processed,
-            total_increments);
+        RPC_INFO(
+            "[WORKER] get_worker_stats() -> objects_processed={}, total_increments={}", objects_processed, total_increments);
         CO_RETURN rpc::error::OK();
     }
 
@@ -511,7 +545,10 @@ private:
         CO_RETURN nullptr;
     }
 
-    CORO_TASK(void) store_object_in_cache(int cache_key, rpc::shared_ptr<i_shared_object> object)
+    CORO_TASK(void)
+    store_object_in_cache(
+        int cache_key,
+        rpc::shared_ptr<i_shared_object> object)
     {
         if (!local_cache_)
             CO_RETURN;
@@ -526,7 +563,10 @@ private:
         CO_RETURN;
     }
 
-    CORO_TASK(void) process_object_via_worker(int increment, rpc::shared_ptr<i_shared_object> object)
+    CORO_TASK(void)
+    process_object_via_worker(
+        int increment,
+        rpc::shared_ptr<i_shared_object> object)
     {
         if (!local_worker_)
             CO_RETURN;
@@ -556,13 +596,18 @@ public:
         CO_RETURN nullptr;
     }
 
-    autonomous_node_impl(node_type type, uint64_t node_id)
+    autonomous_node_impl(
+        node_type type,
+        uint64_t node_id)
         : node_type_(type)
         , node_id_(node_id)
     {
     }
 
-    CORO_TASK(int) initialize_node(node_type type, uint64_t node_id) override
+    CORO_TASK(int)
+    initialize_node(
+        node_type type,
+        uint64_t node_id) override
     {
         RPC_INFO("[NODE {}] initialize_node(type={}, node_id={})", node_id_, static_cast<int>(type), node_id);
         node_type_ = type;
@@ -571,7 +616,10 @@ public:
         CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(int) run_script(rpc::shared_ptr<i_autonomous_node> target_node, int instruction_count) override
+    CORO_TASK(int)
+    run_script(
+        rpc::shared_ptr<i_autonomous_node> target_node,
+        int instruction_count) override
     {
         if (!target_node)
         {
@@ -624,7 +672,8 @@ public:
     }
 
     CORO_TASK(int)
-    execute_instruction(instruction instruction,
+    execute_instruction(
+        instruction instruction,
         rpc::shared_ptr<i_shared_object> input_object,
         rpc::shared_ptr<i_shared_object>& output_object) override
     {
@@ -633,7 +682,8 @@ public:
             CO_RETURN rpc::error::OK(); // Stop execution gracefully
         }
         g_instruction_counter++;
-        RPC_INFO("Node {} executing: {} (val={}) [Count={}]",
+        RPC_INFO(
+            "Node {} executing: {} (val={}) [Count={}]",
             node_id_,
             instruction.operation,
             instruction.target_value,
@@ -739,7 +789,10 @@ public:
         }
     }
 
-    CORO_TASK(int) receive_object(rpc::shared_ptr<i_shared_object> object, uint64_t sender_node_id) override
+    CORO_TASK(int)
+    receive_object(
+        rpc::shared_ptr<i_shared_object> object,
+        uint64_t sender_node_id) override
     {
         std::ignore = object;
         std::ignore = sender_node_id;
@@ -750,13 +803,18 @@ public:
     }
 
     CORO_TASK(int)
-    get_node_status(node_type& current_type, uint64_t& current_id, int& connections_count, int& objects_held) override
+    get_node_status(
+        node_type& current_type,
+        uint64_t& current_id,
+        int& connections_count,
+        int& objects_held) override
     {
         current_type = node_type_;
         current_id = node_id_;
         connections_count = connections_count_;
         objects_held = signals_received_;
-        RPC_INFO("[NODE {}] get_node_status() -> type={}, id={}, connections={}, objects_held={}",
+        RPC_INFO(
+            "[NODE {}] get_node_status() -> type={}, id={}, connections={}, objects_held={}",
             node_id_,
             static_cast<int>(current_type),
             current_id,
@@ -767,10 +825,14 @@ public:
 
     CORO_TASK(int)
     create_child_node(
-        node_type child_type, uint64_t child_zone_id, bool cache_locally, rpc::shared_ptr<i_autonomous_node>& child_node) override
+        node_type child_type,
+        uint64_t child_zone_id,
+        bool cache_locally,
+        rpc::shared_ptr<i_autonomous_node>& child_node) override
     {
         std::ignore = cache_locally;
-        RPC_INFO("[NODE {}] create_child_node(child_type={}, child_zone_id={}, cache_locally={})",
+        RPC_INFO(
+            "[NODE {}] create_child_node(child_type={}, child_zone_id={}, cache_locally={})",
             node_id_,
             static_cast<int>(child_type),
             child_zone_id,
@@ -795,7 +857,8 @@ public:
                 child_zone_name.c_str(), current_service->shared_from_this());
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [child_type, child_zone_id]([[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
+                [child_type, child_zone_id](
+                    [[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
                     const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
                 {
                     RPC_INFO("===CALLBACK INVOKED=== for child_zone_id={}", child_zone_id);
@@ -827,7 +890,10 @@ public:
         CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(int) get_cached_child_by_index(int index, rpc::shared_ptr<i_autonomous_node>& child) override
+    CORO_TASK(int)
+    get_cached_child_by_index(
+        int index,
+        rpc::shared_ptr<i_autonomous_node>& child) override
     {
         std::ignore = child;
         RPC_INFO("[NODE {}] get_cached_child_by_index(index={}), children_size={}", node_id_, index, child_nodes_.size());
@@ -864,12 +930,14 @@ public:
     }
     CORO_TASK(int)
     pass_object_to_connected(
-        [[maybe_unused]] int connection_index, [[maybe_unused]] rpc::shared_ptr<i_shared_object> object) override
+        [[maybe_unused]] int connection_index,
+        [[maybe_unused]] rpc::shared_ptr<i_shared_object> object) override
     {
         CO_RETURN rpc::error::OK();
     }
     CORO_TASK(int)
-    request_child_creation([[maybe_unused]] rpc::shared_ptr<i_autonomous_node> target_parent,
+    request_child_creation(
+        [[maybe_unused]] rpc::shared_ptr<i_autonomous_node> target_parent,
         [[maybe_unused]] node_type child_type,
         [[maybe_unused]] uint64_t child_zone_id,
         [[maybe_unused]] rpc::shared_ptr<i_autonomous_node>& child_proxy) override
@@ -880,7 +948,8 @@ public:
     // i_cleanup implementation
     CORO_TASK(int) cleanup(rpc::shared_ptr<i_garbage_collector> collector) override
     {
-        RPC_INFO("[NODE {}] cleanup() called, already_cleaned={}, child_nodes_size={}, created_objects_size={}",
+        RPC_INFO(
+            "[NODE {}] cleanup() called, already_cleaned={}, child_nodes_size={}, created_objects_size={}",
             node_id_,
             cleanup_called_,
             child_nodes_.size(),
@@ -1010,8 +1079,8 @@ public:
     // Clear all collected objects - this releases them for destruction
     void release_all()
     {
-        RPC_INFO("[GARBAGE_COLLECTOR] release_all() called - releasing {} objects for destruction",
-            collected_objects_.size());
+        RPC_INFO(
+            "[GARBAGE_COLLECTOR] release_all() called - releasing {} objects for destruction", collected_objects_.size());
         collected_objects_.clear();
         RPC_INFO("[GARBAGE_COLLECTOR] release_all() completed - all objects released");
     }
@@ -1042,7 +1111,8 @@ public:
                 int obj_held = 0;
                 if (CO_AWAIT autonomous_node->get_node_status(type, id, conn, obj_held) == rpc::error::OK())
                 {
-                    RPC_INFO("[GARBAGE_COLLECTOR] Object: AUTONOMOUS_NODE id={} type={} connections={} objects_held={}",
+                    RPC_INFO(
+                        "[GARBAGE_COLLECTOR] Object: AUTONOMOUS_NODE id={} type={} connections={} objects_held={}",
                         id,
                         static_cast<int>(type),
                         conn,
@@ -1079,9 +1149,8 @@ public:
                 int current_refs = 0;
                 if (CO_AWAIT factory->get_factory_stats(total_created, current_refs) == rpc::error::OK())
                 {
-                    RPC_INFO("[GARBAGE_COLLECTOR] Object: FACTORY total_created={} current_refs={}",
-                        total_created,
-                        current_refs);
+                    RPC_INFO(
+                        "[GARBAGE_COLLECTOR] Object: FACTORY total_created={} current_refs={}", total_created, current_refs);
                 }
                 else
                 {
@@ -1112,9 +1181,8 @@ public:
                 int total_increments = 0;
                 if (CO_AWAIT worker->get_worker_stats(objects_processed, total_increments) == rpc::error::OK())
                 {
-                    RPC_INFO("[GARBAGE_COLLECTOR] Object: WORKER processed={} increments={}",
-                        objects_processed,
-                        total_increments);
+                    RPC_INFO(
+                        "[GARBAGE_COLLECTOR] Object: WORKER processed={} increments={}", objects_processed, total_increments);
                 }
                 else
                 {
@@ -1131,7 +1199,10 @@ public:
 };
 
 // Generate random instruction sets for autonomous execution with weighted probabilities
-std::vector<instruction> generate_instruction_set(int max_instructions, bool has_parent, bool has_children)
+std::vector<instruction> generate_instruction_set(
+    int max_instructions,
+    bool has_parent,
+    bool has_children)
 {
     std::vector<instruction> instructions;
     std::mt19937& gen = get_global_rng();
@@ -1192,7 +1263,9 @@ std::vector<instruction> generate_instruction_set(int max_instructions, bool has
 // Helper function to create a chain of nodes using interface methods
 CORO_TASK(rpc::shared_ptr<i_autonomous_node>)
 create_deep_branch(
-    rpc::shared_ptr<i_autonomous_node> parent, int depth, std::vector<rpc::shared_ptr<i_autonomous_node>>& all_nodes)
+    rpc::shared_ptr<i_autonomous_node> parent,
+    int depth,
+    std::vector<rpc::shared_ptr<i_autonomous_node>>& all_nodes)
 {
     rpc::shared_ptr<i_autonomous_node> current_node = parent;
     RPC_INFO("Creating deep branch from parent with depth {}", depth);
@@ -1227,9 +1300,16 @@ create_deep_branch(
 #ifdef CANOPY_BUILD_COROUTINE
 CORO_TASK(void)
 run_autonomous_instruction_test(
-    int test_cycle, int instruction_count, const std::shared_ptr<coro::scheduler>& scheduler, uint64_t override_seed = 0)
+    int test_cycle,
+    int instruction_count,
+    const std::shared_ptr<coro::scheduler>& scheduler,
+    uint64_t override_seed = 0)
 #else
-CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_count, uint64_t override_seed = 0)
+CORO_TASK(void)
+run_autonomous_instruction_test(
+    int test_cycle,
+    int instruction_count,
+    uint64_t override_seed = 0)
 #endif
 {
     spdlog::info("=== Starting Autonomous Instruction Test Cycle {} ===", test_cycle);
@@ -1240,16 +1320,19 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
 
 #ifdef CANOPY_BUILD_COROUTINE
     // Create root service with zone 1 and scheduler
-    auto root_service = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT",
-        rpc::zone{*rpc::zone_address::create(rpc::zone_address::construction_args(rpc::zone_address::version_3,
-            rpc::zone_address::address_type::local,
-            0,
-            {},
-            rpc::zone_address::default_subnet_size_bits,
-            static_cast<uint32_t>(++g_zone_id_counter),
-            rpc::zone_address::default_object_id_size_bits,
-            0,
-            {}))},
+    auto root_service = std::make_shared<rpc::root_service>(
+        "AUTONOMOUS_ROOT",
+        rpc::zone{*rpc::zone_address::create(
+            rpc::zone_address::construction_args(
+                rpc::zone_address::version_3,
+                rpc::zone_address::address_type::local,
+                0,
+                {},
+                rpc::zone_address::default_subnet_size_bits,
+                static_cast<uint32_t>(++g_zone_id_counter),
+                rpc::zone_address::default_object_id_size_bits,
+                0,
+                {}))},
         scheduler);
 #else
     // Create root service with zone 1 (no scheduler in non-coroutine build)
@@ -1315,7 +1398,8 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
             scenario_config.zone_sequence.push_back(new_zone_subnet); // Track zone creation
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&, new_zone_subnet]([[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
+                [&, new_zone_subnet](
+                    [[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
                     const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
                 {
                     auto new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_subnet);
@@ -1401,7 +1485,8 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
                     std::uniform_int_distribution<size_t> target_dist(0, all_nodes.size() - 1);
                     auto& target_node = all_nodes[target_dist(gen)];
 
-                    RPC_INFO("Executing runner {} (zone {}) → target {} (zone {}) with {} instructions",
+                    RPC_INFO(
+                        "Executing runner {} (zone {}) → target {} (zone {}) with {} instructions",
                         i + 1,
                         scenario_config.runner_target_pairs[i].runner_id,
                         i + 1,
@@ -1493,7 +1578,9 @@ CORO_TASK(void) run_autonomous_instruction_test(int test_cycle, int instruction_
     spdlog::info("=== Autonomous Test Cycle {} Completed ===", test_cycle);
 }
 
-int main(int argc, char** argv)
+int main(
+    int argc,
+    char** argv)
 {
     try
     {
@@ -1510,7 +1597,8 @@ int main(int argc, char** argv)
         args::ValueFlag<int> test_cycles(parser, "cycles", "Number of test cycles to run (default: 5)", {'c', "cycles"}, 5);
         args::ValueFlag<int> instruction_count(
             parser, "instructions", "Number of instructions per runner (default: 10)", {'i', "instructions"}, 10);
-        args::ValueFlag<std::string> output_dir(parser,
+        args::ValueFlag<std::string> output_dir(
+            parser,
             "directory",
             "Directory for JSON scenario files (default: tests/fuzz_test/replays)",
             {'o', "output-dir"},
@@ -1670,7 +1758,9 @@ int main(int argc, char** argv)
 // REPLAY SYSTEM IMPLEMENTATION
 // ============================================================================
 
-void dump_test_scenario(const test_scenario_config& config, const std::string& status)
+void dump_test_scenario(
+    const test_scenario_config& config,
+    const std::string& status)
 {
     std::filesystem::create_directories(g_output_directory);
 
@@ -1704,7 +1794,9 @@ void dump_test_scenario(const test_scenario_config& config, const std::string& s
     }
 }
 
-void dump_failure_scenario(const test_scenario_config& config, const std::string& error_msg)
+void dump_failure_scenario(
+    const test_scenario_config& config,
+    const std::string& error_msg)
 {
     std::filesystem::create_directories(g_output_directory);
 

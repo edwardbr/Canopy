@@ -291,7 +291,9 @@ namespace json_schema
 
     // Helper function to substitute template parameters in a type name
     std::string substitute_template_parameters(
-        const std::string& type_with_params, const std::string& member_type, const class_entity& template_def)
+        const std::string& type_with_params,
+        const std::string& member_type,
+        const class_entity& template_def)
     {
         if (type_with_params.find('<') == std::string::npos)
         {
@@ -347,7 +349,10 @@ namespace json_schema
 
     // Generate detailed schema for complex types (structs/classes)
     void generate_complex_type_schema(
-        const std::string& clean_type_name, const class_entity& root, json_writer& writer, std::set<std::string>& visited_types)
+        const std::string& clean_type_name,
+        const class_entity& root,
+        json_writer& writer,
+        std::set<std::string>& visited_types)
     {
         // Avoid infinite recursion for circular references
         if (visited_types.find(clean_type_name) != visited_types.end())
@@ -635,7 +640,10 @@ namespace json_schema
 
     // Recursively generate schema for any type
     void generate_type_schema_recursive(
-        const std::string& type_name, const class_entity& root, json_writer& writer, std::set<std::string>& visited_types)
+        const std::string& type_name,
+        const class_entity& root,
+        json_writer& writer,
+        std::set<std::string>& visited_types)
     {
         std::string basic_type = map_basic_type_to_json(type_name);
 
@@ -686,7 +694,9 @@ namespace json_schema
 
     // Enhanced JSON schema generation for input parameters with recursive complex type support
     std::string generate_function_input_parameter_schema_with_recursion(
-        const class_entity& root, const class_entity& interface, const function_entity& function)
+        const class_entity& root,
+        const class_entity& interface,
+        const function_entity& function)
     {
         std::ignore = interface; // May be used in future enhancements
 
@@ -767,7 +777,9 @@ namespace json_schema
 
     // Enhanced JSON schema generation for output parameters with recursive complex type support
     std::string generate_function_output_parameter_schema_with_recursion(
-        const class_entity& root, const class_entity& interface, const function_entity& function)
+        const class_entity& root,
+        const class_entity& interface,
+        const function_entity& function)
     {
         std::ignore = interface; // May be used in future enhancements
 
@@ -843,7 +855,8 @@ namespace json_schema
     }
 
     // Enhanced type mapping with attribute support (from comprehensive system)
-    void map_idl_type_to_json_schema_enhanced(const class_entity& root,
+    void map_idl_type_to_json_schema_enhanced(
+        const class_entity& root,
         const class_entity* current_context,
         const std::string& idl_type_name,
         const attributes& attribs,

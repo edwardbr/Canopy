@@ -25,12 +25,18 @@
 #      include <sgx_error.h>
 extern "C"
 {
-    sgx_status_t rpc_log(int level, const char* str, size_t sz);
+    sgx_status_t rpc_log(
+        int level,
+        const char* str,
+        size_t sz);
 }
 #    else
 extern "C"
 {
-    void rpc_log(int level, const char* str, size_t sz);
+    void rpc_log(
+        int level,
+        const char* str,
+        size_t sz);
 }
 #    endif
 #    define RPC_LOG_BACKEND(level, message) rpc_log(level, (message).c_str(), (message).length())

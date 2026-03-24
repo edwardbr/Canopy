@@ -12,7 +12,8 @@ namespace rpc::stream_transport
     namespace
     {
         auto is_expected_disconnect_send_failure(
-            rpc::transport_status transport_status, const coro::net::io_status& send_status) -> bool
+            rpc::transport_status transport_status,
+            const coro::net::io_status& send_status) -> bool
         {
             if (transport_status < rpc::transport_status::DISCONNECTING)
                 return false;
@@ -25,11 +26,14 @@ namespace rpc::stream_transport
         }
     } // namespace
 
-    transport::transport(std::string name,
+    transport::transport(
+        std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         connection_handler handler)
-        : rpc::transport(name, service)
+        : rpc::transport(
+              name,
+              service)
         , stream_(std::move(stream))
         , connection_handler_(std::move(handler))
     {
@@ -56,7 +60,8 @@ namespace rpc::stream_transport
         rpc::transport::set_status(new_status);
     }
 
-    std::shared_ptr<transport> make_server(std::string name,
+    std::shared_ptr<transport> make_server(
+        std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         transport::connection_handler handler)
@@ -70,7 +75,9 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(rpc::connect_result)
-    transport::inner_connect(std::shared_ptr<rpc::object_stub> stub, connection_settings input_descr)
+    transport::inner_connect(
+        std::shared_ptr<rpc::object_stub> stub,
+        connection_settings input_descr)
     {
         RPC_DEBUG("stream_transport::transport::inner_connect zone={}", get_zone_id().get_subnet());
         stub_ = stub;
@@ -88,13 +95,13 @@ namespace rpc::stream_transport
             {
                 CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
             }
-            auto init_result
-                = CO_AWAIT call_peer<init_client_channel_send, init_client_channel_response>(rpc::get_version(),
-                    init_client_channel_send{.inbound_remote_object = std::move(*inbound_remote_object_r),
-                        .inbound_interface_id = input_descr.inbound_interface_id,
-                        .destination_zone_id = get_adjacent_zone_id(),
-                        .outbound_interface_id = input_descr.outbound_interface_id,
-                        .adjacent_zone_id = get_zone_id()});
+            auto init_result = CO_AWAIT call_peer<init_client_channel_send, init_client_channel_response>(
+                rpc::get_version(),
+                init_client_channel_send{.inbound_remote_object = std::move(*inbound_remote_object_r),
+                    .inbound_interface_id = input_descr.inbound_interface_id,
+                    .destination_zone_id = get_adjacent_zone_id(),
+                    .outbound_interface_id = input_descr.outbound_interface_id,
+                    .adjacent_zone_id = get_zone_id()});
             int ret = init_result.error_code;
             if (ret != rpc::error::OK())
             {
@@ -129,7 +136,8 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stream_transport::transport::outbound_send zone={}", get_zone_id().get_subnet());
 
-        auto response_result = CO_AWAIT call_peer<call_send, call_receive>(params.protocol_version,
+        auto response_result = CO_AWAIT call_peer<call_send, call_receive>(
+            params.protocol_version,
             call_send{.encoding = params.encoding_type,
                 .tag = params.tag,
                 .caller_zone_id = params.caller_zone_id,
@@ -162,7 +170,8 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload_post_send(params.protocol_version,
+        send_payload_post_send(
+            params.protocol_version,
             message_direction::one_way,
             post_send{.encoding = params.encoding_type,
                 .tag = params.tag,
@@ -182,7 +191,8 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stream_transport::transport::outbound_try_cast zone={}", get_zone_id().get_subnet());
 
-        auto response_result = CO_AWAIT call_peer<try_cast_send, try_cast_receive>(params.protocol_version,
+        auto response_result = CO_AWAIT call_peer<try_cast_send, try_cast_receive>(
+            params.protocol_version,
             try_cast_send{.caller_zone_id = params.caller_zone_id,
                 .destination_zone_id = params.remote_object_id,
                 .interface_id = params.interface_id,
@@ -203,7 +213,8 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stream_transport::transport::outbound_add_ref zone={}", get_zone_id().get_subnet());
 
-        auto response_result = CO_AWAIT call_peer<addref_send, addref_receive>(params.protocol_version,
+        auto response_result = CO_AWAIT call_peer<addref_send, addref_receive>(
+            params.protocol_version,
             addref_send{.destination_zone_id = params.remote_object_id,
                 .caller_zone_id = params.caller_zone_id,
                 .requesting_zone_id = params.requesting_zone_id,
@@ -241,12 +252,14 @@ namespace rpc::stream_transport
 
         if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::DISCONNECTING)
         {
-            RPC_ERROR("failed stream_transport::transport::outbound_release - not connected, status = {}",
+            RPC_ERROR(
+                "failed stream_transport::transport::outbound_release - not connected, status = {}",
                 static_cast<int>(get_status()));
             CO_RETURN standard_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
 
-        send_payload_release_send(params.protocol_version,
+        send_payload_release_send(
+            params.protocol_version,
             message_direction::one_way,
             release_send{.destination_zone_id = params.remote_object_id,
                 .caller_zone_id = params.caller_zone_id,
@@ -276,7 +289,8 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload_object_released_send(params.protocol_version,
+        send_payload_object_released_send(
+            params.protocol_version,
             message_direction::one_way,
             object_released_send{.encoding = encoding::yas_binary,
                 .destination_zone_id = params.remote_object_id,
@@ -298,7 +312,8 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload_transport_down_send(params.protocol_version,
+        send_payload_transport_down_send(
+            params.protocol_version,
             message_direction::one_way,
             transport_down_send{.encoding = encoding::yas_binary,
                 .destination_zone_id = params.destination_zone_id,
@@ -374,7 +389,8 @@ namespace rpc::stream_transport
             auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), early_response);
             if (str_err.empty())
             {
-                RPC_DEBUG("pump: received init_client_initial_channel_response, adjacent_zone={}",
+                RPC_DEBUG(
+                    "pump: received init_client_initial_channel_response, adjacent_zone={}",
                     early_response.zone_id.get_subnet());
                 set_adjacent_zone_id(early_response.zone_id);
                 get_service()->add_transport(early_response.zone_id, shared_from_this());
@@ -510,7 +526,8 @@ namespace rpc::stream_transport
 
             if (!recv_status.is_ok())
             {
-                RPC_WARNING("receive_consumer_loop: stream receive failed for zone {} status={} native={}",
+                RPC_WARNING(
+                    "receive_consumer_loop: stream receive failed for zone {} status={} native={}",
                     get_zone_id().get_subnet(),
                     static_cast<int>(recv_status.type),
                     recv_status.native_code);
@@ -544,7 +561,8 @@ namespace rpc::stream_transport
 
             // Full payload received — dispatch
             {
-                RPC_DEBUG("receive_consumer_loop: full payload received seq={} bytes={} zone={}",
+                RPC_DEBUG(
+                    "receive_consumer_loop: full payload received seq={} bytes={} zone={}",
                     prefix.sequence_number,
                     payload_buf.size(),
                     get_zone_id().get_subnet());
@@ -587,7 +605,8 @@ namespace rpc::stream_transport
                     {
                         std::scoped_lock lock(pending_transmits_mtx_);
                         auto it = pending_transmits_.find(prefix.sequence_number);
-                        RPC_DEBUG("pending_transmits_ zone: {} sequence_number: {} id: {}",
+                        RPC_DEBUG(
+                            "pending_transmits_ zone: {} sequence_number: {} id: {}",
                             get_zone_id().get_subnet(),
                             prefix.sequence_number,
                             payload.payload_fingerprint);
@@ -599,7 +618,8 @@ namespace rpc::stream_transport
                         }
                         else
                         {
-                            RPC_WARNING("No pending transmit found for sequence_number: {}, ignoring message id: {}",
+                            RPC_WARNING(
+                                "No pending transmit found for sequence_number: {}, ignoring message id: {}",
                                 prefix.sequence_number,
                                 payload.payload_fingerprint);
                         }
@@ -609,7 +629,8 @@ namespace rpc::stream_transport
                     {
                         result->prefix = prefix;
                         result->payload = std::move(payload);
-                        RPC_DEBUG("pump receive prefix.sequence_number {}\n prefix = {}\n payload = {}",
+                        RPC_DEBUG(
+                            "pump receive prefix.sequence_number {}\n prefix = {}\n payload = {}",
                             get_zone_id().get_subnet(),
                             rpc::to_yas_json<std::string>(result->prefix),
                             rpc::to_yas_json<std::string>(result->payload));
@@ -667,14 +688,16 @@ namespace rpc::stream_transport
             {
                 if (is_expected_disconnect_send_failure(get_status(), send_status))
                 {
-                    RPC_DEBUG("flush_send_queue: expected disconnect-time send failure for zone {} status={} native={}",
+                    RPC_DEBUG(
+                        "flush_send_queue: expected disconnect-time send failure for zone {} status={} native={}",
                         get_zone_id().get_subnet(),
                         static_cast<int>(send_status.type),
                         send_status.native_code);
                 }
                 else
                 {
-                    RPC_WARNING("flush_send_queue: stream send failed for zone {} status={} native={}",
+                    RPC_WARNING(
+                        "flush_send_queue: stream send failed for zone {} status={} native={}",
                         get_zone_id().get_subnet(),
                         static_cast<int>(send_status.type),
                         send_status.native_code);
@@ -721,7 +744,8 @@ namespace rpc::stream_transport
 
             if (had_item)
             {
-                RPC_DEBUG("send_producer_loop: sending seq={} direction={} payload_bytes={} zone={}",
+                RPC_DEBUG(
+                    "send_producer_loop: sending seq={} direction={} payload_bytes={} zone={}",
                     item.sequence_number,
                     static_cast<uint64_t>(item.direction),
                     item.payload_data.size(),
@@ -752,7 +776,8 @@ namespace rpc::stream_transport
                     }
                     else
                     {
-                        RPC_WARNING("send_producer_loop: stream send failed for zone {} status={} native={}",
+                        RPC_WARNING(
+                            "send_producer_loop: stream send failed for zone {} status={} native={}",
                             get_zone_id().get_subnet(),
                             static_cast<int>(send_status.type),
                             send_status.native_code);
@@ -816,7 +841,9 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    transport::cleanup(std::shared_ptr<rpc::stream_transport::transport> transport, std::shared_ptr<rpc::service> svc)
+    transport::cleanup(
+        std::shared_ptr<rpc::stream_transport::transport> transport,
+        std::shared_ptr<rpc::service> svc)
     {
         RPC_DEBUG("Both loops completed, finalising transport for zone {}", transport->get_zone_id().get_subnet());
         {
@@ -838,7 +865,10 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    transport::stub_handle_send(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_send(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_send");
 
@@ -863,17 +893,18 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        auto send_result = CO_AWAIT inbound_send(rpc::send_params{
-            .protocol_version = prefix.version,
-            .encoding_type = request.encoding,
-            .tag = request.tag,
-            .caller_zone_id = request.caller_zone_id,
-            .remote_object_id = request.destination_zone_id,
-            .interface_id = request.interface_id,
-            .method_id = request.method_id,
-            .in_data = std::move(request.payload),
-            .in_back_channel = std::move(request.back_channel),
-        });
+        auto send_result = CO_AWAIT inbound_send(
+            rpc::send_params{
+                .protocol_version = prefix.version,
+                .encoding_type = request.encoding,
+                .tag = request.tag,
+                .caller_zone_id = request.caller_zone_id,
+                .remote_object_id = request.destination_zone_id,
+                .interface_id = request.interface_id,
+                .method_id = request.method_id,
+                .in_data = std::move(request.payload),
+                .in_back_channel = std::move(request.back_channel),
+            });
 
         if (rpc::error::is_error(send_result.error_code))
         {
@@ -883,7 +914,8 @@ namespace rpc::stream_transport
         if (prefix.direction == message_direction::one_way)
             CO_RETURN;
 
-        send_payload_call_receive(prefix.version,
+        send_payload_call_receive(
+            prefix.version,
             message_direction::receive,
             call_receive{.payload = std::move(send_result.out_buf),
                 .back_channel = std::move(send_result.out_back_channel),
@@ -894,7 +926,10 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    transport::stub_handle_post(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_post(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_post");
 
@@ -912,24 +947,28 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        CO_AWAIT inbound_post(rpc::post_params{
-            .protocol_version = prefix.version,
-            .encoding_type = request.encoding,
-            .tag = request.tag,
-            .caller_zone_id = request.caller_zone_id,
-            .remote_object_id = request.destination_zone_id,
-            .interface_id = request.interface_id,
-            .method_id = request.method_id,
-            .in_data = std::move(request.payload),
-            .in_back_channel = std::move(request.back_channel),
-        });
+        CO_AWAIT inbound_post(
+            rpc::post_params{
+                .protocol_version = prefix.version,
+                .encoding_type = request.encoding,
+                .tag = request.tag,
+                .caller_zone_id = request.caller_zone_id,
+                .remote_object_id = request.destination_zone_id,
+                .interface_id = request.interface_id,
+                .method_id = request.method_id,
+                .in_data = std::move(request.payload),
+                .in_back_channel = std::move(request.back_channel),
+            });
 
         RPC_DEBUG("stub_handle_post complete");
         CO_RETURN;
     }
 
     CORO_TASK(void)
-    transport::stub_handle_try_cast(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_try_cast(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_try_cast");
 
@@ -947,20 +986,22 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        auto tc_result = CO_AWAIT inbound_try_cast(rpc::try_cast_params{
-            .protocol_version = prefix.version,
-            .caller_zone_id = request.caller_zone_id,
-            .remote_object_id = request.destination_zone_id,
-            .interface_id = request.interface_id,
-            .in_back_channel = std::move(request.back_channel),
-        });
+        auto tc_result = CO_AWAIT inbound_try_cast(
+            rpc::try_cast_params{
+                .protocol_version = prefix.version,
+                .caller_zone_id = request.caller_zone_id,
+                .remote_object_id = request.destination_zone_id,
+                .interface_id = request.interface_id,
+                .in_back_channel = std::move(request.back_channel),
+            });
 
         if (rpc::error::is_error(tc_result.error_code))
         {
             RPC_DEBUG("inbound_try_cast error {}", tc_result.error_code);
         }
 
-        send_payload_try_cast_receive(prefix.version,
+        send_payload_try_cast_receive(
+            prefix.version,
             message_direction::receive,
             try_cast_receive{.back_channel = std::move(tc_result.out_back_channel), .err_code = tc_result.error_code},
             prefix.sequence_number);
@@ -969,7 +1010,10 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    transport::stub_handle_add_ref(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_add_ref(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_add_ref");
 
@@ -987,21 +1031,23 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        auto ar_result = CO_AWAIT inbound_add_ref(rpc::add_ref_params{
-            .protocol_version = prefix.version,
-            .remote_object_id = request.destination_zone_id,
-            .caller_zone_id = request.caller_zone_id,
-            .requesting_zone_id = request.requesting_zone_id,
-            .build_out_param_channel = request.build_out_param_channel,
-            .in_back_channel = std::move(request.back_channel),
-        });
+        auto ar_result = CO_AWAIT inbound_add_ref(
+            rpc::add_ref_params{
+                .protocol_version = prefix.version,
+                .remote_object_id = request.destination_zone_id,
+                .caller_zone_id = request.caller_zone_id,
+                .requesting_zone_id = request.requesting_zone_id,
+                .build_out_param_channel = request.build_out_param_channel,
+                .in_back_channel = std::move(request.back_channel),
+            });
 
         if (rpc::error::is_error(ar_result.error_code))
         {
             RPC_DEBUG("inbound_add_ref error {}", ar_result.error_code);
         }
 
-        send_payload_addref_receive(prefix.version,
+        send_payload_addref_receive(
+            prefix.version,
             message_direction::receive,
             addref_receive{.back_channel = std::move(ar_result.out_back_channel), .err_code = ar_result.error_code},
             prefix.sequence_number);
@@ -1010,7 +1056,10 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    transport::stub_handle_release(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_release(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_release");
 
@@ -1023,13 +1072,14 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        auto rel_result = CO_AWAIT inbound_release(rpc::release_params{
-            .protocol_version = prefix.version,
-            .remote_object_id = request.destination_zone_id,
-            .caller_zone_id = request.caller_zone_id,
-            .options = request.options,
-            .in_back_channel = std::move(request.back_channel),
-        });
+        auto rel_result = CO_AWAIT inbound_release(
+            rpc::release_params{
+                .protocol_version = prefix.version,
+                .remote_object_id = request.destination_zone_id,
+                .caller_zone_id = request.caller_zone_id,
+                .options = request.options,
+                .in_back_channel = std::move(request.back_channel),
+            });
 
         if (rpc::error::is_error(rel_result.error_code))
         {
@@ -1049,7 +1099,9 @@ namespace rpc::stream_transport
 
     CORO_TASK(void)
     transport::stub_handle_object_released(
-        std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_object_released");
 
@@ -1062,19 +1114,23 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        CO_AWAIT inbound_object_released(rpc::object_released_params{
-            .protocol_version = prefix.version,
-            .remote_object_id = request.destination_zone_id,
-            .caller_zone_id = request.caller_zone_id,
-            .in_back_channel = std::move(request.back_channel),
-        });
+        CO_AWAIT inbound_object_released(
+            rpc::object_released_params{
+                .protocol_version = prefix.version,
+                .remote_object_id = request.destination_zone_id,
+                .caller_zone_id = request.caller_zone_id,
+                .in_back_channel = std::move(request.back_channel),
+            });
 
         RPC_DEBUG("stub_handle_object_released complete");
         CO_RETURN;
     }
 
     CORO_TASK(void)
-    transport::stub_handle_transport_down(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::stub_handle_transport_down(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("stub_handle_transport_down");
 
@@ -1087,19 +1143,23 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        CO_AWAIT inbound_transport_down(rpc::transport_down_params{
-            .protocol_version = prefix.version,
-            .destination_zone_id = request.destination_zone_id,
-            .caller_zone_id = request.caller_zone_id,
-            .in_back_channel = std::move(request.back_channel),
-        });
+        CO_AWAIT inbound_transport_down(
+            rpc::transport_down_params{
+                .protocol_version = prefix.version,
+                .destination_zone_id = request.destination_zone_id,
+                .caller_zone_id = request.caller_zone_id,
+                .in_back_channel = std::move(request.back_channel),
+            });
 
         RPC_DEBUG("stub_handle_transport_down complete");
         CO_RETURN;
     }
 
     CORO_TASK(void)
-    transport::create_stub(std::shared_ptr<activity_tracker>, envelope_prefix prefix, envelope_payload payload)
+    transport::create_stub(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
     {
         RPC_DEBUG("create_stub zone: {}", get_zone_id().get_subnet());
 
@@ -1131,7 +1191,8 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
-        send_payload_init_client_channel_response(prefix.version,
+        send_payload_init_client_channel_response(
+            prefix.version,
             message_direction::receive,
             init_client_channel_response{.err_code = rpc::error::OK(),
                 .outbound_remote_object = output_interface,
@@ -1142,7 +1203,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_post_send(
-        uint64_t protocol_version, message_direction direction, post_send&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        post_send&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1150,7 +1214,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_release_send(
-        uint64_t protocol_version, message_direction direction, release_send&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        release_send&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1158,7 +1225,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_object_released_send(
-        uint64_t protocol_version, message_direction direction, object_released_send&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        object_released_send&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1166,7 +1236,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_transport_down_send(
-        uint64_t protocol_version, message_direction direction, transport_down_send&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        transport_down_send&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1174,7 +1247,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_close_connection_ack(
-        uint64_t protocol_version, message_direction direction, close_connection_ack&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        close_connection_ack&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1182,7 +1258,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_close_connection_send(
-        uint64_t protocol_version, message_direction direction, close_connection_send&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        close_connection_send&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1190,7 +1269,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_call_receive(
-        uint64_t protocol_version, message_direction direction, call_receive&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        call_receive&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1198,7 +1280,10 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_try_cast_receive(
-        uint64_t protocol_version, message_direction direction, try_cast_receive&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        try_cast_receive&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
@@ -1206,14 +1291,18 @@ namespace rpc::stream_transport
     }
 
     void transport::send_payload_addref_receive(
-        uint64_t protocol_version, message_direction direction, addref_receive&& payload, uint64_t sequence_number)
+        uint64_t protocol_version,
+        message_direction direction,
+        addref_receive&& payload,
+        uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
         send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 
-    void transport::send_payload_init_client_initial_channel_response(uint64_t protocol_version,
+    void transport::send_payload_init_client_initial_channel_response(
+        uint64_t protocol_version,
         message_direction direction,
         init_client_initial_channel_response&& payload,
         uint64_t sequence_number)
@@ -1223,7 +1312,8 @@ namespace rpc::stream_transport
         send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
     }
 
-    void transport::send_payload_init_client_channel_response(uint64_t protocol_version,
+    void transport::send_payload_init_client_channel_response(
+        uint64_t protocol_version,
         message_direction direction,
         init_client_channel_response&& payload,
         uint64_t sequence_number)

@@ -49,7 +49,10 @@ namespace javascript_json
     }
 }
 
-void get_imports(const class_entity& object, std::list<std::string>& imports, std::set<std::string>& imports_cache)
+void get_imports(
+    const class_entity& object,
+    std::list<std::string>& imports,
+    std::set<std::string>& imports_cache)
 {
     for (auto& cls : object.get_classes())
     {
@@ -64,7 +67,9 @@ void get_imports(const class_entity& object, std::list<std::string>& imports, st
     }
 }
 
-bool is_different(const std::stringstream& stream, const std::string& data)
+bool is_different(
+    const std::stringstream& stream,
+    const std::string& data)
 {
     auto stream_str = stream.str();
     if (stream_str.empty())
@@ -77,14 +82,17 @@ bool is_different(const std::stringstream& stream, const std::string& data)
     return stream_str != data;
 }
 
-int main(const int argc, char* argv[])
+int main(
+    const int argc,
+    char* argv[])
 {
     try
     {
         args::ArgumentParser args_parser("Generate C++ headers and source from idl files");
         args::HelpFlag h(args_parser, "help", "help", {"help"});
 
-        args::ValueFlag<std::string> name_arg(args_parser,
+        args::ValueFlag<std::string> name_arg(
+            args_parser,
             "name",
             "the base name for generated files (e.g., 'example_shared' or 'rpc_types')",
             {'n', "name"},
@@ -307,7 +315,8 @@ int main(const int argc, char* argv[])
             std::stringstream stub_header_stream;
             std::stringstream mock_stream;
 
-            synchronous_generator::write_files(true,
+            synchronous_generator::write_files(
+                true,
                 *objects,
                 header_stream,
                 proxy_stream,
@@ -396,7 +405,8 @@ int main(const int argc, char* argv[])
 
             std::stringstream header_stream;
 
-            yas_generator::write_files(true,
+            yas_generator::write_files(
+                true,
                 *objects,
                 header_stream,
                 namespaces,
@@ -446,7 +456,8 @@ int main(const int argc, char* argv[])
             auto protobuf_include_path = sub_directory / (base_filename + "_all.pb.h");
 
             std::stringstream protobuf_cpp_stream;
-            protobuf_generator::write_cpp_files(*objects,
+            protobuf_generator::write_cpp_files(
+                *objects,
                 protobuf_cpp_stream,
                 namespaces,
                 std::filesystem::path(header_path),

@@ -81,16 +81,22 @@ namespace generator
     bool is_boolean_type(const std::string& type);
 
     // Type cleaning utilities
-    void strip_reference_modifiers(std::string& type, std::string& modifiers);
+    void strip_reference_modifiers(
+        std::string& type,
+        std::string& modifiers);
     std::string unconst(const std::string& type);
     void trim_string(std::string& str);
     std::string clean_type_name(const std::string& raw_type);
 
     // Unified parameter analysis (new)
-    parameter_info analyze_parameter(const class_entity& lib, const std::string& type, const attributes& attribs);
+    parameter_info analyze_parameter(
+        const class_entity& lib,
+        const std::string& type,
+        const attributes& attribs);
 
     // Determine parameter type from analysis
-    param_type classify_parameter_type(const std::string& type_name,
+    param_type classify_parameter_type(
+        const std::string& type_name,
         const std::string& reference_modifiers,
         bool is_interface,
         bool is_out,
@@ -107,7 +113,9 @@ namespace generator
 
     // Unified parameter analysis and filtering
     param_analysis_result analyze_parameter_with_context(
-        const class_entity& lib, const std::string& type, const attributes& attribs);
+        const class_entity& lib,
+        const std::string& type,
+        const attributes& attribs);
 
     // Base renderer interface - pure virtual base class for all generators
     // This provides a common polymorphic interface to replace template-based rendering
@@ -120,7 +128,8 @@ namespace generator
         // Each function corresponds to a param_type enum value
         // option parameter controls marshalling behavior between proxy and host
         // from_host parameter indicates direction for generators that need it (ignored by generators that don't)
-        virtual std::string render_by_value(int option,
+        virtual std::string render_by_value(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -130,7 +139,8 @@ namespace generator
             const std::string& type_name,
             uint64_t& count) = 0;
 
-        virtual std::string render_reference(int option,
+        virtual std::string render_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -140,7 +150,8 @@ namespace generator
             const std::string& type_name,
             uint64_t& count) = 0;
 
-        virtual std::string render_move(int option,
+        virtual std::string render_move(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -150,7 +161,8 @@ namespace generator
             const std::string& type_name,
             uint64_t& count) = 0;
 
-        virtual std::string render_pointer(int option,
+        virtual std::string render_pointer(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -160,7 +172,8 @@ namespace generator
             const std::string& type_name,
             uint64_t& count) = 0;
 
-        virtual std::string render_pointer_reference(int option,
+        virtual std::string render_pointer_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -170,7 +183,8 @@ namespace generator
             const std::string& type_name,
             uint64_t& count) = 0;
 
-        virtual std::string render_pointer_pointer(int option,
+        virtual std::string render_pointer_pointer(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -180,7 +194,8 @@ namespace generator
             const std::string& type_name,
             uint64_t& count) = 0;
 
-        virtual std::string render_interface(int option,
+        virtual std::string render_interface(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -190,7 +205,8 @@ namespace generator
             const std::string& type_name,
             uint64_t& count) = 0;
 
-        virtual std::string render_interface_reference(int option,
+        virtual std::string render_interface_reference(
+            int option,
             bool from_host,
             const class_entity& lib,
             const std::string& name,
@@ -201,7 +217,8 @@ namespace generator
             uint64_t& count) = 0;
 
         // Dispatch function that maps param_type enum to specific render function
-        std::string render_param_type(param_type type,
+        std::string render_param_type(
+            param_type type,
             int option,
             bool from_host,
             const class_entity& lib,
@@ -214,7 +231,8 @@ namespace generator
     };
 
     // Unified do_in_param function using polymorphic base_renderer
-    bool do_in_param_unified(base_renderer& renderer,
+    bool do_in_param_unified(
+        base_renderer& renderer,
         int option,
         bool from_host,
         const class_entity& lib,
@@ -225,7 +243,8 @@ namespace generator
         std::string& output);
 
     // Unified do_out_param function using polymorphic base_renderer
-    bool do_out_param_unified(base_renderer& renderer,
+    bool do_out_param_unified(
+        base_renderer& renderer,
         int option,
         bool from_host,
         const class_entity& lib,

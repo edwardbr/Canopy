@@ -20,7 +20,8 @@ namespace rpc::libcoro_spsc_dynamic_dll
         };
 
         CORO_TASK(void)
-        run_runtime(std::string name,
+        run_runtime(
+            std::string name,
             rpc::zone dll_zone,
             streaming::spsc_queue::queue_type* send_queue,
             streaming::spsc_queue::queue_type* recv_queue,
@@ -69,7 +70,8 @@ namespace rpc::libcoro_spsc_dynamic_dll
 }
 
 extern "C" CANOPY_LIBCORO_SPSC_DLL_EXPORT void canopy_libcoro_spsc_dll_start(
-    rpc::libcoro_spsc_dynamic_dll::dll_start_params* params, rpc::libcoro_spsc_dynamic_dll::dll_start_result* result)
+    rpc::libcoro_spsc_dynamic_dll::dll_start_params* params,
+    rpc::libcoro_spsc_dynamic_dll::dll_start_result* result)
 {
     using namespace rpc::libcoro_spsc_dynamic_dll;
 
@@ -92,13 +94,14 @@ extern "C" CANOPY_LIBCORO_SPSC_DLL_EXPORT void canopy_libcoro_spsc_dll_start(
             scheduler = ctx->scheduler,
             shutdown_event = ctx->shutdown_event]() mutable
         {
-            coro::sync_wait(coro::when_all(
-                [&]() -> coro::task<void>
-                {
-                    CO_AWAIT run_runtime(
-                        std::move(name), dll_zone, send_queue, recv_queue, on_parent_expired, callback_ctx, scheduler, shutdown_event);
-                    CO_RETURN;
-                }()));
+            coro::sync_wait(
+                coro::when_all(
+                    [&]() -> coro::task<void>
+                    {
+                        CO_AWAIT run_runtime(
+                            std::move(name), dll_zone, send_queue, recv_queue, on_parent_expired, callback_ctx, scheduler, shutdown_event);
+                        CO_RETURN;
+                    }()));
         });
 
     result->runtime_ctx = ctx;

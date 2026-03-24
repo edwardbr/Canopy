@@ -42,7 +42,9 @@ namespace component_checksum
         return ns;
     }
 
-    void write_interface(const class_entity& m_ob, std::filesystem::path& output_path)
+    void write_interface(
+        const class_entity& m_ob,
+        std::filesystem::path& output_path)
     {
         if (m_ob.is_in_import())
             return;
@@ -62,7 +64,9 @@ namespace component_checksum
         out << fingerprint::generate(m_ob, {}, nullptr, latest_protocol_version);
     };
 
-    void write_struct(const class_entity& m_ob, std::filesystem::path& output_path)
+    void write_struct(
+        const class_entity& m_ob,
+        std::filesystem::path& output_path)
     {
         if (m_ob.is_in_import())
             return;
@@ -82,7 +86,9 @@ namespace component_checksum
     };
 
     // entry point
-    void write_namespace(const class_entity& lib, std::filesystem::path& output_path)
+    void write_namespace(
+        const class_entity& lib,
+        std::filesystem::path& output_path)
     {
         for (auto& elem : lib.get_elements(entity_type::NAMESPACE_MEMBERS))
         {

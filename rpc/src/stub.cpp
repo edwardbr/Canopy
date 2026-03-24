@@ -8,7 +8,9 @@
 namespace rpc
 {
     object_stub::object_stub(
-        object id, const std::shared_ptr<service>& zone, const rpc::shared_ptr<rpc::casting_interface>& target)
+        object id,
+        const std::shared_ptr<service>& zone,
+        const rpc::shared_ptr<rpc::casting_interface>& target)
         : id_(id)
         , target_(target)
         , zone_(zone)
@@ -63,7 +65,11 @@ namespace rpc
         return rpc::error::OK();
     }
 
-    CORO_TASK(int) object_stub::add_ref(bool is_optimistic, bool outcall, caller_zone caller_zone_id)
+    CORO_TASK(int)
+    object_stub::add_ref(
+        bool is_optimistic,
+        bool outcall,
+        caller_zone caller_zone_id)
     {
         uint64_t count = 0;
         if (is_optimistic)
@@ -126,7 +132,9 @@ namespace rpc
         CO_RETURN ret;
     }
 
-    uint64_t object_stub::release(bool is_optimistic, caller_zone caller_zone_id)
+    uint64_t object_stub::release(
+        bool is_optimistic,
+        caller_zone caller_zone_id)
     {
         uint64_t count = 0;
         if (is_optimistic)
@@ -157,8 +165,7 @@ namespace rpc
                 else
                 {
                     // Already cleaned up by release_all_from_zone (concurrent transport teardown)
-                    RPC_WARNING(
-                        "release: optimistic zone entry already removed (concurrent teardown), skipping decrement");
+                    RPC_WARNING("release: optimistic zone entry already removed (concurrent teardown), skipping decrement");
                 }
             }
             if (did_release)
@@ -296,7 +303,8 @@ namespace rpc
         if (shared_refs_to_release > 0)
         {
             shared_count_.fetch_sub(shared_refs_to_release, std::memory_order_acq_rel);
-            RPC_DEBUG("release_all_from_zone: Released {} shared refs from zone {} for object {}",
+            RPC_DEBUG(
+                "release_all_from_zone: Released {} shared refs from zone {} for object {}",
                 shared_refs_to_release,
                 caller_zone_id.get_subnet(),
                 id_.get_val());
@@ -305,7 +313,8 @@ namespace rpc
         if (optimistic_refs_to_release > 0)
         {
             optimistic_count_.fetch_sub(optimistic_refs_to_release, std::memory_order_acq_rel);
-            RPC_DEBUG("release_all_from_zone: Released {} optimistic refs from zone {} for object {}",
+            RPC_DEBUG(
+                "release_all_from_zone: Released {} optimistic refs from zone {} for object {}",
                 optimistic_refs_to_release,
                 caller_zone_id.get_subnet(),
                 id_.get_val());

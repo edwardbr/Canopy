@@ -34,8 +34,12 @@ namespace
         {
         }
 
-        auto receive(rpc::mutable_byte_span, std::chrono::milliseconds timeout)
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override
+        auto receive(
+            rpc::mutable_byte_span,
+            std::chrono::milliseconds timeout)
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override
         {
             if (closed_.load(std::memory_order_acquire))
                 co_return std::pair{
@@ -82,8 +86,12 @@ namespace
     class late_accept_stream : public streaming::stream
     {
     public:
-        auto receive(rpc::mutable_byte_span, std::chrono::milliseconds)
-            -> coro::task<std::pair<coro::net::io_status, rpc::mutable_byte_span>> override
+        auto receive(
+            rpc::mutable_byte_span,
+            std::chrono::milliseconds)
+            -> coro::task<std::pair<
+                coro::net::io_status,
+                rpc::mutable_byte_span>> override
         {
             co_return std::pair{coro::net::io_status{.type = coro::net::io_status::kind::closed}, rpc::mutable_byte_span{}};
         }
@@ -152,9 +160,16 @@ namespace
     };
 } // namespace
 
-void rpc_log(int /*level*/, const char* /*str*/, size_t /*sz*/) { }
+void rpc_log(
+    int /*level*/,
+    const char* /*str*/,
+    size_t /*sz*/)
+{
+}
 
-TEST(SpscWrappingStream, PropagatesUnderlyingSendFailure)
+TEST(
+    SpscWrappingStream,
+    PropagatesUnderlyingSendFailure)
 {
     auto scheduler = make_scheduler();
     auto underlying = std::make_shared<send_failure_stream>(scheduler);
@@ -174,7 +189,9 @@ TEST(SpscWrappingStream, PropagatesUnderlyingSendFailure)
     scheduler->shutdown();
 }
 
-TEST(SpscWrappingStream, SetClosedAllowsWrapperExpiry)
+TEST(
+    SpscWrappingStream,
+    SetClosedAllowsWrapperExpiry)
 {
     auto scheduler = make_scheduler();
     auto underlying = std::make_shared<send_failure_stream>(scheduler);
@@ -190,7 +207,9 @@ TEST(SpscWrappingStream, SetClosedAllowsWrapperExpiry)
     scheduler->shutdown();
 }
 
-TEST(Listener, StopDropsLateAcceptedConnection)
+TEST(
+    Listener,
+    StopDropsLateAcceptedConnection)
 {
     auto scheduler = make_scheduler();
     auto zone_id = rpc::DEFAULT_PREFIX;
@@ -199,7 +218,8 @@ TEST(Listener, StopDropsLateAcceptedConnection)
     auto acceptor = std::make_shared<late_accept_acceptor>(accepted_stream);
     std::atomic<int> callback_calls{0};
 
-    auto listener = std::make_shared<streaming::listener>("test-listener",
+    auto listener = std::make_shared<streaming::listener>(
+        "test-listener",
         acceptor,
         [&](const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<streaming::stream>) -> CORO_TASK(void)
         {
