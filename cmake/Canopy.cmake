@@ -263,8 +263,7 @@ if(NOT DEPENDENCIES_LOADED)
           COMMAND ${GIT_EXECUTABLE} config --local --unset submodule.${submodule}.update
           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
           RESULT_VARIABLE GIT_UNSET_RESULT
-          OUTPUT_QUIET
-          ERROR_QUIET)
+          OUTPUT_QUIET ERROR_QUIET)
       endforeach()
 
       # Update all required submodules except llama.cpp (handled separately with --depth 1)
