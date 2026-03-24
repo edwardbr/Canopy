@@ -257,23 +257,16 @@ if(NOT DEPENDENCIES_LOADED)
         message(FATAL_ERROR "submodule init failed")
       endif()
 
-      # Clear any 'update = none' config that prevents submodule update from fetching
-      foreach(submodule ${CANOPY_REQUIRED_SUBMODULES})
-        execute_process(
-          COMMAND ${GIT_EXECUTABLE} config --local --unset submodule.${submodule}.update
-          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-          RESULT_VARIABLE GIT_UNSET_RESULT
-          OUTPUT_QUIET ERROR_QUIET)
-      endforeach()
-
-      # Update all required submodules except llama.cpp (handled separately with --depth 1)
+      # Update all required submodules except llama.cpp (handled separately with --depth 1). --checkout explicitly
+      # overrides any 'update = none' entry in .gitmodules so that optional submodules (googletest,
+      # libcoro_for_enclaves, etc.) are actually fetched.
       set(CANOPY_STANDARD_SUBMODULES ${CANOPY_REQUIRED_SUBMODULES})
       list(REMOVE_ITEM CANOPY_STANDARD_SUBMODULES submodules/llama.cpp)
 
       if(CANOPY_STANDARD_SUBMODULES)
-        message(STATUS "Submodule update (force)")
+        message(STATUS "Submodule update")
         execute_process(
-          COMMAND ${GIT_EXECUTABLE} submodule update --init --force -- ${CANOPY_STANDARD_SUBMODULES}
+          COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout -- ${CANOPY_STANDARD_SUBMODULES}
           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
           RESULT_VARIABLE GIT_SUBMOD_RESULT)
 
@@ -283,10 +276,11 @@ if(NOT DEPENDENCIES_LOADED)
       endif()
 
       if(CANOPY_BUILD_DEMOS)
-        # llama.cpp is a very large repository; use --depth 1 to avoid downloading the full history
+        # llama.cpp is a very large repository; use --depth 1 to avoid downloading the full history. --checkout
+        # overrides 'update = none' in .gitmodules.
         message(STATUS "Submodule update (shallow): submodules/llama.cpp")
         execute_process(
-          COMMAND ${GIT_EXECUTABLE} submodule update --init --depth 1 -- submodules/llama.cpp
+          COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --depth 1 -- submodules/llama.cpp
           WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
           RESULT_VARIABLE GIT_LLAMA_RESULT)
 
