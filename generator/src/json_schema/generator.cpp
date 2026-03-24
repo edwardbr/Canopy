@@ -7,6 +7,7 @@
 #include "cpp_parser.h"  // Your parser API header
 #include "json_schema/generator.h"
 #include "json_schema/writer.h"
+#include "../../rpc/include/rpc/internal/build_modifiers.h"
 #include "type_utils.h"
 #include <cstdint>
 #include <iostream>
@@ -841,10 +842,10 @@ namespace json_schema
                     std::string receive_struct_name = qualified_name + "_" + method_name + "_receive";
                     ordered_defs.push_back({send_struct_name,
                         SyntheticMethodInfo{
-                            .interface_entity = &current_entity, .method_entity = method, .is_send_struct = true}});
+                            FLD(interface_entity) & current_entity, FLD(method_entity) method, FLD(is_send_struct) true}});
                     ordered_defs.push_back({receive_struct_name,
                         SyntheticMethodInfo{
-                            .interface_entity = &current_entity, .method_entity = method, .is_send_struct = false}});
+                            FLD(interface_entity) & current_entity, FLD(method_entity) method, FLD(is_send_struct) false}});
                 }
             }
         }

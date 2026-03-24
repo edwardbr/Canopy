@@ -14,9 +14,6 @@ target_link_libraries(mock_test_transport PUBLIC rpc::rpc)
 # Add compile definitions including CANOPY_DEFINES
 target_compile_definitions(mock_test_transport PRIVATE ${CANOPY_DEFINES})
 
-set_property(TARGET mock_test_transport PROPERTY CXX_STANDARD 17)
-set_property(TARGET mock_test_transport PROPERTY CXX_STANDARD_REQUIRED ON)
-
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(mock_test_transport PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()

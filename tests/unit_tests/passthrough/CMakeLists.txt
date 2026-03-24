@@ -33,10 +33,6 @@ target_include_directories(
 # Add compile definitions including CANOPY_DEFINES
 target_compile_definitions(passthrough_test PRIVATE ${CANOPY_DEFINES})
 
-# Set C++ standard
-set_property(TARGET passthrough_test PROPERTY CXX_STANDARD 17)
-set_property(TARGET passthrough_test PROPERTY CXX_STANDARD_REQUIRED ON)
-
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(passthrough_test PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()

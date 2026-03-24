@@ -24,6 +24,7 @@ extern "C"
 #include "json_schema/generator.h"
 #include "json_schema/per_function_generator.h"
 #include "json_schema/writer.h"
+#include "../../rpc/include/rpc/internal/build_modifiers.h"
 #include "rpc_attributes.h"
 #include "synchronous_generator.h"
 #include "writer.h"
@@ -41,8 +42,8 @@ namespace synchronous_generator
     };
 
     constexpr protocol_version_descriptor protocol_versions[] = {
-        {.macro = "RPC_V3", .symbol = "rpc::VERSION_3", .value = 3},
-        {.macro = "RPC_V2", .symbol = "rpc::VERSION_2", .value = 2},
+        {FLD(macro) "RPC_V3", FLD(symbol) "rpc::VERSION_3", FLD(value) 3},
+        {FLD(macro) "RPC_V2", FLD(symbol) "rpc::VERSION_2", FLD(value) 2},
     };
 
     enum print_type
