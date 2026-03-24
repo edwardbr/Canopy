@@ -10,6 +10,7 @@
 [submodule "submodules/googletest"]
 	path = submodules/googletest
 	url = https://github.com/google/googletest.git
+	update = none
 [submodule "submodules/spdlog"]
 	path = submodules/spdlog
 	url = https://github.com/gabime/spdlog.git
@@ -19,12 +20,15 @@
 [submodule "submodules/libcoro_for_enclaves"]
 	path = submodules/libcoro_for_enclaves
 	url = https://github.com/edwardbr/libcoro.git
+	update = none
 [submodule "submodules/libcoro"]
 	path = submodules/libcoro
 	url = https://github.com/jbaldwin/libcoro.git
+	update = none
 [submodule "submodules/c-ares"]
 	path = submodules/c-ares
 	url = https://github.com/c-ares/c-ares.git
+	update = none
 [submodule "submodules/json"]
 	path = submodules/json
 	url = https://github.com/nlohmann/json.git
@@ -34,13 +38,17 @@
 [submodule "submodules/protobuf"]
 	path = submodules/protobuf
 	url = https://github.com/protocolbuffers/protobuf.git
+	update = none
 [submodule "submodules/wslay"]
 	path = submodules/wslay
 	url = https://github.com/tatsuhiro-t/wslay.git
+	update = none
 [submodule "submodules/llhttp"]
 	path = submodules/llhttp
 	url = https://github.com/nodejs/llhttp.git
+	update = none
 
 [submodule "submodules/llama.cpp"]
 	path = submodules/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp.git
+	update = none

@@ -30,12 +30,22 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_BUILD_DEMOS "Build demo code" OFF)
   option(CANOPY_BUILD_BENCHMARKING "Build benchmarking code" OFF)
   option(CANOPY_BUILD_COROUTINE "Include coroutine support" OFF)
+  option(CANOPY_BUILD_PROTOCOL_BUFFERS "Include Protocol Buffers support" ON)
+  set(CANOPY_BUILD_WEBSOCKET_DEFAULT OFF)
+  if(CANOPY_BUILD_DEMOS OR CANOPY_BUILD_TEST)
+    set(CANOPY_BUILD_WEBSOCKET_DEFAULT ON)
+  endif()
+  option(CANOPY_BUILD_WEBSOCKET "Include websocket support" ${CANOPY_BUILD_WEBSOCKET_DEFAULT})
   option(CANOPY_STANDALONE "Build Canopy stand alone" OFF)
   option(CANOPY_DEBUG_GEN "Get the generator produce verbose messages" OFF)
   option(CANOPY_DEBUG_DEFAULT_DESTRUCTOR "Get the generator produce verbose messages" OFF)
   # SGX Enclave support (disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
   option(CANOPY_IO_URING_SQPOLL "Use io_uring SQPOLL mode for streaming io_uring TCP streams on Linux" OFF)
+
+  if(CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_BUILD_COROUTINE)
+    message(FATAL_ERROR "CANOPY_BUILD_WEBSOCKET requires CANOPY_BUILD_COROUTINE=ON")
+  endif()
 
   # ####################################################################################################################
   # Debug Options
@@ -143,6 +153,8 @@ if(NOT DEPENDENCIES_LOADED)
   message("CANOPY_BUILD_EXE ${CANOPY_BUILD_EXE}")
   message("CANOPY_BUILD_TEST ${CANOPY_BUILD_TEST}")
   message("CANOPY_BUILD_DEMOS ${CANOPY_BUILD_DEMOS}")
+  message("CANOPY_BUILD_PROTOCOL_BUFFERS ${CANOPY_BUILD_PROTOCOL_BUFFERS}")
+  message("CANOPY_BUILD_WEBSOCKET ${CANOPY_BUILD_WEBSOCKET}")
   message("CANOPY_BUILD_COROUTINE ${CANOPY_BUILD_COROUTINE}")
   message("CMAKE_VERBOSE_MAKEFILE ${CMAKE_VERBOSE_MAKEFILE}")
   message("CMAKE_RULE_MESSAGES ${CMAKE_RULE_MESSAGES}")
@@ -201,9 +213,32 @@ if(NOT DEPENDENCIES_LOADED)
     message("doing GIT_SUBMODULE ${GIT_SUBMODULE}")
 
     if(GIT_SUBMODULE)
+      set(
+        CANOPY_REQUIRED_SUBMODULES
+        submodules/yas
+        submodules/fmt
+        submodules/idlparser
+        submodules/spdlog
+        submodules/args
+        submodules/json
+        submodules/json-schema-validator)
+
+      if(CANOPY_BUILD_COROUTINE)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/libcoro_for_enclaves submodules/libcoro submodules/c-ares)
+      endif()
+      if(CANOPY_BUILD_PROTOCOL_BUFFERS)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/protobuf)
+      endif()
+      if(CANOPY_BUILD_TEST)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/googletest)
+      endif()
+      if(CANOPY_BUILD_WEBSOCKET)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/wslay submodules/llhttp)
+      endif()
+
       message(STATUS "Submodule init")
       execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule init
+        COMMAND ${GIT_EXECUTABLE} submodule init -- ${CANOPY_REQUIRED_SUBMODULES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         RESULT_VARIABLE GIT_SUBMOD_INIT_RESULT)
 
@@ -213,7 +248,7 @@ if(NOT DEPENDENCIES_LOADED)
 
       message(STATUS "Submodule update")
       execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule update
+        COMMAND ${GIT_EXECUTABLE} submodule update -- ${CANOPY_REQUIRED_SUBMODULES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         RESULT_VARIABLE GIT_SUBMOD_RESULT)
 
