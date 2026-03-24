@@ -212,7 +212,7 @@ if(NOT DEPENDENCIES_LOADED)
     else()
       message("NO .git file or directory")
     endif()
-    
+
     option(GIT_SUBMODULE "Check submodules during build" ON)
     message("doing GIT_SUBMODULE ${GIT_SUBMODULE}")
 
