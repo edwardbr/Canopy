@@ -91,11 +91,10 @@ namespace
         for (int i = 0; i < argc; ++i)
             result.argv.push_back(argv[i]);
 
-        const bool has_any_va = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
-                                || has_cli_option(argc, argv, "--va-prefix")
-                                || has_cli_option(argc, argv, "--va-subnet-bits")
-                                || has_cli_option(argc, argv, "--va-object-id-bits")
-                                || has_cli_option(argc, argv, "--va-subnet");
+        const bool has_any_va
+            = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
+              || has_cli_option(argc, argv, "--va-prefix") || has_cli_option(argc, argv, "--va-subnet-bits")
+              || has_cli_option(argc, argv, "--va-object-id-bits") || has_cli_option(argc, argv, "--va-subnet");
         const bool has_listen = has_cli_option(argc, argv, "--listen");
         const bool has_connect = has_cli_option(argc, argv, "--connect");
 
@@ -110,18 +109,19 @@ namespace
 
         if (!has_any_va)
         {
-            append({"--va-name=server",
-                "--va-type=ipv4",
-                "--va-prefix=127.0.0.1",
-                "--va-subnet-bits=32",
-                "--va-object-id-bits=32",
-                "--va-subnet=1",
-                "--va-name=client",
-                "--va-type=ipv4",
-                "--va-prefix=127.0.0.1",
-                "--va-subnet-bits=32",
-                "--va-object-id-bits=32",
-                "--va-subnet=100"});
+            append(
+                {"--va-name=server",
+                    "--va-type=ipv4",
+                    "--va-prefix=127.0.0.1",
+                    "--va-subnet-bits=32",
+                    "--va-object-id-bits=32",
+                    "--va-subnet=1",
+                    "--va-name=client",
+                    "--va-type=ipv4",
+                    "--va-prefix=127.0.0.1",
+                    "--va-subnet-bits=32",
+                    "--va-object-id-bits=32",
+                    "--va-subnet=100"});
         }
 
         if (!has_listen)
@@ -226,14 +226,12 @@ namespace comprehensive
                                                ? coro::net::domain_t::ipv6
                                                : coro::net::domain_t::ipv4;
                 coro::net::tcp::client client(
-                    scheduler,
-                    coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
+                    scheduler, coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
 
                 auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
                 if (connection_status != coro::net::connect_status::connected)
                 {
-                    RPC_ERROR(
-                        "Client: Failed to connect to server (status: {})", static_cast<int>(connection_status));
+                    RPC_ERROR("Client: Failed to connect to server (status: {})", static_cast<int>(connection_status));
                     CO_RETURN false;
                 }
 
@@ -379,8 +377,8 @@ int main(
         {
             connect_ep = listen_ep;
             // Replace an all-zeros listen address with loopback for the client.
-            const bool is_any = std::all_of(
-                connect_ep.addr.begin(), connect_ep.addr.end(), [](uint8_t b) { return b == 0; });
+            const bool is_any
+                = std::all_of(connect_ep.addr.begin(), connect_ep.addr.end(), [](uint8_t b) { return b == 0; });
             if (is_any)
                 canopy::network_config::ipv4_to_ip_address("127.0.0.1", connect_ep.addr);
         }

@@ -114,10 +114,15 @@ namespace canopy::network_config
             type_str = "ipv6_tun";
             break;
         }
-        return fmt::format("{}:{}:prefix_len={}:subnet_bits={}:subnet={}:obj_bits={}:obj_id={}",
-            name, type_str, args.routing_prefix.size(),
-            args.subnet_size_bits, args.subnet,
-            args.object_id_size_bits, args.object_id);
+        return fmt::format(
+            "{}:{}:prefix_len={}:subnet_bits={}:subnet={}:obj_bits={}:obj_id={}",
+            name,
+            type_str,
+            args.routing_prefix.size(),
+            args.subnet_size_bits,
+            args.subnet,
+            args.object_id_size_bits,
+            args.object_id);
     }
 
     // ---------------------------------------------------------------------------
@@ -175,11 +180,7 @@ namespace canopy::network_config
             {
                 const auto& ep = listen_endpoints[i];
                 RPC_INFO(
-                    "listen[{}]        : name={} {}:{}",
-                    i,
-                    ep.name.empty() ? "(default)" : ep.name,
-                    ep.to_string(),
-                    ep.port);
+                    "listen[{}]        : name={} {}:{}", i, ep.name.empty() ? "(default)" : ep.name, ep.to_string(), ep.port);
             }
         }
 
@@ -193,11 +194,7 @@ namespace canopy::network_config
             {
                 const auto& ep = connect_endpoints[i];
                 RPC_INFO(
-                    "connect[{}]       : name={} {}:{}",
-                    i,
-                    ep.name.empty() ? "(default)" : ep.name,
-                    ep.to_string(),
-                    ep.port);
+                    "connect[{}]       : name={} {}:{}", i, ep.name.empty() ? "(default)" : ep.name, ep.to_string(), ep.port);
             }
         }
     }
@@ -307,8 +304,7 @@ namespace canopy::network_config
 
         // Pure port: "8080" → 0.0.0.0:8080  (IPv4)
         {
-            bool all_digit = std::all_of(host_port.begin(), host_port.end(),
-                                         [](char c) { return c >= '0' && c <= '9'; });
+            bool all_digit = std::all_of(host_port.begin(), host_port.end(), [](char c) { return c >= '0' && c <= '9'; });
             if (all_digit)
             {
                 unsigned long val = std::stoul(host_port);
@@ -325,15 +321,13 @@ namespace canopy::network_config
         {
             auto close = host_port.find(']');
             if (close == std::string::npos)
-                throw std::invalid_argument(
-                    fmt::format("parse_endpoint: missing ']' in IPv6 endpoint: {}", host_port));
+                throw std::invalid_argument(fmt::format("parse_endpoint: missing ']' in IPv6 endpoint: {}", host_port));
 
             std::string addr_str = host_port.substr(1, close - 1);
             std::string rest = host_port.substr(close + 1);
 
             if (rest.empty() || rest[0] != ':')
-                throw std::invalid_argument(
-                    fmt::format("parse_endpoint: missing port after ']' in: {}", host_port));
+                throw std::invalid_argument(fmt::format("parse_endpoint: missing port after ']' in: {}", host_port));
 
             unsigned long val = std::stoul(rest.substr(1));
             if (val > 65535)
@@ -383,10 +377,9 @@ namespace canopy::network_config
         const std::string prefix = raw.substr(0, first_colon);
 
         // A name has no dots, no brackets, and is not purely numeric.
-        const bool is_name = !prefix.empty()
-            && prefix.find('.') == std::string::npos
-            && prefix.find('[') == std::string::npos
-            && !std::all_of(prefix.begin(), prefix.end(), [](char c) { return c >= '0' && c <= '9'; });
+        const bool is_name = !prefix.empty() && prefix.find('.') == std::string::npos
+                             && prefix.find('[') == std::string::npos
+                             && !std::all_of(prefix.begin(), prefix.end(), [](char c) { return c >= '0' && c <= '9'; });
 
         if (!is_name)
             return parse_endpoint(raw);
@@ -498,12 +491,15 @@ namespace canopy::network_config
                 return rpc::zone_address::address_type::ipv6;
             if (type_str == "ipv6_tun")
                 return rpc::zone_address::address_type::ipv6_tun;
-            throw std::invalid_argument(fmt::format("--va-type: unknown type '{}' (expected local|ipv4|ipv6|ipv6_tun)", type_str));
+            throw std::invalid_argument(
+                fmt::format("--va-type: unknown type '{}' (expected local|ipv4|ipv6|ipv6_tun)", type_str));
         }
 
         // Returns true when value fits in the given number of bits.
         // Handles the bits==64 edge case (shifting uint64_t by 64 is UB).
-        bool fits_in_bits(uint64_t value, uint8_t bits)
+        bool fits_in_bits(
+            uint64_t value,
+            uint8_t bits)
         {
             if (bits >= 64)
                 return true;
@@ -551,11 +547,10 @@ namespace canopy::network_config
             else
             {
                 // Auto-detect: prefer the family that matches the address type.
-                const ip_address_family preferred =
-                    (type == rpc::zone_address::address_type::ipv6
-                        || type == rpc::zone_address::address_type::ipv6_tun)
-                    ? ip_address_family::ipv6
-                    : ip_address_family::ipv4;
+                const ip_address_family preferred
+                    = (type == rpc::zone_address::address_type::ipv6 || type == rpc::zone_address::address_type::ipv6_tun)
+                          ? ip_address_family::ipv6
+                          : ip_address_family::ipv4;
                 detect_routing_prefix(prefix_addr, prefix_family, preferred);
             }
 
@@ -572,9 +567,7 @@ namespace canopy::network_config
             {
                 cargs.routing_prefix = std::vector<uint8_t>(
                     prefix_addr.begin(),
-                    prefix_family == ip_address_family::ipv4
-                        ? prefix_addr.begin() + 4
-                        : prefix_addr.end());
+                    prefix_family == ip_address_family::ipv4 ? prefix_addr.begin() + 4 : prefix_addr.end());
             }
 
             named_virtual_address nva;
@@ -602,9 +595,11 @@ namespace canopy::network_config
 
         // Validate that required per-VA flags appear the same number of times.
         if (names.size() != types.size())
-            throw std::invalid_argument(fmt::format(
-                "--va-name ({}) and --va-type ({}) must be specified the same number of times",
-                names.size(), types.size()));
+            throw std::invalid_argument(
+                fmt::format(
+                    "--va-name ({}) and --va-type ({}) must be specified the same number of times",
+                    names.size(),
+                    types.size()));
 
         // Optional per-VA flags must not outnumber --va-name entries.
         for (const auto& [flag, count] : {
@@ -616,8 +611,8 @@ namespace canopy::network_config
              })
         {
             if (count > names.size())
-                throw std::invalid_argument(fmt::format(
-                    "{} ({}) specified more times than --va-name ({})", flag, count, names.size()));
+                throw std::invalid_argument(
+                    fmt::format("{} ({}) specified more times than --va-name ({})", flag, count, names.size()));
         }
 
         constexpr uint8_t max_bits = rpc::zone_address::default_object_id_size_bits;
@@ -627,19 +622,19 @@ namespace canopy::network_config
             const std::string& prefix = (i < prefixes.size()) ? prefixes[i] : "";
 
             const uint32_t raw_subnet_bits = (i < subnet_bits_list.size())
-                ? subnet_bits_list[i]
-                : uint32_t{rpc::zone_address::default_subnet_size_bits};
+                                                 ? subnet_bits_list[i]
+                                                 : uint32_t{rpc::zone_address::default_subnet_size_bits};
             const uint32_t raw_obj_id_bits = (i < obj_id_bits_list.size())
-                ? obj_id_bits_list[i]
-                : uint32_t{rpc::zone_address::default_object_id_size_bits};
+                                                 ? obj_id_bits_list[i]
+                                                 : uint32_t{rpc::zone_address::default_object_id_size_bits};
 
             if (raw_subnet_bits > max_bits)
-                throw std::invalid_argument(fmt::format(
-                    "--va-subnet-bits[{}] value {} exceeds maximum {}", i, raw_subnet_bits, max_bits));
+                throw std::invalid_argument(
+                    fmt::format("--va-subnet-bits[{}] value {} exceeds maximum {}", i, raw_subnet_bits, max_bits));
 
             if (raw_obj_id_bits > max_bits)
-                throw std::invalid_argument(fmt::format(
-                    "--va-object-id-bits[{}] value {} exceeds maximum {}", i, raw_obj_id_bits, max_bits));
+                throw std::invalid_argument(
+                    fmt::format("--va-object-id-bits[{}] value {} exceeds maximum {}", i, raw_obj_id_bits, max_bits));
 
             const auto subnet_bits = static_cast<uint8_t>(raw_subnet_bits);
             const auto obj_id_bits = static_cast<uint8_t>(raw_obj_id_bits);
@@ -648,22 +643,15 @@ namespace canopy::network_config
             const uint64_t obj_id_val = (i < obj_id_list.size()) ? obj_id_list[i] : 0;
 
             if (!fits_in_bits(subnet_val, subnet_bits))
-                throw std::invalid_argument(fmt::format(
-                    "--va-subnet[{}] value {} does not fit in {} bits", i, subnet_val, subnet_bits));
+                throw std::invalid_argument(
+                    fmt::format("--va-subnet[{}] value {} does not fit in {} bits", i, subnet_val, subnet_bits));
 
             if (!fits_in_bits(obj_id_val, obj_id_bits))
-                throw std::invalid_argument(fmt::format(
-                    "--va-object-id[{}] value {} does not fit in {} bits", i, obj_id_val, obj_id_bits));
+                throw std::invalid_argument(
+                    fmt::format("--va-object-id[{}] value {} does not fit in {} bits", i, obj_id_val, obj_id_bits));
 
             build_virtual_address(
-                names[i],
-                types[i],
-                prefix,
-                subnet_bits,
-                subnet_val,
-                obj_id_bits,
-                obj_id_val,
-                cfg.virtual_addresses);
+                names[i], types[i], prefix, subnet_bits, subnet_val, obj_id_bits, obj_id_val, cfg.virtual_addresses);
         }
 
         for (const auto& s : args::get(listen_args_))

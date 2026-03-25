@@ -63,8 +63,8 @@ namespace canopy::network_config
     // two families.
     struct tcp_endpoint
     {
-        std::string name;                               // virtual-address name; empty → use default
-        ip_address addr = {};                           // physical address bytes (all-zero = any/0.0.0.0)
+        std::string name;     // virtual-address name; empty → use default
+        ip_address addr = {}; // physical address bytes (all-zero = any/0.0.0.0)
         ip_address_family family = ip_address_family::ipv4;
         uint16_t port = 0;
 
@@ -192,13 +192,18 @@ namespace canopy::network_config
     network_config get_network_config(const network_args_context& ctx);
 
     // Convenience: register args, parse, and return config in one step.
-    network_config parse_network_args(int argc, char* argv[], args::ArgumentParser& parser);
+    network_config parse_network_args(
+        int argc,
+        char* argv[],
+        args::ArgumentParser& parser);
 
     // Convert binary ip_address to the legacy uint64_t prefix encoding.
     //   IPv4: 6to4 mapping — 0x2002 << 48 | ipv4_u32 << 16
     //   IPv6: first 8 bytes packed as big-endian uint64_t
     //   all-zero addr: returns 0 (local-only mode)
-    uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family);
+    uint64_t ip_address_to_uint64(
+        const ip_address& addr,
+        ip_address_family family);
 
     // Build a zone_address from a named_virtual_address.
     inline rpc::zone_address make_zone_address(const named_virtual_address& nva)
@@ -209,7 +214,9 @@ namespace canopy::network_config
     // Build a zone_address from config, looked up by name.
     // Passing an empty name returns the first virtual address.
     // Throws std::invalid_argument if virtual_addresses is empty or name not found.
-    rpc::zone_address get_zone_address(const network_config& cfg, const std::string& name = "");
+    rpc::zone_address get_zone_address(
+        const network_config& cfg,
+        const std::string& name = "");
 
     // Build a rpc::zone_id_allocator from a named_virtual_address.
     inline rpc::zone_id_allocator make_allocator(const named_virtual_address& nva)
@@ -229,22 +236,34 @@ namespace canopy::network_config
     // Parse an IPv4 dotted-decimal string into the binary ip_address layout.
     //   bytes[0..3] = IPv4 address, bytes[4..15] = 0
     // Throws std::invalid_argument on malformed input.
-    void ipv4_to_ip_address(const std::string& dotted_decimal, ip_address& addr);
+    void ipv4_to_ip_address(
+        const std::string& dotted_decimal,
+        ip_address& addr);
 
     // Parse an IPv6 colon-hex string and store the /64 network prefix in binary.
     //   bytes[0..7] = first 64 bits of the address, bytes[8..15] = 0
     // Throws std::invalid_argument on malformed input.
-    void ipv6_to_ip_address(const std::string& colon_hex, ip_address& addr);
+    void ipv6_to_ip_address(
+        const std::string& colon_hex,
+        ip_address& addr);
 
     // Auto-detect a connectable host address from the machine's network interfaces.
     // Fills addr and family.  Returns true on success; on failure fills addr with
     // 127.0.0.1 and sets family to ipv4.
-    bool detect_host(ip_address& addr, ip_address_family& family);
-    bool detect_host(ip_address& addr, ip_address_family& family, ip_address_family preferred_family);
+    bool detect_host(
+        ip_address& addr,
+        ip_address_family& family);
+    bool detect_host(
+        ip_address& addr,
+        ip_address_family& family,
+        ip_address_family preferred_family);
 
     // Parse an explicit host address string (dotted-decimal or colon-hex) into binary.
     // family selects the parser.  Returns true on success, false on malformed input.
-    bool parse_ip_address(const std::string& str, ip_address& addr, ip_address_family family);
+    bool parse_ip_address(
+        const std::string& str,
+        ip_address& addr,
+        ip_address_family family);
 
     // Auto-detect the best routing prefix from the host's network interfaces.
     // Selection priority:
@@ -252,7 +271,12 @@ namespace canopy::network_config
     //   2. First public IPv4 (not loopback, link-local, or RFC 1918)
     //   3. First private IPv4 (RFC 1918: 10.x, 172.16-31.x, 192.168.x)
     //   4. Returns false — local-only mode, addr left all-zero
-    bool detect_routing_prefix(ip_address& addr, ip_address_family& family);
-    bool detect_routing_prefix(ip_address& addr, ip_address_family& family, ip_address_family preferred_family);
+    bool detect_routing_prefix(
+        ip_address& addr,
+        ip_address_family& family);
+    bool detect_routing_prefix(
+        ip_address& addr,
+        ip_address_family& family,
+        ip_address_family preferred_family);
 
 } // namespace canopy::network_config
