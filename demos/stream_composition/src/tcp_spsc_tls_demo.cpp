@@ -28,6 +28,13 @@
  *       cmake --preset Debug_Coroutine
  *       cmake --build build_debug_coroutine --target tcp_spsc_tls_demo
  *       ./build_debug_coroutine/output/debug/demos/stream_composition/tcp_spsc_tls_demo
+ *
+ *   Options:
+ *     --va-name   <name>       Virtual address name (e.g. "demo")
+ *     --va-type   <type>       Zone address type: local | ipv4 | ipv6 | ipv6_tun
+ *     --va-prefix <prefix>     Routing prefix (auto-detected if omitted)
+ *     --listen    [name:]addr:port   Server bind address (default 0.0.0.0:19999)
+ *     --connect   [name:]addr:port   Client connect address (default 127.0.0.1:19999)
  */
 
 #include <echo_impl.h>
@@ -50,6 +57,7 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <string_view>
 
 // ---------------------------------------------------------------------------
 // Test certificate generation
@@ -134,7 +142,7 @@ namespace stream_composition
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::event& server_ready,
         const rpc::event& client_finished,
-        const canopy::network_config::network_config& cfg,
+        const canopy::network_config::tcp_endpoint& listen_ep,
         rpc::zone server_zone,
         const std::string& cert_path,
         const std::string& key_path,
@@ -153,21 +161,11 @@ namespace stream_composition
             CO_RETURN;
         }
 
-        // on_new_connection: called for each accepted TCP stream.
-        // Builds the full stream chain and passes it to the transport.
-        // No relay pumps — the transport drives all I/O through the chain.
-        const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+        const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6
                                 ? coro::net::domain_t::ipv6
                                 : coro::net::domain_t::ipv4;
         const coro::net::socket_address endpoint{
-            coro::net::ip_address::from_string(cfg.get_host_string(), domain), cfg.port};
-
-        // Build the listener inside a scope so on_connection (which captures service)
-        // is destroyed before the first co_await — otherwise the lambda would live in
-        // the coroutine frame for the lifetime of run_server, keeping service alive and
-        // preventing shutdown_event from firing.
-        // stream_transformer: TCP → SPSC buffering → TLS handshake
-        // Returns nullopt if the TLS handshake fails, rejecting the connection.
+            coro::net::ip_address::from_string(listen_ep.to_string(), domain), listen_ep.port};
 
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto tls_transformer = [tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm)
@@ -199,7 +197,7 @@ namespace stream_composition
             CO_RETURN;
         }
 
-        RPC_INFO("Server: listening on {}:{}", cfg.get_host_string(), cfg.port);
+        RPC_INFO("Server: listening on {}:{}", listen_ep.to_string(), listen_ep.port);
         service.reset();
         server_ready.set();
 
@@ -221,7 +219,7 @@ namespace stream_composition
         std::shared_ptr<coro::scheduler> scheduler,
         const rpc::event& server_ready,
         rpc::event& client_finished,
-        const canopy::network_config::network_config& cfg,
+        const canopy::network_config::tcp_endpoint& connect_ep,
         rpc::zone client_zone,
         std::atomic<bool>& iteration_ok)
     {
@@ -230,15 +228,15 @@ namespace stream_composition
         auto client_service = std::make_shared<rpc::root_service>("echo_client", client_zone, scheduler);
         client_service->set_default_encoding(rpc::encoding::yas_binary);
 
-        RPC_INFO("Client: connecting to {}:{}", cfg.get_host_string(), cfg.port);
+        RPC_INFO("Client: connecting to {}:{}", connect_ep.to_string(), connect_ep.port);
 
-        // 1. Establish TCP connection.
-        const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+        const auto domain = connect_ep.family == canopy::network_config::ip_address_family::ipv6
                                 ? coro::net::domain_t::ipv6
                                 : coro::net::domain_t::ipv4;
         coro::net::tcp::client tcp_client(
             scheduler,
-            coro::net::socket_address{coro::net::ip_address::from_string(cfg.get_host_string(), domain), cfg.port});
+            coro::net::socket_address{
+                coro::net::ip_address::from_string(connect_ep.to_string(), domain), connect_ep.port});
 
         auto conn_status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds{5000});
         if (conn_status != coro::net::connect_status::connected)
@@ -251,11 +249,8 @@ namespace stream_composition
         RPC_INFO("Client: TCP connected");
 
         auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
-
-        // 2. Wrap TCP in the SPSC buffering layer.
         auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
 
-        // 3. Wrap the SPSC stream in TLS (client side — SSL_VERIFY_NONE for demo).
         auto tls_client_ctx = std::make_shared<streaming::tls::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
         {
@@ -266,7 +261,6 @@ namespace stream_composition
         }
         auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_client_ctx);
 
-        // 4. TLS client handshake.
         if (!CO_AWAIT tls_stm->client_handshake())
         {
             RPC_ERROR("Client: TLS handshake failed");
@@ -276,10 +270,8 @@ namespace stream_composition
         }
         RPC_INFO("Client: TLS handshake complete");
 
-        // 5. Create streaming_transport (client side — no connection_handler).
         auto client_transport = rpc::stream_transport::make_client("client_transport", client_service, tls_stm);
 
-        // 6. Connect to the remote zone and obtain the i_echo proxy.
         rpc::shared_ptr<i_echo> local_echo;
         rpc::shared_ptr<i_echo> remote_echo;
 
@@ -297,7 +289,6 @@ namespace stream_composition
         }
         RPC_INFO("Client: RPC connection established over TCP → SPSC → TLS");
 
-        // 7. Make echo calls.
         const std::vector<std::string> messages = {
             "Hello from stream_composition demo!",
             "TCP -> SPSC -> TLS composition works!",
@@ -364,6 +355,86 @@ extern "C"
     }
 }
 
+namespace
+{
+    struct augmented_cli
+    {
+        int argc = 0;
+        std::vector<std::string> storage;
+        std::vector<char*> argv;
+    };
+
+    bool has_cli_option(
+        int argc,
+        char* argv[],
+        std::string_view option)
+    {
+        const std::string with_equals = std::string(option) + "=";
+        for (int i = 1; i < argc; ++i)
+        {
+            const std::string_view arg = argv[i];
+            if (arg == option || arg.rfind(with_equals, 0) == 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    augmented_cli add_default_network_args(
+        int argc,
+        char* argv[])
+    {
+        augmented_cli result;
+        result.storage.reserve(16);
+        result.argv.reserve(argc + 16);
+
+        for (int i = 0; i < argc; ++i)
+            result.argv.push_back(argv[i]);
+
+        const bool has_any_va = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
+                                || has_cli_option(argc, argv, "--va-prefix")
+                                || has_cli_option(argc, argv, "--va-subnet-bits")
+                                || has_cli_option(argc, argv, "--va-object-id-bits")
+                                || has_cli_option(argc, argv, "--va-subnet");
+        const bool has_listen = has_cli_option(argc, argv, "--listen");
+        const bool has_connect = has_cli_option(argc, argv, "--connect");
+
+        auto append = [&result](std::initializer_list<const char*> args)
+        {
+            for (const char* arg : args)
+            {
+                result.storage.emplace_back(arg);
+                result.argv.push_back(result.storage.back().data());
+            }
+        };
+
+        if (!has_any_va)
+        {
+            append({"--va-name=server",
+                "--va-type=ipv4",
+                "--va-prefix=127.0.0.1",
+                "--va-subnet-bits=32",
+                "--va-object-id-bits=32",
+                "--va-subnet=1",
+                "--va-name=client",
+                "--va-type=ipv4",
+                "--va-prefix=127.0.0.1",
+                "--va-subnet-bits=32",
+                "--va-object-id-bits=32",
+                "--va-subnet=100"});
+        }
+
+        if (!has_listen)
+            append({"--listen=server:127.0.0.1:8080"});
+
+        if (!has_connect)
+            append({"--connect=client:127.0.0.1:8080"});
+
+        result.argc = static_cast<int>(result.argv.size());
+        return result;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -382,10 +453,11 @@ int main(
     args::ArgumentParser parser("stream_composition demo: i_echo over TCP → SPSC → TLS.");
     args::HelpFlag help(parser, "help", "Display this help and exit", {'h', "help"});
     auto net = canopy::network_config::add_network_args(parser);
+    auto cli = add_default_network_args(argc, argv);
 
     try
     {
-        parser.ParseCLI(argc, argv);
+        parser.ParseCLI(cli.argc, cli.argv.data());
     }
     catch (const args::Help&)
     {
@@ -409,10 +481,29 @@ int main(
         return 1;
     }
 
-    if (cfg.port == 0)
-        cfg.port = 19999;
-
     cfg.log_values();
+
+    // Resolve listen endpoint.  Default: bind on 0.0.0.0:19999.
+    canopy::network_config::tcp_endpoint listen_ep;
+    if (const auto* p = cfg.first_listen())
+        listen_ep = *p;
+    else
+        listen_ep.port = 19999; // addr = {} = 0.0.0.0, family = ipv4
+
+    // Resolve connect endpoint.  Default: 127.0.0.1 on the listen port.
+    canopy::network_config::tcp_endpoint connect_ep;
+    if (const auto* p = cfg.first_connect())
+    {
+        connect_ep = *p;
+    }
+    else
+    {
+        connect_ep = listen_ep;
+        const bool is_any = std::all_of(
+            connect_ep.addr.begin(), connect_ep.addr.end(), [](uint8_t b) { return b == 0; });
+        if (is_any)
+            canopy::network_config::ipv4_to_ip_address("127.0.0.1", connect_ep.addr);
+    }
 
     // Generate (or reuse) a self-signed TLS certificate for the demo server.
     std::string cert_dir = std::string(DEMO_CERT_DIR);
@@ -456,9 +547,11 @@ int main(
         coro::sync_wait(
             coro::when_all(
                 stream_composition::run_server(
-                    scheduler_server, server_ready, client_finished, cfg, rpc::zone{server_addr}, cert_path, key_path, iteration_ok),
+                    scheduler_server, server_ready, client_finished, listen_ep,
+                    rpc::zone{server_addr}, cert_path, key_path, iteration_ok),
                 stream_composition::run_client(
-                    scheduler_client, server_ready, client_finished, cfg, rpc::zone{client_addr}, iteration_ok)));
+                    scheduler_client, server_ready, client_finished, connect_ep,
+                    rpc::zone{client_addr}, iteration_ok)));
 
         if (!iteration_ok.load())
         {
@@ -472,7 +565,10 @@ int main(
     }
 
     RPC_INFO("\n============================================");
-    RPC_INFO("Stream Composition Demo complete: {}/{} iterations passed", iterations - failures.load(), iterations);
+    RPC_INFO(
+        "Stream Composition Demo complete: {}/{} iterations passed",
+        iterations - failures.load(),
+        iterations);
 
     scheduler_server->shutdown();
     scheduler_client->shutdown();

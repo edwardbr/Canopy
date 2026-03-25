@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <rpc/rpc.h>
 
@@ -43,200 +44,215 @@ namespace canopy::network_config
 namespace canopy::network_config
 {
 
-    // Parsed network configuration ready for constructing a rpc::zone_id_allocator.
-    //
-    // routing_prefix_addr and host_addr are stored in binary form using the same
-    // 16-byte layout:
-    //   IPv4 family: bytes[0..3] hold the address, bytes[4..15] are zero
-    //   IPv6 family: bytes[0..15] hold the full address (routing prefix uses
-    //                bytes[0..7] for the /64 network prefix, bytes[8..15] are zero)
-    //
-    // The v3 zone_address format stores a versioned capability header followed by
-    // optional port, network address bytes, subnet bits, object bits and validation
-    // bits. make_allocator() is the conversion point between binary network addresses
-    // and that blob encoding.
-    //
-    // object_offset marks the boundary within the runtime-configured local
-    // payload carried by zone_address:
-    //   bits [0 .. object_offset-1]                 subnet
-    //   bits [object_offset .. local_bits - 1]      object
-    // the default local payload is currently 120 bits unless the process
-    // configures a different split before constructing the root service.
-    struct network_config
+    // A named virtual address used to construct zone_addresses for RPC.
+    // The name links tcp_endpoints to this logical identity.
+    struct named_virtual_address
     {
-        ip_address routing_prefix_addr = {}; // network prefix in binary
-        ip_address_family routing_prefix_family = ip_address_family::ipv4;
-        ip_address host_addr = {}; // host address in binary
-        ip_address_family host_family = ip_address_family::ipv4;
-        uint16_t port = 0;          // TCP port; 0 means not specified
-        uint8_t object_offset = 64; // bit offset of object field (flexible layout only)
+        std::string name;
+        rpc::zone_address::construction_args args;
 
-        // Returns true when a non-loopback routing prefix has been set.
-        [[nodiscard]] bool has_routing_prefix() const { return routing_prefix_addr != ip_address{}; }
+        [[nodiscard]] std::string to_string() const;
+    };
 
-        // Return the routing prefix as a human-readable string.
-        //   ipv4 family: dotted-decimal  (e.g. "192.168.1.0")
-        //   ipv6 family: colon-hex /64   (e.g. "2001:db8::")
-        //   all-zero:    "127.0.0.1"
-        [[nodiscard]] std::string get_routing_prefix_string() const;
+    // A physical TCP endpoint: an IP address, its family, a port, and the name
+    // of the virtual address it maps to.
+    //
+    // Physical and virtual addresses are decoupled.  A server may listen on
+    // an IPv4 address while presenting an IPv6 virtual zone address, and a
+    // client may reach the server through a router that translates between the
+    // two families.
+    struct tcp_endpoint
+    {
+        std::string name;                               // virtual-address name; empty → use default
+        ip_address addr = {};                           // physical address bytes (all-zero = any/0.0.0.0)
+        ip_address_family family = ip_address_family::ipv4;
+        uint16_t port = 0;
 
-        // Return host_addr as a human-readable string.
+        // Return the address as a human-readable string.
         //   ipv4 family: dotted-decimal  (e.g. "192.168.1.1")
         //   ipv6 family: full colon-hex  (e.g. "2001:db8::1")
-        [[nodiscard]] std::string get_host_string() const;
+        //   all-zero:    "0.0.0.0"
+        [[nodiscard]] std::string to_string() const;
+    };
+
+    // Network configuration for an application.
+    //
+    // virtual_addresses  — logical zone identities, each named.
+    // listen_endpoints   — physical (addr, port) pairs to bind on, each
+    //                      mapped to a named virtual address.
+    // connect_endpoints  — physical (addr, port) pairs to connect to, each
+    //                      mapped to a named virtual address.
+    struct network_config
+    {
+        std::vector<named_virtual_address> virtual_addresses;
+        std::vector<tcp_endpoint> listen_endpoints;
+        std::vector<tcp_endpoint> connect_endpoints;
+
+        // Convenience accessors — return nullptr when the list is empty.
+        [[nodiscard]] const tcp_endpoint* first_listen() const noexcept
+        {
+            return listen_endpoints.empty() ? nullptr : &listen_endpoints.front();
+        }
+        [[nodiscard]] const tcp_endpoint* first_connect() const noexcept
+        {
+            return connect_endpoints.empty() ? nullptr : &connect_endpoints.front();
+        }
+
+        // Lookup a virtual address by name.  Returns nullptr if not found.
+        [[nodiscard]] const named_virtual_address* find_virtual(const std::string& name) const noexcept;
 
         // Emit all fields via RPC_INFO.
         void log_values() const;
     };
 
-    // Holds the args::Flag/ValueFlag handles registered into an ArgumentParser.
-    // Must be kept alive until get_config() is called (i.e. after ParseCLI()).
+    // Parse a "host:port" string into a tcp_endpoint (no name).
+    //   IPv4:  "192.168.1.1:8080"
+    //   IPv6:  "[2001:db8::1]:8080"
+    //   bare:  "8080"  (0.0.0.0:port)
+    // Address family is inferred from the address format.
+    // Throws std::invalid_argument on malformed input.
+    tcp_endpoint parse_endpoint(const std::string& host_port);
+
+    // Parse a "[name:]host:port" string into a tcp_endpoint.
+    //
+    // The name token is an identifier — no dots, no brackets, not all-digits.
+    // Address family is inferred from the host format:
+    //   "[ipv6]:port"  → ipv6
+    //   "ipv4:port"    → ipv4
+    //   "port"         → ipv4, addr = 0.0.0.0
+    // Examples:
+    //   "myserver:192.168.1.1:8080"  → name=myserver, IPv4
+    //   "myserver:[::1]:8080"         → name=myserver, IPv6
+    //   "myserver:8080"               → name=myserver, 0.0.0.0:8080
+    //   "192.168.1.1:8080"            → no name, IPv4
+    //   "[::1]:8080"                  → no name, IPv6
+    //   "8080"                        → no name, 0.0.0.0:8080
+    // Throws std::invalid_argument on malformed input.
+    tcp_endpoint parse_named_endpoint(const std::string& name_host_port);
+
+    // Holds the args flag handles registered into an ArgumentParser.
+    // Must remain alive until get_config() is called (i.e. after ParseCLI()).
+    //
+    // Flags are organised into two args::Groups:
+    //
+    //   Virtual zone addresses
+    //     All flags are repeatable and matched positionally by occurrence index.
+    //     --va-name and --va-type must appear the same number of times (N).
+    //     All other flags may have fewer than N entries; missing trailing
+    //     entries use their defaults.
+    //
+    //     --va-name           <identifier>   Name for this virtual address
+    //     --va-type           <type>         local | ipv4 | ipv6 | ipv6_tun
+    //     --va-prefix         <prefix>       Routing prefix (auto-detect if absent)
+    //     --va-subnet-bits    <n>            Subnet field size in bits (default 64)
+    //     --va-subnet         <value>        Initial subnet value (default 0);
+    //                                        must fit in --va-subnet-bits bits
+    //     --va-object-id-bits <n>            Object-id field size in bits (default 64)
+    //     --va-object-id      <value>        Initial object_id value (default 0);
+    //                                        must fit in --va-object-id-bits bits
+    //
+    //   Physical network endpoints
+    //     --listen   [name:]addr:port     Bind address (address family from format)
+    //     --connect  [name:]addr:port     Connect address (address family from format)
     //
     // Usage:
     //   args::ArgumentParser parser("My App");
     //   auto net = canopy::network_config::add_network_args(parser);
-    //   // ... add other args ...
     //   parser.ParseCLI(argc, argv);
     //   auto cfg = net.get_config();
     class network_args_context
     {
-        args::Group address_family_group_;
-        args::Flag flag_ipv4_;
-        args::Flag flag_ipv6_;
-        mutable args::ValueFlag<std::string> routing_prefix_;
-        mutable args::ValueFlag<std::string> host_;
-        mutable args::ValueFlag<uint32_t> port_;
-        mutable args::ValueFlag<uint32_t> object_offset_;
+        args::Group virtual_addresses_group_;
+        mutable args::ValueFlagList<std::string> va_name_args_;
+        mutable args::ValueFlagList<std::string> va_type_args_;
+        mutable args::ValueFlagList<std::string> va_prefix_args_;
+        mutable args::ValueFlagList<uint32_t> va_subnet_bits_args_;
+        mutable args::ValueFlagList<uint64_t> va_subnet_args_;
+        mutable args::ValueFlagList<uint32_t> va_object_id_bits_args_;
+        mutable args::ValueFlagList<uint64_t> va_object_id_args_;
+
+        args::Group endpoints_group_;
+        mutable args::ValueFlagList<std::string> listen_args_;
+        mutable args::ValueFlagList<std::string> connect_args_;
 
     public:
         explicit network_args_context(args::ArgumentParser& parser);
 
         // Extract and validate a network_config after ParseCLI().
-        // If --routing-prefix was not provided, calls detect_routing_prefix() automatically.
-        // Throws std::invalid_argument if any value is out of range.
+        // Endpoints without a name default to the first virtual address.
+        // Throws std::invalid_argument on invalid or inconsistent arguments.
         [[nodiscard]] network_config get_config() const;
     };
 
-    // Register network args into parser. Returns a context that must be kept alive
-    // until get_config() is called.
-    //
-    //   -4, --ipv4         --routing-prefix is an IPv4 dotted-decimal address (a.b.c.d)
-    //   -6, --ipv6         --routing-prefix is an IPv6 colon-hex address (2001:db8::1)
-    //   --routing-prefix   this node's routing prefix (auto-detected when omitted)
-    //   --object-offset    bit offset where object_id begins in zone_address::local_address
-    //                      (flexible layout, default 64)
-    //   --host             TCP address to bind/connect; "detect" derives it from routing_prefix
-    //   --port             TCP port (default 0 = not specified)
+    // Register network args into parser and return a context that must be kept
+    // alive until get_config() is called.
     [[nodiscard]] network_args_context add_network_args(args::ArgumentParser& parser);
 
     // Extract and validate a network_config from a context after ParseCLI().
     network_config get_network_config(const network_args_context& ctx);
 
-    // Convenience: add args to parser, parse, and return config in one step.
-    network_config parse_network_args(
-        int argc,
-        char* argv[],
-        args::ArgumentParser& parser);
+    // Convenience: register args, parse, and return config in one step.
+    network_config parse_network_args(int argc, char* argv[], args::ArgumentParser& parser);
 
-    // Convert binary routing_prefix_addr to the legacy uint64_t prefix encoding.
+    // Convert binary ip_address to the legacy uint64_t prefix encoding.
     //   IPv4: 6to4 mapping — 0x2002 << 48 | ipv4_u32 << 16
     //   IPv6: first 8 bytes packed as big-endian uint64_t
     //   all-zero addr: returns 0 (local-only mode)
-    uint64_t ip_address_to_uint64(
-        const ip_address& addr,
-        ip_address_family family);
+    uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family);
 
-    inline rpc::zone_address get_zone_address(const network_config& cfg)
+    // Build a zone_address from a named_virtual_address.
+    inline rpc::zone_address make_zone_address(const named_virtual_address& nva)
     {
-        if (cfg.routing_prefix_addr == ip_address{})
-        {
-            return *rpc::zone_address::create(
-                rpc::zone_address::construction_args(
-                    rpc::zone_address::version_3,
-                    rpc::zone_address::address_type::local,
-                    0,
-                    {},
-                    rpc::zone_address::default_subnet_size_bits,
-                    0,
-                    rpc::zone_address::default_object_id_size_bits,
-                    0,
-                    {}));
-        }
-
-        auto type = cfg.routing_prefix_family == ip_address_family::ipv4 ? rpc::zone_address::address_type::ipv4
-                                                                         : rpc::zone_address::address_type::ipv6;
-        auto routing_prefix = std::vector<uint8_t>(
-            cfg.routing_prefix_addr.begin(),
-            cfg.routing_prefix_family == ip_address_family::ipv4 ? cfg.routing_prefix_addr.begin() + 4
-                                                                 : cfg.routing_prefix_addr.end());
-        return *rpc::zone_address::create(
-            rpc::zone_address::construction_args(
-                rpc::zone_address::version_3,
-                type,
-                cfg.port,
-                routing_prefix,
-                cfg.object_offset,
-                0,
-                static_cast<uint8_t>(rpc::zone_address::default_object_id_size_bits - cfg.object_offset),
-                0,
-                {}));
+        return *rpc::zone_address::create(nva.args);
     }
 
-    // Build a rpc::zone_id_allocator from a network_config.
-    // Stores the full 16-byte host address and uses cfg.object_offset to
-    // describe the local subnet/object boundary.
-    // The subnet range is determined by the zone_address field width automatically.
+    // Build a zone_address from config, looked up by name.
+    // Passing an empty name returns the first virtual address.
+    // Throws std::invalid_argument if virtual_addresses is empty or name not found.
+    rpc::zone_address get_zone_address(const network_config& cfg, const std::string& name = "");
+
+    // Build a rpc::zone_id_allocator from a named_virtual_address.
+    inline rpc::zone_id_allocator make_allocator(const named_virtual_address& nva)
+    {
+        return rpc::zone_id_allocator{make_zone_address(nva)};
+    }
+
+    // Build a rpc::zone_id_allocator from the first virtual address in a network_config.
+    // Throws std::invalid_argument if virtual_addresses is empty.
     inline rpc::zone_id_allocator make_allocator(const network_config& cfg)
     {
-        return rpc::zone_id_allocator{get_zone_address(cfg)};
+        if (cfg.virtual_addresses.empty())
+            throw std::invalid_argument("make_allocator: network_config has no virtual_addresses");
+        return make_allocator(cfg.virtual_addresses.front());
     }
 
-    // Parse an IPv4 dotted-decimal string into the binary routing prefix layout.
+    // Parse an IPv4 dotted-decimal string into the binary ip_address layout.
     //   bytes[0..3] = IPv4 address, bytes[4..15] = 0
     // Throws std::invalid_argument on malformed input.
-    void ipv4_to_ip_address(
-        const std::string& dotted_decimal,
-        ip_address& addr);
+    void ipv4_to_ip_address(const std::string& dotted_decimal, ip_address& addr);
 
     // Parse an IPv6 colon-hex string and store the /64 network prefix in binary.
     //   bytes[0..7] = first 64 bits of the address, bytes[8..15] = 0
     // Throws std::invalid_argument on malformed input.
-    void ipv6_to_ip_address(
-        const std::string& colon_hex,
-        ip_address& addr);
+    void ipv6_to_ip_address(const std::string& colon_hex, ip_address& addr);
 
-    // Auto-detect a connectable host address from the machine's network interfaces,
-    // using the same priority ordering as detect_routing_prefix().
-    // Fills addr (16 bytes) and family. Returns true on success; on failure fills
-    // addr with 127.0.0.1 and sets family to ipv4.
-    bool detect_host(
-        ip_address& addr,
-        ip_address_family& family);
-    bool detect_host(
-        ip_address& addr,
-        ip_address_family& family,
-        ip_address_family preferred_family);
+    // Auto-detect a connectable host address from the machine's network interfaces.
+    // Fills addr and family.  Returns true on success; on failure fills addr with
+    // 127.0.0.1 and sets family to ipv4.
+    bool detect_host(ip_address& addr, ip_address_family& family);
+    bool detect_host(ip_address& addr, ip_address_family& family, ip_address_family preferred_family);
 
     // Parse an explicit host address string (dotted-decimal or colon-hex) into binary.
-    // family selects the parser; pass ipv4 for a.b.c.d, ipv6 for colon-hex.
-    // Returns true on success, false on malformed input.
-    bool parse_ip_address(
-        const std::string& str,
-        ip_address& addr,
-        ip_address_family family);
+    // family selects the parser.  Returns true on success, false on malformed input.
+    bool parse_ip_address(const std::string& str, ip_address& addr, ip_address_family family);
 
     // Auto-detect the best routing prefix from the host's network interfaces.
     // Selection priority:
-    //   1. First globally-routable unicast IPv6 (non-link-local, non-loopback) — /64 prefix stored
+    //   1. First globally-routable unicast IPv6 (non-link-local, non-loopback) — /64 prefix
     //   2. First public IPv4 (not loopback, link-local, or RFC 1918)
     //   3. First private IPv4 (RFC 1918: 10.x, 172.16-31.x, 192.168.x)
     //   4. Returns false — local-only mode, addr left all-zero
-    bool detect_routing_prefix(
-        ip_address& addr,
-        ip_address_family& family);
-    bool detect_routing_prefix(
-        ip_address& addr,
-        ip_address_family& family,
-        ip_address_family preferred_family);
+    bool detect_routing_prefix(ip_address& addr, ip_address_family& family);
+    bool detect_routing_prefix(ip_address& addr, ip_address_family& family, ip_address_family preferred_family);
 
 } // namespace canopy::network_config

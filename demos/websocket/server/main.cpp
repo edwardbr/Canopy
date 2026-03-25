@@ -7,6 +7,8 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include <canopy/network_config/network_args.h>
 #include <canopy/http_server/http_acceptor.h>
@@ -48,6 +50,73 @@ extern "C" void rpc_log(
 
 namespace
 {
+    struct augmented_cli
+    {
+        int argc = 0;
+        std::vector<std::string> storage;
+        std::vector<char*> argv;
+    };
+
+    bool has_cli_option(
+        int argc,
+        char* argv[],
+        std::string_view option)
+    {
+        const std::string with_equals = std::string(option) + "=";
+        for (int i = 1; i < argc; ++i)
+        {
+            const std::string_view arg = argv[i];
+            if (arg == option || arg.rfind(with_equals, 0) == 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    augmented_cli add_default_network_args(
+        int argc,
+        char* argv[])
+    {
+        augmented_cli result;
+        result.storage.reserve(8);
+        result.argv.reserve(argc + 8);
+
+        for (int i = 0; i < argc; ++i)
+            result.argv.push_back(argv[i]);
+
+        const bool has_any_va = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
+                                || has_cli_option(argc, argv, "--va-prefix")
+                                || has_cli_option(argc, argv, "--va-subnet-bits")
+                                || has_cli_option(argc, argv, "--va-object-id-bits")
+                                || has_cli_option(argc, argv, "--va-subnet");
+        const bool has_listen = has_cli_option(argc, argv, "--listen");
+
+        auto append = [&result](std::initializer_list<const char*> args)
+        {
+            for (const char* arg : args)
+            {
+                result.storage.emplace_back(arg);
+                result.argv.push_back(result.storage.back().data());
+            }
+        };
+
+        if (!has_any_va)
+        {
+            append({"--va-name=server",
+                "--va-type=ipv4",
+                "--va-prefix=127.0.0.1",
+                "--va-subnet-bits=32",
+                "--va-object-id-bits=32",
+                "--va-subnet=1"});
+        }
+
+        if (!has_listen)
+            append({"--listen=server:127.0.0.1:8080"});
+
+        result.argc = static_cast<int>(result.argv.size());
+        return result;
+    }
+
     auto make_scheduler() -> std::shared_ptr<coro::scheduler>
     {
         return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -97,10 +166,11 @@ auto main(
     auto net = canopy::network_config::add_network_args(parser);
     args::ValueFlag<std::string> cert_file(parser, "file", "Path to TLS certificate file (PEM format)", {"cert"}, "");
     args::ValueFlag<std::string> key_file(parser, "file", "Path to TLS private key file (PEM format)", {"key"}, "");
+    auto cli = add_default_network_args(argc, argv);
 
     try
     {
-        parser.ParseCLI(argc, argv);
+        parser.ParseCLI(cli.argc, cli.argv.data());
     }
     catch (const args::Help&)
     {
@@ -124,12 +194,14 @@ auto main(
         return 1;
     }
 
-    if (cfg.port == 0)
-    {
-        cfg.port = 8888;
-    }
-
     cfg.log_values();
+
+    // Resolve the listen endpoint.  Default: bind on 0.0.0.0:8888.
+    canopy::network_config::tcp_endpoint listen_ep;
+    if (const auto* p = cfg.first_listen())
+        listen_ep = *p;
+    else
+        listen_ep.port = 8888; // addr = {} = 0.0.0.0, family = ipv4
 
     const auto cert_path = args::get(cert_file);
     const auto key_path = args::get(key_file);
@@ -158,9 +230,11 @@ auto main(
     std::ignore = address.set_subnet(1);
 
     auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", address, scheduler);
-    const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6 ? coro::net::domain_t::ipv6
-                                                                                           : coro::net::domain_t::ipv4;
-    auto bind_address = coro::net::ip_address::from_string(cfg.get_host_string(), domain);
 
-    coro::sync_wait(coro::when_all(run_http_server(scheduler, bind_address, cfg.port, root_service, tls_ctx)));
+    const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6
+                            ? coro::net::domain_t::ipv6
+                            : coro::net::domain_t::ipv4;
+    auto bind_address = coro::net::ip_address::from_string(listen_ep.to_string(), domain);
+
+    coro::sync_wait(coro::when_all(run_http_server(scheduler, bind_address, listen_ep.port, root_service, tls_ctx)));
 }
