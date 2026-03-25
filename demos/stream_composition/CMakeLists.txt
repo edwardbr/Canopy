@@ -39,7 +39,8 @@ if(CANOPY_BUILD_COROUTINE)
            canopy_network_config
            OpenSSL::Crypto
            OpenSSL::SSL
-           ${CANOPY_LIBRARIES})
+           ${CANOPY_LIBRARIES}
+           rpc_log)
 
   target_compile_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

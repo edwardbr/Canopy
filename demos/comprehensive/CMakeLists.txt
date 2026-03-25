@@ -29,7 +29,13 @@ target_include_directories(
   local_transport_demo
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE ${CANOPY_INCLUDES})
-target_link_libraries(local_transport_demo PUBLIC comprehensive_idl transport_local rpc ${CANOPY_LIBRARIES})
+target_link_libraries(
+  local_transport_demo
+  PUBLIC comprehensive_idl
+         transport_local
+         rpc
+         ${CANOPY_LIBRARIES}
+         rpc_log)
 target_compile_options(local_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(local_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET local_transport_demo PROPERTY COMPILE_PDB_NAME local_transport_demo)
@@ -54,7 +60,8 @@ if(CANOPY_BUILD_COROUTINE)
            streaming_tcp
            rpc
            canopy_network_config
-           ${CANOPY_LIBRARIES})
+           ${CANOPY_LIBRARIES}
+           rpc_log)
   target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(tcp_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET tcp_transport_demo PROPERTY COMPILE_PDB_NAME tcp_transport_demo)
@@ -76,7 +83,8 @@ if(CANOPY_BUILD_COROUTINE)
            streaming_spsc_queue
            spsc_queue
            rpc
-           ${CANOPY_LIBRARIES})
+           ${CANOPY_LIBRARIES}
+           rpc_log)
   target_compile_options(spsc_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(spsc_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET spsc_transport_demo PROPERTY COMPILE_PDB_NAME spsc_transport_demo)
@@ -89,7 +97,13 @@ target_include_directories(
   serialisation_demo
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE ${CANOPY_INCLUDES})
-target_link_libraries(serialisation_demo PUBLIC comprehensive_idl rpc transport_local ${CANOPY_LIBRARIES})
+target_link_libraries(
+  serialisation_demo
+  PUBLIC comprehensive_idl
+         rpc
+         transport_local
+         ${CANOPY_LIBRARIES}
+         rpc_log)
 target_compile_options(serialisation_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(serialisation_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET serialisation_demo PROPERTY COMPILE_PDB_NAME serialisation_demo)
@@ -101,7 +115,13 @@ target_include_directories(
   shared_ptr_demo
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE ${CANOPY_INCLUDES})
-target_link_libraries(shared_ptr_demo PUBLIC comprehensive_idl rpc transport_local ${CANOPY_LIBRARIES})
+target_link_libraries(
+  shared_ptr_demo
+  PUBLIC comprehensive_idl
+         rpc
+         transport_local
+         ${CANOPY_LIBRARIES}
+         rpc_log)
 target_compile_options(shared_ptr_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(shared_ptr_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
@@ -111,7 +131,13 @@ target_include_directories(
   optimistic_ptr_demo
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE ${CANOPY_INCLUDES})
-target_link_libraries(optimistic_ptr_demo PUBLIC comprehensive_idl rpc transport_local ${CANOPY_LIBRARIES})
+target_link_libraries(
+  optimistic_ptr_demo
+  PUBLIC comprehensive_idl
+         rpc
+         transport_local
+         ${CANOPY_LIBRARIES}
+         rpc_log)
 target_compile_options(optimistic_ptr_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(optimistic_ptr_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET optimistic_ptr_demo PROPERTY COMPILE_PDB_NAME optimistic_ptr_demo)

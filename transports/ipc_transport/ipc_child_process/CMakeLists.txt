@@ -12,7 +12,7 @@ target_include_directories(
             "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/subcomponents/spsc_queue/include>"
             ${CANOPY_INCLUDES})
 
-# add_executable(canopy_ipc_child_process src/main.cpp src/rpc_log.cpp)
+# add_executable(canopy_ipc_child_process src/main.cpp)
 
 # target_compile_definitions(canopy_ipc_child_process PRIVATE ${CANOPY_DEFINES})
 

@@ -108,7 +108,8 @@ target_link_libraries(
          spdlog::spdlog
          ${CANOPY_FMT_LIB}
          ${ENCLAVE_DEPENDANCIES}
-         ${CANOPY_LIBRARIES})
+         ${CANOPY_LIBRARIES}
+         rpc_log)
 
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(

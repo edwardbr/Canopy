@@ -63,6 +63,7 @@ add_subdirectory(rpc)
 add_subdirectory(transports)
 add_subdirectory(types)
 add_subdirectory(subcomponents/network_config)
+add_subdirectory(subcomponents/rpc_log)
 add_subdirectory(subcomponents/spsc_queue)
 
 if(CANOPY_BUILD_COROUTINE)

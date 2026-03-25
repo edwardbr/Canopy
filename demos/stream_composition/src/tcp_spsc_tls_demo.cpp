@@ -317,43 +317,6 @@ namespace stream_composition
 
 // ---------------------------------------------------------------------------
 // Logging hook
-// ---------------------------------------------------------------------------
-
-extern "C"
-{
-    void rpc_log(
-        int level,
-        const char* str,
-        size_t sz)
-    {
-        std::string message(str, sz);
-        const char* prefix = nullptr;
-        switch (level)
-        {
-        case 0:
-            prefix = "[TRACE]";
-            break;
-        case 1:
-            prefix = "[DEBUG]";
-            break;
-        case 2:
-            prefix = "[INFO] ";
-            break;
-        case 3:
-            prefix = "[WARN] ";
-            break;
-        case 4:
-            prefix = "[ERROR]";
-            break;
-        default:
-            prefix = "[LOG]  ";
-            break;
-        }
-        printf("%s %s\n", prefix, message.c_str());
-        fflush(stdout);
-    }
-}
-
 namespace
 {
     struct augmented_cli

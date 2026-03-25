@@ -11,8 +11,8 @@ canopycreatelibcorospscdynamiclibrary(
   canopy_libcoro_spsc_example_dll
   SOURCES
   src/canopy_libcoro_spsc_dll_init.cpp
-  src/rpc_log.cpp
   LINK_LIBRARIES
   transport_local
   common_tests
-  example_idl)
+  example_idl
+  rpc_log)

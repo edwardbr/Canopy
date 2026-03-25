@@ -17,38 +17,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-void rpc_log(
-    int level,
-    const char* str,
-    size_t sz)
-{
-    std::string message(str, sz);
-    switch (level)
-    {
-    case 0:
-        printf("[TRACE] %s\n", message.c_str());
-        break;
-    case 1:
-        printf("[DEBUG] %s\n", message.c_str());
-        break;
-    case 2:
-        printf("[INFO] %s\n", message.c_str());
-        break;
-    case 3:
-        printf("[WARN] %s\n", message.c_str());
-        break;
-    case 4:
-        printf("[ERROR] %s\n", message.c_str());
-        break;
-    case 5:
-        printf("[CRITICAL] %s\n", message.c_str());
-        break;
-    default:
-        printf("[LOG %d] %s\n", level, message.c_str());
-        break;
-    }
-}
-
 // ============================================================
 // Encoding tag types for TYPED_TEST_SUITE
 //

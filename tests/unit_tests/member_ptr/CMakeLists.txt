@@ -31,7 +31,8 @@ if(NOT CANOPY_BUILD_COROUTINE)
     yas_common
     rpc::rpc
     rpc_types_idl
-    member_ptr_test_idl)
+    member_ptr_test_idl
+    rpc_log)
 
   # Add include directories for RPC headers
   target_include_directories(
