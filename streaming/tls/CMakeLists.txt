@@ -9,7 +9,7 @@ find_package(OpenSSL REQUIRED)
 add_library(streaming_tls STATIC src/stream.cpp)
 target_include_directories(
   streaming_tls
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 target_compile_definitions(streaming_tls PRIVATE ${CANOPY_DEFINES})
 target_compile_options(streaming_tls PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

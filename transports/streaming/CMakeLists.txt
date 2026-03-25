@@ -18,7 +18,7 @@ if(CANOPY_BUILD_COROUTINE)
 
   target_include_directories(
     transport_streaming
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
     PRIVATE ${CANOPY_INCLUDES})
 
   target_link_libraries(
@@ -42,4 +42,5 @@ if(CANOPY_BUILD_COROUTINE)
   target_include_directories(transport_streaming_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
   target_link_libraries(transport_streaming_test INTERFACE streaming streaming_tcp streaming_spsc_queue
                                                            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>)
+
 endif()

@@ -9,7 +9,7 @@ add_library(canopy_network_config STATIC src/network_args.cpp src/network_auto_d
 
 target_include_directories(
   canopy_network_config
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(canopy_network_config PRIVATE ${CANOPY_DEFINES})

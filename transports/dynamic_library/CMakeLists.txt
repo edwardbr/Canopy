@@ -14,7 +14,7 @@ target_compile_definitions(transport_dynamic_library PRIVATE ${CANOPY_DEFINES})
 
 target_include_directories(
   transport_dynamic_library
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(transport_dynamic_library PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
@@ -52,7 +52,7 @@ target_compile_definitions(
 
 target_include_directories(
   transport_dynamic_library_dll
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(transport_dynamic_library_dll PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})

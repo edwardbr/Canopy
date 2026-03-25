@@ -181,7 +181,7 @@ set(CANOPY_SHARED_LIBRARIES
 # ######################################################################################################################
 # Build Type Configuration
 # ######################################################################################################################
-if(${BUILD_TYPE} STREQUAL "release")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CANOPY_DEFINES ${CANOPY_SHARED_DEFINES} NDEBUG)
 
   set(CANOPY_COMPILE_OPTIONS

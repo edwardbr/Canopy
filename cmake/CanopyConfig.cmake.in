@@ -1,0 +1,40 @@
+#[[
+   Copyright (c) 2026 Edward Boggis-Rolfe
+   All rights reserved.
+]]
+#
+# CanopyConfig.cmake.in
+# CMake package configuration template for Canopy RPC.
+# Processed by configure_package_config_file() into CanopyConfig.cmake.
+#
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Import the compiled targets (rpc, transport_*, streaming_*, etc.)
+include("${CMAKE_CURRENT_LIST_DIR}/CanopyTargets.cmake")
+
+# Make the IDL code-generation function available to consumers.
+include("${CMAKE_CURRENT_LIST_DIR}/CanopyGenerate.cmake")
+
+# Make the DLL-helper cmake modules available where they were installed.
+foreach(
+  _canopy_module
+  CanopyCreateDynamicLibrary
+  CanopyCreateLibcoroDynamicLibrary
+  CanopyCreateLibcoroSpscDynamicLibrary)
+  set(_canopy_module_file "${CMAKE_CURRENT_LIST_DIR}/${_canopy_module}.cmake")
+  if(EXISTS "${_canopy_module_file}")
+    include("${_canopy_module_file}")
+  endif()
+endforeach()
+unset(_canopy_module)
+unset(_canopy_module_file)
+
+# Point the IDL generator at the installed executable so that CanopyGenerate()
+# works without the build tree being present.
+set_and_check(CANOPY_IDL_GENERATOR_EXECUTABLE
+              "@PACKAGE_CMAKE_INSTALL_BINDIR@/generator")
+
+check_required_components(Canopy)

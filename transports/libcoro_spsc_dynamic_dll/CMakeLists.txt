@@ -22,6 +22,7 @@ target_include_directories(
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/network_config/include>"
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/args>"
+         "$<INSTALL_INTERFACE:include>"
          ${CANOPY_INCLUDES})
 
 target_link_libraries(
@@ -54,6 +55,7 @@ target_include_directories(
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/network_config/include>"
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/args>"
+         "$<INSTALL_INTERFACE:include>"
          ${CANOPY_INCLUDES})
 
 target_link_libraries(

@@ -38,7 +38,7 @@ target_compile_definitions(transport_local PRIVATE ${CANOPY_DEFINES})
 
 target_include_directories(
   transport_local
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(transport_local PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})

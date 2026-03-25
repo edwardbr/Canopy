@@ -127,8 +127,6 @@ add_library(rpc::rpc ALIAS rpc)
 
 install(
   DIRECTORY include/
-  DESTINATION include/rpc
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rpc
   FILES_MATCHING
-  PATTERN "*.h*"
-  # PATTERN "private" EXCLUDE
-)
+  PATTERN "*.h*")

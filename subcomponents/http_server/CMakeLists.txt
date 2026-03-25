@@ -12,7 +12,7 @@ add_library(canopy_http_server STATIC src/http_acceptor.cpp src/http_client_conn
 
 target_include_directories(
   canopy_http_server
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(canopy_http_server PRIVATE ${CANOPY_DEFINES})

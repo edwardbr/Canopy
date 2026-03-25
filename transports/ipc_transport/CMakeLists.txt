@@ -14,6 +14,7 @@ target_include_directories(
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/core/include>"
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/spsc_queue/include>"
          "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
+         "$<INSTALL_INTERFACE:include>"
          ${CANOPY_INCLUDES})
 
 target_link_libraries(
@@ -32,7 +33,8 @@ target_link_options(transport_ipc_transport_impl PRIVATE ${CANOPY_LINK_EXE_OPTIO
 set_property(TARGET transport_ipc_transport_impl PROPERTY COMPILE_PDB_NAME transport_ipc_transport_impl)
 
 target_link_libraries(transport_ipc_transport INTERFACE transport_ipc_transport_impl)
-target_include_directories(transport_ipc_transport INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+target_include_directories(transport_ipc_transport INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+                                                             "$<INSTALL_INTERFACE:include>")
 
 add_library(transport_ipc_transport_test INTERFACE)
 target_include_directories(transport_ipc_transport_test
