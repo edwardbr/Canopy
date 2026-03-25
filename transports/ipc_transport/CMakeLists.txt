@@ -41,5 +41,5 @@ target_include_directories(transport_ipc_transport_test
                            INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
 
 # TODO: ipc_child_process needs reworking before it can be re-enabled
-# add_subdirectory(ipc_child_process)
+add_subdirectory(ipc_child_process)
 add_subdirectory(ipc_child_host_process)
