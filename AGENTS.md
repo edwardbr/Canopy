@@ -22,6 +22,12 @@ The source of truth is the live repository state:
 
 Do not rely on `documents/` for correctness. It may be useful for background, but it is not authoritative.
 
+### Key documents for LLMs
+
+- `documents/external-project-guide.md` — **start here** when creating or working on a project that consumes Canopy via `add_subdirectory`. Contains working CMake boilerplate, IDL syntax, TCP server/client patterns, and a list of known CMake pitfalls.
+- `documents/transports/tcp.md` — TCP transport overview.
+- `documents/architecture/` — zone, service, and lifetime architecture.
+
 ## Overview
 
 Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files. It supports multiple transport layers, optional coroutine builds, JSON schema metadata, enclave-related builds, demos, and benchmarks.

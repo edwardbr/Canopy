@@ -1,0 +1,77 @@
+# Canopy
+
+> A modern C++ RPC library with IDL-generated proxy/stub code, multiple transport
+> layers, optional coroutine support, and SGX enclave builds.
+
+## What Canopy is
+
+Canopy lets you define service interfaces in a small IDL language and get generated
+C++ proxy/stub pairs. The same interface works in-process, across processes via
+shared memory or TCP, or across trust boundaries in SGX enclaves — without changing
+the interface definition or calling code.
+
+## Using Canopy in your own project (add_subdirectory pattern)
+
+The recommended way to consume Canopy is `add_subdirectory`. No system install is
+needed. See:
+
+- [`documents/external-project-guide.md`](documents/external-project-guide.md) —
+  complete walkthrough: CMake layout, IDL syntax, TCP server/client patterns, known
+  pitfalls. **Start here.**
+- [`test_app/`](../test_app/) — a working two-process example (server + client over
+  TCP) that uses this exact pattern.
+
+Quick CMakeLists.txt sketch:
+
+```cmake
+set(CANOPY_BUILD_COROUTINE ON CACHE BOOL "" FORCE)  # needed for TCP
+set(CANOPY_BUILD_TEST OFF CACHE BOOL "" FORCE)
+add_subdirectory(../Canopy canopy_build)
+add_subdirectory(idl)                               # calls CanopyGenerate()
+target_link_libraries(my_exe PRIVATE my_service_idl transport_streaming streaming_tcp rpc canopy_network_config ${CANOPY_LIBRARIES})
+```
+
+## Repository layout
+
+- `rpc/` — core library; public headers under `rpc/include/rpc`
+- `generator/` — IDL compiler; produces proxy/stub C++ from `.idl` files
+- `transports/` — local, streaming (TCP/SPSC), SGX, dynamic-library transports
+- `streaming/` — coroutine streaming stack (TCP, TLS, WebSocket, io_uring)
+- `subcomponents/network_config/` — CLI arg parsing for host/port/routing-prefix
+- `cmake/` — CMake modules including `CanopyGenerate.cmake`
+- `documents/` — background guides (not authoritative; verify from source)
+- `demos/` — working example programs; `demos/comprehensive/` covers all transports
+
+## Build system
+
+- CMake ≥ 3.24, Ninja, clang/clang++ by default
+- C++17 baseline; C++20 with `CANOPY_BUILD_COROUTINE=ON`
+- Presets defined in `CMakePresets.json`; common ones: `Debug`, `Debug_Coroutine`, `Release`
+- `BUILD_TYPE` custom variable has been removed; use `CMAKE_BUILD_TYPE` only
+
+## IDL quick reference
+
+```idl
+namespace my_app
+{
+    interface i_my_service
+    {
+        int my_method([in] const std::string& input, [out] std::string& output);
+        int add(int a, int b, [out] int& result);
+    };
+}
+```
+
+`CanopyGenerate(my_service my_service/my_service.idl ...)` produces the
+`my_service_idl` CMake target. Include `<my_service/my_service.h>` in your sources.
+
+## Coroutine macros
+
+`CORO_TASK(T)`, `CO_RETURN`, `CO_AWAIT` — compatibility macros that expand to
+coroutine primitives when `CANOPY_BUILD_COROUTINE=ON` and to blocking equivalents
+otherwise.
+
+## Agent / LLM instructions
+
+See [`AGENTS.md`](AGENTS.md) for working practices, build commands, pointer/ownership
+rules, and session-completion checklist used by AI coding assistants.

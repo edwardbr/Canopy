@@ -36,7 +36,7 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
     COMMAND
       ${CMAKE_COMMAND} -DNPM_EXECUTABLE=${NPM_EXECUTABLE} -DCLIENT_DIR=${CLIENT_DIR}
       -DPBJS_EXECUTABLE=${PBJS_EXECUTABLE} -DSTAMP_FILE=${PBJS_STAMP_FILE} -P
-      ${CMAKE_SOURCE_DIR}/cmake/EnsurePbjsInstalled.cmake
+      ${CANOPY_SOURCE_DIR}/cmake/EnsurePbjsInstalled.cmake
     COMMENT "Installing protobufjs-cli via npm")
 
   # Generate browser version (static module)
