@@ -14,13 +14,12 @@
 
 // Macros to disable/enable warnings around YAS usage
 #ifdef __clang__
-#  define YAS_WARNINGS_PUSH                                                                                            \
-      _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wpedantic\"")                              \
-          _Pragma("clang diagnostic ignored \"-Wsign-conversion\"")                                                    \
-              _Pragma("clang diagnostic ignored \"-Wconversion\"")                                                     \
-                  _Pragma("clang diagnostic ignored \"-Wimplicit-int-conversion\"")                                    \
-                      _Pragma("clang diagnostic ignored \"-Wunused-value\"")                                           \
-                          _Pragma("clang diagnostic ignored \"-Wimplicit-fallthrough\"")
+#  define YAS_WARNINGS_PUSH                                                                                              \
+      _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wpedantic\"")                                \
+          _Pragma("clang diagnostic ignored \"-Wsign-conversion\"") _Pragma("clang diagnostic ignored \"-Wconversion\"") \
+              _Pragma("clang diagnostic ignored \"-Wimplicit-int-conversion\"")                                          \
+                  _Pragma("clang diagnostic ignored \"-Wunused-value\"")                                                 \
+                      _Pragma("clang diagnostic ignored \"-Wimplicit-fallthrough\"")
 #  define YAS_WARNINGS_POP _Pragma("clang diagnostic pop")
 #else
 #  define YAS_WARNINGS_PUSH                                                                                            \

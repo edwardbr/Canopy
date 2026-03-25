@@ -84,11 +84,10 @@ namespace
         for (int i = 0; i < argc; ++i)
             result.argv.push_back(argv[i]);
 
-        const bool has_any_va = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
-                                || has_cli_option(argc, argv, "--va-prefix")
-                                || has_cli_option(argc, argv, "--va-subnet-bits")
-                                || has_cli_option(argc, argv, "--va-object-id-bits")
-                                || has_cli_option(argc, argv, "--va-subnet");
+        const bool has_any_va
+            = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
+              || has_cli_option(argc, argv, "--va-prefix") || has_cli_option(argc, argv, "--va-subnet-bits")
+              || has_cli_option(argc, argv, "--va-object-id-bits") || has_cli_option(argc, argv, "--va-subnet");
         const bool has_listen = has_cli_option(argc, argv, "--listen");
 
         auto append = [&result](std::initializer_list<const char*> args)
@@ -102,12 +101,13 @@ namespace
 
         if (!has_any_va)
         {
-            append({"--va-name=server",
-                "--va-type=ipv4",
-                "--va-prefix=127.0.0.1",
-                "--va-subnet-bits=32",
-                "--va-object-id-bits=32",
-                "--va-subnet=1"});
+            append(
+                {"--va-name=server",
+                    "--va-type=ipv4",
+                    "--va-prefix=127.0.0.1",
+                    "--va-subnet-bits=32",
+                    "--va-object-id-bits=32",
+                    "--va-subnet=1"});
         }
 
         if (!has_listen)
@@ -231,9 +231,8 @@ auto main(
 
     auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", address, scheduler);
 
-    const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6
-                            ? coro::net::domain_t::ipv6
-                            : coro::net::domain_t::ipv4;
+    const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? coro::net::domain_t::ipv6
+                                                                                            : coro::net::domain_t::ipv4;
     auto bind_address = coro::net::ip_address::from_string(listen_ep.to_string(), domain);
 
     coro::sync_wait(coro::when_all(run_http_server(scheduler, bind_address, listen_ep.port, root_service, tls_ctx)));

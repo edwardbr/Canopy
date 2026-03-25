@@ -235,8 +235,7 @@ namespace stream_composition
                                 : coro::net::domain_t::ipv4;
         coro::net::tcp::client tcp_client(
             scheduler,
-            coro::net::socket_address{
-                coro::net::ip_address::from_string(connect_ep.to_string(), domain), connect_ep.port});
+            coro::net::socket_address{coro::net::ip_address::from_string(connect_ep.to_string(), domain), connect_ep.port});
 
         auto conn_status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds{5000});
         if (conn_status != coro::net::connect_status::connected)
@@ -391,11 +390,10 @@ namespace
         for (int i = 0; i < argc; ++i)
             result.argv.push_back(argv[i]);
 
-        const bool has_any_va = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
-                                || has_cli_option(argc, argv, "--va-prefix")
-                                || has_cli_option(argc, argv, "--va-subnet-bits")
-                                || has_cli_option(argc, argv, "--va-object-id-bits")
-                                || has_cli_option(argc, argv, "--va-subnet");
+        const bool has_any_va
+            = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
+              || has_cli_option(argc, argv, "--va-prefix") || has_cli_option(argc, argv, "--va-subnet-bits")
+              || has_cli_option(argc, argv, "--va-object-id-bits") || has_cli_option(argc, argv, "--va-subnet");
         const bool has_listen = has_cli_option(argc, argv, "--listen");
         const bool has_connect = has_cli_option(argc, argv, "--connect");
 
@@ -410,18 +408,19 @@ namespace
 
         if (!has_any_va)
         {
-            append({"--va-name=server",
-                "--va-type=ipv4",
-                "--va-prefix=127.0.0.1",
-                "--va-subnet-bits=32",
-                "--va-object-id-bits=32",
-                "--va-subnet=1",
-                "--va-name=client",
-                "--va-type=ipv4",
-                "--va-prefix=127.0.0.1",
-                "--va-subnet-bits=32",
-                "--va-object-id-bits=32",
-                "--va-subnet=100"});
+            append(
+                {"--va-name=server",
+                    "--va-type=ipv4",
+                    "--va-prefix=127.0.0.1",
+                    "--va-subnet-bits=32",
+                    "--va-object-id-bits=32",
+                    "--va-subnet=1",
+                    "--va-name=client",
+                    "--va-type=ipv4",
+                    "--va-prefix=127.0.0.1",
+                    "--va-subnet-bits=32",
+                    "--va-object-id-bits=32",
+                    "--va-subnet=100"});
         }
 
         if (!has_listen)
@@ -499,8 +498,7 @@ int main(
     else
     {
         connect_ep = listen_ep;
-        const bool is_any = std::all_of(
-            connect_ep.addr.begin(), connect_ep.addr.end(), [](uint8_t b) { return b == 0; });
+        const bool is_any = std::all_of(connect_ep.addr.begin(), connect_ep.addr.end(), [](uint8_t b) { return b == 0; });
         if (is_any)
             canopy::network_config::ipv4_to_ip_address("127.0.0.1", connect_ep.addr);
     }
@@ -547,11 +545,9 @@ int main(
         coro::sync_wait(
             coro::when_all(
                 stream_composition::run_server(
-                    scheduler_server, server_ready, client_finished, listen_ep,
-                    rpc::zone{server_addr}, cert_path, key_path, iteration_ok),
+                    scheduler_server, server_ready, client_finished, listen_ep, rpc::zone{server_addr}, cert_path, key_path, iteration_ok),
                 stream_composition::run_client(
-                    scheduler_client, server_ready, client_finished, connect_ep,
-                    rpc::zone{client_addr}, iteration_ok)));
+                    scheduler_client, server_ready, client_finished, connect_ep, rpc::zone{client_addr}, iteration_ok)));
 
         if (!iteration_ok.load())
         {
@@ -565,10 +561,7 @@ int main(
     }
 
     RPC_INFO("\n============================================");
-    RPC_INFO(
-        "Stream Composition Demo complete: {}/{} iterations passed",
-        iterations - failures.load(),
-        iterations);
+    RPC_INFO("Stream Composition Demo complete: {}/{} iterations passed", iterations - failures.load(), iterations);
 
     scheduler_server->shutdown();
     scheduler_client->shutdown();
