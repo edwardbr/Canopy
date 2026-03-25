@@ -15,9 +15,10 @@ target_link_libraries(
   PRIVATE rpc::rpc
           transport_local
           fuzz_test_idl # Our independent fuzz test IDL
-          test_fixtures # For logging functions
+          test_fixtures
           args::args # Command line argument parsing
-          ${LINK_LIBS})
+          ${LINK_LIBS}
+          rpc_log)
 
 # Include directories for fuzz test
 target_include_directories(

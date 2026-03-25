@@ -28,7 +28,8 @@ target_link_libraries(
          OpenSSL::SSL
          OpenSSL::Crypto
          fmt::fmt-header-only
-         ${CANOPY_LIBRARIES})
+         ${CANOPY_LIBRARIES}
+         rpc_log)
 
 if(CANOPY_BUILD_WEBSOCKET)
   target_link_libraries(streaming_benchmark PUBLIC streaming_websocket)

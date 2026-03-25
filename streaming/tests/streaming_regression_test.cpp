@@ -160,13 +160,6 @@ namespace
     };
 } // namespace
 
-void rpc_log(
-    int /*level*/,
-    const char* /*str*/,
-    size_t /*sz*/)
-{
-}
-
 TEST(
     SpscWrappingStream,
     PropagatesUnderlyingSendFailure)

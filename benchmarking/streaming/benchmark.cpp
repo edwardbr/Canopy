@@ -1800,35 +1800,3 @@ int main(
     fmt::print("\nDone.\n");
     return 0;
 }
-
-void rpc_log(
-    int level,
-    const char* str,
-    size_t sz)
-{
-    std::string msg(str, sz);
-    switch (level)
-    {
-    case 0:
-        std::cout << "[TRACE] " << msg << '\n';
-        break;
-    case 1:
-        std::cout << "[DEBUG] " << msg << '\n';
-        break;
-    case 2:
-        std::cout << "[INFO] " << msg << '\n';
-        break;
-    case 3:
-        std::cout << "[WARN] " << msg << '\n';
-        break;
-    case 4:
-        std::cout << "[ERROR] " << msg << '\n';
-        break;
-    case 5:
-        std::cout << "[CRIT] " << msg << '\n';
-        break;
-    default:
-        std::cout << "[LOG " << level << "] " << msg << '\n';
-        break;
-    }
-}

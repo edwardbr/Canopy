@@ -328,12 +328,3 @@ TEST(
     EXPECT_TRUE(send_ok);
     EXPECT_TRUE(recv_ok);
 }
-
-// libstreaming.so uses rpc_log via the RPC macro infrastructure. Tests that
-// do not link against the full RPC stack must provide this stub.
-void rpc_log(
-    int /*level*/,
-    const char* /*str*/,
-    size_t /*sz*/)
-{
-}

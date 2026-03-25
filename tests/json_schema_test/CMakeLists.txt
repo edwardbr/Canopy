@@ -6,8 +6,7 @@
 # JSON Schema Generation Tests - consolidated into single test executable
 
 # Single consolidated JSON schema metadata test
-add_executable(json_schema_metadata_test json_schema_metadata_test.cpp i_foo_schema_validation_test.cpp
-                                         ../fixtures/src/rpc_log.cpp)
+add_executable(json_schema_metadata_test json_schema_metadata_test.cpp i_foo_schema_validation_test.cpp)
 
 # Add compile definitions like test
 target_compile_definitions(json_schema_metadata_test PRIVATE ${CANOPY_DEFINES})
@@ -40,7 +39,8 @@ target_link_libraries(
          nlohmann_json_schema_validator
          ${CANOPY_LIBRARIES}
          ${ENCLAVE_DEPENDENCIES}
-         test_fixtures)
+         test_fixtures
+         rpc_log)
 
 # Add compile options and link options like test
 target_compile_options(json_schema_metadata_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

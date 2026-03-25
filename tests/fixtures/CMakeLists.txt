@@ -8,7 +8,6 @@ add_library(
   test_fixtures STATIC
   src/test_host.cpp
   src/test_globals.cpp
-  src/rpc_log.cpp
   src/rpc_global_logger.cpp
   src/crash_handler.cpp
   include/crash_handler.h)

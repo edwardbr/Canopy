@@ -21,19 +21,19 @@ if(CANOPY_BUILD_COROUTINE)
     canopy_benchmark_libcoro_dll
     SOURCES
     src/canopy_libcoro_dll_init.cpp
-    src/rpc_log.cpp
     LINK_LIBRARIES
-    comprehensive_idl)
+    comprehensive_idl
+    rpc_log)
 
   canopycreatelibcorospscdynamiclibrary(
     canopy_benchmark_libcoro_spsc_dll
     SOURCES
     src/canopy_libcoro_spsc_dll_init.cpp
-    src/rpc_log.cpp
     LINK_LIBRARIES
-    comprehensive_idl)
+    comprehensive_idl
+    rpc_log)
 
-  add_executable(canopy_benchmark_ipc_child_process src/ipc_child_process_main.cpp src/rpc_log.cpp)
+  add_executable(canopy_benchmark_ipc_child_process src/ipc_child_process_main.cpp)
   target_compile_definitions(canopy_benchmark_ipc_child_process PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
     canopy_benchmark_ipc_child_process PRIVATE "${CANOPY_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES}
@@ -48,7 +48,8 @@ if(CANOPY_BUILD_COROUTINE)
             spsc_queue
             yas_common
             rpc::rpc
-            ${CANOPY_LIBRARIES})
+            ${CANOPY_LIBRARIES}
+            rpc_log)
   target_compile_options(canopy_benchmark_ipc_child_process PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(canopy_benchmark_ipc_child_process PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET canopy_benchmark_ipc_child_process PROPERTY COMPILE_PDB_NAME canopy_benchmark_ipc_child_process)
@@ -57,12 +58,12 @@ else()
     canopy_benchmark_dll
     SOURCES
     src/canopy_dll_init.cpp
-    src/rpc_log.cpp
     LINK_LIBRARIES
-    comprehensive_idl)
+    comprehensive_idl
+    rpc_log)
 endif()
 
-add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmark_local.cpp src/rpc_log.cpp)
+add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmark_local.cpp)
 if(CANOPY_BUILD_COROUTINE)
   target_sources(
     benchmark
@@ -94,9 +95,10 @@ if(CANOPY_BUILD_COROUTINE)
            transport_ipc_transport
            streaming_spsc_queue
            streaming_tcp
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>)
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           rpc_log)
 else()
-  target_link_libraries(benchmark PUBLIC transport_dynamic_library)
+  target_link_libraries(benchmark PUBLIC transport_dynamic_library rpc_log)
 endif()
 target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

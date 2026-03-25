@@ -2,7 +2,7 @@ if(NOT CANOPY_BUILD_COROUTINE)
   return()
 endif()
 
-add_executable(canopy_ipc_child_host_process src/main.cpp src/rpc_log.cpp)
+add_executable(canopy_ipc_child_host_process src/main.cpp)
 
 target_compile_definitions(canopy_ipc_child_host_process PRIVATE ${CANOPY_DEFINES})
 
@@ -16,7 +16,8 @@ target_link_libraries(
           spsc_queue
           yas_common
           rpc::rpc
-          ${CANOPY_LIBRARIES})
+          ${CANOPY_LIBRARIES}
+          rpc_log)
 
 target_compile_options(canopy_ipc_child_host_process PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(canopy_ipc_child_host_process PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
