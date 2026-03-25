@@ -3,9 +3,11 @@
    All rights reserved.
 ]]
 
-# Capture this directory at include time — CMAKE_CURRENT_LIST_DIR inside a function
-# refers to the caller's directory, not the file where the function is defined.
-set(_CANOPY_GENERATE_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "")
+# Capture this directory at include time — CMAKE_CURRENT_LIST_DIR inside a function refers to the caller's directory,
+# not the file where the function is defined.
+set(_CANOPY_GENERATE_CMAKE_DIR
+    "${CMAKE_CURRENT_LIST_DIR}"
+    CACHE INTERNAL "")
 
 function(
   CanopyGenerate
@@ -497,9 +499,8 @@ function(
   add_library(${name}_idl STATIC ${IDL_SOURCES})
   target_compile_definitions(${name}_idl PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
-    ${name}_idl SYSTEM
-    PUBLIC "$<BUILD_INTERFACE:${output_path}>" "$<BUILD_INTERFACE:${output_path}/include>"
-           "$<INSTALL_INTERFACE:include>")
+    ${name}_idl SYSTEM PUBLIC "$<BUILD_INTERFACE:${output_path}>" "$<BUILD_INTERFACE:${output_path}/include>"
+                              "$<INSTALL_INTERFACE:include>")
   target_include_directories(${name}_idl SYSTEM PRIVATE "${output_path}" "${output_path}/include")
   target_include_directories(${name}_idl PRIVATE ${CANOPY_INCLUDES} ${params_include_paths})
   target_compile_options(${name}_idl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
