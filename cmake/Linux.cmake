@@ -45,7 +45,7 @@ list(APPEND CANOPY_SHARED_DEFINES TEMP_DIR="${TEMP_DIR}" RUNTIME_DIR="${RUNTIME_
 # ######################################################################################################################
 # Build Type Configuration
 # ######################################################################################################################
-if(${BUILD_TYPE} STREQUAL "release")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CANOPY_OPTIMIZER_FLAGS -O3)
   set(CANOPY_DEFINES ${CANOPY_SHARED_DEFINES} NDEBUG)
 else()

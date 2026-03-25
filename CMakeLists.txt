@@ -23,10 +23,14 @@ if("${CMAKE_CURRENT_SOURCE_DIR}" PATH_EQUAL "${CMAKE_SOURCE_DIR}")
   set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
   set(CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output)
+endif()
 
-  list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+# Set up module path and dependencies whether used standalone or as a subdirectory. DEPENDENCIES_LOADED is set by
+# Canopy.cmake, so a downstream project that already included cmake/Canopy.cmake before add_subdirectory() will not
+# double-initialise.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+if(NOT DEPENDENCIES_LOADED)
   include(Canopy)
-
   add_subdirectory(submodules)
 endif()
 
@@ -43,8 +47,8 @@ else()
   set(CANOPY_TELEMETRY_INTERFACE)
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(CanopyGenerate)
+include(GNUInstallDirs)
 
 add_subdirectory(generator)
 add_subdirectory(telemetry)
@@ -78,4 +82,30 @@ if(CANOPY_ENABLE_COVERAGE)
   canopy_add_coverage_targets(rpc_test "*")
 endif()
 
-install(FILES "${CMAKE_CURRENT_LIST_DIR}/cmake/FindCanopyGenerate.cmake" DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake/rpc)
+# ── CMake modules ───────────────────────────────────────────────────────────
+install(
+  FILES cmake/CanopyGenerate.cmake
+        cmake/CanopyCreateDynamicLibrary.cmake
+        cmake/CanopyCreateLibcoroDynamicLibrary.cmake
+        cmake/CanopyCreateLibcoroSpscDynamicLibrary.cmake
+        cmake/CanopyComponentInstall.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/canopy)
+
+# ── IDL source files ───────────────────────────────────────────────────────── Install non-generated IDL sources so
+# downstream projects can regenerate types.
+install(FILES rpc/interfaces/rpc/rpc_types.idl DESTINATION ${CMAKE_INSTALL_DATADIR}/canopy/idl/rpc)
+install(FILES types/json/interface/json/json.idl DESTINATION ${CMAKE_INSTALL_DATADIR}/canopy/idl/json)
+
+if(CANOPY_BUILD_COROUTINE)
+  install(FILES transports/streaming/interface/stream_transport/stream_transport.idl
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/canopy/idl/stream_transport)
+endif()
+
+# ── Generated headers ───────────────────────────────────────────────────────── The generated/include tree only exists
+# after a build; cmake --install runs after the build so by then the directory is present.
+install(
+  DIRECTORY ${CMAKE_BINARY_DIR}/generated/include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING
+  PATTERN "*.h"
+  PATTERN "*.hpp")

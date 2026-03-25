@@ -58,7 +58,7 @@ else() # Linux
     set(SGX_EDGER8R ${SGX_PATH}/bin/x64/sgx_edger8r)
   endif()
   if(SGX_MODE STREQUAL "debug")
-    if(${BUILD_TYPE} STREQUAL "release") # SimulationOptimized aka SimulationPrerelease
+    if(CMAKE_BUILD_TYPE STREQUAL "Release") # SimulationOptimized aka SimulationPrerelease
       set(SGX_COMMON_CFLAGS "${SGX_COMMON_CFLAGS} -O2 -DNDEBUG -UEDEBUG")
     else() # Debug
       set(SGX_COMMON_CFLAGS "${SGX_COMMON_CFLAGS} -O0 -UNDEBUG -UEDEBUG")

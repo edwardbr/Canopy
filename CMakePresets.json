@@ -52,7 +52,6 @@
             "binaryDir": "build_debug",
             "inherits": "Base",
             "cacheVariables": {
-                "BUILD_TYPE": "debug",
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CANOPY_USE_TELEMETRY": "ON",
                 "CANOPY_USE_CONSOLE_TELEMETRY": "ON",
@@ -177,7 +176,6 @@
             "inherits": "Base",
             "binaryDir": "build_release",
             "cacheVariables": {
-                "BUILD_TYPE": "release",
                 "CMAKE_BUILD_TYPE": "Release",
                 "SGX_HW": "OFF",
                 "CANOPY_LOGGING_INFO": "2"
@@ -187,7 +185,6 @@
             "name": "Release-clang-18",
             "inherits": "Release",
             "cacheVariables": {
-                "BUILD_TYPE": "release",
                 "SGX_HW": "OFF",
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_C_COMPILER": "clang-18",

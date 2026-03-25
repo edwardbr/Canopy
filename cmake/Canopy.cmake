@@ -250,7 +250,7 @@ if(NOT DEPENDENCIES_LOADED)
       message(STATUS "Submodule init")
       execute_process(
         COMMAND ${GIT_EXECUTABLE} submodule init -- ${CANOPY_REQUIRED_SUBMODULES}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
         RESULT_VARIABLE GIT_SUBMOD_INIT_RESULT)
 
       if(NOT GIT_SUBMOD_INIT_RESULT EQUAL "0")
@@ -267,7 +267,7 @@ if(NOT DEPENDENCIES_LOADED)
         message(STATUS "Submodule update")
         execute_process(
           COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout -- ${CANOPY_STANDARD_SUBMODULES}
-          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+          WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
           RESULT_VARIABLE GIT_SUBMOD_RESULT)
 
         if(NOT GIT_SUBMOD_RESULT EQUAL "0")
@@ -281,7 +281,7 @@ if(NOT DEPENDENCIES_LOADED)
         message(STATUS "Submodule update (shallow): submodules/llama.cpp")
         execute_process(
           COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --depth 1 -- submodules/llama.cpp
-          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+          WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
           RESULT_VARIABLE GIT_LLAMA_RESULT)
 
         if(NOT GIT_LLAMA_RESULT EQUAL "0")

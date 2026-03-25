@@ -67,6 +67,6 @@ endif()
 
 install(
   DIRECTORY include/
-  DESTINATION include/rpc
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rpc
   FILES_MATCHING
   PATTERN "*.h*")

@@ -21,6 +21,7 @@ set_property(TARGET fmt PROPERTY PUBLIC_HEADER)
 
 add_subdirectory(args)
 add_library(args::args ALIAS args)
+
 if(CANOPY_BUILD_TEST)
   add_subdirectory(googletest)
 endif()
@@ -95,6 +96,7 @@ if(CANOPY_BUILD_COROUTINE)
 
   add_subdirectory(c-ares)
   add_subdirectory(libcoro_for_enclaves)
+
   if(CANOPY_BUILD_WEBSOCKET)
     add_subdirectory(wslay)
 

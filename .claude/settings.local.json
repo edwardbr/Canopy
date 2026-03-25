@@ -100,7 +100,9 @@
       "Bash(sed -i 's/\\\\[\\\\[maybe_unused\\\\]\\\\] bool ok = child_zone\\\\.set_subnet/[[maybe_unused]] auto ok = child_zone.set_subnet/g' /var/home/edward/projects/Canopy/benchmarking/fullstack/src/benchmark_ipc.cpp)",
       "Bash(./build_debug/output/zone_address_test 2>&1)",
       "Bash(ldd /var/home/edward/projects/Canopy2/build_debug_coroutine/output/libcanopy_libcoro_spsc_example_dll.so)",
-      "Bash(git -C /var/home/edward/projects/Canopy2 show HEAD:submodules/CMakeLists.txt)"
+      "Bash(git -C /var/home/edward/projects/Canopy2 show HEAD:submodules/CMakeLists.txt)",
+      "Bash(sed -n '375,385p' /var/home/edward/projects/Canopy2/submodules/fmt/CMakeLists.txt)",
+      "Bash(sed -n '277,290p' /var/home/edward/projects/Canopy2/submodules/libcoro_for_enclaves/CMakeLists.txt)"
     ]
   },
   "enabledPlugins": {}

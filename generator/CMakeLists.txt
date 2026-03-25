@@ -46,3 +46,5 @@ if(STRIP_DEBUG
    OR STRIP_AND_DELETE_SYMBOLS)
   post_build_symbol_tasks(generator)
 endif()
+
+install(TARGETS generator RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

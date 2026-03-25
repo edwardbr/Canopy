@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.24)
 add_library(streaming STATIC src/stream.cpp)
 target_include_directories(
   streaming
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 target_compile_definitions(streaming PRIVATE ${CANOPY_DEFINES})
 target_compile_options(streaming PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
