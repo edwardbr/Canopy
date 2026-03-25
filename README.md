@@ -413,11 +413,11 @@ See [transport documentation](documents/transports/) for details, especially [Dy
 - **MSVC**: Visual Studio 2019+
 
 ### Dependencies
-Git submodules manage external dependencies:
+Git submodules manage external dependencies they will auto load when required:
 - **YAS**: Serialization framework
 - **libcoro**: Coroutine support (when `CANOPY_BUILD_COROUTINE=ON`)
-- **range-v3**: Range library support
-- **spdlog**: Logging framework
+- **protobuf**: Protocol Buffers
+- **idlparser**: IDL parser
 
 ---
 
@@ -496,8 +496,11 @@ Canopy is actively maintained.
 
 - Performance optimizations
 - New transport implementations
+- New serialisation formats
 - Platform ports
+- New remote reflection mechanism
 - Documentation improvements
+- Alternative language support
 
 ---
 
