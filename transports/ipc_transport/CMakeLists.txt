@@ -10,10 +10,10 @@ target_compile_definitions(transport_ipc_transport_impl PRIVATE ${CANOPY_DEFINES
 target_include_directories(
   transport_ipc_transport_impl
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/streaming/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/core/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/spsc_queue/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/transports/streaming/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/core/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/spsc_queue/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/subcomponents/spsc_queue/include>"
          "$<INSTALL_INTERFACE:include>"
          ${CANOPY_INCLUDES})
 
@@ -40,5 +40,6 @@ add_library(transport_ipc_transport_test INTERFACE)
 target_include_directories(transport_ipc_transport_test
                            INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
 
-add_subdirectory(ipc_child_process)
+# TODO: ipc_child_process needs reworking before it can be re-enabled
+# add_subdirectory(ipc_child_process)
 add_subdirectory(ipc_child_host_process)

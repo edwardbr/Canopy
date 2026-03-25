@@ -93,6 +93,9 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_FEATURE_NETWORKING
       ON
       CACHE BOOL "Enable io_scheduler in libcoro" FORCE)
+  set(LIBCORO_BUILD_EXAMPLES
+      OFF
+      CACHE BOOL "Disable examples" FORCE)
 
   add_subdirectory(c-ares)
   add_subdirectory(libcoro_for_enclaves)

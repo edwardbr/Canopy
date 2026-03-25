@@ -6,10 +6,10 @@ add_library(transport_ipc_child_process INTERFACE)
 target_include_directories(
   transport_ipc_child_process
   INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/streaming/include>"
-            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/core/include>"
-            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/spsc_queue/include>"
-            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
+            "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/transports/streaming/include>"
+            "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/core/include>"
+            "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/spsc_queue/include>"
+            "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/subcomponents/spsc_queue/include>"
             ${CANOPY_INCLUDES})
 
 add_executable(canopy_ipc_child_process src/main.cpp src/rpc_log.cpp)
@@ -17,7 +17,7 @@ add_executable(canopy_ipc_child_process src/main.cpp src/rpc_log.cpp)
 target_compile_definitions(canopy_ipc_child_process PRIVATE ${CANOPY_DEFINES})
 
 target_include_directories(canopy_ipc_child_process PRIVATE ${CANOPY_INCLUDES}
-                                                            "${CMAKE_SOURCE_DIR}/transports/local/include")
+                                                            "${CANOPY_SOURCE_DIR}/transports/local/include")
 
 target_link_libraries(
   canopy_ipc_child_process

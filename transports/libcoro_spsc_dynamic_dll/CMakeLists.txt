@@ -16,12 +16,12 @@ target_compile_definitions(transport_libcoro_spsc_dll_host PRIVATE ${CANOPY_DEFI
 target_include_directories(
   transport_libcoro_spsc_dll_host
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/streaming/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/core/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/spsc_queue/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/network_config/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/args>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/transports/streaming/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/core/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/spsc_queue/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/subcomponents/spsc_queue/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/subcomponents/network_config/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/submodules/args>"
          "$<INSTALL_INTERFACE:include>"
          ${CANOPY_INCLUDES})
 
@@ -49,12 +49,12 @@ target_compile_definitions(transport_libcoro_spsc_dll_runtime PRIVATE ${CANOPY_D
 target_include_directories(
   transport_libcoro_spsc_dll_runtime
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/streaming/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/core/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/spsc_queue/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/network_config/include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/args>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/transports/streaming/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/core/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/streaming/spsc_queue/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/subcomponents/spsc_queue/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/subcomponents/network_config/include>"
+         "$<BUILD_INTERFACE:${CANOPY_SOURCE_DIR}/submodules/args>"
          "$<INSTALL_INTERFACE:include>"
          ${CANOPY_INCLUDES})
 

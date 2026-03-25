@@ -19,14 +19,14 @@ if(NOT TARGET test_types_idl)
   CanopyGenerate(
     test_types
     serialiser_test/test_types.idl
-    ${CMAKE_SOURCE_DIR}/tests/idls
+    ${CANOPY_SOURCE_DIR}/tests/idls
     ${CMAKE_BINARY_DIR}/generated
     ""
     yas_binary
     yas_compressed_binary
     yas_json
     protocol_buffers
-    include_paths ${CMAKE_SOURCE_DIR}/tests/idls/.)
+    include_paths ${CANOPY_SOURCE_DIR}/tests/idls/.)
 endif()
 
 add_executable(serialisation_benchmark benchmark.cpp)
