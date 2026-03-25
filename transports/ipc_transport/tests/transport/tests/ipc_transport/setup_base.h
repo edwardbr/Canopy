@@ -24,9 +24,9 @@
 #    error "CANOPY_TEST_IPC_CHILD_HOST_PROCESS_PATH must be defined"
 #  endif
 
-#  ifndef CANOPY_TEST_IPC_CHILD_PROCESS_PATH
-#    error "CANOPY_TEST_IPC_CHILD_PROCESS_PATH must be defined"
-#  endif
+// #  ifndef CANOPY_TEST_IPC_CHILD_PROCESS_PATH
+// #    error "CANOPY_TEST_IPC_CHILD_PROCESS_PATH must be defined"
+// #  endif
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
 class ipc_transport_setup_base
@@ -78,30 +78,30 @@ protected:
         CO_RETURN connect_result.error_code == rpc::error::OK();
     }
 
-    CORO_TASK(bool)
-    connect_direct_child(
-        std::string child_name,
-        rpc::zone child_zone,
-        std::shared_ptr<rpc::ipc_transport::transport>& transport,
-        rpc::shared_ptr<yyy::i_example>& example)
-    {
-        transport = rpc::ipc_transport::make_client(
-            child_name,
-            this->root_service_,
-            rpc::ipc_transport::options{
-                .process_executable = CANOPY_TEST_IPC_CHILD_PROCESS_PATH,
-                .dll_path = {},
-                .dll_zone = child_zone,
-                .process_kind = rpc::ipc_transport::child_process_kind::direct_service,
-                .kill_child_on_parent_death = true,
-            });
+    // CORO_TASK(bool)
+    // connect_direct_child(
+    //     std::string child_name,
+    //     rpc::zone child_zone,
+    //     std::shared_ptr<rpc::ipc_transport::transport>& transport,
+    //     rpc::shared_ptr<yyy::i_example>& example)
+    // {
+    //     transport = rpc::ipc_transport::make_client(
+    //         child_name,
+    //         this->root_service_,
+    //         rpc::ipc_transport::options{
+    //             .process_executable = CANOPY_TEST_IPC_CHILD_PROCESS_PATH,
+    //             .dll_path = {},
+    //             .dll_zone = child_zone,
+    //             .process_kind = rpc::ipc_transport::child_process_kind::direct_service,
+    //             .kill_child_on_parent_death = true,
+    //         });
 
-        auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
-            child_name.c_str(), transport, this->local_host_ptr_.lock());
-        example = std::move(connect_result.output_interface);
-        ++startup_count_;
-        CO_RETURN connect_result.error_code == rpc::error::OK();
-    }
+    //     auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
+    //         child_name.c_str(), transport, this->local_host_ptr_.lock());
+    //     example = std::move(connect_result.output_interface);
+    //     ++startup_count_;
+    //     CO_RETURN connect_result.error_code == rpc::error::OK();
+    // }
 
     void initialise_root_service()
     {

@@ -368,7 +368,7 @@ namespace rpc::stream_transport
             uint64_t sequence_number);
 
     public:
-        ~transport() override { }
+        ~transport() override = default;
 
         void add_custom_message_handler(custom_message_handler handler)
         {

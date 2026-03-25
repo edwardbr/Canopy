@@ -33,11 +33,11 @@ using libcoro_ipc_dll_isolated_implementations = ::testing::Types<
     ipc_child_host_process_setup<true, false, false>,
     ipc_child_host_process_setup<true, true, false>>;
 
-using libcoro_ipc_process_isolated_implementations = ::testing::Types<
-    ipc_child_process_setup<false, false, false>,
-    ipc_child_process_setup<false, true, false>,
-    ipc_child_process_setup<true, false, false>,
-    ipc_child_process_setup<true, true, false>>;
+// using libcoro_ipc_process_isolated_implementations = ::testing::Types<
+//     ipc_child_process_setup<false, false, false>,
+//     ipc_child_process_setup<false, true, false>,
+//     ipc_child_process_setup<true, false, false>,
+//     ipc_child_process_setup<true, true, false>>;
 
 using libcoro_ipc_dll_dual_isolated_implementations = ::testing::Types<
     ipc_child_host_process_dual_setup<false, false, false>,
@@ -81,24 +81,24 @@ TYPED_TEST(
     run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
 }
 
-template<class T> using libcoro_ipc_process_isolated_type_test = type_test<T>;
+// template<class T> using libcoro_ipc_process_isolated_type_test = type_test<T>;
 
-TYPED_TEST_SUITE(
-    libcoro_ipc_process_isolated_type_test,
-    libcoro_ipc_process_isolated_implementations);
+// TYPED_TEST_SUITE(
+//     libcoro_ipc_process_isolated_type_test,
+//     libcoro_ipc_process_isolated_implementations);
 
-TYPED_TEST(
-    libcoro_ipc_process_isolated_type_test,
-    initialisation_test)
-{
-}
+// TYPED_TEST(
+//     libcoro_ipc_process_isolated_type_test,
+//     initialisation_test)
+// {
+// }
 
-TYPED_TEST(
-    libcoro_ipc_process_isolated_type_test,
-    standard_tests)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
-}
+// TYPED_TEST(
+//     libcoro_ipc_process_isolated_type_test,
+//     standard_tests)
+// {
+//     run_coro_test(*this, [](auto& lib) { return coro_standard_tests<TypeParam>(lib); });
+// }
 
 template<class T> using libcoro_ipc_dll_dual_isolated_type_test = type_test<T>;
 

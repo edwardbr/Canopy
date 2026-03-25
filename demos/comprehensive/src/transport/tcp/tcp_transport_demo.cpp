@@ -23,22 +23,24 @@
  *
  *   Build and run:
  *   1. cmake --preset Debug_Coroutine
- *   2. cmake --build build --target tcp_transport_demo
- *   3. ./build/output/debug/demos/comprehensive/tcp_transport_demo [options]
+ *   2. cmake --build build_debug_coroutine --target tcp_transport_demo
+ *   3. ./build_debug_coroutine/output/debug/demos/comprehensive/tcp_transport_demo [options]
  *
  *   Options:
- *     --host <addr>         Server address to connect/listen on (default: 127.0.0.1)
- *     --port <n>            TCP port to connect/listen on (default: 18888)
- *     --routing-prefix <p>  Network routing prefix (auto-detected when omitted)
- *     -4 / -6               Interpret --routing-prefix as IPv4 / IPv6
- *     --subnet-offset <n>   Bit offset of subnet field in zone_address (default: 64)
- *     --object-offset <n>   Bit offset of object field in zone_address (default: 96)
+ *     --va-name   <name>       Virtual address name (e.g. "demo")
+ *     --va-type   <type>       Zone address type: local | ipv4 | ipv6 | ipv6_tun
+ *     --va-prefix <prefix>     Routing prefix (auto-detected if omitted)
+ *     --listen    [name:]addr:port   Server bind address (e.g. "demo:0.0.0.0:18888")
+ *     --connect   [name:]addr:port   Client connect address (e.g. "demo:127.0.0.1:18888")
+ *     Address family is inferred from the address format ([::] = IPv6, a.b.c.d = IPv4).
  */
 
 #include <demo_impl.h>
 #include <rpc/rpc.h>
-#include <iostream> // kept for args help/error output only
+#include <iostream>
 #include <chrono>
+#include <string_view>
+#include <vector>
 
 #include <streaming/listener.h>
 #include <streaming/tcp/acceptor.h>
@@ -53,6 +55,86 @@ void print_separator(const std::string& title)
     RPC_INFO("\n{0}\n  {1}\n{0}", std::string(60, '='), title);
 }
 
+namespace
+{
+    struct augmented_cli
+    {
+        int argc = 0;
+        std::vector<std::string> storage;
+        std::vector<char*> argv;
+    };
+
+    bool has_cli_option(
+        int argc,
+        char* argv[],
+        std::string_view option)
+    {
+        const std::string with_equals = std::string(option) + "=";
+        for (int i = 1; i < argc; ++i)
+        {
+            const std::string_view arg = argv[i];
+            if (arg == option || arg.rfind(with_equals, 0) == 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    augmented_cli add_default_network_args(
+        int argc,
+        char* argv[])
+    {
+        augmented_cli result;
+        result.storage.reserve(16);
+        result.argv.reserve(argc + 16);
+
+        for (int i = 0; i < argc; ++i)
+            result.argv.push_back(argv[i]);
+
+        const bool has_any_va = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
+                                || has_cli_option(argc, argv, "--va-prefix")
+                                || has_cli_option(argc, argv, "--va-subnet-bits")
+                                || has_cli_option(argc, argv, "--va-object-id-bits")
+                                || has_cli_option(argc, argv, "--va-subnet");
+        const bool has_listen = has_cli_option(argc, argv, "--listen");
+        const bool has_connect = has_cli_option(argc, argv, "--connect");
+
+        auto append = [&result](std::initializer_list<const char*> args)
+        {
+            for (const char* arg : args)
+            {
+                result.storage.emplace_back(arg);
+                result.argv.push_back(result.storage.back().data());
+            }
+        };
+
+        if (!has_any_va)
+        {
+            append({"--va-name=server",
+                "--va-type=ipv4",
+                "--va-prefix=127.0.0.1",
+                "--va-subnet-bits=32",
+                "--va-object-id-bits=32",
+                "--va-subnet=1",
+                "--va-name=client",
+                "--va-type=ipv4",
+                "--va-prefix=127.0.0.1",
+                "--va-subnet-bits=32",
+                "--va-object-id-bits=32",
+                "--va-subnet=100"});
+        }
+
+        if (!has_listen)
+            append({"--listen=server:127.0.0.1:8080"});
+
+        if (!has_connect)
+            append({"--connect=client:127.0.0.1:8080"});
+
+        result.argc = static_cast<int>(result.argv.size());
+        return result;
+    }
+}
+
 namespace comprehensive
 {
     namespace v1
@@ -62,23 +144,22 @@ namespace comprehensive
             std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
             const rpc::event& client_finished,
-            const canopy::network_config::network_config& cfg,
+            const canopy::network_config::tcp_endpoint& listen_ep,
             rpc::zone server_zone)
         {
-            std::string host = cfg.get_host_string();
-            uint16_t port = cfg.port;
+            const std::string host = listen_ep.to_string();
+            const uint16_t port = listen_ep.port;
 
             print_separator("TCP SERVER (Coroutine Mode)");
 
             auto on_shutdown_event = std::make_shared<rpc::event>();
 
-            // Create server service using the zone address provided by the allocator.
             auto service = std::make_shared<rpc::root_service>("tcp_server", server_zone, scheduler);
             service->set_shutdown_event(on_shutdown_event);
 
             RPC_INFO("Server zone ID (address): {}", rpc::to_yas_json<std::string>(service->get_zone_id().get_address()));
 
-            const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+            const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6
                                     ? coro::net::domain_t::ipv6
                                     : coro::net::domain_t::ipv4;
             const coro::net::socket_address endpoint{coro::net::ip_address::from_string(host, domain), port};
@@ -101,17 +182,11 @@ namespace comprehensive
             }
 
             RPC_INFO("Server: Listening on {}:{}", host, port);
-
-            // The service is maintained by the listener and transport.
             service.reset();
-
             server_ready.set();
 
-            // Wait for the client to finish.
             co_await client_finished.wait();
 
-            // Stop the listener — the service lifetime is now maintained solely by the
-            // reference counts held by stubs, proxies, and passthroughs inside it.
             co_await listener->stop_listening();
             listener.reset();
 
@@ -126,19 +201,17 @@ namespace comprehensive
             std::shared_ptr<coro::scheduler> scheduler,
             const rpc::event& server_ready,
             rpc::event& client_finished,
-            const canopy::network_config::network_config& cfg,
+            const canopy::network_config::tcp_endpoint& connect_ep,
             rpc::zone client_zone)
         {
-            std::string host = cfg.get_host_string();
-            uint16_t port = cfg.port;
+            const std::string host = connect_ep.to_string();
+            const uint16_t port = connect_ep.port;
 
-            // Create client service using the zone address provided by the allocator.
             auto client_service = std::make_shared<rpc::root_service>("tcp_client", client_zone, scheduler);
 
             rpc::shared_ptr<i_calculator> remote_calculator;
 
             {
-                // Wait for server to be ready before connecting.
                 co_await server_ready.wait();
 
                 RPC_INFO(
@@ -148,28 +221,25 @@ namespace comprehensive
                 RPC_INFO("Client: Connecting to {}:{}...", host, port);
             }
 
-            // connect to remote zone
             {
-                // Create TCP client.
-                const auto client_domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+                const auto client_domain = connect_ep.family == canopy::network_config::ip_address_family::ipv6
                                                ? coro::net::domain_t::ipv6
                                                : coro::net::domain_t::ipv4;
                 coro::net::tcp::client client(
-                    scheduler, coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
+                    scheduler,
+                    coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
 
                 auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
                 if (connection_status != coro::net::connect_status::connected)
                 {
-                    RPC_ERROR("Client: Failed to connect to server (status: {})", static_cast<int>(connection_status));
+                    RPC_ERROR(
+                        "Client: Failed to connect to server (status: {})", static_cast<int>(connection_status));
                     CO_RETURN false;
                 }
 
                 RPC_INFO("Client: TCP connection established");
 
-                // Create TCP stream.
                 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-
-                // Create TCP transport
                 auto client_transport
                     = rpc::stream_transport::make_client("client_transport", client_service, std::move(tcp_stm));
 
@@ -188,7 +258,7 @@ namespace comprehensive
 
                 RPC_INFO("Client: RPC connection established");
             }
-            // now make rpc calls
+
             {
                 RPC_INFO("Client: Making remote RPC calls...");
 
@@ -255,18 +325,19 @@ int main(
 
     rpc::zone_address server_zone_addr;
     rpc::zone_address client_zone_addr;
-    canopy::network_config::network_config cfg;
+    canopy::network_config::tcp_endpoint listen_ep;
+    canopy::network_config::tcp_endpoint connect_ep;
 
     {
         args::ArgumentParser parser("TCP transport demo: client/server RPC over TCP.");
         args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
 
-        // All network options (including --host and --port) are registered by add_network_args.
         auto net = canopy::network_config::add_network_args(parser);
+        auto cli = add_default_network_args(argc, argv);
 
         try
         {
-            parser.ParseCLI(argc, argv);
+            parser.ParseCLI(cli.argc, cli.argv.data());
         }
         catch (const args::Help&)
         {
@@ -275,10 +346,11 @@ int main(
         }
         catch (const args::ParseError& e)
         {
-            std::cerr << e.what() << "\n" << parser; // to stderr before logging is running
+            std::cerr << e.what() << "\n" << parser;
             return 1;
         }
 
+        canopy::network_config::network_config cfg;
         try
         {
             cfg = net.get_config();
@@ -289,17 +361,32 @@ int main(
             return 1;
         }
 
-        // Require an explicit port for the demo; default to 18888 when not specified.
-        if (cfg.port == 0)
-            cfg.port = 18888;
-
         cfg.log_values();
 
-        // Build the zone allocator for this process from the parsed network config.
-        auto allocator = canopy::network_config::make_allocator(cfg);
+        // Resolve the listen endpoint.  Default: bind on 0.0.0.0:18888.
+        if (const auto* p = cfg.first_listen())
+            listen_ep = *p;
+        else
+            listen_ep.port = 18888; // addr = {} = 0.0.0.0, family = ipv4
 
-        // Pre-allocate zone addresses for server and client so both sides can refer to
-        // stable zone IDs across all iterations.
+        // Resolve the connect endpoint.  Default: connect to 127.0.0.1 on the
+        // same port as the listen endpoint (in-process demo pattern).
+        if (const auto* p = cfg.first_connect())
+        {
+            connect_ep = *p;
+        }
+        else
+        {
+            connect_ep = listen_ep;
+            // Replace an all-zeros listen address with loopback for the client.
+            const bool is_any = std::all_of(
+                connect_ep.addr.begin(), connect_ep.addr.end(), [](uint8_t b) { return b == 0; });
+            if (is_any)
+                canopy::network_config::ipv4_to_ip_address("127.0.0.1", connect_ep.addr);
+        }
+
+        // Build zone allocator from virtual address config (auto-detects prefix if --va-prefix omitted).
+        auto allocator = canopy::network_config::make_allocator(cfg);
         allocator.allocate_zone(server_zone_addr);
         allocator.allocate_zone(client_zone_addr);
     }
@@ -323,12 +410,10 @@ int main(
 
         coro::sync_wait(
             coro::when_all(
-                // the server
                 comprehensive::v1::run_tcp_server(
-                    scheduler_1, server_ready, client_finished, cfg, rpc::zone{server_zone_addr}),
-                // the client
+                    scheduler_1, server_ready, client_finished, listen_ep, rpc::zone{server_zone_addr}),
                 comprehensive::v1::run_tcp_client(
-                    scheduler_2, server_ready, client_finished, cfg, rpc::zone{client_zone_addr})));
+                    scheduler_2, server_ready, client_finished, connect_ep, rpc::zone{client_zone_addr})));
     }
 
     print_separator("TCP TRANSPORT DEMO COMPLETED");
