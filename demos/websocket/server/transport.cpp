@@ -60,7 +60,7 @@ namespace websocket_demo
             auto svc = get_service();
             RPC_ASSERT(svc);
 
-            // receive from client — wait for connect_request handshake
+            // receive from client — wait for connect_request handshake envelope
             std::array<char, 4096> buf;
             rpc::mutable_byte_span received_span;
             while (get_status() < rpc::transport_status::DISCONNECTED)
@@ -83,9 +83,25 @@ namespace websocket_demo
                 co_return;
             }
 
-            // convert buffer to connect_request
+            // decode the outer envelope
+            websocket_demo::v1::envelope handshake_env;
+            auto env_parse_err = rpc::from_protobuf<websocket_demo::v1::envelope>(received_span, handshake_env);
+            if (!env_parse_err.empty())
+            {
+                RPC_ERROR("[WS] invalid handshake envelope: {}", env_parse_err);
+                co_await stream_->set_closed();
+                co_return;
+            }
+            if (handshake_env.type != websocket_demo::v1::message_type::handshake)
+            {
+                RPC_ERROR("[WS] expected connect_request envelope type, got {}", static_cast<uint8_t>(handshake_env.type));
+                co_await stream_->set_closed();
+                co_return;
+            }
+
+            // decode connect_request from envelope data
             websocket_demo::v1::connect_request req;
-            auto parse_err = rpc::from_protobuf<websocket_demo::v1::connect_request>(received_span, req);
+            auto parse_err = rpc::from_protobuf<websocket_demo::v1::connect_request>(handshake_env.data, req);
             if (!parse_err.empty())
             {
                 RPC_ERROR("[WS] invalid connect_request: {}", parse_err);
@@ -94,7 +110,7 @@ namespace websocket_demo
             }
 
             // make a client object id from the client-supplied object id and the server-assigned zone id
-            auto client_object_r = get_adjacent_zone_id().with_object(req.client_object.object_id);
+            auto client_object_r = get_adjacent_zone_id().with_object(req.remote_object_id.object_id);
             if (!client_object_r)
             {
                 RPC_ERROR("[WS] with_object failed: {}", client_object_r.error());
@@ -104,9 +120,30 @@ namespace websocket_demo
             auto client_object = std::move(*client_object_r);
 
             rpc::connection_settings cs;
-            cs.inbound_interface_id = websocket_demo::v1::i_context_event::get_id(rpc::get_version());
-            cs.outbound_interface_id = websocket_demo::v1::i_calculator::get_id(rpc::get_version());
+            cs.inbound_interface_id = req.inbound_interface_id;
+            cs.outbound_interface_id = req.outbound_interface_id;
             cs.remote_object_id = client_object;
+
+            // Immediately inform the client of our zone_id and its fully-populated remote_object_id
+            // before invoking connection_handler, so any back-channel calls that arrive during
+            // handler execution can be routed correctly.
+            {
+                websocket_demo::v1::connect_initial_response initial_resp;
+                initial_resp.zone_id = get_zone_id();
+                initial_resp.remote_object_id = to_zone_address_args(client_object.get_address());
+                auto initial_payload = rpc::to_protobuf<std::vector<char>>(initial_resp);
+                websocket_demo::v1::envelope initial_env;
+                initial_env.id = 0;
+                initial_env.type = websocket_demo::v1::message_type::handshake_ack;
+                initial_env.data = std::move(initial_payload);
+                auto initial_complete = rpc::to_protobuf<std::vector<uint8_t>>(initial_env);
+                auto initial_send_status = CO_AWAIT stream_->send(rpc::byte_span{initial_complete});
+                if (!initial_send_status.is_ok())
+                {
+                    co_await stream_->set_closed();
+                    co_return;
+                }
+            }
 
             RPC_INFO("[WS] Calling handler");
 
@@ -119,13 +156,17 @@ namespace websocket_demo
             }
             auto output_descr = std::move(handler_ret.output_descriptor);
 
-            // Send connect_response so the client knows the zone/object IDs.
+            // Send connect_response in an envelope with the server-side callable object.
             websocket_demo::v1::connect_response connect_resp;
-            connect_resp.client_object = to_zone_address_args(client_object.get_address());
             connect_resp.outbound_remote_object = to_zone_address_args(output_descr.get_address());
 
-            auto resp_payload = rpc::to_protobuf<std::vector<uint8_t>>(connect_resp);
-            auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_payload});
+            auto resp_payload = rpc::to_protobuf<std::vector<char>>(connect_resp);
+            websocket_demo::v1::envelope resp_env;
+            resp_env.id = handshake_env.id;
+            resp_env.type = websocket_demo::v1::message_type::handshake_complete;
+            resp_env.data = std::move(resp_payload);
+            auto resp_complete = rpc::to_protobuf<std::vector<uint8_t>>(resp_env);
+            auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_complete});
             if (!send_status.is_ok())
             {
                 co_await stream_->set_closed();
@@ -180,7 +221,7 @@ namespace websocket_demo
             websocket_demo::v1::request request;
             request.encoding = params.encoding_type;
             request.tag = params.tag;
-            request.caller_zone_id = params.caller_zone_id;
+            request.caller_zone_id = to_zone_address_args(params.caller_zone_id.get_address());
             request.destination_zone_id = to_zone_address_args(params.remote_object_id.get_address());
             request.interface_id = params.interface_id;
             request.method_id = params.method_id;
@@ -189,7 +230,7 @@ namespace websocket_demo
 
             auto payload = rpc::to_protobuf<std::vector<char>>(request);
             websocket_demo::v1::envelope envelope;
-            envelope.message_type = rpc::id<websocket_demo::v1::request>::get(rpc::get_version());
+            envelope.type = websocket_demo::v1::message_type::send;
             envelope.data = std::move(payload);
             auto complete_payload = rpc::to_protobuf(envelope);
             // send to parent
@@ -217,7 +258,7 @@ namespace websocket_demo
             websocket_demo::v1::request request;
             request.encoding = params.encoding_type;
             request.tag = params.tag;
-            request.caller_zone_id = params.caller_zone_id;
+            request.caller_zone_id = to_zone_address_args(params.caller_zone_id.get_address());
             request.destination_zone_id = to_zone_address_args(params.remote_object_id.get_address());
             request.interface_id = params.interface_id;
             request.method_id = params.method_id;
@@ -226,7 +267,7 @@ namespace websocket_demo
 
             auto payload = rpc::to_protobuf<std::vector<char>>(request);
             websocket_demo::v1::envelope envelope;
-            envelope.message_type = rpc::id<websocket_demo::v1::request>::get(rpc::get_version());
+            envelope.type = websocket_demo::v1::message_type::post;
             envelope.data = std::move(payload);
             auto complete_payload = rpc::to_protobuf(envelope);
             // send to parent
@@ -316,8 +357,8 @@ namespace websocket_demo
 
             // make a type determinate envelope
             websocket_demo::v1::envelope response_envelope;
-            response_envelope.message_id = envelope.message_id;
-            response_envelope.message_type = rpc::id<websocket_demo::v1::response>::get(rpc::get_version());
+            response_envelope.id = envelope.id;
+            response_envelope.type = websocket_demo::v1::message_type::response;
             response_envelope.data = std::move(payload);
 
             // convert to protobuf
