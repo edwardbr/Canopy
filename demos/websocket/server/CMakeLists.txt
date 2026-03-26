@@ -35,7 +35,7 @@ add_executable(
   websocket_handler.cpp
   demo_zone.cpp
   transport.cpp
-llama_server_engine.cpp)
+  llama_server_engine.cpp)
 
 target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES})
 
