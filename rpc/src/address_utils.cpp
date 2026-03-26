@@ -3,10 +3,30 @@
  *   All rights reserved.
  */
 
+#include <rpc/rpc.h>
 #include <rpc/internal/address_utils.h>
 
 namespace rpc
 {
+    zone_address_args to_zone_address_args(const zone_address& addr)
+    {
+        return zone_address_args(
+            addr.get_version(),
+            addr.get_address_type(),
+            addr.get_port(),
+            addr.get_routing_prefix(),
+            addr.get_subnet_size_bits(),
+            addr.get_subnet(),
+            addr.get_object_id_size_bits(),
+            addr.get_object_id(),
+            {});
+    }
+
+    zone_address to_zone_address(const zone_address_args& args)
+    {
+        return *zone_address::create(args);
+    }
+
     uint64_t get_bits_le(
         const std::vector<uint8_t>& data,
         uint16_t offset,

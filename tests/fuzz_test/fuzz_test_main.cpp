@@ -1323,14 +1323,14 @@ run_autonomous_instruction_test(
     auto root_service = std::make_shared<rpc::root_service>(
         "AUTONOMOUS_ROOT",
         rpc::zone{*rpc::zone_address::create(
-            rpc::zone_address::construction_args(
-                rpc::zone_address::version_3,
-                rpc::zone_address::address_type::local,
+            rpc::zone_address_args(
+                rpc::default_values::version_3,
+                rpc::address_type::local,
                 0,
                 {},
-                rpc::zone_address::default_subnet_size_bits,
+                rpc::default_values::default_subnet_size_bits,
                 static_cast<uint32_t>(++g_zone_id_counter),
-                rpc::zone_address::default_object_id_size_bits,
+                rpc::default_values::default_object_id_size_bits,
                 0,
                 {}))},
         scheduler);

@@ -167,7 +167,7 @@ function connect() {
         // The client picks object id 1 for its own back-channel (i_context_event) stub.
         // Zone is left as 0 — the server assigns it via generate_new_zone_id().
         const connectReq = WebsocketProto.connect_request.create({
-            clientObject: WebsocketProto.object_address.create({
+            clientObject: RpcProto.zone_address_args.create({
                 objectId: 1
             })
         });

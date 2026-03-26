@@ -23,7 +23,7 @@ namespace rpc
         constexpr uint16_t address_type_offset_bits = version_offset_bits + version_bits;
         constexpr uint16_t subnet_size_offset_bits = 16u;
         constexpr uint16_t object_id_size_offset_bits = 24u;
-        constexpr uint16_t header_bits = zone_address::capability_blob_bytes * 8u;
+        constexpr uint16_t header_bits = default_values::capability_blob_bytes * 8u;
         constexpr uint8_t address_type_mask = 0x7u;
         constexpr uint8_t has_port_mask = 0x8u;
         constexpr uint8_t has_validation_mask = 0x10u;
@@ -33,16 +33,16 @@ namespace rpc
             return std::vector<uint8_t>(caps.begin(), caps.end());
         }
 
-        uint16_t address_bits_for_type(zone_address::address_type type)
+        uint16_t address_bits_for_type(address_type type)
         {
             switch (type)
             {
-            case zone_address::address_type::local:
+            case address_type::local:
                 return 0;
-            case zone_address::address_type::ipv4:
+            case address_type::ipv4:
                 return 32;
-            case zone_address::address_type::ipv6:
-            case zone_address::address_type::ipv6_tun:
+            case address_type::ipv6:
+            case address_type::ipv6_tun:
                 return 128;
             }
             return 0;
@@ -126,9 +126,9 @@ namespace rpc
                 static_cast<uint16_t>(address_type_bits + has_port_bits + has_validation_bits + reserved_capability_bits)));
         }
 
-        zone_address::address_type capability_address_type(const zone_address::capability_bits& caps)
+        address_type capability_address_type(const zone_address::capability_bits& caps)
         {
-            return static_cast<zone_address::address_type>(capability_header_byte(caps) & address_type_mask);
+            return static_cast<address_type>(capability_header_byte(caps) & address_type_mask);
         }
 
         bool capability_has_port(const zone_address::capability_bits& caps)
@@ -155,7 +155,7 @@ namespace rpc
 
         zone_address::capability_bits make_capability_bits(
             uint8_t version,
-            zone_address::address_type type,
+            address_type type,
             bool has_port,
             bool has_validation,
             uint8_t subnet_size_bits,
@@ -196,13 +196,13 @@ namespace rpc
             auto has_val = capability_has_validation(caps);
             auto include_port = capability_has_port(caps);
 
-            if (version != zone_address::version_3)
+            if (version != default_values::version_3)
                 return rpc::unexpected<std::string>("zone_address only supports version 3");
 
             if ((header_byte & static_cast<uint8_t>(~(address_type_mask | has_port_mask | has_validation_mask))) != 0)
                 return rpc::unexpected<std::string>("zone_address capability bits use reserved values");
 
-            if (static_cast<uint8_t>(type_code) > static_cast<uint8_t>(zone_address::address_type::ipv6_tun))
+            if (static_cast<uint8_t>(type_code) > static_cast<uint8_t>(address_type::ipv6_tun))
                 return rpc::unexpected<std::string>("zone_address address_type is not supported");
 
             if (!include_port && port != 0)
@@ -225,7 +225,7 @@ namespace rpc
 
             switch (type_code)
             {
-            case zone_address::address_type::local:
+            case address_type::local:
                 if (include_port)
                     return rpc::unexpected<std::string>("local zone_address cannot contain a port");
                 if (!routing_prefix.empty())
@@ -233,15 +233,15 @@ namespace rpc
                 if (!validation_bits.empty())
                     return rpc::unexpected<std::string>("local zone_address cannot contain validation bits");
                 break;
-            case zone_address::address_type::ipv4:
+            case address_type::ipv4:
                 if (auto r = validate_prefix_bits(routing_prefix, 32u, "routing_prefix"); !r)
                     return r;
                 break;
-            case zone_address::address_type::ipv6:
+            case address_type::ipv6:
                 if (auto r = validate_prefix_bits(routing_prefix, 128u, "routing_prefix"); !r)
                     return r;
                 break;
-            case zone_address::address_type::ipv6_tun:
+            case address_type::ipv6_tun:
             {
                 if (subnet_size_bits + object_id_size_bits > 128u)
                     return rpc::unexpected<std::string>("ipv6_tun subnet/object bits exceed 128 bits");
@@ -406,7 +406,7 @@ namespace rpc
     rpc::expected<
         zone_address,
         std::string>
-    zone_address::create(const construction_args& args)
+    zone_address::create(const zone_address_args& args)
     {
         auto caps = make_capability_bits(
             args.version, args.type, args.port != 0, !args.validation_bits.empty(), args.subnet_size_bits, args.object_id_size_bits);
@@ -418,7 +418,7 @@ namespace rpc
         return blob.empty() ? 0u : static_cast<uint8_t>(get_bits_le(blob, 0, version_bits));
     }
 
-    zone_address::address_type zone_address::get_address_type() const
+    address_type zone_address::get_address_type() const
     {
         if (blob.empty())
             return address_type::local;

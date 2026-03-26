@@ -63,14 +63,14 @@ public:
         service_ = std::make_shared<rpc::root_service>(
             "test_service",
             rpc::zone{rpc::zone_address(
-                rpc::zone_address::construction_args(
-                    rpc::zone_address::version_3,
-                    rpc::zone_address::address_type::local,
+                rpc::zone_address_args(
+                    rpc::default_values::version_3,
+                    rpc::address_type::local,
                     0,
                     {},
-                    rpc::zone_address::default_subnet_size_bits,
+                    rpc::default_values::default_subnet_size_bits,
                     1,
-                    rpc::zone_address::default_object_id_size_bits,
+                    rpc::default_values::default_object_id_size_bits,
                     0,
                     {}))},
             io_scheduler_);
@@ -78,14 +78,14 @@ public:
         service_ = std::make_shared<rpc::root_service>(
             "test_service",
             rpc::zone{rpc::zone_address(
-                rpc::zone_address::construction_args(
-                    rpc::zone_address::version_3,
-                    rpc::zone_address::address_type::local,
+                rpc::zone_address_args(
+                    rpc::default_values::version_3,
+                    rpc::address_type::local,
                     0,
                     {},
-                    rpc::zone_address::default_subnet_size_bits,
+                    rpc::default_values::default_subnet_size_bits,
                     1,
-                    rpc::zone_address::default_object_id_size_bits,
+                    rpc::default_values::default_object_id_size_bits,
                     0,
                     {}))});
 #endif
@@ -93,25 +93,25 @@ public:
         // Create mock transports
         RPC_INFO("passthrough_setup::CoroSetUp - Setting up destinations");
         forward_dest_ = rpc::destination_zone{rpc::zone_address(
-            rpc::zone_address::construction_args(
-                rpc::zone_address::version_3,
-                rpc::zone_address::address_type::local,
+            rpc::zone_address_args(
+                rpc::default_values::version_3,
+                rpc::address_type::local,
                 0,
                 {},
-                rpc::zone_address::default_subnet_size_bits,
+                rpc::default_values::default_subnet_size_bits,
                 100,
-                rpc::zone_address::default_object_id_size_bits,
+                rpc::default_values::default_object_id_size_bits,
                 0,
                 {}))};
         reverse_dest_ = rpc::destination_zone{rpc::zone_address(
-            rpc::zone_address::construction_args(
-                rpc::zone_address::version_3,
-                rpc::zone_address::address_type::local,
+            rpc::zone_address_args(
+                rpc::default_values::version_3,
+                rpc::address_type::local,
                 0,
                 {},
-                rpc::zone_address::default_subnet_size_bits,
+                rpc::default_values::default_subnet_size_bits,
                 200,
-                rpc::zone_address::default_object_id_size_bits,
+                rpc::default_values::default_object_id_size_bits,
                 0,
                 {}))};
 

@@ -4,7 +4,7 @@
  */
 
 #include "transport.h"
-#include "address_translator.h"
+#include <rpc/internal/address_utils.h>
 
 namespace websocket_demo
 {
@@ -121,8 +121,8 @@ namespace websocket_demo
 
             // Send connect_response so the client knows the zone/object IDs.
             websocket_demo::v1::connect_response connect_resp;
-            connect_resp.client_object = to_object_address(client_object.get_address());
-            connect_resp.outbound_remote_object = to_object_address(output_descr.get_address());
+            connect_resp.client_object = to_zone_address_args(client_object.get_address());
+            connect_resp.outbound_remote_object = to_zone_address_args(output_descr.get_address());
 
             auto resp_payload = rpc::to_protobuf<std::vector<uint8_t>>(connect_resp);
             auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_payload});
@@ -181,7 +181,7 @@ namespace websocket_demo
             request.encoding = params.encoding_type;
             request.tag = params.tag;
             request.caller_zone_id = params.caller_zone_id;
-            request.destination_zone_id = to_object_address(params.remote_object_id.get_address());
+            request.destination_zone_id = to_zone_address_args(params.remote_object_id.get_address());
             request.interface_id = params.interface_id;
             request.method_id = params.method_id;
             request.data = std::move(params.in_data);
@@ -218,7 +218,7 @@ namespace websocket_demo
             request.encoding = params.encoding_type;
             request.tag = params.tag;
             request.caller_zone_id = params.caller_zone_id;
-            request.destination_zone_id = to_object_address(params.remote_object_id.get_address());
+            request.destination_zone_id = to_zone_address_args(params.remote_object_id.get_address());
             request.interface_id = params.interface_id;
             request.method_id = params.method_id;
             request.data = std::move(params.in_data);
