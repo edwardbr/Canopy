@@ -183,6 +183,52 @@ namespace rpc
     // get_object_id(), set_object_id(), zone_only() and with_object() are preserved as
     // compatibility shims over this blob representation.
 
+    struct default_values
+    {
+        static constexpr uint8_t capability_blob_bytes = 4u;
+        static constexpr uint8_t version_3 = 3u;
+        static constexpr uint8_t default_subnet_size_bits = 64u;
+        static constexpr uint8_t default_object_id_size_bits = 64u;
+    };
+
+    enum address_type : uint8_t
+    {
+        local = 0,      // no internet routing prefix only the subnet and object id have any data
+        ipv4 = 1,       // the routing prefix is a full 32 bit ipv4 address with validaton data
+        ipv6 = 2,       // the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id are not in the 128 bits
+        ipv6_tun = 3    // under review for tun server implementation where every object has an ip address: the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id ARE in the 128 bits
+    };
+
+    struct zone_address_args
+    {
+        uint8_t version = default_values::version_3;
+        address_type type = address_type::local;
+        uint16_t port = 0;
+        std::vector<uint8_t> routing_prefix;
+        uint8_t subnet_size_bits = default_values::default_subnet_size_bits;
+        uint64_t subnet = 0;
+        uint8_t object_id_size_bits = 64u;
+        uint64_t object_id = 0;
+        std::vector<uint8_t> validation_bits;
+
+#cpp_quote(R^__(
+        zone_address_args() = default;
+        zone_address_args(uint8_t version, address_type type, uint16_t port, const std::vector<uint8_t>& routing_prefix, uint8_t subnet_size_bits,
+            uint64_t subnet, uint8_t object_id_size_bits, uint64_t object_id, const std::vector<uint8_t>& validation_bits = {})
+            : version(version)
+            , type(type)
+            , port(port)
+            , routing_prefix(routing_prefix)
+            , subnet_size_bits(subnet_size_bits)
+            , subnet(subnet)
+            , object_id_size_bits(object_id_size_bits)
+            , object_id(object_id)
+            , validation_bits(validation_bits)
+        {
+        }
+)__^)            
+    };    
+
     struct zone_address
     {
     private:
@@ -190,11 +236,7 @@ namespace rpc
 #cpp_quote(R^__(
 
     public:
-        static constexpr uint8_t version_3 = 3u;
-        static constexpr uint8_t default_subnet_size_bits = 64u;
-        static constexpr uint8_t default_object_id_size_bits = 64u;
-        static constexpr uint8_t capability_blob_bytes = 4u;
-        using capability_bits = std::array<uint8_t, capability_blob_bytes>;
+        using capability_bits = std::array<uint8_t, default_values::capability_blob_bytes>;
         zone_address() = default;
         zone_address(const zone_address&) = default;
         zone_address(zone_address&&) noexcept = default;
@@ -205,41 +247,7 @@ namespace rpc
         friend inline bool operator==(const zone_address& lhs, const zone_address& rhs);
         friend inline bool operator!=(const zone_address& lhs, const zone_address& rhs);
 
-        enum class address_type : uint8_t
-        {
-            local = 0,      // no internet routing prefix only the subnet and object id have any data
-            ipv4 = 1,       // the routing prefix is a full 32 bit ipv4 address with validaton data
-            ipv6 = 2,       // the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id are not in the 128 bits
-            ipv6_tun = 3    // under review for tun server implementation where every object has an ip address: the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id ARE in the 128 bits
-        };
 
-        struct construction_args
-        {
-            uint8_t version = version_3;
-            address_type type = address_type::local;
-            uint16_t port = 0;
-            std::vector<uint8_t> routing_prefix;
-            uint8_t subnet_size_bits = default_subnet_size_bits;
-            uint64_t subnet = 0;
-            uint8_t object_id_size_bits = 64u;
-            uint64_t object_id = 0;
-            std::vector<uint8_t> validation_bits;
-
-            construction_args() = default;
-            construction_args(uint8_t version, address_type type, uint16_t port, const std::vector<uint8_t>& routing_prefix, uint8_t subnet_size_bits,
-                uint64_t subnet, uint8_t object_id_size_bits, uint64_t object_id, const std::vector<uint8_t>& validation_bits = {})
-                : version(version)
-                , type(type)
-                , port(port)
-                , routing_prefix(routing_prefix)
-                , subnet_size_bits(subnet_size_bits)
-                , subnet(subnet)
-                , object_id_size_bits(object_id_size_bits)
-                , object_id(object_id)
-                , validation_bits(validation_bits)
-            {
-            }
-        };
 
     private:
         [[nodiscard]] rpc::expected<void, std::string> initialise_blob(const capability_bits& caps, uint16_t port,
@@ -254,7 +262,7 @@ namespace rpc
         void clear_validation_bits();
 
     public:
-        [[nodiscard]] static rpc::expected<zone_address, std::string> create(const construction_args& args);
+        [[nodiscard]] static rpc::expected<zone_address, std::string> create(const zone_address_args& args);
         [[nodiscard]] static rpc::expected<zone_address, std::string> create(const capability_bits& caps,
             uint16_t port, const std::vector<uint8_t>& routing_prefix, uint64_t subnet,
             uint64_t object_id, const std::vector<uint8_t>& validation_bits = {});
@@ -570,9 +578,9 @@ namespace rpc
 // does not specify a routing prefix explicitly.
     inline const zone_address DEFAULT_PREFIX = []()
     {
-        auto r = zone_address::create(zone_address::construction_args(zone_address::version_3,
-            zone_address::address_type::local, 0, {},
-            zone_address::default_subnet_size_bits, 1, zone_address::default_object_id_size_bits, 0, {}));
+        auto r = zone_address::create(zone_address_args(default_values::version_3,
+            address_type::local, 0, {},
+            default_values::default_subnet_size_bits, 1, default_values::default_object_id_size_bits, 0, {}));
         return std::move(*r);
     }();
     )__^)

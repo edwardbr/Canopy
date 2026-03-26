@@ -88,14 +88,14 @@ namespace
         uint64_t object_id = 0)
     {
         return rpc::zone_address(
-            rpc::zone_address::construction_args(
-                rpc::zone_address::version_3,
-                rpc::zone_address::address_type::local,
+            rpc::zone_address_args(
+                rpc::default_values::version_3,
+                rpc::address_type::local,
                 0,
                 {},
-                rpc::zone_address::default_subnet_size_bits,
+                rpc::default_values::default_subnet_size_bits,
                 subnet,
-                rpc::zone_address::default_object_id_size_bits,
+                rpc::default_values::default_object_id_size_bits,
                 object_id,
                 {}));
     }

@@ -6,9 +6,16 @@
 
 #include <cstdint>
 #include <vector>
+#include <rpc/rpc_types.h>
 
 namespace rpc
 {
+    // Convert between zone_address (blob) and zone_address_args (structured fields).
+    // These are lossless except that validation_bits cannot be extracted from a
+    // zone_address blob, so to_zone_address_args always returns an empty validation_bits.
+    zone_address_args to_zone_address_args(const zone_address& addr);
+    zone_address to_zone_address(const zone_address_args& args);
+
     // Low-level bit-packing helpers operating on byte vectors.
     // Bits are numbered from the least-significant end of each byte (LE) or the
     // most-significant end (BE). Both helpers handle widths up to 64 bits.

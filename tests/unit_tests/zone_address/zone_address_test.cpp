@@ -12,9 +12,9 @@ TEST(
     zone_only_clears_object_id)
 {
     auto result = rpc::zone_address::create(
-        rpc::zone_address::construction_args(
-            rpc::zone_address::version_3,
-            rpc::zone_address::address_type::ipv6,
+        rpc::zone_address_args(
+            rpc::default_values::version_3,
+            rpc::address_type::ipv6,
             0,
             {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0, 0, 0, 0, 0, 0, 0, 0},
             64,

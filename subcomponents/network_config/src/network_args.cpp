@@ -101,16 +101,16 @@ namespace canopy::network_config
         std::string type_str;
         switch (args.type)
         {
-        case rpc::zone_address::address_type::local:
+        case rpc::address_type::local:
             type_str = "local";
             break;
-        case rpc::zone_address::address_type::ipv4:
+        case rpc::address_type::ipv4:
             type_str = "ipv4";
             break;
-        case rpc::zone_address::address_type::ipv6:
+        case rpc::address_type::ipv6:
             type_str = "ipv6";
             break;
-        case rpc::zone_address::address_type::ipv6_tun:
+        case rpc::address_type::ipv6_tun:
             type_str = "ipv6_tun";
             break;
         }
@@ -481,16 +481,16 @@ namespace canopy::network_config
 
     namespace
     {
-        rpc::zone_address::address_type parse_address_type(const std::string& type_str)
+        rpc::address_type parse_address_type(const std::string& type_str)
         {
             if (type_str == "local")
-                return rpc::zone_address::address_type::local;
+                return rpc::address_type::local;
             if (type_str == "ipv4")
-                return rpc::zone_address::address_type::ipv4;
+                return rpc::address_type::ipv4;
             if (type_str == "ipv6")
-                return rpc::zone_address::address_type::ipv6;
+                return rpc::address_type::ipv6;
             if (type_str == "ipv6_tun")
-                return rpc::zone_address::address_type::ipv6_tun;
+                return rpc::address_type::ipv6_tun;
             throw std::invalid_argument(
                 fmt::format("--va-type: unknown type '{}' (expected local|ipv4|ipv6|ipv6_tun)", type_str));
         }
@@ -526,14 +526,14 @@ namespace canopy::network_config
             ip_address prefix_addr = {};
             ip_address_family prefix_family = ip_address_family::ipv4;
 
-            if (type == rpc::zone_address::address_type::local)
+            if (type == rpc::address_type::local)
             {
                 // local type has no network prefix
             }
             else if (!prefix_str.empty())
             {
                 // Parse the explicit prefix; infer family from type.
-                if (type == rpc::zone_address::address_type::ipv4)
+                if (type == rpc::address_type::ipv4)
                 {
                     ipv4_to_ip_address(prefix_str, prefix_addr);
                     prefix_family = ip_address_family::ipv4;
@@ -548,14 +548,13 @@ namespace canopy::network_config
             {
                 // Auto-detect: prefer the family that matches the address type.
                 const ip_address_family preferred
-                    = (type == rpc::zone_address::address_type::ipv6 || type == rpc::zone_address::address_type::ipv6_tun)
-                          ? ip_address_family::ipv6
-                          : ip_address_family::ipv4;
+                    = (type == rpc::address_type::ipv6 || type == rpc::address_type::ipv6_tun) ? ip_address_family::ipv6
+                                                                                               : ip_address_family::ipv4;
                 detect_routing_prefix(prefix_addr, prefix_family, preferred);
             }
 
-            rpc::zone_address::construction_args cargs;
-            cargs.version = rpc::zone_address::version_3;
+            rpc::zone_address_args cargs;
+            cargs.version = rpc::default_values::version_3;
             cargs.type = type;
             cargs.port = 0; // port lives in tcp_endpoint, not in the virtual address definition
             cargs.subnet_size_bits = subnet_bits;
@@ -563,7 +562,7 @@ namespace canopy::network_config
             cargs.object_id_size_bits = object_id_bits;
             cargs.object_id = object_id;
 
-            if (type != rpc::zone_address::address_type::local)
+            if (type != rpc::address_type::local)
             {
                 cargs.routing_prefix = std::vector<uint8_t>(
                     prefix_addr.begin(),
@@ -615,7 +614,7 @@ namespace canopy::network_config
                     fmt::format("{} ({}) specified more times than --va-name ({})", flag, count, names.size()));
         }
 
-        constexpr uint8_t max_bits = rpc::zone_address::default_object_id_size_bits;
+        constexpr uint8_t max_bits = rpc::default_values::default_object_id_size_bits;
 
         for (size_t i = 0; i < names.size(); ++i)
         {
@@ -623,10 +622,10 @@ namespace canopy::network_config
 
             const uint32_t raw_subnet_bits = (i < subnet_bits_list.size())
                                                  ? subnet_bits_list[i]
-                                                 : uint32_t{rpc::zone_address::default_subnet_size_bits};
+                                                 : uint32_t{rpc::default_values::default_subnet_size_bits};
             const uint32_t raw_obj_id_bits = (i < obj_id_bits_list.size())
                                                  ? obj_id_bits_list[i]
-                                                 : uint32_t{rpc::zone_address::default_object_id_size_bits};
+                                                 : uint32_t{rpc::default_values::default_object_id_size_bits};
 
             if (raw_subnet_bits > max_bits)
                 throw std::invalid_argument(

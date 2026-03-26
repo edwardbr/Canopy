@@ -10,25 +10,18 @@ namespace websocket_demo
     namespace v1
     {
 
-        struct object_address
-        {
-            std::string routing_prefix;
-            uint64_t subnet;
-            uint64_t object_id;
-        };
-
         struct connect_request
         {
             // the caller's zone and callback object combined
-            object_address client_object;
+            rpc::zone_address_args client_object;
         };
 
         struct connect_response
         {
             // the client object with the zone and subnet if not provided by the client
-            object_address client_object;
+            rpc::zone_address_args client_object;
             // the server's zone and callable object combined
-            object_address outbound_remote_object;
+            rpc::zone_address_args outbound_remote_object;
         };
 
         struct envelope
@@ -43,7 +36,7 @@ namespace websocket_demo
             rpc::encoding encoding;
             uint64_t tag;
             rpc::zone caller_zone_id;
-            object_address destination_zone_id;
+            rpc::zone_address_args destination_zone_id;
             rpc::interface_ordinal interface_id;
             rpc::method method_id;
             std::vector<char> data;

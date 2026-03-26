@@ -49,7 +49,7 @@ namespace canopy::network_config
     struct named_virtual_address
     {
         std::string name;
-        rpc::zone_address::construction_args args;
+        rpc::zone_address_args args;
 
         [[nodiscard]] std::string to_string() const;
     };

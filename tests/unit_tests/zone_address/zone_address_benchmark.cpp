@@ -34,27 +34,11 @@ int main()
     constexpr std::uint64_t iterations = 5'000'000;
 
     rpc::zone_address fixed_addr = *rpc::zone_address::create(
-        rpc::zone_address::construction_args(
-            rpc::zone_address::version_3,
-            rpc::zone_address::address_type::local,
-            0,
-            {},
-            64,
-            0x1122334455667788ULL,
-            32,
-            0x87654321u,
-            {}));
+        rpc::zone_address_args(
+            rpc::default_values::version_3, rpc::address_type::local, 0, {}, 64, 0x1122334455667788ULL, 32, 0x87654321u, {}));
     rpc::zone_address fixed_peer = *rpc::zone_address::create(
-        rpc::zone_address::construction_args(
-            rpc::zone_address::version_3,
-            rpc::zone_address::address_type::local,
-            0,
-            {},
-            64,
-            0x1122334455667788ULL,
-            32,
-            0x11111111u,
-            {}));
+        rpc::zone_address_args(
+            rpc::default_values::version_3, rpc::address_type::local, 0, {}, 64, 0x1122334455667788ULL, 32, 0x11111111u, {}));
 
     run_benchmark(
         "get_subnet",

@@ -4,7 +4,6 @@
 #include "http_client_connection.h"
 
 #include <websocket_demo/websocket_demo.h>
-#include "address_translator.h"
 #include "transport.h"
 
 namespace websocket_demo
