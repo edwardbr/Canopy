@@ -594,6 +594,24 @@ namespace secret_llama
                         prev_len_,
                         new_len);
 
+                    if (prev_len_ >= new_len)
+                    {
+                        // The template produced a shorter (or equal) string relative to prev_len_.
+                        // This can happen when the Qwen3 Jinja template renders thinking blocks
+                        // differently depending on add_generation_prompt, making the no-gen-prompt
+                        // rendering of [asst1_with_thinking] longer than the gen-prompt rendering
+                        // of [asst1_stripped, user2].  Reset the KV cache and re-tokenize the
+                        // full conversation from scratch.
+                        RPC_WARNING(
+                            "[CTX {}] prev_len_({}) >= new_len({}): KV cache inconsistency detected, "
+                            "clearing and re-tokenizing full context",
+                            std::to_string(context_id_),
+                            prev_len_,
+                            new_len);
+                        llama_memory_clear(llama_get_memory(ctx_.get()), false);
+                        prev_len_ = 0;
+                    }
+
                     std::string prompt_to_tokenize(formatted_.begin() + prev_len_, formatted_.begin() + new_len);
                     RPC_DEBUG(
                         "[CTX {}] Final prompt segment to tokenize: \"{}\"",

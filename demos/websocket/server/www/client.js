@@ -163,15 +163,31 @@ function connect() {
         handshakeComplete = false;
         clientObject = null;
         serverObject = null;
+        messageCounter = 0;
 
-        // The client picks object id 1 for its own back-channel (i_context_event) stub.
-        // Zone is left as 0 — the server assigns it via generate_new_zone_id().
+        // Build connect_request mirroring rpc::connection_settings:
+        //   inboundInterfaceId  — interface the client exposes (i_context_event back-channel)
+        //   outboundInterfaceId — interface the client wants to call (i_calculator)
+        //   remoteObjectId      — client's back-channel object; zone left 0, server fills it in
         const connectReq = WebsocketProto.connect_request.create({
-            clientObject: RpcProto.zone_address_args.create({
-                objectId: 1
-            })
+            inboundInterfaceId: RpcProto.interface_ordinal.create({
+                id: Long.fromString("7262980488024731442", true)  // i_context_event
+            }),
+            outboundInterfaceId: RpcProto.interface_ordinal.create({
+                id: Long.fromString("2180915978302953945", true)  // i_calculator
+            }),
+            remoteObjectId: RpcProto.zone_address_args.create({ objectId: 1 })
         });
-        ws.send(WebsocketProto.connect_request.encode(connectReq).finish());
+        const connectReqBytes = WebsocketProto.connect_request.encode(connectReq).finish();
+
+        // Handshake messages are wrapped in an envelope like all other messages.
+        messageCounter = 1;
+        const handshakeEnvelope = WebsocketProto.envelope.create({
+            id: Long.fromNumber(messageCounter, true),
+            type: 3,  // message_type::handshake
+            data: connectReqBytes
+        });
+        ws.send(WebsocketProto.envelope.encode(handshakeEnvelope).finish());
     };
 
     ws.onmessage = function (event) {
@@ -185,39 +201,48 @@ function connect() {
             try {
                 const msgBytes = new Uint8Array(event.data);
 
-                // First binary message from the server is always a raw connect_response.
+                // All messages from the server are wrapped in an envelope.
+                const envelope = WebsocketProto.envelope.decode(msgBytes);
+                const msgType = envelope.type;  // message_type enum value (uint8)
+
+                // Handshake: connect_initial_response (4) arrives before connect_response (5).
                 if (!handshakeComplete) {
-                    const connectResp = WebsocketProto.connect_response.decode(msgBytes);
-                    clientObject = connectResp.clientObject || null;
-                    serverObject = connectResp.outboundRemoteObject || null;
-                    handshakeComplete = true;
+                    if (msgType === 4) {
+                        // handshake_ack — arrives before connection_handler completes.
+                        // Provides our fully-populated remote_object_id (back-channel address) and
+                        // the server's zone_id so back-channel calls during handler execution are routable.
+                        const initialResp = WebsocketProto.connect_initial_response.decode(envelope.data);
+                        clientObject = initialResp.remoteObjectId || null;
+                        console.log('[' + new Date().toLocaleTimeString() + '] connect_initial_response received, client_zone=',
+                            clientObject && clientObject.subnet);
+                        return;
+                    }
+                    if (msgType === 5) {
+                        // handshake_complete — provides the server-side callable object
+                        const connectResp = WebsocketProto.connect_response.decode(envelope.data);
+                        serverObject = connectResp.outboundRemoteObject || null;
+                        handshakeComplete = true;
 
-                    updateStatus('Connected', 'connected');
-                    setUIConnected(true);
-                    connectTime = Date.now();
-                    uptimeInterval = setInterval(updateUptime, 1000);
+                        updateStatus('Connected', 'connected');
+                        setUIConnected(true);
+                        connectTime = Date.now();
+                        uptimeInterval = setInterval(updateUptime, 1000);
 
-                    addMessage('system',
-                        `✓ Handshake complete — client_zone=${clientObject && clientObject.subnet}, server_zone=${serverObject && serverObject.subnet}, server_object=${serverObject && serverObject.objectId}`);
+                        addMessage('system',
+                            `✓ Handshake complete — client_zone=${clientObject && clientObject.subnet}, server_object=${serverObject && serverObject.objectId}`);
+                        return;
+                    }
+                    addMessage('error', `Unexpected envelope type ${msgType} during handshake`);
                     return;
                 }
 
-                // Decode the envelope
-                const envelope = WebsocketProto.envelope.decode(msgBytes);
-
-                // Check if this is an event (no matching request) or a response
-                const messageId = envelope.messageId.toNumber();
+                const messageId = envelope.id ? envelope.id.toNumber() : 0;
                 const requestInfo = pendingRequests.get(messageId);
 
-                // Try to determine if this is an event by checking the message type
-                // Events typically have different message type fingerprints
-                const messageType = envelope.messageType.toString();
-
-                // If no matching request, this might be an event
-                if (!requestInfo) {
-                    // Try to decode as an event from i_context_event
+                // type 1 = post (server-initiated event, no correlation id)
+                if (msgType === 1) {
+                    // Decode as websocket::request (posts use the request struct)
                     try {
-                        // First decode as websocket::request (events come through the same envelope)
                         const eventRequest = WebsocketProto.request.decode(envelope.data);
 
                         console.log('[' + new Date().toLocaleTimeString() + '] Event received:', {
@@ -252,6 +277,12 @@ function connect() {
                         console.error('Envelope data:', envelope);
                         return;
                     }
+                }
+
+                // type 2 = response — correlate by id
+                if (!requestInfo) {
+                    addMessage('error', `Received response for unknown id ${messageId}`);
+                    return;
                 }
 
                 pendingRequests.delete(messageId);
@@ -452,7 +483,7 @@ function calculate() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_UNSPECIFIED,
             tag: 0,
-            callerZoneId: RpcProto.zone.create({}),
+            callerZoneId: RpcProto.zone_address_args.create({}),
             destinationZoneId: serverObject,
             interfaceId: RpcProto.interface_ordinal.create({
                 id: Long.fromString("2180915978302953945", true) // i_calculator
@@ -466,12 +497,9 @@ function calculate() {
         const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
 
         // Create the envelope
-        // Use the fingerprint ID for websocket::request as a Long (uint64)
-        // JavaScript numbers lose precision above 2^53-1, so use protobuf.Long
-        const REQUEST_MESSAGE_TYPE = Long.fromString("16109978911582071405", true);
         const envelope = WebsocketProto.envelope.create({
-            messageId: Long.fromNumber(messageId, true),
-            messageType: REQUEST_MESSAGE_TYPE,
+            id: Long.fromNumber(messageId, true),
+            type: 0,  // message_type::send
             data: wsRequestBytes
         });
 
@@ -547,7 +575,7 @@ function sendChatMessage() {
         const wsRequest = WebsocketProto.request.create({
             encoding: RpcProto.encoding.encoding_protocol_buffers,
             tag: 0,
-            callerZoneId: RpcProto.zone.create({}),
+            callerZoneId: RpcProto.zone_address_args.create({}),
             destinationZoneId: serverObject,
             interfaceId: RpcProto.interface_ordinal.create({
                 id: Long.fromString("2180915978302953945", true) // i_calculator
@@ -561,10 +589,9 @@ function sendChatMessage() {
         const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
 
         // Create the envelope
-        const REQUEST_MESSAGE_TYPE = Long.fromString("16109978911582071405", true);
         const envelope = WebsocketProto.envelope.create({
-            messageId: Long.fromNumber(messageId, true),
-            messageType: REQUEST_MESSAGE_TYPE,
+            id: Long.fromNumber(messageId, true),
+            type: 0,  // message_type::send
             data: wsRequestBytes
         });
 
