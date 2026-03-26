@@ -20,6 +20,8 @@ All rights reserved.
 
 > Note: Canopy is in Beta, including the documentation, and is under active development.
 
+If you want to make your own app try copying this to get started: [Example Canopy App](https://github.com/edwardbr/example_canopy_app)
+
 ---
 
 ## Why Canopy?
