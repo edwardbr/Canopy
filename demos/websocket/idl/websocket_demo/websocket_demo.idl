@@ -4,74 +4,12 @@
  */
 
 #import "rpc/rpc_types.idl"
+#import "websocket_protocol/websocket_protocol.idl"
 
 namespace websocket_demo
 {
     namespace v1
     {
-
-        // Sent by the client with its expected interface types and its object id in an blank zone_address_args
-        struct connect_request
-        {
-            rpc::interface_ordinal inbound_interface_id;
-            rpc::interface_ordinal outbound_interface_id;
-            // the caller's zone and callback object — mirrors rpc::connection_settings::remote_object_id
-            rpc::zone_address_args remote_object_id;
-        };
-
-        // Sent immediately by the server upon receiving connect_request, before
-        // invoking connection_handler. Gives the client its fully-populated remote_object_id
-        // (with server-assigned subnet/routing_prefix) and the server's zone_id so that any
-        // back-channel calls that arrive during connection_handler execution can be routed.
-        struct connect_initial_response
-        {
-            rpc::zone zone_id;
-            // the client's back-channel object with routing_prefix and subnet filled in by the server
-            rpc::zone_address_args remote_object_id;
-        };
-
-        struct connect_response
-        {
-            // the server's zone and callable object combined
-            rpc::zone_address_args outbound_remote_object;
-        };
-
-        enum message_type : uint8_t
-        {
-            send = 0,
-            post = 1,
-            response = 2,
-            handshake = 3,          // client → server initial handshake
-            handshake_ack = 4,      // server → client pre-handler ack (zone_id + remote_object_id)
-            handshake_complete = 5  // server → client handshake done (outbound_remote_object)
-        };
-
-        struct envelope
-        {
-            uint64_t id;
-            message_type type;
-            std::vector<char> data;
-        };
-
-        struct request
-        {
-            rpc::encoding encoding;
-            uint64_t tag;
-            rpc::zone_address_args caller_zone_id;
-            rpc::zone_address_args destination_zone_id;
-            rpc::interface_ordinal interface_id;
-            rpc::method method_id;
-            std::vector<char> data;
-            std::vector<rpc::back_channel_entry> back_channel;
-        };
-
-        struct response
-        {
-            uint64_t error;
-            std::vector<char> data;
-            std::vector<rpc::back_channel_entry> back_channel;
-        };
-
         interface i_context_event
         {
             [post] int piece(const std::string& piece);

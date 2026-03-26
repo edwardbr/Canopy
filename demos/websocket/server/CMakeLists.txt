@@ -34,7 +34,6 @@ add_executable(
   rest_handler.cpp
   websocket_handler.cpp
   demo_zone.cpp
-  transport.cpp
   llama_server_engine.cpp)
 
 target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES})
@@ -50,6 +49,7 @@ target_link_libraries(
          streaming_tls
          transport_streaming
          streaming_transport_idl
+         transport_websocket
          websocket_demo_idl
          secret_llama_idl
          llama

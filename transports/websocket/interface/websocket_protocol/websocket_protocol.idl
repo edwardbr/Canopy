@@ -1,0 +1,80 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace websocket_protocol
+{
+    namespace v1
+    {
+        // Sent by the client with its expected interface types and its object id in a blank zone_address_args.
+        // Mirrors rpc::connection_settings structurally.
+        struct connect_request
+        {
+            rpc::interface_ordinal inbound_interface_id;   // interface the client exposes (back-channel)
+            rpc::interface_ordinal outbound_interface_id;  // interface the client wants to call
+            // the caller's zone and callback object; subnet/routing_prefix left 0 — server assigns them
+            rpc::zone_address_args remote_object_id;
+        };
+
+        // Sent immediately by the server upon receiving connect_request, before invoking
+        // connection_handler. Gives the client its fully-populated remote_object_id (with
+        // server-assigned subnet/routing_prefix) and the server's zone_id so that any
+        // back-channel calls that arrive during connection_handler execution can be routed.
+        struct connect_initial_response
+        {
+            rpc::zone zone_id;
+            // the client's back-channel object with routing_prefix and subnet filled in by the server
+            rpc::zone_address_args remote_object_id;
+        };
+
+        // Sent after connection_handler completes successfully.  Carries the server-side callable
+        // object the client should use as destination_zone_id in every subsequent request.
+        struct connect_response
+        {
+            rpc::zone_address_args outbound_remote_object;
+        };
+
+        enum message_type : uint8_t
+        {
+            send = 0,               // client → server RPC call
+            post = 1,               // server → client fire-and-forget event
+            response = 2,           // server → client RPC response
+            handshake = 3,          // client → server initial handshake
+            handshake_ack = 4,      // server → client pre-handler ack (zone_id + remote_object_id)
+            handshake_complete = 5  // server → client handshake done (outbound_remote_object)
+        };
+
+        // Every message in both directions is wrapped in an envelope.
+        struct envelope
+        {
+            uint64_t id;        // client-assigned request counter starting at 1; server echoes in
+                                // responses; 0 for server-initiated messages
+            message_type type;
+            std::vector<char> data;  // protobuf-encoded inner struct
+        };
+
+        // Carries an RPC call from client → server, or a server-initiated event (post) to the client.
+        struct request
+        {
+            rpc::encoding encoding;
+            uint64_t tag;
+            rpc::zone_address_args caller_zone_id;
+            rpc::zone_address_args destination_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+            std::vector<char> data;
+            std::vector<rpc::back_channel_entry> back_channel;
+        };
+
+        // Carries the server's reply to a client RPC call.
+        struct response
+        {
+            uint64_t error;
+            std::vector<char> data;
+            std::vector<rpc::back_channel_entry> back_channel;
+        };
+    }
+}
