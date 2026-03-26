@@ -4,7 +4,7 @@
 #include "http_client_connection.h"
 
 #include <websocket_demo/websocket_demo.h>
-#include "transport.h"
+#include <transports/websocket/transport.h>
 
 namespace websocket_demo
 {
@@ -16,7 +16,7 @@ namespace websocket_demo
             std::shared_ptr<streaming::stream> stream)
         {
             auto transpt
-                = CO_AWAIT transport::make_server<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
+                = CO_AWAIT websocket_protocol::transport::make_server<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                     service_,
                     stream,
                     [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,

@@ -15,7 +15,7 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
-  dependencies rpc_types_idl
+  dependencies rpc_types_idl websocket_protocol_idl
   install_dir ${GENERATED_INSTALL_DIR}
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
 
@@ -48,6 +48,9 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/websocket_demo_all.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"
+            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/websocket_protocol_all.proto"
+            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol.proto"
+            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol_v1.proto"
             websocket_demo_idl
     WORKING_DIRECTORY "${CLIENT_DIR}"
     COMMENT "Generating browser protobuf JavaScript for WebSocket demo")
@@ -61,6 +64,9 @@ if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/websocket_demo_all.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo.proto"
             "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"
+            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/websocket_protocol_all.proto"
+            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol.proto"
+            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol_v1.proto"
             websocket_demo_idl
     WORKING_DIRECTORY "${CLIENT_DIR}"
     COMMENT "Generating Node.js protobuf JavaScript for WebSocket demo")

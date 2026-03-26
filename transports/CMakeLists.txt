@@ -12,6 +12,7 @@ add_subdirectory(libcoro_spsc_dynamic_dll)
 add_subdirectory(ipc_transport)
 add_subdirectory(local)
 add_subdirectory(streaming)
+add_subdirectory(websocket)
 add_subdirectory(mock_test)
 
 if(CANOPY_BUILD_ENCLAVE)
