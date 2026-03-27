@@ -81,6 +81,7 @@ function(
   set(PATHS_PARAMS "")
   set(GENERATED_DEPENDENCIES "")
   set(ALL_STAMPS "")
+  set(PROTO_COPY_STAMPS "")
 
   foreach(path ${params_include_paths})
     set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
@@ -102,6 +103,9 @@ function(
         COMMENT "Copying proto files for ${suffix} into ${output_dir}")
       set(ALL_STAMPS
           "${ALL_STAMPS}" "${_s}"
+          PARENT_SCOPE)
+      set(PROTO_COPY_STAMPS
+          "${PROTO_COPY_STAMPS}" "${_s}"
           PARENT_SCOPE)
       set(${out_var}
           "${_s}"
@@ -225,7 +229,7 @@ function(
         BYPRODUCTS "${_proto_js_out}"
         COMMAND "${_pbjs}" -t static-module ${_pbjs_flags} --path "${output_dir}" -o "${_proto_js_out}" "${_all_proto}"
         COMMAND ${CMAKE_COMMAND} -E touch "${_pbjs_stamp}"
-        DEPENDS "${_npm_stamp}" "${_own_proto_stamp}"
+        DEPENDS "${_npm_stamp}" ${PROTO_COPY_STAMPS}
         WORKING_DIRECTORY "${_pbjs_dir}"
         COMMENT "Compiling protobuf JS for ${idl_basename} (${_proto_js_base}.js)")
       list(APPEND ALL_STAMPS "${_pbjs_stamp}")
