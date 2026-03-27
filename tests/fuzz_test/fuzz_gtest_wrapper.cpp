@@ -4,10 +4,14 @@
 #include <gtest/gtest.h>
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-extern int fuzz_test_entry(int argc, char** argv);
+extern int fuzz_test_entry(
+    int argc,
+    char** argv);
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-TEST(FuzzTest, BasicCycles) // NOLINT
+TEST(
+    FuzzTest,
+    BasicCycles) // NOLINT
 {
     // Run 3 cycles with default settings (no args needed beyond argc=0)
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
