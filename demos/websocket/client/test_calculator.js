@@ -1,216 +1,66 @@
 #!/usr/bin/env node
 
-const WebSocket = require('ws');
-const proto = require('./websocket_proto.js');
-const Long = require('protobufjs/minimal').util.Long;
+const proto = require('./generated/websocket_demo_proto.js');
+const WebsocketDemo = require('./generated/websocket_demo.js');
+const CanopyWebsocketTransport = require('./generated/canopy_websocket_transport.js');
 
 const WS_URL = process.env.WS_URL || 'ws://localhost:8888';
+const TransportProto = proto.protobuf.websocket_protocol_v1;
+const AppProto = proto.protobuf.websocket_demo_v1;
 
 console.log('WebSocket Calculator RPC Test Suite');
 console.log('====================================\n');
+console.log(`Connecting to ${WS_URL}\n`);
 
-// Get the protobuf messages
-const WebsocketProto = proto.protobuf.websocket_demo_v1;
-const RpcProto = proto.protobuf.rpc;
-
-// Interface and message type IDs (uint64 as Long strings)
-// These match the fingerprints generated in websocket_demo.h
-const I_CALCULATOR_ID = Long.fromString('2180915978302953945', true);
-const REQUEST_MESSAGE_TYPE = Long.fromString('16109978911582071405', true);
-
-// Test runner
 let testsPassed = 0;
 let testsFailed = 0;
-let messageCounter = 0;
 
-function runCalculatorTest(operation, methodId, first, second, expected) {
-    return new Promise((resolve) => {
-        console.log(`Testing: ${first} ${operation} ${second} = ${expected}`);
+async function runCalculatorTest(operation, method, first, second, expected) {
+    console.log(`Testing: ${first} ${operation} ${second} = ${expected}`);
 
-        const ws = new WebSocket(WS_URL);
-        ws.binaryType = 'nodebuffer';
-
-        let handshakeComplete = false;
-        let clientZoneId = null;
-        let serverZoneId = null;
-        let serverObjectId = null;
-
-        const timeout = setTimeout(() => {
-            console.log(`  ✗ FAILED: Timeout\n`);
-            testsFailed++;
-            ws.close();
-            resolve();
-        }, 5000);
-
-        ws.on('open', () => {
-            try {
-                // Send connect_request handshake.
-                // Zone is left as 0 — the server assigns it via generate_new_zone_id().
-                // Object id 1 is used as the client's back-channel (i_context_event) stub.
-                const connectReq = WebsocketProto.connect_request.create({
-                    clientObject: WebsocketProto.object_address.create({
-                        objectId: Long.fromNumber(1, true)
-                    })
-                });
-                ws.send(WebsocketProto.connect_request.encode(connectReq).finish());
-            } catch (err) {
-                clearTimeout(timeout);
-                console.log(`  ✗ FAILED: Handshake encoding error: ${err.message}\n`);
-                testsFailed++;
-                ws.close();
-            }
-        });
-
-        ws.on('message', (data) => {
-            try {
-                if (!handshakeComplete) {
-                    // First binary message is connect_response
-                    const connectResp = WebsocketProto.connect_response.decode(data);
-                    const clientObject = connectResp.clientObject || null;
-                    const serverObject = connectResp.outboundRemoteObject || null;
-                    clientZoneId = clientObject ? clientObject.subnet : 0;
-                    serverZoneId = serverObject ? serverObject.subnet : 0;
-                    serverObjectId = serverObject ? serverObject.objectId : 0;
-                    handshakeComplete = true;
-
-                    // Now send the calculator request
-                    messageCounter++;
-                    const messageId = messageCounter;
-
-                    // Encode the inner method request
-                    let requestMessage;
-                    switch (methodId) {
-                        case 1:
-                            requestMessage = WebsocketProto.i_calculator_addRequest.create({
-                                firstVal: first, secondVal: second });
-                            break;
-                        case 2:
-                            requestMessage = WebsocketProto.i_calculator_subtractRequest.create({
-                                firstVal: first, secondVal: second });
-                            break;
-                        case 3:
-                            requestMessage = WebsocketProto.i_calculator_multiplyRequest.create({
-                                firstVal: first, secondVal: second });
-                            break;
-                        case 4:
-                            requestMessage = WebsocketProto.i_calculator_divideRequest.create({
-                                firstVal: first, secondVal: second });
-                            break;
-                    }
-
-                    const requestBytes = Object.getPrototypeOf(requestMessage).constructor.encode(requestMessage).finish();
-
-                    // Build the typed request
-                    const wsRequest = WebsocketProto.request.create({
-                        encoding: RpcProto.encoding.encoding_protocol_buffers,
-                        tag: Long.fromNumber(messageId, true),
-                        callerZoneId: RpcProto.zone.create({}),
-                        destinationZoneId: serverObject,
-                        interfaceId: RpcProto.interface_ordinal.create({ id: I_CALCULATOR_ID }),
-                        methodId: RpcProto.method.create({ id: Long.fromNumber(methodId, true) }),
-                        data: requestBytes,
-                        backChannel: []
-                    });
-
-                    const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
-
-                    const envelope = WebsocketProto.envelope.create({
-                        messageId: Long.fromNumber(messageId, true),
-                        messageType: REQUEST_MESSAGE_TYPE,
-                        data: wsRequestBytes
-                    });
-
-                    ws.send(WebsocketProto.envelope.encode(envelope).finish());
-                    return;
-                }
-
-                // Subsequent messages are responses wrapped in an envelope
-                const envelope = WebsocketProto.envelope.decode(data);
-                const response = WebsocketProto.response.decode(envelope.data);
-
-                clearTimeout(timeout);
-
-                if (response.error == 0 && response.data && response.data.length > 0) {
-                    let resultValue = null;
-                    switch (methodId) {
-                        case 1: resultValue = WebsocketProto.i_calculator_addResponse.decode(response.data); break;
-                        case 2: resultValue = WebsocketProto.i_calculator_subtractResponse.decode(response.data); break;
-                        case 3: resultValue = WebsocketProto.i_calculator_multiplyResponse.decode(response.data); break;
-                        case 4: resultValue = WebsocketProto.i_calculator_divideResponse.decode(response.data); break;
-                    }
-
-                    if (resultValue !== null) {
-                        const match = Math.abs(resultValue.response - expected) < 0.0001;
-                        if (match) {
-                            console.log(`  ✓ PASSED: Got ${resultValue.response}\n`);
-                            testsPassed++;
-                        } else {
-                            console.log(`  ✗ FAILED: Expected ${expected}, got ${resultValue.response}\n`);
-                            testsFailed++;
-                        }
-                    } else {
-                        console.log(`  ✗ FAILED: Could not extract result from response\n`);
-                        testsFailed++;
-                    }
-                } else {
-                    console.log(`  ✗ FAILED: Error code ${response.error}\n`);
-                    testsFailed++;
-                }
-
-                ws.close();
-            } catch (err) {
-                clearTimeout(timeout);
-                console.log(`  ✗ FAILED: Decode error: ${err.message}\n`);
-                testsFailed++;
-                ws.close();
-            }
-        });
-
-        ws.on('close', () => {
-            resolve();
-        });
-
-        ws.on('error', (err) => {
-            clearTimeout(timeout);
-            console.log(`  ✗ FAILED: ${err.message}\n`);
-            testsFailed++;
-            resolve();
-        });
+    const transport = new CanopyWebsocketTransport({
+        url: WS_URL,
+        proto: TransportProto,
+        appProto: AppProto,
+        inboundInterfaceId: WebsocketDemo.interfaceIds.i_context_event,
+        outboundInterfaceId: WebsocketDemo.interfaceIds.i_calculator,
+        timeoutMs: 5000,
     });
+
+    await transport.connect();
+    try {
+        const calc = new WebsocketDemo.i_calculator_proxy(transport, AppProto);
+        const r = await calc[method](first, second);
+        const match = Math.abs(r.response - expected) < 0.0001;
+        if (match) {
+            console.log(`  ✓ PASSED: Got ${r.response}\n`);
+            testsPassed++;
+        } else {
+            console.log(`  ✗ FAILED: Expected ${expected}, got ${r.response}\n`);
+            testsFailed++;
+        }
+    } finally {
+        transport.disconnect();
+    }
 }
 
 async function runAllTests() {
-    console.log(`Connecting to ${WS_URL}\n`);
+    // Test addition
+    await runCalculatorTest('add', 'add', 5.5, 3.2, 8.7);
+    await runCalculatorTest('add', 'add', -10, 5, -5);
 
-    // Test addition (method_id = 1)
-    await runCalculatorTest('add', 1, 5.5, 3.2, 8.7);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Test subtraction
+    await runCalculatorTest('subtract', 'subtract', 10, 3, 7);
+    await runCalculatorTest('subtract', 'subtract', 5.5, 2.5, 3);
 
-    await runCalculatorTest('add', 1, -10, 5, -5);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Test multiplication
+    await runCalculatorTest('multiply', 'multiply', 6, 7, 42);
+    await runCalculatorTest('multiply', 'multiply', 2.5, 4, 10);
 
-    // Test subtraction (method_id = 2)
-    await runCalculatorTest('subtract', 2, 10, 3, 7);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Test division
+    await runCalculatorTest('divide', 'divide', 10, 2, 5);
+    await runCalculatorTest('divide', 'divide', 7, 2, 3.5);
 
-    await runCalculatorTest('subtract', 2, 5.5, 2.5, 3);
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Test multiplication (method_id = 3)
-    await runCalculatorTest('multiply', 3, 6, 7, 42);
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    await runCalculatorTest('multiply', 3, 2.5, 4, 10);
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Test division (method_id = 4)
-    await runCalculatorTest('divide', 4, 10, 2, 5);
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    await runCalculatorTest('divide', 4, 7, 2, 3.5);
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Print summary
     console.log('====================================');
     console.log('Test Summary:');
     console.log(`  Total: ${testsPassed + testsFailed}`);

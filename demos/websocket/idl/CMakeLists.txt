@@ -19,71 +19,26 @@ CanopyGenerate(
   install_dir ${GENERATED_INSTALL_DIR}
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
 
-# Generate JavaScript protobuf files for WebSocket demo
-find_program(NPM_EXECUTABLE npm)
-find_program(NODE_EXECUTABLE node)
+include(CanopyJavascriptGenerate)
 
-if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
-  set(CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../client")
-  set(SERVER_WWW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../server/www")
-  set(PROTO_SRC_DIR "${CMAKE_BINARY_DIR}/generated/src")
-  set(PBJS_EXECUTABLE "${CLIENT_DIR}/node_modules/.bin/pbjs")
-  set(PBJS_STAMP_FILE "${CLIENT_DIR}/node_modules/.protobufjs-cli.stamp")
+set(_client_dir   "${CMAKE_CURRENT_SOURCE_DIR}/../client")
+set(_www_dir      "${CMAKE_CURRENT_SOURCE_DIR}/../server/www")
+set(_transport_js "${CMAKE_CURRENT_SOURCE_DIR}/../../../transports/websocket/js/canopy_websocket_transport.js")
 
-  # Ensure npm dependencies are installed
-  add_custom_command(
-    OUTPUT "${PBJS_STAMP_FILE}"
-    COMMAND
-      ${CMAKE_COMMAND} -DNPM_EXECUTABLE=${NPM_EXECUTABLE} -DCLIENT_DIR=${CLIENT_DIR}
-      -DPBJS_EXECUTABLE=${PBJS_EXECUTABLE} -DSTAMP_FILE=${PBJS_STAMP_FILE} -P
-      ${CANOPY_SOURCE_DIR}/cmake/EnsurePbjsInstalled.cmake
-    COMMENT "Installing protobufjs-cli via npm")
+# Positional args (idl, base_dir) kept separate from keyword args so that output_dir
+# remains the 4th positional parameter when the two sets are combined in each call.
+set(_js_idl    websocket_demo/websocket_demo.idl)
+set(_js_base   ${CMAKE_CURRENT_SOURCE_DIR})
+set(_js_kwargs
+  dependencies rpc_types_idl websocket_protocol_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  copy_files "${_transport_js}"
+  compile_proto_js)
 
-  # Generate browser version (static module)
-  add_custom_command(
-    OUTPUT "${SERVER_WWW_DIR}/websocket_proto.js"
-    COMMAND ${PBJS_EXECUTABLE} -t static-module --path "${PROTO_SRC_DIR}" -o "${SERVER_WWW_DIR}/websocket_proto.js"
-            websocket_demo/protobuf/websocket_demo_all.proto
-    DEPENDS "${PBJS_STAMP_FILE}"
-            "${PROTO_SRC_DIR}/websocket_demo/protobuf/websocket_demo_all.proto"
-            "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo.proto"
-            "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"
-            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/websocket_protocol_all.proto"
-            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol.proto"
-            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol_v1.proto"
-            websocket_demo_idl
-    WORKING_DIRECTORY "${CLIENT_DIR}"
-    COMMENT "Generating browser protobuf JavaScript for WebSocket demo")
+CanopyJavascriptGenerate(websocket_demo_client
+  ${_js_idl} ${_js_base} "${_client_dir}/generated"
+  ${_js_kwargs} proto_js_format commonjs)
 
-  # Generate Node.js version (CommonJS)
-  add_custom_command(
-    OUTPUT "${CLIENT_DIR}/websocket_proto.js"
-    COMMAND ${PBJS_EXECUTABLE} -t static-module -w commonjs --path "${PROTO_SRC_DIR}" -o
-            "${CLIENT_DIR}/websocket_proto.js" websocket_demo/protobuf/websocket_demo_all.proto
-    DEPENDS "${PBJS_STAMP_FILE}"
-            "${PROTO_SRC_DIR}/websocket_demo/protobuf/websocket_demo_all.proto"
-            "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo.proto"
-            "${PROTO_SRC_DIR}/websocket_demo/protobuf/schema/websocket_demo_v1.proto"
-            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/websocket_protocol_all.proto"
-            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol.proto"
-            "${PROTO_SRC_DIR}/websocket_protocol/protobuf/schema/websocket_protocol_v1.proto"
-            websocket_demo_idl
-    WORKING_DIRECTORY "${CLIENT_DIR}"
-    COMMENT "Generating Node.js protobuf JavaScript for WebSocket demo")
-
-  # Create custom target that depends on both generated files
-  add_custom_target(websocket_proto_js ALL DEPENDS "${SERVER_WWW_DIR}/websocket_proto.js"
-                                                   "${CLIENT_DIR}/websocket_proto.js")
-
-  # Make sure proto generation happens before JavaScript generation
-  add_dependencies(websocket_proto_js websocket_demo_idl)
-
-  message(STATUS "WebSocket protobuf JavaScript generation enabled")
-else()
-  if(NOT NPM_EXECUTABLE)
-    message(WARNING "npm not found - WebSocket JavaScript protobuf files will not be generated automatically")
-  endif()
-  if(NOT NODE_EXECUTABLE)
-    message(WARNING "node not found - WebSocket JavaScript protobuf files will not be generated automatically")
-  endif()
-endif()
+CanopyJavascriptGenerate(websocket_demo_www
+  ${_js_idl} ${_js_base} "${_www_dir}/generated"
+  ${_js_kwargs})

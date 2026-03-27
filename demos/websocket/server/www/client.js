@@ -1,22 +1,14 @@
-// WebSocket client logic with Echo and Calculator mode support using generated protobuf
-let ws = null;
+// WebSocket client logic with Echo and Calculator mode support using generated proxy/stub
+let transport = null;
+let calc = null;       // i_calculator_proxy (created after connect)
+let eventStub = null;  // i_context_event_stub (receives streaming events)
+
 let sentCount = 0;
 let receivedCount = 0;
 let connectTime = null;
 let uptimeInterval = null;
 let currentMode = 'echo'; // 'echo' or 'calculator'
-let messageCounter = 0;
-let pendingRequests = new Map(); // messageId -> {methodId}
-
-// Protobuf messages - loaded from generated websocket_proto.js via module shim
-const WebsocketProto = $protobuf_websocket.protobuf.websocket_demo_v1;
-const RpcProto = $protobuf_websocket.protobuf.rpc;
-
-// Object addresses populated from the server's connect_response
-let clientObject = null;  // local i_context_event back-channel (clientObject in connect_response)
-let serverObject = null;  // remote i_calculator instance (outboundRemoteObject in connect_response)
-let handshakeComplete = false;
-// SecretLlamaProto is loaded dynamically in index.html
+let currentAssistantMessage = null;
 
 // DOM elements
 const statusEl = document.getElementById('status');
@@ -49,9 +41,6 @@ const resultDisplay = document.getElementById('resultDisplay');
 const chatHistory = document.getElementById('chatHistory');
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
-
-// Chat state
-let currentAssistantMessage = null;
 
 // Helper functions
 function formatTime() {
@@ -140,7 +129,7 @@ chatModeRadio.addEventListener('change', () => switchMode('chat'));
 
 // WebSocket functions
 function connect() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (transport && transport.isConnected()) {
         addMessage('system', 'Already connected');
         return;
     }
@@ -148,278 +137,74 @@ function connect() {
     updateStatus('Connecting...', 'connecting');
     addMessage('system', 'Connecting to WebSocket server...');
 
-    // Use current host and port for WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
+    const transportProto = $protobuf_websocket.protobuf.websocket_protocol_v1;
+    const appProto = $protobuf_websocket.protobuf.websocket_demo_v1;
 
-    ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer'; // Important for binary data
-
-    ws.onopen = function () {
-        updateStatus('Connecting...', 'connecting');
-        addMessage('system', '✓ TCP/WS open — sending connect_request handshake...');
-
-        // Reset handshake state from any previous connection
-        handshakeComplete = false;
-        clientObject = null;
-        serverObject = null;
-        messageCounter = 0;
-
-        // Build connect_request mirroring rpc::connection_settings:
-        //   inboundInterfaceId  — interface the client exposes (i_context_event back-channel)
-        //   outboundInterfaceId — interface the client wants to call (i_calculator)
-        //   remoteObjectId      — client's back-channel object; zone left 0, server fills it in
-        const connectReq = WebsocketProto.connect_request.create({
-            inboundInterfaceId: RpcProto.interface_ordinal.create({
-                id: Long.fromString("7262980488024731442", true)  // i_context_event
-            }),
-            outboundInterfaceId: RpcProto.interface_ordinal.create({
-                id: Long.fromString("2180915978302953945", true)  // i_calculator
-            }),
-            remoteObjectId: RpcProto.zone_address_args.create({ objectId: 1 })
-        });
-        const connectReqBytes = WebsocketProto.connect_request.encode(connectReq).finish();
-
-        // Handshake messages are wrapped in an envelope like all other messages.
-        messageCounter = 1;
-        const handshakeEnvelope = WebsocketProto.envelope.create({
-            id: Long.fromNumber(messageCounter, true),
-            type: 3,  // message_type::handshake
-            data: connectReqBytes
-        });
-        ws.send(WebsocketProto.envelope.encode(handshakeEnvelope).finish());
-    };
-
-    ws.onmessage = function (event) {
-        if (typeof event.data === 'string') {
-            // Text message (echo mode)
-            addMessage('received', `← ${event.data}`);
-            receivedCount++;
-            updateStats();
-        } else {
-            // Binary message (calculator/chat mode response or event)
-            try {
-                const msgBytes = new Uint8Array(event.data);
-
-                // All messages from the server are wrapped in an envelope.
-                const envelope = WebsocketProto.envelope.decode(msgBytes);
-                const msgType = envelope.type;  // message_type enum value (uint8)
-
-                // Handshake: connect_initial_response (4) arrives before connect_response (5).
-                if (!handshakeComplete) {
-                    if (msgType === 4) {
-                        // handshake_ack — arrives before connection_handler completes.
-                        // Provides our fully-populated remote_object_id (back-channel address) and
-                        // the server's zone_id so back-channel calls during handler execution are routable.
-                        const initialResp = WebsocketProto.connect_initial_response.decode(envelope.data);
-                        clientObject = initialResp.remoteObjectId || null;
-                        console.log('[' + new Date().toLocaleTimeString() + '] connect_initial_response received, client_zone=',
-                            clientObject && clientObject.subnet);
-                        return;
-                    }
-                    if (msgType === 5) {
-                        // handshake_complete — provides the server-side callable object
-                        const connectResp = WebsocketProto.connect_response.decode(envelope.data);
-                        serverObject = connectResp.outboundRemoteObject || null;
-                        handshakeComplete = true;
-
-                        updateStatus('Connected', 'connected');
-                        setUIConnected(true);
-                        connectTime = Date.now();
-                        uptimeInterval = setInterval(updateUptime, 1000);
-
-                        addMessage('system',
-                            `✓ Handshake complete — client_zone=${clientObject && clientObject.subnet}, server_object=${serverObject && serverObject.objectId}`);
-                        return;
-                    }
-                    addMessage('error', `Unexpected envelope type ${msgType} during handshake`);
-                    return;
-                }
-
-                const messageId = envelope.id ? envelope.id.toNumber() : 0;
-                const requestInfo = pendingRequests.get(messageId);
-
-                // type 1 = post (server-initiated event, no correlation id)
-                if (msgType === 1) {
-                    // Decode as websocket::request (posts use the request struct)
-                    try {
-                        const eventRequest = WebsocketProto.request.decode(envelope.data);
-
-                        console.log('[' + new Date().toLocaleTimeString() + '] Event received:', {
-                            messageId: messageId,
-                            interfaceId: eventRequest.interfaceId && eventRequest.interfaceId.id
-                                ? eventRequest.interfaceId.id.toString() : '0',
-                            methodId: eventRequest.methodId && eventRequest.methodId.id
-                                ? eventRequest.methodId.id.toString() : '0',
-                            dataLength: eventRequest.data.length
-                        });
-
-                        // Decode the i_context_event_pieceRequest from websocket_demo namespace
-                        const pieceEvent = WebsocketProto.i_context_event_pieceRequest.decode(eventRequest.data);
-
-                        // Update the streaming assistant message with the piece
-                        if (currentAssistantMessage && pieceEvent.piece) {
-                            currentAssistantMessage.textContent += pieceEvent.piece;
-                            chatHistory.scrollTop = chatHistory.scrollHeight;
-                            receivedCount++;
-                            updateStats();
-                        } else {
-                            console.log('[' + new Date().toLocaleTimeString() + '] Event piece received but no current message:', pieceEvent.piece);
-                            addMessage('system', `Event piece: ${pieceEvent.piece}`);
-                            receivedCount++;
-                            updateStats();
-                        }
-
-                        return;
-                    } catch (eventErr) {
-                        addMessage('error', `Failed to decode event: ${eventErr.message}`);
-                        console.error('Event decode error:', eventErr);
-                        console.error('Envelope data:', envelope);
-                        return;
-                    }
-                }
-
-                // type 2 = response — correlate by id
-                if (!requestInfo) {
-                    addMessage('error', `Received response for unknown id ${messageId}`);
-                    return;
-                }
-
-                pendingRequests.delete(messageId);
-
-                // Decode the response from the envelope data
-                const response = WebsocketProto.response.decode(envelope.data);
-
-                // Handle based on request type
-                if (requestInfo.type === 'chat') {
-                    console.log('[' + new Date().toLocaleTimeString() + '] Chat response received:', {
-                        messageId: messageId,
-                        error: response.error,
-                        dataLength: response.data ? response.data.length : 0
-                    });
-
-                    // Chat response handling - check RPC error first
-                    if (response.error == 0) {
-                        // Decode i_calculator_add_promptResponse from websocket_demo
-                        if (response.data && response.data.length > 0) {
-                            const chatResponse = WebsocketProto.i_calculator_add_promptResponse.decode(response.data);
-                            if (chatResponse.result === 0) {
-                                console.log('[' + new Date().toLocaleTimeString() + '] Chat prompt accepted, awaiting streaming events...');
-                                // The actual content comes through events (i_context_event.piece)
-                            } else {
-                                addMessage('error', `Chat error: ${chatResponse.result}`);
-                                if (currentAssistantMessage) {
-                                    currentAssistantMessage.textContent = `Error: ${chatResponse.result}`;
-                                    currentAssistantMessage.classList.remove('streaming');
-                                    currentAssistantMessage = null;
-                                }
-                            }
-                        } else {
-                            // Empty response data is OK for chat - content comes via events
-                            console.log('[' + new Date().toLocaleTimeString() + '] Chat prompt accepted (empty response), awaiting streaming events...');
-                        }
-                    } else {
-                        addMessage('error', `Chat RPC error: ${response.error}`);
-                        if (currentAssistantMessage) {
-                            currentAssistantMessage.textContent = `Error: ${response.error}`;
-                            currentAssistantMessage.classList.remove('streaming');
-                            currentAssistantMessage = null;
-                        }
-                    }
-                    receivedCount++;
-                    updateStats();
-                } else {
-                    // Calculator response handling
-                    if (response.error == 0 && response.data && response.data.length > 0) {
-                        // Decode the response based on the method that was called
-                        // For calculator methods, all return a double result in field 3
-
-                        let resultValue = null;
-                        switch (requestInfo.methodId) {
-                            case 1:
-                                resultValue = WebsocketProto.i_calculator_addResponse.decode(response.data);
-                                break;
-                            case 2:
-                                resultValue = WebsocketProto.i_calculator_subtractResponse.decode(response.data);
-                                break;
-                            case 3:
-                                resultValue = WebsocketProto.i_calculator_multiplyResponse.decode(response.data);
-                                break;
-                            case 4:
-                                resultValue = WebsocketProto.i_calculator_divideResponse.decode(response.data);
-                                break;
-                        }
-
-                        if (resultValue === null) {
-                            addMessage('error', 'Could not extract result from response');
-                        } else if (resultValue.result !== 0) {
-                            resultDisplay.textContent = `Result: ${resultValue.result}`;
-                            addMessage('received', `← Calculator error: ${resultValue.result}`);
-                            receivedCount++;
-                            updateStats();
-                        } else {
-                            resultDisplay.textContent = `Result: ${resultValue.response}`;
-                            addMessage('received', `← Calculator result: ${resultValue.response}`);
-                            receivedCount++;
-                            updateStats();
-                        }
-                    } else {
-                        addMessage('error', `Calculator error: ${response.error}`);
-                        resultDisplay.textContent = `Error: ${response.error}`;
-                    }
-                }
-            } catch (err) {
-                addMessage('error', `Failed to decode response: ${err.message}`);
-                console.error('Decode error:', err);
+    // Create stub for server-initiated streaming events (i_context_event.piece)
+    eventStub = new WebsocketDemo.i_context_event_stub({
+        piece: function(text) {
+            if (currentAssistantMessage) {
+                currentAssistantMessage.textContent += text;
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                receivedCount++;
+                updateStats();
             }
         }
-    };
+    });
 
-    ws.onclose = function (event) {
-        updateStatus('Disconnected', 'disconnected');
-        addMessage('system', `Connection closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
-        setUIConnected(false);
-        connectTime = null;
-        if (uptimeInterval) {
-            clearInterval(uptimeInterval);
-            uptimeInterval = null;
+    transport = new CanopyWebsocketTransport({
+        url: wsUrl,
+        proto: transportProto,
+        appProto: appProto,
+        inboundInterfaceId: WebsocketDemo.interfaceIds.i_context_event,
+        outboundInterfaceId: WebsocketDemo.interfaceIds.i_calculator,
+        onOpen: function(t) {
+            calc = new WebsocketDemo.i_calculator_proxy(t, appProto);
+            updateStatus('Connected', 'connected');
+            setUIConnected(true);
+            connectTime = Date.now();
+            uptimeInterval = setInterval(updateUptime, 1000);
+            addMessage('system', '✓ Connected and ready');
+        },
+        onClose: function(code, reason) {
+            calc = null;
+            updateStatus('Disconnected', 'disconnected');
+            addMessage('system', `Connection closed (code: ${code}, reason: ${reason || 'none'})`);
+            setUIConnected(false);
+            connectTime = null;
+            if (uptimeInterval) {
+                clearInterval(uptimeInterval);
+                uptimeInterval = null;
+            }
+            updateUptime();
+        },
+        onError: function(err) {
+            addMessage('error', 'WebSocket error occurred');
+            console.error('WebSocket error:', err);
         }
-        updateUptime();
-    };
+    });
 
-    ws.onerror = function (error) {
-        addMessage('error', `WebSocket error occurred`);
-        console.error('WebSocket error:', error);
-    };
+    transport.registerStub(eventStub);
+    transport.connect().catch(function(err) {
+        addMessage('error', `Connection failed: ${err.message}`);
+        updateStatus('Disconnected', 'disconnected');
+    });
 }
 
 function disconnect() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (transport) {
         addMessage('system', 'Closing connection...');
-        ws.close(1000, 'User requested disconnect');
+        transport.disconnect();
     }
 }
 
 function sendMessage() {
-    const message = messageInput.value.trim();
-
-    if (!message) {
-        return;
-    }
-
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        addMessage('error', 'Not connected to server');
-        return;
-    }
-
-    ws.send(message);
-    addMessage('sent', `→ ${message}`);
-    sentCount++;
-    updateStats();
-    messageInput.value = '';
+    addMessage('error', 'Echo mode requires a raw WebSocket (not available with RPC transport)');
 }
 
-function calculate() {
+async function calculate() {
     const first = parseFloat(firstValueInput.value);
     const second = parseFloat(secondValueInput.value);
     const methodId = parseInt(operationSelect.value);
@@ -429,93 +214,38 @@ function calculate() {
         return;
     }
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        addMessage('error', 'Not connected to server');
-        return;
-    }
-
-    if (!handshakeComplete) {
-        addMessage('error', 'Handshake not complete yet, please wait');
+    if (!calc) {
+        addMessage('error', 'Not connected');
         return;
     }
 
     const opNames = { 1: 'add', 2: 'subtract', 3: 'multiply', 4: 'divide' };
     addMessage('sent', `→ Calculator: ${first} ${opNames[methodId]} ${second}`);
+    resultDisplay.textContent = 'Calculating...';
+    sentCount++;
+    updateStats();
 
     try {
-        // Increment message counter for unique ID
-        messageCounter++;
-        const messageId = messageCounter;
-
-        // Create the request message based on the method
-        let requestMessage;
+        let r;
         switch (methodId) {
-            case 1:
-                requestMessage = WebsocketProto.i_calculator_addRequest.create({
-                    firstVal: first,
-                    secondVal: second
-                });
-                break;
-            case 2:
-                requestMessage = WebsocketProto.i_calculator_subtractRequest.create({
-                    firstVal: first,
-                    secondVal: second
-                });
-                break;
-            case 3:
-                requestMessage = WebsocketProto.i_calculator_multiplyRequest.create({
-                    firstVal: first,
-                    secondVal: second
-                });
-                break;
-            case 4:
-                requestMessage = WebsocketProto.i_calculator_divideRequest.create({
-                    firstVal: first,
-                    secondVal: second
-                });
-                break;
+            case 1: r = await calc.add(first, second);      break;
+            case 2: r = await calc.subtract(first, second); break;
+            case 3: r = await calc.multiply(first, second); break;
+            case 4: r = await calc.divide(first, second);   break;
         }
-
-        // Encode the request message
-        const requestBytes = Object.getPrototypeOf(requestMessage).constructor.encode(requestMessage).finish();
-
-        // Create the websocket::request wrapper
-        const wsRequest = WebsocketProto.request.create({
-            encoding: RpcProto.encoding.encoding_UNSPECIFIED,
-            tag: 0,
-            callerZoneId: RpcProto.zone_address_args.create({}),
-            destinationZoneId: serverObject,
-            interfaceId: RpcProto.interface_ordinal.create({
-                id: Long.fromString("2180915978302953945", true) // i_calculator
-            }),
-            methodId: RpcProto.method.create({ id: Long.fromNumber(methodId, true) }),
-            data: requestBytes,
-            backChannel: []
-        });
-
-        // Encode the websocket::request
-        const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
-
-        // Create the envelope
-        const envelope = WebsocketProto.envelope.create({
-            id: Long.fromNumber(messageId, true),
-            type: 0,  // message_type::send
-            data: wsRequestBytes
-        });
-
-        // Store the request info for response matching
-        pendingRequests.set(messageId, { methodId });
-
-        // Encode and send the envelope
-        const envelopeBytes = WebsocketProto.envelope.encode(envelope).finish();
-        ws.send(envelopeBytes);
-
-        sentCount++;
+        if (r.result !== 0) {
+            resultDisplay.textContent = `Error: ${r.result}`;
+            addMessage('received', `← Calculator error: ${r.result}`);
+        } else {
+            resultDisplay.textContent = `Result: ${r.response}`;
+            addMessage('received', `← Calculator result: ${r.response}`);
+        }
+        receivedCount++;
         updateStats();
-        resultDisplay.textContent = 'Calculating...';
     } catch (err) {
-        addMessage('error', `Failed to encode request: ${err.message}`);
-        console.error('Encode error:', err);
+        addMessage('error', `Calculator RPC failed: ${err.message}`);
+        resultDisplay.textContent = `Error: ${err.message}`;
+        console.error('Calculator error:', err);
     }
 }
 
@@ -531,95 +261,45 @@ function addChatMessage(role, content, streaming = false) {
     return messageDiv;
 }
 
-function sendChatMessage() {
+async function sendChatMessage() {
     const prompt = chatInput.value.trim();
 
     if (!prompt) {
         return;
     }
 
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        addMessage('error', 'Not connected to server');
+    if (!calc) {
+        addMessage('error', 'Not connected');
         return;
     }
 
-    if (!handshakeComplete) {
-        addMessage('error', 'Handshake not complete yet, please wait');
-        return;
-    }
-
-    if (!SecretLlamaProto) {
-        addMessage('error', 'Secret Llama protobuf not loaded yet, please wait...');
-        return;
-    }
-
-    // Add user message to chat
     addChatMessage('user', prompt);
     addMessage('sent', `→ Chat: ${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}`);
 
     try {
-        // Increment message counter for unique ID
-        messageCounter++;
-        const messageId = messageCounter;
-
-        // Create the i_context_add_promptRequest using protobuf
-        const AddPromptRequest = SecretLlamaProto.lookupType("i_context_add_promptRequest");
-        const requestMessage = AddPromptRequest.create({
-            prompt: prompt
-        });
-
-        // Encode the request message
-        const requestBytes = AddPromptRequest.encode(requestMessage).finish();
-
-        // Create the websocket::request wrapper
-        const wsRequest = WebsocketProto.request.create({
-            encoding: RpcProto.encoding.encoding_protocol_buffers,
-            tag: 0,
-            callerZoneId: RpcProto.zone_address_args.create({}),
-            destinationZoneId: serverObject,
-            interfaceId: RpcProto.interface_ordinal.create({
-                id: Long.fromString("2180915978302953945", true) // i_calculator
-            }),
-            methodId: RpcProto.method.create({ id: Long.fromNumber(5, true) }), // add_prompt
-            data: requestBytes,
-            backChannel: []
-        });
-
-        // Encode the websocket::request
-        const wsRequestBytes = WebsocketProto.request.encode(wsRequest).finish();
-
-        // Create the envelope
-        const envelope = WebsocketProto.envelope.create({
-            id: Long.fromNumber(messageId, true),
-            type: 0,  // message_type::send
-            data: wsRequestBytes
-        });
-
-        // Store the request info for response matching
-        pendingRequests.set(messageId, { methodId: 1, type: 'chat' });
-
-        console.log('[' + new Date().toLocaleTimeString() + '] Sending chat message:', {
-            messageId: messageId,
-            promptLength: prompt.length,
-            interfaceId: wsRequest.interfaceId && wsRequest.interfaceId.id
-                ? wsRequest.interfaceId.id.toString() : '0',
-            methodId: wsRequest.methodId && wsRequest.methodId.id
-                ? wsRequest.methodId.id.toString() : '0'
-        });
-
-        // Encode and send the envelope
-        const envelopeBytes = WebsocketProto.envelope.encode(envelope).finish();
-        ws.send(envelopeBytes);
-
-        // Create a new streaming assistant message
+        // Create a streaming assistant message that will be filled by piece events
         currentAssistantMessage = addChatMessage('assistant', '', true);
-
+        chatInput.value = '';
         sentCount++;
         updateStats();
-        chatInput.value = '';
+
+        const r = await calc.add_prompt(prompt);
+        if (r.result !== 0) {
+            addMessage('error', `Chat error: ${r.result}`);
+            if (currentAssistantMessage) {
+                currentAssistantMessage.textContent = `Error: ${r.result}`;
+                currentAssistantMessage.classList.remove('streaming');
+                currentAssistantMessage = null;
+            }
+        }
     } catch (err) {
-        addMessage('error', `Failed to send chat message: ${err.message}`);
-        console.error('Chat send error:', err);
+        addMessage('error', `Chat RPC failed: ${err.message}`);
+        if (currentAssistantMessage) {
+            currentAssistantMessage.textContent = `Error: ${err.message}`;
+            currentAssistantMessage.classList.remove('streaming');
+            currentAssistantMessage = null;
+        }
+        console.error('Chat error:', err);
     }
 }
 
@@ -655,4 +335,4 @@ chatInput.addEventListener('keypress', function (e) {
 // Initial message
 addMessage('system', 'WebSocket client ready. Click "Connect" to start.');
 addMessage('system', 'Mode: Echo - Switch to Calculator or Chat mode to use other features');
-addMessage('system', 'Using generated protobuf definitions from websocket_proto.js');
+addMessage('system', 'Using generated Canopy proxy/stub from websocket_demo.js');

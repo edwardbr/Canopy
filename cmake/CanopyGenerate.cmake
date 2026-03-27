@@ -384,6 +384,10 @@ function(
   if(generate_protobuf)
     set(proto_dir ${output_path}/src/${sub_directory}/protobuf)
     set(PROTO_MANIFEST "${proto_dir}/manifest.txt")
+    # Expose proto location so JS consumers (CanopyJavascriptGenerate) can copy .proto files
+    set_target_properties(${name}_idl_generate PROPERTIES
+      proto_dir     "${proto_dir}"
+      proto_src_root "${output_path}/src")
 
     # The stamp file tracks when the internal compilation script has finished
     set(proto_stamp_file ${proto_dir}/.proto_compiled)

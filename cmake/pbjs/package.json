@@ -1,0 +1,9 @@
+{
+  "name": "canopy-pbjs-build-tool",
+  "version": "1.0.0",
+  "description": "Isolated build-time protobufjs-cli used by CanopyJavascriptGenerate. Not an application dependency.",
+  "private": true,
+  "devDependencies": {
+    "protobufjs-cli": "^2.0.0"
+  }
+}

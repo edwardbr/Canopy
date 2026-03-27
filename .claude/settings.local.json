@@ -102,7 +102,18 @@
       "Bash(ldd /var/home/edward/projects/Canopy2/build_debug_coroutine/output/libcanopy_libcoro_spsc_example_dll.so)",
       "Bash(git -C /var/home/edward/projects/Canopy2 show HEAD:submodules/CMakeLists.txt)",
       "Bash(sed -n '375,385p' /var/home/edward/projects/Canopy2/submodules/fmt/CMakeLists.txt)",
-      "Bash(sed -n '277,290p' /var/home/edward/projects/Canopy2/submodules/libcoro_for_enclaves/CMakeLists.txt)"
+      "Bash(sed -n '277,290p' /var/home/edward/projects/Canopy2/submodules/libcoro_for_enclaves/CMakeLists.txt)",
+      "Bash(mkdir -p /tmp/js_test)",
+      "Bash(./build_debug_coroutine/output/generator --idl /var/home/edward/projects/Canopy/demos/websocket/idl/websocket_demo/websocket_demo.idl --output_path /tmp/js_test --name websocket_demo --javascript --path /var/home/edward/projects/Canopy/demos/websocket/idl/. --path /var/home/edward/projects/Canopy/transports/websocket/interface/. --path /var/home/edward/projects/Canopy/rpc/interfaces/.)",
+      "Read(//tmp/js_test/js/websocket_demo/**)",
+      "Bash(./build_debug_coroutine/output/generator --idl demos/websocket/idl/websocket_demo/websocket_demo.idl --output_path /tmp/js_test2 --name websocket_demo --javascript --path demos/websocket/idl/. --path transports/websocket/interface/. --path rpc/interfaces/.)",
+      "Read(//tmp/js_test2/js/websocket_demo/**)",
+      "Bash(./build_debug_coroutine/output/generator --idl demos/websocket/idl/websocket_demo/websocket_demo.idl --output_path /tmp/js_test3 --name websocket_demo --javascript --path demos/websocket/idl/. --path transports/websocket/interface/. --path rpc/interfaces/.)",
+      "Read(//tmp/js_test3/js/websocket_demo/**)",
+      "Bash(node -e \":*)",
+      "Bash(node:*)",
+      "Bash(sed -n '8,14p' /var/home/edward/projects/Canopy/rpc/interfaces/CMakeLists.txt)",
+      "Bash(sed -n '11,17p' /var/home/edward/projects/Canopy/transports/websocket/interface/CMakeLists.txt)"
     ]
   },
   "enabledPlugins": {}

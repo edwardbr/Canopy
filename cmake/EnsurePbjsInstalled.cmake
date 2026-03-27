@@ -4,7 +4,7 @@ if(EXISTS "${PBJS_EXECUTABLE}")
 endif()
 
 execute_process(
-  COMMAND "${NPM_EXECUTABLE}" install --save-dev protobufjs-cli
+  COMMAND "${NPM_EXECUTABLE}" install
   WORKING_DIRECTORY "${CLIENT_DIR}"
   RESULT_VARIABLE npm_result)
 
