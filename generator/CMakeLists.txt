@@ -14,6 +14,7 @@ add_executable(
   src/interface_declaration_generator.cpp
   src/yas_generator.cpp
   src/protobuf_generator.cpp
+  src/javascript_generator.cpp
   src/main.cpp
   src/helpers.cpp
   src/sha3.c

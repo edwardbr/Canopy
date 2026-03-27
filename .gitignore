@@ -13,8 +13,8 @@ CMakeUserPresets.json
 !.vscode/settings.json
 !.vscode/extensions.json
 node_modules
-demos/websocket/client/websocket_proto.js
-demos/websocket/server/www/websocket_proto.js
+demos/websocket/client/generated/
+demos/websocket/server/www/generated/
 .cache
 venv
 __pycache__/

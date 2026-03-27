@@ -498,32 +498,11 @@
             };
         })(this);
     </script>
-    <script src="websocket_proto.js"></script>
+    <script src="generated/websocket_demo_proto.js"></script>
     <script>__loadProtoNext();</script>
-    <script>
-        // Load secret_llama proto dynamically
-        let SecretLlamaProto = null;
-        protobuf.load("secret_llama_v1_0.proto", function(err, root) {
-            if (err) {
-                console.error("Failed to load secret_llama proto:", err);
-                alert("Failed to load secret_llama protobuf: " + err.message);
-                return;
-            }
-            try {
-                // Get the namespace, not a specific type
-                // The proto package is "protobuf.secret_llama_v1_0"
-                if (root.nested && root.nested.protobuf && root.nested.protobuf.nested.secret_llama_v1_0) {
-                    SecretLlamaProto = root.nested.protobuf.nested.secret_llama_v1_0;
-                    console.log("Secret Llama protobuf namespace loaded successfully");
-                } else {
-                    console.error("Could not find secret_llama_v1_0 namespace in proto root");
-                    console.log("Available root structure:", Object.keys(root.nested || {}));
-                }
-            } catch (lookupErr) {
-                console.error("Failed to access secret_llama protobuf namespace:", lookupErr);
-            }
-        });
-    </script>
+    <!-- Canopy generic transport and generated IDL proxy/stub -->
+    <script src="generated/canopy_websocket_transport.js"></script>
+    <script src="generated/websocket_demo.js"></script>
     <script src="client.js"></script>
 </body>
 

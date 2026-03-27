@@ -35,6 +35,7 @@
 #include "synchronous_mock_generator.h"
 #include "yas_generator.h"
 #include "protobuf_generator.h"
+#include "javascript_generator.h"
 #include "component_checksum.h"
 
 #include "json_schema/generator.h"
@@ -106,6 +107,8 @@ int main(
         args::Flag yas_arg(args_parser, "yas", "enable YAS serialization generation", {'y', "yas"});
         args::Flag protobuf_arg(
             args_parser, "protobuf", "enable Protocol Buffers serialization generation", {'b', "protobuf"});
+        args::Flag javascript_arg(
+            args_parser, "javascript", "enable JavaScript proxy/stub generation", {'j', "javascript"});
         args::Flag suppress_catch_stub_exceptions_arg(
             args_parser, "suppress_catch_stub_exceptions", "catch stub exceptions", {'c', "suppress_catch_stub_exceptions"});
         args::ValueFlagList<std::string> include_paths_arg(
@@ -146,6 +149,7 @@ int main(
         std::filesystem::path mock_path = args::get(mock_path_arg);
         bool enable_yas = args::get(yas_arg);
         bool enable_protobuf = args::get(protobuf_arg);
+        bool enable_javascript = args::get(javascript_arg);
         std::vector<std::string> namespaces = args::get(namespaces_arg);
         std::vector<std::string> include_paths = args::get(include_paths_arg);
         std::vector<std::string> defines = args::get(defines_arg);
@@ -510,6 +514,12 @@ int main(
                 std::ofstream protobuf_cpp_file(protobuf_cpp_path);
                 protobuf_cpp_file << protobuf_cpp_stream.str();
             }
+        }
+
+        // Generate JavaScript proxy/stub file
+        if (enable_javascript)
+        {
+            javascript_generator::write_files(*objects, output_path, std::filesystem::path(name));
         }
 
         {
