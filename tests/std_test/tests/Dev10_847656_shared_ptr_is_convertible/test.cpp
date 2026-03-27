@@ -117,4 +117,5 @@ int main()
     assert(function_taking_weak(weak_ptr<Tiger>(sp2)) == 73);
     assert(function_taking_weak(weak_ptr<Jupiter>(sp3)) == 84);
     assert(function_taking_weak(weak_ptr<Saturn>(sp4)) == 94);
+    return 0;
 }

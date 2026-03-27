@@ -414,4 +414,5 @@ int main()
     assert(wpda2.expired());
     assert(wmp.expired());
     assert(wmpa.expired());
+    return 0;
 }

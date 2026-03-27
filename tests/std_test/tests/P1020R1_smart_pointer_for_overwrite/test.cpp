@@ -358,4 +358,5 @@ int main()
 {
     test_make_shared_for_overwrite();
     test_allocate_shared_for_overwrite();
+    return 0;
 }

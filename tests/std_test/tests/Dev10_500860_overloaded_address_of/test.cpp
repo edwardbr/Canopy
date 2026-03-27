@@ -237,6 +237,7 @@ int main()
     swap(arr[0], arr2[0]);
 
     test_LWG_2296();
+    return 0;
 }
 
 // LWG-2296 "std::addressof should be constexpr"

@@ -70,4 +70,5 @@ int main()
         shared_ptr<int> sp2 = allocate_shared<int>(alloc, 1729);
         assert(*sp2 == 1729);
     }
+    return 0;
 }

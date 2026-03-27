@@ -40,4 +40,5 @@ void test_shared_ptr_hash_invariants()
 int main()
 {
     test_shared_ptr_hash_invariants();
+    return 0;
 }

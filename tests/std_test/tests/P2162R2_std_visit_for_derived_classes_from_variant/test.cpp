@@ -86,4 +86,5 @@ int main()
 {
     example1_from_p2162r2();
     example2_from_p2162r2();
+    return 0;
 }

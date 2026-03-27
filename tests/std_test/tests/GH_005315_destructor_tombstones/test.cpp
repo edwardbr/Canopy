@@ -4,7 +4,9 @@
 // env.lst defines _MSVC_STL_DESTRUCTOR_TOMBSTONES to 1.
 
 #ifdef _M_CEE // work around a sporadic hang in /clr configurations
-int main() { }
+int main() { 
+    return 0;
+}
 #else // ^^^ workaround / no workaround vvv
 
 #include <array>
@@ -199,6 +201,7 @@ int main(int argc, char* argv[])
         return ret;
 
     // return exec.run(argc, argv);
+    return 0;
 }
 
 #if _HAS_CXX20

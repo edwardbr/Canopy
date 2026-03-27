@@ -88,4 +88,5 @@ int main()
         // assert(sp5->m_n == 500);
         // assert(sp6->m_n == 600);
     }
+    return 0;
 }

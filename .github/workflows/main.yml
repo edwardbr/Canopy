@@ -71,7 +71,7 @@ jobs:
           - name: Release
             preset: Release
             build_dir: build_release
-            test_cmds: ./rpc_test
+            test_cmds: ./rpc_test && ctest --test-dir .. -R "^StdTest" --output-on-failure
           - name: Debug Coroutine
             preset: Debug_Coroutine
             build_dir: build_debug_coroutine
@@ -79,7 +79,7 @@ jobs:
           - name: Release Coroutine
             preset: Release_Coroutine_with_No_logging
             build_dir: build_release_coroutine
-            test_cmds: ./rpc_test && ./serialiser_test
+            test_cmds: ./rpc_test && ./serialiser_test && ./fuzz_test_gtest
     steps:
       - name: Install system and C++ dependencies
         run: |

@@ -228,4 +228,5 @@ int main()
     // correct.emplace_back("END", 5);
 
     assert(results == correct);
+    return 0;
 }
