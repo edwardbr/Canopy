@@ -598,9 +598,11 @@ public:
 
     autonomous_node_impl(
         node_type type,
-        uint64_t node_id)
+        uint64_t node_id,
+        rpc::shared_ptr<i_autonomous_node> parent_node = {})
         : node_type_(type)
         , node_id_(node_id)
+        , parent_node_(std::move(parent_node))
     {
     }
 
@@ -858,11 +860,13 @@ public:
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [child_type, child_zone_id](
-                    [[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
+                    const rpc::shared_ptr<i_autonomous_node>& parent,
                     const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
                 {
                     RPC_INFO("===CALLBACK INVOKED=== for child_zone_id={}", child_zone_id);
-                    auto new_child = rpc::make_shared<autonomous_node_impl>(child_type, child_zone_id);
+                    // parent must be stored before the first CO_AWAIT to keep the proxy alive
+                    // across the create_child_zone frame boundary (mirrors foo_impl.h pattern)
+                    auto new_child = rpc::make_shared<autonomous_node_impl>(child_type, child_zone_id, parent);
                     auto err_code = CO_AWAIT new_child->initialize_node(child_type, child_zone_id);
                     CO_RETURN rpc::service_connect_result<i_autonomous_node>{err_code, std::move(new_child)};
                 });
@@ -1399,10 +1403,12 @@ run_autonomous_instruction_test(
             child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 [&, new_zone_subnet](
-                    [[maybe_unused]] const rpc::shared_ptr<i_autonomous_node>& parent,
+                    const rpc::shared_ptr<i_autonomous_node>& parent,
                     const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
                 {
-                    auto new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_subnet);
+                    // parent must be stored before the first CO_AWAIT to keep the proxy alive
+                    // across the create_child_zone frame boundary (mirrors foo_impl.h pattern)
+                    auto new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_subnet, parent);
                     auto err_code = CO_AWAIT new_node->initialize_node(node_type::ROOT_NODE, new_zone_subnet);
                     CO_RETURN rpc::service_connect_result<i_autonomous_node>{err_code, std::move(new_node)};
                 });

@@ -113,7 +113,12 @@
       "Bash(node -e \":*)",
       "Bash(node:*)",
       "Bash(sed -n '8,14p' /var/home/edward/projects/Canopy/rpc/interfaces/CMakeLists.txt)",
-      "Bash(sed -n '11,17p' /var/home/edward/projects/Canopy/transports/websocket/interface/CMakeLists.txt)"
+      "Bash(sed -n '11,17p' /var/home/edward/projects/Canopy/transports/websocket/interface/CMakeLists.txt)",
+      "Bash(/var/home/edward/projects/Canopy/build_debug_coroutine/output/fuzz_test_main --help)",
+      "Bash(./build_debug_coroutine/output/fuzz_test_main 3)",
+      "Bash(./build_debug_coroutine/output/fuzz_test_main --cycles 3)",
+      "Bash(./build_debug_coroutine/output/fuzz_test_main --cycles 5)",
+      "Bash(./build_debug_coroutine/output/fuzz_test_main --cycles 20)"
     ]
   },
   "enabledPlugins": {}
