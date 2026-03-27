@@ -41,4 +41,5 @@ int main()
     sp2.reset();
     b2();
     b2();
+    return 0;
 }

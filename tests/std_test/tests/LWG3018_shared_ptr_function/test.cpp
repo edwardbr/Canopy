@@ -97,4 +97,5 @@ int main()
 #endif // __cpp_noexcept_function_type
     }
     assert(val == 2);
+    return 0;
 }

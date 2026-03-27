@@ -39,4 +39,6 @@ STATIC_ASSERT(is_same_v<result_of_t<PmdConst(shared_ptr<const Base>)>, const str
 STATIC_ASSERT(is_same_v<result_of_t<PmdConst(shared_ptr<volatile Base>)>, const volatile string&>);
 STATIC_ASSERT(is_same_v<result_of_t<PmdConst(shared_ptr<const volatile Base>)>, const volatile string&>);
 
-int main() { }
+int main() {
+    return 0;
+ }

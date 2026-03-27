@@ -38,4 +38,6 @@ STATIC_ASSERT(is_constructible_v<function<shared_ptr<const int>()>, Tag, Al, sha
 STATIC_ASSERT(!is_constructible_v<function<bool()>, Tag, Al, shared_ptr<int> (*)()>);
 #endif // _HAS_FUNCTION_ALLOCATOR_SUPPORT
 
-int main() { }
+int main() { 
+    return 0;
+}

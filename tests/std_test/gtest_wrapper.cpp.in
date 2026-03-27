@@ -1,0 +1,12 @@
+// Auto-generated GTest wrapper for @TEST_NAME@
+// Renames the test's main() to std_test_main() via -Dmain=std_test_main,
+// then calls it from a GTest TEST case so TestMate can discover and run it.
+#include <gtest/gtest.h>
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+extern int std_test_main();
+
+TEST(StdTest, @TEST_NAME@) // NOLINT
+{
+    EXPECT_EQ(0, std_test_main());
+}

@@ -1205,4 +1205,5 @@ int main()
     // test_regex();
     test_atomic();
     test_locks();
+    return 0;
 }

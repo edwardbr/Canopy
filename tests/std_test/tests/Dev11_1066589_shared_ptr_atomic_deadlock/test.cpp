@@ -150,4 +150,5 @@ int main()
         atomic_compare_exchange_strong_explicit<Base>(
             &object, &object, make_shared<Derived>(), memory_order_seq_cst, memory_order_seq_cst);
     }
+    return 0;
 }

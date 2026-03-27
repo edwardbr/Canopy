@@ -35,4 +35,5 @@ int main()
         assert(wp1.expired());
         assert(wp5.lock() == sp);
     }
+    return 0;
 }

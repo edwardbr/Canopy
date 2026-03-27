@@ -71,4 +71,5 @@ int main()
         assert(g_mallocs > initial_mallocs); // allocator was used
         assert(*sp == 123);
     }
+    return 0;
 }

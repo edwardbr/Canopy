@@ -382,4 +382,5 @@ int main()
     atomic_wptr.store({});
     assert(!_CrtDumpMemoryLeaks());
 #endif // _DEBUG
+return 0;
 }

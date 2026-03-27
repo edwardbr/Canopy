@@ -19,6 +19,8 @@ add_subdirectory(fmt)
 # fmt CMakeLists.txt defines a PUBLIC_HEADER property which triggers a warning when used as a subproject
 set_property(TARGET fmt PROPERTY PUBLIC_HEADER)
 
+set(ARGS_BUILD_UNITTESTS OFF)
+set(ARGS_BUILD_EXAMPLE OFF)
 add_subdirectory(args)
 add_library(args::args ALIAS args)
 

@@ -92,4 +92,5 @@ int main()
 
         assert(dest && dest->str() == "Derived");
     }
+    return 0;
 }

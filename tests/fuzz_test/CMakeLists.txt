@@ -52,3 +52,36 @@ endif()
 if(CANOPY_BUILD_TEST)
   add_test(NAME fuzz_test_main COMMAND fuzz_test_main 10) # Run 10 iterations
 endif()
+
+# GTest-wrapped version so IDE test discovery (TestMate) can see the fuzz test
+include(GoogleTest)
+add_executable(fuzz_test_gtest fuzz_test_main.cpp fuzz_gtest_wrapper.cpp)
+
+target_link_libraries(
+  fuzz_test_gtest
+  PRIVATE rpc::rpc
+          transport_local
+          fuzz_test_idl
+          test_fixtures
+          args::args
+          ${LINK_LIBS}
+          rpc_log
+          GTest::gtest_main)
+
+target_include_directories(
+  fuzz_test_gtest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/include ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
+                          ${CMAKE_BINARY_DIR}/generated/include ${CMAKE_BINARY_DIR}/generated/src)
+
+target_compile_features(fuzz_test_gtest PRIVATE cxx_std_17)
+target_compile_definitions(fuzz_test_gtest PRIVATE ${CANOPY_DEFINES} "main=fuzz_test_entry")
+target_compile_options(fuzz_test_gtest PRIVATE ${CANOPY_COMPILE_OPTIONS})
+target_link_options(fuzz_test_gtest PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+target_link_directories(fuzz_test_gtest PUBLIC ${SGX_LIBRARY_PATH})
+set_property(TARGET fuzz_test_gtest PROPERTY COMPILE_PDB_NAME fuzz_test_gtest)
+
+if(CANOPY_USE_TELEMETRY)
+  target_compile_definitions(fuzz_test_gtest PRIVATE CANOPY_USE_TELEMETRY)
+  target_link_libraries(fuzz_test_gtest PRIVATE rpc_telemetry)
+endif()
+
+gtest_discover_tests(fuzz_test_gtest)

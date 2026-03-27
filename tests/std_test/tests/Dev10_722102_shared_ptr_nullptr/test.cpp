@@ -538,4 +538,5 @@ int main()
     pointer::test();
     // unique_ptr_::test();
     weak_ptr_::test();
+    return 0;
 }

@@ -5,6 +5,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 include(CTest)
+include(GoogleTest)
 
 # Build individual shared_ptr/weak_ptr tests with resolved dependencies These tests now have access to test
 # infrastructure headers
@@ -37,7 +38,8 @@ set(BUILDABLE_TESTS
     Dev11_0000000_user_defined_literals
     Dev11_0535636_functional_overhaul
     GH_002299_implicit_sfinae_constraints # Advanced SFINAE constraints not fully implemented
-    GH_005315_destructor_tombstones # Advanced destructor testing
+    # GH_005315_destructor_tombstones   # Built standalone below: main(argc,argv) + death-test framework incompatible
+    # with GTest wrapper
     P0433R2_deduction_guides # Conflicts with std library headers
     P0513R0_poisoning_the_hash
     VSO_0000000_instantiate_iterators_misc # Conflicts with std library headers
@@ -50,16 +52,23 @@ foreach(test_name ${BUILDABLE_TESTS})
     file(GLOB test_sources "${test_dir}/*.cpp" "${test_dir}/*.c")
 
     if(test_sources)
-      add_executable(${test_name} ${test_sources})
+      # Generate a GTest wrapper that calls the test's main() (renamed to std_test_main via -D). This lets TestMate
+      # discover and run each test as a named GTest case.
+      set(generated_wrapper "${CMAKE_CURRENT_BINARY_DIR}/${test_name}_gtest_wrapper.cpp")
+      set(TEST_NAME ${test_name})
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/gtest_wrapper.cpp.in" "${generated_wrapper}" @ONLY)
+
+      add_executable(${test_name} ${test_sources} ${generated_wrapper})
 
       target_include_directories(
         ${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include # STL test infrastructure
                              ${CMAKE_CURRENT_SOURCE_DIR}/../../rpc/include # For remote_pointer.h
       )
 
+      # Rename main() to std_test_main() so GTest::gtest_main can supply the real entry point
       target_compile_definitions(
         ${test_name} PRIVATE _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS # Suppress MS-specific warnings
-                             TEST_STL_COMPLIANCE)
+                             TEST_STL_COMPLIANCE "main=std_test_main")
 
       # Enable destructor tombstones for GH_005315 test
       if(test_name STREQUAL "GH_005315_destructor_tombstones")
@@ -77,28 +86,48 @@ foreach(test_name ${BUILDABLE_TESTS})
         target_link_libraries(${test_name} PRIVATE atomic)
       endif()
 
+      target_link_libraries(${test_name} PRIVATE GTest::gtest_main)
       target_compile_features(${test_name} PRIVATE cxx_std_17)
 
       # Force C++17 standard (override any C++20 settings)
       set_target_properties(${test_name} PROPERTIES CXX_STANDARD 17)
 
-      add_test(NAME ${test_name} COMMAND ${test_name})
-
-      # ASan options: disable leak detection for all tests Dev10_445289_make_shared also needs alloc_dealloc_mismatch=0
+      # ASan options: disable leak detection for all tests; Dev10_445289_make_shared also needs alloc_dealloc_mismatch=0
       # because it overrides operator new/delete
       if(test_name STREQUAL "Dev10_445289_make_shared")
-        set_tests_properties(
-          ${test_name} PROPERTIES ENVIRONMENT
-                                  "ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0;LSAN_OPTIONS=detect_leaks=0")
+        set(asan_env "ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0;LSAN_OPTIONS=detect_leaks=0")
       else()
-        set_tests_properties(${test_name} PROPERTIES ENVIRONMENT
-                                                     "ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0")
+        set(asan_env "ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0")
       endif()
-
-      # Skip gtest_discover_tests for death tests and ASan-incompatible tests
-      if(NOT test_name STREQUAL "GH_005315_destructor_tombstones" AND NOT test_name STREQUAL "Dev10_445289_make_shared")
-        gtest_discover_tests(${test_name})
-      endif()
+      gtest_discover_tests(${test_name} PROPERTIES ENVIRONMENT "${asan_env}")
     endif()
   endif()
 endforeach()
+
+# GH_005315_destructor_tombstones uses main(int,char**) and a death-test framework that is incompatible with the GTest
+# wrapper pattern above. Build it as a standalone executable with its own entry point.
+set(tombstones_dir "${CMAKE_CURRENT_SOURCE_DIR}/tests/GH_005315_destructor_tombstones")
+if(EXISTS "${tombstones_dir}")
+  file(GLOB tombstones_sources "${tombstones_dir}/*.cpp" "${tombstones_dir}/*.c")
+  if(tombstones_sources)
+    add_executable(GH_005315_destructor_tombstones ${tombstones_sources})
+    target_include_directories(GH_005315_destructor_tombstones PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+                                                                       ${CMAKE_CURRENT_SOURCE_DIR}/../../rpc/include)
+    target_compile_definitions(
+      GH_005315_destructor_tombstones PRIVATE _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS TEST_STL_COMPLIANCE
+                                              _MSVC_STL_DESTRUCTOR_TOMBSTONES=1)
+    if(NOT MSVC)
+      target_compile_options(
+        GH_005315_destructor_tombstones PRIVATE "-include${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp"
+                                                -Wno-unqualified-std-cast-call)
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "19")
+      target_link_libraries(GH_005315_destructor_tombstones PRIVATE atomic)
+    endif()
+    target_compile_features(GH_005315_destructor_tombstones PRIVATE cxx_std_17)
+    set_target_properties(GH_005315_destructor_tombstones PROPERTIES CXX_STANDARD 17)
+    add_test(NAME GH_005315_destructor_tombstones COMMAND GH_005315_destructor_tombstones)
+    set_tests_properties(GH_005315_destructor_tombstones
+                         PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0;LSAN_OPTIONS=detect_leaks=0")
+  endif()
+endif()

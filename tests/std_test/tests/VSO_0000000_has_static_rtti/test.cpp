@@ -89,4 +89,5 @@ int main()
 
         STATIC_ASSERT(HasGetDeleter<default_delete<short>, shared_ptr<short>>::value);
     }
+    return 0;
 }

@@ -38,4 +38,5 @@ int main()
         shared_ptr<A> t = s->shared_from_this();
         assert(t->num() == 7);
     }
+    return 0;
 }

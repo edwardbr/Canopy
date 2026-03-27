@@ -109,4 +109,5 @@ int main()
     test_orig();
 
     test_DevDiv_294051();
+    return 0;
 }

@@ -118,7 +118,9 @@
       "Bash(./build_debug_coroutine/output/fuzz_test_main 3)",
       "Bash(./build_debug_coroutine/output/fuzz_test_main --cycles 3)",
       "Bash(./build_debug_coroutine/output/fuzz_test_main --cycles 5)",
-      "Bash(./build_debug_coroutine/output/fuzz_test_main --cycles 20)"
+      "Bash(./build_debug_coroutine/output/fuzz_test_main --cycles 20)",
+      "Bash(./build_debug_coroutine/output/Dev09_196243_tr1_enable_shared_from_this_ops --gtest_list_tests)",
+      "Bash(ldd /var/home/edward/projects/Canopy/build_debug_coroutine/output/Dev09_196243_tr1_enable_shared_from_this_ops)"
     ]
   },
   "enabledPlugins": {}
