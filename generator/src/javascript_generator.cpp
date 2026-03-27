@@ -83,12 +83,16 @@ namespace javascript_generator
         }
 
         // Proto request/response message name (matches protobuf_generator.cpp naming)
-        std::string proto_request_name(const std::string& iface, const std::string& method)
+        std::string proto_request_name(
+            const std::string& iface,
+            const std::string& method)
         {
             return iface + "_" + method + "Request";
         }
 
-        std::string proto_response_name(const std::string& iface, const std::string& method)
+        std::string proto_response_name(
+            const std::string& iface,
+            const std::string& method)
         {
             return iface + "_" + method + "Response";
         }
@@ -114,7 +118,9 @@ namespace javascript_generator
         }
 
         // Get the 1-based ordinal of a named method in declaration order
-        int method_ordinal(const class_entity& iface_entity, const std::string& method_name)
+        int method_ordinal(
+            const class_entity& iface_entity,
+            const std::string& method_name)
         {
             int ordinal = 0;
             for (auto& fn : iface_entity.get_functions())
@@ -129,7 +135,10 @@ namespace javascript_generator
             return ordinal;
         }
 
-        void write_proxy_class(std::ostream& out, const class_entity& lib, const class_entity& iface_entity)
+        void write_proxy_class(
+            std::ostream& out,
+            const class_entity& lib,
+            const class_entity& iface_entity)
         {
             const std::string iface = iface_entity.get_name();
 
@@ -219,7 +228,10 @@ namespace javascript_generator
             (void)lib;
         }
 
-        void write_stub_class(std::ostream& out, const class_entity& lib, const class_entity& iface_entity)
+        void write_stub_class(
+            std::ostream& out,
+            const class_entity& lib,
+            const class_entity& iface_entity)
         {
             const std::string iface = iface_entity.get_name();
 
@@ -242,7 +254,8 @@ namespace javascript_generator
             out << "    };\n\n";
 
             out << "    " << iface << "_stub.prototype.handlePost = function(proto, interfaceId, methodId, data) {\n";
-            out << "        var methodNum = (methodId && methodId.toNumber) ? methodId.toNumber() : Number(methodId);\n";
+            out << "        var methodNum = (methodId && methodId.toNumber) ? methodId.toNumber() : "
+                   "Number(methodId);\n";
             out << "        switch (methodNum) {\n";
 
             for (auto& fn : iface_entity.get_functions())
@@ -310,7 +323,8 @@ namespace javascript_generator
 
                     // Interface ID constant (V3 fingerprint, matching C++ get_id(rpc::VERSION_3))
                     uint64_t id = fingerprint::generate(iface_entity, {}, nullptr, 3);
-                    out << "    var " << to_upper(iface) << "_ID = Long.fromString('" << std::to_string(id) << "', true);\n";
+                    out << "    var " << to_upper(iface) << "_ID = Long.fromString('" << std::to_string(id)
+                        << "', true);\n";
 
                     // Method ID constants (1-based, declaration order)
                     out << "    var " << iface << "_method = {\n";
