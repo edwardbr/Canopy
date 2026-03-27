@@ -36,26 +36,44 @@
    multiple calls with different <name>s in the same CMakeLists.txt never collide.
 ]]
 
-set(_CANOPY_JS_GENERATE_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "")
+set(_CANOPY_JS_GENERATE_CMAKE_DIR
+    "${CMAKE_CURRENT_LIST_DIR}"
+    CACHE INTERNAL "")
 
-function(CanopyJavascriptGenerate name idl base_dir output_dir)
-  set(options        compile_proto_js)
-  set(oneValueArgs   proto_js_format proto_js_name)
+function(
+  CanopyJavascriptGenerate
+  name
+  idl
+  base_dir
+  output_dir)
+  set(options compile_proto_js)
+  set(oneValueArgs proto_js_format proto_js_name)
   set(multiValueArgs dependencies include_paths copy_files)
-  cmake_parse_arguments("params" "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+  cmake_parse_arguments(
+    "params"
+    "${options}"
+    "${oneValueArgs}"
+    "${multiValueArgs}"
+    ${ARGN})
 
   # Resolve IDL to absolute path
   get_filename_component(idl_basename ${idl} NAME_WE)
   cmake_path(IS_RELATIVE idl idl_is_relative)
   if(${idl_is_relative})
-    cmake_path(APPEND base_dir ${idl} OUTPUT_VARIABLE idl)
+    cmake_path(
+      APPEND
+      base_dir
+      ${idl}
+      OUTPUT_VARIABLE
+      idl)
   endif()
 
   set(js_output "${output_dir}/${idl_basename}.js")
   set_source_files_properties("${js_output}" PROPERTIES GENERATED TRUE)
 
   if(NOT DEFINED CANOPY_IDL_GENERATOR_EXECUTABLE)
-    set(CANOPY_IDL_GENERATOR_EXECUTABLE "generator"
+    set(CANOPY_IDL_GENERATOR_EXECUTABLE
+        "generator"
         CACHE STRING "Path to the IDL generator executable")
   endif()
   set(IDL_GENERATOR ${CANOPY_IDL_GENERATOR_EXECUTABLE})
@@ -69,27 +87,29 @@ function(CanopyJavascriptGenerate name idl base_dir output_dir)
   endforeach()
 
   # ---- Dependency resolution + proto copy helper ---------------------------------
-  # Adds a proto-copy stamp command for one IDL generate target and appends the stamp
-  # path to ALL_STAMPS. Sets <out_var> to the created stamp path.
+  # Adds a proto-copy stamp command for one IDL generate target and appends the stamp path to ALL_STAMPS. Sets <out_var>
+  # to the created stamp path.
   function(_proto_copy_stamp_for gen_target suffix out_var)
-    get_target_property(_pd  ${gen_target} proto_dir)
+    get_target_property(_pd ${gen_target} proto_dir)
     get_target_property(_psr ${gen_target} proto_src_root)
     if(_pd AND _psr)
       set(_s "${CMAKE_CURRENT_BINARY_DIR}/${name}_${suffix}_proto_copy.stamp")
       add_custom_command(
-        OUTPUT  "${_s}"
-        COMMAND ${CMAKE_COMMAND}
-          -D "PROTO_DIR=${_pd}"
-          -D "PROTO_SRC_ROOT=${_psr}"
-          -D "OUTPUT_DIR=${output_dir}"
-          -D "STAMP_FILE=${_s}"
-          -P "${_CANOPY_JS_GENERATE_CMAKE_DIR}/CopyProtoFiles.cmake"
+        OUTPUT "${_s}"
+        COMMAND ${CMAKE_COMMAND} -D "PROTO_DIR=${_pd}" -D "PROTO_SRC_ROOT=${_psr}" -D "OUTPUT_DIR=${output_dir}" -D
+                "STAMP_FILE=${_s}" -P "${_CANOPY_JS_GENERATE_CMAKE_DIR}/CopyProtoFiles.cmake"
         DEPENDS "${_pd}/manifest.txt" ${gen_target}
         COMMENT "Copying proto files for ${suffix} into ${output_dir}")
-      set(ALL_STAMPS "${ALL_STAMPS}" "${_s}" PARENT_SCOPE)
-      set(${out_var} "${_s}" PARENT_SCOPE)
+      set(ALL_STAMPS
+          "${ALL_STAMPS}" "${_s}"
+          PARENT_SCOPE)
+      set(${out_var}
+          "${_s}"
+          PARENT_SCOPE)
     else()
-      set(${out_var} "" PARENT_SCOPE)
+      set(${out_var}
+          ""
+          PARENT_SCOPE)
     endif()
   endfunction()
 
@@ -133,13 +153,8 @@ function(CanopyJavascriptGenerate name idl base_dir output_dir)
     OUTPUT "${_js_stamp}"
     BYPRODUCTS "${js_output}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${output_dir}"
-    COMMAND
-      ${IDL_GENERATOR}
-        --idl "${idl}"
-        --output_path "${output_dir}"
-        --name "${idl_basename}"
-        --javascript
-        ${PATHS_PARAMS}
+    COMMAND ${IDL_GENERATOR} --idl "${idl}" --output_path "${output_dir}" --name "${idl_basename}" --javascript
+            ${PATHS_PARAMS}
     COMMAND ${CMAKE_COMMAND} -E touch "${_js_stamp}"
     MAIN_DEPENDENCY "${idl}"
     DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
@@ -153,7 +168,7 @@ function(CanopyJavascriptGenerate name idl base_dir output_dir)
     set(_dst "${output_dir}/${_fname}")
     set(_copy_stamp "${CMAKE_CURRENT_BINARY_DIR}/${name}_${_safe}_copy.stamp")
     add_custom_command(
-      OUTPUT  "${_copy_stamp}"
+      OUTPUT "${_copy_stamp}"
       BYPRODUCTS "${_dst}"
       COMMAND ${CMAKE_COMMAND} -E make_directory "${output_dir}"
       COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "${_dst}"
@@ -164,29 +179,26 @@ function(CanopyJavascriptGenerate name idl base_dir output_dir)
   endforeach()
 
   # ---- pbjs protobuf JS compilation ----------------------------------------------
-  # pbjs runs from cmake/pbjs/ — an isolated Canopy build-tool package entirely
-  # separate from any consuming application's node_modules.
+  # pbjs runs from cmake/pbjs/ — an isolated Canopy build-tool package entirely separate from any consuming
+  # application's node_modules.
   if(params_compile_proto_js)
     find_program(NPM_EXECUTABLE npm)
     find_program(NODE_EXECUTABLE node)
 
     if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
-      set(_pbjs_dir  "${_CANOPY_JS_GENERATE_CMAKE_DIR}/pbjs")
-      set(_pbjs      "${_pbjs_dir}/node_modules/.bin/pbjs")
+      set(_pbjs_dir "${_CANOPY_JS_GENERATE_CMAKE_DIR}/pbjs")
+      set(_pbjs "${_pbjs_dir}/node_modules/.bin/pbjs")
       set(_npm_stamp "${_pbjs_dir}/node_modules/.protobufjs-cli.stamp")
 
-      # The npm install runs once regardless of how many CanopyJavascriptGenerate
-      # calls request proto JS compilation — the output path is always the same.
+      # The npm install runs once regardless of how many CanopyJavascriptGenerate calls request proto JS compilation —
+      # the output path is always the same.
       get_property(_npm_done GLOBAL PROPERTY "CanopyPbjsInstalled")
       if(NOT _npm_done)
         add_custom_command(
           OUTPUT "${_npm_stamp}"
-          COMMAND ${CMAKE_COMMAND}
-            -DNPM_EXECUTABLE=${NPM_EXECUTABLE}
-            -DCLIENT_DIR=${_pbjs_dir}
-            -DPBJS_EXECUTABLE=${_pbjs}
-            -DSTAMP_FILE=${_npm_stamp}
-            -P "${_CANOPY_JS_GENERATE_CMAKE_DIR}/EnsurePbjsInstalled.cmake"
+          COMMAND
+            ${CMAKE_COMMAND} -DNPM_EXECUTABLE=${NPM_EXECUTABLE} -DCLIENT_DIR=${_pbjs_dir} -DPBJS_EXECUTABLE=${_pbjs}
+            -DSTAMP_FILE=${_npm_stamp} -P "${_CANOPY_JS_GENERATE_CMAKE_DIR}/EnsurePbjsInstalled.cmake"
           COMMENT "Installing protobufjs-cli (Canopy build tool)")
         set_property(GLOBAL PROPERTY "CanopyPbjsInstalled" TRUE)
       endif()
@@ -209,13 +221,9 @@ function(CanopyJavascriptGenerate name idl base_dir output_dir)
 
       set(_pbjs_stamp "${CMAKE_CURRENT_BINARY_DIR}/${name}_proto_js.stamp")
       add_custom_command(
-        OUTPUT  "${_pbjs_stamp}"
+        OUTPUT "${_pbjs_stamp}"
         BYPRODUCTS "${_proto_js_out}"
-        COMMAND "${_pbjs}"
-          -t static-module ${_pbjs_flags}
-          --path "${output_dir}"
-          -o "${_proto_js_out}"
-          "${_all_proto}"
+        COMMAND "${_pbjs}" -t static-module ${_pbjs_flags} --path "${output_dir}" -o "${_proto_js_out}" "${_all_proto}"
         COMMAND ${CMAKE_COMMAND} -E touch "${_pbjs_stamp}"
         DEPENDS "${_npm_stamp}" "${_own_proto_stamp}"
         WORKING_DIRECTORY "${_pbjs_dir}"

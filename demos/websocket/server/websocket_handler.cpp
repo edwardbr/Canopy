@@ -15,8 +15,8 @@ namespace websocket_demo
             const canopy::http_server::request& parsed_request,
             std::shared_ptr<streaming::stream> stream)
         {
-            auto transpt
-                = CO_AWAIT websocket_protocol::transport::make_server<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
+            auto transpt = CO_AWAIT
+                websocket_protocol::transport::make_server<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                     service_,
                     stream,
                     [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,

@@ -1,13 +1,18 @@
 #[[
-   Copyright (c) 2024 Edward Boggis-Rolfe
+   Copyright (c) 2026 Edward Boggis-Rolfe
    All rights reserved.
 ]]
 
 cmake_minimum_required(VERSION 3.24)
 
+include(CanopyJavascriptGenerate)
+
+set(transport_js "${CMAKE_CURRENT_SOURCE_DIR}/../../../transports/websocket/js/canopy_websocket_transport.js")
+set(demo_idl websocket_demo/websocket_demo.idl)
+
 CanopyGenerate(
   websocket_demo
-  websocket_demo/websocket_demo.idl
+  ${demo_idl}
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_BINARY_DIR}/generated
   ""
@@ -19,26 +24,32 @@ CanopyGenerate(
   install_dir ${GENERATED_INSTALL_DIR}
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
 
-include(CanopyJavascriptGenerate)
+canopyjavascriptgenerate(
+  websocket_demo_client
+  ${demo_idl}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  "${CMAKE_CURRENT_SOURCE_DIR}/../client/generated"
+  dependencies
+  rpc_types_idl
+  websocket_protocol_idl
+  include_paths
+  ${CMAKE_CURRENT_SOURCE_DIR}/.
+  copy_files
+  "${transport_js}"
+  compile_proto_js
+  proto_js_format
+  commonjs)
 
-set(_client_dir   "${CMAKE_CURRENT_SOURCE_DIR}/../client")
-set(_www_dir      "${CMAKE_CURRENT_SOURCE_DIR}/../server/www")
-set(_transport_js "${CMAKE_CURRENT_SOURCE_DIR}/../../../transports/websocket/js/canopy_websocket_transport.js")
-
-# Positional args (idl, base_dir) kept separate from keyword args so that output_dir
-# remains the 4th positional parameter when the two sets are combined in each call.
-set(_js_idl    websocket_demo/websocket_demo.idl)
-set(_js_base   ${CMAKE_CURRENT_SOURCE_DIR})
-set(_js_kwargs
-  dependencies rpc_types_idl websocket_protocol_idl
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-  copy_files "${_transport_js}"
+canopyjavascriptgenerate(
+  websocket_demo_www
+  ${demo_idl}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated"
+  dependencies
+  rpc_types_idl
+  websocket_protocol_idl
+  include_paths
+  ${CMAKE_CURRENT_SOURCE_DIR}/.
+  copy_files
+  "${transport_js}"
   compile_proto_js)
-
-CanopyJavascriptGenerate(websocket_demo_client
-  ${_js_idl} ${_js_base} "${_client_dir}/generated"
-  ${_js_kwargs} proto_js_format commonjs)
-
-CanopyJavascriptGenerate(websocket_demo_www
-  ${_js_idl} ${_js_base} "${_www_dir}/generated"
-  ${_js_kwargs})
