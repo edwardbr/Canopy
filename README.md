@@ -26,9 +26,7 @@ If you want to make your own app try copying this to get started: [Example Canop
 
 ## Why Canopy?
 
-Distributed C++ systems have always been hard. Getting two components talking across a process boundary, a network connection, or a security enclave typically means writing a large amount of hand-rolled serialization, connection management, and error-handling code — code that is fragile, hard to test, and has to be rewritten every time the transport or wire format changes.
-
-Canopy takes the classical RPC model — define an interface, get a proxy on the caller side and a stub on the callee side — and brings it fully up to date with modern C++:
+Distributed C++ systems have always been hard. Getting two components talking across a process boundary, a network connection, or a security enclave, typically means writing a large amount of hand-rolled serialization, connection management, and error-handling code — code that is fragile, hard to test, and has to be rewritten every time the transport or wire format changes.  Canopy is trying to help with that as an absolute expression of abstraction using machine generated interfaces, with the hope of removing 70-80% of coding effort.
 
 <div align="center">
 <pre>
@@ -101,7 +99,7 @@ blocking            co_await
 </pre>
 </div>
 
-**Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, enclaves, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.
+**Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, enclaves, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.  With TUN implementation planned it is hoped that each RPC object has the option of having its own exposed IP address.
 
 ---
 
@@ -115,7 +113,28 @@ blocking            co_await
 </pre>
 </div>
 
-**Serialization formats is a choice, not a commitment.** Binary YAS format for production throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call.
+**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call.
+
+---
+
+<div align="center">
+<pre>
+[ Machine A ]          [ Machine B ]          [ Machine C ]
+       |                      |                      |
+  Owns Object <---shared_ptr--- Receives Ref          |
+       |                      |                      |
+       |                      ---shared_ptr--------> Receives Ref
+       |                      (B can drop Ref)       |
+       |                                             |
+  Object Kept Alive  <--------------------------  Active Ref
+
+</pre>
+</div>
+  
+**Canopy extends C++ RAII across the network**. Using rpc::shared_ptr and rpc::optimistic_ptr, you can manage the lifetime of remote objects as easily as local ones, even in complex multi-hop topologies.
+
+- **rpc::shared_ptr<T>**: Mimics std::shared_ptr behavior across the wire. It maintains a distributed reference count. If Machine A shares an object with Machine B, and Machine B passes that reference to Machine C, the object on Machine A remains alive until both B and C have released their pointers.
+- **rpc::optimistic_ptr<T>**: Optimized for performance where the developer assumes the object will remain valid for the duration of the call, good for long lived objects such as llms and databases, or to break circular dependencies.
 
 ---
 
@@ -156,21 +175,19 @@ blocking            co_await
 
 **Remote reflection.** Canopy carries interface metadata across zone boundaries, making it possible to discover what interfaces a remote object supports at runtime. This opens the door to generic tooling, dynamic proxies, and runtime composition — capabilities that are normally reserved for languages with built-in reflection and are unusual in a C++ RPC system. One practical application is implementing Model Context Protocol (MCP) services: because Canopy can enumerate the methods and types of a remote object at runtime, it can generate MCP tool descriptions dynamically, allowing AI assistants to discover and call C++ services without any hand-written schema.
 
-If you are building a C++ system that needs components to talk to each other — whether on the same machine, across a data centre, or inside a hardware security boundary — Canopy is designed to make that straightforward rather than painful.
-
 ---
 
 ## Key Features
 
 - **Type-Safe**: Full C++ type system integration with compile-time verification
 - **Transport Agnostic**: Local, DLL, IPC, TCP, SPSC, SGX Enclave, and custom transports
-- **Composable Streams**: Stack TCP, TLS, SPSC, WebSocket layers in any combination
-- **Format Agnostic**: YAS binary, compressed binary, JSON, Protocol Buffers
+- **Composable Streams**: TCP, TLS, SPSC, WebSocket layers in any combination
+- **Format Agnostic**: YAS binary, compressed binary, JSON, Protocol Buffers, more can be added
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
 - **SGX Enclave Support**: Secure computation in Intel SGX enclaves
 - **Comprehensive Telemetry**: Sequence diagrams, console output, HTML animations
 - **Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [08-coroutine-libraries.md](documents/08-coroutine-libraries.md))
-- **AddressSanitizer Support**: Full ASan integration with 972 tests passing (100% memory safety validated)
+- **Address, UB and thread Sanitizer Support**: As part of clang
 
 ---
 
