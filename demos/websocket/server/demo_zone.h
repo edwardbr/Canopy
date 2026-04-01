@@ -12,7 +12,7 @@ namespace websocket_demo
     {
         class websocket_service : public rpc::root_service
         {
-            rpc::shared_ptr<i_calculator> demo_;
+            rpc::weak_ptr<i_calculator> demo_;
 
         public:
             websocket_service(

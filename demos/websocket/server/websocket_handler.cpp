@@ -26,12 +26,23 @@ namespace websocket_demo
                         auto wsrvc = std::static_pointer_cast<websocket_service>(svc);
                         auto local = wsrvc->get_demo_instance();
                         if (!local)
+                        {
                             CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
                                 rpc::error::OBJECT_NOT_FOUND(), {}};
+                        }
+
                         if (sink)
                         {
                             auto ret = CO_AWAIT local->set_callback(sink);
-                            CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{ret, std::move(local)};
+                            if (ret == rpc::error::OK())
+                            {
+                                CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
+                                    rpc::error::OK(), std::move(local)};
+                            }
+                            RPC_ERROR("set_callback failed with error code {}", ret);
+
+                            CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
+                                rpc::error::INVALID_DATA(), {}};
                         }
                         CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
                             rpc::error::OK(), std::move(local)};

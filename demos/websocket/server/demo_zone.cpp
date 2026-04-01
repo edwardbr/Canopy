@@ -103,7 +103,7 @@ namespace websocket_demo
 
         rpc::shared_ptr<i_calculator> websocket_service::get_demo_instance()
         {
-            if (!demo_)
+            if (!demo_.lock())
             {
 #ifdef _DEBUG
                 llama_log_set(
@@ -141,9 +141,11 @@ namespace websocket_demo
                     nullptr);
 #endif
 
-                demo_ = create_websocket_demo_instance(get_llama_cpp(), get_loaded_model(), shared_from_this());
+                auto demo = create_websocket_demo_instance(get_llama_cpp(), get_loaded_model(), shared_from_this());
+                demo_ = demo;
+                return demo;
             }
-            return demo_;
+            return nullptr;
         }
 
     }
