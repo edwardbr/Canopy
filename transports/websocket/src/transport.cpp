@@ -43,16 +43,34 @@ namespace websocket_protocol
 
         auto transpt = std::shared_ptr<transport>(new transport(service, client_zone_id, stream, std::move(handler)));
 
-        transpt->keep_alive_ = transpt;
         transpt->set_status(rpc::transport_status::CONNECTED);
 
-        service->spawn(transpt->receive_consumer_loop());
+        service->spawn(transpt->receive_consumer_loop(std::make_unique<activity_tracker>(transpt, service)));
 
         co_return transpt;
     }
 
+    bool transport::is_valid(coro::net::io_status status)
+    {
+        if (!stream_)
+        {
+            return false;
+        }
+
+        if (status.is_closed())
+        {
+            return false;
+        }
+
+        if (!status.is_ok())
+        {
+            return false;
+        }
+        return true;
+    }
+
     CORO_TASK(void)
-    transport::receive_consumer_loop()
+    transport::receive_consumer_loop(std::unique_ptr<activity_tracker> tracker)
     {
         auto self = shared_from_this();
         auto svc = get_service();
@@ -64,15 +82,16 @@ namespace websocket_protocol
         while (get_status() < rpc::transport_status::DISCONNECTED)
         {
             auto [status, span] = co_await stream_->receive(buf, std::chrono::milliseconds{5});
+
+            if (!is_valid(status))
+            {
+                co_return;
+            }
+
             if (!span.empty())
             {
                 received_span = span;
                 break;
-            }
-            else if (!status.is_timeout())
-            {
-                co_await stream_->set_closed();
-                co_return;
             }
         }
 
@@ -87,13 +106,11 @@ namespace websocket_protocol
         if (!env_parse_err.empty())
         {
             RPC_ERROR("[WS] invalid handshake envelope: {}", env_parse_err);
-            co_await stream_->set_closed();
             co_return;
         }
         if (handshake_env.type != websocket_protocol::v1::message_type::handshake)
         {
             RPC_ERROR("[WS] expected connect_request envelope type, got {}", static_cast<uint8_t>(handshake_env.type));
-            co_await stream_->set_closed();
             co_return;
         }
 
@@ -103,7 +120,6 @@ namespace websocket_protocol
         if (!parse_err.empty())
         {
             RPC_ERROR("[WS] invalid connect_request: {}", parse_err);
-            co_await stream_->set_closed();
             co_return;
         }
 
@@ -112,7 +128,6 @@ namespace websocket_protocol
         if (!client_object_r)
         {
             RPC_ERROR("[WS] with_object failed: {}", client_object_r.error());
-            co_await stream_->set_closed();
             co_return;
         }
         auto client_object = std::move(*client_object_r);
@@ -136,9 +151,9 @@ namespace websocket_protocol
             initial_env.data = std::move(initial_payload);
             auto initial_complete = rpc::to_protobuf<std::vector<uint8_t>>(initial_env);
             auto initial_send_status = CO_AWAIT stream_->send(rpc::byte_span{initial_complete});
-            if (!initial_send_status.is_ok())
+
+            if (!is_valid(initial_send_status))
             {
-                co_await stream_->set_closed();
                 co_return;
             }
         }
@@ -149,7 +164,6 @@ namespace websocket_protocol
         if (handler_ret.error_code != rpc::error::OK())
         {
             RPC_ERROR("[WS] handler failed: {}", rpc::error::to_string(handler_ret.error_code));
-            co_await stream_->set_closed();
             co_return;
         }
         auto output_descr = std::move(handler_ret.output_descriptor);
@@ -165,9 +179,8 @@ namespace websocket_protocol
         resp_env.data = std::move(resp_payload);
         auto resp_complete = rpc::to_protobuf<std::vector<uint8_t>>(resp_env);
         auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_complete});
-        if (!send_status.is_ok())
+        if (!is_valid(send_status))
         {
-            co_await stream_->set_closed();
             co_return;
         }
 
@@ -184,20 +197,41 @@ namespace websocket_protocol
                 if (!env_err.empty())
                 {
                     RPC_ERROR("[WS] envelope parse error: {}", env_err);
-                    co_await stream_->set_closed();
                     co_return;
                 }
                 CO_AWAIT stub_handle_send(std::move(env));
             }
-            else if (!recv_status.is_timeout())
+
+            if (!is_valid(recv_status))
             {
                 break;
             }
         }
 
-        co_await stream_->set_closed();
+        tracker.reset();
         RPC_DEBUG("receive_consumer_loop exiting for zone {}", get_zone_id().get_subnet());
         CO_RETURN;
+    }
+
+    CORO_TASK(void)
+    transport::cleanup(
+        std::shared_ptr<transport> transport,
+        std::shared_ptr<rpc::service> svc)
+    {
+        transport->set_status(rpc::transport_status::DISCONNECTED);
+
+        RPC_DEBUG("Both loops completed, finalising transport for zone {}", transport->get_zone_id().get_subnet());
+        if (transport->stream_)
+        {
+            CO_AWAIT transport->stream_->set_closed();
+            transport->stream_.reset();
+        }
+        rpc::transport_down_params params{.protocol_version = rpc::get_version(),
+            .destination_zone_id = transport->get_zone_id(),
+            .caller_zone_id = transport->get_adjacent_zone_id(),
+            .in_back_channel = {}};
+        co_await svc->transport_down(params);
+        co_return;
     }
 
     // Outbound i_marshaller interface - sends from child to parent
@@ -216,6 +250,12 @@ namespace websocket_protocol
                 params.method_id);
         }
 #endif
+        if (stream_->is_closed())
+        {
+            RPC_ERROR("stream already closed");
+            CO_RETURN rpc::send_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
+        }
+
         websocket_protocol::v1::request request;
         request.encoding = params.encoding_type;
         request.tag = params.tag;
@@ -233,8 +273,14 @@ namespace websocket_protocol
         auto complete_payload = rpc::to_protobuf(envelope);
         // send to parent
 
-        CO_AWAIT stream_->send(
+        auto status = CO_AWAIT stream_->send(
             rpc::byte_span(reinterpret_cast<const char*>(complete_payload.data()), complete_payload.size()));
+        if (!status.is_ok())
+        {
+            RPC_ERROR("Unable to send data to stream");
+            co_await stream_->set_closed();
+            CO_RETURN rpc::send_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
+        }
         CO_RETURN rpc::send_result{rpc::error::OK(), {}, {}};
     }
 
@@ -253,6 +299,11 @@ namespace websocket_protocol
                 params.method_id);
         }
 #endif
+        if (stream_->is_closed())
+        {
+            RPC_ERROR("stream already closed");
+            CO_RETURN;
+        }
         websocket_protocol::v1::request request;
         request.encoding = params.encoding_type;
         request.tag = params.tag;
@@ -270,8 +321,13 @@ namespace websocket_protocol
         auto complete_payload = rpc::to_protobuf(envelope);
         // send to parent
 
-        CO_AWAIT stream_->send(
+        auto status = CO_AWAIT stream_->send(
             rpc::byte_span(reinterpret_cast<const char*>(complete_payload.data()), complete_payload.size()));
+        if (!is_valid(status))
+        {
+            RPC_ERROR("Unable to post data to stream");
+            co_await stream_->set_closed();
+        }
         CO_RETURN;
     }
 

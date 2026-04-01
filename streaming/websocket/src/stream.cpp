@@ -159,6 +159,14 @@ namespace streaming::websocket
 
     auto stream::drive_send() -> coro::task<bool>
     {
+
+        if (closed_)
+            co_return false;
+        if (!wslay_ctx_)
+        {
+            assert(false);
+            co_return false;
+        }
         while (wslay_event_want_write(wslay_ctx_))
         {
             outgoing_raw_.clear();

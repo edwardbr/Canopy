@@ -22,6 +22,30 @@ namespace websocket_protocol
     public:
         using connection_handler = rpc::connection_handler;
 
+        struct activity_tracker
+        {
+            std::shared_ptr<transport> transport_;
+            std::shared_ptr<rpc::service> svc_; // kept here to keep the service alive
+
+            activity_tracker(
+                std::shared_ptr<transport> t,
+                std::shared_ptr<rpc::service> s)
+                : transport_(std::move(t))
+                , svc_(std::move(s))
+            {
+            }
+            activity_tracker(activity_tracker&&) noexcept = default;
+            activity_tracker(const activity_tracker&) = delete;
+            activity_tracker& operator=(activity_tracker&&) = delete;
+            activity_tracker& operator=(const activity_tracker&) = delete;
+
+            ~activity_tracker()
+            {
+                if (svc_)
+                    svc_->spawn(transport_->cleanup(transport_, svc_));
+            }
+        };
+
         // Server-side make_server: zone factory replaces the raw connection_handler.
         template<
             class Remote,
@@ -50,7 +74,7 @@ namespace websocket_protocol
 
         ~transport() override CANOPY_DEFAULT_DESTRUCTOR;
 
-        CORO_TASK(void) receive_consumer_loop();
+        CORO_TASK(void) receive_consumer_loop(std::unique_ptr<activity_tracker> tracker);
 
         CORO_TASK(rpc::connect_result)
         inner_connect(
@@ -77,10 +101,15 @@ namespace websocket_protocol
 
         void set_local_object_id(rpc::object id) { local_object_id_ = id; }
 
+        CORO_TASK(void)
+        cleanup(
+            std::shared_ptr<transport> transport,
+            std::shared_ptr<rpc::service> svc);
+        bool is_valid(coro::net::io_status status);
+
     private:
         std::shared_ptr<streaming::stream> stream_;
         rpc::object local_object_id_{0};
         connection_handler handler_;
-        stdex::member_ptr<transport> keep_alive_;
     };
 }

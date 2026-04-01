@@ -45,7 +45,7 @@ namespace websocket_demo
                 evt_stopped_ = std::make_shared<rpc::event>();
             }
 
-            ~demo() override = default;
+            ~demo() override { };
 
             CORO_TASK(int)
             add(double first_val,
