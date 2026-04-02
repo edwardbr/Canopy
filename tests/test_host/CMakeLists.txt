@@ -153,8 +153,7 @@ endif()
 
 if(CANOPY_BUILD_COROUTINE)
   add_executable(timeout_test timeout_tests.cpp)
-  target_compile_definitions(
-    timeout_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
+  target_compile_definitions(timeout_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
   target_include_directories(
     timeout_test
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
