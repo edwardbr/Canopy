@@ -583,6 +583,20 @@ namespace rpc
             default_values::default_subnet_size_bits, 1, default_values::default_object_id_size_bits, 0, {}));
         return std::move(*r);
     }();
+
+    // Single-line human-readable form of zone_address_args.
+    // Format: local sn=X [obj=Y]
+    //         ipv4:A.B.C.D[:port] sn=X [obj=Y]
+    //         ipv6:[groups][:port] sn=X [obj=Y]
+    //         ipv6_tun:[groups][:port] sn=X [obj=Y]
+    [[nodiscard]] std::string to_string(const zone_address_args& a);
+
+    // Single-line human-readable form of zone_address (packed blob).
+    [[nodiscard]] std::string to_string(const zone_address& a);
+
+    // Delegates to to_string(zone_address) via get_address().
+    [[nodiscard]] std::string to_string(const zone& z);
+    [[nodiscard]] std::string to_string(const remote_object& r);
     )__^)
 
     struct connection_settings

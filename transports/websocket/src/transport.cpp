@@ -21,6 +21,7 @@ namespace websocket_protocol
         , handler_(std::move(handler))
     {
         set_adjacent_zone_id(adjacent_zone_id);
+        RPC_DEBUG("New transport connection {}", rpc::to_string(adjacent_zone_id));
         // WebSocket transports are immediately available once connection is established
         set_status(rpc::transport_status::CONNECTED);
     }

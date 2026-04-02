@@ -30,12 +30,16 @@ namespace rpc::stream_transport
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
-        connection_handler handler)
+        connection_handler handler,
+        std::chrono::milliseconds call_timeout,
+        std::chrono::milliseconds call_timeout_sweep)
         : rpc::transport(
               name,
               service)
         , stream_(std::move(stream))
         , connection_handler_(std::move(handler))
+        , call_timeout_(call_timeout)
+        , call_timeout_sweep_(call_timeout_sweep)
     {
     }
 
@@ -64,10 +68,12 @@ namespace rpc::stream_transport
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
-        transport::connection_handler handler)
+        transport::connection_handler handler,
+        std::chrono::milliseconds call_timeout,
+        std::chrono::milliseconds call_timeout_sweep)
     {
-        auto transport = std::shared_ptr<rpc::stream_transport::transport>(
-            new rpc::stream_transport::transport(name, service, std::move(stream), std::move(handler)));
+        auto transport = std::shared_ptr<rpc::stream_transport::transport>(new rpc::stream_transport::transport(
+            name, service, std::move(stream), std::move(handler), call_timeout, call_timeout_sweep));
 
         transport->initialise_after_construction();
 
@@ -443,6 +449,7 @@ namespace rpc::stream_transport
             .transport = std::static_pointer_cast<rpc::stream_transport::transport>(self), .svc = svc});
         svc->spawn(receive_consumer_loop(tracker));
         svc->spawn(send_producer_loop(tracker));
+        svc->spawn(timeout_sweep_loop(tracker));
 
         RPC_DEBUG("pump_send_and_receive: scheduled tasks for zone {}", get_zone_id().get_subnet());
     }
@@ -837,6 +844,51 @@ namespace rpc::stream_transport
         send_cleanup_done_.store(true, std::memory_order_release);
 
         RPC_DEBUG("send_producer_loop completed for zone {}", get_zone_id().get_subnet());
+        CO_RETURN;
+    }
+
+    CORO_TASK(void)
+    transport::timeout_sweep_loop(std::shared_ptr<activity_tracker> tracker)
+    {
+        auto svc = get_service();
+        RPC_ASSERT(svc);
+        auto scheduler = svc->get_scheduler();
+
+        while (get_status() < rpc::transport_status::DISCONNECTED)
+        {
+            CO_AWAIT scheduler->schedule_after(call_timeout_sweep_);
+
+            auto now = std::chrono::steady_clock::now();
+            std::vector<std::shared_ptr<result_listener>> timed_out;
+            {
+                std::scoped_lock lock(pending_transmits_mtx_);
+                for (auto it = pending_transmits_.begin(); it != pending_transmits_.end();)
+                {
+                    if ((now - it->second->start_time) > call_timeout_)
+                    {
+                        auto elapsed_ms
+                            = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second->start_time).count();
+                        RPC_WARNING(
+                            "RPC call timed out after {}ms, sequence_number: {}, zone: {}",
+                            elapsed_ms,
+                            it->first,
+                            get_zone_id().get_subnet());
+                        timed_out.push_back(std::move(it->second));
+                        it = pending_transmits_.erase(it);
+                    }
+                    else
+                    {
+                        ++it;
+                    }
+                }
+            }
+            for (auto& listener : timed_out)
+            {
+                listener->error_code = rpc::error::CALL_TIMEOUT();
+                listener->event.set();
+            }
+        }
+
         CO_RETURN;
     }
 
