@@ -101,6 +101,11 @@ namespace rpc::stream_transport
         std::chrono::steady_clock::time_point disconnecting_since_{};
         static constexpr uint32_t shutdown_timeout_ms_ = 5000;
 
+        // Outbound call timeout: calls pending longer than this are failed with CALL_TIMEOUT
+        std::chrono::milliseconds call_timeout_;
+        // How often the sweep loop checks for timed-out calls
+        std::chrono::milliseconds call_timeout_sweep_;
+
         struct activity_tracker
         {
             std::shared_ptr<transport> transport;
@@ -111,6 +116,7 @@ namespace rpc::stream_transport
         // Producer/consumer coroutines
         CORO_TASK(void) receive_consumer_loop(std::shared_ptr<activity_tracker> tracker);
         CORO_TASK(void) send_producer_loop(std::shared_ptr<activity_tracker> tracker);
+        CORO_TASK(void) timeout_sweep_loop(std::shared_ptr<activity_tracker> tracker);
         CORO_TASK(bool) flush_send_queue();
 
         // Stub handlers (called when receiving messages)
@@ -304,7 +310,9 @@ namespace rpc::stream_transport
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
-            connection_handler handler);
+            connection_handler handler,
+            std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
+            std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000});
         void initialise_after_construction();
 
         void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
@@ -499,14 +507,18 @@ namespace rpc::stream_transport
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
-            transport::connection_handler handler);
+            transport::connection_handler handler,
+            std::chrono::milliseconds call_timeout,
+            std::chrono::milliseconds call_timeout_sweep);
     };
 
     std::shared_ptr<transport> make_server(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
-        transport::connection_handler handler);
+        transport::connection_handler handler,
+        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
+        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000});
 
     // Server-side: creates a transport that waits for the client's init message.
     // Internally wraps factory with make_new_zone_connection_handler so connection protocol details
@@ -520,30 +532,42 @@ namespace rpc::stream_transport
         std::shared_ptr<streaming::stream> stream,
         std::function<CORO_TASK(rpc::service_connect_result<Local>)(
             rpc::shared_ptr<Remote>,
-            std::shared_ptr<rpc::service>)> factory)
+            std::shared_ptr<rpc::service>)> factory,
+        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
+        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
     {
         auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
-        return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler));
+        return make_server(
+            std::move(name), std::move(service), std::move(stream), std::move(handler), call_timeout, call_timeout_sweep);
     }
 
     // Returns a transport_factory that creates a streaming server transport wrapping
     // the given stream. Pass the result to service::make_acceptor().
-    inline rpc::transport_factory transport_factory(std::shared_ptr<streaming::stream> stream)
+    inline rpc::transport_factory transport_factory(
+        std::shared_ptr<streaming::stream> stream,
+        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
+        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
     {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [stream = std::move(stream)](
+        return [stream = std::move(stream), call_timeout, call_timeout_sweep](
                    std::string name,
                    std::shared_ptr<rpc::service> svc,
                    rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-        { CO_RETURN make_server(std::move(name), std::move(svc), stream, std::move(handler)); };
+        {
+            CO_RETURN make_server(
+                std::move(name), std::move(svc), stream, std::move(handler), call_timeout, call_timeout_sweep);
+        };
     }
 
     inline std::shared_ptr<transport> make_client(
         std::string name,
         std::shared_ptr<rpc::service> service,
-        std::shared_ptr<streaming::stream> stream)
+        std::shared_ptr<streaming::stream> stream,
+        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
+        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
     {
-        return make_server(std::move(name), std::move(service), std::move(stream), nullptr);
+        return make_server(
+            std::move(name), std::move(service), std::move(stream), nullptr, call_timeout, call_timeout_sweep);
     }
 
     // Produces a connection_callback for use with streaming::listener.
@@ -559,19 +583,18 @@ namespace rpc::stream_transport
     make_connection_callback(
         std::function<CORO_TASK(rpc::service_connect_result<Local>)(
             rpc::shared_ptr<Remote>,
-            std::shared_ptr<rpc::service>)> factory)
+            std::shared_ptr<rpc::service>)> factory,
+        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
+        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
     {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [fn = std::move(factory)](
+        return [fn = std::move(factory), call_timeout, call_timeout_sweep](
                    std::string name,
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
-            auto transport = make_server<Remote, Local>(name, svc, std::move(stm), fn);
-            // while (transport && transport->get_status() < rpc::transport_status::DISCONNECTED)
-            // {
-            //     CO_AWAIT svc->get_scheduler()->schedule();
-            // }
+            auto transport = make_server<Remote, Local>(name, svc, std::move(stm), fn, call_timeout, call_timeout_sweep);
+            RPC_DEBUG("New transport connection {}", rpc::to_string(transport->get_adjacent_zone_id()));
             CO_RETURN;
         };
     }

@@ -19,6 +19,19 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_stub_creation(zone_->get_zone_id(), id_, reinterpret_cast<std::uintptr_t>(target.get()));
 #endif
+#ifdef CANOPY_USE_LOGGING
+#  if CANOPY_LOGGING_LEVEL <= 1
+        auto tmp = zone->get_zone_id().with_object(id);
+        if (!tmp)
+        {
+            RPC_ERROR("{}", tmp.error());
+        }
+        else
+        {
+            RPC_DEBUG("New object_stub {}", rpc::to_string(tmp.value()));
+        }
+#  endif
+#endif
     }
     object_stub::~object_stub()
     {

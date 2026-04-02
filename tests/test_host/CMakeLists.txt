@@ -63,6 +63,7 @@ add_executable(
   post_functionality_test_suite.cpp
   optimistic_ptr_tests.cpp
   streaming_transport_regression_suite.cpp
+  timeout_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${LIBCORO_DLL_TRANSPORT_SOURCES}
   ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
@@ -118,7 +119,13 @@ if(CANOPY_BUILD_COROUTINE)
            streaming
            streaming_tcp
            streaming_spsc_queue
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>)
+           streaming_spsc_wrapping
+           streaming_tls
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>)
+  if(CANOPY_BUILD_WEBSOCKET)
+    target_compile_definitions(rpc_test PRIVATE CANOPY_BUILD_WEBSOCKET)
+  endif()
 endif()
 
 target_compile_options(rpc_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

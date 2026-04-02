@@ -59,7 +59,8 @@ namespace rpc
         int SERVICE_PROXY_LOST_CONNECTION(); // channel is no longer available
         int CALL_CANCELLED();                // Service proxy remote call is cancelled
         int OBJECT_GONE(); // The service no longer has an object of that id, perhaps an optimistic pointer call attempt is happening
-        int MAX(); // the biggest value
+        int CALL_TIMEOUT(); // an outbound RPC call received no response within the transport timeout window
+        int MAX();          // the biggest value
 
         bool is_error(int err);    // any error listed above other than OK
         bool is_critical(int err); // any error listed above other than OK and OBJECT_GONE

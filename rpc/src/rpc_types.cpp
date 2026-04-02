@@ -253,6 +253,70 @@ namespace rpc
             }
             return {};
         }
+        // Formats a uint16_t as minimal lowercase hex (no leading zeros, except "0" for zero).
+        std::string fmt_hex_u16(uint16_t v)
+        {
+            if (v == 0)
+                return "0";
+            const char digits[] = "0123456789abcdef";
+            std::string s;
+            for (int shift = 12; shift >= 0; shift -= 4)
+                if (uint8_t n = (v >> shift) & 0xF; n || !s.empty() || shift == 0)
+                    s += digits[n];
+            return s;
+        }
+
+        // Formats a 4-byte routing prefix as dotted-decimal IPv4.
+        std::string fmt_ipv4(const std::vector<uint8_t>& p)
+        {
+            if (p.size() != 4)
+                return "?";
+            return std::to_string(p[0]) + "." + std::to_string(p[1]) + "." + std::to_string(p[2]) + "."
+                   + std::to_string(p[3]);
+        }
+
+        // Formats a 16-byte routing prefix as abbreviated IPv6 hex groups.
+        std::string fmt_ipv6(const std::vector<uint8_t>& p)
+        {
+            if (p.size() != 16)
+                return "?";
+            std::string s;
+            for (int i = 0; i < 16; i += 2)
+            {
+                if (i)
+                    s += ":";
+                s += fmt_hex_u16(static_cast<uint16_t>((p[i] << 8) | p[i + 1]));
+            }
+            return s;
+        }
+
+        // Appends subnet and object_id fields, omitting object when zero and
+        // omitting bit-widths when they are the default 64.
+        void fmt_sn_obj(
+            std::string& out,
+            uint64_t subnet,
+            uint8_t subnet_bits,
+            uint64_t obj_id,
+            uint8_t obj_bits)
+        {
+            out += " sn=";
+            out += std::to_string(subnet);
+            if (subnet_bits != default_values::default_subnet_size_bits)
+            {
+                out += "/";
+                out += std::to_string(subnet_bits);
+            }
+            if (obj_id != 0 || obj_bits != 64u)
+            {
+                out += " obj=";
+                out += std::to_string(obj_id);
+                if (obj_bits != 64u)
+                {
+                    out += "/";
+                    out += std::to_string(obj_bits);
+                }
+            }
+        }
     } // namespace
 
     rpc::expected<
@@ -656,5 +720,108 @@ namespace rpc
     bool zone_address::operator<(const zone_address& other) const
     {
         return blob < other.blob;
+    }
+    std::string to_string(const zone_address_args& a)
+    {
+        std::string result;
+        switch (a.type)
+        {
+        case address_type::local:
+            result = "local";
+            break;
+        case address_type::ipv4:
+            result = "ipv4:";
+            result += fmt_ipv4(a.routing_prefix);
+            if (a.port)
+            {
+                result += ":";
+                result += std::to_string(a.port);
+            }
+            break;
+        case address_type::ipv6:
+            result = "ipv6:[";
+            result += fmt_ipv6(a.routing_prefix);
+            result += "]";
+            if (a.port)
+            {
+                result += ":";
+                result += std::to_string(a.port);
+            }
+            break;
+        case address_type::ipv6_tun:
+            result = "ipv6_tun:[";
+            result += fmt_ipv6(a.routing_prefix);
+            result += "]";
+            if (a.port)
+            {
+                result += ":";
+                result += std::to_string(a.port);
+            }
+            break;
+        default:
+            result = "unknown";
+            break;
+        }
+        fmt_sn_obj(result, a.subnet, a.subnet_size_bits, a.object_id, a.object_id_size_bits);
+        return result;
+    }
+
+    std::string to_string(const zone& z)
+    {
+        return to_string(z.get_address());
+    }
+
+    std::string to_string(const remote_object& r)
+    {
+        return to_string(r.get_address());
+    }
+
+    std::string to_string(const zone_address& a)
+    {
+        if (!a.is_set())
+            return "(unset)";
+        auto prefix = a.get_routing_prefix();
+        auto type = a.get_address_type();
+        std::string result;
+        switch (type)
+        {
+        case address_type::local:
+            result = "local";
+            break;
+        case address_type::ipv4:
+            result = "ipv4:";
+            result += fmt_ipv4(prefix);
+            if (a.has_port())
+            {
+                result += ":";
+                result += std::to_string(a.get_port());
+            }
+            break;
+        case address_type::ipv6:
+            result = "ipv6:[";
+            result += fmt_ipv6(prefix);
+            result += "]";
+            if (a.has_port())
+            {
+                result += ":";
+                result += std::to_string(a.get_port());
+            }
+            break;
+        case address_type::ipv6_tun:
+            result = "ipv6_tun:[";
+            result += fmt_ipv6(prefix);
+            result += "]";
+            if (a.has_port())
+            {
+                result += ":";
+                result += std::to_string(a.get_port());
+            }
+            break;
+        default:
+            result = "unknown";
+            break;
+        }
+        fmt_sn_obj(result, a.get_subnet(), a.get_subnet_size_bits(), a.get_object_id(), a.get_object_id_size_bits());
+        return result;
     }
 } // namespace rpc

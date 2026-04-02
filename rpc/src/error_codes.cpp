@@ -120,16 +120,20 @@ namespace rpc
         {
             return state().offset_val + (state().offset_val_is_negative ? -23 : 23);
         }
+        [[nodiscard]] int CALL_TIMEOUT()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -24 : 24);
+        }
 
         // dont forget to update MIN & MAX if new values
 
         [[nodiscard]] int MIN()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -23 : 1);
+            return state().offset_val + (state().offset_val_is_negative ? -24 : 1);
         }
         [[nodiscard]] int MAX()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -1 : 23);
+            return state().offset_val + (state().offset_val_is_negative ? -1 : 24);
         }
 
         bool is_error(int err)
@@ -261,6 +265,10 @@ namespace rpc
             {
                 return "The service no longer has an object of that id, perhaps an optimistic pointer call attempt is "
                        "happining";
+            }
+            if (err == CALL_TIMEOUT())
+            {
+                return "outbound RPC call timed out waiting for a response";
             }
             return "invalid error code";
         }
