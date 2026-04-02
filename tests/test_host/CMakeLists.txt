@@ -63,7 +63,6 @@ add_executable(
   post_functionality_test_suite.cpp
   optimistic_ptr_tests.cpp
   streaming_transport_regression_suite.cpp
-  timeout_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${LIBCORO_DLL_TRANSPORT_SOURCES}
   ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
@@ -150,4 +149,48 @@ include(CTest)
 # Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
 if(NOT CANOPY_DEBUG_ADDRESS)
   gtest_discover_tests(rpc_test)
+endif()
+
+if(CANOPY_BUILD_COROUTINE)
+  add_executable(timeout_test timeout_tests.cpp)
+  target_compile_definitions(
+    timeout_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
+  target_include_directories(
+    timeout_test
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
+           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
+    PRIVATE ${CANOPY_INCLUDES})
+  target_link_libraries(
+    timeout_test
+    PUBLIC common_tests
+           example_idl
+           -Wl,--whole-archive
+           test_fixtures
+           -Wl,--no-whole-archive
+           yas_common
+           rpc::rpc
+           transport_local
+           transport_local_test
+           ${STREAMING_TRANSPORT_LIB}
+           ${STREAMING_TRANSPORT_TEST_LIB}
+           streaming
+           streaming_tcp
+           streaming_spsc_queue
+           streaming_spsc_wrapping
+           streaming_tls
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>
+           args::args
+           fmt::fmt-header-only
+           GTest::gtest_main
+           GTest::gmock_main
+           spdlog::spdlog
+           ${CANOPY_FMT_LIB}
+           ${CANOPY_LIBRARIES}
+           rpc_log)
+  if(CANOPY_BUILD_WEBSOCKET)
+    target_compile_definitions(timeout_test PRIVATE CANOPY_BUILD_WEBSOCKET)
+  endif()
+  target_compile_options(timeout_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_link_options(timeout_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 endif()
