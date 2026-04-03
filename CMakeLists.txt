@@ -102,7 +102,7 @@ install(
 # ── IDL source files ───────────────────────────────────────────────────────── Install non-generated IDL sources so
 # downstream projects can regenerate types.
 install(FILES rpc/interfaces/rpc/rpc_types.idl DESTINATION ${CMAKE_INSTALL_DATADIR}/canopy/idl/rpc)
-install(FILES types/json/interface/json/json.idl DESTINATION ${CMAKE_INSTALL_DATADIR}/canopy/idl/json)
+# json.idl has been moved to the standalone CanopyJson project
 
 if(CANOPY_BUILD_COROUTINE)
   install(FILES transports/streaming/interface/stream_transport/stream_transport.idl
