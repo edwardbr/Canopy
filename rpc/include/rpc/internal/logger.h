@@ -157,12 +157,12 @@ extern "C"
 
 #  else
 // Disabled logging - all macros are no-ops.
-#      define RPC_TRACE(...)
-#      define RPC_DEBUG(...)
-#      define RPC_INFO(...)
-#      define RPC_WARNING(...)
-#      define RPC_ERROR(...)
-#      define RPC_CRITICAL(...)
+#    define RPC_TRACE(...)
+#    define RPC_DEBUG(...)
+#    define RPC_INFO(...)
+#    define RPC_WARNING(...)
+#    define RPC_ERROR(...)
+#    define RPC_CRITICAL(...)
 #  endif
 
 #  ifdef __clang__
