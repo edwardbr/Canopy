@@ -24,7 +24,7 @@ set(ARGS_BUILD_EXAMPLE OFF)
 add_subdirectory(args)
 add_library(args::args ALIAS args)
 
-if(CANOPY_BUILD_TEST)
+if(CANOPY_BUILD_TEST OR CANOPY_BUILD_GTEST)
   add_subdirectory(googletest)
 endif()
 
