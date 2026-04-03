@@ -2,4 +2,4 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-add_subdirectory(json)
+# json types have been moved to the standalone CanopyJson project

@@ -77,7 +77,7 @@ extern "C"
               RPC_LOG_BACKEND(0, formatted);                                                                           \
           } while (0)
 #    else
-#      define RPC_TRACE(format_str, ...)
+#      define RPC_TRACE(...)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 1
@@ -88,7 +88,7 @@ extern "C"
               RPC_LOG_BACKEND(1, formatted);                                                                           \
           } while (0)
 #    else
-#      define RPC_DEBUG(format_str, ...)
+#      define RPC_DEBUG(...)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 2
@@ -99,7 +99,7 @@ extern "C"
               RPC_LOG_BACKEND(2, formatted);                                                                           \
           } while (0)
 #    else
-#      define RPC_INFO(format_str, ...)
+#      define RPC_INFO(...)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 3
@@ -110,7 +110,7 @@ extern "C"
               RPC_LOG_BACKEND(3, formatted);                                                                           \
           } while (0)
 #    else
-#      define RPC_WARNING(format_str, ...)
+#      define RPC_WARNING(...)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 4
@@ -131,7 +131,7 @@ extern "C"
             } while (0)
 #      endif
 #    else
-#      define RPC_ERROR(format_str, ...)
+#      define RPC_ERROR(...)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 5
@@ -152,17 +152,17 @@ extern "C"
             } while (0)
 #      endif
 #    else
-#      define RPC_CRITICAL(format_str, ...)
+#      define RPC_CRITICAL(...)
 #    endif
 
 #  else
-// Disabled logging - all macros are no-ops
-#    define RPC_TRACE(format_str, ...)
-#    define RPC_DEBUG(format_str, ...)
-#    define RPC_INFO(format_str, ...)
-#    define RPC_WARNING(format_str, ...)
-#    define RPC_ERROR(format_str, ...)
-#    define RPC_CRITICAL(format_str, ...)
+// Disabled logging - all macros are no-ops.
+#      define RPC_TRACE(...)
+#      define RPC_DEBUG(...)
+#      define RPC_INFO(...)
+#      define RPC_WARNING(...)
+#      define RPC_ERROR(...)
+#      define RPC_CRITICAL(...)
 #  endif
 
 #  ifdef __clang__

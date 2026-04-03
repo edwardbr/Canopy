@@ -46,7 +46,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.github.com)",
       "Bash(mkdir -p /tmp/js_test)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(gh api:*)",
+      "Bash(/var/home/edward/projects/CanopyJson/build_debug/output/json_test:*)"
     ]
   },
   "enabledPlugins": {}

@@ -216,6 +216,12 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 - [YAS Serializer](documents/serializers/yas-serializer.md) - Binary, JSON, and compressed formats
 - [Protocol Buffers](documents/serializers/protocol-buffers.md) - Cross-language serialization
 
+### Companion Repositories
+
+| Repository | Description |
+|------------|-------------|
+| [CanopyJSON](https://github.com/edwardbr/CanopyJSON) | Generic JSON value type (`json::v1::object`) for use in Canopy IDL interfaces. Provides runtime flexibility within a strongly-typed IDL — useful wherever the structure of data is open-ended at compile time, such as LLM request configuration. Serialises to pure JSON on JSON transports and compact binary on binary transports. |
+
 ---
 
 ## Quick Start
