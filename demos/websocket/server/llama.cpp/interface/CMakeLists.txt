@@ -12,6 +12,5 @@ CanopyGenerate(
   protocol_buffers
   install_dir include/secret_llama/idls
   mock secret_llama/secret_llama_mock.h
-  dependencies json_idl
-  defines ${BUILD_TEST_FLAG}
+defines ${BUILD_TEST_FLAG}
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/. ${FileSystem_DIR}/../include)
