@@ -41,7 +41,8 @@
 #include <secret_llama/secret_llama.h>
 #include "llama_server_engine.h"
 
-#include <json/json.h>
+// TODO: restore json-based config overrides once CanopyJSON is integrated as a dependency
+// #include <json/json.h>
 
 #define POOL_THREADS 4
 
@@ -91,7 +92,7 @@ namespace secret_llama
         struct llama_cpp_context : public context
         {
             uint64_t seed_ = 0;
-            json::v1::map config_;
+            // json::v1::map config_; // TODO: restore when CanopyJSON is integrated
 
             std::shared_ptr<llama_cpp_loaded_model> model_;
             std::unique_ptr<llama_context, context_deleter> ctx_;
@@ -140,15 +141,8 @@ namespace secret_llama
                 // Initialize stop strings based on chat template
                 stop_strs_ = {"<|im_end|>", "</s>", "<|endoftext|>"};
 
-                // deep copy
-                if (!overrides.empty())
-                {
-                    std::string error = rpc::from_yas_json(overrides, config_);
-                    if (!error.empty())
-                    {
-                        RPC_ASSERT(false);
-                    }
-                }
+                // TODO: parse overrides into config_ once CanopyJSON is integrated
+                (void)overrides;
             }
 
             ~llama_cpp_context() override
@@ -167,48 +161,14 @@ namespace secret_llama
 
                     // just the basics for now
                     {
-                        {
-                            auto it = config_.find("n_ctx");
-                            if (it != config_.end())
-                            {
-                                ctx_params.n_ctx = it->second.convert_to_int<uint32_t>();
-                            }
-                            RPC_DEBUG("setting n_ctx = {}", ctx_params.n_ctx);
-                        }
-                        {
-                            auto it = config_.find("n_batch");
-                            if (it != config_.end())
-                            {
-                                ctx_params.n_batch = it->second.convert_to_int<uint32_t>();
-                            }
-                            RPC_DEBUG("setting n_batch = {}", ctx_params.n_batch);
-                        }
+                        RPC_DEBUG("setting n_ctx = {}", ctx_params.n_ctx);
+                        RPC_DEBUG("setting n_batch = {}", ctx_params.n_batch);
 
                         // these thread parameters should typically not be used in production
-                        {
-                            auto it = config_.find("n_threads");
-                            if (it != config_.end())
-                            {
-                                ctx_params.n_threads = it->second.convert_to_int<int32_t>();
-                            }
-                            else
-                            {
-                                ctx_params.n_threads = POOL_THREADS;
-                            }
-                            RPC_DEBUG("setting n_threads = {}", ctx_params.n_threads);
-                        }
-                        {
-                            auto it = config_.find("n_threads_batch");
-                            if (it != config_.end())
-                            {
-                                ctx_params.n_threads_batch = it->second.convert_to_int<int32_t>();
-                            }
-                            else
-                            {
-                                ctx_params.n_threads_batch = POOL_THREADS;
-                            }
-                            RPC_DEBUG("setting n_threads_batch = {}", ctx_params.n_threads_batch);
-                        }
+                        ctx_params.n_threads = POOL_THREADS;
+                        RPC_DEBUG("setting n_threads = {}", ctx_params.n_threads);
+                        ctx_params.n_threads_batch = POOL_THREADS;
+                        RPC_DEBUG("setting n_threads_batch = {}", ctx_params.n_threads_batch);
                     }
 
                     ctx_ = std::unique_ptr<llama_context, context_deleter>(
@@ -228,47 +188,9 @@ namespace secret_llama
 
                     llama_sampler_chain_add(sampler_.get(), llama_sampler_init_dist(seed_));
 
-                    {
-                        auto it = config_.find("min_p");
-                        if (it != config_.end())
-                        {
-                            auto min_p = it->second.get<float>();
-                            llama_sampler_chain_add(sampler_.get(), llama_sampler_init_min_p(min_p, 1));
-                            RPC_DEBUG("setting min_p = {}", min_p);
-                        }
-                    }
-
-                    {
-                        auto it = config_.find("topp");
-                        if (it != config_.end())
-                        {
-                            auto top_p = it->second.get<float>();
-                            llama_sampler_chain_add(sampler_.get(), llama_sampler_init_top_p(top_p, 1));
-                            RPC_DEBUG("setting top_p = {}", top_p);
-                        }
-                    }
-
-                    {
-                        auto it = config_.find("temperature");
-                        if (it != config_.end())
-                        {
-                            auto temperature = it->second.get<float>();
-                            llama_sampler_chain_add(sampler_.get(), llama_sampler_init_temp(temperature));
-                            RPC_DEBUG("setting temperature = {}", temperature);
-                        }
-                    }
-
-                    // (sampler setup code omitted for brevity but would be here)
+                    // TODO: restore min_p, topp, temperature, template overrides once CanopyJSON is integrated
 
                     std::string chat_template_str;
-                    {
-                        auto it = config_.find("template");
-                        if (it != config_.end())
-                        {
-                            chat_template_str = it->second.get<std::string>();
-                            RPC_DEBUG("template = {}", chat_template_str);
-                        }
-                    }
 
                     chat_templates_ = common_chat_templates_init(model_->get(), chat_template_str);
                     RPC_DEBUG(
@@ -561,22 +483,7 @@ namespace secret_llama
                         }
                     }
 
-                    if (first_pass_)
-                    {
-                        auto it = config_.find("system_prompt");
-                        if (it != config_.end())
-                        {
-                            auto system_prompt = it->second.get<std::string>();
-                            if (!system_prompt.empty())
-                            {
-                                RPC_DEBUG(
-                                    "[CTX {}] First pass. Adding system prompt: \"{}\"",
-                                    std::to_string(context_id_),
-                                    system_prompt.c_str());
-                                add_message("system", system_prompt);
-                            }
-                        }
-                    }
+                    // TODO: restore system_prompt from config_ once CanopyJSON is integrated
 
                     std::string prompt_str(prompt.begin(), prompt.end());
                     RPC_DEBUG("[CTX {}] Adding user message: \"{}\"", std::to_string(context_id_), prompt_str.c_str());
