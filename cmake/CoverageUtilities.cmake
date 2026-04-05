@@ -57,7 +57,7 @@ function(canopy_add_coverage_targets coverage_test_target coverage_gtest_filter)
       COMMAND ${CMAKE_COMMAND} -E make_directory "${CANOPY_COVERAGE_OUTPUT_DIR}/gcovr"
       COMMAND
         "${GCOVR_EXECUTABLE}" --root "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" --exclude
-        "${CMAKE_SOURCE_DIR}/submodules/.*" --exclude "${CMAKE_BINARY_DIR}/generated/.*" --exclude
+        "${CANOPY_CPP_SOURCE_DIR}/submodules/.*" --exclude "${CMAKE_BINARY_DIR}/generated/.*" --exclude
         "${CMAKE_BINARY_DIR}/_deps/.*" --html-details "${CANOPY_COVERAGE_OUTPUT_DIR}/gcovr/index.html" --print-summary
         --sort=filename
       DEPENDS "${_coverage_run_target}"
@@ -75,8 +75,8 @@ function(canopy_add_coverage_targets coverage_test_target coverage_gtest_filter)
               "${CANOPY_COVERAGE_OUTPUT_DIR}/lcov/raw.info"
       COMMAND
         "${LCOV_EXECUTABLE}" --remove "${CANOPY_COVERAGE_OUTPUT_DIR}/lcov/raw.info" "/usr/*"
-        "${CMAKE_SOURCE_DIR}/submodules/*" "${CMAKE_BINARY_DIR}/generated/*" "${CMAKE_BINARY_DIR}/_deps/*" --output-file
-        "${CANOPY_COVERAGE_OUTPUT_DIR}/lcov/filtered.info"
+        "${CANOPY_CPP_SOURCE_DIR}/submodules/*" "${CMAKE_BINARY_DIR}/generated/*" "${CMAKE_BINARY_DIR}/_deps/*"
+        --output-file "${CANOPY_COVERAGE_OUTPUT_DIR}/lcov/filtered.info"
       COMMAND "${GENHTML_EXECUTABLE}" "${CANOPY_COVERAGE_OUTPUT_DIR}/lcov/filtered.info" --output-directory
               "${CANOPY_COVERAGE_OUTPUT_DIR}/lcov/html" --title "Canopy Coverage (lcov)"
       DEPENDS "${_coverage_run_target}"

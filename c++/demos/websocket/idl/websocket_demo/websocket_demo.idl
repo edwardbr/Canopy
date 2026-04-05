@@ -1,0 +1,31 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "websocket/websocket_protocol.idl"
+
+namespace websocket_demo
+{
+    namespace v1
+    {
+        interface i_context_event
+        {
+            [post] int piece(const std::string& piece);
+        };
+
+        [status=demo]
+        interface i_calculator
+        {
+            [description="add"] int add(double first_val, double second_val, [out] double& response);
+            [description="subtract"] int subtract(double first_val, double second_val, [out] double& response);
+            [description="multiply"] int multiply(double first_val, double second_val, [out] double& response);
+            [description="divide"] int divide(double first_val, double second_val, [out] double& response);
+
+            int add_prompt(const std::string& prompt);
+            // int get_piece([out] std::string& piece, [out] bool& complete);
+            int set_callback(const rpc::shared_ptr<i_context_event>& event);
+        };
+    }
+}
