@@ -20,6 +20,12 @@ message("configuring RPC")
 set(CANOPY_SOURCE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}"
     CACHE INTERNAL "Root of the Canopy2 source tree")
+set(CANOPY_CPP_SOURCE_DIR
+    "${CANOPY_SOURCE_DIR}/c++"
+    CACHE INTERNAL "Root of the Canopy C++ source tree")
+set(CANOPY_INTERFACE_SOURCE_DIR
+    "${CANOPY_SOURCE_DIR}/interfaces"
+    CACHE INTERNAL "Root of the shared Canopy interface tree")
 
 if("${CMAKE_CURRENT_SOURCE_DIR}" PATH_EQUAL "${CMAKE_SOURCE_DIR}")
   message("RPC standalone")
@@ -38,82 +44,11 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 if(NOT DEPENDENCIES_LOADED)
   include(Canopy)
-  add_subdirectory(submodules)
-endif()
-
-# Removed: CANOPY_USE_TELEMETRY - use CANOPY_USE_TELEMETRY instead
-if(CANOPY_USE_TELEMETRY)
-  set(CANOPY_ENCLAVE_TELEMETRY rpc::rpc_telemetry_enclave)
-  set(CANOPY_TELEMETRY_ENCLAVE_EDL rpc_telemetry_edl_header_enclave)
-  set(CANOPY_TELEMETRY rpc::rpc_telemetry)
-  set(CANOPY_TELEMETRY_INTERFACE rpc::rpc_telemetry_interface)
-else()
-  set(CANOPY_ENCLAVE_TELEMETRY)
-  set(CANOPY_TELEMETRY_ENCLAVE_EDL)
-  set(CANOPY_TELEMETRY)
-  set(CANOPY_TELEMETRY_INTERFACE)
+  add_subdirectory("${CANOPY_CPP_SOURCE_DIR}/submodules" submodules)
 endif()
 
 include(CanopyGenerate)
-include(GNUInstallDirs)
 
 add_subdirectory(generator)
-add_subdirectory(telemetry)
-add_subdirectory(rpc)
-add_subdirectory(transports)
-add_subdirectory(types)
-add_subdirectory(subcomponents/network_config)
-add_subdirectory(subcomponents/rpc_log)
-add_subdirectory(subcomponents/spsc_queue)
-
-if(CANOPY_BUILD_COROUTINE)
-  add_subdirectory(streaming)
-  if(CANOPY_BUILD_WEBSOCKET)
-    add_subdirectory(subcomponents/http_server)
-  endif()
-endif()
-
-if(CANOPY_BUILD_TEST)
-  add_subdirectory(tests)
-endif()
-
-if(CANOPY_BUILD_DEMOS)
-  add_subdirectory(demos)
-endif()
-
-if(CANOPY_BUILD_BENCHMARKING)
-  add_subdirectory(benchmarking)
-endif()
-
-if(CANOPY_ENABLE_COVERAGE)
-  include(CoverageUtilities)
-  canopy_add_coverage_targets(rpc_test "*")
-endif()
-
-# ── CMake modules ───────────────────────────────────────────────────────────
-install(
-  FILES cmake/CanopyGenerate.cmake
-        cmake/CanopyCreateDynamicLibrary.cmake
-        cmake/CanopyCreateLibcoroDynamicLibrary.cmake
-        cmake/CanopyCreateLibcoroSpscDynamicLibrary.cmake
-        cmake/CanopyComponentInstall.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/canopy)
-
-# ── IDL source files ───────────────────────────────────────────────────────── Install non-generated IDL sources so
-# downstream projects can regenerate types.
-install(FILES rpc/interfaces/rpc/rpc_types.idl DESTINATION ${CMAKE_INSTALL_DATADIR}/canopy/idl/rpc)
-# json.idl has been moved to the standalone CanopyJson project
-
-if(CANOPY_BUILD_COROUTINE)
-  install(FILES transports/streaming/interface/stream_transport/stream_transport.idl
-          DESTINATION ${CMAKE_INSTALL_DATADIR}/canopy/idl/stream_transport)
-endif()
-
-# ── Generated headers ───────────────────────────────────────────────────────── The generated/include tree only exists
-# after a build; cmake --install runs after the build so by then the directory is present.
-install(
-  DIRECTORY ${CMAKE_BINARY_DIR}/generated/include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  FILES_MATCHING
-  PATTERN "*.h"
-  PATTERN "*.hpp")
+add_subdirectory("${CANOPY_INTERFACE_SOURCE_DIR}" interfaces)
+add_subdirectory("${CANOPY_CPP_SOURCE_DIR}" c++)

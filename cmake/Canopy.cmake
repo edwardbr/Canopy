@@ -223,70 +223,71 @@ if(NOT DEPENDENCIES_LOADED)
       message(STATUS "CANOPY_BUILD_WEBSOCKET: ${CANOPY_BUILD_WEBSOCKET}")
       message(STATUS "CANOPY_BUILD_DEMOS: ${CANOPY_BUILD_DEMOS}")
       set(CANOPY_REQUIRED_SUBMODULES
-          submodules/yas
-          submodules/fmt
+          c++/submodules/yas
+          c++/submodules/fmt
           submodules/idlparser
-          submodules/spdlog
-          submodules/args
-          submodules/json
-          submodules/json-schema-validator)
+          c++/submodules/spdlog
+          c++/submodules/args
+          c++/submodules/json
+          c++/submodules/json-schema-validator)
 
       if(CANOPY_BUILD_COROUTINE)
-        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/libcoro_for_enclaves submodules/c-ares)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libcoro_for_enclaves c++/submodules/c-ares)
       endif()
       if(CANOPY_BUILD_PROTOCOL_BUFFERS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/protobuf)
       endif()
       if(CANOPY_BUILD_TEST OR CANOPY_BUILD_GTEST)
-        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/googletest)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/googletest)
       endif()
       if(CANOPY_BUILD_WEBSOCKET)
-        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/wslay submodules/llhttp)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/wslay c++/submodules/llhttp)
       endif()
       if(CANOPY_BUILD_DEMOS)
-        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/llama.cpp)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/llama.cpp)
       endif()
 
-      message(STATUS "Submodule init")
-      execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule init -- ${CANOPY_REQUIRED_SUBMODULES}
-        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
-        RESULT_VARIABLE GIT_SUBMOD_INIT_RESULT)
+      set(CANOPY_FULL_HISTORY_SUBMODULES
+          c++/submodules/yas
+          c++/submodules/fmt
+          submodules/idlparser
+          c++/submodules/args
+          c++/submodules/libcoro_for_enclaves)
 
-      if(NOT GIT_SUBMOD_INIT_RESULT EQUAL "0")
-        message(FATAL_ERROR "submodule init failed")
-      endif()
-
-      # Update all required submodules except llama.cpp (handled separately with --depth 1). --checkout explicitly
-      # overrides any 'update = none' entry in .gitmodules so that optional submodules (googletest,
-      # libcoro_for_enclaves, etc.) are actually fetched.
-      set(CANOPY_STANDARD_SUBMODULES ${CANOPY_REQUIRED_SUBMODULES})
-      list(REMOVE_ITEM CANOPY_STANDARD_SUBMODULES submodules/llama.cpp)
-
-      if(CANOPY_STANDARD_SUBMODULES)
-        message(STATUS "Submodule update")
-        execute_process(
-          COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout -- ${CANOPY_STANDARD_SUBMODULES}
-          WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
-          RESULT_VARIABLE GIT_SUBMOD_RESULT)
-
-        if(NOT GIT_SUBMOD_RESULT EQUAL "0")
-          message(FATAL_ERROR "git submodule update failed with ${GIT_SUBMOD_RESULT}, please checkout submodules")
+      set(CANOPY_MISSING_SUBMODULES)
+      foreach(CANOPY_SUBMODULE_PATH IN LISTS CANOPY_REQUIRED_SUBMODULES)
+        if(NOT IS_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../${CANOPY_SUBMODULE_PATH}")
+          list(APPEND CANOPY_MISSING_SUBMODULES ${CANOPY_SUBMODULE_PATH})
         endif()
-      endif()
+      endforeach()
 
-      if(CANOPY_BUILD_DEMOS)
-        # llama.cpp is a very large repository; use --depth 1 to avoid downloading the full history. --checkout
-        # overrides 'update = none' in .gitmodules.
-        message(STATUS "Submodule update (shallow): submodules/llama.cpp")
-        execute_process(
-          COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --depth 1 -- submodules/llama.cpp
-          WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
-          RESULT_VARIABLE GIT_LLAMA_RESULT)
+      if(NOT CANOPY_MISSING_SUBMODULES)
+        message(STATUS "Required submodules already present on disk; skipping git submodule init")
+      else()
+        foreach(CANOPY_SUBMODULE_PATH IN LISTS CANOPY_MISSING_SUBMODULES)
+          if(CANOPY_SUBMODULE_PATH IN_LIST CANOPY_FULL_HISTORY_SUBMODULES)
+            message(STATUS "Submodule update: ${CANOPY_SUBMODULE_PATH}")
+            execute_process(
+              COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout -- ${CANOPY_SUBMODULE_PATH}
+              WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+              RESULT_VARIABLE GIT_SUBMOD_RESULT)
+          else()
+            message(STATUS "Submodule update (shallow): ${CANOPY_SUBMODULE_PATH}")
+            execute_process(
+              COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --depth 1 -- ${CANOPY_SUBMODULE_PATH}
+              WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+              RESULT_VARIABLE GIT_SUBMOD_RESULT)
+          endif()
 
-        if(NOT GIT_LLAMA_RESULT EQUAL "0")
-          message(FATAL_ERROR "git submodule update --depth 1 for llama.cpp failed with ${GIT_LLAMA_RESULT}")
-        endif()
+          if(NOT GIT_SUBMOD_RESULT EQUAL "0")
+            message(FATAL_ERROR "git submodule update failed for ${CANOPY_SUBMODULE_PATH} with ${GIT_SUBMOD_RESULT}. "
+                                "The repository metadata for that submodule path is likely inconsistent.")
+          endif()
+
+          if(NOT IS_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../${CANOPY_SUBMODULE_PATH}")
+            message(FATAL_ERROR "submodule update completed but ${CANOPY_SUBMODULE_PATH} is still missing")
+          endif()
+        endforeach()
       endif()
     endif()
   endif()

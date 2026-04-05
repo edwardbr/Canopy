@@ -68,7 +68,10 @@ function(
       idl)
   endif()
 
+  set(_generator_output_dir "${CMAKE_BINARY_DIR}/generated/javascript/${name}")
+  set(_generator_js_output "${_generator_output_dir}/${idl_basename}.js")
   set(js_output "${output_dir}/${idl_basename}.js")
+  set_source_files_properties("${_generator_js_output}" PROPERTIES GENERATED TRUE)
   set_source_files_properties("${js_output}" PROPERTIES GENERATED TRUE)
 
   if(NOT DEFINED CANOPY_IDL_GENERATOR_EXECUTABLE)
@@ -155,10 +158,12 @@ function(
   set(_js_stamp "${CMAKE_CURRENT_BINARY_DIR}/${name}_js_generate.stamp")
   add_custom_command(
     OUTPUT "${_js_stamp}"
-    BYPRODUCTS "${js_output}"
+    BYPRODUCTS "${_generator_js_output}" "${js_output}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_generator_output_dir}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${output_dir}"
-    COMMAND ${IDL_GENERATOR} --idl "${idl}" --output_path "${output_dir}" --name "${idl_basename}" --javascript
-            ${PATHS_PARAMS}
+    COMMAND ${IDL_GENERATOR} --idl "${idl}" --output_path "${_generator_output_dir}" --name "${idl_basename}"
+            --javascript ${PATHS_PARAMS}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_generator_js_output}" "${js_output}"
     COMMAND ${CMAKE_COMMAND} -E touch "${_js_stamp}"
     MAIN_DEPENDENCY "${idl}"
     DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
@@ -190,6 +195,7 @@ function(
     find_program(NODE_EXECUTABLE node)
 
     if(NPM_EXECUTABLE AND NODE_EXECUTABLE)
+      set(_proto_input_root "${CMAKE_BINARY_DIR}/generated/src")
       set(_pbjs_dir "${_CANOPY_JS_GENERATE_CMAKE_DIR}/pbjs")
       set(_pbjs "${_pbjs_dir}/node_modules/.bin/pbjs")
       set(_npm_stamp "${_pbjs_dir}/node_modules/.protobufjs-cli.stamp")
@@ -227,7 +233,8 @@ function(
       add_custom_command(
         OUTPUT "${_pbjs_stamp}"
         BYPRODUCTS "${_proto_js_out}"
-        COMMAND "${_pbjs}" -t static-module ${_pbjs_flags} --path "${output_dir}" -o "${_proto_js_out}" "${_all_proto}"
+        COMMAND "${_pbjs}" -t static-module ${_pbjs_flags} --path "${_proto_input_root}" -o "${_proto_js_out}"
+                "${_all_proto}"
         COMMAND ${CMAKE_COMMAND} -E touch "${_pbjs_stamp}"
         DEPENDS "${_npm_stamp}" ${PROTO_COPY_STAMPS}
         WORKING_DIRECTORY "${_pbjs_dir}"

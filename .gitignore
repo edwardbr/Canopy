@@ -13,12 +13,12 @@ CMakeUserPresets.json
 !.vscode/settings.json
 !.vscode/extensions.json
 node_modules
-demos/websocket/client/generated/
-demos/websocket/server/www/generated/
+c++/demos/websocket/client/generated/
+c++/demos/websocket/server/www/generated/
 .cache
 venv
 __pycache__/
 *.pyc
-telemetry/reports
+c++/telemetry/reports
 .beads/bd.sock.startlock
 .beads/*.log.gz

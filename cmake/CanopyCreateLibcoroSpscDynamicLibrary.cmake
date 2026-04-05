@@ -27,12 +27,12 @@ function(CanopyCreateLibcoroSpscDynamicLibrary target_name)
     ${target_name}
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
-           "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/transports/streaming/include>"
-           "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/core/include>"
-           "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/streaming/spsc_queue/include>"
-           "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/spsc_queue/include>"
-           "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/subcomponents/network_config/include>"
-           "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/args>"
+           "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/transports/streaming/include>"
+           "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/streaming/core/include>"
+           "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/streaming/spsc_queue/include>"
+           "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/spsc_queue/include>"
+           "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/include>"
+           "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/submodules/args>"
     PRIVATE ${CANOPY_INCLUDES})
 
   target_link_libraries(
