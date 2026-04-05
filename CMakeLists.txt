@@ -14,17 +14,11 @@ project(
 
 message("configuring RPC")
 
-# Capture Canopy2's own source root so that subdirectory CMakeLists.txt files can reference sibling directories
-# correctly even when Canopy2 is consumed via add_subdirectory() (in which case CMAKE_SOURCE_DIR points to the
-# consumer).
-set(CANOPY_SOURCE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-    CACHE INTERNAL "Root of the Canopy2 source tree")
 set(CANOPY_CPP_SOURCE_DIR
-    "${CANOPY_SOURCE_DIR}/c++"
+    "${CMAKE_CURRENT_SOURCE_DIR}/c++"
     CACHE INTERNAL "Root of the Canopy C++ source tree")
 set(CANOPY_INTERFACE_SOURCE_DIR
-    "${CANOPY_SOURCE_DIR}/interfaces"
+    "${CMAKE_CURRENT_SOURCE_DIR}/interfaces"
     CACHE INTERNAL "Root of the shared Canopy interface tree")
 
 if("${CMAKE_CURRENT_SOURCE_DIR}" PATH_EQUAL "${CMAKE_SOURCE_DIR}")
@@ -44,7 +38,7 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 if(NOT DEPENDENCIES_LOADED)
   include(Canopy)
-  add_subdirectory("${CANOPY_CPP_SOURCE_DIR}/submodules" submodules)
+  add_subdirectory(submodules)
 endif()
 
 include(CanopyGenerate)
