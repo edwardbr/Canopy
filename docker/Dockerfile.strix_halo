@@ -108,22 +108,22 @@ RUN cmake -S . -B build \
 # -DGGML_NO_MMAP=ON
 
 # PrismML-Eng/llama.cpp fork — built with identical HIP flags, installed to its own prefix
-ARG PRISMML_REPO=https://github.com/PrismML-Eng/llama.cpp.git
-ARG PRISMML_BRANCH=main
-WORKDIR /opt/prismml-llama.cpp
-RUN git clone -b ${PRISMML_BRANCH} --single-branch --recursive ${PRISMML_REPO} . \
-  && git clean -xdf \
-  && git submodule update --recursive
+# ARG PRISMML_REPO=https://github.com/PrismML-Eng/llama.cpp.git
+# ARG PRISMML_BRANCH=main
+# WORKDIR /opt/prismml-llama.cpp
+# RUN git clone -b ${PRISMML_BRANCH} --single-branch --recursive ${PRISMML_REPO} . \
+#   && git clean -xdf \
+#   && git submodule update --recursive
 
-RUN cmake -S . -B build \
-  -DGGML_HIP=ON \
-  -DAMDGPU_TARGETS=${GFX} \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DGGML_RPC=ON \
-  -DLLAMA_HIP_UMA=ON \
-  -DCMAKE_INSTALL_PREFIX=/opt/prismml-llama.cpp/dist \
-  && cmake --build build --config Release -- -j$(nproc) \
-  && cmake --install build --config Release
+# RUN cmake -S . -B build \
+#   -DGGML_HIP=ON \
+#   -DAMDGPU_TARGETS=${GFX} \
+#   -DCMAKE_BUILD_TYPE=Release \
+#   -DGGML_RPC=ON \
+#   -DLLAMA_HIP_UMA=ON \
+#   -DCMAKE_INSTALL_PREFIX=/opt/prismml-llama.cpp/dist \
+#   && cmake --build build --config Release -- -j$(nproc) \
+#   && cmake --install build --config Release
 
 # runtime
 FROM base
@@ -138,7 +138,7 @@ COPY --from=builder /opt/whisper.cpp/build/bin/whisper-* /usr/local/bin/
 # Optional: Copy the main example if you want a CLI tool ready
 COPY --from=builder /opt/whisper.cpp/build/bin/main /usr/local/bin/whisper-cli
 
-COPY --from=builder /opt/prismml-llama.cpp/dist /opt/prismml-llama.cpp
+# COPY --from=builder /opt/prismml-llama.cpp/dist /opt/prismml-llama.cpp
 
 ENV ROCM_PATH=/opt/rocm-7.0 \
   HIP_PLATFORM=amd \
