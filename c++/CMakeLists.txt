@@ -5,6 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+add_subdirectory(submodules)
 add_subdirectory(telemetry)
 add_subdirectory(rpc)
 add_subdirectory(transports)

@@ -32,8 +32,6 @@ add_library(yas_common INTERFACE)
 
 target_include_directories(yas_common SYSTEM INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/yas/include>")
 
-add_subdirectory("${CANOPY_SOURCE_DIR}/submodules/idlparser" idlparser)
-
 add_subdirectory(json)
 
 # spdlog is used by telemetry (CANOPY_USE_TELEMETRY) and test targets (CANOPY_BUILD_TEST)
@@ -51,33 +49,6 @@ endif()
 # json-schema-validator is only used by tests/json_schema_test (requires NLOHMANN_JSON_CONFIG_INSTALL_DIR)
 if(DEFINED NLOHMANN_JSON_CONFIG_INSTALL_DIR)
   add_subdirectory(json-schema-validator)
-endif()
-
-if(CANOPY_BUILD_PROTOCOL_BUFFERS)
-  # Protocol Buffers - C++ only
-  message("Protocol Buffers - building C++ components only")
-  set(protobuf_INSTALL
-      OFF
-      CACHE BOOL "Install protobuf" FORCE)
-  set(protobuf_BUILD_TESTS
-      OFF
-      CACHE BOOL "Build protobuf tests" FORCE)
-  set(protobuf_BUILD_CONFORMANCE
-      OFF
-      CACHE BOOL "Build conformance tests" FORCE)
-  set(protobuf_BUILD_EXAMPLES
-      OFF
-      CACHE BOOL "Build examples" FORCE)
-  set(protobuf_BUILD_PROTOBUF_BINARIES
-      ON
-      CACHE BOOL "Build protobuf libraries and protoc" FORCE)
-  set(protobuf_BUILD_PROTOC_BINARIES
-      ON
-      CACHE BOOL "Build protoc compiler" FORCE)
-  set(protobuf_BUILD_LIBUPB
-      ON
-      CACHE BOOL "Build libupb (required for protoc)" FORCE)
-  add_subdirectory("${CANOPY_SOURCE_DIR}/submodules/protobuf" protobuf)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
