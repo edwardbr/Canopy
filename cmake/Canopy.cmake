@@ -254,9 +254,39 @@ if(NOT DEPENDENCIES_LOADED)
           c++/submodules/args
           c++/submodules/libcoro_for_enclaves)
 
+      function(canopy_submodule_is_populated submodule_path out_var)
+        set(submodule_root "${CMAKE_CURRENT_LIST_DIR}/../${submodule_path}")
+
+        if(NOT IS_DIRECTORY "${submodule_root}")
+          set(${out_var}
+              FALSE
+              PARENT_SCOPE)
+          return()
+        endif()
+
+        file(
+          GLOB submodule_entries
+          LIST_DIRECTORIES true
+          RELATIVE "${submodule_root}"
+          "${submodule_root}/*")
+
+        list(LENGTH submodule_entries submodule_entry_count)
+        if(submodule_entry_count EQUAL 0)
+          set(${out_var}
+              FALSE
+              PARENT_SCOPE)
+          return()
+        endif()
+
+        set(${out_var}
+            TRUE
+            PARENT_SCOPE)
+      endfunction()
+
       set(CANOPY_MISSING_SUBMODULES)
       foreach(CANOPY_SUBMODULE_PATH IN LISTS CANOPY_REQUIRED_SUBMODULES)
-        if(NOT IS_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../${CANOPY_SUBMODULE_PATH}")
+        canopy_submodule_is_populated("${CANOPY_SUBMODULE_PATH}" CANOPY_SUBMODULE_PRESENT)
+        if(NOT CANOPY_SUBMODULE_PRESENT)
           list(APPEND CANOPY_MISSING_SUBMODULES ${CANOPY_SUBMODULE_PATH})
         endif()
       endforeach()
@@ -284,8 +314,9 @@ if(NOT DEPENDENCIES_LOADED)
                                 "The repository metadata for that submodule path is likely inconsistent.")
           endif()
 
-          if(NOT IS_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../${CANOPY_SUBMODULE_PATH}")
-            message(FATAL_ERROR "submodule update completed but ${CANOPY_SUBMODULE_PATH} is still missing")
+          canopy_submodule_is_populated("${CANOPY_SUBMODULE_PATH}" CANOPY_SUBMODULE_PRESENT)
+          if(NOT CANOPY_SUBMODULE_PRESENT)
+            message(FATAL_ERROR "submodule update completed but ${CANOPY_SUBMODULE_PATH} is still not populated")
           endif()
         endforeach()
       endif()

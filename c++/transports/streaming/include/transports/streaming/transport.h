@@ -49,7 +49,6 @@ namespace rpc::stream_transport
             envelope_payload payload;
             int error_code = rpc::error::OK();
             std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
-            bool post_only = false;
         };
 
         struct activity_tracker;
