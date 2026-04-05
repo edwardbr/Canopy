@@ -273,7 +273,7 @@ Zone 2: Object kept alive by remote reference
 As documented in `service.h`, transports are owned by:
 
 ```cpp
-// From rpc/include/rpc/internal/service.h:
+// From c++/rpc/include/rpc/internal/service.h:
 // transports owned by:
 // - service proxies
 // - pass through objects
@@ -549,16 +549,16 @@ Multiple threads can:
 ## Code References
 
 **Smart Pointers**:
-- `rpc/include/rpc/shared_ptr.h` - shared_ptr implementation
-- `rpc/include/rpc/weak_ptr.h` - weak_ptr implementation
-- `rpc/include/rpc/optimistic_ptr.h` - optimistic_ptr implementation
+- `c++/rpc/include/rpc/shared_ptr.h` - shared_ptr implementation
+- `c++/rpc/include/rpc/weak_ptr.h` - weak_ptr implementation
+- `c++/rpc/include/rpc/optimistic_ptr.h` - optimistic_ptr implementation
 
 **member_ptr**:
-- `rpc/include/rpc/internal/member_ptr.h` - Thread-safe wrapper
+- `c++/rpc/include/rpc/internal/member_ptr.h` - Thread-safe wrapper
 
 **Reference Counting**:
-- `rpc/src/object_stub.cpp` - Server-side refcounting
-- `rpc/src/object_proxy.cpp` - Client-side refcounting
+- `c++/rpc/src/object_stub.cpp` - Server-side refcounting
+- `c++/rpc/src/object_proxy.cpp` - Client-side refcounting
 
 ## Next Steps
 

@@ -550,12 +550,12 @@ interface_cache_miss       // New interface proxy created
 ## Code References
 
 **Object-Level Machinery**:
-- `rpc/include/rpc/internal/object_proxy.h` - Object proxy class
-- `rpc/include/rpc/internal/stub.h` - Object stub and interface stub classes
-- `rpc/include/rpc/internal/service_proxy.h` - Service proxy class
-- `rpc/src/object_proxy.cpp` - Object proxy implementation
-- `rpc/src/object_stub.cpp` - Object stub implementation
-- `rpc/src/service_proxy.cpp` - Service proxy implementation
+- `c++/rpc/include/rpc/internal/object_proxy.h` - Object proxy class
+- `c++/rpc/include/rpc/internal/stub.h` - Object stub and interface stub classes
+- `c++/rpc/include/rpc/internal/service_proxy.h` - Service proxy class
+- `c++/rpc/src/object_proxy.cpp` - Object proxy implementation
+- `c++/rpc/src/object_stub.cpp` - Object stub implementation
+- `c++/rpc/src/service_proxy.cpp` - Service proxy implementation
 
 **Code Generation**:
 - `generator/src/synchronous_generator.cpp` - IDL to C++ generator
@@ -563,8 +563,8 @@ interface_cache_miss       // New interface proxy created
 - `cmake/CanopyGenerate.cmake` - Code generation CMake macros
 
 **Examples**:
-- `demos/comprehensive/idl/comprehensive/comprehensive.idl` - Example IDL
-- `demos/comprehensive/` - Complete working demo
+- `c++/demos/comprehensive/idl/comprehensive/comprehensive.idl` - Example IDL
+- `c++/demos/comprehensive/` - Complete working demo
 
 ## Next Steps
 

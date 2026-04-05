@@ -236,9 +236,9 @@ class zone_factory : public i_zone_factory
 - `documents/transports/sgx.md` - SGX enclave hierarchies
 
 **Implementation**:
-- `rpc/include/rpc/child_service.h` - Child service class
-- `transports/local/include/local/child_transport.h` - Child transport
-- `transports/local/include/local/parent_transport.h` - Parent transport
+- `c++/rpc/include/rpc/child_service.h` - Child service class
+- `c++/transports/local/include/local/child_transport.h` - Child transport
+- `c++/transports/local/include/local/parent_transport.h` - Parent transport
 
 ## 9. Next Steps
 

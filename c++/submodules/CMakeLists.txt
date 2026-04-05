@@ -145,7 +145,7 @@ if(CANOPY_BUILD_COROUTINE)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/CMakeLists.txt")
       message(
         FATAL_ERROR
-          "llama.cpp submodule is not initialised. Run:\n" "  git submodule update --init submodules/llama.cpp\n"
+          "llama.cpp submodule is not initialised. Run:\n" "  git submodule update --init c++/submodules/llama.cpp\n"
           "or reconfigure with -DCANOPY_BUILD_DEMOS=OFF to skip it.")
     endif()
     set(LLAMA_BUILD_COMMON ON)

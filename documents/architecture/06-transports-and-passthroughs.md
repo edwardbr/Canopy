@@ -41,7 +41,7 @@ All transports inherit from `rpc::transport`, which defines the interface for:
 
 ### Transport Ownership Model
 
-As documented in `rpc/include/rpc/internal/service.h`, transports have a distributed ownership model:
+As documented in `c++/rpc/include/rpc/internal/service.h`, transports have a distributed ownership model:
 
 ```cpp
 // From service.h:
@@ -642,12 +642,12 @@ Enable telemetry to see the complete picture:
 ## Code References
 
 **Transport Implementation:**
-- `rpc/include/rpc/internal/transport.h` - Transport base class
-- `rpc/src/transport.cpp` - Transport implementation
+- `c++/rpc/include/rpc/internal/transport.h` - Transport base class
+- `c++/rpc/src/transport.cpp` - Transport implementation
 
 **Passthrough Implementation:**
-- `rpc/include/rpc/internal/pass_through.h` - Passthrough class definition
-- `rpc/src/pass_through.cpp` - Passthrough implementation
+- `c++/rpc/include/rpc/internal/pass_through.h` - Passthrough class definition
+- `c++/rpc/src/pass_through.cpp` - Passthrough implementation
 
 **Transport Creation:**
 - `transport::create_pass_through()` - Passthrough factory method

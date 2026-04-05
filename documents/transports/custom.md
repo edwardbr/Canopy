@@ -42,8 +42,8 @@ public:
 ```
 
 The parameter-object types (`send_params`, `post_params`, `try_cast_params`,
-and so on) live in `rpc/include/rpc/internal/marshaller.h`. The canonical
-virtual interface lives in `rpc/include/rpc/internal/transport.h`.
+and so on) live in `c++/rpc/include/rpc/internal/marshaller.h`. The canonical
+virtual interface lives in `c++/rpc/include/rpc/internal/transport.h`.
 
 ## Lifecycle Notifications
 
@@ -81,6 +81,6 @@ DLL transports) that creates parent/child zone relationships:
 5. **Thread safety**: Use `stdex::member_ptr` for cross-zone references
 
 Examples:
-- **Local**: `transports/local/` - In-process parent/child
+- **Local**: `c++/transports/local/` - In-process parent/child
 - **SGX**: Enclave transport - Host/enclave boundary
 - **DLL**: In-process shared-library child zone

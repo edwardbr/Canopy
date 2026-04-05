@@ -530,11 +530,11 @@ on_service_transport_down(
 ## Code References
 
 **Zone Structure**:
-- `rpc/interfaces/rpc_types.idl` - Zone definition
+- `interfaces/rpc/rpc_types.idl` - Zone definition
 
 **Service Management**:
-- `rpc/include/rpc/service.h` - Zone lifecycle management
-- `rpc/src/service.cpp` - Zone operations
+- `c++/rpc/include/rpc/service.h` - Zone lifecycle management
+- `c++/rpc/src/service.cpp` - Zone operations
 
 **Zone Types**:
 - `rpc_types.idl:destination_zone` - Routing target

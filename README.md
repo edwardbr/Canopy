@@ -450,12 +450,18 @@ Git submodules manage external dependencies they will auto load when required:
 
 ```
 canopy/
-├── rpc/                    # Core RPC library
+├── c++/                    # C++ source code
+│   ├── rpc/                # Core RPC library
+│   ├── transports/         # Transport implementations (local, tcp, spsc, sgx)
+│   ├── tests/              # Test suite
+│   ├── demos/              # Example applications
+│   ├── telemetry/          # Telemetry and logging
+│   ├── streaming/          # Coroutine streaming stack
+│   ├── subcomponents/      # Network config, SPSC queue, HTTP server, etc.
+│   ├── benchmarking/       # Benchmark targets
+│   └── submodules/         # C++ third-party dependencies
 ├── generator/              # IDL code generator
-├── transports/             # Transport implementations (local, tcp, spsc, sgx)
-├── tests/                  # Test suite
-├── demos/                  # Example applications
-├── telemetry/              # Telemetry and logging
+├── interfaces/             # Shared IDL interface definitions
 ├── cmake/                  # CMake build configuration modules
 │   ├── Canopy.cmake        # Main build configuration
 │   ├── Linux.cmake         # Linux-specific settings
@@ -463,7 +469,7 @@ canopy/
 │   ├── SGX.cmake           # SGX enclave support
 │   └── CanopyGenerate.cmake # IDL code generation
 ├── documents/              # Comprehensive documentation
-├── submodules/             # External dependencies
+├── submodules/             # Core dependencies (idlparser, protobuf)
 └── CMakeLists.txt          # Build configuration
 ```
 

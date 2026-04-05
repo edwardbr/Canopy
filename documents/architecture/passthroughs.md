@@ -284,8 +284,8 @@ Enable telemetry to see passthroughs:
 ## Code References
 
 **Implementation:**
-- `rpc/include/rpc/internal/pass_through.h` - Passthrough class definition (rpc/internal/pass_through.h)
-- `rpc/src/pass_through.cpp` - Passthrough implementation (rpc/src/pass_through.cpp)
+- `c++/rpc/include/rpc/internal/pass_through.h` - Passthrough class definition
+- `c++/rpc/src/pass_through.cpp` - Passthrough implementation
 
 **Creation:**
 - `transport::create_pass_through()` - Factory method (rpc/internal/transport.h:110)
