@@ -99,24 +99,24 @@ Canopy follows several key design principles:
 ## Project Structure
 
 ```
-rpc/
-├── include/rpc/              # Public headers
-│   └── internal/             # Internal implementation
-├── src/                      # Core library implementation
-├── interfaces/               # Base IDL interfaces (rpc_types.idl)
-└── ...
-
-transports/                   # Transport implementations
-├── local/                    # In-process transport
-├── tcp/                      # Network transport
-├── spsc/                     # SPSC queue transport
-├── sgx/                      # SGX enclave transport
-└── ...
-
-generator/                    # IDL code generator
-tests/                        # Test suite
-demos/                        # Demo applications
-telemetry/                    # Telemetry services
+canopy/
+├── c++/                      # C++ source code
+│   ├── rpc/                  # Core RPC library
+│   │   ├── include/rpc/      # Public headers
+│   │   │   └── internal/     # Internal implementation
+│   │   └── src/              # Core library implementation
+│   ├── transports/           # Transport implementations
+│   │   ├── local/            # In-process transport
+│   │   ├── sgx/              # SGX enclave transport
+│   │   └── streaming/        # Streaming transport
+│   ├── tests/                # Test suite
+│   ├── demos/                # Demo applications
+│   ├── telemetry/            # Telemetry services
+│   ├── streaming/            # Coroutine streaming stack
+│   └── subcomponents/        # Network config, SPSC queue, etc.
+├── generator/                # IDL code generator
+├── interfaces/               # Shared IDL interfaces (rpc_types.idl, etc.)
+└── submodules/               # Core dependencies (idlparser, protobuf)
 ```
 
 ## Version and Requirements

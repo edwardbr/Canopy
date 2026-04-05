@@ -465,14 +465,14 @@ service->add_transport(rpc::destination_zone{4}, local_transport);
 ## Code References
 
 **Service Classes**:
-- `rpc/include/rpc/service.h` - Service base class
-- `rpc/include/rpc/child_service.h` - Child service class
-- `rpc/src/service.cpp` - Service implementation
-- `rpc/src/child_service.cpp` - Child service implementation
+- `c++/rpc/include/rpc/service.h` - Service base class
+- `c++/rpc/include/rpc/child_service.h` - Child service class
+- `c++/rpc/src/service.cpp` - Service implementation
+- `c++/rpc/src/child_service.cpp` - Child service implementation
 
 **Service Proxy**:
-- `rpc/include/rpc/internal/service_proxy.h` - Service proxy class
-- `rpc/src/service_proxy.cpp` - Service proxy implementation
+- `c++/rpc/include/rpc/internal/service_proxy.h` - Service proxy class
+- `c++/rpc/src/service_proxy.cpp` - Service proxy implementation
 
 ## Next Steps
 

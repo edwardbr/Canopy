@@ -317,10 +317,10 @@ cd build_debug
 **Run all tests individually (recommended for ASan):**
 ```bash
 # Standard build
-tests/scripts/run_asan_tests.sh
+c++/tests/scripts/run_asan_tests.sh
 
 # Coroutine build
-tests/scripts/run_asan_tests_coroutine.sh
+c++/tests/scripts/run_asan_tests_coroutine.sh
 ```
 
 These scripts run each test individually and report any AddressSanitizer errors, creating detailed logs for failed tests in `/tmp/`.
@@ -357,7 +357,7 @@ export LSAN_OPTIONS="detect_leaks=0"
 **Microsoft STL Compliance Tests:**
 - **Test**: `Dev10_445289_make_shared` overrides global `operator new`/`delete`
 - **Suppression**: `ASAN_OPTIONS=alloc_dealloc_mismatch=0` is set for this specific test
-- **Location**: Configured in `tests/std_test/CMakeLists.txt`
+- **Location**: Configured in `c++/tests/std_test/CMakeLists.txt`
 
 ### Test Results
 
@@ -399,7 +399,7 @@ cmake --build build_debug --target rpc_test
 cd build_debug && ./output/rpc_test --gtest_filter="*standard_tests*"
 
 # Full validation (takes longer)
-tests/scripts/run_asan_tests.sh
+c++/tests/scripts/run_asan_tests.sh
 ```
 
 ## 8. Running Tests
@@ -579,7 +579,7 @@ cmake --preset SGX_Sim_Debug
 
 ### Demo CMakeLists.txt Structure
 
-When building demo applications that use Canopy, follow the structure from `demos/websocket/server/CMakeLists.txt`:
+When building demo applications that use Canopy, follow the structure from `c++/demos/websocket/server/CMakeLists.txt`:
 
 ```cmake
 cmake_minimum_required(VERSION 3.12)
