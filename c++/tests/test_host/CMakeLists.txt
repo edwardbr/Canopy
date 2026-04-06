@@ -29,10 +29,18 @@ if(NOT CANOPY_BUILD_COROUTINE)
   set(DLL_TRANSPORT_LIB transport_dynamic_library)
   set(DLL_TRANSPORT_TEST_LIB transport_dynamic_library_test)
   set(DLL_TEST_TARGET canopy_example_dll)
+  set(C_ABI_DLL_TRANSPORT_SOURCES type_test_c_abi_dll_suite.cpp)
+  set(C_ABI_DLL_TRANSPORT_LIB transport_c_abi)
+  set(C_ABI_DLL_TRANSPORT_TEST_LIB transport_c_abi_test)
+  set(C_ABI_DLL_TEST_TARGET canopy_example_c_abi_dll)
 endif()
 
 if(DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_DLL_PATH="$<TARGET_FILE:${DLL_TEST_TARGET}>")
+endif()
+
+if(C_ABI_DLL_TEST_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_C_ABI_DLL_PATH="$<TARGET_FILE:${C_ABI_DLL_TEST_TARGET}>")
 endif()
 
 if(LIBCORO_DLL_TEST_TARGET)
@@ -64,6 +72,7 @@ add_executable(
   optimistic_ptr_tests.cpp
   streaming_transport_regression_suite.cpp
   ${DLL_TRANSPORT_SOURCES}
+  ${C_ABI_DLL_TRANSPORT_SOURCES}
   ${LIBCORO_DLL_TRANSPORT_SOURCES}
   ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
@@ -92,6 +101,8 @@ target_link_libraries(
          transport_local_test
          ${DLL_TRANSPORT_LIB}
          ${DLL_TRANSPORT_TEST_LIB}
+         ${C_ABI_DLL_TRANSPORT_LIB}
+         ${C_ABI_DLL_TRANSPORT_TEST_LIB}
          ${LIBCORO_DLL_TRANSPORT_LIB}
          ${LIBCORO_DLL_TRANSPORT_TEST_LIB}
          ${LIBCORO_IPC_DLL_TRANSPORT_LIB}
@@ -138,6 +149,7 @@ endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
   add_dependencies(rpc_test ${DLL_TEST_TARGET})
+  add_dependencies(rpc_test ${C_ABI_DLL_TEST_TARGET})
 endif()
 
 if(CANOPY_BUILD_COROUTINE)

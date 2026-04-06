@@ -1,0 +1,8 @@
+[package]
+name = "protobuf-codegen"
+version = "4.34.0-release"
+edition = "2021"
+
+[lib]
+name = "protobuf_codegen"
+path = "src/lib.rs"

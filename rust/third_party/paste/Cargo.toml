@@ -1,0 +1,7 @@
+[package]
+name = "paste"
+version = "1.0.15"
+edition = "2021"
+
+[lib]
+proc-macro = true

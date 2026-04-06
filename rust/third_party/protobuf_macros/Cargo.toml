@@ -1,0 +1,8 @@
+[package]
+name = "protobuf-macros"
+version = "4.34.0-release"
+edition = "2021"
+
+[lib]
+proc-macro = true
+name = "protobuf_macros"

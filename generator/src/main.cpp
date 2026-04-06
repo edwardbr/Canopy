@@ -35,6 +35,8 @@
 #include "synchronous_mock_generator.h"
 #include "yas_generator.h"
 #include "protobuf_generator.h"
+#include "rust_generator.h"
+#include "rust_protobuf_generator.h"
 #include "javascript_generator.h"
 #include "component_checksum.h"
 
@@ -109,6 +111,7 @@ int main(
             args_parser, "protobuf", "enable Protocol Buffers serialization generation", {'b', "protobuf"});
         args::Flag javascript_arg(
             args_parser, "javascript", "enable JavaScript proxy/stub generation", {'j', "javascript"});
+        args::Flag rust_arg(args_parser, "rust", "enable initial Rust constants generation", {'R', "rust"});
         args::Flag suppress_catch_stub_exceptions_arg(
             args_parser, "suppress_catch_stub_exceptions", "catch stub exceptions", {'c', "suppress_catch_stub_exceptions"});
         args::ValueFlagList<std::string> include_paths_arg(
@@ -150,6 +153,7 @@ int main(
         bool enable_yas = args::get(yas_arg);
         bool enable_protobuf = args::get(protobuf_arg);
         bool enable_javascript = args::get(javascript_arg);
+        bool enable_rust = args::get(rust_arg);
         std::vector<std::string> namespaces = args::get(namespaces_arg);
         std::vector<std::string> include_paths = args::get(include_paths_arg);
         std::vector<std::string> defines = args::get(defines_arg);
@@ -453,6 +457,17 @@ int main(
             auto generated_proto_files = protobuf_generator::write_files(
                 *objects, output_path, sub_directory, std::filesystem::path(base_filename));
 
+            if (enable_rust)
+            {
+                rust_protobuf_generator::write_file(
+                    *objects,
+                    output_path,
+                    std::filesystem::path(path_prefix),
+                    sub_directory,
+                    base_filename,
+                    generated_proto_files);
+            }
+
             // Generate the protobuf C++ serialization file
             std::string protobuf_cpp_filename = base_filename + ".cpp";
             auto protobuf_cpp_path = output_path / "src" / sub_directory / protobuf_cpp_filename;
@@ -520,6 +535,11 @@ int main(
         if (enable_javascript)
         {
             javascript_generator::write_files(*objects, output_path, std::filesystem::path(name));
+        }
+
+        if (enable_rust)
+        {
+            rust_generator::write_file(*objects, output_path, std::filesystem::path(path_prefix));
         }
 
         {

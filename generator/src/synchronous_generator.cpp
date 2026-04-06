@@ -2059,6 +2059,10 @@ namespace synchronous_generator
                 header.write_buffer(text);
                 continue;
             }
+            else if (field->get_entity_type() == entity_type::RUSTQUOTE)
+            {
+                continue;
+            }
             else if (field->get_entity_type() == entity_type::FUNCTION_PRIVATE)
             {
                 header("private:");
@@ -2086,7 +2090,7 @@ namespace synchronous_generator
             for (auto& field : m_ob.get_functions())
             {
                 auto type = field->get_entity_type();
-                if (type != entity_type::CPPQUOTE && type != entity_type::FUNCTION_PUBLIC
+                if (type != entity_type::CPPQUOTE && type != entity_type::RUSTQUOTE && type != entity_type::FUNCTION_PUBLIC
                     && type != entity_type::FUNCTION_PRIVATE && type != entity_type::CONSTEXPR)
                 {
                     if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
@@ -2110,7 +2114,7 @@ namespace synchronous_generator
                 for (auto& field : m_ob.get_functions())
                 {
                     auto type = field->get_entity_type();
-                    if (type != entity_type::CPPQUOTE && type != entity_type::FUNCTION_PUBLIC
+                    if (type != entity_type::CPPQUOTE && type != entity_type::RUSTQUOTE && type != entity_type::FUNCTION_PUBLIC
                         && type != entity_type::FUNCTION_PRIVATE && type != entity_type::CONSTEXPR)
                     {
                         if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
@@ -2181,7 +2185,7 @@ namespace synchronous_generator
             for (auto& field : m_ob.get_functions())
             {
                 auto type = field->get_entity_type();
-                if (type != entity_type::CPPQUOTE && type != entity_type::FUNCTION_PUBLIC
+                if (type != entity_type::CPPQUOTE && type != entity_type::RUSTQUOTE && type != entity_type::FUNCTION_PUBLIC
                     && type != entity_type::FUNCTION_PRIVATE && type != entity_type::CONSTEXPR)
                 {
                     if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
@@ -2206,7 +2210,7 @@ namespace synchronous_generator
             for (auto& field : m_ob.get_functions())
             {
                 auto type = field->get_entity_type();
-                if (type != entity_type::CPPQUOTE && type != entity_type::FUNCTION_PUBLIC
+                if (type != entity_type::CPPQUOTE && type != entity_type::RUSTQUOTE && type != entity_type::FUNCTION_PUBLIC
                     && type != entity_type::FUNCTION_PRIVATE && type != entity_type::CONSTEXPR)
                 {
                     if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
@@ -2467,6 +2471,9 @@ namespace synchronous_generator
                     auto text = elem->get_name();
                     header.write_buffer(text);
                 }
+            }
+            else if (elem->get_entity_type() == entity_type::RUSTQUOTE)
+            {
             }
         }
     }

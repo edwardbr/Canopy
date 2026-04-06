@@ -28,6 +28,7 @@ extern "C"
 #include "interface_declaration_generator.h"
 #include "type_utils.h"
 #include "writer.h"
+#include "proto_generator.h"
 #include "protobuf_generator.h"
 
 namespace protobuf_generator
@@ -128,11 +129,7 @@ namespace protobuf_generator
     // Helper function to trim whitespace from both ends of a string
     std::string trim_whitespace(const std::string& str)
     {
-        size_t start = str.find_first_not_of(' ');
-        if (start == std::string::npos)
-            return "";
-        size_t end = str.find_last_not_of(' ');
-        return str.substr(start, end - start + 1);
+        return proto_generator::trim_copy(str);
     }
 
     // Helper function to extract template arguments, properly handling nested templates
@@ -142,26 +139,7 @@ namespace protobuf_generator
         size_t start_pos,
         std::string& content)
     {
-        if (start_pos >= type.length() || type[start_pos] != '<')
-            return std::string::npos;
-
-        int bracket_count = 1;
-        size_t pos = start_pos + 1;
-        while (pos < type.length() && bracket_count > 0)
-        {
-            if (type[pos] == '<')
-                bracket_count++;
-            else if (type[pos] == '>')
-                bracket_count--;
-            pos++;
-        }
-
-        if (bracket_count == 0)
-        {
-            content = type.substr(start_pos + 1, pos - start_pos - 2);
-            return pos;
-        }
-        return std::string::npos;
+        return proto_generator::extract_template_content(type, start_pos, content);
     }
 
     // Helper function to split template arguments at the top-level comma
@@ -171,22 +149,7 @@ namespace protobuf_generator
         std::string& first,
         std::string& second)
     {
-        int bracket_count = 0;
-        for (size_t i = 0; i < args.length(); ++i)
-        {
-            char c = args[i];
-            if (c == '<')
-                bracket_count++;
-            else if (c == '>')
-                bracket_count--;
-            else if (c == ',' && bracket_count == 0)
-            {
-                first = trim_whitespace(args.substr(0, i));
-                second = trim_whitespace(args.substr(i + 1));
-                return true;
-            }
-        }
-        return false;
+        return proto_generator::split_template_args(args, first, second);
     }
 
     // Helper function to check if a type is a map container type
@@ -195,22 +158,7 @@ namespace protobuf_generator
         const std::string& type,
         std::string& prefix)
     {
-        if (type.find("std::map<") == 0)
-        {
-            prefix = "std::map<";
-            return true;
-        }
-        if (type.find("std::unordered_map<") == 0)
-        {
-            prefix = "std::unordered_map<";
-            return true;
-        }
-        if (type.find("std::flat_map<") == 0)
-        {
-            prefix = "std::flat_map<";
-            return true;
-        }
-        return false;
+        return proto_generator::is_map_type(type, prefix);
     }
 
     // Helper function to check if a type is a vector/array container type
@@ -218,299 +166,32 @@ namespace protobuf_generator
         const std::string& type,
         std::string& prefix)
     {
-        if (type.find("std::vector<") == 0)
-        {
-            prefix = "std::vector<";
-            return true;
-        }
-        if (type.find("std::array<") == 0)
-        {
-            prefix = "std::array<";
-            return true;
-        }
-        return false;
+        return proto_generator::is_sequence_type(type, prefix);
     }
 
     // Helper function to convert scalar C++ types to protobuf scalar types
     // Returns empty string if not a recognized scalar type
     std::string cpp_scalar_to_proto_type(const std::string& type)
     {
-        // Common typedefs
-        if (type == "error_code")
-            return "int32";
-
-        // Signed integer types
-        // int8_t, signed char -> int32 (protobuf has no int8)
-        if (type == "int8_t" || type == "signed char")
-            return "int32";
-
-        // int16_t, short -> int32 (protobuf has no int16)
-        if (type == "int16_t" || type == "short" || type == "short int" || type == "signed short"
-            || type == "signed short int")
-            return "int32";
-
-        // int32_t, int
-        if (type == "int32_t" || type == "int" || type == "signed int")
-            return "int32";
-
-        // int64_t, long long, long (long is 64-bit on most platforms, safer to use int64)
-        if (type == "int64_t" || type == "long" || type == "long int" || type == "signed long"
-            || type == "signed long int" || type == "long long" || type == "signed long long" || type == "long long int"
-            || type == "signed long long int")
-            return "int64";
-
-        // Unsigned integer types
-        // uint8_t, unsigned char -> uint32 (protobuf has no uint8)
-        if (type == "uint8_t" || type == "unsigned char")
-            return "uint32";
-
-        // uint16_t, unsigned short -> uint32 (protobuf has no uint16)
-        if (type == "uint16_t" || type == "unsigned short" || type == "unsigned short int")
-            return "uint32";
-
-        // uint32_t, unsigned int, unsigned
-        if (type == "uint32_t" || type == "unsigned int")
-            return "uint32";
-
-        // uint64_t, unsigned long long, unsigned long
-        if (type == "uint64_t" || type == "unsigned long" || type == "unsigned long int" || type == "unsigned long long"
-            || type == "unsigned long long int")
-            return "uint64";
-
-        // Platform-specific types
-        if (type == "size_t")
-            return "uint64";
-        if (type == "ptrdiff_t" || type == "ssize_t" || type == "intptr_t")
-            return "int64";
-        if (type == "uintptr_t")
-            return "uint64";
-
-        // Floating point types
-        if (type == "float")
-            return "float";
-        if (type == "double" || type == "long double")
-            return "double";
-
-        // Boolean
-        if (type == "bool")
-            return "bool";
-
-        // Character types (mapped to int32 since protobuf has no char type)
-        if (type == "char" || type == "wchar_t" || type == "char16_t" || type == "char32_t")
-            return "int32";
-
-        // String types
-        if (type == "std::string" || type == "string")
-            return "string";
-
-        // C-style strings
-        if (type == "char*" || type == "const char*" || type == "char *" || type == "const char *")
-            return "string";
-
-        // Not a recognized scalar type
-        return "";
+        return proto_generator::cpp_scalar_to_proto_type(type);
     }
 
     // Helper function to convert C++ type to Protocol Buffers type
     std::string cpp_type_to_proto_type(const std::string& cpp_type)
     {
-        std::string type = cpp_type;
-
-        // Remove const qualifier
-        if (type.find("const ") == 0)
-            type = type.substr(6);
-
-        // Check if this is a pointer type BEFORE removing the pointer
-        // Pointers marshal the address only (uint64), not the data
-        bool is_pointer = (type.find('*') != std::string::npos);
-
-        // Remove reference and pointer modifiers
-        size_t pos = type.find('&');
-        if (pos != std::string::npos)
-            type = type.substr(0, pos);
-
-        pos = type.find('*');
-        if (pos != std::string::npos)
-            type = type.substr(0, pos);
-
-        // Trim whitespace
-        type = trim_whitespace(type);
-
-        // If this was a pointer, marshal as address only
-        if (is_pointer)
-            return "uint64";
-
-        // Special handling for byte vectors -> protobuf bytes
-        // std::vector<uint8_t>, std::vector<char> are binary data, not integer arrays
-        if (type == "std::vector<uint8_t>" || type == "std::vector<unsigned char>" || type == "std::vector<char>"
-            || type == "std::vector<signed char>")
-            return "bytes";
-
-        // Check for map types (std::map, std::unordered_map, std::flat_map)
-        std::string container_prefix;
-        if (is_map_type(type, container_prefix))
-        {
-            size_t template_start = type.find('<');
-            std::string inner_content;
-            if (extract_template_content(type, template_start, inner_content) != std::string::npos)
-            {
-                std::string key_type;
-                std::string value_type;
-                if (split_template_args(inner_content, key_type, value_type))
-                {
-                    std::string proto_key_type = cpp_type_to_proto_type(key_type);
-                    std::string proto_value_type = cpp_type_to_proto_type(value_type);
-                    return "map<" + proto_key_type + ", " + proto_value_type + ">";
-                }
-            }
-            // Fallback for malformed map
-            return "map<string, string>";
-        }
-
-        // Check for sequence types (std::vector, std::array)
-        if (is_sequence_type(type, container_prefix))
-        {
-            size_t template_start = type.find('<');
-            std::string inner_content;
-            if (extract_template_content(type, template_start, inner_content) != std::string::npos)
-            {
-                if (container_prefix == "std::array<")
-                {
-                    // For std::array<T, N>, extract just the T part (first template parameter)
-                    std::string element_type;
-                    std::string size_param;
-                    if (split_template_args(inner_content, element_type, size_param))
-                    {
-                        std::string inner_proto_type = cpp_type_to_proto_type(element_type);
-                        return "repeated " + inner_proto_type;
-                    }
-                }
-                // For std::vector<T>, the inner_content is just T
-                std::string inner_proto_type = cpp_type_to_proto_type(inner_content);
-                return "repeated " + inner_proto_type;
-            }
-            // Fallback
-            return "repeated string";
-        }
-
-        // Handle rpc::shared_ptr<T> (interface types)
-        if (type.find("rpc::shared_ptr<") == 0 || type.find("rpc::optimistic_ptr<") == 0)
-        {
-            // Use the unified remote_object for all interface pointer types
-            return "rpc.remote_object";
-        }
-
-        // Handle 128-bit integers using the dedicated uint128 message type (two uint64 halves).
-        // Protobuf has no native 128-bit type; uint128 {lo, hi} is emitted into the proto file
-        // whenever a struct field of this type is encountered.
-        if (type == "unsigned __int128" || type == "__int128" || type == "uint128_t" || type == "int128_t")
-            return "uint128";
-
-        // Check scalar types
-        std::string scalar_type = cpp_scalar_to_proto_type(type);
-        if (!scalar_type.empty())
-            return scalar_type;
-
-        // Check if it's a user-defined template instantiation (e.g., test_template<int>)
-        size_t template_start = type.find('<');
-        if (template_start != std::string::npos && type.find('>') != std::string::npos)
-        {
-            // It's a template instantiation
-            std::string template_name = type.substr(0, template_start);
-            std::string inner_content;
-
-            if (extract_template_content(type, template_start, inner_content) != std::string::npos)
-            {
-                // Convert template parameters to a sanitized suffix
-                std::string sanitized_suffix = inner_content;
-
-                // Replace common types with short names for readability
-                if (inner_content == "int" || inner_content == "int32_t")
-                    sanitized_suffix = "int";
-                else if (inner_content == "uint32_t" || inner_content == "unsigned int")
-                    sanitized_suffix = "uint";
-                else if (inner_content == "int64_t" || inner_content == "long" || inner_content == "long long")
-                    sanitized_suffix = "int64";
-                else if (inner_content == "uint64_t" || inner_content == "unsigned long"
-                         || inner_content == "unsigned long long")
-                    sanitized_suffix = "uint64";
-                else if (inner_content == "int16_t" || inner_content == "short")
-                    sanitized_suffix = "int16";
-                else if (inner_content == "uint16_t" || inner_content == "unsigned short")
-                    sanitized_suffix = "uint16";
-                else if (inner_content == "int8_t" || inner_content == "signed char")
-                    sanitized_suffix = "int8";
-                else if (inner_content == "uint8_t" || inner_content == "unsigned char")
-                    sanitized_suffix = "uint8";
-                else if (inner_content == "std::string" || inner_content == "string")
-                    sanitized_suffix = "string";
-                else if (inner_content == "float")
-                    sanitized_suffix = "float";
-                else if (inner_content == "double")
-                    sanitized_suffix = "double";
-                else if (inner_content == "bool")
-                    sanitized_suffix = "bool";
-                else
-                {
-                    // For complex types, sanitize the parameter string
-                    sanitized_suffix = sanitize_type_name(inner_content);
-                }
-
-                // Return the concrete type name
-                return template_name + "_" + sanitized_suffix;
-            }
-        }
-
-        // For custom types (structs, classes, interfaces), return the type name as is
-        // This will be handled by the message definition
-        return type;
+        return proto_generator::cpp_type_to_proto_type(cpp_type);
     }
 
     // Helper function to sanitize type name for protobuf
     std::string sanitize_type_name(const std::string& type_name)
     {
-        std::string result = type_name;
-
-        // Convert C++ namespace separators (::) to protobuf package separators (.)
-        // This allows cross-package references like rpc::encoding -> rpc.encoding
-        size_t pos = 0;
-        while ((pos = result.find("::", pos)) != std::string::npos)
-        {
-            result.replace(pos, 2, ".");
-            pos += 1;
-        }
-
-        // Ensure the name starts with a letter
-        if (!result.empty() && !std::isalpha(result[0]) && result[0] != '_')
-            result = "_" + result;
-
-        // Replace invalid characters with underscore (but preserve dots for package names)
-        for (auto& c : result)
-        {
-            if (!std::isalnum(c) && c != '_' && c != '.')
-                c = '_';
-        }
-
-        return result;
+        return proto_generator::sanitize_type_name(type_name);
     }
 
     // Helper function to sanitize field name for protobuf
     std::string sanitize_field_name(const std::string& field_name)
     {
-        std::string result = field_name;
-
-        // Replace invalid characters with underscore
-        for (auto& c : result)
-        {
-            if (!std::isalnum(c) && c != '_')
-                c = '_';
-        }
-
-        // Ensure the name starts with a letter or underscore
-        if (!result.empty() && !std::isalpha(result[0]) && result[0] != '_')
-            result = "_" + result;
-
-        return result;
+        return proto_generator::sanitize_field_name(field_name);
     }
 
     // Helper function to get the fully scoped name for a type

@@ -6,6 +6,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 add_subdirectory(direct)
+add_subdirectory(c_abi)
 add_subdirectory(dynamic_library)
 add_subdirectory(libcoro_dynamic_library)
 add_subdirectory(libcoro_spsc_dynamic_dll)

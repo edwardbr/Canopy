@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "rpc",
+    "tests/protobuf_runtime_probe",
+    "third_party/paste",
+    "third_party/protobuf",
+    "third_party/protobuf_codegen",
+    "third_party/protobuf_macros",
+    "transports/dynamic_library",
+    "transports/dynamic_library_test_child",
+]
+resolver = "2"
