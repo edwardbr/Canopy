@@ -13,7 +13,10 @@ add_executable(
   src/synchronous_mock_generator.cpp
   src/interface_declaration_generator.cpp
   src/yas_generator.cpp
+  src/proto_generator.cpp
   src/protobuf_generator.cpp
+  src/rust_generator.cpp
+  src/rust_protobuf_generator.cpp
   src/javascript_generator.cpp
   src/main.cpp
   src/helpers.cpp

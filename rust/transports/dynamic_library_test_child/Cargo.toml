@@ -1,0 +1,13 @@
+[package]
+name = "canopy-transport-dynamic-library-test-child"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "canopy_dynamic_library_test_child"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+canopy-rpc = { path = "../../rpc" }
+canopy-transport-dynamic-library = { path = "../dynamic_library" }

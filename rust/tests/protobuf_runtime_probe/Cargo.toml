@@ -1,0 +1,15 @@
+[package]
+name = "canopy-protobuf-runtime-probe"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "canopy_protobuf_runtime_probe"
+path = "src/lib.rs"
+
+[build-dependencies]
+protobuf-codegen = { path = "../../third_party/protobuf_codegen" }
+
+[dependencies]
+canopy-rpc = { path = "../../rpc", features = ["protobuf-runtime"] }
+protobuf = { path = "../../third_party/protobuf" }

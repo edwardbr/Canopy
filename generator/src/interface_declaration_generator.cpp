@@ -729,6 +729,10 @@ namespace interface_declaration_generator
                     header.write_buffer(text);
                     continue;
                 }
+                if (function->get_entity_type() == entity_type::RUSTQUOTE)
+                {
+                    continue;
+                }
                 if (function->get_entity_type() == entity_type::FUNCTION_PUBLIC)
                 {
                     header("public:");
@@ -750,6 +754,10 @@ namespace interface_declaration_generator
                         continue;
                     auto text = function->get_name();
                     header.write_buffer(text);
+                    continue;
+                }
+                else if (function->get_entity_type() == entity_type::RUSTQUOTE)
+                {
                     continue;
                 }
                 if (function->get_entity_type() == entity_type::FUNCTION_METHOD)

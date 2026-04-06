@@ -1,0 +1,13 @@
+[package]
+name = "protobuf"
+version = "4.34.0-release"
+edition = "2021"
+license = "BSD-3-Clause"
+
+[lib]
+name = "protobuf"
+path = "../../../submodules/protobuf/rust/shared.rs"
+
+[dependencies]
+paste = { path = "../paste" }
+protobuf-macros = { path = "../protobuf_macros" }

@@ -62,8 +62,8 @@ namespace rpc
         int CALL_TIMEOUT(); // an outbound RPC call received no response within the transport timeout window
         int MAX();          // the biggest value
 
-        bool is_error(int err);    // any error listed above other than OK
-        bool is_critical(int err); // any error listed above other than OK and OBJECT_GONE
+        bool is_error(int err);    // any error listed above that is >= MIN() && <= MAX
+        bool is_critical(int err); // any error listed above other than OBJECT_GONE and INVALID_CAST
 
         void set_OK_val(int val);
         void set_offset_val(int val);

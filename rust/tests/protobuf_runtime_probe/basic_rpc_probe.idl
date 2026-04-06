@@ -1,0 +1,15 @@
+typedef int error_code;
+
+namespace probe
+{
+    [status = production] interface i_math
+    {
+        error_code add(int a, int b, [out] int& c);
+        error_code bounce_text(const std::string& input, [out] std::string& output);
+        error_code reverse_sequence(const std::vector<uint64_t>& input, [out] std::vector<uint64_t>& output);
+        error_code increment_sequence(const std::vector<int>& input, [out] std::vector<int>& output);
+        error_code decorate_many(const std::vector<std::string>& input, [out] std::vector<std::string>& output);
+        error_code echo_bytes(const std::vector<uint8_t>& input, [out] std::vector<uint8_t>& output);
+        error_code negate_signed_bytes(const std::vector<signed char>& input, [out] std::vector<signed char>& output);
+    };
+}

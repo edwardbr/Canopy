@@ -266,6 +266,7 @@ namespace rpc
         [[nodiscard]] static rpc::expected<zone_address, std::string> create(const capability_bits& caps,
             uint16_t port, const std::vector<uint8_t>& routing_prefix, uint64_t subnet,
             uint64_t object_id, const std::vector<uint8_t>& validation_bits = {});
+        [[nodiscard]] static rpc::expected<zone_address, std::string> from_blob(std::vector<uint8_t> raw_blob);
 
         [[nodiscard]] const std::vector<uint8_t>& get_blob() const { return blob; }
         [[nodiscard]] capability_bits get_capability_bits() const;

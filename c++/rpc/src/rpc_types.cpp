@@ -253,6 +253,56 @@ namespace rpc
             }
             return {};
         }
+
+        rpc::expected<
+            void,
+            std::string>
+        validate_blob(
+            const zone_address& candidate)
+        {
+            const auto& raw_blob = candidate.get_blob();
+            if (raw_blob.size() < default_values::capability_blob_bytes)
+                return rpc::unexpected<std::string>("zone_address blob is smaller than the capability header");
+
+            auto caps = candidate.get_capability_bits();
+            auto type = capability_address_type(caps);
+            auto subnet_bits = capability_subnet_size_bits(caps);
+            auto object_bits = capability_object_id_size_bits(caps);
+            auto has_val = capability_has_validation(caps);
+
+            auto minimum_bits = static_cast<uint32_t>(header_bits + (candidate.has_port() ? port_bits : 0u));
+            minimum_bits += address_bits_for_type(type);
+            if (type != address_type::ipv6_tun)
+                minimum_bits += subnet_bits + object_bits;
+
+            auto validation_offset_bits = type == address_type::ipv6_tun
+                ? static_cast<uint16_t>(header_bits + (candidate.has_port() ? port_bits : 0u) + 128u)
+                : static_cast<uint16_t>(minimum_bits);
+            auto validation_offset_bytes = static_cast<size_t>(validation_offset_bits / 8u);
+            if (validation_offset_bytes > raw_blob.size())
+                return rpc::unexpected<std::string>("zone_address blob is shorter than its declared field layout");
+
+            if (!has_val)
+            {
+                auto required_bytes = static_cast<size_t>((minimum_bits + 7u) / 8u);
+                if (raw_blob.size() != required_bytes)
+                    return rpc::unexpected<std::string>("zone_address blob size does not match its declared layout");
+            }
+
+            std::vector<uint8_t> validation_bits;
+            if (has_val)
+            {
+                validation_bits.assign(raw_blob.begin() + static_cast<std::ptrdiff_t>(validation_offset_bytes), raw_blob.end());
+            }
+
+            return validate_constructor_args(
+                caps,
+                candidate.get_port(),
+                candidate.get_routing_prefix(),
+                candidate.get_subnet(),
+                candidate.get_object_id(),
+                validation_bits);
+        }
         // Formats a uint16_t as minimal lowercase hex (no leading zeros, except "0" for zero).
         std::string fmt_hex_u16(uint16_t v)
         {
@@ -475,6 +525,18 @@ namespace rpc
         auto caps = make_capability_bits(
             args.version, args.type, args.port != 0, !args.validation_bits.empty(), args.subnet_size_bits, args.object_id_size_bits);
         return create(caps, args.port, args.routing_prefix, args.subnet, args.object_id, args.validation_bits);
+    }
+
+    rpc::expected<
+        zone_address,
+        std::string>
+    zone_address::from_blob(std::vector<uint8_t> raw_blob)
+    {
+        zone_address result;
+        result.blob = std::move(raw_blob);
+        if (auto r = validate_blob(result); !r)
+            return rpc::unexpected<std::string>(std::move(r.error()));
+        return result;
     }
 
     uint8_t zone_address::get_version() const

@@ -219,6 +219,11 @@ namespace fingerprint
             seed += "{";
             for (auto& func : cls.get_functions())
             {
+                // Language-local quote blocks do not change the marshalled binary contract and
+                // must not contaminate fingerprints.
+                if (func->get_entity_type() == entity_type::CPPQUOTE || func->get_entity_type() == entity_type::RUSTQUOTE)
+                    continue;
+
                 seed += "[";
                 for (auto& item : func->get_data())
                 {
@@ -259,18 +264,6 @@ namespace fingerprint
                 }
                 seed += "]";
 
-                if (func->get_entity_type() == entity_type::CPPQUOTE)
-                {
-                    if (func->is_in_import())
-                        continue;
-                    sha3_context c;
-                    sha3_Init256(&c);
-                    sha3_Update(&c, func->get_name().data(), func->get_name().length());
-                    const auto* hash = sha3_Finalize(&c);
-                    seed += "#cpp_quote";
-                    seed += std::to_string(truncate_sha3_hash(hash));
-                    continue;
-                }
                 if (func->get_entity_type() == entity_type::FUNCTION_PUBLIC)
                 {
                     seed += "public:";

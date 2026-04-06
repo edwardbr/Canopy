@@ -1,0 +1,15 @@
+[package]
+name = "canopy-rpc"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+protobuf-runtime = ["dep:protobuf"]
+
+[lib]
+name = "canopy_rpc"
+path = "src/lib.rs"
+
+[dependencies]
+protobuf = { path = "../third_party/protobuf", optional = true }
