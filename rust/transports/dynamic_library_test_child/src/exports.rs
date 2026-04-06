@@ -5,33 +5,47 @@
 
 use crate::{TestChildMarshaller, sample_output_object};
 use canopy_rpc::internal::error_codes;
+use canopy_rpc::{Object, RemoteObject, Zone, ZoneAddress};
 use canopy_transport_dynamic_library as dll;
 
-fn mut_ptr<'a, T>(ptr: *mut T) -> Option<&'a mut T>
-{
+fn mut_ptr<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
     unsafe { ptr.as_mut() }
 }
 
-fn const_ptr<'a, T>(ptr: *const T) -> Option<&'a T>
-{
+fn const_ptr<'a, T>(ptr: *const T) -> Option<&'a T> {
     unsafe { ptr.as_ref() }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn canopy_dll_init(params: *mut dll::CanopyDllInitParams) -> i32
-{
+pub extern "C" fn canopy_dll_init(params: *mut dll::CanopyDllInitParams) -> i32 {
     let Some(params) = mut_ptr(params) else {
         return error_codes::INVALID_DATA();
     };
+    let output_object = output_object_for_child_zone(params);
 
     dll::dll_init::<TestChildMarshaller, _>(params, |_parent_transport, _input_descr| {
-        Ok((TestChildMarshaller::new(_parent_transport.clone()), sample_output_object()))
+        Ok((
+            TestChildMarshaller::new(_parent_transport.clone()),
+            output_object,
+        ))
     })
 }
 
+fn output_object_for_child_zone(params: &dll::CanopyDllInitParams) -> RemoteObject {
+    let raw_blob = params.child_zone.address.blob;
+    let blob = if raw_blob.data.is_null() || raw_blob.size == 0 {
+        return sample_output_object();
+    } else {
+        unsafe { std::slice::from_raw_parts(raw_blob.data, raw_blob.size).to_vec() }
+    };
+    let child_zone = Zone::new(ZoneAddress::new(blob));
+    child_zone
+        .with_object(Object::new(100))
+        .unwrap_or_else(|_| sample_output_object())
+}
+
 #[unsafe(no_mangle)]
-pub extern "C" fn canopy_dll_destroy(child_ctx: dll::CanopyChildContext)
-{
+pub extern "C" fn canopy_dll_destroy(child_ctx: dll::CanopyChildContext) {
     dll::dll_destroy::<TestChildMarshaller>(child_ctx);
 }
 
@@ -40,8 +54,7 @@ pub extern "C" fn canopy_dll_send(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopySendParams,
     result: *mut dll::CanopySendResult,
-) -> i32
-{
+) -> i32 {
     let Some(params) = const_ptr(params) else {
         return error_codes::INVALID_DATA();
     };
@@ -56,8 +69,7 @@ pub extern "C" fn canopy_dll_send(
 pub extern "C" fn canopy_dll_post(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopyPostParams,
-)
-{
+) {
     let Some(params) = const_ptr(params) else {
         return;
     };
@@ -70,8 +82,7 @@ pub extern "C" fn canopy_dll_try_cast(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopyTryCastParams,
     result: *mut dll::CanopyStandardResult,
-) -> i32
-{
+) -> i32 {
     let Some(params) = const_ptr(params) else {
         return error_codes::INVALID_DATA();
     };
@@ -87,8 +98,7 @@ pub extern "C" fn canopy_dll_add_ref(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopyAddRefParams,
     result: *mut dll::CanopyStandardResult,
-) -> i32
-{
+) -> i32 {
     let Some(params) = const_ptr(params) else {
         return error_codes::INVALID_DATA();
     };
@@ -104,8 +114,7 @@ pub extern "C" fn canopy_dll_release(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopyReleaseParams,
     result: *mut dll::CanopyStandardResult,
-) -> i32
-{
+) -> i32 {
     let Some(params) = const_ptr(params) else {
         return error_codes::INVALID_DATA();
     };
@@ -120,8 +129,7 @@ pub extern "C" fn canopy_dll_release(
 pub extern "C" fn canopy_dll_object_released(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopyObjectReleasedParams,
-)
-{
+) {
     let Some(params) = const_ptr(params) else {
         return;
     };
@@ -133,8 +141,7 @@ pub extern "C" fn canopy_dll_object_released(
 pub extern "C" fn canopy_dll_transport_down(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopyTransportDownParams,
-)
-{
+) {
     let Some(params) = const_ptr(params) else {
         return;
     };
@@ -147,8 +154,7 @@ pub extern "C" fn canopy_dll_get_new_zone_id(
     child_ctx: dll::CanopyChildContext,
     params: *const dll::CanopyGetNewZoneIdParams,
     result: *mut dll::CanopyNewZoneIdResult,
-) -> i32
-{
+) -> i32 {
     let Some(params) = const_ptr(params) else {
         return error_codes::INVALID_DATA();
     };
@@ -160,23 +166,23 @@ pub extern "C" fn canopy_dll_get_new_zone_id(
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
-    use canopy_rpc::{AddressType, DefaultValues, Encoding, InterfaceOrdinal, Method, Object, Zone, ZoneAddress, ZoneAddressArgs};
+    use canopy_rpc::{
+        AddressType, DefaultValues, Encoding, InterfaceOrdinal, Method, Object, Zone, ZoneAddress,
+        ZoneAddressArgs,
+    };
     use std::collections::HashMap;
 
     #[derive(Default)]
-    struct TestAllocator
-    {
+    struct TestAllocator {
         allocations: HashMap<usize, Box<[u8]>>,
     }
 
     unsafe extern "C" fn test_alloc(
         allocator_ctx: *mut std::ffi::c_void,
         size: usize,
-    ) -> dll::CanopyByteBuffer
-    {
+    ) -> dll::CanopyByteBuffer {
         let allocator = unsafe { &mut *(allocator_ctx as *mut TestAllocator) };
         let mut data = vec![0u8; size].into_boxed_slice();
         let ptr = data.as_mut_ptr();
@@ -184,15 +190,17 @@ mod tests
         dll::CanopyByteBuffer { data: ptr, size }
     }
 
-    unsafe extern "C" fn test_free(allocator_ctx: *mut std::ffi::c_void, data: *mut u8, _size: usize)
-    {
+    unsafe extern "C" fn test_free(
+        allocator_ctx: *mut std::ffi::c_void,
+        data: *mut u8,
+        _size: usize,
+    ) {
         let allocator = unsafe { &mut *(allocator_ctx as *mut TestAllocator) };
         allocator.allocations.remove(&(data as usize));
     }
 
     #[test]
-    fn exported_init_send_destroy_round_trip()
-    {
+    fn exported_init_send_destroy_round_trip() {
         let mut allocator_state = TestAllocator::default();
         let mut init = dll::CanopyDllInitParams {
             allocator: dll::CanopyAllocatorVtable {
@@ -220,7 +228,9 @@ mod tests
         ))
         .expect("sample zone address should be valid");
         let zone = Zone::new(zone_address);
-        let remote = zone.with_object(Object::new(100)).expect("with_object should succeed");
+        let remote = zone
+            .with_object(Object::new(100))
+            .expect("with_object should succeed");
         let input = b"ping";
         let params = dll::CanopySendParams {
             protocol_version: 3,

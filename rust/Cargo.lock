@@ -29,6 +29,7 @@ dependencies = [
 name = "canopy-transport-dynamic-library-test-child"
 version = "0.1.0"
 dependencies = [
+ "canopy-protobuf-runtime-probe",
  "canopy-rpc",
  "canopy-transport-dynamic-library",
 ]

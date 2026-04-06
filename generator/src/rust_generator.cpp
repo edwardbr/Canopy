@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <functional>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -65,6 +66,30 @@ namespace rust_generator
                 result.end(),
                 result.begin(),
                 [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
+            return result;
+        }
+
+        std::string upper_camel_identifier(const std::string& name)
+        {
+            auto sanitized = sanitize_identifier(name);
+            std::string result;
+            result.reserve(sanitized.size());
+            bool uppercase_next = true;
+            for (char ch : sanitized)
+            {
+                if (ch == '_')
+                {
+                    uppercase_next = true;
+                    continue;
+                }
+                if (uppercase_next)
+                    result += static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+                else
+                    result += ch;
+                uppercase_next = false;
+            }
+            if (result.empty())
+                result = "Type";
             return result;
         }
 
@@ -156,7 +181,124 @@ namespace rust_generator
             return "";
         }
 
-        std::string rust_value_type_for_cpp_type(const std::string& cpp_type)
+        std::string qualified_cpp_type_name(const class_entity& entity)
+        {
+            return get_full_name(entity, true, false, "::");
+        }
+
+        const class_entity* resolve_non_template_struct_entity(
+            const class_entity& current_scope,
+            const class_entity& lib,
+            const std::string& type_name)
+        {
+            const auto normalised_type = normalise_cpp_type(type_name);
+            std::shared_ptr<class_entity> resolved_entity;
+
+            for (auto* scope = &current_scope; scope != nullptr; scope = scope->get_owner())
+            {
+                if (scope->find_class(normalised_type, resolved_entity))
+                    break;
+            }
+
+            if (!resolved_entity && &current_scope != &lib)
+                lib.find_class(normalised_type, resolved_entity);
+
+            if (!resolved_entity || resolved_entity->get_entity_type() != entity_type::STRUCT || resolved_entity->get_is_template())
+                return nullptr;
+
+            return resolved_entity.get();
+        }
+
+        bool is_supported_rust_struct_entity(
+            const class_entity& current_scope,
+            const class_entity& lib,
+            const class_entity& struct_entity,
+            std::set<std::string>& seen_structs);
+
+        bool is_supported_rust_struct_field_type(
+            const class_entity& current_scope,
+            const class_entity& lib,
+            const std::string& cpp_type,
+            std::set<std::string>& seen_structs)
+        {
+            const auto type_name = normalise_cpp_type(cpp_type);
+            if (!rust_scalar_value_type_for_cpp_type(type_name).empty())
+                return true;
+
+            std::string inner_type;
+            if (extract_vector_value_type(type_name, inner_type))
+            {
+                if (!rust_scalar_value_type_for_cpp_type(inner_type).empty())
+                    return true;
+                const auto* inner_struct = resolve_non_template_struct_entity(current_scope, lib, inner_type);
+                return inner_struct && is_supported_rust_struct_entity(current_scope, lib, *inner_struct, seen_structs);
+            }
+
+            const auto* struct_entity = resolve_non_template_struct_entity(current_scope, lib, type_name);
+            return struct_entity && is_supported_rust_struct_entity(current_scope, lib, *struct_entity, seen_structs);
+        }
+
+        bool is_supported_rust_struct_entity(
+            const class_entity& current_scope,
+            const class_entity& lib,
+            const class_entity& struct_entity,
+            std::set<std::string>& seen_structs)
+        {
+            (void)current_scope;
+            const auto struct_key = qualified_cpp_type_name(struct_entity);
+            if (!seen_structs.insert(struct_key).second)
+                return true;
+
+            for (auto& member : struct_entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+            {
+                if (!member || member->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                    continue;
+                auto func_entity = std::static_pointer_cast<function_entity>(member);
+                if (func_entity->is_static())
+                    continue;
+                if (!is_supported_rust_struct_field_type(struct_entity, lib, func_entity->get_return_type(), seen_structs))
+                    return false;
+            }
+
+            return true;
+        }
+
+        bool is_supported_rust_struct_type(
+            const class_entity& current_scope,
+            const class_entity& lib,
+            const std::string& cpp_type)
+        {
+            const auto* struct_entity = resolve_non_template_struct_entity(current_scope, lib, cpp_type);
+            if (!struct_entity)
+                return false;
+
+            std::set<std::string> seen_structs;
+            return is_supported_rust_struct_entity(current_scope, lib, *struct_entity, seen_structs);
+        }
+
+        bool can_emit_rust_value_struct(
+            const class_entity& type_entity,
+            const class_entity& lib)
+        {
+            if (type_entity.get_is_template())
+                return false;
+
+            std::set<std::string> seen_structs;
+            return is_supported_rust_struct_entity(type_entity, lib, type_entity, seen_structs);
+        }
+
+        std::string rust_struct_crate_path(
+            const std::string& root_module_name,
+            const class_entity& struct_entity)
+        {
+            return "crate::" + root_module_name + "::" + qualified_rust_module_path(struct_entity) + "::Value";
+        }
+
+        std::string rust_value_type_for_cpp_type_with_lib(
+            const std::string& cpp_type,
+            const class_entity& current_scope,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
             const auto type_name = normalise_cpp_type(cpp_type);
             const auto scalar_type = rust_scalar_value_type_for_cpp_type(type_name);
@@ -169,7 +311,14 @@ namespace rust_generator
                 const auto inner_rust_type = rust_scalar_value_type_for_cpp_type(inner_type);
                 if (!inner_rust_type.empty())
                     return "Vec<" + inner_rust_type + ">";
+                const auto* inner_struct = resolve_non_template_struct_entity(current_scope, lib, inner_type);
+                if (inner_struct && is_supported_rust_struct_type(current_scope, lib, inner_type))
+                    return "Vec<" + rust_struct_crate_path(root_module_name, *inner_struct) + ">";
             }
+
+            const auto* struct_entity = resolve_non_template_struct_entity(current_scope, lib, type_name);
+            if (struct_entity && is_supported_rust_struct_type(current_scope, lib, type_name))
+                return rust_struct_crate_path(root_module_name, *struct_entity);
 
             return "canopy_rpc::OpaqueValue";
         }
@@ -188,6 +337,8 @@ namespace rust_generator
             std::string rust_name;
             std::string rust_type;
             std::string generic_name;
+            std::string associated_type_name;
+            std::string associated_default_type;
             std::string trait_path;
             bool is_interface = false;
             bool is_optimistic = false;
@@ -197,7 +348,9 @@ namespace rust_generator
 
         std::vector<rust_method_param> analyse_rust_method_params(
             const class_entity& iface,
-            const function_entity& function)
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
             std::vector<rust_method_param> result;
             size_t interface_index = 0;
@@ -217,14 +370,19 @@ namespace rust_generator
                 if (param.is_interface)
                 {
                     param.generic_name = uppercase_identifier(parameter.get_name()) + "Iface" + std::to_string(interface_index++);
-                    param.trait_path = qualified_rust_module_path(*interface_entity) + "::Interface";
+                    param.associated_type_name = upper_camel_identifier(function.get_name()) + upper_camel_identifier(parameter.get_name())
+                        + "Iface" + std::to_string(interface_index - 1);
+                    param.associated_default_type = "crate::" + sanitize_identifier(root_module_name) + "::"
+                        + qualified_rust_module_path(*interface_entity) + "::ProxySkeleton";
+                    param.trait_path = "crate::" + sanitize_identifier(root_module_name) + "::" + qualified_rust_module_path(*interface_entity)
+                        + "::Interface";
                     param.rust_type = is_optimistic
                                           ? "canopy_rpc::Optimistic<canopy_rpc::LocalProxy<" + param.generic_name + ">>"
                                           : "canopy_rpc::Shared<std::sync::Arc<" + param.generic_name + ">>";
                 }
                 else
                 {
-                    param.rust_type = rust_value_type_for_cpp_type(parameter.get_type());
+                    param.rust_type = rust_value_type_for_cpp_type_with_lib(parameter.get_type(), iface, lib, root_module_name);
                 }
 
                 result.push_back(std::move(param));
@@ -288,12 +446,62 @@ namespace rust_generator
             return result;
         }
 
+        std::string associated_type_args_for_params(
+            const std::vector<rust_method_param>& params)
+        {
+            std::vector<std::string> args;
+            for (const auto& param : params)
+            {
+                if (!param.is_interface)
+                    continue;
+                args.push_back("<Self as Interface>::" + param.associated_type_name);
+            }
+
+            if (args.empty())
+                return "";
+
+            std::string result = "<";
+            for (size_t i = 0; i < args.size(); ++i)
+            {
+                if (i)
+                    result += ", ";
+                result += args[i];
+            }
+            result += ">";
+            return result;
+        }
+
+        void write_associated_type_impls(
+            writer& output,
+            const class_entity& iface,
+            const class_entity& lib,
+            const std::string& root_module_name)
+        {
+            std::set<std::string> emitted_associated_types;
+            for (const auto& function : iface.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
+                for (const auto& param : analysed_params)
+                {
+                    if (!param.is_interface)
+                        continue;
+                    if (!emitted_associated_types.insert(param.associated_type_name).second)
+                        continue;
+                    output("\ttype {} = {};", param.associated_type_name, param.associated_default_type);
+                }
+            }
+        }
+
         std::string rust_method_signature(
             const class_entity& iface,
-            const function_entity& function)
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
             std::vector<std::string> parameters;
-            const auto analysed_params = analyse_rust_method_params(iface, function);
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
 
             std::string signature = "fn " + sanitize_identifier(function.get_name());
             signature += generic_declaration_for_params(analysed_params, true, true);
@@ -309,7 +517,7 @@ namespace rust_generator
                 signature += param.rust_name + ": " + rust_type;
             }
             signature += ") -> ";
-            signature += rust_value_type_for_cpp_type(function.get_return_type());
+            signature += rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
             signature += generic_where_clause_for_params(analysed_params, true, true);
 
             return signature;
@@ -379,6 +587,8 @@ namespace rust_generator
                 return "String::new()";
             if (type_name.rfind("Vec<", 0) == 0)
                 return "Vec::new()";
+            if (type_name.rfind("crate::", 0) == 0)
+                return "Default::default()";
 
             return "canopy_rpc::OpaqueValue";
         }
@@ -404,12 +614,14 @@ namespace rust_generator
             const class_entity& iface,
             const function_entity& function,
             const std::string& delegate_trait,
-            const std::string& delegate_method_prefix)
+            const std::string& delegate_method_prefix,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
-            const auto analysed_params = analyse_rust_method_params(iface, function);
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto method_module = sanitize_identifier(function.get_name());
 
-            output("{} {{", rust_method_signature(iface, function));
+            output("{} {{", rust_method_signature(iface, function, lib, root_module_name));
             output("\tlet _request = interface_binding::{}::Request::from_call(", method_module);
             {
                 bool first = true;
@@ -457,9 +669,10 @@ namespace rust_generator
             const class_entity& iface,
             const function_entity& function,
             const std::string& method_prefix,
-            const std::string& root_module_name)
+            const std::string& root_module_name,
+            const class_entity& lib)
         {
-            const auto analysed_params = analyse_rust_method_params(iface, function);
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto method_module = sanitize_identifier(function.get_name());
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
@@ -508,21 +721,16 @@ namespace rust_generator
                 output("\t\t.map(|transport| transport.call_context().protocol_version)");
                 output("\t\t.unwrap_or(canopy_rpc::get_version());");
                 output(
-                    "\treturn canopy_rpc::serialization::protobuf::call_generated_proxy_method(");
+                    "\treturn canopy_rpc::serialization::protobuf::call_generated_proxy_method::<{}::ProtobufCodec{}, _, _>(",
+                    protobuf_module_path,
+                    all_generics);
                 output("\t\tself.proxy_caller(),");
                 output(
                     "\t\tcanopy_rpc::InterfaceOrdinal::new(<Self as Interface>::get_id(protocol_version)),");
                 output(
                     "\t\tcanopy_rpc::Method::new(methods::{}),",
                     uppercase_identifier(function.get_name()));
-                output(
-                    "\t\t|| {}::encode_request{}(&request),",
-                    protobuf_module_path,
-                    all_generics);
-                output(
-                    "\t\t|out_buf| {}::decode_response{}(out_buf),",
-                    protobuf_module_path,
-                    all_generics);
+                output("\t\t&request,");
                 output(
                     "\t\t|error_code| interface_binding::{}::Response::from_error_code(error_code),",
                     method_module);
@@ -545,10 +753,12 @@ namespace rust_generator
         void write_request_response_shapes(
             writer& output,
             const class_entity& iface,
-            const function_entity& function)
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
-            const auto analysed_params = analyse_rust_method_params(iface, function);
-            const auto return_type = rust_value_type_for_cpp_type(function.get_return_type());
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
+            const auto return_type = rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
             const bool has_return_value = normalise_cpp_type(function.get_return_type()) != "void" && !function.get_return_type().empty();
 
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
@@ -593,7 +803,7 @@ namespace rust_generator
             output("");
 
             output("#[doc(hidden)]");
-            output("pub struct DispatchRequest{}{}{{", request_generics, request_where);
+            output("pub struct DispatchRequest{{");
             for (const auto& param : analysed_params)
             {
                 if (!param.is_in)
@@ -674,7 +884,7 @@ namespace rust_generator
             output("");
 
             output("#[doc(hidden)]");
-            output("pub struct DispatchResponse{}{}{{", response_generics, response_where);
+            output("pub struct DispatchResponse{{");
             for (const auto& param : analysed_params)
             {
                 if (!param.is_out)
@@ -825,9 +1035,11 @@ namespace rust_generator
         void write_method_local_binding_helpers(
             writer& output,
             const class_entity& iface,
-            const function_entity& function)
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
-            const auto analysed_params = analyse_rust_method_params(iface, function);
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
             const auto response_where = generic_where_clause_for_params(analysed_params, false, true);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
@@ -1006,7 +1218,7 @@ namespace rust_generator
                 all_where += ", Impl: super::super::Interface";
 
             output(
-                "pub fn call_local<Impl{}>(service: &canopy_rpc::Service, caller_zone_id: canopy_rpc::CallerZone, implementation: &Impl",
+                "pub fn call_local<Impl{}>(_service: &canopy_rpc::Service, _caller_zone_id: canopy_rpc::CallerZone, implementation: &Impl",
                 all_generics.empty() ? "" : ", " + all_generics.substr(1, all_generics.size() - 2));
             for (const auto& param : analysed_params)
             {
@@ -1024,7 +1236,7 @@ namespace rust_generator
 
             if (has_interface_in)
             {
-                output("\tlet incoming = bind_incoming_local(service");
+                output("\tlet incoming = bind_incoming_local(_service");
                 for (const auto& param : analysed_params)
                 {
                     if (!param.is_interface || !param.is_in)
@@ -1046,7 +1258,7 @@ namespace rust_generator
                         param.rust_name);
                     if (has_interface_out)
                     {
-                        output("\t\tlet outgoing = bind_outgoing_local(service, caller_zone_id.clone()");
+                        output("\t\tlet outgoing = bind_outgoing_local(_service, _caller_zone_id.clone()");
                         for (const auto& out_param : analysed_params)
                         {
                             if (!out_param.is_interface || !out_param.is_out)
@@ -1085,7 +1297,7 @@ namespace rust_generator
                 output("\tlet mut {} = {};", param.rust_name, rust_default_value_expression_for_param(param));
             }
 
-            const auto return_type = rust_value_type_for_cpp_type(function.get_return_type());
+            const auto return_type = rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
             const bool has_return_value = normalise_cpp_type(function.get_return_type()) != "void" && !function.get_return_type().empty();
             if (has_return_value)
             {
@@ -1124,7 +1336,7 @@ namespace rust_generator
 
             if (has_interface_out)
             {
-                output("\tlet outgoing = bind_outgoing_local(service, caller_zone_id");
+                output("\tlet outgoing = bind_outgoing_local(_service, _caller_zone_id");
                 for (const auto& param : analysed_params)
                 {
                     if (!param.is_interface || !param.is_out)
@@ -1149,9 +1361,10 @@ namespace rust_generator
             writer& output,
             const class_entity& iface,
             const function_entity& function,
-            const std::string& root_module_name)
+            const std::string& root_module_name,
+            const class_entity& lib)
         {
-            const auto analysed_params = analyse_rust_method_params(iface, function);
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             auto all_where = generic_where_clause_for_params(analysed_params, true, true);
             if (all_where.empty())
@@ -1183,9 +1396,11 @@ namespace rust_generator
         void write_method_decoded_dispatch_helper(
             writer& output,
             const class_entity& iface,
-            const function_entity& function)
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
-            const auto analysed_params = analyse_rust_method_params(iface, function);
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
@@ -1194,7 +1409,7 @@ namespace rust_generator
                 all_where = " where Impl: super::super::Interface";
             else
                 all_where += ", Impl: super::super::Interface";
-            const auto return_type = rust_value_type_for_cpp_type(function.get_return_type());
+            const auto return_type = rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
             const bool has_return_value = normalise_cpp_type(function.get_return_type()) != "void" && !function.get_return_type().empty();
 
             output("#[doc(hidden)]");
@@ -1260,9 +1475,11 @@ namespace rust_generator
         void write_method_stub_dispatch_helper(
             writer& output,
             const class_entity& iface,
-            const function_entity& function)
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
-            const auto analysed_params = analyse_rust_method_params(iface, function);
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
@@ -1285,10 +1502,8 @@ namespace rust_generator
 
             output("#[doc(hidden)]");
             output(
-                "pub fn dispatch_stub_request<Impl{}>(implementation: &Impl, context: &canopy_rpc::DispatchContext, request: DispatchRequest{}) -> Result<DispatchResponse{}, i32>",
-                all_generics.empty() ? "" : ", " + all_generics.substr(1, all_generics.size() - 2),
-                request_generics,
-                response_generics);
+                "pub fn dispatch_stub_request<Impl{}>(implementation: &Impl, context: &canopy_rpc::DispatchContext, request: DispatchRequest) -> Result<DispatchResponse, i32>",
+                all_generics.empty() ? "" : ", " + all_generics.substr(1, all_generics.size() - 2));
             output("{}", all_where);
             output("{{");
 
@@ -1364,7 +1579,7 @@ namespace rust_generator
                 else
                     output.raw(", {}", param.rust_name);
             }
-            output.raw(")\n");
+            output.raw(");\n");
 
             if (has_interface_out)
             {
@@ -1399,7 +1614,8 @@ namespace rust_generator
         void write_method_binding_metadata(
             writer& output,
             const class_entity& iface,
-            const std::string& root_module_name)
+            const std::string& root_module_name,
+            const class_entity& lib)
         {
             output("pub mod interface_binding");
             output("{{");
@@ -1434,12 +1650,12 @@ namespace rust_generator
 
                 output("];");
                 output("");
-                write_request_response_shapes(output, iface, *function);
+                write_request_response_shapes(output, iface, *function, lib, root_module_name);
                 write_param_binding_helpers(output, iface, *function);
-                write_method_local_binding_helpers(output, iface, *function);
-                write_method_decoded_dispatch_helper(output, iface, *function);
-                write_method_stub_dispatch_helper(output, iface, *function);
-                write_method_generated_dispatch_helper(output, iface, *function, root_module_name);
+                write_method_local_binding_helpers(output, iface, *function, lib, root_module_name);
+                write_method_decoded_dispatch_helper(output, iface, *function, lib, root_module_name);
+                write_method_stub_dispatch_helper(output, iface, *function, lib, root_module_name);
+                write_method_generated_dispatch_helper(output, iface, *function, root_module_name, lib);
                 output("}}");
                 method_count++;
             }
@@ -1503,7 +1719,8 @@ namespace rust_generator
         void write_interface(
             writer& output,
             const class_entity& iface,
-            const std::string& root_module_name)
+            const std::string& root_module_name,
+            const class_entity& lib)
         {
             output("pub mod {}", sanitize_identifier(iface.get_name()));
             output("{{");
@@ -1562,6 +1779,25 @@ namespace rust_generator
             output("\tinterface_binding::METHODS");
             output("}}");
             output("");
+            {
+                std::set<std::string> emitted_associated_types;
+                for (const auto& function : iface.get_functions())
+                {
+                    if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                        continue;
+                    const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
+                    for (const auto& param : analysed_params)
+                    {
+                        if (!param.is_interface)
+                            continue;
+                        if (!emitted_associated_types.insert(param.associated_type_name).second)
+                            continue;
+                        output("type {}: {};", param.associated_type_name, param.trait_path);
+                    }
+                }
+                if (!emitted_associated_types.empty())
+                    output("");
+            }
             output("#[doc(hidden)]");
             output(
                 "fn __rpc_dispatch_generated(&self, context: &canopy_rpc::DispatchContext, params: canopy_rpc::SendParams) -> canopy_rpc::SendResult where Self: Sized");
@@ -1576,7 +1812,7 @@ namespace rust_generator
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
 
-                const auto analysed_params = analyse_rust_method_params(iface, *function);
+                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
                 bool has_interface_params = false;
                 for (const auto& param : analysed_params)
                 {
@@ -1587,19 +1823,13 @@ namespace rust_generator
                     }
                 }
 
-                if (has_interface_params)
-                {
-                    output(
-                        "\t\t\t{}u64 => return canopy_rpc::SendResult::new(canopy_rpc::INVALID_DATA(), vec![], vec![]),",
-                        dispatch_method_count);
-                }
-                else
-                {
-                    output(
-                        "\t\t\t{}u64 => return interface_binding::{}::dispatch_generated::<Self>(self, context, params),",
-                        dispatch_method_count,
-                        sanitize_identifier(function->get_name()));
-                }
+                output(
+                    "\t\t\t{}u64 => return interface_binding::{}::dispatch_generated::<Self{}>(self, context, params),",
+                    dispatch_method_count,
+                    sanitize_identifier(function->get_name()),
+                    has_interface_params
+                        ? ", " + associated_type_args_for_params(analysed_params).substr(1, associated_type_args_for_params(analysed_params).size() - 2)
+                        : "");
                 dispatch_method_count++;
             }
             output("\t\t\t_ => return canopy_rpc::SendResult::new(canopy_rpc::INVALID_METHOD_ID(), vec![], vec![]),");
@@ -1626,7 +1856,7 @@ namespace rust_generator
             {
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
-                output("{};", rust_method_signature(iface, *function));
+                output("{};", rust_method_signature(iface, *function, lib, root_module_name));
             }
             output("}}");
             output("");
@@ -1678,18 +1908,27 @@ namespace rust_generator
                     continue;
 
                 const auto method_module = sanitize_identifier(function->get_name());
+                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
+                const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
+                const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
                 output(
                     "fn {}_request_shape() -> &'static str where Self: Sized",
                     method_module);
                 output("{{");
-                output("\tstd::any::type_name::<interface_binding::{}::Request>()", method_module);
+                if (request_generics.empty())
+                    output("\tstd::any::type_name::<interface_binding::{}::Request>()", method_module);
+                else
+                    output("\t\"interface_binding::{}::Request<...>\"", method_module);
                 output("}}");
                 output("");
                 output(
                     "fn {}_response_shape() -> &'static str where Self: Sized",
                     method_module);
                 output("{{");
-                output("\tstd::any::type_name::<interface_binding::{}::Response>()", method_module);
+                if (response_generics.empty())
+                    output("\tstd::any::type_name::<interface_binding::{}::Response>()", method_module);
+                else
+                    output("\t\"interface_binding::{}::Response<...>\"", method_module);
                 output("}}");
                 output("");
             }
@@ -1697,7 +1936,7 @@ namespace rust_generator
             {
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
-                write_generated_delegate_method(output, iface, *function, "proxy_call", root_module_name);
+                write_generated_delegate_method(output, iface, *function, "proxy_call", root_module_name, lib);
             }
             output("}}");
             output("");
@@ -1710,8 +1949,10 @@ namespace rust_generator
                     continue;
 
                 const auto method_module = sanitize_identifier(function->get_name());
-                const auto analysed_params = analyse_rust_method_params(iface, *function);
+                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
                 const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
+                const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
+                const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
                 auto all_where = generic_where_clause_for_params(analysed_params, true, true);
                 if (all_where.empty())
                     all_where = " where Self: Sized";
@@ -1722,14 +1963,20 @@ namespace rust_generator
                     "fn {}_request_shape() -> &'static str where Self: Sized",
                     method_module);
                 output("{{");
-                output("\tstd::any::type_name::<interface_binding::{}::Request>()", method_module);
+                if (request_generics.empty())
+                    output("\tstd::any::type_name::<interface_binding::{}::Request>()", method_module);
+                else
+                    output("\t\"interface_binding::{}::Request<...>\"", method_module);
                 output("}}");
                 output("");
                 output(
                     "fn {}_response_shape() -> &'static str where Self: Sized",
                     method_module);
                 output("{{");
-                output("\tstd::any::type_name::<interface_binding::{}::Response>()", method_module);
+                if (response_generics.empty())
+                    output("\tstd::any::type_name::<interface_binding::{}::Response>()", method_module);
+                else
+                    output("\t\"interface_binding::{}::Response<...>\"", method_module);
                 output("}}");
                 output("");
                 output(
@@ -1767,7 +2014,7 @@ namespace rust_generator
             {
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
-                write_generated_delegate_method(output, iface, *function, "stub_dispatch", root_module_name);
+                write_generated_delegate_method(output, iface, *function, "stub_dispatch", root_module_name, lib);
             }
             output("}}");
             output("");
@@ -1800,11 +2047,12 @@ namespace rust_generator
             output("}}");
             output("impl Interface for ProxySkeleton");
             output("{{");
+            write_associated_type_impls(output, iface, lib, root_module_name);
             for (const auto& function : iface.get_functions())
             {
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
-                write_generated_skeleton_method_body(output, iface, *function, "Proxy", "proxy_call");
+                write_generated_skeleton_method_body(output, iface, *function, "Proxy", "proxy_call", lib, root_module_name);
             }
             output("}}");
             output("impl Proxy for ProxySkeleton {{}}");
@@ -1838,11 +2086,12 @@ namespace rust_generator
             output("}}");
             output("impl Interface for StubSkeleton");
             output("{{");
+            write_associated_type_impls(output, iface, lib, root_module_name);
             for (const auto& function : iface.get_functions())
             {
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
-                write_generated_skeleton_method_body(output, iface, *function, "Stub", "stub_dispatch");
+                write_generated_skeleton_method_body(output, iface, *function, "Stub", "stub_dispatch", lib, root_module_name);
             }
             output("}}");
             output("impl Stub for StubSkeleton {{}}");
@@ -1860,13 +2109,15 @@ namespace rust_generator
                 }
             }
             output("}}");
-            write_method_binding_metadata(output, iface, root_module_name);
+            write_method_binding_metadata(output, iface, root_module_name, lib);
             output("}}");
         }
 
         void write_struct(
             writer& output,
-            const class_entity& type_entity)
+            const class_entity& type_entity,
+            const class_entity& lib,
+            const std::string& root_module_name)
         {
             output("pub mod {}", sanitize_identifier(type_entity.get_name()));
             output("{{");
@@ -1889,15 +2140,36 @@ namespace rust_generator
                 }
             }
 
+            // Emit the Rust struct definition for non-template structs.
+            if (can_emit_rust_value_struct(type_entity, lib))
+            {
+                output("#[derive(Debug, Clone, Default, PartialEq)]");
+                output("pub struct Value {{");
+                for (auto& member : type_entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+                {
+                    if (!member || member->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                        continue;
+                    auto func_entity = std::static_pointer_cast<function_entity>(member);
+                    if (func_entity->is_static())
+                        continue;
+                    const auto field_name = sanitize_identifier(func_entity->get_name());
+                    const auto field_type = rust_value_type_for_cpp_type_with_lib(
+                        func_entity->get_return_type(), type_entity, lib, root_module_name);
+                    output("\tpub {}: {},", field_name, field_type);
+                }
+                output("}}");
+            }
+
             output("}}");
         }
 
         void write_namespace(
             writer& output,
-            const class_entity& lib,
+            const class_entity& top_lib,
+            const class_entity& scope,
             const std::string& root_module_name)
         {
-            for (const auto& elem : lib.get_elements(entity_type::NAMESPACE_MEMBERS))
+            for (const auto& elem : scope.get_elements(entity_type::NAMESPACE_MEMBERS))
             {
                 if (elem->is_in_import())
                     continue;
@@ -1906,16 +2178,16 @@ namespace rust_generator
                 {
                     output("pub mod {}", sanitize_identifier(elem->get_name()));
                     output("{{");
-                    write_namespace(output, static_cast<const class_entity&>(*elem), root_module_name);
+                    write_namespace(output, top_lib, static_cast<const class_entity&>(*elem), root_module_name);
                     output("}}");
                 }
                 else if (elem->get_entity_type() == entity_type::INTERFACE)
                 {
-                    write_interface(output, static_cast<const class_entity&>(*elem), root_module_name);
+                    write_interface(output, static_cast<const class_entity&>(*elem), root_module_name, top_lib);
                 }
                 else if (elem->get_entity_type() == entity_type::STRUCT)
                 {
-                    write_struct(output, static_cast<const class_entity&>(*elem));
+                    write_struct(output, static_cast<const class_entity&>(*elem), top_lib, root_module_name);
                 }
                 else if (elem->get_entity_type() == entity_type::RUSTQUOTE)
                 {
@@ -1946,7 +2218,7 @@ namespace rust_generator
         output("// Generated by Canopy IDL generator. Do not edit.");
         output("// Rust output: interface IDs, method ordinals, binding metadata, and #rust_quote blocks.");
         output("");
-        write_namespace(output, lib, root_module_name);
+        write_namespace(output, lib, lib, root_module_name);
 
         if (is_different(stream, existing_data))
         {

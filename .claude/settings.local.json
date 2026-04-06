@@ -48,7 +48,9 @@
       "Bash(mkdir -p /tmp/js_test)",
       "Bash(node:*)",
       "Bash(gh api:*)",
-      "Bash(/var/home/edward/projects/CanopyJson/build_debug/output/json_test:*)"
+      "Bash(/var/home/edward/projects/CanopyJson/build_debug/output/json_test:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)"
     ]
   },
   "enabledPlugins": {}

@@ -46,3 +46,39 @@ include(CanopyGenerate)
 add_subdirectory(generator)
 add_subdirectory("${CANOPY_INTERFACE_SOURCE_DIR}" interfaces)
 add_subdirectory("${CANOPY_CPP_SOURCE_DIR}" c++)
+
+option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" ON)
+if(CANOPY_BUILD_RUST)
+  find_program(CARGO_EXECUTABLE cargo HINTS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin")
+  if(NOT CARGO_EXECUTABLE)
+    message(WARNING "cargo not found — set CANOPY_BUILD_RUST=OFF to suppress this warning")
+  else()
+    set(CANOPY_RUST_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust")
+
+    # Build all Rust crates (compile only, no test execution).
+    add_custom_target(rust_build ALL
+      COMMAND
+        ${CMAKE_COMMAND} -E env
+          CANOPY_GENERATOR=$<TARGET_FILE:generator>
+          CANOPY_PROTOC=$<TARGET_FILE:protoc>
+        ${CARGO_EXECUTABLE} build --workspace
+          --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
+      WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR}
+      COMMENT "Building Rust workspace"
+      VERBATIM
+    )
+    add_dependencies(rust_build generator protoc)
+
+    # Run Rust tests via CTest.
+    add_test(
+      NAME rust_tests
+      COMMAND
+        ${CMAKE_COMMAND} -E env
+          CANOPY_GENERATOR=$<TARGET_FILE:generator>
+          CANOPY_PROTOC=$<TARGET_FILE:protoc>
+        ${CARGO_EXECUTABLE} test --workspace
+          --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
+      WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR}
+    )
+  endif()
+endif()

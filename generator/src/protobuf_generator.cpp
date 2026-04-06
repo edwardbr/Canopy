@@ -1164,7 +1164,7 @@ namespace protobuf_generator
                         // For interface types, use the unified remote_object
                         bool optimistic = false;
                         std::shared_ptr<class_entity> obj;
-                        if (is_interface_param(lib, parameter.get_type(), optimistic, obj))
+                        if (is_interface_param(*interface_entity, parameter.get_type(), optimistic, obj))
                         {
                             param_type = "rpc.remote_object";
                         }
@@ -1405,6 +1405,15 @@ namespace protobuf_generator
     }
 
     // Helper to check if type is protobuf-serializable as primitive/simple type
+    bool is_byte_vector_type(const std::string& type_str)
+    {
+        std::string norm_type = normalize_type(type_str);
+        return norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>"
+            || norm_type == "std::vector<unsigned char>" || norm_type == "std::vector<int8_t>"
+            || norm_type == "std::vector<char>" || norm_type == "std::vector<signedchar>"
+            || norm_type == "std::vector<signed char>";
+    }
+
     bool is_simple_protobuf_type(const std::string& type_str)
     {
         std::string norm_type = normalize_type(type_str);
@@ -1413,8 +1422,8 @@ namespace protobuf_generator
         if (norm_type == "std::string")
             return true;
 
-        // std::vector<uint8_t> maps to protobuf bytes
-        if (norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>")
+        // Byte vectors map to protobuf bytes
+        if (is_byte_vector_type(norm_type))
             return true;
 
         // Check for std::vector<T> where T is a primitive type
@@ -1479,8 +1488,7 @@ namespace protobuf_generator
             return false;
 
         // Exclude byte vectors (handled separately as bytes)
-        if (norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>"
-            || norm_type == "std::vector<char>" || norm_type == "std::vector<signedchar>")
+        if (is_byte_vector_type(norm_type))
             return false;
 
         size_t start = std::string("std::vector<").length();
@@ -1694,7 +1702,7 @@ namespace protobuf_generator
             {
                 // Simple protobuf types (primitives, std::string, containers with scalar elements)
                 std::string norm_type = normalize_type(param_type);
-                if (norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>")
+                if (is_byte_vector_type(norm_type))
                 {
                     // Use helper for bytes
                     cpp("rpc::serialization::protobuf::serialize_bytes({}, *__request.mutable_{}());", param_name, param_name);
@@ -1878,7 +1886,7 @@ namespace protobuf_generator
             {
                 // Simple protobuf types (primitives, std::string, containers with scalar elements)
                 std::string norm_type = normalize_type(param_type);
-                if (norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>")
+                if (is_byte_vector_type(norm_type))
                 {
                     // Use helper for bytes
                     cpp("rpc::serialization::protobuf::deserialize_bytes(__response.{}(), {});", param_name, param_name);
@@ -2068,7 +2076,7 @@ namespace protobuf_generator
             {
                 // Simple protobuf types (primitives, std::string, containers with scalar elements)
                 std::string norm_type = normalize_type(param_type);
-                if (norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>")
+                if (is_byte_vector_type(norm_type))
                 {
                     // Use helper for bytes
                     cpp("rpc::serialization::protobuf::deserialize_bytes(__request.{}(), {});", param_name, param_name);
@@ -2247,7 +2255,7 @@ namespace protobuf_generator
             {
                 // Simple protobuf types (primitives, std::string, containers with scalar elements)
                 std::string norm_type = normalize_type(param_type);
-                if (norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>")
+                if (is_byte_vector_type(norm_type))
                 {
                     // Use helper for bytes
                     cpp("rpc::serialization::protobuf::serialize_bytes({}, *__response.mutable_{}());",

@@ -14,8 +14,14 @@ fn main() -> Result<(), String> {
         .expect("repo root")
         .to_path_buf();
 
-    let generator = repo_root.join("build_debug/output/generator");
-    let protoc = repo_root.join("build_debug/output/protoc");
+    println!("cargo:rerun-if-env-changed=CANOPY_GENERATOR");
+    println!("cargo:rerun-if-env-changed=CANOPY_PROTOC");
+    let generator = env::var("CANOPY_GENERATOR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join("build_debug/output/generator"));
+    let protoc = env::var("CANOPY_PROTOC")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join("build_debug/output/protoc"));
     let rpc_idl = repo_root.join("interfaces/rpc/rpc_types.idl");
     let probe_idl = manifest_dir.join("basic_rpc_probe.idl");
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));

@@ -2,17 +2,24 @@
 
 This file tracks the handwritten progress of the Canopy Rust port.
 
-It should stay concise and current.
+Keep the completed section as a replayable migration history. The goal is not
+only to show current status, but to preserve the order of implementation
+decisions so the same work can be translated to other language backends.
 
 ## Current Status
 
 Current focus:
 
-- establish the handwritten `rust/` skeleton
-- keep the port aligned with the C++ structure
-- break work into small executable chunks
+- keep the completed migration sequence replayable for future language ports
+- continue Rust generator/protobuf work from the supported service-level probe
+- expand validation toward richer existing IDLs without moving
+  service/transport mechanics into generated code
 
 ## Completed
+
+Completed work is kept in implementation order. When planned work becomes
+done, move the plan into this section rather than deleting it, so the migration
+sequence remains reconstructable.
 
 - Wrote the top-level Rust port plan in [`README.md`](/var/home/edward/projects/Canopy/rust/README.md).
 - Wrote the first-pass `rust/rpc` scope in [`rpc/README.md`](/var/home/edward/projects/Canopy/rust/rpc/README.md).
@@ -725,85 +732,57 @@ Current focus:
     stub-demarshaller shape instead of pretending protobuf decode can directly
     produce application-bound interface values
 
-## In Progress
+### Generated Protobuf Replay Milestones
 
-- Continue expanding generator-owned Rust output on top of the working shared
-  `c_abi` transport baseline.
-- Converge on a Rust equivalent of `rpc::base` that keeps application code
-  clean while remaining compatible with future back-channel and reflection
-  work.
-- Prove the first basic Rust IDL-defined RPC round-trip over generated
-  protobuf request/response types without teaching generators about transport
-  internals.
+- Completed the previously planned move away from per-parameter Rust protobuf
+  conversion toward the C++-style per-method request/response marshalling
+  model:
+  - used the generated C++ protobuf shape, including richer outputs such as
+    `example_shared`, as the behavioural reference for Rust companion
+    generation
+  - made the generated method `Request` / `Response` units the Rust-side
+    marshalling seam before any byte-level protobuf encode/decode is applied
+  - refactored the Rust protobuf companion so method codecs are centered on
+    generated per-method protobuf request/response message types rather than
+    a separate free-function byte conversion layer
+  - added recursive generated conversion helpers for the currently supported
+    scalar, string, bytes, vector, struct, and remote-object/interface value
+    shapes
+  - kept generator output scoped to message conversion and method binding while
+    caller/service/transport mechanics remain in handwritten Rust runtime code
+  - retained the still-open follow-up that real existing-IDL round-trip
+    coverage must be expanded beyond the focused probe once unsupported field
+    shapes and schema drift are handled
 
-## Next Chunks
+- Extended the Rust generator and protobuf companion to support IDL-defined
+  struct types as method parameters, removing the previous scalar/string/vector
+  whitelist restriction:
+  - `generator/src/rust_generator.cpp` now emits actual Rust struct definitions
+    (`pub struct Value`) for non-template IDL structs, with field types resolved
+    through the full library struct-lookup path
+  - `analyse_rust_method_params` and all downstream generated method signatures
+    now use the struct-aware type resolver (`rust_value_type_for_cpp_type_with_lib`)
+    so struct-typed parameters appear with correct `crate::...::Value` types
+    rather than falling back to `canopy_rpc::OpaqueValue`
+  - `rust_default_value_expression_for_type_name` now returns `Default::default()`
+    for any `crate::...` type so `Response::from_error_code(...)` compiles for
+    struct-typed out parameters
+  - `generator/src/rust_protobuf_generator.cpp` now emits `from_proto_X` and
+    `to_proto_X` helpers inside each interface's `interface_binding` module for
+    every struct type used by a method with working codegen
+  - the protobuf companion gating logic (`supports_basic_protobuf_method_codegen`)
+    now recognises struct types whose fields are all scalars or strings, so those
+    methods are no longer assigned `UnsupportedGeneratedMessage` proto types
+  - getter and setter expression generation now delegates to the per-interface
+    struct helpers via `super::from_proto_X(...)` / `super::to_proto_X(...)` when
+    a struct type is detected
+  - added two new methods to the probe IDL:
+    - `translate_point([in] const point& p, int dx, int dy, [out] point& translated)`
+    - `label_value([in] const labeled_value& input, [out] labeled_value& output)`
+  - probe test verifies both methods round-trip correctly through the full
+    protobuf encode/decode/dispatch path
+  - `cargo test -p canopy-protobuf-runtime-probe --lib` passes with 1 test
 
-1. Replace the remaining protobuf codec placeholder behavior so
-   `GeneratedProtobufMethodCodec::decode_request(...)` and
-   `encode_response(...)` can convert between generated protobuf message types
-   and the now-working `DispatchRequest` / `DispatchResponse` stub seam.
-2. Continue replacing the remaining generated proxy/stub placeholder behavior with real Rust-side marshalling and demarshalling hooks over the generated `Request` / `Response` helpers.
-3. Decide the first build-time Rust protobuf compilation path over `PROTO_FILES` / `MASTER_PROTO` (likely `prost-build` first, `tonic-build` only if service generation is needed).
-4. Work toward Rust-side loading of a C++ `c_abi` child once enough generated/runtime parity exists to drive a real typed interface.
-
-## Latest Progress
-
-## Planned Next Step
-
-- Move the Rust protobuf path away from hand-expanded per-parameter conversion
-  and toward the same request/response message bundling shape used in the C++
-  protobuf generator:
-  - for each method, the generator should treat the canonical generated
-    protobuf request/response message
-    (for example `i_foo_give_something_complicated_refRequest`) as the unit of
-    marshalling rather than serialising each Rust value independently
-  - generated Rust proxy/stub code should convert between generated Rust
-    `Request` / `Response` or `DispatchRequest` / `DispatchResponse` structs
-    and the single generated protobuf message for that method
-  - this should allow arbitrary IDL-defined member types to flow through the
-    protobuf message schema naturally instead of requiring a growing whitelist
-    of vector/scalar special cases in the Rust generator
-- Implement this in stages:
-  1. inspect the current C++ protobuf generator output for a richer existing
-     IDL such as
-     [`c++/tests/idls/example_shared/example_shared.idl`](/var/home/edward/projects/Canopy/c++/tests/idls/example_shared/example_shared.idl)
-     and use the emitted request/response protobuf messages under
-     [`build_debug/generated/src/example_shared/protobuf/example_shared.cpp`](/var/home/edward/projects/Canopy/build_debug/generated/src/example_shared/protobuf/example_shared.cpp)
-     as the behavioural reference
-  2. refactor the Rust protobuf companion generator so method codecs are built
-     around full generated protobuf request/response message types, not
-     per-field ad hoc conversion logic
-  3. introduce generated conversion helpers that map Rust generated
-     request/response structs to and from those protobuf messages recursively
-     for:
-     - scalar values
-     - strings and bytes
-     - collections
-     - IDL-defined structs/messages
-     - remote object/interface values
-  4. correct the known protobuf schema drift around `rpc.shared_ptr_*` versus
-     canonical `rpc.remote_object`, because collections of interface-typed
-     values depend on that being stable
-  5. replace the tiny probe-only coverage with at least one richer existing
-     IDL that includes nested/user-defined types and interface-bearing
-     parameters so the Rust path is validated against real Canopy-generated
-     method request/response messages
-- Design constraints for that work:
-  - generators must still not know about transports; the handwritten Rust
-    runtime remains responsible for caller/service send mechanics
-  - the protobuf companion should stay format-specific and own only message
-    conversion plus method metadata
-  - the generic Rust generator should remain focused on interface traits,
-    request/response structs, local dispatch glue, and application-facing
-    bindings
-- Success criteria:
-  - adding a new IDL-defined type used inside a method parameter should not
-    require adding another Rust generator type whitelist entry
-  - a collection of arbitrary IDL-defined values, including interface-typed
-    entries where the protobuf schema already represents them, should round-trip
-    through generated Rust request/response protobuf messages
-  - the Rust probe path should be driven by the same canonical per-method
-    protobuf message types that the C++ path already emits
 - Added the first passing end-to-end Rust probe for a basic IDL-defined RPC
   call over generated protobuf request/response messages:
   - added a tiny dedicated probe IDL under
@@ -869,6 +848,142 @@ Current focus:
     - `std::vector<std::string>` request plus out-param response
     - unsigned byte-vector request plus out-param response
     - signed byte-vector request plus out-param response
+- Extended generated Rust and generated protobuf conversion to cover supported
+  IDL-defined struct values:
+  - generated Rust now emits `Value` structs for non-template IDL structs when
+    every member is representable in the current Rust/protobuf slice
+  - generated protobuf companions now emit `from_proto_*` / `to_proto_*`
+    helpers for those supported struct types and reuse them transitively for
+    nested supported structs and vectors of supported structs
+  - the focused probe IDL now exercises struct-valued request/response
+    round-trips through generated protobuf messages
+- Tightened the generated Rust type boundary so partially supported structs do
+  not leak as mixed typed/opaque bindings:
+  - struct resolution now uses scope-aware parser lookup instead of matching
+    only on leaf type names
+  - generated Rust no longer emits a `Value` struct for an IDL struct if any
+    member still falls outside the supported Rust/protobuf conversion slice
+  - unsupported struct-bearing methods now fall back cleanly to
+    `canopy_rpc::OpaqueValue` at the method boundary rather than embedding
+    `OpaqueValue` inside a partially typed generated struct
+  - protobuf struct helper emission now deduplicates and names helpers using
+    qualified type identity so same-name structs in different namespaces do not
+    collide
+- Moved the Rust protobuf companion onto generated per-method request/response
+  shapes as the marshalling unit:
+  - `GeneratedProtobufMethodCodec` now owns both directions of generated
+    request/response protobuf message conversion:
+    - `request_to_protobuf_message(...)`
+    - `request_from_protobuf_message(...)`
+    - `response_to_protobuf_message(...)`
+    - `response_from_protobuf_message(...)`
+  - the handwritten protobuf facade now owns the byte-level proxy/stub flow
+    around that codec:
+    - proxy path encodes a generated `Request` through the codec and decodes a
+      generated `Response`
+    - stub path decodes a generated `Request`, then routes through
+      `dispatch_decoded_request(...)` before encoding the generated `Response`
+  - generated protobuf companions no longer need a separate free-function
+    byte-conversion layer beside the codec for the supported methods
+  - verified by rebuilding `generator`, rerunning
+    `cargo test -p canopy-protobuf-runtime-probe --lib`, and regenerating
+    `example_shared` to confirm the emitted Rust now centers on the generated
+    method `Request` / `Response` units
+- Split the generated Rust protobuf codec seam so proxy-facing application
+  shapes and stub-facing dispatch shapes are no longer conflated:
+  - `GeneratedProtobufMethodCodec` now distinguishes:
+    - `ProxyRequest` / `ProxyResponse`
+    - `DispatchRequest` / `DispatchResponse`
+  - this lets interface-bearing methods demarshal protobuf `rpc.remote_object`
+    values into wire-facing dispatch requests without pretending the proxy can
+    skip the normal bind/marshalling path from application `Shared<T>` /
+    `Optimistic<T>` values
+  - generated Rust dispatch request/response structs for interface parameters
+    stay `RemoteObject`-based and do not carry unused interface generics
+  - generated protobuf companions now decode interface parameters from
+    `rpc.remote_object` into `DispatchRequest` and encode interface out params
+    from `DispatchResponse` back into `rpc.remote_object`
+  - proxy-side conversion for interface-bearing generated requests remains
+    unsupported until the outgoing bind/back-channel path is added; this
+    deliberately avoids a proxy-to-stub shortcut or any direct transport
+    knowledge in generated code
+- Added focused Rust probe coverage for shared versus optimistic interface
+  demarshalling:
+  - `basic_rpc_probe.idl` now includes `i_peer` plus
+    `accept_shared_peer(...)` and `accept_optimistic_peer(...)`
+  - the probe validates service-level protobuf dispatch for both pointer kinds
+    over the same `rpc.remote_object` wire shape
+  - the shared case binds to `Shared<Arc<T>>`
+  - the optimistic case binds to `Optimistic<LocalProxy<T>>` and keeps a shared
+    registered peer object alive for the duration of the call, matching the C++
+    lifetime rule that optimistic pointers do not own the remote object
+  - verified with `cargo test -p canopy-protobuf-runtime-probe --lib`
+- Removed the generated top-level `INVALID_DATA()` fallback for interface-
+  bearing methods:
+  - generated interface traits now emit associated target-interface types for
+    each interface parameter used by service-level dispatch
+  - the generated method table substitutes those associated types into the
+    method-specific protobuf dispatch call, so service-level dispatch can route
+    interface-bearing methods without knowing a transport or guessing an
+    application implementation type
+  - probe implementations set those associated types to the concrete peer
+    implementation used by the test, and the probe now calls through
+    `Service::send(...)` rather than directly invoking a method-specific
+    dispatch helper
+- Added the first C++ -> Rust generated-protobuf interop proof over the
+  dynamic-library C ABI:
+  - the Rust dynamic-library test child now depends on the generated protobuf
+    runtime probe crate and embeds a tiny generated `i_math` implementation
+  - `TestChildMarshaller::send(...)` detects protobuf `i_math` calls and routes
+    them through generated Rust `__rpc_dispatch_generated(...)` /
+    `GeneratedProtobufMethodCodec` dispatch rather than the previous raw echo
+    payload path
+  - the CMake rule for the Rust test child now passes the active CMake-built
+    `generator` and `protoc` paths to Cargo so generated Rust protobuf code is
+    rebuilt from the same repository tools
+  - `rust_dynamic_library_abi_test` now includes
+    `cxx_payload_can_call_generated_rust_protobuf_method`, where C++ sends the
+    canonical protobuf wire bytes for `i_math.add(20, 22)` through
+    `canopy_dll_send(...)` and validates the generated Rust response decodes to
+    `c = 42` and `result = OK`
+  - this is intentionally not yet a generated C++ proxy call; it proves the
+    cross-language ABI/protobuf/generated-Rust dispatch seam before wiring the
+    full generated C++ proxy surface into the test
+  - verified with `cmake --build build_debug --target
+    rust_dynamic_library_abi_test`, `./build_debug/output/rust_dynamic_library_abi_test`,
+    `cargo fmt --package canopy-transport-dynamic-library-test-child`, and
+    `cargo build --package canopy-transport-dynamic-library-test-child`
+- Added the first generated C++ proxy -> generated Rust protobuf object proof
+  over the dynamic-library C ABI:
+  - `c++/tests/rust_dynamic_library_abi` now generates a C++ `basic_rpc_probe`
+    IDL target from the same probe IDL used by the Rust protobuf runtime probe,
+    so the host-side test uses generated C++ `probe::i_math` bindings rather
+    than manually assembled protobuf bytes
+  - `rust_dynamic_library_abi_test` now includes
+    `generated_cxx_proxy_can_call_generated_rust_protobuf_method`, which builds
+    a `rpc::root_service`, attaches a `rpc::c_abi::child_transport`, calls
+    `connect_to_zone<probe::i_peer, probe::i_math>(...)`, and invokes the
+    generated C++ proxy method `add(20, 22, c)`
+  - the Rust test child now returns its output object descriptor in the
+    C++-assigned child zone when the transport provides a usable child-zone
+    address, while preserving the previous sample output object for direct
+    low-level ABI init tests that do not provide object-id-capable zone
+    metadata
+  - the C++ protobuf generator now treats byte-vector spellings such as
+    `std::vector<signed char>`, `std::vector<char>`, and compact/spaced
+    unsigned/signed-char variants as protobuf `bytes`, matching the generated
+    schema and avoiding repeated-field API emission for byte buffers
+  - this proves the path
+    `generated C++ proxy -> C ABI child transport -> generated Rust protobuf
+    dispatch -> generated Rust response -> generated C++ proxy`
+    for a scalar method without introducing a proxy-to-stub shortcut
+  - verified with `cmake --build build_debug --target
+    rust_dynamic_library_abi_test`,
+    `./build_debug/output/rust_dynamic_library_abi_test
+    --gtest_filter=rust_dynamic_library_abi_test.generated_cxx_proxy_can_call_generated_rust_protobuf_method`,
+    `./build_debug/output/rust_dynamic_library_abi_test`,
+    `cargo fmt --package canopy-transport-dynamic-library-test-child`, and
+    `clang-format -i c++/tests/rust_dynamic_library_abi/rust_dynamic_library_abi_test.cpp`
 - While proving the round-trip, fixed an important handwritten runtime
   deadlock:
   - `Service::outbound_send(...)` previously called into the target while still
@@ -892,6 +1007,38 @@ Current focus:
   `rpc.shared_ptr_*` message types instead of the intended
   `rpc.remote_object` form. That needs to be corrected before the same
   build-metadata path can be expanded to those richer generated targets.
+- Next implementation step:
+  - replace the remaining field-by-field message population in
+    `generator/src/rust_protobuf_generator.cpp` with conversion that is driven
+    directly from the canonical generated protobuf request/response message
+    types and their schema shape, so adding new supported IDL fields does not
+    require duplicating per-field set/get emission in multiple places
+  - extend the current interface-pointer support from the focused service-level
+    probe toward richer existing IDLs while keeping the C++ IDL distinction
+    between `rpc::shared_ptr<T>` and `rpc::optimistic_ptr<T>` as seen in
+    [`../c++/tests/idls/example/example.idl`](/var/home/edward/projects/Canopy/c++/tests/idls/example/example.idl):
+    both pointer kinds can use `rpc.remote_object` as the protobuf wire value,
+    but generated Rust metadata, request/response bindings, local bind helpers,
+    add-ref/release semantics, and collection handling must preserve whether
+    each value came from a shared or optimistic IDL pointer
+  - add validation coverage over real `example.idl` methods such as
+    `set_optimistic_ptr(...)` / `get_optimistic_ptr(...)` plus comparable
+    `rpc::shared_ptr<T>` methods, beyond the current focused
+    `basic_rpc_probe.idl` coverage
+  - add proxy-side outgoing interface binding / back-channel support for
+    interface-bearing generated proxy requests; this remains intentionally
+    separate from stub demarshalling and must stay in handwritten runtime seams
+    rather than direct proxy-to-stub calls
+  - add the reverse cross-language proof:
+    generated Rust proxy -> dynamic-library C ABI transport -> generated C++
+    protobuf object, starting with scalar methods and then expanding to richer
+    IDL values
+  - expand validation from structural regeneration to a richer existing IDL
+    round-trip, such as `example_shared`, once the current protobuf schema drift
+    and unsupported field shapes are handled
+  - keep generator output limited to protobuf message conversion and method
+    binding; caller/service/transport mechanics remain handwritten runtime
+    concerns
 - Planned Rust application ergonomics should stay close to the current C++
   `rpc::base` experience:
   - application structs implement generated interface traits

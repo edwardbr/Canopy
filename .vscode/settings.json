@@ -107,5 +107,8 @@
     ],
     "protobuf.clangFormat.enabled": true,
     "protobuf.clangFormat.path": "/usr/bin/clang-format",
-    "git.detectSubmodulesLimit": 50
+    "git.detectSubmodulesLimit": 50,
+    "rust-analyzer.linkedProjects": [
+        "rust/Cargo.toml"
+    ]
 }

@@ -2,6 +2,25 @@ typedef int error_code;
 
 namespace probe
 {
+    [status = production] interface i_peer
+    {
+        error_code ping([out] int& value);
+    };
+
+    [status = production]
+    struct point
+    {
+        int x;
+        int y;
+    };
+
+    [status = production]
+    struct labeled_value
+    {
+        std::string label;
+        int value;
+    };
+
     [status = production] interface i_math
     {
         error_code add(int a, int b, [out] int& c);
@@ -11,5 +30,9 @@ namespace probe
         error_code decorate_many(const std::vector<std::string>& input, [out] std::vector<std::string>& output);
         error_code echo_bytes(const std::vector<uint8_t>& input, [out] std::vector<uint8_t>& output);
         error_code negate_signed_bytes(const std::vector<signed char>& input, [out] std::vector<signed char>& output);
+        error_code translate_point([in] const point& p, int dx, int dy, [out] point& translated);
+        error_code label_value([in] const labeled_value& input, [out] labeled_value& output);
+        error_code accept_shared_peer([in] const rpc::shared_ptr<i_peer>& peer, [out] int& seen);
+        error_code accept_optimistic_peer([in] const rpc::optimistic_ptr<i_peer>& peer, [out] int& seen);
     };
 }
