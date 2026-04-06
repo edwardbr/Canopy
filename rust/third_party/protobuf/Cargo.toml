@@ -8,6 +8,9 @@ license = "BSD-3-Clause"
 name = "protobuf"
 path = "../../../submodules/protobuf/rust/shared.rs"
 
+[lints.rust]
+dead_code = "allow"
+
 [dependencies]
 paste = { path = "../paste" }
 protobuf-macros = { path = "../protobuf_macros" }

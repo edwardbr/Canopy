@@ -6,8 +6,10 @@
 #include <gtest/gtest.h>
 
 #include <c_abi/dynamic_library/canopy_dynamic_library.h>
+#include <protobuf_runtime_probe/basic_rpc_probe.h>
 #include <rpc/rpc.h>
 #include <transports/c_abi/dynamic_library_loader.h>
+#include <transports/c_abi/transport.h>
 
 #include <cstdint>
 #include <string>
@@ -47,15 +49,7 @@ namespace
     {
         auto zone_address = rpc::zone_address::create(
             rpc::zone_address_args(
-                rpc::default_values::version_3,
-                rpc::address_type::ipv4,
-                8081,
-                {127, 0, 0, 1},
-                32,
-                88,
-                16,
-                0,
-                {}));
+                rpc::default_values::version_3, rpc::address_type::ipv4, 8081, {127, 0, 0, 1}, 32, 88, 16, 0, {}));
         EXPECT_TRUE(zone_address.has_value());
         return zone_address->get_blob();
     }
@@ -90,9 +84,7 @@ namespace
         state->send_call_count += 1;
         state->observed_interface_id = params->interface_id;
         state->observed_method_id = params->method_id;
-        state->observed_payload.assign(
-            reinterpret_cast<const char*>(params->in_data.data),
-            params->in_data.size);
+        state->observed_payload.assign(reinterpret_cast<const char*>(params->in_data.data), params->in_data.size);
         state->out_buf.assign({'p', 'a', 'r', 'e', 'n', 't', '-', 'o', 'k'});
 
         *result = {};
@@ -110,9 +102,7 @@ namespace
         state->post_call_count += 1;
         state->observed_interface_id = params->interface_id;
         state->observed_method_id = params->method_id;
-        state->observed_post_payload.assign(
-            reinterpret_cast<const char*>(params->in_data.data),
-            params->in_data.size);
+        state->observed_post_payload.assign(reinterpret_cast<const char*>(params->in_data.data), params->in_data.size);
     }
 
     extern "C" int32_t parent_try_cast(
@@ -191,7 +181,8 @@ namespace
         if (!object->address.blob.data || !object->address.blob.size)
             return;
 
-        allocator->free(allocator->allocator_ctx, const_cast<uint8_t*>(object->address.blob.data), object->address.blob.size);
+        allocator->free(
+            allocator->allocator_ctx, const_cast<uint8_t*>(object->address.blob.data), object->address.blob.size);
         object->address.blob = {};
     }
 
@@ -247,9 +238,7 @@ namespace
         canopy_new_zone_id_result* result)
     {
         free_remote_object(allocator, reinterpret_cast<canopy_remote_object*>(&result->zone_id));
-        free_standard_result(
-            allocator,
-            reinterpret_cast<canopy_standard_result*>(result));
+        free_standard_result(allocator, reinterpret_cast<canopy_standard_result*>(result));
     }
 
     std::string send_and_read_string(
@@ -271,15 +260,97 @@ namespace
         EXPECT_EQ(loader.exports().send(child_ctx, &send_params, &send_result), 0);
         EXPECT_NE(send_result.out_buf.data, nullptr);
 
-        std::string returned(
-            reinterpret_cast<const char*>(send_result.out_buf.data),
-            send_result.out_buf.size);
+        std::string returned(reinterpret_cast<const char*>(send_result.out_buf.data), send_result.out_buf.size);
         free_send_result(allocator, &send_result);
         return returned;
     }
 
-    class rust_dynamic_library_abi_test
-        : public ::testing::Test
+    void append_protobuf_varint(
+        std::vector<uint8_t>& out,
+        uint64_t value)
+    {
+        while (value >= 0x80)
+        {
+            out.push_back(static_cast<uint8_t>(value | 0x80));
+            value >>= 7;
+        }
+        out.push_back(static_cast<uint8_t>(value));
+    }
+
+    void append_protobuf_int32_field(
+        std::vector<uint8_t>& out,
+        uint32_t field_number,
+        int32_t value)
+    {
+        append_protobuf_varint(out, static_cast<uint64_t>(field_number << 3));
+        append_protobuf_varint(out, static_cast<uint32_t>(value));
+    }
+
+    std::vector<uint8_t> make_i_math_add_request(
+        int32_t a,
+        int32_t b)
+    {
+        std::vector<uint8_t> out;
+        append_protobuf_int32_field(out, 1, a);
+        append_protobuf_int32_field(out, 2, b);
+        return out;
+    }
+
+    bool read_protobuf_varint(
+        const std::vector<uint8_t>& bytes,
+        size_t& offset,
+        uint64_t& value)
+    {
+        value = 0;
+        uint32_t shift = 0;
+        while (offset < bytes.size() && shift <= 63)
+        {
+            const auto byte = bytes[offset++];
+            value |= static_cast<uint64_t>(byte & 0x7f) << shift;
+            if ((byte & 0x80) == 0)
+                return true;
+            shift += 7;
+        }
+        return false;
+    }
+
+    struct generated_add_response
+    {
+        int32_t c = 0;
+        int32_t result = 0;
+    };
+
+    bool parse_i_math_add_response(
+        const std::vector<uint8_t>& bytes,
+        generated_add_response& response)
+    {
+        size_t offset = 0;
+        while (offset < bytes.size())
+        {
+            uint64_t key = 0;
+            if (!read_protobuf_varint(bytes, offset, key) || (key & 0x7u) != 0)
+                return false;
+
+            uint64_t value = 0;
+            if (!read_protobuf_varint(bytes, offset, value))
+                return false;
+
+            switch (key >> 3)
+            {
+            case 1:
+                response.c = static_cast<int32_t>(value);
+                break;
+            case 2:
+                response.result = static_cast<int32_t>(value);
+                break;
+            default:
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class rust_dynamic_library_abi_test : public ::testing::Test
     {
     protected:
         rpc::c_abi::dynamic_library_loader loader_;
@@ -287,10 +358,7 @@ namespace
         parent_callback_state parent_state_;
         canopy_allocator_vtable allocator_{&allocator_state_, &test_alloc, &test_free};
 
-        void SetUp() override
-        {
-            ASSERT_TRUE(loader_.load(CANOPY_RUST_TEST_DLL_PATH));
-        }
+        void SetUp() override { ASSERT_TRUE(loader_.load(CANOPY_RUST_TEST_DLL_PATH)); }
 
         void TearDown() override
         {
@@ -299,7 +367,9 @@ namespace
         }
     };
 
-    TEST_F(rust_dynamic_library_abi_test, init_and_send_round_trip)
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        init_and_send_round_trip)
     {
         canopy_dll_init_params init_params{};
         init_params.name = "rust child";
@@ -332,9 +402,7 @@ namespace
         ASSERT_EQ(loader_.exports().send(init_params.child_ctx, &send_params, &send_result), 0);
         ASSERT_NE(send_result.out_buf.data, nullptr);
 
-        std::string returned(
-            reinterpret_cast<const char*>(send_result.out_buf.data),
-            send_result.out_buf.size);
+        std::string returned(reinterpret_cast<const char*>(send_result.out_buf.data), send_result.out_buf.size);
         EXPECT_EQ(returned, "rust-child:ping");
 
         free_send_result(&allocator_, &send_result);
@@ -342,7 +410,77 @@ namespace
         loader_.exports().destroy(init_params.child_ctx);
     }
 
-    TEST_F(rust_dynamic_library_abi_test, try_cast_release_and_get_new_zone_id_round_trip)
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        cxx_payload_can_call_generated_rust_protobuf_method)
+    {
+        canopy_dll_init_params init_params{};
+        init_params.name = "rust child";
+        init_params.allocator = allocator_;
+        init_params.parent_ctx = &parent_state_;
+        init_params.parent_send = &parent_send;
+        init_params.parent_post = &parent_post;
+        init_params.parent_try_cast = &parent_try_cast;
+        init_params.parent_add_ref = &parent_add_ref;
+        init_params.parent_release = &parent_release;
+        init_params.parent_object_released = &parent_object_released;
+        init_params.parent_transport_down = &parent_transport_down;
+        init_params.parent_get_new_zone_id = &parent_get_new_zone_id;
+
+        ASSERT_EQ(loader_.exports().init(&init_params), 0);
+        ASSERT_NE(init_params.child_ctx, nullptr);
+
+        const auto request = make_i_math_add_request(20, 22);
+        canopy_send_params send_params{};
+        send_params.protocol_version = 3;
+        send_params.encoding_type = 16;
+        send_params.tag = 56;
+        send_params.interface_id = 6236349207968000364ull;
+        send_params.method_id = 1;
+        send_params.in_data.data = request.data();
+        send_params.in_data.size = request.size();
+
+        canopy_send_result send_result{};
+        ASSERT_EQ(loader_.exports().send(init_params.child_ctx, &send_params, &send_result), 0);
+        EXPECT_EQ(send_result.error_code, 0);
+        ASSERT_NE(send_result.out_buf.data, nullptr);
+
+        std::vector<uint8_t> response_bytes(send_result.out_buf.data, send_result.out_buf.data + send_result.out_buf.size);
+        generated_add_response response;
+        ASSERT_TRUE(parse_i_math_add_response(response_bytes, response));
+        EXPECT_EQ(response.result, 0);
+        EXPECT_EQ(response.c, 42);
+
+        free_send_result(&allocator_, &send_result);
+        free_remote_object(&allocator_, &init_params.output_obj);
+        loader_.exports().destroy(init_params.child_ctx);
+    }
+
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        generated_cxx_proxy_can_call_generated_rust_protobuf_method)
+    {
+        auto root_service = std::make_shared<rpc::root_service>("cxx host", rpc::DEFAULT_PREFIX);
+        auto child_transport = std::make_shared<rpc::c_abi::child_transport>(
+            "rust generated child", root_service, CANOPY_RUST_TEST_DLL_PATH);
+
+        auto connect_result = root_service->connect_to_zone<probe::i_peer, probe::i_math>(
+            "rust generated child", child_transport, rpc::shared_ptr<probe::i_peer>());
+
+        ASSERT_EQ(connect_result.error_code, rpc::error::OK());
+        ASSERT_NE(connect_result.output_interface, nullptr);
+
+        int c = -1;
+        EXPECT_EQ(connect_result.output_interface->add(20, 22, c), rpc::error::OK());
+        EXPECT_EQ(c, 42);
+
+        connect_result.output_interface = nullptr;
+        root_service = nullptr;
+    }
+
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        try_cast_release_and_get_new_zone_id_round_trip)
     {
         canopy_dll_init_params init_params{};
         init_params.name = "rust child";
@@ -403,7 +541,9 @@ namespace
         loader_.exports().destroy(init_params.child_ctx);
     }
 
-    TEST_F(rust_dynamic_library_abi_test, post_add_ref_object_released_and_transport_down_are_observable)
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        post_add_ref_object_released_and_transport_down_are_observable)
     {
         canopy_dll_init_params init_params{};
         init_params.name = "rust child";
@@ -469,7 +609,9 @@ namespace
         loader_.exports().destroy(init_params.child_ctx);
     }
 
-    TEST_F(rust_dynamic_library_abi_test, rust_child_can_call_parent_send_callback)
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        rust_child_can_call_parent_send_callback)
     {
         canopy_dll_init_params init_params{};
         init_params.name = "rust child";
@@ -498,7 +640,9 @@ namespace
         loader_.exports().destroy(init_params.child_ctx);
     }
 
-    TEST_F(rust_dynamic_library_abi_test, rust_child_can_call_parent_get_new_zone_id_callback)
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        rust_child_can_call_parent_get_new_zone_id_callback)
     {
         canopy_dll_init_params init_params{};
         init_params.name = "rust child";
@@ -524,7 +668,9 @@ namespace
         loader_.exports().destroy(init_params.child_ctx);
     }
 
-    TEST_F(rust_dynamic_library_abi_test, rust_child_can_call_remaining_parent_callbacks)
+    TEST_F(
+        rust_dynamic_library_abi_test,
+        rust_child_can_call_remaining_parent_callbacks)
     {
         canopy_dll_init_params init_params{};
         init_params.name = "rust child";

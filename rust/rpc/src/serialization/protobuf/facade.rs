@@ -127,31 +127,57 @@ impl ProtobufWireMessage for UnsupportedGeneratedMessage {
 /// metadata applies and, later, how to decode and encode the canonical protobuf
 /// bytes for that method.
 pub trait GeneratedProtobufMethodCodec {
-    type Request;
-    type Response;
+    type ProxyRequest;
+    type ProxyResponse;
+    type DispatchRequest;
+    type DispatchResponse;
     type ProtoRequest: ProtobufWireMessage;
     type ProtoResponse: ProtobufWireMessage;
 
     fn descriptor() -> &'static GeneratedProtobufMethodDescriptor;
 
-    fn request_from_protobuf_message(_message: Self::ProtoRequest) -> Result<Self::Request, i32> {
+    fn request_from_protobuf_message(
+        _message: Self::ProtoRequest,
+    ) -> Result<Self::DispatchRequest, i32> {
         Err(crate::INVALID_DATA())
     }
 
     fn response_to_protobuf_message(
-        _response: &Self::Response,
+        _response: &Self::DispatchResponse,
     ) -> Result<Self::ProtoResponse, i32> {
         Err(crate::INVALID_DATA())
     }
 
-    fn decode_request(proto_bytes: &[u8]) -> Result<Self::Request, i32> {
+    fn request_to_protobuf_message(
+        _request: &Self::ProxyRequest,
+    ) -> Result<Self::ProtoRequest, i32> {
+        Err(crate::INVALID_DATA())
+    }
+
+    fn response_from_protobuf_message(
+        _message: Self::ProtoResponse,
+    ) -> Result<Self::ProxyResponse, i32> {
+        Err(crate::INVALID_DATA())
+    }
+
+    fn decode_request(proto_bytes: &[u8]) -> Result<Self::DispatchRequest, i32> {
         let message = Self::ProtoRequest::parse_from_bytes(proto_bytes)?;
         Self::request_from_protobuf_message(message)
     }
 
-    fn encode_response(response: &Self::Response) -> Result<Vec<u8>, i32> {
+    fn encode_request(request: &Self::ProxyRequest) -> Result<Vec<u8>, i32> {
+        let message = Self::request_to_protobuf_message(request)?;
+        message.serialize_to_bytes()
+    }
+
+    fn encode_response(response: &Self::DispatchResponse) -> Result<Vec<u8>, i32> {
         let message = Self::response_to_protobuf_message(response)?;
         message.serialize_to_bytes()
+    }
+
+    fn decode_response(proto_bytes: &[u8]) -> Result<Self::ProxyResponse, i32> {
+        let message = Self::ProtoResponse::parse_from_bytes(proto_bytes)?;
+        Self::response_from_protobuf_message(message)
     }
 }
 
@@ -165,7 +191,7 @@ pub fn dispatch_generated_stub_call<Codec, DispatchFn>(
 ) -> crate::SendResult
 where
     Codec: GeneratedProtobufMethodCodec,
-    DispatchFn: FnOnce(Codec::Request) -> Result<Codec::Response, i32>,
+    DispatchFn: FnOnce(Codec::DispatchRequest) -> Result<Codec::DispatchResponse, i32>,
 {
     let request = match Codec::decode_request(&params.in_data) {
         Ok(request) => request,
@@ -183,32 +209,24 @@ where
     }
 }
 
-pub fn call_generated_proxy_method<
-    Response,
-    EncodeRequest,
-    DecodeResponse,
-    FromError,
-    TransportError,
->(
+pub fn call_generated_proxy_method<Codec, FromError, TransportError>(
     caller: Option<&dyn crate::GeneratedRpcCaller>,
     interface_id: crate::InterfaceOrdinal,
     method_id: crate::Method,
-    encode_request: EncodeRequest,
-    decode_response: DecodeResponse,
+    request: &Codec::ProxyRequest,
     from_error_code: FromError,
     transport_error: TransportError,
-) -> Response
+) -> Codec::ProxyResponse
 where
-    EncodeRequest: FnOnce() -> Result<Vec<u8>, i32>,
-    DecodeResponse: FnOnce(&[u8]) -> Result<Response, i32>,
-    FromError: Fn(i32) -> Response,
-    TransportError: FnOnce() -> Response,
+    Codec: GeneratedProtobufMethodCodec,
+    FromError: Fn(i32) -> Codec::ProxyResponse,
+    TransportError: FnOnce() -> Codec::ProxyResponse,
 {
     let Some(caller) = caller else {
         return transport_error();
     };
 
-    let in_data = match encode_request() {
+    let in_data = match Codec::encode_request(request) {
         Ok(in_data) => in_data,
         Err(error_code) => return from_error_code(error_code),
     };
@@ -218,7 +236,7 @@ where
         return from_error_code(result.error_code);
     }
 
-    match decode_response(&result.out_buf) {
+    match Codec::decode_response(&result.out_buf) {
         Ok(response) => response,
         Err(error_code) => from_error_code(error_code),
     }
@@ -282,8 +300,10 @@ mod tests {
     struct ExampleMethodCodec;
 
     impl GeneratedProtobufMethodCodec for ExampleMethodCodec {
-        type Request = ();
-        type Response = ();
+        type ProxyRequest = ();
+        type ProxyResponse = ();
+        type DispatchRequest = ();
+        type DispatchResponse = ();
         type ProtoRequest = UnsupportedGeneratedMessage;
         type ProtoResponse = UnsupportedGeneratedMessage;
 
@@ -351,8 +371,10 @@ mod tests {
     }
 
     impl GeneratedProtobufMethodCodec for ExampleDispatchCodec {
-        type Request = i32;
-        type Response = i32;
+        type ProxyRequest = i32;
+        type ProxyResponse = i32;
+        type DispatchRequest = i32;
+        type DispatchResponse = i32;
         type ProtoRequest = ExampleWireMessage;
         type ProtoResponse = ExampleWireMessage;
 
@@ -362,12 +384,12 @@ mod tests {
 
         fn request_from_protobuf_message(
             message: Self::ProtoRequest,
-        ) -> Result<Self::Request, i32> {
+        ) -> Result<Self::DispatchRequest, i32> {
             Ok(message.0)
         }
 
         fn response_to_protobuf_message(
-            response: &Self::Response,
+            response: &Self::DispatchResponse,
         ) -> Result<Self::ProtoResponse, i32> {
             Ok(ExampleWireMessage(*response))
         }

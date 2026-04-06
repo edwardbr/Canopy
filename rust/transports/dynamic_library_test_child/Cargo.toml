@@ -9,5 +9,6 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-canopy-rpc = { path = "../../rpc" }
+canopy-protobuf-runtime-probe = { path = "../../tests/protobuf_runtime_probe" }
+canopy-rpc = { path = "../../rpc", features = ["protobuf-runtime"] }
 canopy-transport-dynamic-library = { path = "../dynamic_library" }
