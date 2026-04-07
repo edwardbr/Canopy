@@ -12,4 +12,5 @@ protobuf-codegen = { path = "../../third_party/protobuf_codegen" }
 
 [dependencies]
 canopy-rpc = { path = "../../rpc", features = ["protobuf-runtime"] }
+canopy-transport-dynamic-library = { path = "../../transports/dynamic_library" }
 protobuf = { path = "../../third_party/protobuf" }

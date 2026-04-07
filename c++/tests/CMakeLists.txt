@@ -29,8 +29,5 @@ if(CANOPY_BUILD_ENCLAVE)
   add_subdirectory(test_enclave)
 endif()
 
-# Add fuzz test subdirectory
-add_subdirectory(fuzz_test)
-
 # Add unit tests subdirectory
 add_subdirectory(unit_tests)

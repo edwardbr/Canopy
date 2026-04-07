@@ -32,51 +32,119 @@ impl<T> BoundInterface<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Shared<T>(pub BoundInterface<T>);
+#[derive(Debug)]
+pub struct Shared<T> {
+    iface: BoundInterface<T>,
+}
 
 impl<T> Shared<T> {
     pub fn null() -> Self {
-        Self(BoundInterface::Null)
+        Self {
+            iface: BoundInterface::Null,
+        }
     }
 
     pub fn from_value(value: T) -> Self {
-        Self(BoundInterface::Value(value))
+        Self {
+            iface: BoundInterface::Value(value),
+        }
+    }
+
+    pub fn from_inner(iface: BoundInterface<T>) -> Self {
+        Self { iface }
     }
 
     pub fn into_inner(self) -> BoundInterface<T> {
-        self.0
+        let Self { iface } = self;
+        iface
     }
 
     pub fn as_inner(&self) -> &BoundInterface<T> {
-        &self.0
+        &self.iface
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Optimistic<T>(pub BoundInterface<T>);
+impl<T> Clone for Shared<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            iface: self.iface.clone(),
+        }
+    }
+}
+
+impl<T> PartialEq for Shared<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.iface == other.iface
+    }
+}
+
+impl<T> Eq for Shared<T> where T: Eq {}
+
+#[derive(Debug)]
+pub struct Optimistic<T> {
+    iface: BoundInterface<T>,
+}
 
 impl<T> Optimistic<T> {
     pub fn null() -> Self {
-        Self(BoundInterface::Null)
+        Self {
+            iface: BoundInterface::Null,
+        }
     }
 
     pub fn gone() -> Self {
-        Self(BoundInterface::Gone)
+        Self {
+            iface: BoundInterface::Gone,
+        }
     }
 
     pub fn from_value(value: T) -> Self {
-        Self(BoundInterface::Value(value))
+        Self {
+            iface: BoundInterface::Value(value),
+        }
+    }
+
+    pub fn from_inner(iface: BoundInterface<T>) -> Self {
+        Self { iface }
     }
 
     pub fn into_inner(self) -> BoundInterface<T> {
-        self.0
+        let Self { iface } = self;
+        iface
     }
 
     pub fn as_inner(&self) -> &BoundInterface<T> {
-        &self.0
+        &self.iface
     }
 }
+
+impl<T> Clone for Optimistic<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            iface: self.iface.clone(),
+        }
+    }
+}
+
+impl<T> PartialEq for Optimistic<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.iface == other.iface
+    }
+}
+
+impl<T> Eq for Optimistic<T> where T: Eq {}
 
 pub fn is_bound_pointer_null<T>(iface: &BoundInterface<T>) -> bool {
     iface.is_null()
@@ -150,23 +218,52 @@ where
 
 pub trait BindableInterfaceValue {
     fn is_local(&self) -> bool;
+
+    fn remote_object_id(&self) -> Option<RemoteObject> {
+        None
+    }
+
+    fn remote_object_proxy(&self) -> Option<Arc<crate::ObjectProxy>> {
+        None
+    }
 }
 
 impl<T> BindableInterfaceValue for Arc<T>
 where
-    T: Send + Sync + 'static,
+    T: crate::internal::GeneratedRustInterface,
 {
     fn is_local(&self) -> bool {
-        true
+        self.remote_object_id().is_none()
+    }
+
+    fn remote_object_id(&self) -> Option<RemoteObject> {
+        <T as crate::internal::GeneratedRustInterface>::remote_object_id(self.as_ref())
+    }
+
+    fn remote_object_proxy(&self) -> Option<Arc<crate::ObjectProxy>> {
+        <T as crate::internal::GeneratedRustInterface>::remote_object_proxy(self.as_ref())
     }
 }
 
 impl<T> BindableInterfaceValue for LocalProxy<T>
 where
-    T: Send + Sync + 'static,
+    T: crate::internal::GeneratedRustInterface,
 {
     fn is_local(&self) -> bool {
-        true
+        self.upgrade()
+            .is_none_or(|value| value.remote_object_id().is_none())
+    }
+
+    fn remote_object_id(&self) -> Option<RemoteObject> {
+        self.upgrade().and_then(|value| {
+            <T as crate::internal::GeneratedRustInterface>::remote_object_id(value.as_ref())
+        })
+    }
+
+    fn remote_object_proxy(&self) -> Option<Arc<crate::ObjectProxy>> {
+        self.upgrade().and_then(|value| {
+            <T as crate::internal::GeneratedRustInterface>::remote_object_proxy(value.as_ref())
+        })
     }
 }
 

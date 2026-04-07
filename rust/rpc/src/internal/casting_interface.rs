@@ -1,12 +1,15 @@
 //! Rust counterpart of `c++/rpc/include/rpc/internal/casting_interface.h`.
 
 use std::any::Any;
+use std::sync::Arc;
 
 use crate::internal::bindings_fwd::GeneratedMethodBindingDescriptor;
 use crate::internal::error_codes;
 use crate::internal::marshaller_params::{SendParams, SendResult};
+use crate::internal::object_proxy::ObjectProxy;
 use crate::internal::remote_pointer::CreateLocalProxy;
-use crate::rpc_types::InterfaceOrdinal;
+use crate::internal::service_proxy::GeneratedRpcCaller;
+use crate::rpc_types::{InterfaceOrdinal, RemoteObject};
 
 #[doc(hidden)]
 pub trait CastingInterface: Any + Send + Sync + 'static {
@@ -37,6 +40,25 @@ pub trait GeneratedRustInterface: CastingInterface + CreateLocalProxy {
     fn binding_metadata() -> &'static [GeneratedMethodBindingDescriptor]
     where
         Self: Sized;
+
+    #[doc(hidden)]
+    fn create_remote_proxy(caller: Arc<dyn GeneratedRpcCaller>) -> Self
+    where
+        Self: Sized,
+    {
+        let _ = caller;
+        panic!("remote proxy construction is only implemented by generated proxy skeletons")
+    }
+
+    #[doc(hidden)]
+    fn remote_object_id(&self) -> Option<RemoteObject> {
+        None
+    }
+
+    #[doc(hidden)]
+    fn remote_object_proxy(&self) -> Option<Arc<ObjectProxy>> {
+        None
+    }
 }
 
 #[cfg(test)]

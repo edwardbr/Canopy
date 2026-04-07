@@ -7,6 +7,7 @@
 
 #include <c_abi/dynamic_library/canopy_dynamic_library.h>
 #include <protobuf_runtime_probe/basic_rpc_probe.h>
+#include <src/protobuf_runtime_probe/protobuf/schema/probe.pb.h>
 #include <rpc/rpc.h>
 #include <transports/c_abi/dynamic_library_loader.h>
 #include <transports/c_abi/transport.h>
@@ -265,91 +266,6 @@ namespace
         return returned;
     }
 
-    void append_protobuf_varint(
-        std::vector<uint8_t>& out,
-        uint64_t value)
-    {
-        while (value >= 0x80)
-        {
-            out.push_back(static_cast<uint8_t>(value | 0x80));
-            value >>= 7;
-        }
-        out.push_back(static_cast<uint8_t>(value));
-    }
-
-    void append_protobuf_int32_field(
-        std::vector<uint8_t>& out,
-        uint32_t field_number,
-        int32_t value)
-    {
-        append_protobuf_varint(out, static_cast<uint64_t>(field_number << 3));
-        append_protobuf_varint(out, static_cast<uint32_t>(value));
-    }
-
-    std::vector<uint8_t> make_i_math_add_request(
-        int32_t a,
-        int32_t b)
-    {
-        std::vector<uint8_t> out;
-        append_protobuf_int32_field(out, 1, a);
-        append_protobuf_int32_field(out, 2, b);
-        return out;
-    }
-
-    bool read_protobuf_varint(
-        const std::vector<uint8_t>& bytes,
-        size_t& offset,
-        uint64_t& value)
-    {
-        value = 0;
-        uint32_t shift = 0;
-        while (offset < bytes.size() && shift <= 63)
-        {
-            const auto byte = bytes[offset++];
-            value |= static_cast<uint64_t>(byte & 0x7f) << shift;
-            if ((byte & 0x80) == 0)
-                return true;
-            shift += 7;
-        }
-        return false;
-    }
-
-    struct generated_add_response
-    {
-        int32_t c = 0;
-        int32_t result = 0;
-    };
-
-    bool parse_i_math_add_response(
-        const std::vector<uint8_t>& bytes,
-        generated_add_response& response)
-    {
-        size_t offset = 0;
-        while (offset < bytes.size())
-        {
-            uint64_t key = 0;
-            if (!read_protobuf_varint(bytes, offset, key) || (key & 0x7u) != 0)
-                return false;
-
-            uint64_t value = 0;
-            if (!read_protobuf_varint(bytes, offset, value))
-                return false;
-
-            switch (key >> 3)
-            {
-            case 1:
-                response.c = static_cast<int32_t>(value);
-                break;
-            case 2:
-                response.result = static_cast<int32_t>(value);
-                break;
-            default:
-                return false;
-            }
-        }
-        return true;
-    }
-
     class rust_dynamic_library_abi_test : public ::testing::Test
     {
     protected:
@@ -430,26 +346,33 @@ namespace
         ASSERT_EQ(loader_.exports().init(&init_params), 0);
         ASSERT_NE(init_params.child_ctx, nullptr);
 
-        const auto request = make_i_math_add_request(20, 22);
+        // Use generated protobuf types for the request.
+        protobuf::probe::i_math_addRequest request;
+        request.set_a(20);
+        request.set_b(22);
+        std::string request_str;
+        ASSERT_TRUE(request.SerializeToString(&request_str));
+
         canopy_send_params send_params{};
         send_params.protocol_version = 3;
         send_params.encoding_type = 16;
         send_params.tag = 56;
-        send_params.interface_id = 6236349207968000364ull;
+        send_params.interface_id = probe::i_math::get_id(rpc::VERSION_3).get_val();
         send_params.method_id = 1;
-        send_params.in_data.data = request.data();
-        send_params.in_data.size = request.size();
+        send_params.in_data.data = reinterpret_cast<const uint8_t*>(request_str.data());
+        send_params.in_data.size = request_str.size();
 
         canopy_send_result send_result{};
         ASSERT_EQ(loader_.exports().send(init_params.child_ctx, &send_params, &send_result), 0);
         EXPECT_EQ(send_result.error_code, 0);
         ASSERT_NE(send_result.out_buf.data, nullptr);
 
-        std::vector<uint8_t> response_bytes(send_result.out_buf.data, send_result.out_buf.data + send_result.out_buf.size);
-        generated_add_response response;
-        ASSERT_TRUE(parse_i_math_add_response(response_bytes, response));
-        EXPECT_EQ(response.result, 0);
-        EXPECT_EQ(response.c, 42);
+        // Use generated protobuf types to parse the response.
+        protobuf::probe::i_math_addResponse response;
+        std::string response_str(reinterpret_cast<const char*>(send_result.out_buf.data), send_result.out_buf.size);
+        ASSERT_TRUE(response.ParseFromString(response_str));
+        EXPECT_EQ(response.result(), 0);
+        EXPECT_EQ(response.c(), 42);
 
         free_send_result(&allocator_, &send_result);
         free_remote_object(&allocator_, &init_params.output_obj);

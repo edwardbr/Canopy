@@ -24,12 +24,16 @@ fn main() -> Result<(), String> {
         .unwrap_or_else(|_| repo_root.join("build_debug/output/protoc"));
     let rpc_idl = repo_root.join("interfaces/rpc/rpc_types.idl");
     let probe_idl = manifest_dir.join("basic_rpc_probe.idl");
+    let nested_layout_idl = manifest_dir.join("nested_layout_probe.idl");
+    let fuzz_test_idl = repo_root.join("integration_tests/interfaces/fuzz_test/fuzz_test.idl");
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let canopy_generated = out_dir.join("canopy_generated");
     let stage_root = out_dir.join("proto_stage");
     let protobuf_generated = out_dir.join("protobuf_generated");
 
     println!("cargo:rerun-if-changed={}", probe_idl.display());
+    println!("cargo:rerun-if-changed={}", nested_layout_idl.display());
+    println!("cargo:rerun-if-changed={}", fuzz_test_idl.display());
     println!("cargo:rerun-if-changed={}", rpc_idl.display());
     println!("cargo:rerun-if-changed={}", generator.display());
     println!("cargo:rerun-if-changed={}", protoc.display());
@@ -41,6 +45,7 @@ fn main() -> Result<(), String> {
         &canopy_generated,
         "rpc_types",
         &["-P", "interfaces"],
+        true,
     )?;
     run_generator(
         &generator,
@@ -49,6 +54,25 @@ fn main() -> Result<(), String> {
         &canopy_generated,
         "basic_rpc_probe",
         &[],
+        true,
+    )?;
+    run_generator(
+        &generator,
+        &repo_root,
+        &nested_layout_idl,
+        &canopy_generated,
+        "nested_layout_probe",
+        &[],
+        false,
+    )?;
+    run_generator(
+        &generator,
+        &repo_root,
+        &fuzz_test_idl,
+        &canopy_generated,
+        "fuzz_test",
+        &[],
+        true,
     )?;
 
     fs::create_dir_all(&stage_root).map_err(display_io)?;
@@ -63,6 +87,11 @@ fn main() -> Result<(), String> {
             "crate::protobuf_runtime_probe",
             "protobuf_runtime_probe",
             "protobuf_runtime_probe/protobuf/manifest.txt",
+        )?;
+        let fuzz_target = Target::new(
+            "crate::fuzz_test",
+            "fuzz_test",
+            "fuzz_test/protobuf/manifest.txt",
         )?;
 
         CodeGen::new()
@@ -80,6 +109,14 @@ fn main() -> Result<(), String> {
             .protoc_path(&protoc)
             .generate_and_compile()?;
 
+        CodeGen::new()
+            .output_dir(protobuf_generated.join(&fuzz_target.output_subdir))
+            .includes(std::iter::once(PathBuf::from(".")))
+            .inputs(fuzz_target.proto_files.iter().map(PathBuf::from))
+            .dependency(vec![rpc_target.dependency()])
+            .protoc_path(&protoc)
+            .generate_and_compile()?;
+
         Ok::<(), String>(())
     })();
 
@@ -91,6 +128,8 @@ fn main() -> Result<(), String> {
     let probe_proto_messages =
         find_generated_rs(&protobuf_generated.join("protobuf_runtime_probe"))
             .ok_or("missing basic rpc probe generated.rs")?;
+    let fuzz_proto_messages = find_generated_rs(&protobuf_generated.join("fuzz_test"))
+        .ok_or("missing fuzz test generated.rs")?;
 
     println!(
         "cargo:rustc-env=CANOPY_RPC_PROTO_MESSAGES_RS={}",
@@ -99,6 +138,10 @@ fn main() -> Result<(), String> {
     println!(
         "cargo:rustc-env=CANOPY_BASIC_RPC_PROTO_MESSAGES_RS={}",
         probe_proto_messages.display()
+    );
+    println!(
+        "cargo:rustc-env=CANOPY_FUZZ_TEST_PROTO_MESSAGES_RS={}",
+        fuzz_proto_messages.display()
     );
     println!(
         "cargo:rustc-env=CANOPY_BASIC_RPC_BINDINGS_RS={}",
@@ -110,6 +153,24 @@ fn main() -> Result<(), String> {
         "cargo:rustc-env=CANOPY_BASIC_RPC_PROTOBUF_BINDINGS_RS={}",
         canopy_generated
             .join("rust/protobuf_runtime_probe/basic_rpc_probe_protobuf.rs")
+            .display()
+    );
+    println!(
+        "cargo:rustc-env=CANOPY_NESTED_LAYOUT_BINDINGS_RS={}",
+        canopy_generated
+            .join("rust/protobuf_runtime_probe/nested_layout_probe.rs")
+            .display()
+    );
+    println!(
+        "cargo:rustc-env=CANOPY_FUZZ_TEST_BINDINGS_RS={}",
+        canopy_generated
+            .join("rust/fuzz_test/fuzz_test.rs")
+            .display()
+    );
+    println!(
+        "cargo:rustc-env=CANOPY_FUZZ_TEST_PROTOBUF_BINDINGS_RS={}",
+        canopy_generated
+            .join("rust/fuzz_test/fuzz_test_protobuf.rs")
             .display()
     );
 
@@ -148,6 +209,7 @@ fn run_generator(
     output_path: &Path,
     name: &str,
     extra_args: &[&str],
+    protobuf: bool,
 ) -> Result<(), String> {
     let mut command = Command::new(generator);
     command.current_dir(repo_root);
@@ -158,7 +220,9 @@ fn run_generator(
     command.arg("--name");
     command.arg(name);
     command.arg("--rust");
-    command.arg("--protobuf");
+    if protobuf {
+        command.arg("--protobuf");
+    }
     command.args(extra_args);
 
     let output = command.output().map_err(display_io)?;

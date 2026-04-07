@@ -34,5 +34,9 @@ namespace probe
         error_code label_value([in] const labeled_value& input, [out] labeled_value& output);
         error_code accept_shared_peer([in] const rpc::shared_ptr<i_peer>& peer, [out] int& seen);
         error_code accept_optimistic_peer([in] const rpc::optimistic_ptr<i_peer>& peer, [out] int& seen);
+        error_code create_shared_peer([out] rpc::shared_ptr<i_peer>& created_peer);
+        error_code create_optimistic_peer([out] rpc::optimistic_ptr<i_peer>& created_peer);
+        error_code echo_shared_peer([in] const rpc::shared_ptr<i_peer>& input, [out] rpc::shared_ptr<i_peer>& output);
+        error_code echo_optimistic_peer([in] const rpc::optimistic_ptr<i_peer>& input, [out] rpc::optimistic_ptr<i_peer>& output);
     };
 }

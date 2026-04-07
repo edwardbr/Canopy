@@ -169,7 +169,7 @@ impl ObjectStub {
     }
 
     pub fn release(&mut self, options: ReleaseOptions, caller_zone_id: CallerZone) -> u64 {
-        let pointer_kind = if options == ReleaseOptions::OPTIMISTIC {
+        let pointer_kind = if !(options & ReleaseOptions::OPTIMISTIC).is_empty() {
             InterfacePointerKind::Optimistic
         } else {
             InterfacePointerKind::Shared
@@ -182,9 +182,9 @@ impl ObjectStub {
             }
         };
 
-        *global_count = global_count.saturating_sub(1);
         if let Some(count) = references.get_mut(&caller_zone_id) {
             *count = count.saturating_sub(1);
+            *global_count = global_count.saturating_sub(1);
             if *count == 0 {
                 references.remove(&caller_zone_id);
             }
@@ -285,6 +285,25 @@ mod tests {
         assert_eq!(stub.optimistic_count(), 0);
 
         assert!(stub.release_all_from_zone(zone_b));
+        assert_eq!(stub.shared_count(), 0);
+    }
+
+    #[test]
+    fn release_after_release_all_from_zone_does_not_double_decrement_global_count() {
+        let zone_a = caller_zone(1);
+        let zone_b = caller_zone(2);
+        let mut stub = ObjectStub::new(Object::new(13));
+
+        stub.add_ref(InterfacePointerKind::Shared, zone_a.clone());
+        stub.add_ref(InterfacePointerKind::Shared, zone_b.clone());
+
+        assert!(!stub.release_all_from_zone(zone_a.clone()));
+        assert_eq!(stub.shared_count(), 1);
+
+        assert_eq!(stub.release(ReleaseOptions::NORMAL, zone_a), 1);
+        assert_eq!(stub.shared_count(), 1);
+
+        assert_eq!(stub.release(ReleaseOptions::NORMAL, zone_b), 0);
         assert_eq!(stub.shared_count(), 0);
     }
 

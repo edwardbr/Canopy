@@ -24,3 +24,4 @@ pub use metadata::GeneratedProtobufBindingMetadata;
 pub use metadata::GeneratedProtobufFieldKind;
 pub use metadata::GeneratedProtobufMethodDescriptor;
 pub use metadata::GeneratedProtobufParamDescriptor;
+pub use metadata::InterfacePointerKind;

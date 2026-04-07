@@ -52,11 +52,48 @@ add_custom_command(
 
 add_custom_target(canopy_rust_dynamic_library_test_child ALL DEPENDS "${CANOPY_RUST_TEST_CHILD_LIB}")
 
+add_library(canopy_probe_c_abi_dll SHARED cxx_probe_dll/canopy_dll_init.cpp)
+
+target_compile_definitions(canopy_probe_c_abi_dll PRIVATE ${CANOPY_DEFINES} CANOPY_C_ABI_DLL_BUILDING)
+
+target_include_directories(
+  canopy_probe_c_abi_dll
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
+         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
+  PRIVATE ${CANOPY_INCLUDES})
+
+target_link_libraries(
+  canopy_probe_c_abi_dll
+  PRIVATE -Wl,--whole-archive
+          transport_c_abi_dll
+          -Wl,--no-whole-archive
+          transport_local
+          basic_rpc_probe_idl
+          yas_common
+          rpc::rpc
+          rpc_log
+          ${CANOPY_LIBRARIES})
+
+target_compile_options(
+  canopy_probe_c_abi_dll
+  PRIVATE ${CANOPY_COMPILE_OPTIONS}
+          ${CANOPY_WARN_OK}
+          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
+          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>)
+
+target_link_options(canopy_probe_c_abi_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+
+set_property(TARGET canopy_probe_c_abi_dll PROPERTY COMPILE_PDB_NAME canopy_probe_c_abi_dll)
+
+add_dependencies(canopy_probe_c_abi_dll basic_rpc_probe_idl)
+
 add_executable(rust_dynamic_library_abi_test rust_dynamic_library_abi_test.cpp)
 
 target_compile_definitions(
   rust_dynamic_library_abi_test
-  PRIVATE ${CANOPY_DEFINES} CANOPY_RUST_TEST_DLL_PATH="${CANOPY_RUST_TEST_CHILD_LIB}")
+  PRIVATE ${CANOPY_DEFINES}
+          CANOPY_RUST_TEST_DLL_PATH="${CANOPY_RUST_TEST_CHILD_LIB}"
+          CANOPY_CXX_PROBE_DLL_PATH="$<TARGET_FILE:canopy_probe_c_abi_dll>")
 
 target_include_directories(
   rust_dynamic_library_abi_test
@@ -66,6 +103,7 @@ target_include_directories(
           "${CMAKE_SOURCE_DIR}/c++/telemetry/include"
           "${CMAKE_BINARY_DIR}/generated"
           "${CMAKE_BINARY_DIR}/generated/include"
+          "${CMAKE_BINARY_DIR}/generated/src"
           ${CANOPY_INCLUDES})
 
 target_link_libraries(
@@ -82,7 +120,7 @@ target_link_libraries(
 target_compile_options(rust_dynamic_library_abi_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(rust_dynamic_library_abi_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
-add_dependencies(rust_dynamic_library_abi_test canopy_rust_dynamic_library_test_child)
+add_dependencies(rust_dynamic_library_abi_test canopy_rust_dynamic_library_test_child canopy_probe_c_abi_dll)
 
 include(CTest)
 gtest_discover_tests(rust_dynamic_library_abi_test)

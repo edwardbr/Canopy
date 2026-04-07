@@ -17,6 +17,7 @@ use crate::internal::marshaller_params::{
     ReleaseParams, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams,
 };
 use crate::internal::stub::ObjectStub;
+use crate::internal::transport::Transport;
 use crate::internal::version::{HIGHEST_SUPPORTED_VERSION, LOWEST_SUPPORTED_VERSION};
 use crate::rpc_types::CallerZone;
 use crate::rpc_types::{Encoding, Object, ReleaseOptions, RemoteObject, Zone, ZoneAddress};
@@ -69,6 +70,7 @@ pub struct Service {
     object_id_generator: AtomicU64,
     default_encoding: Mutex<Encoding>,
     stubs: Mutex<BTreeMap<Object, Weak<Mutex<ObjectStub>>>>,
+    transports: Mutex<BTreeMap<Zone, Weak<Transport>>>,
     service_events: Mutex<Vec<Weak<dyn ServiceEvent>>>,
 }
 
@@ -89,6 +91,7 @@ impl Service {
             object_id_generator: AtomicU64::new(0),
             default_encoding: Mutex::new(Encoding::default()),
             stubs: Mutex::new(BTreeMap::new()),
+            transports: Mutex::new(BTreeMap::new()),
             service_events: Mutex::new(Vec::new()),
         }
     }
@@ -146,6 +149,36 @@ impl Service {
             .default_encoding
             .lock()
             .expect("default_encoding mutex poisoned") = encoding;
+    }
+
+    pub fn add_transport(&self, destination: Zone, transport: Arc<Transport>) {
+        self.transports
+            .lock()
+            .expect("transports mutex poisoned")
+            .insert(destination, Arc::downgrade(&transport));
+    }
+
+    pub fn get_transport(&self, destination: &Zone) -> Option<Arc<Transport>> {
+        let mut transports = self.transports.lock().expect("transports mutex poisoned");
+        match transports.get(destination).and_then(Weak::upgrade) {
+            Some(transport) => Some(transport),
+            None => {
+                transports.remove(destination);
+                None
+            }
+        }
+    }
+
+    fn get_transport_via_requesting_zone(
+        &self,
+        destination: &Zone,
+        requesting_zone_id: &Zone,
+    ) -> Option<Arc<Transport>> {
+        self.get_transport(destination).or_else(|| {
+            let transport = self.get_transport(requesting_zone_id)?;
+            self.add_transport(destination.clone(), transport.clone());
+            Some(transport)
+        })
     }
 
     pub fn check_is_empty(&self) -> bool {
@@ -282,7 +315,26 @@ impl Service {
         T: crate::internal::GeneratedRustInterface,
     {
         let stub = if let Some(stub) = self.find_local_stub_for_interface(&iface) {
+            if optimistic
+                && stub
+                    .lock()
+                    .expect("object stub mutex poisoned")
+                    .shared_count()
+                    == 0
+            {
+                return RemoteObjectBindResult::new(
+                    error_codes::OBJECT_GONE(),
+                    None,
+                    RemoteObject::default(),
+                );
+            }
             stub
+        } else if optimistic {
+            return RemoteObjectBindResult::new(
+                error_codes::OBJECT_GONE(),
+                None,
+                RemoteObject::default(),
+            );
         } else {
             let object_id = self.generate_new_object_id();
             match self.register_local_object(object_id, iface) {
@@ -434,6 +486,17 @@ impl Service {
             return StandardResult::new(error_codes::INVALID_VERSION(), vec![]);
         }
 
+        if !params
+            .remote_object_id
+            .get_address()
+            .same_zone(self.zone_id.get_address())
+        {
+            return self
+                .get_transport(&params.remote_object_id.as_zone())
+                .map(|transport| transport.release(params))
+                .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]));
+        }
+
         let object_id = params.remote_object_id.get_object_id();
         let Some(stub) = self.get_object(object_id) else {
             return StandardResult::new(error_codes::OBJECT_NOT_FOUND(), vec![]);
@@ -536,6 +599,17 @@ impl Service {
             return SendResult::new(error_codes::INVALID_VERSION(), vec![], vec![]);
         }
 
+        if !params
+            .remote_object_id
+            .get_address()
+            .same_zone(self.zone_id.get_address())
+        {
+            return self
+                .get_transport(&params.remote_object_id.as_zone())
+                .map(|transport| transport.send(params))
+                .unwrap_or_else(|| SendResult::new(error_codes::ZONE_NOT_FOUND(), vec![], vec![]));
+        }
+
         let object_id = params.remote_object_id.get_object_id();
         let Some(stub) = self.get_object(object_id) else {
             return SendResult::new(error_codes::OBJECT_NOT_FOUND(), vec![], vec![]);
@@ -546,6 +620,17 @@ impl Service {
 
     pub fn post(&self, params: PostParams) {
         if !self.has_supported_version(params.protocol_version) {
+            return;
+        }
+
+        if !params
+            .remote_object_id
+            .get_address()
+            .same_zone(self.zone_id.get_address())
+        {
+            if let Some(transport) = self.get_transport(&params.remote_object_id.as_zone()) {
+                transport.post(params);
+            }
             return;
         }
 
@@ -562,6 +647,17 @@ impl Service {
             return StandardResult::new(error_codes::INVALID_VERSION(), vec![]);
         }
 
+        if !params
+            .remote_object_id
+            .get_address()
+            .same_zone(self.zone_id.get_address())
+        {
+            return self
+                .get_transport(&params.remote_object_id.as_zone())
+                .map(|transport| transport.try_cast(params))
+                .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]));
+        }
+
         let object_id = params.remote_object_id.get_object_id();
         let Some(stub) = self.get_object(object_id) else {
             return StandardResult::new(error_codes::OBJECT_NOT_FOUND(), vec![]);
@@ -575,12 +671,76 @@ impl Service {
             return StandardResult::new(error_codes::INVALID_VERSION(), vec![]);
         }
 
+        let remote_zone = params.remote_object_id.as_zone();
         let object_id = params.remote_object_id.get_object_id();
-        let Some(stub) = self.get_object(object_id) else {
-            return StandardResult::new(error_codes::OBJECT_NOT_FOUND(), vec![]);
-        };
+        let optimistic = !(params.build_out_param_channel
+            & crate::rpc_types::AddRefOptions::OPTIMISTIC)
+            .is_empty();
+        let build_caller_channel = !(params.build_out_param_channel
+            & crate::rpc_types::AddRefOptions::BUILD_CALLER_ROUTE)
+            .is_empty();
+        let build_dest_channel = !(params.build_out_param_channel
+            & crate::rpc_types::AddRefOptions::BUILD_DESTINATION_ROUTE)
+            .is_empty()
+            || params.build_out_param_channel == crate::rpc_types::AddRefOptions::NORMAL
+            || params.build_out_param_channel == crate::rpc_types::AddRefOptions::OPTIMISTIC;
 
-        self.outbound_add_ref(params, stub)
+        if build_caller_channel {
+            if self.zone_id != params.caller_zone_id {
+                let Some(caller_transport) = self.get_transport(&params.caller_zone_id) else {
+                    return StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]);
+                };
+                let mut caller_params = params.clone();
+                caller_params.requesting_zone_id = self.zone_id.clone();
+                caller_params.build_out_param_channel =
+                    crate::rpc_types::AddRefOptions::BUILD_CALLER_ROUTE
+                        | if optimistic {
+                            crate::rpc_types::AddRefOptions::OPTIMISTIC
+                        } else {
+                            crate::rpc_types::AddRefOptions::NORMAL
+                        };
+                let caller_result = caller_transport.add_ref(caller_params);
+                if caller_result.error_code != error_codes::OK() {
+                    return caller_result;
+                }
+            } else if self
+                .get_transport_via_requesting_zone(&remote_zone, &params.requesting_zone_id)
+                .is_none()
+            {
+                return StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]);
+            }
+        }
+
+        if build_dest_channel {
+            if !params
+                .remote_object_id
+                .get_address()
+                .same_zone(self.zone_id.get_address())
+            {
+                let mut dest_params = params.clone();
+                dest_params.build_out_param_channel = params.build_out_param_channel
+                    & !crate::rpc_types::AddRefOptions::BUILD_CALLER_ROUTE;
+                return self
+                    .get_transport_via_requesting_zone(&remote_zone, &params.requesting_zone_id)
+                    .map(|transport| transport.add_ref(dest_params))
+                    .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]));
+            }
+
+            if object_id == DUMMY_OBJECT_ID {
+                return StandardResult::new(error_codes::OK(), vec![]);
+            }
+
+            let Some(stub) = self.get_object(object_id) else {
+                return StandardResult::new(error_codes::OBJECT_NOT_FOUND(), vec![]);
+            };
+            self.get_transport_via_requesting_zone(
+                &params.caller_zone_id,
+                &params.requesting_zone_id,
+            );
+            return self.outbound_add_ref(params, stub);
+        }
+
+        StandardResult::new(error_codes::OK(), vec![])
     }
 
     pub fn get_new_zone_id(&self, params: GetNewZoneIdParams) -> NewZoneIdResult {
@@ -1007,21 +1167,21 @@ mod tests {
     }
 
     #[test]
-    fn outgoing_local_interface_creates_stub_for_unregistered_object_and_handles_optimistic() {
+    fn outgoing_local_interface_creates_stub_for_unregistered_shared_object() {
         let service = Service::new("svc", zone(1));
         let local = Arc::new(TestLocalObject);
 
         let result = service.bind_outgoing_local_interface(
             caller_zone(11),
             &crate::BoundInterface::Value(local),
-            crate::InterfacePointerKind::Optimistic,
+            crate::InterfacePointerKind::Shared,
         );
 
         assert_eq!(result.error_code, error_codes::OK());
         let stub = result.stub.expect("created stub");
         let guard = stub.lock().expect("stub mutex poisoned");
         assert_eq!(guard.id(), result.descriptor.get_object_id());
-        assert_eq!(guard.optimistic_count(), 1);
+        assert_eq!(guard.shared_count(), 1);
         drop(guard);
         assert!(
             service
@@ -1034,6 +1194,12 @@ mod tests {
     fn outgoing_local_optimistic_interface_uses_local_proxy_and_reports_gone() {
         let service = Service::new("svc", zone(1));
         let local = Arc::new(TestLocalObject);
+        let shared_result = service.bind_outgoing_local_interface(
+            caller_zone(12),
+            &crate::BoundInterface::Value(local.clone()),
+            crate::InterfacePointerKind::Shared,
+        );
+        assert_eq!(shared_result.error_code, error_codes::OK());
         let proxy = LocalProxy::from_shared(&local);
 
         let result = service.bind_outgoing_local_optimistic_interface(
@@ -1047,6 +1213,15 @@ mod tests {
             stub.lock().expect("stub mutex poisoned").optimistic_count(),
             1
         );
+
+        let unregistered = Arc::new(TestLocalObject);
+        let unregistered_proxy = LocalProxy::from_shared(&unregistered);
+        let unregistered_result = service.bind_outgoing_local_optimistic_interface(
+            caller_zone(12),
+            &crate::BoundInterface::Value(unregistered_proxy),
+        );
+        assert_eq!(unregistered_result.error_code, error_codes::OBJECT_GONE());
+        assert!(unregistered_result.stub.is_none());
 
         let shared = Arc::new(TestLocalObject);
         let gone_proxy = LocalProxy::from_shared(&shared);
@@ -1143,7 +1318,9 @@ mod tests {
 
         let missing = service.release(ReleaseParams {
             protocol_version: LOWEST_SUPPORTED_VERSION,
-            remote_object_id: RemoteObject::from(zone(7)),
+            remote_object_id: RemoteObject::from(
+                zone(1).with_object(Object::new(7)).expect("object zone"),
+            ),
             caller_zone_id: caller_zone(2),
             options: ReleaseOptions::NORMAL,
             in_back_channel: vec![],
