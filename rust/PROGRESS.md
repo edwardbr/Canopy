@@ -1207,6 +1207,41 @@ sequence remains reconstructable.
   - pruned stale weak-map entries on normal lookup paths so object churn does
     not leave unbounded dead entries in `ServiceProxy` object-proxy maps or
     `Transport` pass-through maps
+  - moved the fuzz-test IDL and C++ fuzz target into `integration_tests/`,
+    added a typed fuzz transport suite over the existing C++ local child
+    setup and a Rust dynamic-library child setup, and kept the Rust child
+    smoke implementation isolated under `integration_tests/fuzz_test/rust_child`
+  - added Rust IDL enum emission and protobuf enum conversion so fuzz methods
+    such as `initialize_node(node_type ...)`, `get_node_status(...)`, and
+    `create_child_node(node_type ...)` no longer fall back to `OpaqueValue` or
+    unsupported protobuf codecs
+  - wired the Rust fuzz dynamic-library child far enough for the shared typed
+    fuzz smoke body to build a graph through the Rust child path; cleanup now
+    demarshals through generated dispatch and the Rust `Service` creates
+    transport-backed `ServiceProxy` / `ObjectProxy` entries for incoming remote
+    interface parameters. Child creation still has a narrow smoke-level output
+    shim because the current generated Rust trait API cannot yet assign a
+    concrete child node into an arbitrary generic output interface parameter.
+  - aligned the Rust runtime ownership shape more closely with C++:
+    `Service` keeps weak zone `ServiceProxy` entries and a transport table,
+    `ServiceProxy` strongly owns the `Service` and points to a `Transport`,
+    and `ObjectProxy` remains strongly tied to its owning `ServiceProxy`.
+  - started the Rust public API cleanup: generated app-facing interface
+    methods now use `canopy_rpc::SharedPtr<T>` and
+    `canopy_rpc::OptimisticPtr<T>` aliases instead of exposing
+    `Shared<Arc<T>>` and `Optimistic<LocalProxy<T>>`; crate-root re-exports of
+    runtime mechanics such as `ObjectStub`, `ObjectProxy`, `ServiceProxy`,
+    `Transport`, marshaller params, and generated binding helpers are
+    `#[doc(hidden)]` so generated code can keep using them without advertising
+    them to application authors.
+  - fixed a C ABI borrowed-zone lifetime issue in the C++ dynamic child
+    transport init path: the parent zone must be stored before borrowing its
+    address blob for `canopy_dll_init`, otherwise Rust debug UB checks can
+    detect a dangling pointer when reading `parent_zone`.
+  - verified the typed fuzz suite now runs both
+    `cxx_local_child_fuzz_transport_setup` and
+    `rust_dynamic_library_fuzz_transport_setup` via
+    `ctest --test-dir build_debug -R fuzz_transport_test --output-on-failure`
   - added a tidy cross-language integration source under
     `integration_tests/rust_cxx_y_topology/` that uses a C++-created remote
     peer proxy and verifies generated Rust remote binding emits the same
@@ -1277,3 +1312,41 @@ sequence remains reconstructable.
     Canopy
   - future back-channel-aware application entrypoints should be supported via
     a dispatch context rather than leaking low-level RPC plumbing into app code
+- Rust app-facing interface pointer signatures were cleaned up further:
+  - generated traits now use `canopy_rpc::SharedPtr<T>` and
+    `canopy_rpc::OptimisticPtr<T>` instead of exposing `Arc<T>` /
+    `LocalProxy<T>` directly in normal implementation signatures
+  - output-only interface parameters now use the implementation's associated
+    output type rather than requiring an arbitrary caller-selected method
+    generic, so app code can return its concrete implementation type for
+    methods like `create_child_node(...)`
+  - input interface parameters remain method-generic, matching the fact that
+    callers may pass any object implementing the generated interface trait
+  - generated proxy/stub internals still keep the required type plumbing hidden
+    under `__Generated`
+  - verified with `cmake --build build_debug --target generator`,
+    `cargo test -p canopy-rpc --lib`,
+    `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`,
+    `cmake --build build_debug --target fuzz_test_gtest`,
+    `ctest --test-dir build_debug -R rust_tests --output-on-failure`, and
+    `ctest --test-dir build_debug -R fuzz_transport_test --output-on-failure`
+- Generated Rust now has a first app-facing interface handle implementation:
+  - each interface exports a public handle alias such as `probe::IPeerHandle`
+    backed by a generated `__Generated::IPeer::Handle<Local>` enum
+  - the handle can store either a local `Arc<Local>` or the generated remote
+    `ProxySkeleton`, implements the generated interface, and implements
+    outgoing binding by preserving local-vs-remote identity without exposing
+    `ObjectProxy`, `ServiceProxy`, `ObjectStub`, or transport types
+  - proxy output associated types now default to these public handles, so the
+    C++ DLL echo/create peer probe validates remote returned pointers through
+    `IPeerHandle`
+  - recursive interfaces with many interface-associated types, such as the fuzz
+    `IAutonomousNode`, still use concrete associated output types in the Rust
+    child implementation; generalizing handles there needs generated conversion
+    between local-associated and remote-associated output handles
+  - verified with `cmake --build build_debug --target generator`,
+    `cargo test -p canopy-rpc --lib`,
+    `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`,
+    `cmake --build build_debug --target fuzz_test_gtest`,
+    `ctest --test-dir build_debug -R rust_tests --output-on-failure`, and
+    `ctest --test-dir build_debug -R fuzz_transport_test --output-on-failure`

@@ -16,6 +16,7 @@ use crate::internal::marshaller_params::{
     AddRefParams, GetNewZoneIdParams, NewZoneIdResult, ObjectReleasedParams, PostParams,
     ReleaseParams, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams,
 };
+use crate::internal::service_proxy::{GeneratedRpcCallContext, ServiceProxy};
 use crate::internal::stub::ObjectStub;
 use crate::internal::transport::Transport;
 use crate::internal::version::{HIGHEST_SUPPORTED_VERSION, LOWEST_SUPPORTED_VERSION};
@@ -71,7 +72,9 @@ pub struct Service {
     default_encoding: Mutex<Encoding>,
     stubs: Mutex<BTreeMap<Object, Weak<Mutex<ObjectStub>>>>,
     transports: Mutex<BTreeMap<Zone, Weak<Transport>>>,
+    service_proxies: Mutex<BTreeMap<Zone, Weak<ServiceProxy>>>,
     service_events: Mutex<Vec<Weak<dyn ServiceEvent>>>,
+    self_weak: Mutex<Weak<Service>>,
 }
 
 impl Service {
@@ -92,12 +95,31 @@ impl Service {
             default_encoding: Mutex::new(Encoding::default()),
             stubs: Mutex::new(BTreeMap::new()),
             transports: Mutex::new(BTreeMap::new()),
+            service_proxies: Mutex::new(BTreeMap::new()),
             service_events: Mutex::new(Vec::new()),
+            self_weak: Mutex::new(Weak::new()),
         }
+    }
+
+    pub fn new_shared(name: impl Into<String>, zone_id: Zone) -> Arc<Self> {
+        let service = Arc::new(Self::new(name, zone_id));
+        service.attach_self(&service);
+        service
     }
 
     pub fn from_config(name: impl Into<String>, config: ServiceConfig) -> Self {
         Self::new(name, config.initial_zone)
+    }
+
+    pub fn attach_self(&self, service: &Arc<Self>) {
+        *self.self_weak.lock().expect("self_weak mutex poisoned") = Arc::downgrade(service);
+    }
+
+    fn shared_from_this(&self) -> Option<Arc<Self>> {
+        self.self_weak
+            .lock()
+            .expect("self_weak mutex poisoned")
+            .upgrade()
     }
 
     pub fn current_service() -> Option<*const Service> {
@@ -181,6 +203,50 @@ impl Service {
         })
     }
 
+    fn get_zone_proxy(
+        &self,
+        caller_zone_id: &CallerZone,
+        destination_zone_id: &Zone,
+        remote_object_id: RemoteObject,
+    ) -> Option<Arc<ServiceProxy>> {
+        if let Some(existing) = self
+            .service_proxies
+            .lock()
+            .expect("service_proxies mutex poisoned")
+            .get(destination_zone_id)
+            .and_then(Weak::upgrade)
+        {
+            return Some(existing);
+        }
+
+        let transport = self
+            .get_transport(destination_zone_id)
+            .or_else(|| self.get_transport(caller_zone_id))?;
+
+        let adjacent_zone_id = transport.adjacent_zone_id();
+        if adjacent_zone_id == *caller_zone_id && caller_zone_id != destination_zone_id {
+            self.add_transport(destination_zone_id.clone(), transport.clone());
+        }
+
+        let service = self.shared_from_this()?;
+        let proxy = ServiceProxy::with_transport(
+            service,
+            transport,
+            GeneratedRpcCallContext {
+                protocol_version: HIGHEST_SUPPORTED_VERSION,
+                encoding_type: self.default_encoding(),
+                tag: 0,
+                caller_zone_id: self.zone_id.clone(),
+                remote_object_id,
+            },
+        );
+        self.service_proxies
+            .lock()
+            .expect("service_proxies mutex poisoned")
+            .insert(destination_zone_id.clone(), Arc::downgrade(&proxy));
+        Some(proxy)
+    }
+
     pub fn check_is_empty(&self) -> bool {
         self.stubs
             .lock()
@@ -253,11 +319,41 @@ impl Service {
     where
         T: crate::internal::GeneratedRustInterface,
     {
+        self.bind_incoming_shared_interface_from(self.zone_id.clone(), encap)
+    }
+
+    pub fn bind_incoming_shared_interface_from<T>(
+        &self,
+        caller_zone_id: CallerZone,
+        encap: &RemoteObject,
+    ) -> InterfaceBindResult<Arc<T>>
+    where
+        T: crate::internal::GeneratedRustInterface,
+    {
         bind_incoming_shared(
             &self.zone_id,
             encap,
             |object_id| self.lookup_local_interface::<T>(object_id),
-            |_remote| InterfaceBindResult::null(error_codes::TRANSPORT_ERROR()),
+            |remote| {
+                let Some(service_proxy) =
+                    self.get_zone_proxy(&caller_zone_id, &remote.as_zone(), remote.clone())
+                else {
+                    return InterfaceBindResult::null(error_codes::ZONE_NOT_FOUND());
+                };
+                let object_proxy = service_proxy.get_or_create_object_proxy(remote.clone());
+                let add_ref = object_proxy
+                    .add_ref_remote_for_caller(self.zone_id.clone(), InterfacePointerKind::Shared);
+                if error_codes::is_critical(add_ref.error_code) {
+                    return InterfaceBindResult::null(add_ref.error_code);
+                }
+                let caller = service_proxy.proxy_for_remote_object(remote.clone());
+                InterfaceBindResult::remote(
+                    error_codes::OK(),
+                    Arc::new(
+                        <T as crate::internal::GeneratedRustInterface>::create_remote_proxy(caller),
+                    ),
+                )
+            },
         )
     }
 
@@ -268,11 +364,44 @@ impl Service {
     where
         T: crate::internal::GeneratedRustInterface,
     {
+        self.bind_incoming_optimistic_interface_from(self.zone_id.clone(), encap)
+    }
+
+    pub fn bind_incoming_optimistic_interface_from<T>(
+        &self,
+        caller_zone_id: CallerZone,
+        encap: &RemoteObject,
+    ) -> InterfaceBindResult<crate::internal::LocalProxy<T>>
+    where
+        T: crate::internal::GeneratedRustInterface,
+    {
         bind_incoming_optimistic(
             &self.zone_id,
             encap,
             |object_id| self.lookup_local_interface::<T>(object_id),
-            |_remote| InterfaceBindResult::null(error_codes::TRANSPORT_ERROR()),
+            |remote| {
+                let Some(service_proxy) =
+                    self.get_zone_proxy(&caller_zone_id, &remote.as_zone(), remote.clone())
+                else {
+                    return InterfaceBindResult::null(error_codes::ZONE_NOT_FOUND());
+                };
+                let object_proxy = service_proxy.get_or_create_object_proxy(remote.clone());
+                let add_ref = object_proxy.add_ref_remote_for_caller(
+                    self.zone_id.clone(),
+                    InterfacePointerKind::Optimistic,
+                );
+                if error_codes::is_critical(add_ref.error_code) {
+                    return InterfaceBindResult::null(add_ref.error_code);
+                }
+                let caller = service_proxy.proxy_for_remote_object(remote.clone());
+                let proxy = Arc::new(
+                    <T as crate::internal::GeneratedRustInterface>::create_remote_proxy(caller),
+                );
+                InterfaceBindResult::remote(
+                    error_codes::OK(),
+                    crate::internal::LocalProxy::from_remote(proxy),
+                )
+            },
         )
     }
 

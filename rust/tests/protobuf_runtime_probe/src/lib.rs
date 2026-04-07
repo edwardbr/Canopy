@@ -124,7 +124,7 @@ mod tests {
 
             fn cleanup<CollectorIface>(
                 &self,
-                _collector: canopy_rpc::Shared<std::sync::Arc<CollectorIface>>,
+                _collector: canopy_rpc::SharedPtr<CollectorIface>,
             ) -> i32
             where
                 CollectorIface: fuzz::IGarbageCollector,
@@ -136,7 +136,7 @@ mod tests {
         impl fuzz::IGarbageCollector for GarbageCollectorImpl {
             type CollectObjIface = CleanupImpl;
 
-            fn collect<ObjIface>(&self, _obj: canopy_rpc::Shared<std::sync::Arc<ObjIface>>) -> i32
+            fn collect<ObjIface>(&self, _obj: canopy_rpc::SharedPtr<ObjIface>) -> i32
             where
                 ObjIface: fuzz::ICleanup,
             {
@@ -176,24 +176,21 @@ mod tests {
             type PlaceSharedObjectNewObjectIface = SharedObjectImpl;
             type PlaceSharedObjectTargetObjectIface = SharedObjectImpl;
 
-            fn create_shared_object<CreatedObjectIface>(
+            fn create_shared_object(
                 &self,
                 _id: i32,
                 _name: String,
                 _initial_value: i32,
-                created_object: &mut canopy_rpc::Shared<std::sync::Arc<CreatedObjectIface>>,
-            ) -> i32
-            where
-                CreatedObjectIface: fuzz::ISharedObject,
-            {
+                created_object: &mut canopy_rpc::SharedPtr<SharedObjectImpl>,
+            ) -> i32 {
                 *created_object = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
             }
 
             fn place_shared_object<NewObjectIface, TargetObjectIface>(
                 &self,
-                _new_object: canopy_rpc::Shared<std::sync::Arc<NewObjectIface>>,
-                _target_object: canopy_rpc::Shared<std::sync::Arc<TargetObjectIface>>,
+                _new_object: canopy_rpc::SharedPtr<NewObjectIface>,
+                _target_object: canopy_rpc::SharedPtr<TargetObjectIface>,
             ) -> i32
             where
                 NewObjectIface: fuzz::ISharedObject,
@@ -216,7 +213,7 @@ mod tests {
             fn store_object<ObjectIface>(
                 &self,
                 _cache_key: i32,
-                _object: canopy_rpc::Shared<std::sync::Arc<ObjectIface>>,
+                _object: canopy_rpc::SharedPtr<ObjectIface>,
             ) -> i32
             where
                 ObjectIface: fuzz::ISharedObject,
@@ -224,14 +221,11 @@ mod tests {
                 canopy_rpc::OK()
             }
 
-            fn retrieve_object<ObjectIface>(
+            fn retrieve_object(
                 &self,
                 _cache_key: i32,
-                object: &mut canopy_rpc::Shared<std::sync::Arc<ObjectIface>>,
-            ) -> i32
-            where
-                ObjectIface: fuzz::ISharedObject,
-            {
+                object: &mut canopy_rpc::SharedPtr<SharedObjectImpl>,
+            ) -> i32 {
                 *object = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
             }
@@ -252,7 +246,7 @@ mod tests {
 
             fn process_object<ObjectIface>(
                 &self,
-                _object: canopy_rpc::Shared<std::sync::Arc<ObjectIface>>,
+                _object: canopy_rpc::SharedPtr<ObjectIface>,
                 _increment: i32,
             ) -> i32
             where
@@ -286,13 +280,13 @@ mod tests {
             type GetParentNodeParentIface = AutonomousNodeImpl;
             type SetParentNodeParentIface = AutonomousNodeImpl;
 
-            fn initialize_node(&self, _type: canopy_rpc::OpaqueValue, _node_id: u64) -> i32 {
+            fn initialize_node(&self, _type: fuzz::NodeType, _node_id: u64) -> i32 {
                 canopy_rpc::OK()
             }
 
             fn run_script<TargetNodeIface>(
                 &self,
-                _target_node: canopy_rpc::Shared<std::sync::Arc<TargetNodeIface>>,
+                _target_node: canopy_rpc::SharedPtr<TargetNodeIface>,
                 _instruction_count: i32,
             ) -> i32
             where
@@ -301,15 +295,14 @@ mod tests {
                 canopy_rpc::OK()
             }
 
-            fn execute_instruction<InputObjectIface, OutputObjectIface>(
+            fn execute_instruction<InputObjectIface>(
                 &self,
                 _instruction: fuzz::Instruction,
-                _input_object: canopy_rpc::Shared<std::sync::Arc<InputObjectIface>>,
-                output_object: &mut canopy_rpc::Shared<std::sync::Arc<OutputObjectIface>>,
+                _input_object: canopy_rpc::SharedPtr<InputObjectIface>,
+                output_object: &mut canopy_rpc::SharedPtr<SharedObjectImpl>,
             ) -> i32
             where
                 InputObjectIface: fuzz::ISharedObject,
-                OutputObjectIface: fuzz::ISharedObject,
             {
                 *output_object = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
@@ -317,7 +310,7 @@ mod tests {
 
             fn connect_to_node<TargetNodeIface>(
                 &self,
-                _target_node: canopy_rpc::Shared<std::sync::Arc<TargetNodeIface>>,
+                _target_node: canopy_rpc::SharedPtr<TargetNodeIface>,
             ) -> i32
             where
                 TargetNodeIface: fuzz::IAutonomousNode,
@@ -328,7 +321,7 @@ mod tests {
             fn pass_object_to_connected<ObjectIface>(
                 &self,
                 _connection_index: i32,
-                _object: canopy_rpc::Shared<std::sync::Arc<ObjectIface>>,
+                _object: canopy_rpc::SharedPtr<ObjectIface>,
             ) -> i32
             where
                 ObjectIface: fuzz::ISharedObject,
@@ -338,7 +331,7 @@ mod tests {
 
             fn receive_object<ObjectIface>(
                 &self,
-                _object: canopy_rpc::Shared<std::sync::Arc<ObjectIface>>,
+                _object: canopy_rpc::SharedPtr<ObjectIface>,
                 _sender_node_id: u64,
             ) -> i32
             where
@@ -349,42 +342,38 @@ mod tests {
 
             fn get_node_status(
                 &self,
-                current_type: &mut canopy_rpc::OpaqueValue,
+                current_type: &mut fuzz::NodeType,
                 current_id: &mut u64,
                 connections_count: &mut i32,
                 objects_held: &mut i32,
             ) -> i32 {
-                *current_type = canopy_rpc::OpaqueValue;
+                *current_type = fuzz::NodeType::RootNode;
                 *current_id = 0;
                 *connections_count = 0;
                 *objects_held = 0;
                 canopy_rpc::OK()
             }
 
-            fn create_child_node<ChildNodeIface>(
+            fn create_child_node(
                 &self,
-                _child_type: canopy_rpc::OpaqueValue,
+                _child_type: fuzz::NodeType,
                 _child_zone_id: u64,
                 _cache_locally: bool,
-                child_node: &mut canopy_rpc::Shared<std::sync::Arc<ChildNodeIface>>,
-            ) -> i32
-            where
-                ChildNodeIface: fuzz::IAutonomousNode,
-            {
+                child_node: &mut canopy_rpc::SharedPtr<AutonomousNodeImpl>,
+            ) -> i32 {
                 *child_node = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
             }
 
-            fn request_child_creation<TargetParentIface, ChildProxyIface>(
+            fn request_child_creation<TargetParentIface>(
                 &self,
-                _target_parent: canopy_rpc::Shared<std::sync::Arc<TargetParentIface>>,
-                _child_type: canopy_rpc::OpaqueValue,
+                _target_parent: canopy_rpc::SharedPtr<TargetParentIface>,
+                _child_type: fuzz::NodeType,
                 _child_zone_id: u64,
-                child_proxy: &mut canopy_rpc::Shared<std::sync::Arc<ChildProxyIface>>,
+                child_proxy: &mut canopy_rpc::SharedPtr<AutonomousNodeImpl>,
             ) -> i32
             where
                 TargetParentIface: fuzz::IAutonomousNode,
-                ChildProxyIface: fuzz::IAutonomousNode,
             {
                 *child_proxy = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
@@ -395,32 +384,26 @@ mod tests {
                 canopy_rpc::OK()
             }
 
-            fn get_cached_child_by_index<ChildIface>(
+            fn get_cached_child_by_index(
                 &self,
                 _index: i32,
-                child: &mut canopy_rpc::Shared<std::sync::Arc<ChildIface>>,
-            ) -> i32
-            where
-                ChildIface: fuzz::IAutonomousNode,
-            {
+                child: &mut canopy_rpc::SharedPtr<AutonomousNodeImpl>,
+            ) -> i32 {
                 *child = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
             }
 
-            fn get_parent_node<ParentIface>(
+            fn get_parent_node(
                 &self,
-                parent: &mut canopy_rpc::Shared<std::sync::Arc<ParentIface>>,
-            ) -> i32
-            where
-                ParentIface: fuzz::IAutonomousNode,
-            {
+                parent: &mut canopy_rpc::SharedPtr<AutonomousNodeImpl>,
+            ) -> i32 {
                 *parent = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
             }
 
             fn set_parent_node<ParentIface>(
                 &self,
-                _parent: canopy_rpc::Shared<std::sync::Arc<ParentIface>>,
+                _parent: canopy_rpc::SharedPtr<ParentIface>,
             ) -> i32
             where
                 ParentIface: fuzz::IAutonomousNode,
@@ -435,24 +418,21 @@ mod tests {
             type CreatePitchforkConnectionLeftBranchIface = AutonomousNodeImpl;
             type CreatePitchforkConnectionRightBranchIface = AutonomousNodeImpl;
 
-            fn create_zone_with_node<CreatedNodeIface>(
+            fn create_zone_with_node(
                 &self,
-                _type: canopy_rpc::OpaqueValue,
+                _type: fuzz::NodeType,
                 _zone_id: u64,
-                created_node: &mut canopy_rpc::Shared<std::sync::Arc<CreatedNodeIface>>,
-            ) -> i32
-            where
-                CreatedNodeIface: fuzz::IAutonomousNode,
-            {
+                created_node: &mut canopy_rpc::SharedPtr<AutonomousNodeImpl>,
+            ) -> i32 {
                 *created_node = canopy_rpc::Shared::null();
                 canopy_rpc::OK()
             }
 
             fn create_pitchfork_connection<RootIface, LeftBranchIface, RightBranchIface>(
                 &self,
-                _root: canopy_rpc::Shared<std::sync::Arc<RootIface>>,
-                _left_branch: canopy_rpc::Shared<std::sync::Arc<LeftBranchIface>>,
-                _right_branch: canopy_rpc::Shared<std::sync::Arc<RightBranchIface>>,
+                _root: canopy_rpc::SharedPtr<RootIface>,
+                _left_branch: canopy_rpc::SharedPtr<LeftBranchIface>,
+                _right_branch: canopy_rpc::SharedPtr<RightBranchIface>,
             ) -> i32
             where
                 RootIface: fuzz::IAutonomousNode,
@@ -720,7 +700,7 @@ mod tests {
 
         fn accept_shared_peer<PeerIface>(
             &self,
-            peer: canopy_rpc::Shared<Arc<PeerIface>>,
+            peer: canopy_rpc::SharedPtr<PeerIface>,
             seen: &mut i32,
         ) -> i32
         where
@@ -740,7 +720,7 @@ mod tests {
 
         fn accept_optimistic_peer<PeerIface>(
             &self,
-            peer: canopy_rpc::Optimistic<canopy_rpc::LocalProxy<PeerIface>>,
+            peer: canopy_rpc::OptimisticPtr<PeerIface>,
             seen: &mut i32,
         ) -> i32
         where
@@ -762,46 +742,35 @@ mod tests {
             result
         }
 
-        fn create_shared_peer<CreatedPeerIface>(
-            &self,
-            _created_peer: &mut canopy_rpc::Shared<Arc<CreatedPeerIface>>,
-        ) -> i32
-        where
-            CreatedPeerIface: IPeer,
-        {
+        fn create_shared_peer(&self, _created_peer: &mut canopy_rpc::SharedPtr<PeerImpl>) -> i32 {
             canopy_rpc::INVALID_DATA()
         }
 
-        fn create_optimistic_peer<CreatedPeerIface>(
+        fn create_optimistic_peer(
             &self,
-            _created_peer: &mut canopy_rpc::Optimistic<canopy_rpc::LocalProxy<CreatedPeerIface>>,
-        ) -> i32
-        where
-            CreatedPeerIface: IPeer,
-        {
+            _created_peer: &mut canopy_rpc::OptimisticPtr<PeerImpl>,
+        ) -> i32 {
             canopy_rpc::INVALID_DATA()
         }
 
-        fn echo_shared_peer<InputIface, OutputIface>(
+        fn echo_shared_peer<InputIface>(
             &self,
-            _input: canopy_rpc::Shared<Arc<InputIface>>,
-            _output: &mut canopy_rpc::Shared<Arc<OutputIface>>,
+            _input: canopy_rpc::SharedPtr<InputIface>,
+            _output: &mut canopy_rpc::SharedPtr<PeerImpl>,
         ) -> i32
         where
             InputIface: IPeer,
-            OutputIface: IPeer,
         {
             canopy_rpc::INVALID_DATA()
         }
 
-        fn echo_optimistic_peer<InputIface, OutputIface>(
+        fn echo_optimistic_peer<InputIface>(
             &self,
-            _input: canopy_rpc::Optimistic<canopy_rpc::LocalProxy<InputIface>>,
-            _output: &mut canopy_rpc::Optimistic<canopy_rpc::LocalProxy<OutputIface>>,
+            _input: canopy_rpc::OptimisticPtr<InputIface>,
+            _output: &mut canopy_rpc::OptimisticPtr<PeerImpl>,
         ) -> i32
         where
             InputIface: IPeer,
-            OutputIface: IPeer,
         {
             canopy_rpc::INVALID_DATA()
         }
@@ -1019,7 +988,7 @@ mod cxx_dll_tests {
     use std::ffi::c_void;
     use std::sync::{Arc, Mutex};
 
-    use crate::basic_rpc_probe::probe::{__Generated, IMath, IPeer};
+    use crate::basic_rpc_probe::probe::{__Generated, IMath, IPeer, IPeerHandle};
     use __Generated::IMath as i_math;
     use __Generated::IPeer as i_peer;
     use canopy_rpc::internal::error_codes;
@@ -1477,7 +1446,7 @@ mod cxx_dll_tests {
         );
         assert_eq!(seen_optimistic, 407);
 
-        let mut created_shared: canopy_rpc::Shared<Arc<i_peer::ProxySkeleton>> =
+        let mut created_shared: canopy_rpc::SharedPtr<IPeerHandle<i_peer::ProxySkeleton>> =
             canopy_rpc::Shared::null();
         assert_eq!(
             proxy.create_shared_peer(&mut created_shared),
@@ -1494,9 +1463,8 @@ mod cxx_dll_tests {
         );
         assert_eq!(created_shared_ping, 11);
 
-        let mut created_optimistic: canopy_rpc::Optimistic<
-            canopy_rpc::LocalProxy<i_peer::ProxySkeleton>,
-        > = canopy_rpc::Optimistic::null();
+        let mut created_optimistic: canopy_rpc::OptimisticPtr<IPeerHandle<i_peer::ProxySkeleton>> =
+            canopy_rpc::Optimistic::null();
         assert_eq!(
             proxy.create_optimistic_peer(&mut created_optimistic),
             canopy_rpc::OK()
@@ -1516,11 +1484,11 @@ mod cxx_dll_tests {
         );
         assert_eq!(created_optimistic_ping, 11);
 
-        let mut echoed_shared: canopy_rpc::Shared<Arc<super::tests::PeerImpl>> =
+        let mut echoed_shared: canopy_rpc::SharedPtr<IPeerHandle<i_peer::ProxySkeleton>> =
             canopy_rpc::Shared::null();
         assert_eq!(
             proxy.echo_shared_peer(
-                canopy_rpc::Shared::from_value(peer.clone()),
+                canopy_rpc::Shared::from_value(created_shared_peer.clone()),
                 &mut echoed_shared
             ),
             canopy_rpc::OK()
@@ -1534,14 +1502,15 @@ mod cxx_dll_tests {
             echoed_shared_peer.ping(&mut echoed_shared_ping),
             canopy_rpc::OK()
         );
-        assert_eq!(echoed_shared_ping, 7);
+        assert_eq!(echoed_shared_ping, 11);
 
-        let mut echoed_optimistic: canopy_rpc::Optimistic<
-            canopy_rpc::LocalProxy<super::tests::PeerImpl>,
-        > = canopy_rpc::Optimistic::null();
+        let mut echoed_optimistic: canopy_rpc::OptimisticPtr<IPeerHandle<i_peer::ProxySkeleton>> =
+            canopy_rpc::Optimistic::null();
         assert_eq!(
             proxy.echo_optimistic_peer(
-                canopy_rpc::Optimistic::from_value(canopy_rpc::LocalProxy::from_shared(&peer)),
+                canopy_rpc::Optimistic::from_value(canopy_rpc::LocalProxy::from_shared(
+                    &created_optimistic_peer,
+                )),
                 &mut echoed_optimistic
             ),
             canopy_rpc::OK()
@@ -1559,7 +1528,7 @@ mod cxx_dll_tests {
             echoed_optimistic_peer.ping(&mut echoed_optimistic_ping),
             canopy_rpc::OK()
         );
-        assert_eq!(echoed_optimistic_ping, 7);
+        assert_eq!(echoed_optimistic_ping, 11);
     }
 
     include!("../../../../integration_tests/rust_cxx_y_topology/requesting_zone_add_ref.rs");

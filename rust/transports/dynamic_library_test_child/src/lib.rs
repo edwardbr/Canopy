@@ -4,7 +4,9 @@ mod exports;
 
 use __Generated::IMath as i_math;
 use __Generated::IPeer as i_peer;
-use canopy_protobuf_runtime_probe::basic_rpc_probe::probe::{__Generated, IMath, IPeer};
+use canopy_protobuf_runtime_probe::basic_rpc_probe::probe::{
+    __Generated, IMath, IPeer, IPeerHandle,
+};
 use canopy_rpc::internal::error_codes;
 use canopy_rpc::{
     AddRefParams, AddressType, DefaultValues, GetNewZoneIdParams, NewZoneIdResult, Object,
@@ -259,12 +261,12 @@ impl canopy_rpc::GeneratedRustInterface for GeneratedMathObject {
 impl IMath for GeneratedMathObject {
     type AcceptSharedPeerPeerIface = i_peer::ProxySkeleton;
     type AcceptOptimisticPeerPeerIface = i_peer::ProxySkeleton;
-    type CreateSharedPeerCreatedPeerIface = i_peer::ProxySkeleton;
-    type CreateOptimisticPeerCreatedPeerIface = i_peer::ProxySkeleton;
+    type CreateSharedPeerCreatedPeerIface = IPeerHandle<i_peer::ProxySkeleton>;
+    type CreateOptimisticPeerCreatedPeerIface = IPeerHandle<i_peer::ProxySkeleton>;
     type EchoSharedPeerInputIface = i_peer::ProxySkeleton;
-    type EchoSharedPeerOutputIface = i_peer::ProxySkeleton;
+    type EchoSharedPeerOutputIface = IPeerHandle<i_peer::ProxySkeleton>;
     type EchoOptimisticPeerInputIface = i_peer::ProxySkeleton;
-    type EchoOptimisticPeerOutputIface = i_peer::ProxySkeleton;
+    type EchoOptimisticPeerOutputIface = IPeerHandle<i_peer::ProxySkeleton>;
 
     fn add(&self, a: i32, b: i32, c: &mut i32) -> i32 {
         *c = a + b;
@@ -328,7 +330,7 @@ impl IMath for GeneratedMathObject {
 
     fn accept_shared_peer<PeerIface>(
         &self,
-        _peer: canopy_rpc::Shared<Arc<PeerIface>>,
+        _peer: canopy_rpc::SharedPtr<PeerIface>,
         seen: &mut i32,
     ) -> i32
     where
@@ -340,7 +342,7 @@ impl IMath for GeneratedMathObject {
 
     fn accept_optimistic_peer<PeerIface>(
         &self,
-        _peer: canopy_rpc::Optimistic<canopy_rpc::LocalProxy<PeerIface>>,
+        _peer: canopy_rpc::OptimisticPtr<PeerIface>,
         seen: &mut i32,
     ) -> i32
     where
@@ -350,46 +352,38 @@ impl IMath for GeneratedMathObject {
         canopy_rpc::INVALID_DATA()
     }
 
-    fn create_shared_peer<CreatedPeerIface>(
+    fn create_shared_peer(
         &self,
-        _created_peer: &mut canopy_rpc::Shared<Arc<CreatedPeerIface>>,
-    ) -> i32
-    where
-        CreatedPeerIface: IPeer,
-    {
+        _created_peer: &mut canopy_rpc::SharedPtr<IPeerHandle<i_peer::ProxySkeleton>>,
+    ) -> i32 {
         canopy_rpc::INVALID_DATA()
     }
 
-    fn create_optimistic_peer<CreatedPeerIface>(
+    fn create_optimistic_peer(
         &self,
-        _created_peer: &mut canopy_rpc::Optimistic<canopy_rpc::LocalProxy<CreatedPeerIface>>,
-    ) -> i32
-    where
-        CreatedPeerIface: IPeer,
-    {
+        _created_peer: &mut canopy_rpc::OptimisticPtr<IPeerHandle<i_peer::ProxySkeleton>>,
+    ) -> i32 {
         canopy_rpc::INVALID_DATA()
     }
 
-    fn echo_shared_peer<InputIface, OutputIface>(
+    fn echo_shared_peer<InputIface>(
         &self,
-        _input: canopy_rpc::Shared<Arc<InputIface>>,
-        _output: &mut canopy_rpc::Shared<Arc<OutputIface>>,
+        _input: canopy_rpc::SharedPtr<InputIface>,
+        _output: &mut canopy_rpc::SharedPtr<IPeerHandle<i_peer::ProxySkeleton>>,
     ) -> i32
     where
         InputIface: IPeer,
-        OutputIface: IPeer,
     {
         canopy_rpc::INVALID_DATA()
     }
 
-    fn echo_optimistic_peer<InputIface, OutputIface>(
+    fn echo_optimistic_peer<InputIface>(
         &self,
-        _input: canopy_rpc::Optimistic<canopy_rpc::LocalProxy<InputIface>>,
-        _output: &mut canopy_rpc::Optimistic<canopy_rpc::LocalProxy<OutputIface>>,
+        _input: canopy_rpc::OptimisticPtr<InputIface>,
+        _output: &mut canopy_rpc::OptimisticPtr<IPeerHandle<i_peer::ProxySkeleton>>,
     ) -> i32
     where
         InputIface: IPeer,
-        OutputIface: IPeer,
     {
         canopy_rpc::INVALID_DATA()
     }

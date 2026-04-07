@@ -1,0 +1,13 @@
+[package]
+name = "canopy-fuzz-test-rust-child"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "canopy_fuzz_test_rust_child"
+crate-type = ["cdylib"]
+
+[dependencies]
+canopy-rpc = { path = "../../../rust/rpc", features = ["protobuf-runtime"] }
+canopy-transport-dynamic-library = { path = "../../../rust/transports/dynamic_library" }
+canopy-protobuf-runtime-probe = { path = "../../../rust/tests/protobuf_runtime_probe" }
