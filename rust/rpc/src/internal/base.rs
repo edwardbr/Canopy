@@ -6,6 +6,7 @@
 //! RPC interfaces. The Rust port needs the same architectural seam even if the
 //! implementation mechanics differ from C++ CRTP.
 
+use std::any::Any;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -89,6 +90,14 @@ pub trait RpcObject: CastingInterface {
     fn __rpc_set_stub(&self, _stub: Weak<Mutex<ObjectStub>>) {}
 
     #[doc(hidden)]
+    fn __rpc_get_local_interface_view(
+        self: Arc<Self>,
+        _interface_id: InterfaceOrdinal,
+    ) -> Option<Arc<dyn Any + Send + Sync>> {
+        None
+    }
+
+    #[doc(hidden)]
     fn __rpc_owner_service_ptr(&self) -> Option<usize> {
         get_object_stub(self).and_then(|stub| {
             stub.lock()
@@ -106,7 +115,29 @@ pub trait RpcObject: CastingInterface {
     }
 }
 
-impl<T> RpcObject for T where T: GeneratedRustInterface {}
+impl<T: ?Sized> RpcObject for T
+where
+    T: GeneratedRustInterface,
+{
+    fn __rpc_get_stub(&self) -> Option<Arc<Mutex<ObjectStub>>> {
+        self.__rpc_local_object_stub()
+    }
+}
+
+#[doc(hidden)]
+pub struct LocalInterfaceView<T: ?Sized + Send + Sync + 'static> {
+    inner: Arc<T>,
+}
+
+impl<T: ?Sized + Send + Sync + 'static> LocalInterfaceView<T> {
+    pub fn new(inner: Arc<T>) -> Self {
+        Self { inner }
+    }
+
+    pub fn as_arc(&self) -> Arc<T> {
+        self.inner.clone()
+    }
+}
 
 #[doc(hidden)]
 pub fn get_object_stub<T>(object: &T) -> Option<Arc<Mutex<ObjectStub>>>
@@ -139,6 +170,16 @@ pub trait LocalObjectAdapter<Impl>: Send + Sync + 'static {
         _interface_id: InterfaceOrdinal,
     ) -> &'static [GeneratedMethodBindingDescriptor] {
         &[]
+    }
+
+    fn local_interface_view(
+        _object: Arc<RpcBase<Impl, Self>>,
+        _interface_id: InterfaceOrdinal,
+    ) -> Option<Arc<dyn Any + Send + Sync>>
+    where
+        Self: Sized,
+    {
+        None
     }
 }
 
@@ -203,6 +244,13 @@ where
 
     fn __rpc_set_stub(&self, stub: Weak<Mutex<ObjectStub>>) {
         *self.stub.lock().expect("rpc base stub mutex poisoned") = stub;
+    }
+
+    fn __rpc_get_local_interface_view(
+        self: Arc<Self>,
+        interface_id: InterfaceOrdinal,
+    ) -> Option<Arc<dyn Any + Send + Sync>> {
+        Adapter::local_interface_view(self, interface_id)
     }
 
     fn __rpc_get_method_metadata(

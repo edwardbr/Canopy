@@ -1722,6 +1722,158 @@ TYPED_TEST(
     run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1);
 #  endif
 }
+
+template<typename TransportSetup>
+CORO_TASK(void)
+run_child_status_and_cache_test_with_setup(TransportSetup& transport_setup)
+{
+    g_zone_id_counter = 0;
+    g_instruction_counter = 0;
+    transport_setup.set_up();
+
+    test_scenario_config scenario_config;
+    scenario_config.test_cycle = 77;
+    scenario_config.instruction_count = 1;
+
+    auto root_node = CO_AWAIT transport_setup.create_root_node(77, scenario_config);
+    EXPECT_TRUE(root_node);
+    if (!root_node)
+    {
+        transport_setup.tear_down();
+        CO_RETURN;
+    }
+
+    node_type type = {};
+    uint64_t id = 0;
+    int connections = -1;
+    int objects_held = -1;
+    EXPECT_EQ(CO_AWAIT root_node->get_node_status(type, id, connections, objects_held), rpc::error::OK());
+    EXPECT_EQ(type, node_type::ROOT_NODE);
+
+    rpc::shared_ptr<i_autonomous_node> child_node;
+    EXPECT_EQ(CO_AWAIT root_node->create_child_node(node_type::WORKER_NODE, 4242, true, child_node), rpc::error::OK());
+    EXPECT_TRUE(child_node);
+    if (!child_node)
+    {
+        transport_setup.tear_down();
+        CO_RETURN;
+    }
+
+    type = {};
+    id = 0;
+    connections = -1;
+    objects_held = -1;
+    EXPECT_EQ(CO_AWAIT child_node->get_node_status(type, id, connections, objects_held), rpc::error::OK());
+
+    transport_setup.tear_down();
+    CO_RETURN;
+}
+
+TYPED_TEST(
+    fuzz_transport_test,
+    ChildNodeStatusAndCaching)
+{
+#  ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = std::shared_ptr<coro::scheduler>(
+        coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+    this->transport_setup_.set_scheduler(scheduler);
+
+    bool completed = false;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+    auto wrapper_task = [&]() -> coro::task<void>
+    {
+        co_await run_child_status_and_cache_test_with_setup(this->transport_setup_);
+        completed = true;
+    }();
+
+    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
+
+    while (!completed)
+    {
+        scheduler->process_events(std::chrono::milliseconds(10));
+    }
+
+    scheduler->shutdown();
+#  else
+    run_child_status_and_cache_test_with_setup(this->transport_setup_);
+#  endif
+}
+
+template<typename TransportSetup>
+CORO_TASK(void)
+run_receive_object_updates_status_test_with_setup(TransportSetup& transport_setup)
+{
+    g_zone_id_counter = 0;
+    g_instruction_counter = 0;
+    transport_setup.set_up();
+
+    test_scenario_config scenario_config;
+    scenario_config.test_cycle = 78;
+    scenario_config.instruction_count = 1;
+
+    auto root_node = CO_AWAIT transport_setup.create_root_node(78, scenario_config);
+    EXPECT_TRUE(root_node);
+    if (!root_node)
+    {
+        transport_setup.tear_down();
+        CO_RETURN;
+    }
+
+    rpc::shared_ptr<i_autonomous_node> child_node;
+    EXPECT_EQ(CO_AWAIT root_node->create_child_node(node_type::WORKER_NODE, 4243, true, child_node), rpc::error::OK());
+    EXPECT_TRUE(child_node);
+    if (!child_node)
+    {
+        transport_setup.tear_down();
+        CO_RETURN;
+    }
+
+    node_type type = {};
+    uint64_t id = 0;
+    int connections = -1;
+    int objects_held_before = -1;
+    EXPECT_EQ(CO_AWAIT child_node->get_node_status(type, id, connections, objects_held_before), rpc::error::OK());
+
+    rpc::shared_ptr<i_shared_object> no_object;
+    EXPECT_EQ(CO_AWAIT child_node->receive_object(no_object, 1234), rpc::error::OK());
+
+    int objects_held_after = -1;
+    EXPECT_EQ(CO_AWAIT child_node->get_node_status(type, id, connections, objects_held_after), rpc::error::OK());
+    EXPECT_EQ(objects_held_after, objects_held_before + 1);
+
+    transport_setup.tear_down();
+    CO_RETURN;
+}
+
+TYPED_TEST(
+    fuzz_transport_test,
+    ReceiveObjectUpdatesStatus)
+{
+#  ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = std::shared_ptr<coro::scheduler>(
+        coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+    this->transport_setup_.set_scheduler(scheduler);
+
+    bool completed = false;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+    auto wrapper_task = [&]() -> coro::task<void>
+    {
+        co_await run_receive_object_updates_status_test_with_setup(this->transport_setup_);
+        completed = true;
+    }();
+
+    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
+
+    while (!completed)
+    {
+        scheduler->process_events(std::chrono::milliseconds(10));
+    }
+
+    scheduler->shutdown();
+#  else
+    run_receive_object_updates_status_test_with_setup(this->transport_setup_);
+#  endif
+}
 #endif
 
 int main(

@@ -5,7 +5,8 @@ use std::sync::{Arc, Weak};
 use crate::internal::bindings_fwd::{
     InterfaceBindResult, InterfaceBindingOrigin, InterfacePointerKind, RemoteObjectBindResult,
 };
-use crate::internal::remote_pointer::{CreateLocalProxy, LocalProxy};
+use crate::internal::casting_interface::CastingInterface;
+use crate::internal::remote_pointer::LocalProxy;
 use crate::rpc_types::{AddRefOptions, Object, ReleaseOptions, RemoteObject, Zone};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +76,7 @@ impl<T> Shared<T> {
     }
 }
 
-impl<T> Shared<Arc<T>> {
+impl<T: ?Sized> Shared<Arc<T>> {
     pub fn from_arc(value: Arc<T>) -> Self {
         Self::from_value(value)
     }
@@ -152,6 +153,12 @@ impl<T> Optimistic<T> {
     }
 }
 
+impl<T: ?Sized> Optimistic<LocalProxy<T>> {
+    pub fn from_local_proxy(value: LocalProxy<T>) -> Self {
+        Self::from_value(value)
+    }
+}
+
 impl<T> Clone for Optimistic<T>
 where
     T: Clone,
@@ -220,20 +227,19 @@ pub fn bind_remote_value<T>(iface: T) -> InterfaceBindResult<T> {
 
 pub fn bind_local_optimistic_from_shared<T>(iface: &Arc<T>) -> InterfaceBindResult<LocalProxy<T>>
 where
-    T: CreateLocalProxy,
+    T: ?Sized,
 {
-    let weak = Arc::downgrade(iface);
     InterfaceBindResult::local(
         crate::internal::error_codes::OK(),
-        T::create_local_proxy(weak),
+        LocalProxy::from_shared(iface),
     )
 }
 
 pub fn bind_local_optimistic_from_weak<T>(iface: Weak<T>) -> InterfaceBindResult<LocalProxy<T>>
 where
-    T: CreateLocalProxy,
+    T: ?Sized,
 {
-    let proxy = T::create_local_proxy(iface);
+    let proxy = LocalProxy::new(iface);
     if proxy.expired() {
         InterfaceBindResult::gone(
             crate::internal::error_codes::OBJECT_GONE(),
@@ -258,24 +264,24 @@ pub trait BindableInterfaceValue {
 
 impl<T> BindableInterfaceValue for Arc<T>
 where
-    T: crate::internal::GeneratedRustInterface,
+    T: CastingInterface + ?Sized,
 {
     fn is_local(&self) -> bool {
         self.remote_object_id().is_none()
     }
 
     fn remote_object_id(&self) -> Option<RemoteObject> {
-        <T as crate::internal::GeneratedRustInterface>::remote_object_id(self.as_ref())
+        self.as_ref().__rpc_remote_object_id()
     }
 
     fn remote_object_proxy(&self) -> Option<Arc<crate::ObjectProxy>> {
-        <T as crate::internal::GeneratedRustInterface>::remote_object_proxy(self.as_ref())
+        self.as_ref().__rpc_remote_object_proxy()
     }
 }
 
-impl<T> BindableInterfaceValue for LocalProxy<T>
+impl<T: ?Sized> BindableInterfaceValue for LocalProxy<T>
 where
-    T: crate::internal::GeneratedRustInterface,
+    T: CastingInterface,
 {
     fn is_local(&self) -> bool {
         self.upgrade()
@@ -283,15 +289,13 @@ where
     }
 
     fn remote_object_id(&self) -> Option<RemoteObject> {
-        self.upgrade().and_then(|value| {
-            <T as crate::internal::GeneratedRustInterface>::remote_object_id(value.as_ref())
-        })
+        self.upgrade()
+            .and_then(|value| value.as_ref().__rpc_remote_object_id())
     }
 
     fn remote_object_proxy(&self) -> Option<Arc<crate::ObjectProxy>> {
-        self.upgrade().and_then(|value| {
-            <T as crate::internal::GeneratedRustInterface>::remote_object_proxy(value.as_ref())
-        })
+        self.upgrade()
+            .and_then(|value| value.as_ref().__rpc_remote_object_proxy())
     }
 }
 
@@ -326,7 +330,7 @@ pub fn bind_incoming_optimistic<T, LocalLookup, RemoteBind>(
     bind_remote: RemoteBind,
 ) -> InterfaceBindResult<LocalProxy<T>>
 where
-    T: CreateLocalProxy,
+    T: ?Sized,
     LocalLookup: FnOnce(Object) -> Result<Arc<T>, i32>,
     RemoteBind: FnOnce(&RemoteObject) -> InterfaceBindResult<LocalProxy<T>>,
 {
@@ -386,7 +390,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::{
-        BindableInterfaceValue, BoundInterface, Optimistic, Shared,
+        BindableInterfaceValue, BoundInterface, Optimistic, OptimisticPtr, Shared, SharedPtr,
         add_ref_options_for_pointer_kind, bind_gone, bind_incoming_optimistic,
         bind_incoming_shared, bind_local_optimistic_from_shared, bind_local_optimistic_from_weak,
         bind_local_value, bind_null, bind_outgoing_interface, bind_remote_value,
@@ -404,6 +408,8 @@ mod tests {
     struct Example;
 
     impl CreateLocalProxy for Example {}
+
+    impl crate::internal::casting_interface::CastingInterface for Example {}
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct FakeIface {
@@ -513,6 +519,25 @@ mod tests {
 
         assert_eq!(shared.into_inner(), BoundInterface::Value(7));
         assert_eq!(optimistic.into_inner(), BoundInterface::Gone);
+    }
+
+    #[test]
+    fn app_facing_pointer_aliases_accept_dyn_interface_targets() {
+        let shared =
+            SharedPtr::<dyn crate::internal::casting_interface::CastingInterface>::from_arc(
+                Arc::new(Example),
+            );
+        assert!(shared.as_ref().is_some());
+
+        let iface: Arc<dyn crate::internal::casting_interface::CastingInterface> =
+            Arc::new(Example);
+        let optimistic = OptimisticPtr::<dyn crate::internal::casting_interface::CastingInterface>::from_local_proxy(
+            LocalProxy::from_shared(&iface),
+        );
+        let Some(proxy) = optimistic.as_ref() else {
+            panic!("expected optimistic proxy");
+        };
+        assert!(proxy.upgrade().is_some());
     }
 
     #[test]

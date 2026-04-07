@@ -1350,3 +1350,78 @@ sequence remains reconstructable.
     `cmake --build build_debug --target fuzz_test_gtest`,
     `ctest --test-dir build_debug -R rust_tests --output-on-failure`, and
     `ctest --test-dir build_debug -R fuzz_transport_test --output-on-failure`
+- Rust interface-pointer cleanup status:
+  - `LocalProxy<T>` now supports `T: ?Sized`, which is required groundwork for
+    future `canopy_rpc::OptimisticPtr<dyn Interface>` style signatures
+  - remote object identity and owning `ObjectProxy` are now available through
+    object-safe `CastingInterface` hooks, so outgoing binding no longer needs
+    to rely only on the sized `GeneratedRustInterface` metadata path for
+    local-vs-remote detection
+  - generated protobuf/internal binding helpers now explicitly carry the hidden
+    `GeneratedRustInterface` bound where they need metadata, rather than
+    depending on that requirement being implicit in every future public
+    interface-trait bound
+  - `Service` / `ObjectStub` now have an erased `Arc<dyn RpcObject>` descriptor
+    path for local shared-object binding, so future `SharedPtr<dyn Interface>`
+    support has a service-side route that does not depend on concrete downcasts
+  - the erased outgoing path now also supports optimistic bindings and scans
+    the service stub table when a directly registered object cannot store its
+    attached stub pointer itself; this preserves shared/optimistic ref-count
+    separation for future erased interface pointers
+  - `SharedPtr<T>` and `OptimisticPtr<T>` now accept unsized interface targets
+    in their app-facing constructors, with runtime coverage proving
+    `SharedPtr<dyn CastingInterface>` and `OptimisticPtr<dyn CastingInterface>`
+    compile and preserve the hidden local proxy view; this is a prerequisite
+    for future generated `SharedPtr<dyn IPeer>` /
+    `OptimisticPtr<dyn IPeer>` signatures
+  - `GeneratedRustInterface` no longer inherits `CreateLocalProxy`, so the
+    generated metadata trait is object-safe; generated public interface traits
+    can continue inheriting that hidden metadata seam without blocking simple
+    `dyn Interface` trait objects
+  - simple interfaces with no interface-parameter methods are now
+    dyn-compatible, with coverage proving `dyn IPeer`,
+    `SharedPtr<dyn IPeer>`, and `OptimisticPtr<dyn IPeer>` compile for the
+    basic probe
+  - hidden local interface recovery now mirrors the C++ base/stub split more
+    closely: `RpcBase` can supply a generated `LocalInterfaceView` through
+    `ObjectStub` for currently dyn-compatible interfaces, and the probe verifies
+    recovering an `Arc<dyn IPeer>` from a registered generated RPC object
+  - the generator does not emit default per-interface pointer aliases such as
+    `SharedIPeer` / `OptimisticIPeer`; those should remain optional aliases
+    that application developers may define themselves if they want them
+  - `ObjectStub` is no longer re-exported at the `canopy_rpc` crate root;
+    generated and test-only advanced code now names it through the hidden
+    `canopy_rpc::internal` namespace so application code is kept on the
+    interface/pointer surface
+  - generated Rust interface-pointer method signatures have been moved to the
+    erased app-facing shape, e.g. `SharedPtr<dyn IPeer>` and
+    `OptimisticPtr<dyn IPeer>`, rather than method-generic `SharedPtr<T>`
+    bounds or output associated types; the generated request/response and
+    protobuf binding code keeps the hidden metadata/proxy construction under
+    `__Generated`
+  - generated local RPC object views now forward their hidden stub through an
+    object-safe `CastingInterface` hook, allowing erased `dyn Interface`
+    pointers to bind outgoing refs without exposing `ObjectStub` to
+    application code
+  - same-zone erased optimistic interface binding now keeps the generated
+    erased view alive for the duration of the call; add-ref/release and
+    transport-visible pointer-kind accounting remain distinct for shared and
+    optimistic paths
+  - the protobuf runtime probe and fuzz Rust child implementations now use
+    erased interface pointer params rather than `*Iface` generic parameters,
+    and the C++/Rust topology include uses `SharedPtr<dyn IPeer>` instead of
+    `IPeerHandle<ProxySkeleton>` in app-facing test code
+  - the Rust dynamic-library fuzz child now keeps real node/object state for
+    node type/id, parent, children, connections, received objects, cleanup, and
+    shared-object value/stat counters while staying on the
+    `SharedPtr<dyn Interface>` app-facing API
+  - the typed fuzz suite now has additional `ChildNodeStatusAndCaching` and
+    `ReceiveObjectUpdatesStatus` behavior checks, run for both the C++ local
+    child setup and the Rust dynamic library setup, alongside the autonomous
+    instruction smoke test
+  - verified with `cmake --build build_debug --target generator`,
+    `cmake --build build_debug --target fuzz_test_gtest`,
+    `cargo test -p canopy-rpc --lib`,
+    `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`,
+    `ctest --test-dir build_debug -R rust_tests --output-on-failure`, and
+    `ctest --test-dir build_debug -R fuzz_transport_test --output-on-failure`

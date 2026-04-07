@@ -296,6 +296,19 @@ impl Service {
         Ok(stub)
     }
 
+    pub fn register_rpc_object(
+        &self,
+        object_id: Object,
+        target: Arc<dyn crate::internal::RpcObject>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32> {
+        let stub = Arc::new(Mutex::new(ObjectStub::with_rpc_object(object_id, target)));
+        let error_code = self.register_stub(&stub);
+        if error_codes::is_critical(error_code) {
+            return Err(error_code);
+        }
+        Ok(stub)
+    }
+
     pub fn lookup_local_interface<T>(&self, object_id: Object) -> Result<Arc<T>, i32>
     where
         T: crate::internal::GeneratedRustInterface,
@@ -309,6 +322,24 @@ impl Service {
             .get_local_interface::<T>(crate::rpc_types::InterfaceOrdinal::new(T::get_id(
                 crate::version::get_version(),
             )))
+            .ok_or(error_codes::INVALID_INTERFACE_ID())
+    }
+
+    pub fn lookup_local_interface_view<T>(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<T>, i32>
+    where
+        T: crate::internal::CastingInterface + ?Sized,
+    {
+        let Some(stub) = self.get_object(object_id) else {
+            return Err(error_codes::OBJECT_NOT_FOUND());
+        };
+
+        stub.lock()
+            .expect("object stub mutex poisoned")
+            .get_local_interface_view::<T>(interface_id)
             .ok_or(error_codes::INVALID_INTERFACE_ID())
     }
 
@@ -434,6 +465,33 @@ impl Service {
         None
     }
 
+    pub fn find_local_stub_for_rpc_object(
+        &self,
+        iface: &Arc<dyn crate::internal::RpcObject>,
+    ) -> Option<Arc<Mutex<ObjectStub>>> {
+        let stubs: Vec<Arc<Mutex<ObjectStub>>> = self
+            .stubs
+            .lock()
+            .expect("stubs mutex poisoned")
+            .values()
+            .filter_map(Weak::upgrade)
+            .collect();
+
+        for stub in stubs {
+            let matches = {
+                let guard = stub.lock().expect("object stub mutex poisoned");
+                guard
+                    .dispatch_target()
+                    .is_some_and(|candidate| Arc::ptr_eq(&candidate, iface))
+            };
+            if matches {
+                return Some(stub);
+            }
+        }
+
+        None
+    }
+
     pub fn get_descriptor_from_local_interface<T>(
         &self,
         caller_zone_id: CallerZone,
@@ -474,6 +532,15 @@ impl Service {
             }
         };
 
+        self.get_descriptor_from_local_stub(caller_zone_id, stub, optimistic)
+    }
+
+    fn get_descriptor_from_local_stub(
+        &self,
+        caller_zone_id: CallerZone,
+        stub: Arc<Mutex<ObjectStub>>,
+        optimistic: bool,
+    ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>> {
         {
             let mut guard = stub.lock().expect("object stub mutex poisoned");
             guard.add_ref(
@@ -501,6 +568,48 @@ impl Service {
         };
 
         RemoteObjectBindResult::new(error_codes::OK(), Some(stub), descriptor)
+    }
+
+    pub fn get_descriptor_from_local_rpc_object(
+        &self,
+        caller_zone_id: CallerZone,
+        iface: Arc<dyn crate::internal::RpcObject>,
+        optimistic: bool,
+    ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>> {
+        let stub = if let Some(stub) = crate::internal::get_object_stub(iface.as_ref())
+            .or_else(|| self.find_local_stub_for_rpc_object(&iface))
+        {
+            if optimistic
+                && stub
+                    .lock()
+                    .expect("object stub mutex poisoned")
+                    .shared_count()
+                    == 0
+            {
+                return RemoteObjectBindResult::new(
+                    error_codes::OBJECT_GONE(),
+                    None,
+                    RemoteObject::default(),
+                );
+            }
+            stub
+        } else if optimistic {
+            return RemoteObjectBindResult::new(
+                error_codes::OBJECT_GONE(),
+                None,
+                RemoteObject::default(),
+            );
+        } else {
+            let object_id = self.generate_new_object_id();
+            match self.register_rpc_object(object_id, iface) {
+                Ok(stub) => stub,
+                Err(error_code) => {
+                    return RemoteObjectBindResult::new(error_code, None, RemoteObject::default());
+                }
+            }
+        };
+
+        self.get_descriptor_from_local_stub(caller_zone_id, stub, optimistic)
     }
 
     pub fn bind_outgoing_local_interface<T>(
@@ -552,6 +661,134 @@ impl Service {
                     );
                 };
                 self.get_descriptor_from_local_interface(caller_zone_id, shared, true)
+            },
+            |_iface, _pointer_kind| {
+                RemoteObjectBindResult::new(
+                    error_codes::TRANSPORT_ERROR(),
+                    None,
+                    RemoteObject::default(),
+                )
+            },
+        )
+    }
+
+    pub fn bind_outgoing_local_erased_interface<T>(
+        &self,
+        caller_zone_id: CallerZone,
+        iface: &BoundInterface<Arc<T>>,
+        pointer_kind: InterfacePointerKind,
+    ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
+    where
+        T: crate::internal::GeneratedRustInterface + ?Sized,
+    {
+        bind_outgoing_interface(
+            iface,
+            pointer_kind,
+            |iface, pointer_kind| {
+                let Some(stub) = crate::internal::get_object_stub(iface.as_ref()) else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::INVALID_DATA(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                self.get_descriptor_from_local_stub(
+                    caller_zone_id,
+                    stub,
+                    pointer_kind.is_optimistic(),
+                )
+            },
+            |_iface, _pointer_kind| {
+                RemoteObjectBindResult::new(
+                    error_codes::TRANSPORT_ERROR(),
+                    None,
+                    RemoteObject::default(),
+                )
+            },
+        )
+    }
+
+    pub fn bind_outgoing_local_optimistic_erased_interface<T>(
+        &self,
+        caller_zone_id: CallerZone,
+        iface: &BoundInterface<crate::internal::LocalProxy<T>>,
+    ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
+    where
+        T: crate::internal::GeneratedRustInterface + ?Sized,
+    {
+        bind_outgoing_interface(
+            iface,
+            InterfacePointerKind::Optimistic,
+            |iface, _pointer_kind| {
+                let Some(shared) = iface.upgrade() else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::OBJECT_GONE(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                let Some(stub) = crate::internal::get_object_stub(shared.as_ref()) else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::INVALID_DATA(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                self.get_descriptor_from_local_stub(caller_zone_id, stub, true)
+            },
+            |_iface, _pointer_kind| {
+                RemoteObjectBindResult::new(
+                    error_codes::TRANSPORT_ERROR(),
+                    None,
+                    RemoteObject::default(),
+                )
+            },
+        )
+    }
+
+    pub fn bind_outgoing_local_rpc_object_interface(
+        &self,
+        caller_zone_id: CallerZone,
+        iface: &BoundInterface<Arc<dyn crate::internal::RpcObject>>,
+        pointer_kind: InterfacePointerKind,
+    ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>> {
+        bind_outgoing_interface(
+            iface,
+            pointer_kind,
+            |iface, pointer_kind| {
+                self.get_descriptor_from_local_rpc_object(
+                    caller_zone_id,
+                    iface.clone(),
+                    pointer_kind.is_optimistic(),
+                )
+            },
+            |_iface, _pointer_kind| {
+                RemoteObjectBindResult::new(
+                    error_codes::TRANSPORT_ERROR(),
+                    None,
+                    RemoteObject::default(),
+                )
+            },
+        )
+    }
+
+    pub fn bind_outgoing_local_optimistic_rpc_object_interface(
+        &self,
+        caller_zone_id: CallerZone,
+        iface: &BoundInterface<crate::internal::LocalProxy<dyn crate::internal::RpcObject>>,
+    ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>> {
+        bind_outgoing_interface(
+            iface,
+            InterfacePointerKind::Optimistic,
+            |iface, _pointer_kind| {
+                let Some(shared) = iface.upgrade() else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::OBJECT_GONE(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                self.get_descriptor_from_local_rpc_object(caller_zone_id, shared, true)
             },
             |_iface, _pointer_kind| {
                 RemoteObjectBindResult::new(
@@ -1132,6 +1369,20 @@ mod tests {
     }
 
     #[test]
+    fn erased_rpc_object_descriptor_path_registers_unattached_shared_object() {
+        let service = Service::new("svc", zone(1));
+        let local: Arc<dyn crate::internal::RpcObject> = Arc::new(TestLocalObject);
+
+        let descriptor = service.get_descriptor_from_local_rpc_object(caller_zone(2), local, false);
+
+        assert_eq!(descriptor.error_code, error_codes::OK());
+        assert_eq!(descriptor.descriptor.as_zone(), zone(1));
+        assert_eq!(descriptor.descriptor.get_object_id(), Object::new(1));
+        let stub = descriptor.stub.expect("registered stub");
+        assert_eq!(stub.lock().expect("stub mutex poisoned").shared_count(), 1);
+    }
+
+    #[test]
     fn marshaller_impl_handles_add_ref_post_and_zone_request_basics() {
         let service = Service::new("svc", zone(1));
         let stub = service
@@ -1362,6 +1613,33 @@ mod tests {
         );
         assert_eq!(gone.error_code, error_codes::OBJECT_GONE());
         assert!(gone.stub.is_none());
+    }
+
+    #[test]
+    fn outgoing_erased_rpc_object_interface_binds_shared_and_optimistic() {
+        let service = Service::new("svc", zone(1));
+        let local: Arc<dyn crate::internal::RpcObject> = Arc::new(TestLocalObject);
+
+        let shared_result = service.bind_outgoing_local_rpc_object_interface(
+            caller_zone(13),
+            &crate::BoundInterface::Value(local.clone()),
+            crate::InterfacePointerKind::Shared,
+        );
+        assert_eq!(shared_result.error_code, error_codes::OK());
+        let object_id = shared_result.descriptor.get_object_id();
+
+        let optimistic_proxy = LocalProxy::from_shared(&local);
+        let optimistic_result = service.bind_outgoing_local_optimistic_rpc_object_interface(
+            caller_zone(13),
+            &crate::BoundInterface::Value(optimistic_proxy),
+        );
+        assert_eq!(optimistic_result.error_code, error_codes::OK());
+        assert_eq!(optimistic_result.descriptor.get_object_id(), object_id);
+
+        let stub = optimistic_result.stub.expect("erased stub");
+        let guard = stub.lock().expect("stub mutex poisoned");
+        assert_eq!(guard.shared_count(), 1);
+        assert_eq!(guard.optimistic_count(), 1);
     }
 
     #[derive(Default)]

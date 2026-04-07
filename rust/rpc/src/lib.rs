@@ -69,8 +69,6 @@ pub use internal::ObjectProxy;
 pub use internal::ObjectProxyCaller;
 #[doc(hidden)]
 pub use internal::ObjectReleasedParams;
-#[doc(hidden)]
-pub use internal::ObjectStub;
 pub use internal::OpaqueValue;
 pub use internal::Optimistic;
 pub use internal::OptimisticPtr;
@@ -132,6 +130,7 @@ pub use internal::bind_incoming_shared;
 #[doc(hidden)]
 pub use internal::bind_outgoing_interface;
 pub use internal::bytes_to_string;
+#[doc(hidden)]
 pub use internal::get_object_stub;
 pub use internal::get_version;
 pub use internal::interface_ordinal_to_string;

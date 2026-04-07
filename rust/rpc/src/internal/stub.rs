@@ -4,6 +4,7 @@ use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
+use crate::internal::base::LocalInterfaceView;
 use crate::internal::base::RpcObject;
 use crate::internal::bindings_fwd::InterfacePointerKind;
 use crate::internal::casting_interface::CastingInterface;
@@ -49,6 +50,12 @@ impl ObjectStub {
         stub
     }
 
+    pub fn with_rpc_object(id: Object, target: Arc<dyn RpcObject>) -> Self {
+        let mut stub = Self::new(id);
+        stub.target = Some(target);
+        stub
+    }
+
     pub fn id(&self) -> Object {
         self.id
     }
@@ -67,6 +74,11 @@ impl ObjectStub {
     {
         self.target = Some(target.clone());
         self.target_any = Some(target);
+    }
+
+    pub fn set_rpc_object(&mut self, target: Arc<dyn RpcObject>) {
+        self.target = Some(target);
+        self.target_any = None;
     }
 
     pub fn attach_to_service(&mut self, service: &Service) {
@@ -116,6 +128,22 @@ impl ObjectStub {
         self.target_any
             .as_ref()
             .and_then(|target| target.clone().downcast::<T>().ok())
+    }
+
+    pub fn get_local_interface_view<T>(&self, interface_id: InterfaceOrdinal) -> Option<Arc<T>>
+    where
+        T: CastingInterface + ?Sized,
+    {
+        let target = self.target.as_ref()?;
+        if interface_id.is_set() && !target.__rpc_query_interface(interface_id) {
+            return None;
+        }
+
+        target
+            .clone()
+            .__rpc_get_local_interface_view(interface_id)
+            .and_then(|view| view.downcast::<LocalInterfaceView<T>>().ok())
+            .map(|view| view.as_arc())
     }
 
     pub fn call(&self, params: SendParams) -> SendResult {
