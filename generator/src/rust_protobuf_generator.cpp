@@ -279,6 +279,7 @@ namespace rust_protobuf_generator
             std::string param_name;
             std::string generic_name;
             std::string trait_path;
+            std::string associated_type_name;
             bool is_in = false;
             bool is_out = false;
             bool is_optimistic = false;
@@ -303,6 +304,7 @@ namespace rust_protobuf_generator
                 generic.param_name = sanitize_identifier(parameter.get_name());
                 generic.generic_name
                     = unique_identifier(upper_camel_identifier(parameter.get_name()) + "Iface", used_generic_names);
+                generic.associated_type_name = upper_camel_identifier(function.get_name()) + generic.generic_name;
                 generic.trait_path = "crate::" + sanitize_identifier(root_module_name)
                                      + "::" + qualified_public_type_path(*interface_entity);
                 generic.is_in = is_in_param(parameter) || (!is_in_param(parameter) && !is_out_param(parameter));
@@ -364,6 +366,36 @@ namespace rust_protobuf_generator
                     result += ", ";
                 result += constraints[i];
             }
+            return result;
+        }
+
+        std::string impl_interface_bound_for_params(
+            const std::vector<rust_interface_generic>& params,
+            const std::string& impl_name,
+            const std::string& interface_trait_path)
+        {
+            std::vector<std::string> associated_types;
+            std::set<std::string> seen;
+            for (const auto& param : params)
+            {
+                if (!(param.is_out && !param.is_in))
+                    continue;
+                if (!seen.insert(param.associated_type_name).second)
+                    continue;
+                associated_types.push_back(param.associated_type_name + " = " + param.generic_name);
+            }
+
+            if (associated_types.empty())
+                return impl_name + ": " + interface_trait_path;
+
+            std::string result = impl_name + ": " + interface_trait_path + "<";
+            for (size_t i = 0; i < associated_types.size(); ++i)
+            {
+                if (i)
+                    result += ", ";
+                result += associated_types[i];
+            }
+            result += ">";
             return result;
         }
 
@@ -514,6 +546,29 @@ namespace rust_protobuf_generator
             return resolved_entity.get();
         }
 
+        const class_entity* resolve_enum_entity(
+            const class_entity& current_scope,
+            const class_entity& lib,
+            const std::string& type_name)
+        {
+            const auto normalised_type = normalise_cpp_type(type_name);
+            std::shared_ptr<class_entity> resolved_entity;
+
+            for (auto* scope = &current_scope; scope != nullptr; scope = scope->get_owner())
+            {
+                if (scope->find_class(normalised_type, resolved_entity))
+                    break;
+            }
+
+            if (!resolved_entity && &current_scope != &lib)
+                lib.find_class(normalised_type, resolved_entity);
+
+            if (!resolved_entity || resolved_entity->get_entity_type() != entity_type::ENUM)
+                return nullptr;
+
+            return resolved_entity.get();
+        }
+
         // Forward declaration for mutual recursion.
         bool is_supported_struct_for_protobuf_codegen(
             const class_entity& current_scope,
@@ -532,10 +587,12 @@ namespace rust_protobuf_generator
         {
             if (is_supported_scalar_codegen_type(field_type))
                 return true;
+            if (resolve_enum_entity(current_scope, lib, field_type))
+                return true;
 
             std::string inner;
             if (extract_vector_value_type(field_type, inner))
-                return is_supported_scalar_codegen_type(inner)
+                return is_supported_scalar_codegen_type(inner) || resolve_enum_entity(current_scope, lib, inner)
                        || is_supported_struct_for_protobuf_codegen(current_scope, lib, inner, seen_structs);
 
             return is_supported_struct_for_protobuf_codegen(current_scope, lib, field_type, seen_structs);
@@ -585,11 +642,13 @@ namespace rust_protobuf_generator
 
             if (is_supported_scalar_codegen_type(type_name))
                 return true;
+            if (resolve_enum_entity(current_scope, lib, type_name))
+                return true;
 
             std::set<std::string> seen_structs;
             std::string inner_type;
             if (extract_vector_value_type(type_name, inner_type))
-                return is_supported_scalar_codegen_type(inner_type)
+                return is_supported_scalar_codegen_type(inner_type) || resolve_enum_entity(current_scope, lib, inner_type)
                        || is_supported_struct_for_protobuf_codegen(current_scope, lib, inner_type, seen_structs);
 
             return is_supported_struct_for_protobuf_codegen(current_scope, lib, type_name, seen_structs);
@@ -649,6 +708,9 @@ namespace rust_protobuf_generator
                 if (vector_value_type == "size_t")
                     return message_name + "."
                            + field_name + "().into_iter().map(|value| usize::try_from(value).map_err(|_| canopy_rpc::INVALID_DATA())).collect::<Result<Vec<_>, _>>()?";
+                if (resolve_enum_entity(current_scope, lib, vector_value_type))
+                    return message_name + "."
+                           + field_name + "().into_iter().map(|value| ::std::convert::TryFrom::try_from(i32::from(value)).unwrap_or_default()).collect()";
                 const auto* inner_struct = resolve_non_template_struct_entity(current_scope, lib, vector_value_type);
                 if (inner_struct)
                     return message_name + "." + field_name + "().into_iter().map(|m| " + struct_helper_prefix
@@ -657,6 +719,9 @@ namespace rust_protobuf_generator
             }
             if (type_name == "std::string")
                 return message_name + "." + field_name + "().to_string()";
+            if (resolve_enum_entity(current_scope, lib, type_name))
+                return "::std::convert::TryFrom::try_from(i32::from(" + message_name + "." + field_name
+                       + "())).unwrap_or_default()";
             const auto* struct_entity = resolve_non_template_struct_entity(current_scope, lib, type_name);
             if (struct_entity)
                 return struct_helper_prefix + "from_proto_" + protobuf_struct_helper_name(*struct_entity) + "("
@@ -695,6 +760,8 @@ namespace rust_protobuf_generator
                     return value_name + ".iter().map(|value| value.as_str())";
                 if (vector_value_type == "size_t")
                     return value_name + ".iter().map(|value| u64::try_from(*value).map_err(|_| canopy_rpc::INVALID_DATA())).collect::<Result<Vec<_>, _>>()?";
+                if (resolve_enum_entity(current_scope, lib, vector_value_type))
+                    return value_name + ".iter().map(|value| ::std::convert::From::from(i32::from(*value)))";
                 const auto* inner_struct = resolve_non_template_struct_entity(current_scope, lib, vector_value_type);
                 if (inner_struct)
                     return value_name + ".iter().map(|v| " + struct_helper_prefix + "to_proto_"
@@ -705,6 +772,8 @@ namespace rust_protobuf_generator
                 return value_name + ".as_str()";
             if (type_name == "size_t")
                 return "u64::try_from(" + value_name + ").map_err(|_| canopy_rpc::INVALID_DATA())?";
+            if (resolve_enum_entity(current_scope, lib, type_name))
+                return "::std::convert::From::from(i32::from(" + value_name + "))";
             const auto* struct_entity = resolve_non_template_struct_entity(current_scope, lib, type_name);
             if (struct_entity)
                 return struct_helper_prefix + "to_proto_" + protobuf_struct_helper_name(*struct_entity) + "(&"
@@ -797,9 +866,10 @@ namespace rust_protobuf_generator
                 if (func_entity->is_static())
                     continue;
                 const auto field_name = sanitize_identifier(func_entity->get_name());
+                const auto setter_name = sanitize_identifier_base(func_entity->get_name());
                 output(
                     "\tmsg.set_{}({});",
-                    field_name,
+                    setter_name,
                     generate_field_to_proto(ctx, "val." + field_name, func_entity->get_return_type()));
             }
             output("\tmsg");
@@ -1212,9 +1282,10 @@ namespace rust_protobuf_generator
                             if (!param_is_in)
                                 continue;
                             const auto field_name = sanitize_identifier(parameter.get_name());
+                            const auto setter_name = sanitize_identifier_base(parameter.get_name());
                             output(
                                 "\t\tmessage.set_{}({});",
-                                field_name,
+                                setter_name,
                                 protobuf_setter_argument_expression(
                                     "request." + field_name, parameter.get_type(), iface, lib));
                         }
@@ -1274,17 +1345,19 @@ namespace rust_protobuf_generator
                                 output("\t\t{{");
                                 output("\t\t\treturn Err({}_binding.error_code);", field_name);
                                 output("\t\t}}");
+                                const auto setter_name = sanitize_identifier_base(parameter.get_name());
                                 output(
                                     "\t\tmessage.set_{}({});",
-                                    field_name,
+                                    setter_name,
                                     protobuf_setter_argument_expression(
                                         field_name + "_binding.descriptor", parameter.get_type(), iface, lib));
                             }
                             else
                             {
+                                const auto setter_name = sanitize_identifier_base(parameter.get_name());
                                 output(
                                     "\t\tmessage.set_{}({});",
-                                    field_name,
+                                    setter_name,
                                     protobuf_setter_argument_expression(
                                         "request." + field_name, parameter.get_type(), iface, lib));
                             }
@@ -1316,9 +1389,10 @@ namespace rust_protobuf_generator
                         if (!is_out_param(parameter))
                             continue;
                         const auto field_name = sanitize_identifier(parameter.get_name());
+                        const auto setter_name = sanitize_identifier_base(parameter.get_name());
                         output(
                             "\t\tmessage.set_{}({});",
-                            field_name,
+                            setter_name,
                             protobuf_setter_argument_expression("response." + field_name, parameter.get_type(), iface, lib));
                     }
                     if (!function->get_return_type().empty() && normalise_cpp_type(function->get_return_type()) != "void")
@@ -1378,6 +1452,7 @@ namespace rust_protobuf_generator
                             "canopy_rpc::GeneratedRpcCaller, "
                             "message: Self::ProtoResponse) -> Result<Self::ProxyResponse, i32>");
                         output("\t{{");
+                        output("\t\tlet context = caller.call_context();");
                         for (const auto& parameter : function->get_parameters())
                         {
                             if (!is_out_param(parameter))
@@ -1420,7 +1495,7 @@ namespace rust_protobuf_generator
                                 output("\t\t{{");
                                 output(
                                     "\t\t\tlet {}_binding = {}::bind_{}_incoming_local::<{}>(service, "
-                                    "&{}_remote_object);",
+                                    "context.caller_zone_id.clone(), &{}_remote_object);",
                                     field_name,
                                     interface_module_path,
                                     field_name,
@@ -1521,10 +1596,11 @@ namespace rust_protobuf_generator
                     "pub fn dispatch_generated<Impl{}>(implementation: &Impl, context: &canopy_rpc::DispatchContext, "
                     "params: canopy_rpc::SendParams) -> canopy_rpc::SendResult",
                     codec_generics.empty() ? "" : ", " + codec_generics.substr(1, codec_generics.size() - 2));
+                const auto impl_bound = impl_interface_bound_for_params(interface_generics, "Impl", interface_trait_path);
                 if (codec_where.empty())
-                    output(" where Impl: {}", interface_trait_path);
+                    output(" where {}", impl_bound);
                 else
-                    output("{}, Impl: {}", codec_where, interface_trait_path);
+                    output("{}, {}", codec_where, impl_bound);
                 output("{{");
                 output("\tcanopy_rpc::serialization::protobuf::dispatch_generated_stub_call::<ProtobufCodec{}, _>(params, |request|", codec_generics);
                 output("\t{{");

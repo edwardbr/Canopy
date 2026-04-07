@@ -37,6 +37,13 @@ pub struct Shared<T> {
     iface: BoundInterface<T>,
 }
 
+/// Application-facing shared interface pointer.
+///
+/// This is the Rust equivalent of `rpc::shared_ptr<T>` for generated
+/// interfaces. The `Arc` is an implementation detail of the Rust runtime and
+/// should normally be hidden behind this alias in generated app-facing APIs.
+pub type SharedPtr<T> = Shared<Arc<T>>;
+
 impl<T> Shared<T> {
     pub fn null() -> Self {
         Self {
@@ -61,6 +68,16 @@ impl<T> Shared<T> {
 
     pub fn as_inner(&self) -> &BoundInterface<T> {
         &self.iface
+    }
+
+    pub fn as_ref(&self) -> Option<&T> {
+        self.iface.as_ref()
+    }
+}
+
+impl<T> Shared<Arc<T>> {
+    pub fn from_arc(value: Arc<T>) -> Self {
+        Self::from_value(value)
     }
 }
 
@@ -90,6 +107,13 @@ impl<T> Eq for Shared<T> where T: Eq {}
 pub struct Optimistic<T> {
     iface: BoundInterface<T>,
 }
+
+/// Application-facing optimistic interface pointer.
+///
+/// This is the Rust equivalent of `rpc::optimistic_ptr<T>` for generated
+/// interfaces. `LocalProxy` is runtime machinery and should normally be hidden
+/// behind this alias in generated app-facing APIs.
+pub type OptimisticPtr<T> = Optimistic<LocalProxy<T>>;
 
 impl<T> Optimistic<T> {
     pub fn null() -> Self {
@@ -121,6 +145,10 @@ impl<T> Optimistic<T> {
 
     pub fn as_inner(&self) -> &BoundInterface<T> {
         &self.iface
+    }
+
+    pub fn as_ref(&self) -> Option<&T> {
+        self.iface.as_ref()
     }
 }
 

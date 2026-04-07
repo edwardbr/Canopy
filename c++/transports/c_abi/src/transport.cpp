@@ -52,16 +52,12 @@ namespace rpc::c_abi
 
         canopy_const_byte_buffer borrow_bytes(const std::vector<char>& bytes)
         {
-            return canopy_const_byte_buffer{
-                reinterpret_cast<const uint8_t*>(bytes.data()),
-                bytes.size()};
+            return canopy_const_byte_buffer{reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()};
         }
 
         canopy_const_byte_buffer borrow_bytes(const std::vector<uint8_t>& bytes)
         {
-            return canopy_const_byte_buffer{
-                bytes.data(),
-                bytes.size()};
+            return canopy_const_byte_buffer{bytes.data(), bytes.size()};
         }
 
         canopy_zone_address borrow_zone_address(const rpc::zone_address& address)
@@ -92,9 +88,7 @@ namespace rpc::c_abi
                 entries.reserve(source.size());
                 for (const auto& entry : source)
                 {
-                    entries.push_back(canopy_back_channel_entry{
-                        entry.type_id,
-                        borrow_bytes(entry.payload)});
+                    entries.push_back(canopy_back_channel_entry{entry.type_id, borrow_bytes(entry.payload)});
                 }
 
                 span.data = entries.data();
@@ -109,8 +103,7 @@ namespace rpc::c_abi
 
             explicit borrowed_connection_settings(const rpc::connection_settings& input_descr)
                 : remote_object(borrow_remote_object(input_descr.remote_object_id))
-                , raw{
-                      input_descr.inbound_interface_id.get_val(),
+                , raw{input_descr.inbound_interface_id.get_val(),
                       input_descr.outbound_interface_id.get_val(),
                       remote_object}
             {
@@ -128,8 +121,7 @@ namespace rpc::c_abi
                 : back_channel(params.in_back_channel)
                 , caller_zone(borrow_zone(params.caller_zone_id))
                 , remote_object(borrow_remote_object(params.remote_object_id))
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       static_cast<uint64_t>(params.encoding_type),
                       params.tag,
                       caller_zone,
@@ -153,8 +145,7 @@ namespace rpc::c_abi
                 : back_channel(params.in_back_channel)
                 , caller_zone(borrow_zone(params.caller_zone_id))
                 , remote_object(borrow_remote_object(params.remote_object_id))
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       static_cast<uint64_t>(params.encoding_type),
                       params.tag,
                       caller_zone,
@@ -178,8 +169,7 @@ namespace rpc::c_abi
                 : back_channel(params.in_back_channel)
                 , caller_zone(borrow_zone(params.caller_zone_id))
                 , remote_object(borrow_remote_object(params.remote_object_id))
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       caller_zone,
                       remote_object,
                       params.interface_id.get_val(),
@@ -201,8 +191,7 @@ namespace rpc::c_abi
                 , remote_object(borrow_remote_object(params.remote_object_id))
                 , caller_zone(borrow_zone(params.caller_zone_id))
                 , requesting_zone(borrow_zone(params.requesting_zone_id))
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       remote_object,
                       caller_zone,
                       requesting_zone,
@@ -223,8 +212,7 @@ namespace rpc::c_abi
                 : back_channel(params.in_back_channel)
                 , remote_object(borrow_remote_object(params.remote_object_id))
                 , caller_zone(borrow_zone(params.caller_zone_id))
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       remote_object,
                       caller_zone,
                       static_cast<uint8_t>(params.options),
@@ -244,8 +232,7 @@ namespace rpc::c_abi
                 : back_channel(params.in_back_channel)
                 , remote_object(borrow_remote_object(params.remote_object_id))
                 , caller_zone(borrow_zone(params.caller_zone_id))
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       remote_object,
                       caller_zone,
                       back_channel.span}
@@ -264,8 +251,7 @@ namespace rpc::c_abi
                 : back_channel(params.in_back_channel)
                 , destination_zone(borrow_zone(params.destination_zone_id))
                 , caller_zone(borrow_zone(params.caller_zone_id))
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       destination_zone,
                       caller_zone,
                       back_channel.span}
@@ -280,8 +266,7 @@ namespace rpc::c_abi
 
             explicit borrowed_get_new_zone_id_params(const rpc::get_new_zone_id_params& params)
                 : back_channel(params.in_back_channel)
-                , raw{
-                      params.protocol_version,
+                , raw{params.protocol_version,
                       back_channel.span}
             {
             }
@@ -367,8 +352,8 @@ namespace rpc::c_abi
             auto subnet_offset_bits = static_cast<uint16_t>(address_offset_bits + address_bits);
             auto object_offset_bits = static_cast<uint16_t>(subnet_offset_bits + subnet_size_bits);
             auto validation_offset_bits = type == rpc::address_type::ipv6_tun
-                ? static_cast<uint16_t>(address_offset_bits + 128u)
-                : static_cast<uint16_t>(object_offset_bits + object_id_size_bits);
+                                              ? static_cast<uint16_t>(address_offset_bits + 128u)
+                                              : static_cast<uint16_t>(object_offset_bits + object_id_size_bits);
 
             auto port = has_port ? static_cast<uint16_t>(rpc::get_bits_le(blob, header_bits, port_bits)) : 0u;
             auto host = extract_host_bytes(blob, address_offset_bits, address_bits);
@@ -382,7 +367,8 @@ namespace rpc::c_abi
                 auto routing_bits = static_cast<uint16_t>(128u - subnet_size_bits - object_id_size_bits);
                 routing_prefix = extract_prefix_bits(host, routing_bits);
                 subnet = rpc::get_bits_be(host, routing_bits, subnet_size_bits);
-                object_id = rpc::get_bits_be(host, static_cast<uint16_t>(routing_bits + subnet_size_bits), object_id_size_bits);
+                object_id
+                    = rpc::get_bits_be(host, static_cast<uint16_t>(routing_bits + subnet_size_bits), object_id_size_bits);
             }
             else
             {
@@ -401,15 +387,7 @@ namespace rpc::c_abi
             }
 
             return rpc::zone_address_args(
-                version,
-                type,
-                port,
-                routing_prefix,
-                subnet_size_bits,
-                subnet,
-                object_id_size_bits,
-                object_id,
-                validation_bits);
+                version, type, port, routing_prefix, subnet_size_bits, subnet, object_id_size_bits, object_id, validation_bits);
         }
 
         rpc::expected<
@@ -452,9 +430,7 @@ namespace rpc::c_abi
             for (size_t i = 0; i < span.size; ++i)
             {
                 const auto& entry = span.data[i];
-                result.push_back(rpc::back_channel_entry{
-                    entry.type_id,
-                    copy_bytes(entry.payload)});
+                result.push_back(rpc::back_channel_entry{entry.type_id, copy_bytes(entry.payload)});
             }
             return result;
         }
@@ -474,17 +450,14 @@ namespace rpc::c_abi
             if (!back_channel)
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
-            return rpc::send_params{
-                params.protocol_version,
+            return rpc::send_params{params.protocol_version,
                 static_cast<rpc::encoding>(params.encoding_type),
                 params.tag,
                 *caller_zone,
                 *remote_object,
                 rpc::interface_ordinal(params.interface_id),
                 rpc::method(params.method_id),
-                copy_chars(canopy_byte_buffer{
-                    const_cast<uint8_t*>(params.in_data.data),
-                    params.in_data.size}),
+                copy_chars(canopy_byte_buffer{const_cast<uint8_t*>(params.in_data.data), params.in_data.size}),
                 std::move(*back_channel)};
         }
 
@@ -503,17 +476,14 @@ namespace rpc::c_abi
             if (!back_channel)
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
-            return rpc::post_params{
-                params.protocol_version,
+            return rpc::post_params{params.protocol_version,
                 static_cast<rpc::encoding>(params.encoding_type),
                 params.tag,
                 *caller_zone,
                 *remote_object,
                 rpc::interface_ordinal(params.interface_id),
                 rpc::method(params.method_id),
-                copy_chars(canopy_byte_buffer{
-                    const_cast<uint8_t*>(params.in_data.data),
-                    params.in_data.size}),
+                copy_chars(canopy_byte_buffer{const_cast<uint8_t*>(params.in_data.data), params.in_data.size}),
                 std::move(*back_channel)};
         }
 
@@ -532,8 +502,7 @@ namespace rpc::c_abi
             if (!back_channel)
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
-            return rpc::try_cast_params{
-                params.protocol_version,
+            return rpc::try_cast_params{params.protocol_version,
                 *caller_zone,
                 *remote_object,
                 rpc::interface_ordinal(params.interface_id),
@@ -558,8 +527,7 @@ namespace rpc::c_abi
             if (!back_channel)
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
-            return rpc::add_ref_params{
-                params.protocol_version,
+            return rpc::add_ref_params{params.protocol_version,
                 *remote_object,
                 *caller_zone,
                 *requesting_zone,
@@ -582,8 +550,7 @@ namespace rpc::c_abi
             if (!back_channel)
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
-            return rpc::release_params{
-                params.protocol_version,
+            return rpc::release_params{params.protocol_version,
                 *remote_object,
                 *caller_zone,
                 static_cast<rpc::release_options>(params.options),
@@ -606,10 +573,7 @@ namespace rpc::c_abi
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
             return rpc::object_released_params{
-                params.protocol_version,
-                *remote_object,
-                *caller_zone,
-                std::move(*back_channel)};
+                params.protocol_version, *remote_object, *caller_zone, std::move(*back_channel)};
         }
 
         rpc::expected<
@@ -628,10 +592,7 @@ namespace rpc::c_abi
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
             return rpc::transport_down_params{
-                params.protocol_version,
-                *destination_zone,
-                *caller_zone,
-                std::move(*back_channel)};
+                params.protocol_version, *destination_zone, *caller_zone, std::move(*back_channel)};
         }
 
         rpc::expected<
@@ -643,9 +604,7 @@ namespace rpc::c_abi
             if (!back_channel)
                 return rpc::unexpected<std::string>(std::move(back_channel.error()));
 
-            return rpc::get_new_zone_id_params{
-                params.protocol_version,
-                std::move(*back_channel)};
+            return rpc::get_new_zone_id_params{params.protocol_version, std::move(*back_channel)};
         }
 
         void free_zone_address(
@@ -669,7 +628,8 @@ namespace rpc::c_abi
                 {
                     auto& entry = back_channel->data[i];
                     if (entry.payload.data && entry.payload.size)
-                        allocator.free(allocator.allocator_ctx, const_cast<uint8_t*>(entry.payload.data), entry.payload.size);
+                        allocator.free(
+                            allocator.allocator_ctx, const_cast<uint8_t*>(entry.payload.data), entry.payload.size);
                 }
 
                 allocator.free(
@@ -864,9 +824,8 @@ namespace rpc::c_abi
 
         rpc::standard_result copy_standard_result(const canopy_standard_result& source)
         {
-            auto out_back_channel = decode_back_channel(canopy_back_channel_span{
-                source.out_back_channel.data,
-                source.out_back_channel.size});
+            auto out_back_channel = decode_back_channel(
+                canopy_back_channel_span{source.out_back_channel.data, source.out_back_channel.size});
             if (!out_back_channel)
                 return rpc::standard_result{rpc::error::INVALID_DATA(), {}};
             return rpc::standard_result{source.error_code, std::move(*out_back_channel)};
@@ -874,15 +833,11 @@ namespace rpc::c_abi
 
         rpc::send_result copy_send_result(const canopy_send_result& source)
         {
-            auto out_back_channel = decode_back_channel(canopy_back_channel_span{
-                source.out_back_channel.data,
-                source.out_back_channel.size});
+            auto out_back_channel = decode_back_channel(
+                canopy_back_channel_span{source.out_back_channel.data, source.out_back_channel.size});
             if (!out_back_channel)
                 return rpc::send_result{rpc::error::INVALID_DATA(), {}, {}};
-            return rpc::send_result{
-                source.error_code,
-                copy_chars(source.out_buf),
-                std::move(*out_back_channel)};
+            return rpc::send_result{source.error_code, copy_chars(source.out_buf), std::move(*out_back_channel)};
         }
 
         [[maybe_unused]] rpc::new_zone_id_result copy_new_zone_id_result(const canopy_new_zone_id_result& source)
@@ -890,16 +845,12 @@ namespace rpc::c_abi
             auto zone = decode_zone(source.zone_id);
             if (!zone)
                 return rpc::new_zone_id_result{rpc::error::INVALID_DATA(), {}, {}};
-            auto out_back_channel = decode_back_channel(canopy_back_channel_span{
-                source.out_back_channel.data,
-                source.out_back_channel.size});
+            auto out_back_channel = decode_back_channel(
+                canopy_back_channel_span{source.out_back_channel.data, source.out_back_channel.size});
             if (!out_back_channel)
                 return rpc::new_zone_id_result{rpc::error::INVALID_DATA(), {}, {}};
 
-            return rpc::new_zone_id_result{
-                source.error_code,
-                *zone,
-                std::move(*out_back_channel)};
+            return rpc::new_zone_id_result{source.error_code, *zone, std::move(*out_back_channel)};
         }
     } // namespace
 
@@ -910,8 +861,7 @@ namespace rpc::c_abi
         : rpc::transport(
               name,
               service)
-        , allocator_{
-              this,
+        , allocator_{this,
               &child_transport::cb_alloc,
               &child_transport::cb_free}
         , library_path_(std::move(library_path))
@@ -1016,7 +966,8 @@ namespace rpc::c_abi
 
         std::string transport_name = get_name();
         borrowed_connection_settings borrowed_input_descr(input_descr);
-        auto parent_zone = borrow_zone(get_zone_id());
+        auto parent_zone_id = get_zone_id();
+        auto parent_zone = borrow_zone(parent_zone_id);
         auto child_zone = borrow_zone(adjacent_zone_id);
 
         canopy_dll_init_params init_params{};

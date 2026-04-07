@@ -51,8 +51,14 @@
 #include <spdlog/spdlog.h>
 #include <yas/types/std/string.hpp>
 #include <yas/types/std/vector.hpp>
+#ifdef CANOPY_RUST_FUZZ_TEST_DLL_PATH
+#  include <transports/c_abi/transport.h>
+#endif
 #include "fuzz_test/fuzz_test.h"
 #include "fuzz_test/fuzz_test_stub.h"
+#ifdef CANOPY_FUZZ_TEST_GTEST
+#  include <gtest/gtest.h>
+#endif
 
 using namespace fuzz_test;
 
@@ -1300,48 +1306,134 @@ create_deep_branch(
     CO_RETURN current_node; // Return the last node in the chain
 }
 
-// Run a complete autonomous instruction test cycle
+class cxx_local_child_fuzz_transport_setup
+{
+    std::shared_ptr<rpc::root_service> root_service_;
 #ifdef CANOPY_BUILD_COROUTINE
-CORO_TASK(void)
-run_autonomous_instruction_test(
-    int test_cycle,
-    int instruction_count,
-    const std::shared_ptr<coro::scheduler>& scheduler,
-    uint64_t override_seed = 0)
-#else
-CORO_TASK(void)
-run_autonomous_instruction_test(
-    int test_cycle,
-    int instruction_count,
-    uint64_t override_seed = 0)
+    std::shared_ptr<coro::scheduler> scheduler_;
 #endif
+
+public:
+#ifdef CANOPY_BUILD_COROUTINE
+    void set_scheduler(std::shared_ptr<coro::scheduler> scheduler) { scheduler_ = std::move(scheduler); }
+#endif
+
+    void set_up()
+    {
+#ifdef CANOPY_BUILD_COROUTINE
+        RPC_ASSERT(scheduler_);
+        root_service_ = std::make_shared<rpc::root_service>(
+            "AUTONOMOUS_ROOT",
+            rpc::zone{*rpc::zone_address::create(
+                rpc::zone_address_args(
+                    rpc::default_values::version_3,
+                    rpc::address_type::local,
+                    0,
+                    {},
+                    rpc::default_values::default_subnet_size_bits,
+                    static_cast<uint32_t>(++g_zone_id_counter),
+                    rpc::default_values::default_object_id_size_bits,
+                    0,
+                    {}))},
+            scheduler_);
+#else
+        root_service_ = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX);
+#endif
+    }
+
+    void tear_down()
+    {
+        root_service_.reset();
+#ifdef CANOPY_BUILD_COROUTINE
+        scheduler_.reset();
+#endif
+    }
+
+    CORO_TASK(rpc::shared_ptr<i_autonomous_node>)
+    create_root_node(
+        int test_cycle,
+        test_scenario_config& scenario_config)
+    {
+        std::string zone_name = "autonomous_root_" + std::to_string(test_cycle);
+        rpc::shared_ptr<i_autonomous_node> parent_controller
+            = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, 0);
+
+        auto child_transport
+            = std::make_shared<rpc::local::child_transport>(zone_name.c_str(), root_service_->shared_from_this());
+        auto new_zone_subnet = child_transport->get_adjacent_zone_id().get_subnet();
+        scenario_config.zone_sequence.push_back(new_zone_subnet);
+        child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+            [new_zone_subnet](
+                const rpc::shared_ptr<i_autonomous_node>& parent,
+                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
+            {
+                auto new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_subnet, parent);
+                auto err_code = CO_AWAIT new_node->initialize_node(node_type::ROOT_NODE, new_zone_subnet);
+                CO_RETURN rpc::service_connect_result<i_autonomous_node>{err_code, std::move(new_node)};
+            });
+
+        auto connect_result = CO_AWAIT root_service_->connect_to_zone<i_autonomous_node, i_autonomous_node>(
+            zone_name.c_str(), child_transport, parent_controller);
+
+        if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
+        {
+            spdlog::error("Failed to create root node. Error code: {}", connect_result.error_code);
+            CO_RETURN nullptr;
+        }
+
+        CO_RETURN std::move(connect_result.output_interface);
+    }
+};
+
+#ifdef CANOPY_RUST_FUZZ_TEST_DLL_PATH
+class rust_dynamic_library_fuzz_transport_setup
+{
+    std::shared_ptr<rpc::root_service> root_service_;
+
+public:
+    void set_up() { root_service_ = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX); }
+
+    void tear_down() { root_service_.reset(); }
+
+    CORO_TASK(rpc::shared_ptr<i_autonomous_node>)
+    create_root_node(
+        int test_cycle,
+        test_scenario_config& scenario_config)
+    {
+        auto child_transport = std::make_shared<rpc::c_abi::child_transport>(
+            ("rust_fuzz_child_" + std::to_string(test_cycle)).c_str(), root_service_, CANOPY_RUST_FUZZ_TEST_DLL_PATH);
+
+        auto connect_result = CO_AWAIT root_service_->connect_to_zone<i_autonomous_node, i_autonomous_node>(
+            "rust fuzz child", child_transport, rpc::shared_ptr<i_autonomous_node>());
+        if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
+        {
+            spdlog::error("Failed to create Rust fuzz root node. Error code: {}", connect_result.error_code);
+            CO_RETURN nullptr;
+        }
+
+        auto zone_id = rpc::casting_interface::get_zone(*connect_result.output_interface);
+        scenario_config.zone_sequence.push_back(zone_id.get_subnet());
+        CO_RETURN std::move(connect_result.output_interface);
+    }
+};
+#endif
+
+// Run a complete autonomous instruction test cycle with a transport setup.
+template<typename TransportSetup>
+CORO_TASK(void)
+run_autonomous_instruction_test_with_setup(
+    TransportSetup& transport_setup,
+    int test_cycle,
+    int instruction_count,
+    uint64_t override_seed = 0)
 {
     spdlog::info("=== Starting Autonomous Instruction Test Cycle {} ===", test_cycle);
 
     // Reset counters to match original state
     g_zone_id_counter = 0;
     g_instruction_counter = 0;
-
-#ifdef CANOPY_BUILD_COROUTINE
-    // Create root service with zone 1 and scheduler
-    auto root_service = std::make_shared<rpc::root_service>(
-        "AUTONOMOUS_ROOT",
-        rpc::zone{*rpc::zone_address::create(
-            rpc::zone_address_args(
-                rpc::default_values::version_3,
-                rpc::address_type::local,
-                0,
-                {},
-                rpc::default_values::default_subnet_size_bits,
-                static_cast<uint32_t>(++g_zone_id_counter),
-                rpc::default_values::default_object_id_size_bits,
-                0,
-                {}))},
-        scheduler);
-#else
-    // Create root service with zone 1 (no scheduler in non-coroutine build)
-    auto root_service = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX);
-#endif
+    transport_setup.set_up();
 
     // Initialize test scenario configuration for replay system
     test_scenario_config scenario_config;
@@ -1390,37 +1482,10 @@ run_autonomous_instruction_test(
             std::vector<rpc::shared_ptr<i_autonomous_node>> all_nodes;
 
             // 1. Create the root node
-            std::string zone_name = "autonomous_root_" + std::to_string(test_cycle);
-            // Create a parent controller node in root service (similar to inproc_setup.h pattern)
-            // This will be passed to the child zone
-            rpc::shared_ptr<i_autonomous_node> parent_controller
-                = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, 0);
-
-            auto child_transport
-                = std::make_shared<rpc::local::child_transport>(zone_name.c_str(), root_service->shared_from_this());
-            auto new_zone_subnet = child_transport->get_adjacent_zone_id().get_subnet();
-            scenario_config.zone_sequence.push_back(new_zone_subnet); // Track zone creation
-            child_transport->set_child_entry_point<i_autonomous_node, i_autonomous_node>(
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&, new_zone_subnet](
-                    const rpc::shared_ptr<i_autonomous_node>& parent,
-                    const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_autonomous_node>)
-                {
-                    // parent must be stored before the first CO_AWAIT to keep the proxy alive
-                    // across the create_child_zone frame boundary (mirrors foo_impl.h pattern)
-                    auto new_node = rpc::make_shared<autonomous_node_impl>(node_type::ROOT_NODE, new_zone_subnet, parent);
-                    auto err_code = CO_AWAIT new_node->initialize_node(node_type::ROOT_NODE, new_zone_subnet);
-                    CO_RETURN rpc::service_connect_result<i_autonomous_node>{err_code, std::move(new_node)};
-                });
-
-            auto connect_result = CO_AWAIT root_service->connect_to_zone<i_autonomous_node, i_autonomous_node>(
-                zone_name.c_str(), child_transport, parent_controller);
-            root_node = std::move(connect_result.output_interface);
-
-            if (connect_result.error_code != rpc::error::OK() || !root_node)
+            root_node = CO_AWAIT transport_setup.create_root_node(test_cycle, scenario_config);
+            if (!root_node)
             {
-                spdlog::error("Failed to create root node. Error code: {}", connect_result.error_code);
-                CO_RETURN;
+                throw std::runtime_error("Failed to create root node");
             }
             all_nodes.push_back(root_node);
 
@@ -1510,8 +1575,7 @@ run_autonomous_instruction_test(
             }
             else
             {
-                spdlog::error("Root node does NOT support i_cleanup interface!");
-                CO_RETURN; // Cannot proceed without cleanup support
+                throw std::runtime_error("Root node does not support i_cleanup interface");
             }
 
             for (const auto& node : all_nodes)
@@ -1575,14 +1639,90 @@ run_autonomous_instruction_test(
             spdlog::error("Exception during emergency cleanup - ignoring");
         }
 
+        transport_setup.tear_down();
         RPC_INFO("Exception cleanup completed");
-
-        // Re-throw so the main process can handle it appropriately
         throw;
     }
 
+    transport_setup.tear_down();
     spdlog::info("=== Autonomous Test Cycle {} Completed ===", test_cycle);
 }
+
+// Run a complete autonomous instruction test cycle
+#ifdef CANOPY_BUILD_COROUTINE
+CORO_TASK(void)
+run_autonomous_instruction_test(
+    int test_cycle,
+    int instruction_count,
+    const std::shared_ptr<coro::scheduler>& scheduler,
+    uint64_t override_seed = 0)
+#else
+CORO_TASK(void)
+run_autonomous_instruction_test(
+    int test_cycle,
+    int instruction_count,
+    uint64_t override_seed = 0)
+#endif
+{
+    cxx_local_child_fuzz_transport_setup transport_setup;
+#ifdef CANOPY_BUILD_COROUTINE
+    transport_setup.set_scheduler(scheduler);
+#endif
+    CO_AWAIT run_autonomous_instruction_test_with_setup(transport_setup, test_cycle, instruction_count, override_seed);
+}
+
+#ifdef CANOPY_FUZZ_TEST_GTEST
+template<typename TransportSetup> class fuzz_transport_test : public testing::Test
+{
+protected:
+    TransportSetup transport_setup_;
+};
+
+using fuzz_transport_implementations = ::testing::Types<
+    cxx_local_child_fuzz_transport_setup
+#  ifdef CANOPY_RUST_FUZZ_TEST_DLL_PATH
+    ,
+    rust_dynamic_library_fuzz_transport_setup
+#  endif
+    >;
+
+TYPED_TEST_SUITE(
+    fuzz_transport_test,
+    fuzz_transport_implementations);
+
+TYPED_TEST(
+    fuzz_transport_test,
+    AutonomousInstructionSmoke)
+{
+    g_output_directory = "/tmp/canopy_fuzz_test_replays";
+    g_cleanup_successful_tests = true;
+
+#  ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = std::shared_ptr<coro::scheduler>(
+        coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+    this->transport_setup_.set_scheduler(scheduler);
+
+    bool completed = false;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+    auto wrapper_task = [&]() -> coro::task<void>
+    {
+        co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1);
+        completed = true;
+    }();
+
+    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
+
+    while (!completed)
+    {
+        scheduler->process_events(std::chrono::milliseconds(10));
+    }
+
+    scheduler->shutdown();
+#  else
+    run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1);
+#  endif
+}
+#endif
 
 int main(
     int argc,

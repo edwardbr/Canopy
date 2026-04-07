@@ -57,9 +57,30 @@ endif()
 include(GoogleTest)
 add_executable(fuzz_test_gtest fuzz_test_main.cpp fuzz_gtest_wrapper.cpp)
 
+if(NOT CANOPY_BUILD_COROUTINE)
+  set(CANOPY_RUST_FUZZ_CHILD_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-fuzz-target")
+  set(CANOPY_RUST_FUZZ_CHILD_LIB
+      "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}/debug/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_fuzz_test_rust_child${CMAKE_SHARED_LIBRARY_SUFFIX}"
+  )
+
+  add_custom_command(
+    OUTPUT "${CANOPY_RUST_FUZZ_CHILD_LIB}"
+    COMMAND
+      ${CMAKE_COMMAND} -E env CANOPY_GENERATOR=$<TARGET_FILE:generator> CANOPY_PROTOC=$<TARGET_FILE:protoc> cargo build
+      --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml" --target-dir
+      "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    DEPENDS generator protoc "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml"
+            "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/src/lib.rs"
+    VERBATIM)
+
+  add_custom_target(canopy_fuzz_test_rust_child DEPENDS "${CANOPY_RUST_FUZZ_CHILD_LIB}")
+endif()
+
 target_link_libraries(
   fuzz_test_gtest
   PRIVATE rpc::rpc
+          transport_c_abi
           transport_local
           fuzz_test_idl
           test_fixtures
@@ -73,7 +94,11 @@ target_include_directories(
                           ${CMAKE_BINARY_DIR}/generated/include ${CMAKE_BINARY_DIR}/generated/src)
 
 target_compile_features(fuzz_test_gtest PRIVATE cxx_std_17)
-target_compile_definitions(fuzz_test_gtest PRIVATE ${CANOPY_DEFINES} "main=fuzz_test_entry")
+target_compile_definitions(fuzz_test_gtest PRIVATE ${CANOPY_DEFINES} "main=fuzz_test_entry" CANOPY_FUZZ_TEST_GTEST)
+if(NOT CANOPY_BUILD_COROUTINE)
+  target_compile_definitions(fuzz_test_gtest PRIVATE CANOPY_RUST_FUZZ_TEST_DLL_PATH="${CANOPY_RUST_FUZZ_CHILD_LIB}")
+  add_dependencies(fuzz_test_gtest canopy_fuzz_test_rust_child)
+endif()
 target_compile_options(fuzz_test_gtest PRIVATE ${CANOPY_COMPILE_OPTIONS})
 target_link_options(fuzz_test_gtest PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_directories(fuzz_test_gtest PUBLIC ${SGX_LIBRARY_PATH})
