@@ -154,10 +154,24 @@ pub trait GeneratedProtobufMethodCodec {
         Err(crate::INVALID_DATA())
     }
 
+    fn request_to_protobuf_message_with_caller(
+        _caller: &dyn crate::GeneratedRpcCaller,
+        request: &Self::ProxyRequest,
+    ) -> Result<Self::ProtoRequest, i32> {
+        Self::request_to_protobuf_message(request)
+    }
+
     fn response_from_protobuf_message(
         _message: Self::ProtoResponse,
     ) -> Result<Self::ProxyResponse, i32> {
         Err(crate::INVALID_DATA())
+    }
+
+    fn response_from_protobuf_message_with_caller(
+        _caller: &dyn crate::GeneratedRpcCaller,
+        message: Self::ProtoResponse,
+    ) -> Result<Self::ProxyResponse, i32> {
+        Self::response_from_protobuf_message(message)
     }
 
     fn decode_request(proto_bytes: &[u8]) -> Result<Self::DispatchRequest, i32> {
@@ -170,6 +184,14 @@ pub trait GeneratedProtobufMethodCodec {
         message.serialize_to_bytes()
     }
 
+    fn encode_request_with_caller(
+        caller: &dyn crate::GeneratedRpcCaller,
+        request: &Self::ProxyRequest,
+    ) -> Result<Vec<u8>, i32> {
+        let message = Self::request_to_protobuf_message_with_caller(caller, request)?;
+        message.serialize_to_bytes()
+    }
+
     fn encode_response(response: &Self::DispatchResponse) -> Result<Vec<u8>, i32> {
         let message = Self::response_to_protobuf_message(response)?;
         message.serialize_to_bytes()
@@ -178,6 +200,14 @@ pub trait GeneratedProtobufMethodCodec {
     fn decode_response(proto_bytes: &[u8]) -> Result<Self::ProxyResponse, i32> {
         let message = Self::ProtoResponse::parse_from_bytes(proto_bytes)?;
         Self::response_from_protobuf_message(message)
+    }
+
+    fn decode_response_with_caller(
+        caller: &dyn crate::GeneratedRpcCaller,
+        proto_bytes: &[u8],
+    ) -> Result<Self::ProxyResponse, i32> {
+        let message = Self::ProtoResponse::parse_from_bytes(proto_bytes)?;
+        Self::response_from_protobuf_message_with_caller(caller, message)
     }
 }
 
@@ -226,7 +256,7 @@ where
         return transport_error();
     };
 
-    let in_data = match Codec::encode_request(request) {
+    let in_data = match Codec::encode_request_with_caller(caller, request) {
         Ok(in_data) => in_data,
         Err(error_code) => return from_error_code(error_code),
     };
@@ -236,7 +266,7 @@ where
         return from_error_code(result.error_code);
     }
 
-    match Codec::decode_response(&result.out_buf) {
+    match Codec::decode_response_with_caller(caller, &result.out_buf) {
         Ok(response) => response,
         Err(error_code) => from_error_code(error_code),
     }
@@ -315,6 +345,7 @@ mod tests {
                     direction: ParameterDirection::In,
                     proto_type: "int32",
                     field_kind: GeneratedProtobufFieldKind::Scalar,
+                    pointer_kind: None,
                 }];
             static METHOD: GeneratedProtobufMethodDescriptor = GeneratedProtobufMethodDescriptor {
                 method_name: "foo",

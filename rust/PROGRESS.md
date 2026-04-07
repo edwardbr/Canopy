@@ -14,6 +14,10 @@ Current focus:
 - continue Rust generator/protobuf work from the supported service-level probe
 - expand validation toward richer existing IDLs without moving
   service/transport mechanics into generated code
+- move generated proxy ownership onto the handwritten Rust transport/service
+  proxy layer now that the first generic transport abstraction exists
+- continue remote proxy ownership work for richer interface-valued responses
+  and forwarded remote pointers
 
 ## Completed
 
@@ -293,6 +297,25 @@ sequence remains reconstructable.
   - scalar-only generated methods still route through the generated dispatch path
   - interface-bearing generated methods now fail cleanly with `INVALID_DATA()` at the top-level raw dispatch seam until erased wire-level interface dispatch is implemented
   - this keeps generated Rust compilable while protobuf/interface dispatch is filled in properly
+- Reworked the generated Rust API naming/layout while preserving IDL wire names:
+  - public Rust traits now use Rust-style CamelCase aliases such as `IPeer`
+    and `IMath`
+  - public Rust structs now use CamelCase value types such as `Point` and
+    `LabeledValue`
+  - generated implementation details now sit under the innermost namespace's
+    `__Generated` module, for example `probe::__Generated::IPeer::ProxySkeleton`
+  - nested namespace placement is covered by a probe fixture that expects
+    `outer::inner::__Generated::IWidget::ProxySkeleton`
+  - IDL names, fingerprints, method ordinals, protobuf message names, and
+    protobuf field numbers remain derived from the original IDL spelling
+- Removed handwritten proxy method glue from the protobuf runtime probe:
+  - generated `ProxySkeleton` types now carry an optional
+    `Arc<dyn GeneratedRpcCaller>` and expose `new()` / `with_caller(...)`
+  - `GeneratedRpcCaller` is now `Send + Sync` so generated proxy skeletons
+    remain compatible with the runtime `CastingInterface` bounds
+  - the Rust -> Rust and Rust -> C++ probe tests now call through generated
+    `IMath::ProxySkeleton` instead of handwritten `MathProxy`/`DllMathProxy`
+    trait method implementations
 - Reworked [`rpc/src/internal/object_proxy.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/internal/object_proxy.rs) toward the C++ remote-cast architecture:
   - one shared `ObjectProxy` now owns the remote object identity
   - added `RemoteInterfaceView<T>` so multiple interface-specific views can hang off the same object proxy
@@ -490,6 +513,76 @@ sequence remains reconstructable.
     dependency was backed out so the Rust workspace remains clean
   - verified by rebuilding `generator`, regenerating `example.idl`, and
     inspecting the emitted protobuf descriptors
+- Replaced field-by-field message population in the Rust protobuf generator
+  with schema-driven conversion driven directly from the canonical generated
+  protobuf message types:
+  - added centralized conversion infrastructure in
+    [`../generator/src/rust_protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp):
+    - `field_conversion_context` struct encapsulates the conversion environment
+      (scope, lib, root module name, helper prefix)
+    - `generate_field_from_proto()` and `generate_field_to_proto()` helper
+      functions delegate to the existing type-mapping helpers
+    - `emit_struct_conversion_helpers()` provides the canonical struct
+      conversion path that all struct conversions flow through
+  - struct `from_proto_X` / `to_proto_X` helpers now use the centralized
+    `emit_struct_conversion_helpers()` instead of inline field iteration
+  - method request/response conversion continues to use the same underlying
+    type-mapping helpers, now with a clearer shared foundation
+  - this refactor eliminates duplication so that adding support for new IDL
+    field types only requires updating the core
+    `protobuf_getter_expression()` and `protobuf_setter_argument_expression()`
+    functions rather than modifying multiple conversion sites
+  - the generator now emits conversion code that is driven by the protobuf
+    message schema shape via its generated getters and setters
+  - verified with `cmake --build build_debug --target generator` and
+    `cargo test -p canopy-rpc --lib` (73 tests passed)
+- Extended interface-pointer support in the Rust protobuf generator to preserve
+  the C++ IDL distinction between `rpc::shared_ptr<T>` and `rpc::optimistic_ptr<T>`:
+  - added `is_optimistic` field to `rust_interface_generic` struct in
+    [`../generator/src/rust_protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp)
+  - threaded `is_optimistic` through `analyse_interface_generics()` so each
+    interface-bearing parameter carries its pointer kind
+  - added `InterfacePointerKind` enum to
+    [`rpc/src/serialization/protobuf/metadata.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/protobuf/metadata.rs)
+    with `Shared` and `Optimistic` variants
+  - added `pointer_kind: Option<InterfacePointerKind>` field to
+    `GeneratedProtobufParamDescriptor` so protobuf parameter metadata now
+    carries whether an interface parameter came from a shared or optimistic
+    IDL pointer
+  - updated the protobuf generator to emit `pointer_kind` for every method
+    parameter:
+    - `Some(canopy_rpc::serialization::protobuf::InterfacePointerKind::Shared)`
+      for `rpc::shared_ptr<T>` parameters
+    - `Some(canopy_rpc::serialization::protobuf::InterfacePointerKind::Optimistic)`
+      for `rpc::optimistic_ptr<T>` parameters
+    - `None` for non-interface parameter types
+  - verified in generated output that `accept_shared_peer` and
+    `accept_optimistic_peer` now carry distinct `pointer_kind` metadata
+  - added a passing test that verifies `PROTOBUF_PARAMS` correctly distinguishes
+    `InterfacePointerKind::Shared` from `InterfacePointerKind::Optimistic`
+    for interface-bearing method parameters
+  - verified with `cmake --build build_debug --target generator` and
+    `cargo test -p canopy-rpc --lib` (73 tests passed) plus
+    `cargo test -p canopy-protobuf-runtime-probe --lib` (2 tests passed)
+- Fixed `[out]` interface parameter generation to satisfy Rust's E0392 rule:
+  - `Request` now carries combined generics (both `[in]` and `[out]` interface
+    types) when there are `[out]`-only interface parameters, using a
+    `PhantomData` field to carry unused generics
+  - `OutgoingLocalBindings` now uses `PhantomData` to carry `[out]` interface
+    generics since its field types are concrete (`RemoteObjectBindResult<ObjectStub>`)
+  - Updated `write_request_response_shapes`, `write_generated_delegate_method`,
+    `write_generated_skeleton_method_body`, `write_method_decoded_dispatch_helper`,
+    and `*_request_shape()` in `rust_generator.cpp` to use effective request generics
+  - Updated `rust_protobuf_generator.cpp` to use effective request generics in
+    `ProtobufCodec` associated types and `encode_request` function signatures
+  - Added `[out]` interface methods to `basic_rpc_probe.idl`:
+    `create_shared_peer`, `create_optimistic_peer`, `echo_shared_peer`,
+    `echo_optimistic_peer`
+  - Updated test implementations to include associated types and stub methods
+    for the new interface methods
+  - verified with `cmake --build build_debug` and
+    `cargo test -p canopy-rpc --lib` (73 tests passed) plus
+    `cargo test -p canopy-protobuf-runtime-probe --lib` (2 tests passed)
 - Extended the handwritten Rust `service` lifetime-management surface:
   - added `ServiceEvent` registration removal and dead-listener pruning
   - added `release(ReleaseParams)` with version/object validation
@@ -992,6 +1085,137 @@ sequence remains reconstructable.
     recover the owner service pointer, deadlocking local dispatch
   - the runtime now clones the dispatch target under the mutex and releases the
     lock before invoking `__rpc_call(...)`
+- Added the first Rust reference-lifetime parity pass for interface pointers:
+  - `ObjectStub::release(...)` now mirrors the C++ behavior and only decrements
+    the global reference count when a caller-zone reference was actually
+    consumed, avoiding double-decrement after `release_all_from_zone(...)`
+  - local outgoing optimistic interface binding now mirrors C++
+    `service::stub_add_ref(...)`: it requires an existing live shared stub and
+    returns `OBJECT_GONE` rather than creating a new optimistic-only stub
+  - `GeneratedRpcCaller` now has add_ref/release helpers that build
+    `AddRefParams` / `ReleaseParams` with the active `caller_zone_id` and an
+    explicit `requesting_zone_id`
+  - generated protobuf proxy request encoding now supports input
+    `Shared<Arc<T>>` and `Optimistic<LocalProxy<T>>` interface params through
+    the caller's local service, instead of returning `INVALID_DATA`
+  - `canopy_probe_c_abi_dll` now exercises `accept_shared_peer(...)` and
+    `accept_optimistic_peer(...)` by calling back through the passed peer
+  - generated proxy response decoding now supports interface-valued response
+    fields by binding returned local-zone descriptors through the caller's
+    `Service` and constructing remote generated proxy skeletons through a
+    cloned `GeneratedRpcCaller` route otherwise
+  - `LocalProxy<T>` can now also hold a remote proxy view alive, which lets the
+    existing `Optimistic<LocalProxy<T>>` generated shape represent remote
+    optimistic pointers without confusing it with local weak ownership
+  - `canopy_probe_c_abi_dll` now implements `create_shared_peer(...)`,
+    `create_optimistic_peer(...)`, `echo_shared_peer(...)`, and
+    `echo_optimistic_peer(...)`; the Rust DLL probe validates calling the
+    returned/echoed peers
+  - the Rust DLL probe now wires parent C callbacks to a real Rust
+    `Service`, so the passing path is:
+    generated Rust proxy -> C ABI -> generated C++ protobuf object -> C ABI
+    parent callback -> generated Rust peer dispatch
+  - verified with `cmake --build build_debug --target generator`,
+    `cmake --build build_debug --target canopy_probe_c_abi_dll`,
+    `cargo test -p canopy-rpc --lib`,
+    `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`, and
+    `ctest --test-dir build_debug -R rust_tests --output-on-failure`
+- Added the first generic Rust transport abstraction matching the C++ runtime
+  layering:
+  - `rpc/src/internal/transport.rs` now contains a real `Transport` owner with
+    local/adjacent zone identity, weak service ownership, an outbound
+    `IMarshaller`, destination-zone counts, transport status, and pass-through
+    registration
+  - `rpc/src/internal/pass_through.rs` now contains `PassThrough` and
+    `PassThroughKey` for zone-pair routing
+  - `Service` now maintains a destination-zone transport table and routes
+    remote-zone `send`, `post`, `try_cast`, `add_ref`, and `release` calls
+    through that table rather than always treating descriptors as local stubs
+  - remote `add_ref` routing preserves `requesting_zone_id` and can seed a
+    missing destination route from the requesting-zone transport, mirroring the
+    C++ fallback rule needed by multi-hop transports
+  - `Transport::inbound_add_ref(...)` carries the first Rust port of the C++
+    route-building decision tree, including caller/destination route flags and
+    pass-through creation
+  - `IMarshaller` remains the base blocking marshalling contract; only the
+    concrete `Transport` outbound handle requires `Send + Sync`, so C ABI
+    callback marshallers with raw context pointers do not get an unnecessary
+    global thread-safety bound
+  - verified with `cargo fmt -p canopy-rpc`,
+    `cargo test -p canopy-rpc --lib`, and
+    `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`,
+    plus `ctest --test-dir build_debug -R rust_tests --output-on-failure`
+- Moved generated remote proxy ownership toward the C++ ownership model:
+  - `ServiceProxy` is now a real route owner that strongly holds the operating
+    `Service`, points to an optional `Transport`, and keeps only weak
+    `ObjectProxy` map entries by remote object ID
+  - `ObjectProxy` now strongly holds the `ServiceProxy`, matching the C++
+    `object_proxy -> service_proxy` member ownership direction
+  - `ObjectProxyCaller` is the generated-caller adapter for remote objects:
+    generated proxy skeletons can call through it while it owns the
+    `ObjectProxy`; the `ObjectProxy` keeps the `ServiceProxy`, and the
+    `ServiceProxy` points to the `Transport`
+  - the local and DLL probe paths now construct generated proxy skeletons from
+    `ServiceProxy` rather than handwritten `LocalGeneratedTransport` /
+    `DllGeneratedTransport` test shims
+  - `Service::add_ref(...)` now respects C++ caller-route-only behavior for
+    remote descriptors: when the local service is the caller zone, it seeds the
+    destination route from `requesting_zone_id` and returns OK instead of
+    forwarding back to the destination transport
+  - `Service::add_ref(...)` now follows the C++ branch order more closely:
+    build caller channel first, build destination channel second, only touch a
+    local stub when the destination channel is being built, and accept the
+    dummy local object descriptor
+  - `Transport::inbound_add_ref(...)` now searches pass-through routes before
+    falling back through `requesting_zone_id`, matching the C++ destination and
+    caller route lookup order more closely
+  - generated protobuf request binding now preserves the same information as
+    the C++ out-param binding path for remote interface inputs: the descriptor
+    remains the original destination object, `caller_zone_id` is the zone
+    receiving the pointer, `requesting_zone_id` is taken from the
+    `ServiceProxy`'s operating service, and both destination/caller route flags
+    plus the pointer kind are sent through `ObjectProxy::add_ref_remote_for_caller(...)`
+  - added pure Rust Y-topology regressions matching the existing C++ remote
+    tests: a zone-7 object passed to a zone-1 caller via a zone-5 requester now
+    asserts the Rust binding edge and transport fallback preserve all three
+    zone identities
+  - tightened Rust `ObjectProxy` remote reference accounting to match the C++
+    0-to-1 / 1-to-0 transition rule per caller zone and per pointer kind:
+    repeated shared refs to the same caller zone send one shared add-ref,
+    optimistic refs send a distinct optimistic add-ref, and a different caller
+    zone gets its own shared add-ref
+  - added the matching release-side transition coverage: repeated remote
+    shared/optimistic refs now send one release only on each caller-zone and
+    pointer-kind 1-to-0 transition, preserving shared and optimistic release
+    messages as distinct operations
+  - added Rust `Transport::inbound_release(...)` to mirror the C++ route
+    decision: same-zone releases go to `Service::release`, remote releases
+    require an existing pass-through, and release does not attempt to build a
+    route through `requesting_zone_id`
+  - wired RAII-style release for generated remote proxy lifetimes through
+    `ObjectProxyCaller`: proxy-side response decoding now adopts the remote
+    reference on the generated caller/object-proxy owner, so unwrapping a
+    `Shared`/`Optimistic` value does not prematurely release the remote object
+    but the final generated proxy drop still drives the C++-equivalent release
+  - extended the C++/Rust Y-topology integration source to record release at
+    the C ABI boundary and assert generated remote binding releases preserve
+    the original remote object, zone-1 caller, and distinct shared vs
+    optimistic release options
+  - added pure Rust service/transport release routing coverage for remote
+    objects through a registered transport, complementing the existing
+    pass-through `Transport::inbound_release(...)` tests
+  - pruned stale weak-map entries on normal lookup paths so object churn does
+    not leave unbounded dead entries in `ServiceProxy` object-proxy maps or
+    `Transport` pass-through maps
+  - added a tidy cross-language integration source under
+    `integration_tests/rust_cxx_y_topology/` that uses a C++-created remote
+    peer proxy and verifies generated Rust remote binding emits the same
+    zone-7 destination, zone-1 caller, and zone-5 requester over the C ABI
+    add-ref boundary for both shared and optimistic pointer kinds
+  - verified with `cargo fmt -p canopy-rpc -p canopy-protobuf-runtime-probe`,
+    `cargo test -p canopy-rpc --lib`, and
+    `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`,
+    plus `ctest --test-dir build_debug -R rust_tests --output-on-failure`
 
 ## Notes
 
@@ -1008,31 +1232,38 @@ sequence remains reconstructable.
   `rpc.remote_object` form. That needs to be corrected before the same
   build-metadata path can be expanded to those richer generated targets.
 - Next implementation step:
-  - replace the remaining field-by-field message population in
-    `generator/src/rust_protobuf_generator.cpp` with conversion that is driven
-    directly from the canonical generated protobuf request/response message
-    types and their schema shape, so adding new supported IDL fields does not
-    require duplicating per-field set/get emission in multiple places
-  - extend the current interface-pointer support from the focused service-level
-    probe toward richer existing IDLs while keeping the C++ IDL distinction
-    between `rpc::shared_ptr<T>` and `rpc::optimistic_ptr<T>` as seen in
-    [`../c++/tests/idls/example/example.idl`](/var/home/edward/projects/Canopy/c++/tests/idls/example/example.idl):
-    both pointer kinds can use `rpc.remote_object` as the protobuf wire value,
-    but generated Rust metadata, request/response bindings, local bind helpers,
-    add-ref/release semantics, and collection handling must preserve whether
-    each value came from a shared or optimistic IDL pointer
-  - add validation coverage over real `example.idl` methods such as
-    `set_optimistic_ptr(...)` / `get_optimistic_ptr(...)` plus comparable
-    `rpc::shared_ptr<T>` methods, beyond the current focused
-    `basic_rpc_probe.idl` coverage
-  - add proxy-side outgoing interface binding / back-channel support for
-    interface-bearing generated proxy requests; this remains intentionally
-    separate from stub demarshalling and must stay in handwritten runtime seams
-    rather than direct proxy-to-stub calls
-  - add the reverse cross-language proof:
-    generated Rust proxy -> dynamic-library C ABI transport -> generated C++
-    protobuf object, starting with scalar methods and then expanding to richer
-    IDL values
+  - ~~replace the remaining field-by-field message population in~~
+    `generator/src/rust_protobuf_generator.cpp` ~~with conversion that is driven~~
+    ~~directly from the canonical generated protobuf request/response message~~
+    ~~types and their schema shape, so adding new supported IDL fields does not~~
+    ~~require duplicating per-field set/get emission in multiple places~~
+    **COMPLETED**: struct conversion now uses centralized schema-driven helpers
+  - ~~extend the current interface-pointer support from the focused service-level~~
+    ~~probe toward richer existing IDLs while keeping the C++ IDL distinction~~
+    ~~between `rpc::shared_ptr<T>` and `rpc::optimistic_ptr<T>`~~
+    **COMPLETED**: protobuf metadata now carries `InterfacePointerKind` for each
+    interface parameter; a passing test verifies the distinction
+  - ~~add validation coverage over real `example.idl` methods such as~~
+    ~~`set_optimistic_ptr(...)` / `get_optimistic_ptr(...)` plus comparable~~
+    ~~`rpc::shared_ptr<T>` methods, beyond the current focused~~
+    ~~`basic_rpc_probe.idl` coverage~~
+    **COMPLETED FOR THE PROBE**: `[out]` interface parameter generation
+    compiles (E0392 resolved via PhantomData on Request and
+    OutgoingLocalBindings), proxy-side protobuf encoding supports input
+    interface params, and proxy-side protobuf response decoding supports
+    interface-valued responses through caller-provided local/remote binding
+    seams. Broader existing-IDL coverage remains separate.
+  - ~~add proxy-side incoming interface response binding for remote objects;~~
+    ~~this remains intentionally separate from stub demarshalling and must stay~~
+    ~~in handwritten runtime seams rather than direct proxy-to-stub calls~~
+    **COMPLETED FOR THE PROBE**: response binding goes through
+    `GeneratedRpcCaller::make_remote_caller(...)` or local service binding,
+    not direct proxy-to-stub shortcuts
+  - ~~add the reverse cross-language proof: generated Rust proxy ->~~
+    ~~dynamic-library C ABI transport -> generated C++ protobuf object,~~
+    ~~starting with scalar methods~~
+    **COMPLETED**: the probe now also covers Rust passing shared/optimistic
+    peer pointers to C++ and C++ calling back into Rust through those pointers
   - expand validation from structural regeneration to a richer existing IDL
     round-trip, such as `example_shared`, once the current protobuf schema drift
     and unsupported field shapes are handled

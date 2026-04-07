@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex, Weak};
 use crate::internal::bindings_fwd::GeneratedMethodBindingDescriptor;
 use crate::internal::casting_interface::{CastingInterface, GeneratedRustInterface};
 use crate::internal::marshaller_params::{SendParams, SendResult};
+use crate::internal::remote_pointer::CreateLocalProxy;
 use crate::internal::service::Service;
 use crate::internal::stub::ObjectStub;
 use crate::rpc_types::{
@@ -117,6 +118,18 @@ where
 
 #[doc(hidden)]
 pub trait LocalObjectAdapter<Impl>: Send + Sync + 'static {
+    fn interface_name() -> &'static str {
+        ""
+    }
+
+    fn get_id(_rpc_version: u64) -> u64 {
+        0
+    }
+
+    fn binding_metadata() -> &'static [GeneratedMethodBindingDescriptor] {
+        &[]
+    }
+
     fn supports_interface(interface_id: InterfaceOrdinal) -> bool;
 
     fn dispatch(implementation: &Impl, context: &DispatchContext, params: SendParams)
@@ -198,6 +211,13 @@ where
     ) -> &'static [GeneratedMethodBindingDescriptor] {
         Adapter::method_metadata(interface_id)
     }
+}
+
+impl<Impl, Adapter> CreateLocalProxy for RpcBase<Impl, Adapter>
+where
+    Impl: Send + Sync + 'static,
+    Adapter: LocalObjectAdapter<Impl>,
+{
 }
 
 #[cfg(test)]

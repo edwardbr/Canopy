@@ -22,7 +22,7 @@ target_link_libraries(
 
 # Include directories for fuzz test
 target_include_directories(
-  fuzz_test_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/include ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
+  fuzz_test_main PRIVATE ${CANOPY_CPP_SOURCE_DIR}/tests/fixtures/include ${CANOPY_CPP_SOURCE_DIR}/tests/common/include
                          ${CMAKE_BINARY_DIR}/generated/include ${CMAKE_BINARY_DIR}/generated/src)
 
 # Compiler options
@@ -69,7 +69,7 @@ target_link_libraries(
           GTest::gtest_main)
 
 target_include_directories(
-  fuzz_test_gtest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/include ${CMAKE_CURRENT_SOURCE_DIR}/../common/include
+  fuzz_test_gtest PRIVATE ${CANOPY_CPP_SOURCE_DIR}/tests/fixtures/include ${CANOPY_CPP_SOURCE_DIR}/tests/common/include
                           ${CMAKE_BINARY_DIR}/generated/include ${CMAKE_BINARY_DIR}/generated/src)
 
 target_compile_features(fuzz_test_gtest PRIVATE cxx_std_17)

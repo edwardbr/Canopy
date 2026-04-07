@@ -8,6 +8,8 @@
 
 use std::sync::{Arc, Weak};
 
+use crate::internal::service_proxy::GeneratedRpcCaller;
+
 /// Minimal handwritten equivalent of C++ `rpc::local_proxy<T>`.
 ///
 /// This does not yet forward generated interface methods. Its current role is
@@ -18,6 +20,7 @@ use std::sync::{Arc, Weak};
 #[derive(Debug)]
 pub struct LocalProxy<T> {
     weak: Weak<T>,
+    remote: Option<Arc<T>>,
     was_bound: bool,
 }
 
@@ -25,6 +28,7 @@ impl<T> LocalProxy<T> {
     pub fn new(weak: Weak<T>) -> Self {
         Self {
             weak,
+            remote: None,
             was_bound: true,
         }
     }
@@ -32,6 +36,7 @@ impl<T> LocalProxy<T> {
     pub fn null() -> Self {
         Self {
             weak: Weak::new(),
+            remote: None,
             was_bound: false,
         }
     }
@@ -40,12 +45,20 @@ impl<T> LocalProxy<T> {
         Self::new(Arc::downgrade(shared))
     }
 
+    pub fn from_remote(remote: Arc<T>) -> Self {
+        Self {
+            weak: Weak::new(),
+            remote: Some(remote),
+            was_bound: true,
+        }
+    }
+
     pub fn get_weak(&self) -> Weak<T> {
         self.weak.clone()
     }
 
     pub fn upgrade(&self) -> Option<Arc<T>> {
-        self.weak.upgrade()
+        self.remote.clone().or_else(|| self.weak.upgrade())
     }
 
     pub fn expired(&self) -> bool {
@@ -61,6 +74,7 @@ impl<T> Clone for LocalProxy<T> {
     fn clone(&self) -> Self {
         Self {
             weak: self.weak.clone(),
+            remote: self.remote.clone(),
             was_bound: self.was_bound,
         }
     }
@@ -70,6 +84,10 @@ pub trait CreateLocalProxy: Sized {
     fn create_local_proxy(weak: Weak<Self>) -> LocalProxy<Self> {
         LocalProxy::new(weak)
     }
+}
+
+pub trait CreateRemoteProxy: Sized {
+    fn create_remote_proxy(caller: Arc<dyn GeneratedRpcCaller>) -> Self;
 }
 
 #[cfg(test)]
@@ -112,5 +130,14 @@ mod tests {
         assert!(proxy.is_null());
         assert!(proxy.expired());
         assert!(proxy.upgrade().is_none());
+    }
+
+    #[test]
+    fn remote_local_proxy_keeps_remote_proxy_view_alive() {
+        let proxy = LocalProxy::from_remote(Arc::new(Example));
+
+        assert!(!proxy.is_null());
+        assert!(!proxy.expired());
+        assert!(proxy.upgrade().is_some());
     }
 }

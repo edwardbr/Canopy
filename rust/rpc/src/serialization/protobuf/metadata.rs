@@ -14,6 +14,14 @@ pub enum GeneratedProtobufFieldKind {
     Message,
 }
 
+/// Distinguishes rpc::shared_ptr<T> from rpc::optimistic_ptr<T> in generated
+/// protobuf parameter descriptors. Only meaningful for InterfaceRemoteObject fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterfacePointerKind {
+    Shared,
+    Optimistic,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneratedProtobufParamDescriptor {
     pub name: &'static str,
@@ -21,6 +29,9 @@ pub struct GeneratedProtobufParamDescriptor {
     pub direction: ParameterDirection,
     pub proto_type: &'static str,
     pub field_kind: GeneratedProtobufFieldKind,
+    /// Pointer kind for interface parameters (Shared or Optimistic).
+    /// None for non-interface parameter types.
+    pub pointer_kind: Option<InterfacePointerKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +63,7 @@ pub trait GeneratedProtobufBindingMetadata {
 mod tests {
     use super::{
         GeneratedProtobufBindingMetadata, GeneratedProtobufFieldKind,
-        GeneratedProtobufMethodDescriptor, GeneratedProtobufParamDescriptor,
+        GeneratedProtobufMethodDescriptor, GeneratedProtobufParamDescriptor, InterfacePointerKind,
     };
     use crate::internal::ParameterDirection;
 
@@ -67,6 +78,7 @@ mod tests {
                     direction: ParameterDirection::Out,
                     proto_type: "rpc.remote_object",
                     field_kind: GeneratedProtobufFieldKind::InterfaceRemoteObject,
+                    pointer_kind: Some(InterfacePointerKind::Shared),
                 }];
             static METHODS: [GeneratedProtobufMethodDescriptor; 1] =
                 [GeneratedProtobufMethodDescriptor {
@@ -100,6 +112,10 @@ mod tests {
         assert_eq!(
             proto.params[0].field_kind,
             GeneratedProtobufFieldKind::InterfaceRemoteObject
+        );
+        assert_eq!(
+            proto.params[0].pointer_kind,
+            Some(InterfacePointerKind::Shared)
         );
     }
 }

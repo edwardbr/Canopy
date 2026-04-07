@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake *)",
+      "Bash(ctest *)",
+      "Bash(cargo test *)",
+      "Bash(xargs *)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(ls *)",
+      "Bash(wc *)",
+      "Bash(cat *)",
+      "Bash(touch *)",
+      "Bash(find *)",
+      "Bash(sed *)",
+      "Bash(./build_debug/output/rpc_test *)",
+      "Bash(./output/rust_dynamic_library_abi_test *)"
+    ]
+  },
+  "$version": 3
+}

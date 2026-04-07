@@ -6,14 +6,15 @@
 //! - a cast returns a different interface view backed by the same `ObjectProxy`
 
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 use crate::internal::bindings_fwd::InterfacePointerKind;
 use crate::internal::error_codes;
-use crate::rpc_types::{InterfaceOrdinal, Object, ReleaseOptions};
+use crate::internal::service_proxy::ServiceProxy;
+use crate::rpc_types::{CallerZone, InterfaceOrdinal, Object, ReleaseOptions, RemoteObject};
 
 /// Rust equivalent of C++ `query_interface_result`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,15 +73,72 @@ type ErasedInterfaceView = dyn Any + Send + Sync;
 
 pub struct ObjectProxy {
     object_id: Object,
+    remote_object_id: Option<RemoteObject>,
+    service_proxy: Option<Arc<ServiceProxy>>,
     shared_count: AtomicU32,
     optimistic_count: AtomicU32,
+    shared_caller_counts: Mutex<BTreeMap<CallerZone, u32>>,
+    optimistic_caller_counts: Mutex<BTreeMap<CallerZone, u32>>,
     interface_views: Mutex<HashMap<InterfaceOrdinal, Weak<ErasedInterfaceView>>>,
+}
+
+pub struct RemoteRefGuard {
+    object_proxy: Arc<ObjectProxy>,
+    caller_zone_id: CallerZone,
+    pointer_kind: InterfacePointerKind,
+    active: bool,
+}
+
+impl RemoteRefGuard {
+    pub fn adopt(
+        object_proxy: Arc<ObjectProxy>,
+        caller_zone_id: CallerZone,
+        pointer_kind: InterfacePointerKind,
+    ) -> Option<Self> {
+        let result = object_proxy.adopt_remote_ref_for_caller(caller_zone_id.clone(), pointer_kind);
+        if crate::is_error(result.error_code) {
+            return None;
+        }
+        Some(Self {
+            object_proxy,
+            caller_zone_id,
+            pointer_kind,
+            active: true,
+        })
+    }
+}
+
+impl Drop for RemoteRefGuard {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        let options = if self.pointer_kind.is_optimistic() {
+            ReleaseOptions::OPTIMISTIC
+        } else {
+            ReleaseOptions::NORMAL
+        };
+        let _ = self
+            .object_proxy
+            .release_remote_for_caller(self.caller_zone_id.clone(), options);
+    }
+}
+
+impl std::fmt::Debug for RemoteRefGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteRefGuard")
+            .field("caller_zone_id", &self.caller_zone_id)
+            .field("pointer_kind", &self.pointer_kind)
+            .field("active", &self.active)
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for ObjectProxy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ObjectProxy")
             .field("object_id", &self.object_id)
+            .field("remote_object_id", &self.remote_object_id)
             .field("shared_count", &self.shared_count())
             .field("optimistic_count", &self.optimistic_count())
             .field("interface_view_count", &self.interface_view_count())
@@ -92,14 +150,157 @@ impl ObjectProxy {
     pub fn new(object_id: Object) -> Self {
         Self {
             object_id,
+            remote_object_id: None,
+            service_proxy: None,
             shared_count: AtomicU32::new(0),
             optimistic_count: AtomicU32::new(0),
+            shared_caller_counts: Mutex::new(BTreeMap::new()),
+            optimistic_caller_counts: Mutex::new(BTreeMap::new()),
+            interface_views: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn new_remote(remote_object_id: RemoteObject, service_proxy: &Arc<ServiceProxy>) -> Self {
+        Self::new_remote_with_service_proxy(remote_object_id, service_proxy.clone())
+    }
+
+    pub fn new_remote_with_service_proxy(
+        remote_object_id: RemoteObject,
+        service_proxy: Arc<ServiceProxy>,
+    ) -> Self {
+        Self {
+            object_id: remote_object_id.get_object_id(),
+            remote_object_id: Some(remote_object_id),
+            service_proxy: Some(service_proxy),
+            shared_count: AtomicU32::new(0),
+            optimistic_count: AtomicU32::new(0),
+            shared_caller_counts: Mutex::new(BTreeMap::new()),
+            optimistic_caller_counts: Mutex::new(BTreeMap::new()),
             interface_views: Mutex::new(HashMap::new()),
         }
     }
 
     pub fn object_id(&self) -> Object {
         self.object_id
+    }
+
+    pub fn add_ref_remote_for_caller(
+        &self,
+        caller_zone_id: CallerZone,
+        pointer_kind: InterfacePointerKind,
+    ) -> crate::StandardResult {
+        let prev_count = self.increment_remote_ref_count(caller_zone_id.clone(), pointer_kind);
+        if prev_count != 0 {
+            return crate::StandardResult::new(crate::OK(), vec![]);
+        }
+
+        let Some(service_proxy) = self.service_proxy() else {
+            self.decrement_remote_ref_count(caller_zone_id, pointer_kind);
+            return crate::StandardResult::new(crate::TRANSPORT_ERROR(), vec![]);
+        };
+        let result = service_proxy.add_ref_remote_object_for_caller(
+            self.object_id,
+            caller_zone_id.clone(),
+            pointer_kind,
+        );
+        if error_codes::is_error(result.error_code) {
+            self.decrement_remote_ref_count(caller_zone_id, pointer_kind);
+        }
+        result
+    }
+
+    pub fn adopt_remote_ref_for_caller(
+        &self,
+        caller_zone_id: CallerZone,
+        pointer_kind: InterfacePointerKind,
+    ) -> crate::StandardResult {
+        self.increment_remote_ref_count(caller_zone_id, pointer_kind);
+        crate::StandardResult::new(crate::OK(), vec![])
+    }
+
+    pub fn release_remote_for_caller(
+        &self,
+        caller_zone_id: CallerZone,
+        options: ReleaseOptions,
+    ) -> crate::StandardResult {
+        let pointer_kind = if options == ReleaseOptions::OPTIMISTIC {
+            InterfacePointerKind::Optimistic
+        } else {
+            InterfacePointerKind::Shared
+        };
+        let prev_count = self.decrement_remote_ref_count(caller_zone_id.clone(), pointer_kind);
+
+        if prev_count != 1 {
+            return crate::StandardResult::new(crate::OK(), vec![]);
+        }
+
+        let Some(service_proxy) = self.service_proxy() else {
+            return crate::StandardResult::new(crate::TRANSPORT_ERROR(), vec![]);
+        };
+        service_proxy.release_remote_object_for_caller(self.object_id, caller_zone_id, options)
+    }
+
+    fn increment_remote_ref_count(
+        &self,
+        caller_zone_id: CallerZone,
+        pointer_kind: InterfacePointerKind,
+    ) -> u32 {
+        let (global_count, caller_counts) = match pointer_kind {
+            InterfacePointerKind::Shared => (&self.shared_count, &self.shared_caller_counts),
+            InterfacePointerKind::Optimistic => {
+                (&self.optimistic_count, &self.optimistic_caller_counts)
+            }
+        };
+        let mut counts = caller_counts
+            .lock()
+            .expect("object proxy caller count mutex poisoned");
+        let count = counts.entry(caller_zone_id).or_insert(0);
+        let previous = *count;
+        *count = count.saturating_add(1);
+        global_count.fetch_add(1, Ordering::Relaxed);
+        previous
+    }
+
+    fn decrement_remote_ref_count(
+        &self,
+        caller_zone_id: CallerZone,
+        pointer_kind: InterfacePointerKind,
+    ) -> u32 {
+        let (global_count, caller_counts) = match pointer_kind {
+            InterfacePointerKind::Shared => (&self.shared_count, &self.shared_caller_counts),
+            InterfacePointerKind::Optimistic => {
+                (&self.optimistic_count, &self.optimistic_caller_counts)
+            }
+        };
+        let mut counts = caller_counts
+            .lock()
+            .expect("object proxy caller count mutex poisoned");
+        let Some(count) = counts.get_mut(&caller_zone_id) else {
+            return 0;
+        };
+        let previous = *count;
+        *count = count.saturating_sub(1);
+        global_count
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                Some(count.saturating_sub(1))
+            })
+            .ok();
+        if *count == 0 {
+            counts.remove(&caller_zone_id);
+        }
+        previous
+    }
+
+    pub fn remote_object_id(&self) -> Option<RemoteObject> {
+        self.remote_object_id.clone()
+    }
+
+    pub fn service_proxy(&self) -> Option<Arc<ServiceProxy>> {
+        self.service_proxy.clone()
+    }
+
+    pub(crate) fn service_proxy_ref(&self) -> Option<&ServiceProxy> {
+        self.service_proxy.as_deref()
     }
 
     pub fn shared_count(&self) -> u32 {

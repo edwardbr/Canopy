@@ -275,10 +275,17 @@ pub fn to_string(err: i32) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    static ERROR_CODE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn default_values_match_cpp() {
+        let _guard = ERROR_CODE_TEST_LOCK
+            .lock()
+            .expect("error code test mutex poisoned");
         set_OK_val(0);
         set_offset_val(0);
         set_offset_val_is_negative(true);
@@ -293,6 +300,9 @@ mod tests {
 
     #[test]
     fn positive_offset_mode_matches_cpp() {
+        let _guard = ERROR_CODE_TEST_LOCK
+            .lock()
+            .expect("error code test mutex poisoned");
         set_OK_val(0);
         set_offset_val(100);
         set_offset_val_is_negative(false);
