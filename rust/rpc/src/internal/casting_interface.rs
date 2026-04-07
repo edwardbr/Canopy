@@ -1,14 +1,14 @@
 //! Rust counterpart of `c++/rpc/include/rpc/internal/casting_interface.h`.
 
 use std::any::Any;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::internal::bindings_fwd::GeneratedMethodBindingDescriptor;
 use crate::internal::error_codes;
 use crate::internal::marshaller_params::{SendParams, SendResult};
 use crate::internal::object_proxy::ObjectProxy;
-use crate::internal::remote_pointer::CreateLocalProxy;
 use crate::internal::service_proxy::GeneratedRpcCaller;
+use crate::internal::stub::ObjectStub;
 use crate::rpc_types::{InterfaceOrdinal, RemoteObject};
 
 #[doc(hidden)]
@@ -22,10 +22,25 @@ pub trait CastingInterface: Any + Send + Sync + 'static {
     fn __rpc_call(&self, _params: SendParams) -> SendResult {
         SendResult::new(error_codes::INVALID_INTERFACE_ID(), vec![], vec![])
     }
+
+    #[doc(hidden)]
+    fn __rpc_remote_object_id(&self) -> Option<RemoteObject> {
+        None
+    }
+
+    #[doc(hidden)]
+    fn __rpc_remote_object_proxy(&self) -> Option<Arc<ObjectProxy>> {
+        None
+    }
+
+    #[doc(hidden)]
+    fn __rpc_local_object_stub(&self) -> Option<Arc<Mutex<ObjectStub>>> {
+        None
+    }
 }
 
 #[doc(hidden)]
-pub trait GeneratedRustInterface: CastingInterface + CreateLocalProxy {
+pub trait GeneratedRustInterface: CastingInterface {
     #[doc(hidden)]
     fn interface_name() -> &'static str
     where

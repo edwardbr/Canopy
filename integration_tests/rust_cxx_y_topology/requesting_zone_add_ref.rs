@@ -7,8 +7,7 @@ fn generated_remote_binding_sends_y_topology_add_ref_to_cxx_transport() {
         return;
     };
 
-    let mut created_shared: canopy_rpc::SharedPtr<IPeerHandle<i_peer::ProxySkeleton>> =
-        canopy_rpc::Shared::null();
+    let mut created_shared: canopy_rpc::SharedPtr<dyn IPeer> = canopy_rpc::Shared::null();
     assert_eq!(
         runtime.proxy.create_shared_peer(&mut created_shared),
         canopy_rpc::OK()
@@ -87,8 +86,7 @@ fn generated_optimistic_remote_binding_sends_y_topology_add_ref_to_cxx_transport
         return;
     };
 
-    let mut created_shared: canopy_rpc::SharedPtr<IPeerHandle<i_peer::ProxySkeleton>> =
-        canopy_rpc::Shared::null();
+    let mut created_shared: canopy_rpc::SharedPtr<dyn IPeer> = canopy_rpc::Shared::null();
     assert_eq!(
         runtime.proxy.create_shared_peer(&mut created_shared),
         canopy_rpc::OK()

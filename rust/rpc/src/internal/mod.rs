@@ -36,6 +36,7 @@ pub mod zone_id_allocator;
 
 pub use base::DispatchContext;
 pub use base::DispatchResult;
+pub use base::LocalInterfaceView;
 pub use base::LocalObjectAdapter;
 pub use base::OpaqueValue;
 pub use base::RpcBase;

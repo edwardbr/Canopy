@@ -490,6 +490,8 @@ namespace rust_generator
             std::string associated_type_name;
             std::string associated_default_type;
             std::string trait_path;
+            std::string proxy_skeleton_type;
+            std::string interface_id_expression;
             bool is_interface = false;
             bool is_optimistic = false;
             bool is_in = false;
@@ -532,8 +534,14 @@ namespace rust_generator
                                                     + "::ProxySkeleton>";
                     param.trait_path = "crate::" + sanitize_identifier(root_module_name)
                                        + "::" + qualified_public_type_path(*interface_entity);
-                    param.rust_type = is_optimistic ? "canopy_rpc::OptimisticPtr<" + param.generic_name + ">"
-                                                    : "canopy_rpc::SharedPtr<" + param.generic_name + ">";
+                    param.proxy_skeleton_type = "crate::" + sanitize_identifier(root_module_name)
+                                                + "::" + qualified_generated_interface_path(*interface_entity)
+                                                + "::ProxySkeleton";
+                    param.interface_id_expression
+                        = "canopy_rpc::InterfaceOrdinal::new(crate::" + sanitize_identifier(root_module_name)
+                          + "::" + qualified_generated_interface_path(*interface_entity) + "::ID_RPC_V3)";
+                    param.rust_type = is_optimistic ? "canopy_rpc::OptimisticPtr<dyn " + param.trait_path + ">"
+                                                    : "canopy_rpc::SharedPtr<dyn " + param.trait_path + ">";
                 }
                 else
                 {
@@ -567,105 +575,29 @@ namespace rust_generator
             bool include_in,
             bool include_out)
         {
-            std::vector<std::string> generics;
-            for (const auto& param : params)
-            {
-                if (!param.is_interface)
-                    continue;
-                if ((param.is_in && include_in) || (param.is_out && include_out))
-                    generics.push_back(param.generic_name);
-            }
-
-            if (generics.empty())
-                return "";
-
-            std::string result = "<";
-            for (size_t i = 0; i < generics.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += generics[i];
-            }
-            result += ">";
-            return result;
+            (void)params;
+            (void)include_in;
+            (void)include_out;
+            return "";
         }
 
         std::string generic_where_clause_for_params(
             const std::vector<rust_method_param>& params,
             bool include_in,
-            bool include_out)
+            bool include_out,
+            bool include_runtime_binding = false)
         {
-            std::vector<std::string> constraints;
-            for (const auto& param : params)
-            {
-                if (!param.is_interface)
-                    continue;
-                if ((param.is_in && include_in) || (param.is_out && include_out))
-                    constraints.push_back(param.generic_name + ": " + param.trait_path);
-            }
-
-            if (constraints.empty())
-                return "";
-
-            std::string result = " where ";
-            for (size_t i = 0; i < constraints.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += constraints[i];
-            }
-            return result;
-        }
-
-        std::string associated_type_args_for_params(const std::vector<rust_method_param>& params)
-        {
-            std::vector<std::string> args;
-            for (const auto& param : params)
-            {
-                if (!param.is_interface)
-                    continue;
-                args.push_back("<Self as Interface>::" + param.associated_type_name);
-            }
-
-            if (args.empty())
-                return "";
-
-            std::string result = "<";
-            for (size_t i = 0; i < args.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += args[i];
-            }
-            result += ">";
-            return result;
+            (void)params;
+            (void)include_in;
+            (void)include_out;
+            (void)include_runtime_binding;
+            return "";
         }
 
         std::string method_call_type_args_for_params(const std::vector<rust_method_param>& params)
         {
-            std::vector<std::string> args;
-            for (const auto& param : params)
-            {
-                if (!param.is_interface)
-                    continue;
-                if (param.is_in)
-                    args.push_back(param.generic_name);
-                else
-                    args.push_back("<Self as Interface>::" + param.associated_type_name);
-            }
-
-            if (args.empty())
-                return "";
-
-            std::string result = "<";
-            for (size_t i = 0; i < args.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += args[i];
-            }
-            result += ">";
-            return result;
+            (void)params;
+            return "";
         }
 
         std::string impl_interface_bound_for_params(
@@ -674,31 +606,9 @@ namespace rust_generator
             const std::string& interface_trait_path,
             bool include_out)
         {
-            std::vector<std::string> associated_types;
-            std::set<std::string> seen;
-            for (const auto& param : params)
-            {
-                if (!param.is_interface)
-                    continue;
-                if (!(param.is_out && !param.is_in && include_out))
-                    continue;
-                if (!seen.insert(param.associated_type_name).second)
-                    continue;
-                associated_types.push_back(param.associated_type_name + " = " + param.generic_name);
-            }
-
-            if (associated_types.empty())
-                return impl_name + ": " + interface_trait_path;
-
-            std::string result = impl_name + ": " + interface_trait_path + "<";
-            for (size_t i = 0; i < associated_types.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += associated_types[i];
-            }
-            result += ">";
-            return result;
+            (void)params;
+            (void)include_out;
+            return impl_name + ": " + interface_trait_path;
         }
 
         void write_associated_type_impls(
@@ -707,21 +617,10 @@ namespace rust_generator
             const class_entity& lib,
             const std::string& root_module_name)
         {
-            std::set<std::string> emitted_associated_types;
-            for (const auto& function : iface.get_functions())
-            {
-                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
-                    continue;
-                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
-                for (const auto& param : analysed_params)
-                {
-                    if (!param.is_interface)
-                        continue;
-                    if (!emitted_associated_types.insert(param.associated_type_name).second)
-                        continue;
-                    output("\ttype {} = {};", param.associated_type_name, param.associated_default_type);
-                }
-            }
+            (void)output;
+            (void)iface;
+            (void)lib;
+            (void)root_module_name;
         }
 
         std::string associated_type_equalities_for_interface(
@@ -731,48 +630,18 @@ namespace rust_generator
             const std::string& lhs_prefix,
             const std::string& rhs_prefix)
         {
-            std::vector<std::string> equalities;
-            std::set<std::string> emitted_associated_types;
-            for (const auto& function : iface.get_functions())
-            {
-                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
-                    continue;
-                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
-                for (const auto& param : analysed_params)
-                {
-                    if (!param.is_interface)
-                        continue;
-                    if (!emitted_associated_types.insert(param.associated_type_name).second)
-                        continue;
-                    equalities.push_back(
-                        param.associated_type_name + " = <" + rhs_prefix + " as Interface>::" + param.associated_type_name);
-                }
-            }
-
-            if (equalities.empty())
-                return lhs_prefix + ": Interface";
-
-            std::string result = lhs_prefix + ": Interface<";
-            for (size_t i = 0; i < equalities.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += equalities[i];
-            }
-            result += ">";
-            return result;
+            (void)iface;
+            (void)lib;
+            (void)root_module_name;
+            (void)rhs_prefix;
+            return lhs_prefix + ": Interface + canopy_rpc::CastingInterface";
         }
 
         std::string rust_method_signature_type_for_param(const rust_method_param& param)
         {
             if (!param.is_interface)
                 return param.rust_type;
-            if (param.is_in)
-                return param.rust_type;
-
-            const auto associated_type = "<Self as Interface>::" + param.associated_type_name;
-            return param.is_optimistic ? "canopy_rpc::OptimisticPtr<" + associated_type + ">"
-                                       : "canopy_rpc::SharedPtr<" + associated_type + ">";
+            return param.rust_type;
         }
 
         std::string rust_method_signature(
@@ -799,7 +668,7 @@ namespace rust_generator
             }
             signature += ") -> ";
             signature += rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
-            signature += generic_where_clause_for_params(analysed_params, true, false);
+            signature += generic_where_clause_for_params(analysed_params, true, false, true);
 
             return signature;
         }
@@ -901,6 +770,25 @@ namespace rust_generator
             return false;
         }
 
+        bool interface_is_dyn_compatible_in_current_shape(
+            const class_entity& iface,
+            const class_entity& lib,
+            const std::string& root_module_name)
+        {
+            for (const auto& function : iface.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
+                for (const auto& param : analysed_params)
+                {
+                    if (param.is_interface)
+                        return false;
+                }
+            }
+            return true;
+        }
+
         void write_generated_skeleton_method_body(
             writer& output,
             const class_entity& iface,
@@ -916,8 +804,8 @@ namespace rust_generator
             const auto method_call_type_args = method_call_type_args_for_params(analysed_params);
 
             output("{} {{", rust_method_signature(iface, function, lib, root_module_name));
-            // When there are [out]-only interface params, Request needs explicit generics.
-            if (has_out_only)
+            // When there are [out]-only interface params and generics remain, Request needs explicit generics.
+            if (has_out_only && !method_call_type_args.empty())
                 output("\tlet _request = interface_binding::{}::Request::{}::from_call(", method_module, method_call_type_args);
             else
                 output("\tlet _request = interface_binding::{}::Request::from_call(", method_module);
@@ -1011,7 +899,7 @@ namespace rust_generator
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
-            auto where_clause = generic_where_clause_for_params(analysed_params, true, true);
+            auto where_clause = generic_where_clause_for_params(analysed_params, true, true, true);
             const auto protobuf_module_path = "crate::" + sanitize_identifier(root_module_name)
                                               + "_protobuf::" + qualified_generated_interface_path(iface)
                                               + "::interface_binding::" + method_module;
@@ -1022,7 +910,7 @@ namespace rust_generator
 
             const bool is_proxy_method = method_prefix == "proxy_call";
             const auto combined_generics = merge_generics(request_generics, response_generics);
-            const auto combined_where = generic_where_clause_for_params(analysed_params, true, true);
+            const auto combined_where = generic_where_clause_for_params(analysed_params, true, true, true);
 
             // When there are [out]-only interface params, Request carries combined generics
             const bool has_out_only = method_has_out_only_interface_params(iface, function, lib, root_module_name);
@@ -1099,7 +987,6 @@ namespace rust_generator
             const auto request_where = generic_where_clause_for_params(analysed_params, true, false);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             const auto all_where = generic_where_clause_for_params(analysed_params, true, true);
-
             // When there are [out]-only interface params, Request must carry those generics
             // too (via PhantomData) so Rust's E0392 rule is satisfied.
             const bool has_out_only_interfaces
@@ -1114,18 +1001,7 @@ namespace rust_generator
                     continue;
                 output("\tpub {}: {},", param.rust_name, param.rust_type);
             }
-            if (has_out_only_interfaces)
-            {
-                // PhantomData carries the [out]-only interface generics so they are "used".
-                output("\t#[doc(hidden)]");
-                output("\t_phantom: std::marker::PhantomData<(");
-                for (const auto& param : analysed_params)
-                {
-                    if (param.is_interface && param.is_out && !param.is_in)
-                        output("{}, ", param.generic_name);
-                }
-                output(")>,");
-            }
+            (void)has_out_only_interfaces;
             output("}}");
             output("");
 
@@ -1152,8 +1028,7 @@ namespace rust_generator
                     continue;
                 output("\t\t\t{}: {},", param.rust_name, param.rust_name);
             }
-            if (has_out_only_interfaces)
-                output("\t\t\t_phantom: std::marker::PhantomData,");
+            (void)has_out_only_interfaces;
             output("\t\t}}");
             output("\t}}");
             output("");
@@ -1267,7 +1142,8 @@ namespace rust_generator
         void write_param_binding_helpers(
             writer& output,
             const class_entity& iface,
-            const function_entity& function)
+            const function_entity& function,
+            const std::string& root_module_name)
         {
             for (const auto& parameter : function.get_parameters())
             {
@@ -1278,6 +1154,14 @@ namespace rust_generator
 
                 const auto param_name = sanitize_identifier(parameter.get_name());
                 const auto interface_name = interface_entity ? interface_entity->get_name() : "";
+                const auto trait_path = "crate::" + sanitize_identifier(root_module_name)
+                                        + "::" + qualified_public_type_path(*interface_entity);
+                const auto proxy_skeleton_type = "crate::" + sanitize_identifier(root_module_name)
+                                                 + "::" + qualified_generated_interface_path(*interface_entity)
+                                                 + "::ProxySkeleton";
+                const auto interface_id_expression
+                    = "canopy_rpc::InterfaceOrdinal::new(crate::" + sanitize_identifier(root_module_name)
+                      + "::" + qualified_generated_interface_path(*interface_entity) + "::ID_RPC_V3)";
 
                 if (is_optimistic)
                 {
@@ -1289,7 +1173,7 @@ namespace rust_generator
                         "bind_remote: RemoteBind) -> canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<T>>",
                         param_name);
                     output("where");
-                    output("\tT: canopy_rpc::CreateLocalProxy,");
+                    output("\tT: ?Sized,");
                     output("\tLocalLookup: FnOnce(canopy_rpc::Object) -> Result<std::sync::Arc<T>, i32>,");
                     output("\tRemoteBind: FnOnce(&canopy_rpc::RemoteObject) -> canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<T>>,");
                     output("{{");
@@ -1297,45 +1181,90 @@ namespace rust_generator
                     output("}}");
                     output("");
                     output(
-                        "pub fn bind_{}_incoming_local<T>("
+                        "pub fn bind_{}_incoming_local("
                         "service: &canopy_rpc::Service, "
                         "caller_zone_id: canopy_rpc::CallerZone, "
                         "encap: &canopy_rpc::RemoteObject) -> "
-                        "canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<T>>",
-                        param_name);
-                    output("where");
-                    output("\tT: canopy_rpc::GeneratedRustInterface,");
+                        "canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<dyn {}>>",
+                        param_name,
+                        trait_path);
                     output("{{");
-                    output("\tservice.bind_incoming_optimistic_interface_from::<T>(caller_zone_id, encap)");
+                    output("\tif *encap == canopy_rpc::null_remote_descriptor() || !encap.is_set()");
+                    output("\t{{");
+                    output("\t\treturn canopy_rpc::InterfaceBindResult::null(canopy_rpc::OK());");
+                    output("\t}}");
+                    output("\tif encap.as_zone() == service.zone_id()");
+                    output("\t{{");
+                    output(
+                        "\t\treturn match service.lookup_local_interface_view::<dyn {}>(encap.get_object_id(), {})",
+                        trait_path,
+                        interface_id_expression);
+                    output("\t\t{{");
+                    output("\t\t\tOk(iface) => canopy_rpc::InterfaceBindResult::local(canopy_rpc::OK(), canopy_rpc::LocalProxy::from_remote(iface)),");
+                    output("\t\t\tErr(error_code) if error_code == canopy_rpc::OBJECT_GONE() => canopy_rpc::InterfaceBindResult::gone(error_code, canopy_rpc::InterfaceBindingOrigin::Local),");
+                    output("\t\t\tErr(error_code) => canopy_rpc::InterfaceBindResult::null(error_code),");
+                    output("\t\t}};");
+                    output("\t}}");
+                    output(
+                        "\tlet binding = service.bind_incoming_optimistic_interface_from::<{}>(caller_zone_id, encap);",
+                        proxy_skeleton_type);
+                    output("\tif canopy_rpc::is_critical(binding.error_code)");
+                    output("\t{{");
+                    output("\t\treturn canopy_rpc::InterfaceBindResult::null(binding.error_code);");
+                    output("\t}}");
+                    output("\tmatch binding.iface");
+                    output("\t{{");
+                    output("\t\tcanopy_rpc::BoundInterface::Value(proxy) =>");
+                    output("\t\t{{");
+                    output("\t\t\tlet Some(proxy) = proxy.upgrade() else {{ return canopy_rpc::InterfaceBindResult::gone(canopy_rpc::OBJECT_GONE(), canopy_rpc::InterfaceBindingOrigin::Remote); }};");
+                    output("\t\t\tlet view: std::sync::Arc<dyn {}> = proxy;", trait_path);
+                    output("\t\t\tcanopy_rpc::InterfaceBindResult::remote(binding.error_code, canopy_rpc::LocalProxy::from_remote(view))");
+                    output("\t\t}},");
+                    output("\t\tcanopy_rpc::BoundInterface::Null => canopy_rpc::InterfaceBindResult::null(binding.error_code),");
+                    output("\t\tcanopy_rpc::BoundInterface::Gone => canopy_rpc::InterfaceBindResult::gone(binding.error_code, binding.origin.unwrap_or(canopy_rpc::InterfaceBindingOrigin::Remote)),");
+                    output("\t}}");
                     output("}}");
                 }
                 else
                 {
                     output(
-                        "pub fn bind_{}_incoming<T, LocalLookup, RemoteBind>("
-                        "service_zone: &canopy_rpc::Zone, "
-                        "encap: &canopy_rpc::RemoteObject, "
-                        "lookup_local: LocalLookup, "
-                        "bind_remote: RemoteBind) -> canopy_rpc::InterfaceBindResult<T>",
-                        param_name);
-                    output("where");
-                    output("\tLocalLookup: FnOnce(canopy_rpc::Object) -> Result<T, i32>,");
-                    output("\tRemoteBind: FnOnce(&canopy_rpc::RemoteObject) -> canopy_rpc::InterfaceBindResult<T>,");
-                    output("{{");
-                    output("\tcanopy_rpc::bind_incoming_shared(service_zone, encap, lookup_local, bind_remote)");
-                    output("}}");
-                    output("");
-                    output(
-                        "pub fn bind_{}_incoming_local<T>("
+                        "pub fn bind_{}_incoming_local("
                         "service: &canopy_rpc::Service, "
                         "caller_zone_id: canopy_rpc::CallerZone, "
                         "encap: &canopy_rpc::RemoteObject) -> "
-                        "canopy_rpc::InterfaceBindResult<std::sync::Arc<T>>",
-                        param_name);
-                    output("where");
-                    output("\tT: canopy_rpc::GeneratedRustInterface,");
+                        "canopy_rpc::InterfaceBindResult<std::sync::Arc<dyn {}>>",
+                        param_name,
+                        trait_path);
                     output("{{");
-                    output("\tservice.bind_incoming_shared_interface_from::<T>(caller_zone_id, encap)");
+                    output("\tif *encap == canopy_rpc::null_remote_descriptor() || !encap.is_set()");
+                    output("\t{{");
+                    output("\t\treturn canopy_rpc::InterfaceBindResult::null(canopy_rpc::OK());");
+                    output("\t}}");
+                    output("\tif encap.as_zone() == service.zone_id()");
+                    output("\t{{");
+                    output(
+                        "\t\treturn match service.lookup_local_interface_view::<dyn {}>(encap.get_object_id(), {})",
+                        trait_path,
+                        interface_id_expression);
+                    output("\t\t{{");
+                    output("\t\t\tOk(iface) => canopy_rpc::InterfaceBindResult::local(canopy_rpc::OK(), iface),");
+                    output("\t\t\tErr(error_code) if error_code == canopy_rpc::OBJECT_GONE() => canopy_rpc::InterfaceBindResult::gone(error_code, canopy_rpc::InterfaceBindingOrigin::Local),");
+                    output("\t\t\tErr(error_code) => canopy_rpc::InterfaceBindResult::null(error_code),");
+                    output("\t\t}};");
+                    output("\t}}");
+                    output(
+                        "\tlet binding = service.bind_incoming_shared_interface_from::<{}>(caller_zone_id, encap);",
+                        proxy_skeleton_type);
+                    output("\tmatch binding.iface");
+                    output("\t{{");
+                    output("\t\tcanopy_rpc::BoundInterface::Value(proxy) =>");
+                    output("\t\t{{");
+                    output("\t\t\tlet view: std::sync::Arc<dyn {}> = proxy;", trait_path);
+                    output("\t\t\tcanopy_rpc::InterfaceBindResult::remote(binding.error_code, view)");
+                    output("\t\t}},");
+                    output("\t\tcanopy_rpc::BoundInterface::Null => canopy_rpc::InterfaceBindResult::null(binding.error_code),");
+                    output("\t\tcanopy_rpc::BoundInterface::Gone => canopy_rpc::InterfaceBindResult::gone(binding.error_code, binding.origin.unwrap_or(canopy_rpc::InterfaceBindingOrigin::Remote)),");
+                    output("\t}}");
                     output("}}");
                 }
                 output("");
@@ -1362,19 +1291,20 @@ namespace rust_generator
                     "service: &canopy_rpc::Service, "
                     "caller_zone_id: canopy_rpc::CallerZone, "
                     "iface: &{}) -> "
-                    "canopy_rpc::RemoteObjectBindResult<std::sync::Arc<std::sync::Mutex<canopy_rpc::ObjectStub>>>",
+                    "canopy_rpc::RemoteObjectBindResult<std::sync::Arc<std::sync::Mutex<canopy_rpc::internal::"
+                    "ObjectStub>>>",
                     param_name,
                     is_optimistic ? "canopy_rpc::OptimisticPtr<T>" : "canopy_rpc::SharedPtr<T>");
                 output("where");
-                output("\tT: canopy_rpc::GeneratedRustInterface,");
+                output("\tT: canopy_rpc::GeneratedRustInterface + ?Sized,");
                 output("{{");
                 if (is_optimistic)
                 {
-                    output("\tservice.bind_outgoing_local_optimistic_interface(caller_zone_id, iface.as_inner())");
+                    output("\tservice.bind_outgoing_local_optimistic_erased_interface(caller_zone_id, iface.as_inner())");
                 }
                 else
                 {
-                    output("\tservice.bind_outgoing_local_interface(caller_zone_id, iface.as_inner(), canopy_rpc::InterfacePointerKind::Shared)");
+                    output("\tservice.bind_outgoing_local_erased_interface(caller_zone_id, iface.as_inner(), canopy_rpc::InterfacePointerKind::Shared)");
                 }
                 output("}}");
                 output("");
@@ -1382,11 +1312,12 @@ namespace rust_generator
                     "pub fn bind_{}_outgoing_remote<T>("
                     "caller_zone_id: canopy_rpc::CallerZone, "
                     "iface: &{}) -> "
-                    "canopy_rpc::RemoteObjectBindResult<std::sync::Arc<std::sync::Mutex<canopy_rpc::ObjectStub>>>",
+                    "canopy_rpc::RemoteObjectBindResult<std::sync::Arc<std::sync::Mutex<canopy_rpc::internal::"
+                    "ObjectStub>>>",
                     param_name,
                     is_optimistic ? "canopy_rpc::OptimisticPtr<T>" : "canopy_rpc::SharedPtr<T>");
                 output("where");
-                output("\tT: canopy_rpc::GeneratedRustInterface,");
+                output("\tT: canopy_rpc::GeneratedRustInterface + ?Sized,");
                 output("{{");
                 output(
                     "\tcanopy_rpc::bind_outgoing_interface("
@@ -1419,7 +1350,7 @@ namespace rust_generator
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
             const auto response_where = generic_where_clause_for_params(analysed_params, false, true);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
-            auto all_where = generic_where_clause_for_params(analysed_params, true, true);
+            auto all_where = generic_where_clause_for_params(analysed_params, true, true, true);
 
             bool has_interface_in = false;
             bool has_interface_out = false;
@@ -1434,7 +1365,7 @@ namespace rust_generator
             if (has_interface_in)
             {
                 const auto incoming_generics = generic_declaration_for_params(analysed_params, true, false);
-                const auto incoming_where = generic_where_clause_for_params(analysed_params, true, false);
+                const auto incoming_where = generic_where_clause_for_params(analysed_params, true, false, true);
 
                 output("pub struct IncomingLocalBindings{}{}", incoming_generics, incoming_where);
                 output("{{");
@@ -1447,8 +1378,8 @@ namespace rust_generator
                         "\tpub {}: {},",
                         param.rust_name,
                         param.is_optimistic
-                            ? "canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<" + param.generic_name + ">>"
-                            : "canopy_rpc::InterfaceBindResult<std::sync::Arc<" + param.generic_name + ">>");
+                            ? "canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<dyn " + param.trait_path + ">>"
+                            : "canopy_rpc::InterfaceBindResult<std::sync::Arc<dyn " + param.trait_path + ">>");
                 }
                 output("}}");
                 output("");
@@ -1470,10 +1401,9 @@ namespace rust_generator
                     if (!param.is_interface || !param.is_in)
                         continue;
                     output(
-                        "\t\t\t{}: bind_{}_incoming_local::<{}>(service, {}),",
+                        "\t\t\t{}: bind_{}_incoming_local(service, {}),",
                         param.rust_name,
                         param.rust_name,
-                        param.generic_name,
                         "caller_zone_id.clone(), " + param.rust_name);
                 }
                 output("\t\t}}");
@@ -1510,7 +1440,7 @@ namespace rust_generator
             if (has_interface_out)
             {
                 const auto outgoing_generics = generic_declaration_for_params(analysed_params, false, true);
-                const auto outgoing_where = generic_where_clause_for_params(analysed_params, false, true);
+                const auto outgoing_where = generic_where_clause_for_params(analysed_params, false, true, true);
 
                 output("pub struct OutgoingLocalBindings{}{}", outgoing_generics, outgoing_where);
                 output("{{");
@@ -1521,19 +1451,10 @@ namespace rust_generator
 
                     output(
                         "\tpub {}: "
-                        "canopy_rpc::RemoteObjectBindResult<std::sync::Arc<std::sync::Mutex<canopy_rpc::ObjectStub>>>,",
+                        "canopy_rpc::RemoteObjectBindResult<std::sync::Arc<std::sync::Mutex<canopy_rpc::internal::"
+                        "ObjectStub>>>,",
                         param.rust_name);
                 }
-                // PhantomData carries the [out] interface generics since the field types
-                // are concrete (RemoteObjectBindResult<ObjectStub>), not parameterized.
-                output("\t#[doc(hidden)]");
-                output("\t_phantom: std::marker::PhantomData<(");
-                for (const auto& param : analysed_params)
-                {
-                    if (param.is_interface && param.is_out)
-                        output("{}, ", param.generic_name);
-                }
-                output(")>,");
                 output("}}");
                 output("");
 
@@ -1554,13 +1475,12 @@ namespace rust_generator
                     if (!param.is_interface || !param.is_out)
                         continue;
                     output(
-                        "\t\t\t{}: bind_{}_outgoing_local::<{}>(service, caller_zone_id.clone(), {}),",
+                        "\t\t\t{}: bind_{}_outgoing_local::<dyn {}>(service, caller_zone_id.clone(), {}),",
                         param.rust_name,
                         param.rust_name,
-                        param.generic_name,
+                        param.trait_path,
                         param.rust_name);
                 }
-                output("\t\t\t_phantom: std::marker::PhantomData,");
                 output("\t\t}}");
                 output("\t}}");
                 output("}}");
@@ -1762,7 +1682,7 @@ namespace rust_generator
         {
             const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
-            auto all_where = generic_where_clause_for_params(analysed_params, true, true);
+            auto all_where = generic_where_clause_for_params(analysed_params, true, true, true);
             const auto impl_bound
                 = impl_interface_bound_for_params(analysed_params, "Impl", "super::super::Interface", true);
             if (all_where.empty())
@@ -1804,7 +1724,7 @@ namespace rust_generator
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
-            const auto all_where = generic_where_clause_for_params(analysed_params, true, true);
+            const auto all_where = generic_where_clause_for_params(analysed_params, true, true, true);
             auto all_where_impl = all_where;
             const auto impl_bound
                 = impl_interface_bound_for_params(analysed_params, "Impl", "super::super::Interface", true);
@@ -1818,8 +1738,8 @@ namespace rust_generator
                 = normalise_cpp_type(function.get_return_type()) != "void" && !function.get_return_type().empty();
 
             // Use combined generics for Request when there are [out]-only interface params
-            const bool has_out_only = method_has_out_only_interface_params(iface, function, lib, root_module_name);
-            const auto effective_request_generics = has_out_only ? all_generics : request_generics;
+            const bool has_out_only = false;
+            const auto effective_request_generics = request_generics;
 
             output("#[doc(hidden)]");
             output(
@@ -1838,8 +1758,7 @@ namespace rust_generator
                     continue;
                 output("\t\t{},", param.rust_name);
             }
-            if (has_out_only)
-                output("\t\t_phantom,");
+            (void)has_out_only;
             output("\t}} = request;");
 
             for (const auto& param : analysed_params)
@@ -1895,7 +1814,7 @@ namespace rust_generator
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
-            auto all_where = generic_where_clause_for_params(analysed_params, true, true);
+            auto all_where = generic_where_clause_for_params(analysed_params, true, true, true);
             const auto impl_bound
                 = impl_interface_bound_for_params(analysed_params, "Impl", "super::super::Interface", true);
             if (all_where.empty())
@@ -2070,7 +1989,7 @@ namespace rust_generator
                 output("];");
                 output("");
                 write_request_response_shapes(output, iface, *function, lib, root_module_name);
-                write_param_binding_helpers(output, iface, *function);
+                write_param_binding_helpers(output, iface, *function, root_module_name);
                 write_method_local_binding_helpers(output, iface, *function, lib, root_module_name);
                 write_method_decoded_dispatch_helper(output, iface, *function, lib, root_module_name);
                 write_method_stub_dispatch_helper(output, iface, *function, lib, root_module_name);
@@ -2200,25 +2119,6 @@ namespace rust_generator
             output("\tinterface_binding::METHODS");
             output("}}");
             output("");
-            {
-                std::set<std::string> emitted_associated_types;
-                for (const auto& function : iface.get_functions())
-                {
-                    if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
-                        continue;
-                    const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
-                    for (const auto& param : analysed_params)
-                    {
-                        if (!param.is_interface)
-                            continue;
-                        if (!emitted_associated_types.insert(param.associated_type_name).second)
-                            continue;
-                        output("type {}: {};", param.associated_type_name, param.trait_path);
-                    }
-                }
-                if (!emitted_associated_types.empty())
-                    output("");
-            }
             output("#[doc(hidden)]");
             output("fn __rpc_dispatch_generated(&self, context: &canopy_rpc::DispatchContext, params: canopy_rpc::SendParams) -> canopy_rpc::SendResult where Self: Sized");
             output("{{");
@@ -2233,25 +2133,10 @@ namespace rust_generator
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
 
-                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
-                bool has_interface_params = false;
-                for (const auto& param : analysed_params)
-                {
-                    if (param.is_interface)
-                    {
-                        has_interface_params = true;
-                        break;
-                    }
-                }
-
                 output(
-                    "\t\t\t{}u64 => return interface_binding::{}::dispatch_generated::<Self{}>(self, context, params),",
+                    "\t\t\t{}u64 => return interface_binding::{}::dispatch_generated::<Self>(self, context, params),",
                     dispatch_method_count,
-                    sanitize_identifier(function->get_name()),
-                    has_interface_params ? ", "
-                                               + associated_type_args_for_params(analysed_params)
-                                                   .substr(1, associated_type_args_for_params(analysed_params).size() - 2)
-                                         : "");
+                    sanitize_identifier(function->get_name()));
                 dispatch_method_count++;
             }
             output("\t\t\t_ => return canopy_rpc::SendResult::new(canopy_rpc::INVALID_METHOD_ID(), vec![], vec![]),");
@@ -2319,6 +2204,19 @@ namespace rust_generator
             output("\t{{");
             output("\t\tmethod_metadata_for_interface(interface_id)");
             output("\t}}");
+            if (interface_is_dyn_compatible_in_current_shape(iface, lib, root_module_name))
+            {
+                output("");
+                output("\tfn local_interface_view(object: std::sync::Arc<canopy_rpc::RpcBase<T, RpcObjectAdapter>>, interface_id: canopy_rpc::InterfaceOrdinal) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>");
+                output("\t{{");
+                output("\t\tif matches_interface_id(interface_id)");
+                output("\t\t{{");
+                output("\t\t\tlet view: std::sync::Arc<dyn Interface> = std::sync::Arc::new(RpcObjectView {{ object }});");
+                output("\t\t\treturn Some(std::sync::Arc::new(canopy_rpc::internal::LocalInterfaceView::new(view)));");
+                output("\t\t}}");
+                output("\t\tNone");
+                output("\t}}");
+            }
             output("}}");
             output("");
             output("pub fn make_rpc_object<T>(implementation: T) -> std::sync::Arc<canopy_rpc::RpcBase<T, RpcObjectAdapter>>");
@@ -2328,6 +2226,82 @@ namespace rust_generator
             output("\tcanopy_rpc::make_rpc_object_with_adapter::<T, RpcObjectAdapter>(implementation)");
             output("}}");
             output("");
+            if (interface_is_dyn_compatible_in_current_shape(iface, lib, root_module_name))
+            {
+                output("struct RpcObjectView<T>");
+                output("where");
+                output("\tT: Interface,");
+                output("{{");
+                output("\tobject: std::sync::Arc<canopy_rpc::RpcBase<T, RpcObjectAdapter>>,");
+                output("}}");
+                output("");
+                output("impl<T> canopy_rpc::CastingInterface for RpcObjectView<T>");
+                output("where");
+                output("\tT: Interface,");
+                output("{{");
+                output("\tfn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool");
+                output("\t{{");
+                output("\t\tmatches_interface_id(interface_id)");
+                output("\t}}");
+                output("");
+                output("\tfn __rpc_call(&self, params: canopy_rpc::SendParams) -> canopy_rpc::SendResult");
+                output("\t{{");
+                output("\t\tcanopy_rpc::CastingInterface::__rpc_call(self.object.as_ref(), params)");
+                output("\t}}");
+                output("");
+                output("\tfn __rpc_local_object_stub(&self) -> Option<std::sync::Arc<std::sync::Mutex<canopy_rpc::internal::ObjectStub>>>");
+                output("\t{{");
+                output("\t\tcanopy_rpc::internal::get_object_stub(self.object.as_ref())");
+                output("\t}}");
+                output("}}");
+                output("");
+                output("impl<T> canopy_rpc::GeneratedRustInterface for RpcObjectView<T>");
+                output("where");
+                output("\tT: Interface,");
+                output("{{");
+                output("\tfn interface_name() -> &'static str");
+                output("\t{{");
+                output("\t\tNAME");
+                output("\t}}");
+                output("");
+                output("\tfn get_id(rpc_version: u64) -> u64");
+                output("\t{{");
+                output("\t\t<StubSkeleton as Interface>::get_id(rpc_version)");
+                output("\t}}");
+                output("");
+                output("\tfn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]");
+                output("\t{{");
+                output("\t\tinterface_binding::METHODS");
+                output("\t}}");
+                output("}}");
+                output("");
+                output("impl<T> Interface for RpcObjectView<T>");
+                output("where");
+                output("\tT: Interface,");
+                output("{{");
+                for (const auto& function : iface.get_functions())
+                {
+                    if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                        continue;
+                    const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
+                    output("\t{} {{", rust_method_signature(iface, *function, lib, root_module_name));
+                    output("\t\tself.object.implementation().{}(", sanitize_identifier(function->get_name()));
+                    {
+                        bool first = true;
+                        for (const auto& param : analysed_params)
+                        {
+                            if (!first)
+                                output.raw(", ");
+                            first = false;
+                            output.raw("{}", param.rust_name);
+                        }
+                    }
+                    output.raw(")\n");
+                    output("\t}}");
+                }
+                output("}}");
+                output("");
+            }
             output("pub trait Proxy: Interface");
             output("{{");
             output("fn proxy_caller(&self) -> Option<&dyn canopy_rpc::GeneratedRpcCaller>");
@@ -2385,7 +2359,7 @@ namespace rust_generator
                 const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
                 const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
                 const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
-                auto all_where = generic_where_clause_for_params(analysed_params, true, true);
+                auto all_where = generic_where_clause_for_params(analysed_params, true, true, true);
                 const auto self_bound = impl_interface_bound_for_params(analysed_params, "Self", "Interface", true);
                 if (all_where.empty())
                     all_where = " where " + self_bound + ", Self: Sized";
@@ -2483,6 +2457,16 @@ namespace rust_generator
             output("\tfn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool");
             output("\t{{");
             output("\t\tmatches_interface_id(interface_id)");
+            output("\t}}");
+            output("");
+            output("\tfn __rpc_remote_object_id(&self) -> Option<canopy_rpc::RemoteObject>");
+            output("\t{{");
+            output("\t\tself.caller.as_ref().map(|caller| caller.call_context().remote_object_id)");
+            output("\t}}");
+            output("");
+            output("\tfn __rpc_remote_object_proxy(&self) -> Option<std::sync::Arc<canopy_rpc::ObjectProxy>>");
+            output("\t{{");
+            output("\t\tself.caller.as_ref().and_then(|caller| caller.object_proxy())");
             output("\t}}");
             output("}}");
             output("impl canopy_rpc::GeneratedRustInterface for ProxySkeleton");
@@ -2589,7 +2573,9 @@ namespace rust_generator
             output("\t\tmatch self");
             output("\t\t{{");
             output("\t\t\tSelf::Local(_) => None,");
-            output("\t\t\tSelf::Remote(value) => value.remote_object_id(),");
+            output(
+                "\t\t\tSelf::Remote(value) => "
+                "canopy_rpc::CastingInterface::__rpc_remote_object_id(value.as_ref()),");
             output("\t\t}}");
             output("\t}}");
             output("");
@@ -2598,7 +2584,9 @@ namespace rust_generator
             output("\t\tmatch self");
             output("\t\t{{");
             output("\t\t\tSelf::Local(_) => None,");
-            output("\t\t\tSelf::Remote(value) => value.remote_object_proxy(),");
+            output(
+                "\t\t\tSelf::Remote(value) => "
+                "canopy_rpc::CastingInterface::__rpc_remote_object_proxy(value.as_ref()),");
             output("\t\t}}");
             output("\t}}");
             output("}}");
@@ -2618,6 +2606,28 @@ namespace rust_generator
             output("\t\t{{");
             output("\t\t\tSelf::Local(value) => value.__rpc_call(params),");
             output("\t\t\tSelf::Remote(value) => value.__rpc_call(params),");
+            output("\t\t}}");
+            output("\t}}");
+            output("");
+            output("\tfn __rpc_remote_object_id(&self) -> Option<canopy_rpc::RemoteObject>");
+            output("\t{{");
+            output("\t\tmatch self");
+            output("\t\t{{");
+            output("\t\t\tSelf::Local(_) => None,");
+            output(
+                "\t\t\tSelf::Remote(value) => "
+                "canopy_rpc::CastingInterface::__rpc_remote_object_id(value.as_ref()),");
+            output("\t\t}}");
+            output("\t}}");
+            output("");
+            output("\tfn __rpc_remote_object_proxy(&self) -> Option<std::sync::Arc<canopy_rpc::ObjectProxy>>");
+            output("\t{{");
+            output("\t\tmatch self");
+            output("\t\t{{");
+            output("\t\t\tSelf::Local(_) => None,");
+            output(
+                "\t\t\tSelf::Remote(value) => "
+                "canopy_rpc::CastingInterface::__rpc_remote_object_proxy(value.as_ref()),");
             output("\t\t}}");
             output("\t}}");
             output("}}");
@@ -2651,7 +2661,9 @@ namespace rust_generator
             output("\t\tmatch self");
             output("\t\t{{");
             output("\t\t\tSelf::Local(_) => None,");
-            output("\t\t\tSelf::Remote(value) => value.remote_object_id(),");
+            output(
+                "\t\t\tSelf::Remote(value) => "
+                "canopy_rpc::CastingInterface::__rpc_remote_object_id(value.as_ref()),");
             output("\t\t}}");
             output("\t}}");
             output("");
@@ -2660,7 +2672,9 @@ namespace rust_generator
             output("\t\tmatch self");
             output("\t\t{{");
             output("\t\t\tSelf::Local(_) => None,");
-            output("\t\t\tSelf::Remote(value) => value.remote_object_proxy(),");
+            output(
+                "\t\t\tSelf::Remote(value) => "
+                "canopy_rpc::CastingInterface::__rpc_remote_object_proxy(value.as_ref()),");
             output("\t\t}}");
             output("\t}}");
             output("}}");
@@ -2669,23 +2683,6 @@ namespace rust_generator
             output("where");
             output("\t{},", local_handle_bound);
             output("{{");
-            {
-                std::set<std::string> emitted_associated_types;
-                for (const auto& function : iface.get_functions())
-                {
-                    if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
-                        continue;
-                    const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
-                    for (const auto& param : analysed_params)
-                    {
-                        if (!param.is_interface)
-                            continue;
-                        if (!emitted_associated_types.insert(param.associated_type_name).second)
-                            continue;
-                        output("\ttype {} = <Local as Interface>::{};", param.associated_type_name, param.associated_type_name);
-                    }
-                }
-            }
             for (const auto& function : iface.get_functions())
             {
                 if (function->get_entity_type() != entity_type::FUNCTION_METHOD)

@@ -280,6 +280,7 @@ namespace rust_protobuf_generator
             std::string generic_name;
             std::string trait_path;
             std::string associated_type_name;
+            std::string proxy_skeleton_type;
             bool is_in = false;
             bool is_out = false;
             bool is_optimistic = false;
@@ -307,6 +308,8 @@ namespace rust_protobuf_generator
                 generic.associated_type_name = upper_camel_identifier(function.get_name()) + generic.generic_name;
                 generic.trait_path = "crate::" + sanitize_identifier(root_module_name)
                                      + "::" + qualified_public_type_path(*interface_entity);
+                generic.proxy_skeleton_type = "crate::" + sanitize_identifier(root_module_name) + "::"
+                                              + qualified_generated_interface_path(*interface_entity) + "::ProxySkeleton";
                 generic.is_in = is_in_param(parameter) || (!is_in_param(parameter) && !is_out_param(parameter));
                 generic.is_out = is_out_param(parameter);
                 generic.is_optimistic = is_optimistic;
@@ -321,25 +324,10 @@ namespace rust_protobuf_generator
             bool include_in,
             bool include_out)
         {
-            std::vector<std::string> generics;
-            for (const auto& param : params)
-            {
-                if ((param.is_in && include_in) || (param.is_out && include_out))
-                    generics.push_back(param.generic_name);
-            }
-
-            if (generics.empty())
-                return "";
-
-            std::string result = "<";
-            for (size_t i = 0; i < generics.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += generics[i];
-            }
-            result += ">";
-            return result;
+            (void)params;
+            (void)include_in;
+            (void)include_out;
+            return "";
         }
 
         std::string generic_where_clause_for_params(
@@ -347,26 +335,10 @@ namespace rust_protobuf_generator
             bool include_in,
             bool include_out)
         {
-            std::vector<std::string> constraints;
-            for (const auto& param : params)
-            {
-                if ((param.is_in && include_in) || (param.is_out && include_out))
-                {
-                    constraints.push_back(param.generic_name + ": " + param.trait_path);
-                }
-            }
-
-            if (constraints.empty())
-                return "";
-
-            std::string result = " where ";
-            for (size_t i = 0; i < constraints.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += constraints[i];
-            }
-            return result;
+            (void)params;
+            (void)include_in;
+            (void)include_out;
+            return "";
         }
 
         std::string impl_interface_bound_for_params(
@@ -374,36 +346,34 @@ namespace rust_protobuf_generator
             const std::string& impl_name,
             const std::string& interface_trait_path)
         {
-            std::vector<std::string> associated_types;
-            std::set<std::string> seen;
-            for (const auto& param : params)
-            {
-                if (!(param.is_out && !param.is_in))
-                    continue;
-                if (!seen.insert(param.associated_type_name).second)
-                    continue;
-                associated_types.push_back(param.associated_type_name + " = " + param.generic_name);
-            }
-
-            if (associated_types.empty())
-                return impl_name + ": " + interface_trait_path;
-
-            std::string result = impl_name + ": " + interface_trait_path + "<";
-            for (size_t i = 0; i < associated_types.size(); ++i)
-            {
-                if (i)
-                    result += ", ";
-                result += associated_types[i];
-            }
-            result += ">";
-            return result;
+            (void)params;
+            return impl_name + ": " + interface_trait_path;
         }
 
         std::string phantom_return_type_for_generics(const std::string& generics)
         {
             if (generics.empty())
                 return "()";
-            return "(" + generics.substr(1, generics.size() - 2) + ",)";
+            std::string result = "(";
+            const auto inner = generics.substr(1, generics.size() - 2);
+            size_t start = 0;
+            while (start < inner.size())
+            {
+                const auto comma = inner.find(',', start);
+                const auto end = comma == std::string::npos ? inner.size() : comma;
+                auto name = inner.substr(start, end - start);
+                while (!name.empty() && name.front() == ' ')
+                    name.erase(name.begin());
+                while (!name.empty() && name.back() == ' ')
+                    name.pop_back();
+                if (!name.empty())
+                    result += "*const " + name + ", ";
+                if (comma == std::string::npos)
+                    break;
+                start = comma + 1;
+            }
+            result += ")";
+            return result;
         }
 
         std::string protobuf_namespace_path(const class_entity& entity)
@@ -1463,12 +1433,14 @@ namespace rust_protobuf_generator
                             std::shared_ptr<class_entity> interface_entity;
                             if (is_interface_param(iface, parameter.get_type(), is_optimistic, interface_entity))
                             {
-                                std::string generic_name;
+                                std::string trait_path;
+                                std::string proxy_skeleton_type;
                                 for (const auto& generic : interface_generics)
                                 {
                                     if (generic.param_name == field_name && generic.is_out)
                                     {
-                                        generic_name = generic.generic_name;
+                                        trait_path = generic.trait_path;
+                                        proxy_skeleton_type = generic.proxy_skeleton_type;
                                         break;
                                     }
                                 }
@@ -1494,12 +1466,11 @@ namespace rust_protobuf_generator
                                     field_name);
                                 output("\t\t{{");
                                 output(
-                                    "\t\t\tlet {}_binding = {}::bind_{}_incoming_local::<{}>(service, "
+                                    "\t\t\tlet {}_binding = {}::bind_{}_incoming_local(service, "
                                     "context.caller_zone_id.clone(), &{}_remote_object);",
                                     field_name,
                                     interface_module_path,
                                     field_name,
-                                    generic_name,
                                     field_name);
                                 output("\t\t\tif canopy_rpc::is_critical({}_binding.error_code)", field_name);
                                 output("\t\t\t{{");
@@ -1523,8 +1494,9 @@ namespace rust_protobuf_generator
                                     "\t\t\tlet {}_proxy = std::sync::Arc::new(<{} as "
                                     "canopy_rpc::GeneratedRustInterface>::create_remote_proxy({}_caller));",
                                     field_name,
-                                    generic_name,
+                                    proxy_skeleton_type,
                                     field_name);
+                                output("\t\t\tlet {}_proxy: std::sync::Arc<dyn {}> = {}_proxy;", field_name, trait_path, field_name);
                                 output(
                                     "\t\t\t{}",
                                     is_optimistic ? "canopy_rpc::Optimistic::from_value(canopy_rpc::LocalProxy::"

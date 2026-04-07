@@ -18,16 +18,16 @@ use crate::internal::service_proxy::GeneratedRpcCaller;
 /// - optimistic binding to a local object via weak semantics
 /// - optimistic binding to a remote object via remote proxy semantics
 #[derive(Debug)]
-pub struct LocalProxy<T> {
-    weak: Weak<T>,
+pub struct LocalProxy<T: ?Sized> {
+    weak: Option<Weak<T>>,
     remote: Option<Arc<T>>,
     was_bound: bool,
 }
 
-impl<T> LocalProxy<T> {
+impl<T: ?Sized> LocalProxy<T> {
     pub fn new(weak: Weak<T>) -> Self {
         Self {
-            weak,
+            weak: Some(weak),
             remote: None,
             was_bound: true,
         }
@@ -35,7 +35,7 @@ impl<T> LocalProxy<T> {
 
     pub fn null() -> Self {
         Self {
-            weak: Weak::new(),
+            weak: None,
             remote: None,
             was_bound: false,
         }
@@ -47,18 +47,20 @@ impl<T> LocalProxy<T> {
 
     pub fn from_remote(remote: Arc<T>) -> Self {
         Self {
-            weak: Weak::new(),
+            weak: None,
             remote: Some(remote),
             was_bound: true,
         }
     }
 
-    pub fn get_weak(&self) -> Weak<T> {
+    pub fn get_weak(&self) -> Option<Weak<T>> {
         self.weak.clone()
     }
 
     pub fn upgrade(&self) -> Option<Arc<T>> {
-        self.remote.clone().or_else(|| self.weak.upgrade())
+        self.remote
+            .clone()
+            .or_else(|| self.weak.as_ref().and_then(Weak::upgrade))
     }
 
     pub fn expired(&self) -> bool {
@@ -70,7 +72,7 @@ impl<T> LocalProxy<T> {
     }
 }
 
-impl<T> Clone for LocalProxy<T> {
+impl<T: ?Sized> Clone for LocalProxy<T> {
     fn clone(&self) -> Self {
         Self {
             weak: self.weak.clone(),
