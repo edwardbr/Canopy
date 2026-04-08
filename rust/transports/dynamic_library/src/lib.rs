@@ -7,6 +7,8 @@ pub mod ffi;
 pub mod loader;
 mod platform_ffi;
 pub mod service_endpoint;
+#[cfg(test)]
+mod test_support;
 
 pub use adapter::ChildTransportAdapter;
 pub use adapter::ParentTransportAdapter;
@@ -32,6 +34,6 @@ pub use loader::DynamicLibraryExports;
 pub use loader::LoadedChild;
 #[doc(hidden)]
 pub use service_endpoint::ChildServiceEndpoint;
-pub use service_endpoint::create_child_zone_from_init_params;
-pub use service_endpoint::create_child_zone_with_exported_object_from_init_params;
+pub use service_endpoint::attach_child_zone;
+pub use service_endpoint::attach_child_zone_with_exported_object;
 pub use service_endpoint::register_parent_transport_from_init_params;

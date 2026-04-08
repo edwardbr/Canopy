@@ -325,10 +325,8 @@ mod tests {
         CanopyByteBuffer, CanopyConnectionSettings, CanopyConstByteBuffer, CanopyDllInitParams,
         CanopyMutBackChannelSpan, borrow_remote_object, borrow_zone,
     };
-    use canopy_rpc::{
-        AddressType, DefaultValues, Encoding, InterfaceOrdinal, Method, Object, Zone, ZoneAddress,
-        ZoneAddressArgs,
-    };
+    use crate::test_support::{sample_remote_object, sample_zone_with};
+    use canopy_rpc::{DefaultValues, Encoding, InterfaceOrdinal, Method};
     use std::collections::HashMap;
 
     #[derive(Default)]
@@ -391,7 +389,7 @@ mod tests {
     ) -> i32 {
         let state = unsafe { &mut *(parent_ctx as *mut ParentState) };
         let result = unsafe { &mut *result };
-        let zone = sample_zone();
+        let zone = sample_zone_with(31337, 88, 0);
         state.zone_id_call_count += 1;
         state.zone_blob = zone.get_address().get_blob().to_vec();
 
@@ -405,35 +403,12 @@ mod tests {
         result.error_code
     }
 
-    fn sample_zone() -> Zone {
-        Zone::new(
-            ZoneAddress::create(ZoneAddressArgs::new(
-                DefaultValues::VERSION_3,
-                AddressType::Ipv4,
-                31337,
-                vec![127, 0, 0, 1],
-                32,
-                88,
-                16,
-                0,
-                vec![],
-            ))
-            .expect("sample zone address should be valid"),
-        )
-    }
-
-    fn sample_remote_object() -> RemoteObject {
-        sample_zone()
-            .with_object(Object::new(100))
-            .expect("with_object should succeed")
-    }
-
     fn stats_request(output_obj: &RemoteObject) -> SendParams {
         SendParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
             encoding_type: Encoding::ProtocolBuffers,
             tag: 99,
-            caller_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             remote_object_id: output_obj.clone(),
             interface_id: InterfaceOrdinal::new(7),
             method_id: Method::new(8),
@@ -450,8 +425,8 @@ mod tests {
 
         let mut allocator_state = AllocatorState::default();
         let mut parent_state = ParentState::default();
-        let parent_zone = sample_zone();
-        let child_zone = sample_zone();
+        let parent_zone = sample_zone_with(31337, 88, 0);
+        let child_zone = sample_zone_with(31337, 88, 0);
         let input_descr = CanopyConnectionSettings {
             inbound_interface_id: 1,
             outbound_interface_id: 2,
@@ -497,7 +472,7 @@ mod tests {
             protocol_version: DefaultValues::VERSION_3 as u64,
             encoding_type: Encoding::ProtocolBuffers,
             tag: 2,
-            caller_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             remote_object_id: child.output_obj().clone(),
             interface_id: InterfaceOrdinal::new(3),
             method_id: Method::new(4),
@@ -515,7 +490,7 @@ mod tests {
             protocol_version: DefaultValues::VERSION_3 as u64,
             encoding_type: Encoding::ProtocolBuffers,
             tag: 3,
-            caller_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             remote_object_id: child.output_obj().clone(),
             interface_id: InterfaceOrdinal::new(5),
             method_id: Method::new(6),
@@ -536,8 +511,8 @@ mod tests {
         };
 
         let mut allocator_state = AllocatorState::default();
-        let parent_zone = sample_zone();
-        let child_zone = sample_zone();
+        let parent_zone = sample_zone_with(31337, 88, 0);
+        let child_zone = sample_zone_with(31337, 88, 0);
         let input_descr = CanopyConnectionSettings {
             inbound_interface_id: 1,
             outbound_interface_id: 2,
@@ -565,7 +540,7 @@ mod tests {
 
         let try_cast_result = child.try_cast(&TryCastParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
-            caller_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             remote_object_id: output_obj.clone(),
             interface_id: InterfaceOrdinal::new(21),
             in_back_channel: Vec::new(),
@@ -576,7 +551,7 @@ mod tests {
             protocol_version: DefaultValues::VERSION_3 as u64,
             encoding_type: Encoding::ProtocolBuffers,
             tag: 10,
-            caller_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             remote_object_id: output_obj.clone(),
             interface_id: InterfaceOrdinal::new(11),
             method_id: Method::new(12),
@@ -587,8 +562,8 @@ mod tests {
         let add_ref_result = child.add_ref(&AddRefParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
             remote_object_id: output_obj.clone(),
-            caller_zone_id: sample_zone(),
-            requesting_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
+            requesting_zone_id: sample_zone_with(31337, 88, 0),
             build_out_param_channel: canopy_rpc::AddRefOptions::NORMAL,
             in_back_channel: Vec::new(),
         });
@@ -597,7 +572,7 @@ mod tests {
         let release_result = child.release(&ReleaseParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
             remote_object_id: output_obj.clone(),
-            caller_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             options: canopy_rpc::ReleaseOptions::NORMAL,
             in_back_channel: Vec::new(),
         });
@@ -606,14 +581,14 @@ mod tests {
         child.object_released(&ObjectReleasedParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
             remote_object_id: output_obj.clone(),
-            caller_zone_id: sample_zone(),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             in_back_channel: Vec::new(),
         });
 
         child.transport_down(&TransportDownParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
-            destination_zone_id: sample_zone(),
-            caller_zone_id: sample_zone(),
+            destination_zone_id: sample_zone_with(31337, 88, 0),
+            caller_zone_id: sample_zone_with(31337, 88, 0),
             in_back_channel: Vec::new(),
         });
 

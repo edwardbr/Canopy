@@ -1830,7 +1830,7 @@ pub struct CurrentServiceGuard {
 }
 
 #[doc(hidden)]
-pub fn bind_incoming_shared_interface_local_from_runtime<T, ProxyT>(
+pub fn bind_local_shared_interface<T, ProxyT>(
     service: &dyn ServiceRuntime,
     caller_zone_id: CallerZone,
     encap: &RemoteObject,
@@ -1845,7 +1845,7 @@ where
         return InterfaceBindResult::null(error_codes::OK());
     }
     if encap.as_zone() == service.zone_id() {
-        return match crate::internal::lookup_local_interface_view_from_runtime::<T>(
+        return match crate::internal::get_local_interface_view::<T>(
             service,
             encap.get_object_id(),
             interface_id,
@@ -1882,7 +1882,7 @@ where
 }
 
 #[doc(hidden)]
-pub fn bind_incoming_optimistic_interface_local_from_runtime<T, ProxyT>(
+pub fn bind_local_optimistic_interface<T, ProxyT>(
     service: &dyn ServiceRuntime,
     caller_zone_id: CallerZone,
     encap: &RemoteObject,
@@ -1897,7 +1897,7 @@ where
         return InterfaceBindResult::null(error_codes::OK());
     }
     if encap.as_zone() == service.zone_id() {
-        return match crate::internal::lookup_local_interface_view_from_runtime::<T>(
+        return match crate::internal::get_local_interface_view::<T>(
             service,
             encap.get_object_id(),
             interface_id,
@@ -1950,7 +1950,7 @@ where
 }
 
 #[doc(hidden)]
-pub fn bind_outgoing_local_erased_interface_from_runtime<T>(
+pub fn bind_shared_local_object<T>(
     service: &dyn ServiceRuntime,
     caller_zone_id: CallerZone,
     iface: &crate::internal::BoundInterface<Arc<T>>,
@@ -1970,7 +1970,7 @@ where
 }
 
 #[doc(hidden)]
-pub fn bind_outgoing_local_optimistic_erased_interface_from_runtime<T>(
+pub fn bind_optimistic_local_object<T>(
     service: &dyn ServiceRuntime,
     caller_zone_id: CallerZone,
     iface: &crate::internal::BoundInterface<crate::internal::LocalProxy<T>>,

@@ -111,11 +111,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::sample_remote_object;
     use canopy_rpc::internal::error_codes;
     use canopy_rpc::{
-        AddRefParams, AddressType, DefaultValues, GetNewZoneIdParams, Object, ObjectReleasedParams,
-        PostParams, ReleaseParams, SendParams, StandardResult, TransportDownParams, TryCastParams,
-        Zone, ZoneAddress, ZoneAddressArgs,
+        AddRefParams, GetNewZoneIdParams, ObjectReleasedParams, PostParams, ReleaseParams,
+        SendParams, StandardResult, TransportDownParams, TryCastParams, Zone,
     };
     use std::collections::HashMap;
 
@@ -148,25 +148,6 @@ mod tests {
         fn get_new_zone_id(&self, _params: GetNewZoneIdParams) -> canopy_rpc::NewZoneIdResult {
             canopy_rpc::NewZoneIdResult::new(error_codes::OK(), Zone::default(), Vec::new())
         }
-    }
-
-    fn sample_remote_object() -> RemoteObject {
-        let zone_address = ZoneAddress::create(ZoneAddressArgs::new(
-            DefaultValues::VERSION_3,
-            AddressType::Ipv4,
-            8080,
-            vec![127, 0, 0, 1],
-            32,
-            7,
-            16,
-            0,
-            vec![],
-        ))
-        .expect("sample zone address should be valid");
-
-        Zone::new(zone_address)
-            .with_object(Object::new(42))
-            .expect("with_object should succeed")
     }
 
     #[derive(Default)]

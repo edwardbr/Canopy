@@ -190,7 +190,7 @@ namespace rust_protobuf_generator
             auto result = qualified_rust_namespace_path(iface);
             if (!result.empty())
                 result += "::";
-            result += "__Generated::" + upper_camel_identifier(iface.get_name());
+            result += "__generated::" + upper_camel_identifier(iface.get_name());
             return result;
         }
 
@@ -1667,7 +1667,7 @@ namespace rust_protobuf_generator
             {
                 output("#[doc(hidden)]");
                 output("#[allow(non_snake_case)]");
-                output("pub mod __Generated");
+                output("pub mod __generated");
                 output("{{");
                 for (auto& elem : scope.get_elements(entity_type::NAMESPACE_MEMBERS))
                 {

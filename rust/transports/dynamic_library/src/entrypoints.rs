@@ -247,11 +247,11 @@ mod tests {
     use crate::CanopySendParams;
     use crate::borrow_remote_object;
     use crate::borrow_zone;
+    use crate::test_support::{sample_remote_object, sample_zone};
     use canopy_rpc::internal::error_codes;
     use canopy_rpc::{
-        AddRefParams, AddressType, DefaultValues, Encoding, GetNewZoneIdParams, Object,
-        ObjectReleasedParams, PostParams, ReleaseParams, SendParams, StandardResult,
-        TransportDownParams, TryCastParams, Zone, ZoneAddress, ZoneAddressArgs,
+        AddRefParams, Encoding, GetNewZoneIdParams, Object, ObjectReleasedParams, PostParams,
+        ReleaseParams, SendParams, StandardResult, TransportDownParams, TryCastParams, Zone,
     };
     use std::collections::HashMap;
 
@@ -305,25 +305,6 @@ mod tests {
         }
     }
 
-    fn sample_remote_object() -> RemoteObject {
-        let zone_address = ZoneAddress::create(ZoneAddressArgs::new(
-            DefaultValues::VERSION_3,
-            AddressType::Ipv4,
-            8080,
-            vec![127, 0, 0, 1],
-            32,
-            7,
-            16,
-            0,
-            vec![],
-        ))
-        .expect("sample zone address should be valid");
-
-        Zone::new(zone_address)
-            .with_object(Object::new(42))
-            .expect("with_object should succeed")
-    }
-
     #[test]
     fn dll_init_and_send_round_trip_through_child_ctx() {
         let mut allocator_state = TestAllocator::default();
@@ -344,20 +325,7 @@ mod tests {
         assert_eq!(init_code, error_codes::OK());
         assert!(!init.child_ctx.is_null());
 
-        let zone = Zone::new(
-            ZoneAddress::create(ZoneAddressArgs::new(
-                DefaultValues::VERSION_3,
-                AddressType::Ipv4,
-                8080,
-                vec![127, 0, 0, 1],
-                32,
-                7,
-                16,
-                0,
-                vec![],
-            ))
-            .expect("sample zone address should be valid"),
-        );
+        let zone = sample_zone();
         let remote = zone
             .with_object(Object::new(17))
             .expect("with_object should succeed");

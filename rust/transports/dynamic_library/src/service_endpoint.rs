@@ -150,7 +150,7 @@ pub fn register_parent_transport_from_init_params(
     parent_transport
 }
 
-pub fn create_child_zone_from_init_params(
+pub fn attach_child_zone(
     name: impl Into<String>,
     service: Arc<impl ServiceRuntime + 'static>,
     params: &CanopyDllInitParams,
@@ -159,14 +159,14 @@ pub fn create_child_zone_from_init_params(
     ChildServiceEndpoint::with_parent_transport(service, parent_transport)
 }
 
-pub fn create_child_zone_with_exported_object_from_init_params(
+pub fn attach_child_zone_with_exported_object(
     name: impl Into<String>,
     service: Arc<impl ServiceRuntime + 'static>,
     params: &CanopyDllInitParams,
     object_id: canopy_rpc::Object,
     exported_object: Arc<dyn canopy_rpc::RpcObject>,
 ) -> Result<(ChildServiceEndpoint, canopy_rpc::RemoteObject), i32> {
-    let endpoint = create_child_zone_from_init_params(name, service.clone(), params);
+    let endpoint = attach_child_zone(name, service.clone(), params);
     service
         .register_rpc_object(object_id, exported_object)
         .map_err(|error_code| error_code)?;

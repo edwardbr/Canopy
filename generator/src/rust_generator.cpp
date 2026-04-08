@@ -229,7 +229,7 @@ namespace rust_generator
             auto result = qualified_rust_namespace_path(iface);
             if (!result.empty())
                 result += "::";
-            result += "__Generated::" + upper_camel_identifier(iface.get_name());
+            result += "__generated::" + upper_camel_identifier(iface.get_name());
             return result;
         }
 
@@ -1182,7 +1182,7 @@ namespace rust_generator
                         trait_path);
                     output("{{");
                     output(
-                        "\tcanopy_rpc::bind_incoming_optimistic_interface_local_from_runtime::<dyn {}, {}>("
+                        "\tcanopy_rpc::bind_local_optimistic_interface::<dyn {}, {}>("
                         "service, caller_zone_id, encap, {}, |proxy| {{ let view: std::sync::Arc<dyn {}> = proxy; view "
                         "}})",
                         trait_path,
@@ -1203,7 +1203,7 @@ namespace rust_generator
                         trait_path);
                     output("{{");
                     output(
-                        "\tcanopy_rpc::bind_incoming_shared_interface_local_from_runtime::<dyn {}, {}>("
+                        "\tcanopy_rpc::bind_local_shared_interface::<dyn {}, {}>("
                         "service, caller_zone_id, encap, {}, |proxy| {{ let view: std::sync::Arc<dyn {}> = proxy; view "
                         "}})",
                         trait_path,
@@ -1245,11 +1245,11 @@ namespace rust_generator
                 output("{{");
                 if (is_optimistic)
                 {
-                    output("\tcanopy_rpc::bind_outgoing_local_optimistic_erased_interface_from_runtime(service, caller_zone_id, iface.as_inner())");
+                    output("\tcanopy_rpc::bind_optimistic_local_object(service, caller_zone_id, iface.as_inner())");
                 }
                 else
                 {
-                    output("\tcanopy_rpc::bind_outgoing_local_erased_interface_from_runtime(service, caller_zone_id, iface.as_inner(), canopy_rpc::InterfacePointerKind::Shared)");
+                    output("\tcanopy_rpc::bind_shared_local_object(service, caller_zone_id, iface.as_inner(), canopy_rpc::InterfacePointerKind::Shared)");
                 }
                 output("}}");
                 output("");
@@ -2813,11 +2813,11 @@ namespace rust_generator
                 {
                     has_interfaces = true;
                     output(
-                        "pub use __Generated::{}::Interface as {};",
+                        "pub use __generated::{}::Interface as {};",
                         upper_camel_identifier(elem->get_name()),
                         upper_camel_identifier(elem->get_name()));
                     output(
-                        "pub use __Generated::{}::Handle as {}Handle;",
+                        "pub use __generated::{}::Handle as {}Handle;",
                         upper_camel_identifier(elem->get_name()),
                         upper_camel_identifier(elem->get_name()));
                 }
@@ -2838,7 +2838,7 @@ namespace rust_generator
             {
                 output("#[doc(hidden)]");
                 output("#[allow(non_snake_case)]");
-                output("pub mod __Generated");
+                output("pub mod __generated");
                 output("{{");
                 for (const auto& elem : scope.get_elements(entity_type::NAMESPACE_MEMBERS))
                 {

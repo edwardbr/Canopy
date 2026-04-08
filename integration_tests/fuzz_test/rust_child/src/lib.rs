@@ -1,20 +1,19 @@
 use canopy_protobuf_runtime_probe::fuzz_test::fuzz_test::{
-    __Generated as fg, IAutonomousNode, ICleanup, IGarbageCollector, ISharedObject, Instruction,
+    __generated as fg, IAutonomousNode, ICleanup, IGarbageCollector, ISharedObject, Instruction,
     NodeType,
 };
 use canopy_rpc::internal::error_codes;
 use canopy_rpc::{
-    AddressType, DefaultValues, Encoding, GeneratedRpcCallContext, InterfacePointerKind, Object,
-    RemoteObject, RootService, SendParams, SendResult, ServiceProxy, ServiceRuntime, Zone,
-    ZoneAddress, ZoneAddressArgs,
+    AddressType, ChildService, DefaultValues, Encoding, GeneratedRpcCallContext,
+    InterfacePointerKind, Object, RemoteObject, SendParams, SendResult, ServiceProxy,
+    ServiceRuntime, Zone, ZoneAddress, ZoneAddressArgs,
 };
 use canopy_transport_dynamic_library as dll;
 use canopy_transport_local::create_child_zone_with_exported_object;
 use std::sync::{Arc, Mutex};
 
-fn zone_from_ffi(value: dll::ffi::CanopyZone) -> Zone {
-    let raw_blob = value.address.blob;
-    if raw_blob.data.is_null() || raw_blob.size == 0 {
+fn child_output_object(params: &dll::CanopyDllInitParams) -> RemoteObject {
+    let child_zone = dll::decode_zone_or_else(params.child_zone, || {
         Zone::new(
             ZoneAddress::create(ZoneAddressArgs::new(
                 DefaultValues::VERSION_3,
@@ -29,14 +28,7 @@ fn zone_from_ffi(value: dll::ffi::CanopyZone) -> Zone {
             ))
             .expect("fallback child zone"),
         )
-    } else {
-        let blob = unsafe { std::slice::from_raw_parts(raw_blob.data, raw_blob.size).to_vec() };
-        Zone::new(ZoneAddress::new(blob))
-    }
-}
-
-fn child_output_object(params: &dll::CanopyDllInitParams) -> RemoteObject {
-    let child_zone = zone_from_ffi(params.child_zone);
+    });
     child_zone
         .with_object(Object::new(100))
         .expect("child output object")
@@ -117,7 +109,7 @@ impl RustFuzzNode {
             return canopy_rpc::Shared::from_arc(node);
         };
 
-        canopy_rpc::lookup_local_interface_view_from_runtime::<dyn IAutonomousNode>(
+        canopy_rpc::get_interface_view::<dyn IAutonomousNode>(
             service_runtime.as_ref(),
             object_id,
             canopy_rpc::InterfaceOrdinal::new(fg::IAutonomousNode::ID_RPC_V3),
@@ -139,13 +131,11 @@ impl RustFuzzNode {
                 object_id, rpc_object,
             )));
             if service_runtime.register_stub(&stub) == error_codes::OK() {
-                if let Ok(view) =
-                    canopy_rpc::lookup_local_interface_view_from_runtime::<dyn ISharedObject>(
-                        service_runtime.as_ref(),
-                        object_id,
-                        canopy_rpc::InterfaceOrdinal::new(fg::ISharedObject::ID_RPC_V3),
-                    )
-                {
+                if let Ok(view) = canopy_rpc::get_interface_view::<dyn ISharedObject>(
+                    service_runtime.as_ref(),
+                    object_id,
+                    canopy_rpc::InterfaceOrdinal::new(fg::ISharedObject::ID_RPC_V3),
+                ) {
                     return canopy_rpc::Shared::from_arc(view);
                 }
             }
@@ -895,9 +885,26 @@ pub extern "C" fn canopy_dll_init(params: *mut dll::CanopyDllInitParams) -> i32 
     let Some(params) = mut_ptr(params) else {
         return error_codes::INVALID_DATA();
     };
-    let child_zone = zone_from_ffi(params.child_zone);
-    let service = RootService::new_shared("rust-fuzz-child", child_zone.clone());
-    let output_object = child_output_object(params);
+    let init_params = *params;
+    let child_zone = dll::decode_zone_or_else(init_params.child_zone, || {
+        Zone::new(
+            ZoneAddress::create(ZoneAddressArgs::new(
+                DefaultValues::VERSION_3,
+                AddressType::Local,
+                0,
+                vec![],
+                DefaultValues::DEFAULT_SUBNET_SIZE_BITS,
+                77,
+                DefaultValues::DEFAULT_OBJECT_ID_SIZE_BITS,
+                0,
+                vec![],
+            ))
+            .expect("fallback child zone"),
+        )
+    });
+    let parent_zone = dll::decode_zone_or_else(init_params.parent_zone, Zone::default);
+    let service = ChildService::new_shared("rust-fuzz-child", child_zone.clone(), parent_zone);
+    let output_object = child_output_object(&init_params);
     dll::dll_init::<dll::ChildServiceEndpoint, _>(params, |_parent_transport, _input_descr| {
         Ok((
             {
@@ -905,14 +912,13 @@ pub extern "C" fn canopy_dll_init(params: *mut dll::CanopyDllInitParams) -> i32 
                     service.clone(),
                     output_object.get_object_id(),
                 );
-                let (endpoint, _root_object) =
-                    dll::create_child_zone_with_exported_object_from_init_params(
-                        "rust-fuzz-child-parent",
-                        service,
-                        params,
-                        output_object.get_object_id(),
-                        make_fuzz_node_rpc_object(node),
-                    )?;
+                let (endpoint, _root_object) = dll::attach_child_zone_with_exported_object(
+                    "rust-fuzz-child-parent",
+                    service,
+                    &init_params,
+                    output_object.get_object_id(),
+                    make_fuzz_node_rpc_object(node),
+                )?;
                 endpoint
             },
             output_object,

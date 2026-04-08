@@ -89,8 +89,6 @@ pub use internal::ReferenceRecord;
 #[doc(hidden)]
 pub use internal::ReleaseParams;
 #[doc(hidden)]
-pub use internal::RemoteInterfaceView;
-#[doc(hidden)]
 pub use internal::RemoteObjectBindResult;
 #[doc(hidden)]
 pub use internal::RemoteObjectResult;
@@ -133,18 +131,20 @@ pub use internal::add_ref_options_for_pointer_kind;
 #[doc(hidden)]
 pub use internal::bind_incoming_optimistic;
 #[doc(hidden)]
-pub use internal::bind_incoming_optimistic_interface_local_from_runtime;
-#[doc(hidden)]
 pub use internal::bind_incoming_shared;
 #[doc(hidden)]
-pub use internal::bind_incoming_shared_interface_local_from_runtime;
+pub use internal::bind_local_optimistic_interface;
+#[doc(hidden)]
+pub use internal::bind_local_shared_interface;
+#[doc(hidden)]
+pub use internal::bind_optimistic_local_object;
 #[doc(hidden)]
 pub use internal::bind_outgoing_interface;
 #[doc(hidden)]
-pub use internal::bind_outgoing_local_erased_interface_from_runtime;
-#[doc(hidden)]
-pub use internal::bind_outgoing_local_optimistic_erased_interface_from_runtime;
+pub use internal::bind_shared_local_object;
 pub use internal::bytes_to_string;
+#[doc(hidden)]
+pub use internal::get_local_interface_view as get_interface_view;
 #[doc(hidden)]
 pub use internal::get_object_stub;
 pub use internal::get_version;
@@ -153,8 +153,6 @@ pub use internal::is_bound_pointer_gone;
 pub use internal::is_bound_pointer_null;
 pub use internal::is_critical;
 pub use internal::is_error;
-#[doc(hidden)]
-pub use internal::lookup_local_interface_view_from_runtime;
 pub use internal::make_rpc_object_with_adapter;
 pub use internal::method_to_string;
 pub use internal::null_remote_descriptor;

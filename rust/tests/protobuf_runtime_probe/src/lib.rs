@@ -52,14 +52,14 @@ pub mod fuzz_test_protobuf {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::basic_rpc_probe::probe::{__Generated, IMath, IPeer};
-    use __Generated::IMath as i_math;
-    use __Generated::IPeer as i_peer;
+    use crate::basic_rpc_probe::probe::{__generated, IMath, IPeer};
+    use __generated::IMath as i_math;
+    use __generated::IPeer as i_peer;
 
     mod fuzz_interface_impls {
         use std::sync::Mutex;
 
-        use crate::fuzz_test::fuzz_test::{self as fuzz, __Generated as fg};
+        use crate::fuzz_test::fuzz_test::{self as fuzz, __generated as fg};
 
         macro_rules! impl_fuzz_runtime_interface {
             ($ty:ty, $module:ident) => {
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn generated_rust_layout_uses_camel_case_public_api_and_innermost_generated_module() {
-        use crate::nested_layout_probe::outer::inner::{__Generated, IWidget, WidgetState};
+        use crate::nested_layout_probe::outer::inner::{__generated, IWidget, WidgetState};
 
         fn assert_widget_trait<T: IWidget>() {}
         fn assert_generated_proxy_skeleton<T>()
@@ -428,12 +428,12 @@ mod tests {
         {
         }
 
-        assert_widget_trait::<__Generated::IWidget::ProxySkeleton>();
-        assert_generated_proxy_skeleton::<__Generated::IWidget::ProxySkeleton>();
+        assert_widget_trait::<__generated::IWidget::ProxySkeleton>();
+        assert_generated_proxy_skeleton::<__generated::IWidget::ProxySkeleton>();
 
         let state = WidgetState::default();
         assert_eq!(state.count, 0);
-        assert_eq!(__Generated::IWidget::NAME, "i_widget");
+        assert_eq!(__generated::IWidget::NAME, "i_widget");
     }
 
     #[test]
@@ -478,7 +478,7 @@ mod tests {
 
     #[test]
     fn rust_implements_moved_fuzz_interfaces() {
-        use crate::fuzz_test::fuzz_test::{self as fuzz, __Generated as fg};
+        use crate::fuzz_test::fuzz_test::{self as fuzz, __generated as fg};
         use fuzz::ISharedObject as _;
 
         use fuzz_interface_impls::{
@@ -900,7 +900,7 @@ mod tests {
 
     #[test]
     fn interface_pointer_kind_metadata_distinguishes_shared_from_optimistic() {
-        use crate::basic_rpc_probe_protobuf::probe::__Generated::IMath::interface_binding::{
+        use crate::basic_rpc_probe_protobuf::probe::__generated::IMath::interface_binding::{
             accept_optimistic_peer, accept_shared_peer,
         };
         use canopy_rpc::serialization::protobuf::{
@@ -947,9 +947,9 @@ mod cxx_dll_tests {
     use std::ffi::c_void;
     use std::sync::{Arc, Mutex};
 
-    use crate::basic_rpc_probe::probe::{__Generated, IMath, IPeer};
-    use __Generated::IMath as i_math;
-    use __Generated::IPeer as i_peer;
+    use crate::basic_rpc_probe::probe::{__generated, IMath, IPeer};
+    use __generated::IMath as i_math;
+    use __generated::IPeer as i_peer;
     use canopy_rpc::internal::error_codes;
     use canopy_rpc::{
         AddRefParams, AddressType, DefaultValues, Encoding, GetNewZoneIdParams, IMarshaller,
