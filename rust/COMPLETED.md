@@ -283,10 +283,10 @@ be translated to other language backends without carrying that history in
     and `IMath`
   - public Rust structs now use CamelCase value types such as `Point` and
     `LabeledValue`
-  - generated implementation details now sit under the innermost namespace's
-    `__Generated` module, for example `probe::__Generated::IPeer::ProxySkeleton`
+  - generated implementation details now sit directly under the innermost IDL
+    namespace module, for example `probe::i_peer::ProxySkeleton`
   - nested namespace placement is covered by a probe fixture that expects
-    `outer::inner::__Generated::IWidget::ProxySkeleton`
+    `outer::inner::i_widget::ProxySkeleton`
   - IDL names, fingerprints, method ordinals, protobuf message names, and
     protobuf field numbers remain derived from the original IDL spelling
 - Removed handwritten proxy method glue from the protobuf runtime probe:
@@ -1304,7 +1304,7 @@ be translated to other language backends without carrying that history in
   - input interface parameters remain method-generic, matching the fact that
     callers may pass any object implementing the generated interface trait
   - generated proxy/stub internals still keep the required type plumbing hidden
-    under `__Generated`
+    inside the per-interface module
   - verified with `cmake --build build_debug --target generator`,
     `cargo test -p canopy-rpc --lib`,
     `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`,
@@ -1313,7 +1313,7 @@ be translated to other language backends without carrying that history in
     `ctest --test-dir build_debug -R fuzz_transport_test --output-on-failure`
 - Generated Rust now has a first app-facing interface handle implementation:
   - each interface exports a public handle alias such as `probe::IPeerHandle`
-    backed by a generated `__Generated::IPeer::Handle<Local>` enum
+    backed by a generated `i_peer::Handle<Local>` enum
   - the handle can store either a local `Arc<Local>` or the generated remote
     `ProxySkeleton`, implements the generated interface, and implements
     outgoing binding by preserving local-vs-remote identity without exposing
@@ -1378,8 +1378,8 @@ be translated to other language backends without carrying that history in
     erased app-facing shape, e.g. `SharedPtr<dyn IPeer>` and
     `OptimisticPtr<dyn IPeer>`, rather than method-generic `SharedPtr<T>`
     bounds or output associated types; the generated request/response and
-    protobuf binding code keeps the hidden metadata/proxy construction under
-    `__Generated`
+    protobuf binding code keeps the hidden metadata/proxy construction inside
+    the per-interface module
   - generated local RPC object views now forward their hidden stub through an
     object-safe `CastingInterface` hook, allowing erased `dyn Interface`
     pointers to bind outgoing refs without exposing `ObjectStub` to

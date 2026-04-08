@@ -4,17 +4,23 @@
 //! boundaries. They are intentionally kept internal so application code still
 //! sees generated interfaces and pointer types rather than service/transport
 //! plumbing.
+//!
+//! `ServiceRuntime` and `TransportRuntime` both extend `IMarshaller`, which is
+//! the explicit Rust I/O boundary contract. No runtime lock may be held when
+//! calling any of those marshaller methods.
 
 use std::any::Any;
 use std::sync::{Arc, Mutex, Weak};
 
+use crate::internal::bindings_fwd::InterfacePointerKind;
 use crate::internal::marshaller::IMarshaller;
 use crate::internal::marshaller_params::{
     AddRefParams, PostParams, ReleaseParams, SendParams, SendResult, StandardResult, TryCastParams,
 };
 use crate::internal::pass_through::PassThrough;
+use crate::internal::service_proxy::ProxyCaller;
 use crate::internal::stub::ObjectStub;
-use crate::rpc_types::{Encoding, InterfaceOrdinal, Object, Zone};
+use crate::rpc_types::{Encoding, InterfaceOrdinal, Object, RemoteObject, Zone};
 
 pub trait ServiceRuntime: IMarshaller + Send + Sync {
     fn name(&self) -> &str;
@@ -37,6 +43,14 @@ pub trait ServiceRuntime: IMarshaller + Send + Sync {
     fn transport_down_from_params(&self, params: crate::TransportDownParams);
     fn concrete_service(&self) -> Option<&crate::internal::service::Service> {
         None
+    }
+    fn make_remote_caller(
+        &self,
+        remote_object_id: RemoteObject,
+        pointer_kind: InterfacePointerKind,
+    ) -> Option<Arc<dyn ProxyCaller>> {
+        self.concrete_service()
+            .and_then(|service| service.make_remote_caller(remote_object_id, pointer_kind))
     }
 
     fn outbound_send_via_transport(

@@ -299,20 +299,6 @@ mod tests {
         }
     }
 
-    impl canopy_rpc::GeneratedRustInterface for RecordingTarget {
-        fn interface_name() -> &'static str {
-            "RecordingTarget"
-        }
-
-        fn get_id(_rpc_version: u64) -> u64 {
-            77
-        }
-
-        fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
-            &[]
-        }
-    }
-
     fn zone(subnet: u32) -> Zone {
         Zone::new(
             ZoneAddress::create(ZoneAddressArgs::new(

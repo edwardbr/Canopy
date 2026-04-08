@@ -460,12 +460,7 @@ int main(
             if (enable_rust)
             {
                 rust_protobuf_generator::write_file(
-                    *objects,
-                    output_path,
-                    std::filesystem::path(path_prefix),
-                    sub_directory,
-                    base_filename,
-                    generated_proto_files);
+                    *objects, output_path, std::filesystem::path(path_prefix), sub_directory, base_filename, generated_proto_files);
             }
 
             // Generate the protobuf C++ serialization file

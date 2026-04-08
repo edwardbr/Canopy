@@ -79,8 +79,8 @@ public:
         if (this->use_host_in_child_)
             hst = this->local_host_ptr_.lock();
 
-        auto child_transport = std::make_shared<rpc::c_abi::child_transport>(
-            "new child", this->root_service_, CANOPY_TEST_C_ABI_DLL_PATH);
+        auto child_transport
+            = std::make_shared<rpc::c_abi::child_transport>("new child", this->root_service_, CANOPY_TEST_C_ABI_DLL_PATH);
 
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
             "new child", child_transport, hst);

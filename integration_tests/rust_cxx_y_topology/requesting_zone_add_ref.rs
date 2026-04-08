@@ -12,11 +12,15 @@ fn generated_remote_binding_sends_y_topology_add_ref_to_cxx_transport() {
         runtime.proxy.create_shared_peer(&mut created_shared),
         canopy_rpc::OK()
     );
+    let descriptor = created_shared
+        .remote_object_id()
+        .expect("generated C++ peer proxy should carry a remote descriptor");
+    let object_proxy = created_shared
+        .remote_object_proxy()
+        .expect("generated C++ peer proxy should carry an object proxy");
     let canopy_rpc::BoundInterface::Value(created_peer) = created_shared.into_inner() else {
         panic!("expected C++ created peer");
     };
-    let descriptor = canopy_rpc::GeneratedRustInterface::remote_object_id(created_peer.as_ref())
-        .expect("generated C++ peer proxy should carry a remote descriptor");
 
     *runtime
         .last_add_ref
@@ -54,9 +58,6 @@ fn generated_remote_binding_sends_y_topology_add_ref_to_cxx_transport() {
         .last_release
         .lock()
         .expect("last_release mutex poisoned") = None;
-    let object_proxy =
-        canopy_rpc::GeneratedRustInterface::remote_object_proxy(created_peer.as_ref())
-            .expect("generated C++ peer proxy should carry an object proxy");
     let release_result = object_proxy.release_remote_for_caller(
         canopy_rpc::CallerZone::from(sample_zone(1)),
         canopy_rpc::ReleaseOptions::NORMAL,
@@ -91,12 +92,13 @@ fn generated_optimistic_remote_binding_sends_y_topology_add_ref_to_cxx_transport
         runtime.proxy.create_shared_peer(&mut created_shared),
         canopy_rpc::OK()
     );
+    let descriptor = created_shared
+        .remote_object_id()
+        .expect("generated C++ peer proxy should carry a remote descriptor");
     let canopy_rpc::BoundInterface::Value(created_peer) = created_shared.into_inner() else {
         panic!("expected C++ created peer");
     };
-    let descriptor = canopy_rpc::GeneratedRustInterface::remote_object_id(created_peer.as_ref())
-        .expect("generated C++ peer proxy should carry a remote descriptor");
-    let created_peer = canopy_rpc::LocalProxy::from_shared(&created_peer);
+    let created_peer_ptr = canopy_rpc::OptimisticPtr::from_shared(&created_peer);
 
     *runtime
         .last_add_ref
@@ -105,7 +107,7 @@ fn generated_optimistic_remote_binding_sends_y_topology_add_ref_to_cxx_transport
 
     let bind_result = i_math::interface_binding::accept_optimistic_peer::bind_peer_outgoing_remote(
         canopy_rpc::CallerZone::from(sample_zone(1)),
-        &canopy_rpc::Optimistic::from_value(created_peer.clone()),
+        &created_peer_ptr,
     );
 
     assert_eq!(bind_result.error_code, canopy_rpc::OK());
@@ -134,12 +136,9 @@ fn generated_optimistic_remote_binding_sends_y_topology_add_ref_to_cxx_transport
         .last_release
         .lock()
         .expect("last_release mutex poisoned") = None;
-    let created_peer = created_peer
-        .upgrade()
-        .expect("remote optimistic proxy should upgrade");
-    let object_proxy =
-        canopy_rpc::GeneratedRustInterface::remote_object_proxy(created_peer.as_ref())
-            .expect("generated C++ peer proxy should carry an object proxy");
+    let object_proxy = created_peer_ptr
+        .remote_object_proxy()
+        .expect("generated C++ peer proxy should carry an object proxy");
     let release_result = object_proxy.release_remote_for_caller(
         canopy_rpc::CallerZone::from(sample_zone(1)),
         canopy_rpc::ReleaseOptions::OPTIMISTIC,

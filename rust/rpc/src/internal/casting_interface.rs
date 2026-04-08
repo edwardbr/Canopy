@@ -7,7 +7,6 @@ use crate::internal::bindings_fwd::GeneratedMethodBindingDescriptor;
 use crate::internal::error_codes;
 use crate::internal::marshaller_params::{SendParams, SendResult};
 use crate::internal::object_proxy::ObjectProxy;
-use crate::internal::service_proxy::GeneratedRpcCaller;
 use crate::internal::stub::ObjectStub;
 use crate::rpc_types::{InterfaceOrdinal, RemoteObject};
 
@@ -37,42 +36,36 @@ pub trait CastingInterface: Any + Send + Sync + 'static {
     fn __rpc_local_object_stub(&self) -> Option<Arc<Mutex<ObjectStub>>> {
         None
     }
-}
-
-#[doc(hidden)]
-pub trait GeneratedRustInterface: CastingInterface {
-    #[doc(hidden)]
-    fn interface_name() -> &'static str
-    where
-        Self: Sized;
 
     #[doc(hidden)]
-    fn get_id(rpc_version: u64) -> u64
-    where
-        Self: Sized;
+    fn __rpc_set_stub(&self, _stub: std::sync::Weak<Mutex<ObjectStub>>) {}
 
     #[doc(hidden)]
-    fn binding_metadata() -> &'static [GeneratedMethodBindingDescriptor]
-    where
-        Self: Sized;
+    fn __rpc_set_owner_service_ptr(&self, _owner_service: Option<usize>) {}
 
     #[doc(hidden)]
-    fn create_remote_proxy(caller: Arc<dyn GeneratedRpcCaller>) -> Self
-    where
-        Self: Sized,
-    {
-        let _ = caller;
-        panic!("remote proxy construction is only implemented by generated proxy skeletons")
-    }
-
-    #[doc(hidden)]
-    fn remote_object_id(&self) -> Option<RemoteObject> {
+    fn __rpc_get_local_interface_view(
+        self: Arc<Self>,
+        _interface_id: InterfaceOrdinal,
+    ) -> Option<Arc<dyn Any + Send + Sync>> {
         None
     }
 
     #[doc(hidden)]
-    fn remote_object_proxy(&self) -> Option<Arc<ObjectProxy>> {
-        None
+    fn __rpc_owner_service_ptr(&self) -> Option<usize> {
+        self.__rpc_local_object_stub().and_then(|stub| {
+            stub.lock()
+                .expect("object stub mutex poisoned")
+                .owner_service_addr()
+        })
+    }
+
+    #[doc(hidden)]
+    fn __rpc_get_method_metadata(
+        &self,
+        _interface_id: InterfaceOrdinal,
+    ) -> &'static [GeneratedMethodBindingDescriptor] {
+        &[]
     }
 }
 
@@ -80,7 +73,7 @@ pub trait GeneratedRustInterface: CastingInterface {
 mod tests {
     use std::sync::Weak;
 
-    use super::{CastingInterface, GeneratedRustInterface};
+    use super::CastingInterface;
     use crate::internal::marshaller_params::SendParams;
     use crate::internal::remote_pointer::LocalProxy;
     use crate::rpc_types::{InterfaceOrdinal, Method};
@@ -91,20 +84,6 @@ mod tests {
     impl crate::internal::remote_pointer::CreateLocalProxy for Example {
         fn create_local_proxy(weak: Weak<Self>) -> LocalProxy<Self> {
             LocalProxy::new(weak)
-        }
-    }
-
-    impl GeneratedRustInterface for Example {
-        fn interface_name() -> &'static str {
-            "example::i_demo"
-        }
-
-        fn get_id(_rpc_version: u64) -> u64 {
-            42
-        }
-
-        fn binding_metadata() -> &'static [crate::GeneratedMethodBindingDescriptor] {
-            &[]
         }
     }
 
@@ -119,13 +98,10 @@ mod tests {
     }
 
     #[test]
-    fn generated_rust_interface_extends_casting_interface() {
+    fn interface_binding_extends_casting_interface() {
         fn assert_casting<T: CastingInterface>() {}
 
         assert_casting::<Example>();
-        assert_eq!(Example::interface_name(), "example::i_demo");
-        assert_eq!(Example::get_id(3), 42);
-        assert!(Example::binding_metadata().is_empty());
         let example = Example;
         assert!(example.__rpc_query_interface(InterfaceOrdinal::new(42)));
         assert_eq!(

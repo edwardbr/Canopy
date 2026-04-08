@@ -70,12 +70,17 @@ if(NOT CANOPY_BUILD_COROUTINE)
       --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml" --target-dir
       "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    DEPENDS generator protoc "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml"
+    DEPENDS generator
+            protoc
+            "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml"
             "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/src/lib.rs"
             "${CMAKE_SOURCE_DIR}/rust/rpc/Cargo.toml"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/base.rs"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/casting_interface.rs"
             "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/pass_through.rs"
             "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/service.rs"
             "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/service_proxy.rs"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/stub.rs"
             "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/transport.rs"
             "${CMAKE_SOURCE_DIR}/rust/rpc/src/lib.rs"
             "${CMAKE_SOURCE_DIR}/rust/transports/dynamic_library/Cargo.toml"

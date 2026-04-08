@@ -21,10 +21,6 @@ pub use internal::ChildService;
 #[doc(hidden)]
 pub use internal::ConnectResult;
 #[doc(hidden)]
-pub use internal::CreateLocalProxy;
-#[doc(hidden)]
-pub use internal::CreateRemoteProxy;
-#[doc(hidden)]
 pub use internal::CurrentServiceGuard;
 #[doc(hidden)]
 pub use internal::DUMMY_OBJECT_ID;
@@ -39,10 +35,6 @@ pub use internal::GeneratedMethodBindingDescriptor;
 #[doc(hidden)]
 pub use internal::GeneratedRpcCallContext;
 #[doc(hidden)]
-pub use internal::GeneratedRpcCaller;
-#[doc(hidden)]
-pub use internal::GeneratedRustInterface;
-#[doc(hidden)]
 pub use internal::GetNewZoneIdParams;
 #[doc(hidden)]
 pub use internal::IMarshaller;
@@ -53,13 +45,12 @@ pub use internal::INVALID_METHOD_ID;
 #[doc(hidden)]
 pub use internal::InterfaceBindResult;
 #[doc(hidden)]
+#[doc(hidden)]
 pub use internal::InterfaceBindingOrigin;
 #[doc(hidden)]
 pub use internal::InterfacePointerKind;
 #[doc(hidden)]
 pub use internal::LocalObjectAdapter;
-#[doc(hidden)]
-pub use internal::LocalProxy;
 #[doc(hidden)]
 pub use internal::NewZoneIdResult;
 pub use internal::OBJECT_GONE;
@@ -82,6 +73,8 @@ pub use internal::PassThrough;
 pub use internal::PassThroughKey;
 #[doc(hidden)]
 pub use internal::PostParams;
+#[doc(hidden)]
+pub use internal::ProxyCaller;
 #[doc(hidden)]
 pub use internal::QueryInterfaceResult;
 #[doc(hidden)]
@@ -144,6 +137,10 @@ pub use internal::bind_outgoing_interface;
 pub use internal::bind_shared_local_object;
 pub use internal::bytes_to_string;
 #[doc(hidden)]
+pub use internal::create_remote_optimistic_interface;
+#[doc(hidden)]
+pub use internal::create_remote_shared_interface;
+#[doc(hidden)]
 pub use internal::get_local_interface_view as get_interface_view;
 #[doc(hidden)]
 pub use internal::get_object_stub;
@@ -157,8 +154,11 @@ pub use internal::make_rpc_object_with_adapter;
 pub use internal::method_to_string;
 pub use internal::null_remote_descriptor;
 pub use internal::object_to_string;
+#[doc(hidden)]
+pub use internal::optimistic_from_binding;
 pub use internal::release_options_for_pointer_kind;
 pub use internal::remote_object_to_string;
+pub use internal::shared_from_binding;
 pub use internal::zone_address_to_string;
 pub use internal::zone_to_string;
 pub use rpc_types::AddRefOptions;

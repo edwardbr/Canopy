@@ -6,12 +6,11 @@
 //! RPC interfaces. The Rust port needs the same architectural seam even if the
 //! implementation mechanics differ from C++ CRTP.
 
-use std::any::Any;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, Weak};
 
 use crate::internal::bindings_fwd::GeneratedMethodBindingDescriptor;
-use crate::internal::casting_interface::{CastingInterface, GeneratedRustInterface};
+use crate::internal::casting_interface::CastingInterface;
 use crate::internal::marshaller_params::{SendParams, SendResult};
 use crate::internal::remote_pointer::CreateLocalProxy;
 use crate::internal::runtime_traits::ServiceRuntime;
@@ -81,49 +80,9 @@ impl DispatchResult {
 }
 
 #[doc(hidden)]
-pub trait RpcObject: CastingInterface {
-    #[doc(hidden)]
-    fn __rpc_get_stub(&self) -> Option<Arc<Mutex<ObjectStub>>> {
-        None
-    }
+pub trait RpcObject: CastingInterface {}
 
-    #[doc(hidden)]
-    fn __rpc_set_stub(&self, _stub: Weak<Mutex<ObjectStub>>) {}
-
-    #[doc(hidden)]
-    fn __rpc_get_local_interface_view(
-        self: Arc<Self>,
-        _interface_id: InterfaceOrdinal,
-    ) -> Option<Arc<dyn Any + Send + Sync>> {
-        None
-    }
-
-    #[doc(hidden)]
-    fn __rpc_owner_service_ptr(&self) -> Option<usize> {
-        get_object_stub(self).and_then(|stub| {
-            stub.lock()
-                .expect("object stub mutex poisoned")
-                .owner_service_addr()
-        })
-    }
-
-    #[doc(hidden)]
-    fn __rpc_get_method_metadata(
-        &self,
-        _interface_id: InterfaceOrdinal,
-    ) -> &'static [GeneratedMethodBindingDescriptor] {
-        &[]
-    }
-}
-
-impl<T: ?Sized> RpcObject for T
-where
-    T: GeneratedRustInterface,
-{
-    fn __rpc_get_stub(&self) -> Option<Arc<Mutex<ObjectStub>>> {
-        self.__rpc_local_object_stub()
-    }
-}
+impl<T: ?Sized> RpcObject for T where T: CastingInterface {}
 
 #[doc(hidden)]
 pub struct LocalInterfaceView<T: ?Sized + Send + Sync + 'static> {
@@ -143,9 +102,9 @@ impl<T: ?Sized + Send + Sync + 'static> LocalInterfaceView<T> {
 #[doc(hidden)]
 pub fn get_object_stub<T>(object: &T) -> Option<Arc<Mutex<ObjectStub>>>
 where
-    T: RpcObject + ?Sized,
+    T: CastingInterface + ?Sized,
 {
-    object.__rpc_get_stub()
+    object.__rpc_local_object_stub()
 }
 
 #[doc(hidden)]
@@ -191,7 +150,7 @@ pub trait LocalObjectAdapter<Impl>: Send + Sync + 'static {
     fn local_interface_view(
         _object: Arc<RpcBase<Impl, Self>>,
         _interface_id: InterfaceOrdinal,
-    ) -> Option<Arc<dyn Any + Send + Sync>>
+    ) -> Option<Arc<dyn std::any::Any + Send + Sync>>
     where
         Self: Sized,
     {
@@ -202,6 +161,7 @@ pub trait LocalObjectAdapter<Impl>: Send + Sync + 'static {
 pub struct RpcBase<Impl, Adapter> {
     implementation: Impl,
     stub: Mutex<Weak<Mutex<ObjectStub>>>,
+    owner_service_addr: Mutex<Option<usize>>,
     _adapter: PhantomData<Adapter>,
 }
 
@@ -210,6 +170,7 @@ impl<Impl, Adapter> RpcBase<Impl, Adapter> {
         Self {
             implementation,
             stub: Mutex::new(Weak::new()),
+            owner_service_addr: Mutex::new(None),
             _adapter: PhantomData,
         }
     }
@@ -244,14 +205,8 @@ where
             DispatchContext::from(&params).with_owner_service_ptr(self.__rpc_owner_service_ptr());
         Adapter::dispatch(&self.implementation, &context, params)
     }
-}
 
-impl<Impl, Adapter> RpcObject for RpcBase<Impl, Adapter>
-where
-    Impl: Send + Sync + 'static,
-    Adapter: LocalObjectAdapter<Impl>,
-{
-    fn __rpc_get_stub(&self) -> Option<Arc<Mutex<ObjectStub>>> {
+    fn __rpc_local_object_stub(&self) -> Option<Arc<Mutex<ObjectStub>>> {
         self.stub
             .lock()
             .expect("rpc base stub mutex poisoned")
@@ -262,10 +217,24 @@ where
         *self.stub.lock().expect("rpc base stub mutex poisoned") = stub;
     }
 
+    fn __rpc_set_owner_service_ptr(&self, owner_service: Option<usize>) {
+        *self
+            .owner_service_addr
+            .lock()
+            .expect("rpc base owner_service mutex poisoned") = owner_service;
+    }
+
+    fn __rpc_owner_service_ptr(&self) -> Option<usize> {
+        *self
+            .owner_service_addr
+            .lock()
+            .expect("rpc base owner_service mutex poisoned")
+    }
+
     fn __rpc_get_local_interface_view(
         self: Arc<Self>,
         interface_id: InterfaceOrdinal,
-    ) -> Option<Arc<dyn Any + Send + Sync>> {
+    ) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
         Adapter::local_interface_view(self, interface_id)
     }
 
@@ -288,7 +257,7 @@ where
 mod tests {
     use std::sync::{Arc, Mutex, Weak};
 
-    use super::{DispatchContext, LocalObjectAdapter, RpcBase, RpcObject};
+    use super::{DispatchContext, LocalObjectAdapter, RpcBase};
     use crate::internal::casting_interface::CastingInterface;
     use crate::internal::marshaller_params::{SendParams, SendResult};
     use crate::internal::remote_pointer::{CreateLocalProxy, LocalProxy};
@@ -353,12 +322,12 @@ mod tests {
     #[test]
     fn rpc_base_tracks_attached_stub_like_cpp_base() {
         let base = RpcBase::<Demo, DemoAdapter>::new(Demo { value: 1 });
-        assert!(base.__rpc_get_stub().is_none());
+        assert!(super::get_object_stub(&base).is_none());
 
         let stub = Arc::new(Mutex::new(ObjectStub::new(Object::new(12))));
         base.__rpc_set_stub(Arc::downgrade(&stub));
 
-        let attached = base.__rpc_get_stub().expect("attached stub");
+        let attached = super::get_object_stub(&base).expect("attached stub");
         assert_eq!(
             attached.lock().expect("object stub mutex poisoned").id(),
             Object::new(12)

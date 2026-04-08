@@ -37,15 +37,7 @@ TEST(
 {
     auto created = rpc::zone_address::create(
         rpc::zone_address_args(
-            rpc::default_values::version_3,
-            rpc::address_type::ipv4,
-            9000,
-            {127, 0, 0, 1},
-            24,
-            0x1234,
-            20,
-            0x345,
-            {0xAA, 0x55}));
+            rpc::default_values::version_3, rpc::address_type::ipv4, 9000, {127, 0, 0, 1}, 24, 0x1234, 20, 0x345, {0xAA, 0x55}));
     ASSERT_TRUE(created.has_value());
 
     auto raw_blob = created->get_blob();

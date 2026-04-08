@@ -17,9 +17,7 @@ namespace proto_generator
     {
         auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
         value.erase(value.begin(), std::find_if(value.begin(), value.end(), [&](char ch) { return !is_space(ch); }));
-        value.erase(
-            std::find_if(value.rbegin(), value.rend(), [&](char ch) { return !is_space(ch); }).base(),
-            value.end());
+        value.erase(std::find_if(value.rbegin(), value.rend(), [&](char ch) { return !is_space(ch); }).base(), value.end());
         return value;
     }
 
@@ -126,25 +124,23 @@ namespace proto_generator
 
     std::string cpp_scalar_to_proto_type(const std::string& type)
     {
-        if (type == "error_code" || type == "int8_t" || type == "signed char" || type == "int16_t"
-            || type == "short" || type == "short int" || type == "signed short" || type == "signed short int"
-            || type == "int32_t" || type == "int" || type == "signed int" || type == "char"
-            || type == "wchar_t" || type == "char16_t" || type == "char32_t")
+        if (type == "error_code" || type == "int8_t" || type == "signed char" || type == "int16_t" || type == "short"
+            || type == "short int" || type == "signed short" || type == "signed short int" || type == "int32_t"
+            || type == "int" || type == "signed int" || type == "char" || type == "wchar_t" || type == "char16_t"
+            || type == "char32_t")
             return "int32";
 
         if (type == "int64_t" || type == "long" || type == "long int" || type == "signed long"
-            || type == "signed long int" || type == "long long" || type == "signed long long"
-            || type == "long long int" || type == "signed long long int" || type == "ptrdiff_t" || type == "ssize_t"
-            || type == "intptr_t")
+            || type == "signed long int" || type == "long long" || type == "signed long long" || type == "long long int"
+            || type == "signed long long int" || type == "ptrdiff_t" || type == "ssize_t" || type == "intptr_t")
             return "int64";
 
         if (type == "uint8_t" || type == "unsigned char" || type == "uint16_t" || type == "unsigned short"
             || type == "unsigned short int" || type == "uint32_t" || type == "unsigned int")
             return "uint32";
 
-        if (type == "uint64_t" || type == "unsigned long" || type == "unsigned long int"
-            || type == "unsigned long long" || type == "unsigned long long int" || type == "size_t"
-            || type == "uintptr_t")
+        if (type == "uint64_t" || type == "unsigned long" || type == "unsigned long int" || type == "unsigned long long"
+            || type == "unsigned long long int" || type == "size_t" || type == "uintptr_t")
             return "uint64";
 
         if (type == "float")
@@ -153,8 +149,8 @@ namespace proto_generator
             return "double";
         if (type == "bool")
             return "bool";
-        if (type == "std::string" || type == "string" || type == "char*" || type == "const char*"
-            || type == "char *" || type == "const char *")
+        if (type == "std::string" || type == "string" || type == "char*" || type == "const char*" || type == "char *"
+            || type == "const char *")
             return "string";
 
         return "";
@@ -274,8 +270,11 @@ namespace proto_generator
                 std::string value_type;
                 if (split_template_args(inner_content, key_type, value_type))
                 {
-                    return "map<" + cpp_type_to_proto_type(key_type, is_interface_type, is_enum_type_fn, sanitize_custom_type)
-                         + ", " + cpp_type_to_proto_type(value_type, is_interface_type, is_enum_type_fn, sanitize_custom_type) + ">";
+                    return "map<"
+                           + cpp_type_to_proto_type(key_type, is_interface_type, is_enum_type_fn, sanitize_custom_type)
+                           + ", "
+                           + cpp_type_to_proto_type(value_type, is_interface_type, is_enum_type_fn, sanitize_custom_type)
+                           + ">";
                 }
             }
             return "map<string, string>";
@@ -294,10 +293,12 @@ namespace proto_generator
                     if (split_template_args(inner_content, element_type, size_param))
                     {
                         return "repeated "
-                             + cpp_type_to_proto_type(element_type, is_interface_type, is_enum_type_fn, sanitize_custom_type);
+                               + cpp_type_to_proto_type(
+                                   element_type, is_interface_type, is_enum_type_fn, sanitize_custom_type);
                     }
                 }
-                return "repeated " + cpp_type_to_proto_type(inner_content, is_interface_type, is_enum_type_fn, sanitize_custom_type);
+                return "repeated "
+                       + cpp_type_to_proto_type(inner_content, is_interface_type, is_enum_type_fn, sanitize_custom_type);
             }
             return "repeated string";
         }

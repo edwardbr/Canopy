@@ -18,7 +18,7 @@ use crate::internal::marshaller_params::{
     ReleaseParams, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams,
 };
 use crate::internal::runtime_traits::{ServiceRuntime, TransportRuntime};
-use crate::internal::service_proxy::{GeneratedRpcCallContext, ServiceProxy};
+use crate::internal::service_proxy::{GeneratedRpcCallContext, ProxyCaller, ServiceProxy};
 use crate::internal::stub::ObjectStub;
 use crate::internal::version::{HIGHEST_SUPPORTED_VERSION, LOWEST_SUPPORTED_VERSION};
 use crate::rpc_types::CallerZone;
@@ -271,6 +271,20 @@ impl Service {
         Some(proxy)
     }
 
+    pub fn make_remote_caller(
+        &self,
+        remote_object_id: RemoteObject,
+        pointer_kind: InterfacePointerKind,
+    ) -> Option<Arc<dyn ProxyCaller>> {
+        let destination_zone_id = remote_object_id.as_zone();
+        let zone_proxy = self.get_zone_proxy(
+            &self.zone_id,
+            &destination_zone_id,
+            remote_object_id.clone(),
+        )?;
+        Some(zone_proxy.proxy_for_remote_object_with_ref(remote_object_id, pointer_kind))
+    }
+
     pub fn check_is_empty(&self) -> bool {
         self.stubs
             .lock()
@@ -310,7 +324,7 @@ impl Service {
         target: Arc<T>,
     ) -> Result<Arc<Mutex<ObjectStub>>, i32>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
         let stub = Arc::new(Mutex::new(ObjectStub::with_target(object_id, target)));
         let error_code = self.register_stub(&stub);
@@ -333,9 +347,13 @@ impl Service {
         Ok(stub)
     }
 
-    pub fn lookup_local_interface<T>(&self, object_id: Object) -> Result<Arc<T>, i32>
+    pub fn lookup_local_interface<T>(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<T>, i32>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
         let Some(stub) = self.get_object(object_id) else {
             return Err(error_codes::OBJECT_NOT_FOUND());
@@ -343,9 +361,7 @@ impl Service {
 
         stub.lock()
             .expect("object stub mutex poisoned")
-            .get_local_interface::<T>(crate::rpc_types::InterfaceOrdinal::new(T::get_id(
-                crate::version::get_version(),
-            )))
+            .get_local_interface::<T>(interface_id)
             .ok_or(error_codes::INVALID_INTERFACE_ID())
     }
 
@@ -385,25 +401,30 @@ impl Service {
     pub fn bind_incoming_shared_interface<T>(
         &self,
         encap: &RemoteObject,
-    ) -> InterfaceBindResult<Arc<T>>
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> InterfaceBindResult<crate::internal::SharedPtr<T>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface + crate::internal::CreateRemoteProxy,
     {
-        self.bind_incoming_shared_interface_from(self.zone_id.clone(), encap)
+        self.bind_incoming_shared_interface_from(self.zone_id.clone(), encap, interface_id)
     }
 
     pub fn bind_incoming_shared_interface_from<T>(
         &self,
         caller_zone_id: CallerZone,
         encap: &RemoteObject,
-    ) -> InterfaceBindResult<Arc<T>>
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> InterfaceBindResult<crate::internal::SharedPtr<T>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface + crate::internal::CreateRemoteProxy,
     {
         bind_incoming_shared(
             &self.zone_id,
             encap,
-            |object_id| self.lookup_local_interface::<T>(object_id),
+            |object_id| {
+                self.lookup_local_interface::<T>(object_id, interface_id)
+                    .map(crate::internal::SharedPtr::from_arc)
+            },
             |remote| {
                 let Some(service_proxy) =
                     self.get_zone_proxy(&caller_zone_id, &remote.as_zone(), remote.clone())
@@ -411,18 +432,17 @@ impl Service {
                     return InterfaceBindResult::null(error_codes::ZONE_NOT_FOUND());
                 };
                 let object_proxy = service_proxy.get_or_create_object_proxy(remote.clone());
-                let add_ref = object_proxy
-                    .add_ref_remote_for_caller(self.zone_id.clone(), InterfacePointerKind::Shared);
-                if error_codes::is_critical(add_ref.error_code) {
-                    return InterfaceBindResult::null(add_ref.error_code);
-                }
                 let caller = service_proxy.proxy_for_remote_object(remote.clone());
-                InterfaceBindResult::remote(
-                    error_codes::OK(),
+                match crate::internal::SharedPtr::create_remote_block(
                     Arc::new(
-                        <T as crate::internal::GeneratedRustInterface>::create_remote_proxy(caller),
+                        <T as crate::internal::CreateRemoteProxy>::create_remote_proxy(caller),
                     ),
-                )
+                    object_proxy,
+                    self.zone_id.clone(),
+                ) {
+                    Ok(pointer) => InterfaceBindResult::remote(error_codes::OK(), pointer),
+                    Err(error_code) => InterfaceBindResult::null(error_code),
+                }
             },
         )
     }
@@ -430,25 +450,27 @@ impl Service {
     pub fn bind_incoming_optimistic_interface<T>(
         &self,
         encap: &RemoteObject,
-    ) -> InterfaceBindResult<crate::internal::LocalProxy<T>>
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> InterfaceBindResult<crate::internal::OptimisticPtr<T>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface + crate::internal::CreateRemoteProxy,
     {
-        self.bind_incoming_optimistic_interface_from(self.zone_id.clone(), encap)
+        self.bind_incoming_optimistic_interface_from(self.zone_id.clone(), encap, interface_id)
     }
 
     pub fn bind_incoming_optimistic_interface_from<T>(
         &self,
         caller_zone_id: CallerZone,
         encap: &RemoteObject,
-    ) -> InterfaceBindResult<crate::internal::LocalProxy<T>>
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> InterfaceBindResult<crate::internal::OptimisticPtr<T>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface + crate::internal::CreateRemoteProxy,
     {
         bind_incoming_optimistic(
             &self.zone_id,
             encap,
-            |object_id| self.lookup_local_interface::<T>(object_id),
+            |object_id| self.lookup_local_interface::<T>(object_id, interface_id),
             |remote| {
                 let Some(service_proxy) =
                     self.get_zone_proxy(&caller_zone_id, &remote.as_zone(), remote.clone())
@@ -456,28 +478,28 @@ impl Service {
                     return InterfaceBindResult::null(error_codes::ZONE_NOT_FOUND());
                 };
                 let object_proxy = service_proxy.get_or_create_object_proxy(remote.clone());
-                let add_ref = object_proxy.add_ref_remote_for_caller(
-                    self.zone_id.clone(),
-                    InterfacePointerKind::Optimistic,
-                );
-                if error_codes::is_critical(add_ref.error_code) {
-                    return InterfaceBindResult::null(add_ref.error_code);
-                }
                 let caller = service_proxy.proxy_for_remote_object(remote.clone());
-                let proxy = Arc::new(
-                    <T as crate::internal::GeneratedRustInterface>::create_remote_proxy(caller),
-                );
-                InterfaceBindResult::remote(
-                    error_codes::OK(),
-                    crate::internal::LocalProxy::from_remote(proxy),
-                )
+                match crate::internal::OptimisticPtr::create_remote_block(
+                    Arc::new(
+                        <T as crate::internal::CreateRemoteProxy>::create_remote_proxy(caller),
+                    ),
+                    object_proxy,
+                    self.zone_id.clone(),
+                ) {
+                    Ok(pointer) => InterfaceBindResult::remote(error_codes::OK(), pointer),
+                    Err(error_code) => InterfaceBindResult::null(error_code),
+                }
             },
         )
     }
 
-    pub fn find_local_stub_for_interface<T>(&self, iface: &Arc<T>) -> Option<Arc<Mutex<ObjectStub>>>
+    pub fn find_local_stub_for_interface<T>(
+        &self,
+        iface: &Arc<T>,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Option<Arc<Mutex<ObjectStub>>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
         let stubs: Vec<Arc<Mutex<ObjectStub>>> = self
             .stubs
@@ -491,9 +513,7 @@ impl Service {
             let matches = {
                 let guard = stub.lock().expect("object stub mutex poisoned");
                 guard
-                    .get_local_interface::<T>(crate::rpc_types::InterfaceOrdinal::new(T::get_id(
-                        crate::version::get_version(),
-                    )))
+                    .get_local_interface::<T>(interface_id)
                     .is_some_and(|candidate| Arc::ptr_eq(&candidate, iface))
             };
             if matches {
@@ -536,11 +556,12 @@ impl Service {
         caller_zone_id: CallerZone,
         iface: Arc<T>,
         optimistic: bool,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
     ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
-        let stub = if let Some(stub) = self.find_local_stub_for_interface(&iface) {
+        let stub = if let Some(stub) = self.find_local_stub_for_interface(&iface, interface_id) {
             if optimistic
                 && stub
                     .lock()
@@ -656,9 +677,10 @@ impl Service {
         caller_zone_id: CallerZone,
         iface: &BoundInterface<Arc<T>>,
         pointer_kind: InterfacePointerKind,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
     ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
         bind_outgoing_interface(
             iface,
@@ -668,6 +690,7 @@ impl Service {
                     caller_zone_id,
                     iface.clone(),
                     pointer_kind.is_optimistic(),
+                    interface_id,
                 )
             },
             |_iface, _pointer_kind| {
@@ -683,13 +706,14 @@ impl Service {
     pub fn bind_outgoing_local_optimistic_interface<T>(
         &self,
         caller_zone_id: CallerZone,
-        iface: &BoundInterface<crate::internal::LocalProxy<T>>,
+        iface: &crate::internal::OptimisticPtr<T>,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
     ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
         bind_outgoing_interface(
-            iface,
+            iface.as_inner(),
             InterfacePointerKind::Optimistic,
             |iface, _pointer_kind| {
                 let Some(shared) = iface.upgrade() else {
@@ -699,7 +723,7 @@ impl Service {
                         RemoteObject::default(),
                     );
                 };
-                self.get_descriptor_from_local_interface(caller_zone_id, shared, true)
+                self.get_descriptor_from_local_interface(caller_zone_id, shared, true, interface_id)
             },
             |_iface, _pointer_kind| {
                 RemoteObjectBindResult::new(
@@ -714,103 +738,114 @@ impl Service {
     pub fn bind_outgoing_local_erased_interface<T>(
         &self,
         caller_zone_id: CallerZone,
-        iface: &BoundInterface<Arc<T>>,
+        iface: &crate::internal::Shared<Arc<T>>,
         pointer_kind: InterfacePointerKind,
     ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
     where
-        T: crate::internal::GeneratedRustInterface + ?Sized,
+        T: crate::internal::CastingInterface + ?Sized,
     {
-        let caller_zone_for_local = caller_zone_id.clone();
-        let caller_zone_for_remote = caller_zone_id;
-        bind_outgoing_interface(
-            iface,
-            pointer_kind,
-            |iface, pointer_kind| {
-                let Some(stub) = crate::internal::get_object_stub(iface.as_ref()) else {
-                    return RemoteObjectBindResult::new(
-                        error_codes::INVALID_DATA(),
-                        None,
-                        RemoteObject::default(),
-                    );
-                };
-                self.get_descriptor_from_local_stub(
-                    caller_zone_for_local,
-                    stub,
-                    pointer_kind.is_optimistic(),
-                )
-            },
-            |iface, pointer_kind| {
-                let Some(descriptor) = BindableInterfaceValue::remote_object_id(iface) else {
-                    return RemoteObjectBindResult::new(
-                        error_codes::INVALID_DATA(),
-                        None,
-                        RemoteObject::default(),
-                    );
-                };
-                let Some(object_proxy) = BindableInterfaceValue::remote_object_proxy(iface) else {
-                    return RemoteObjectBindResult::new(
-                        error_codes::OBJECT_GONE(),
-                        None,
-                        RemoteObject::default(),
-                    );
-                };
-                let add_ref =
-                    object_proxy.add_ref_remote_for_caller(caller_zone_for_remote, pointer_kind);
-                RemoteObjectBindResult::new(add_ref.error_code, None, descriptor)
-            },
-        )
+        if crate::internal::is_bound_pointer_gone(iface.as_inner()) {
+            return RemoteObjectBindResult::new(
+                crate::internal::error_codes::OBJECT_GONE(),
+                None,
+                crate::internal::null_remote_descriptor(),
+            );
+        }
+        let Some(iface) = iface.as_ref() else {
+            return RemoteObjectBindResult::new(
+                crate::internal::error_codes::OK(),
+                None,
+                crate::internal::null_remote_descriptor(),
+            );
+        };
+        if iface.remote_object_id().is_none() {
+            let Some(stub) = crate::internal::get_object_stub(iface.as_ref()) else {
+                return RemoteObjectBindResult::new(
+                    error_codes::INVALID_DATA(),
+                    None,
+                    RemoteObject::default(),
+                );
+            };
+            return self.get_descriptor_from_local_stub(
+                caller_zone_id,
+                stub,
+                pointer_kind.is_optimistic(),
+            );
+        }
+        let Some(descriptor) = iface.remote_object_id() else {
+            return RemoteObjectBindResult::new(
+                error_codes::INVALID_DATA(),
+                None,
+                RemoteObject::default(),
+            );
+        };
+        let Some(object_proxy) = iface.remote_object_proxy() else {
+            return RemoteObjectBindResult::new(
+                error_codes::OBJECT_GONE(),
+                None,
+                RemoteObject::default(),
+            );
+        };
+        let add_ref = object_proxy.add_ref_remote_for_caller(caller_zone_id, pointer_kind);
+        RemoteObjectBindResult::new(add_ref.error_code, None, descriptor)
     }
 
     pub fn bind_outgoing_local_optimistic_erased_interface<T>(
         &self,
         caller_zone_id: CallerZone,
-        iface: &BoundInterface<crate::internal::LocalProxy<T>>,
+        iface: &crate::internal::OptimisticPtr<T>,
     ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
     where
-        T: crate::internal::GeneratedRustInterface + ?Sized,
+        T: crate::internal::CastingInterface + ?Sized,
     {
-        let caller_zone_for_local = caller_zone_id.clone();
-        let caller_zone_for_remote = caller_zone_id;
-        bind_outgoing_interface(
-            iface,
-            InterfacePointerKind::Optimistic,
-            |iface, _pointer_kind| {
-                let Some(shared) = iface.upgrade() else {
-                    return RemoteObjectBindResult::new(
-                        error_codes::OBJECT_GONE(),
-                        None,
-                        RemoteObject::default(),
-                    );
-                };
-                let Some(stub) = crate::internal::get_object_stub(shared.as_ref()) else {
-                    return RemoteObjectBindResult::new(
-                        error_codes::INVALID_DATA(),
-                        None,
-                        RemoteObject::default(),
-                    );
-                };
-                self.get_descriptor_from_local_stub(caller_zone_for_local, stub, true)
-            },
-            |iface, pointer_kind| {
-                let Some(descriptor) = BindableInterfaceValue::remote_object_id(iface) else {
-                    return RemoteObjectBindResult::new(
-                        error_codes::INVALID_DATA(),
-                        None,
-                        RemoteObject::default(),
-                    );
-                };
-                let Some(object_proxy) = BindableInterfaceValue::remote_object_proxy(iface) else {
-                    return RemoteObjectBindResult::new(
-                        error_codes::OBJECT_GONE(),
-                        None,
-                        RemoteObject::default(),
-                    );
-                };
-                let add_ref =
-                    object_proxy.add_ref_remote_for_caller(caller_zone_for_remote, pointer_kind);
-                RemoteObjectBindResult::new(add_ref.error_code, None, descriptor)
-            },
-        )
+        if crate::internal::is_bound_pointer_gone(iface.as_inner()) {
+            return RemoteObjectBindResult::new(
+                crate::internal::error_codes::OBJECT_GONE(),
+                None,
+                crate::internal::null_remote_descriptor(),
+            );
+        }
+        let Some(iface) = iface.as_ref() else {
+            return RemoteObjectBindResult::new(
+                crate::internal::error_codes::OK(),
+                None,
+                crate::internal::null_remote_descriptor(),
+            );
+        };
+        if iface.remote_object_id().is_none() {
+            let Some(shared) = iface.upgrade() else {
+                return RemoteObjectBindResult::new(
+                    error_codes::OBJECT_GONE(),
+                    None,
+                    RemoteObject::default(),
+                );
+            };
+            let Some(stub) = crate::internal::get_object_stub(shared.as_ref()) else {
+                return RemoteObjectBindResult::new(
+                    error_codes::INVALID_DATA(),
+                    None,
+                    RemoteObject::default(),
+                );
+            };
+            return self.get_descriptor_from_local_stub(caller_zone_id, stub, true);
+        }
+        let Some(descriptor) = iface.remote_object_id() else {
+            return RemoteObjectBindResult::new(
+                error_codes::INVALID_DATA(),
+                None,
+                RemoteObject::default(),
+            );
+        };
+        let Some(object_proxy) = iface.remote_object_proxy() else {
+            return RemoteObjectBindResult::new(
+                error_codes::OBJECT_GONE(),
+                None,
+                RemoteObject::default(),
+            );
+        };
+        let add_ref = object_proxy
+            .add_ref_remote_for_caller(caller_zone_id, InterfacePointerKind::Optimistic);
+        RemoteObjectBindResult::new(add_ref.error_code, None, descriptor)
     }
 
     pub fn bind_outgoing_local_rpc_object_interface(
@@ -842,10 +877,10 @@ impl Service {
     pub fn bind_outgoing_local_optimistic_rpc_object_interface(
         &self,
         caller_zone_id: CallerZone,
-        iface: &BoundInterface<crate::internal::LocalProxy<dyn crate::internal::RpcObject>>,
+        iface: &crate::internal::OptimisticPtr<dyn crate::internal::RpcObject>,
     ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>> {
         bind_outgoing_interface(
-            iface,
+            iface.as_inner(),
             InterfacePointerKind::Optimistic,
             |iface, _pointer_kind| {
                 let Some(shared) = iface.upgrade() else {
@@ -942,7 +977,13 @@ impl Service {
             return StandardResult::new(error_codes::OBJECT_NOT_FOUND(), vec![]);
         };
 
-        self.outbound_release(params, stub)
+        self.release_local_stub(
+            stub,
+            params.options == ReleaseOptions::OPTIMISTIC,
+            params.caller_zone_id,
+        );
+
+        StandardResult::new(error_codes::OK(), vec![])
     }
 
     pub fn object_released(&self, params: ObjectReleasedParams) {
@@ -1061,7 +1102,7 @@ impl Service {
             return SendResult::new(error_codes::OBJECT_NOT_FOUND(), vec![], vec![]);
         };
 
-        self.outbound_send(params, stub)
+        ObjectStub::dispatch_send(&stub, params)
     }
 
     pub fn post(&self, params: PostParams) {
@@ -1089,7 +1130,7 @@ impl Service {
             return;
         };
 
-        self.outbound_post(params, stub);
+        ObjectStub::dispatch_post(&stub, params);
     }
 
     pub fn try_cast(&self, params: TryCastParams) -> StandardResult {
@@ -1120,7 +1161,7 @@ impl Service {
             return StandardResult::new(error_codes::OBJECT_NOT_FOUND(), vec![]);
         };
 
-        self.outbound_try_cast(params, stub)
+        ObjectStub::dispatch_try_cast(&stub, params)
     }
 
     pub fn add_ref(&self, params: AddRefParams) -> StandardResult {
@@ -1210,7 +1251,7 @@ impl Service {
                 &params.caller_zone_id,
                 &params.requesting_zone_id,
             );
-            return self.outbound_add_ref(params, stub);
+            return ObjectStub::dispatch_add_ref(&stub, params);
         }
 
         StandardResult::new(error_codes::OK(), vec![])
@@ -1222,85 +1263,6 @@ impl Service {
         }
 
         self.outbound_get_new_zone_id(params)
-    }
-
-    pub fn outbound_send(&self, params: SendParams, stub: Arc<Mutex<ObjectStub>>) -> SendResult {
-        let _ = self;
-        let target = stub
-            .lock()
-            .expect("object stub mutex poisoned")
-            .dispatch_target();
-
-        if let Some(target) = target {
-            return target.__rpc_call(params);
-        }
-
-        SendResult::new(error_codes::INVALID_INTERFACE_ID(), vec![], vec![])
-    }
-
-    pub fn outbound_post(&self, params: PostParams, stub: Arc<Mutex<ObjectStub>>) {
-        let _ = self.outbound_send(
-            SendParams {
-                protocol_version: params.protocol_version,
-                encoding_type: params.encoding_type,
-                tag: params.tag,
-                caller_zone_id: params.caller_zone_id,
-                remote_object_id: params.remote_object_id,
-                interface_id: params.interface_id,
-                method_id: params.method_id,
-                in_data: params.in_data,
-                in_back_channel: params.in_back_channel,
-            },
-            stub,
-        );
-    }
-
-    pub fn outbound_try_cast(
-        &self,
-        params: TryCastParams,
-        stub: Arc<Mutex<ObjectStub>>,
-    ) -> StandardResult {
-        let _ = self;
-        StandardResult::new(
-            stub.lock()
-                .expect("object stub mutex poisoned")
-                .try_cast(params.interface_id),
-            vec![],
-        )
-    }
-
-    pub fn outbound_add_ref(
-        &self,
-        params: AddRefParams,
-        stub: Arc<Mutex<ObjectStub>>,
-    ) -> StandardResult {
-        let _ = self;
-        let pointer_kind = if !(params.build_out_param_channel
-            & crate::rpc_types::AddRefOptions::OPTIMISTIC)
-            .is_empty()
-        {
-            crate::internal::InterfacePointerKind::Optimistic
-        } else {
-            crate::internal::InterfacePointerKind::Shared
-        };
-        stub.lock()
-            .expect("object stub mutex poisoned")
-            .add_ref(pointer_kind, params.caller_zone_id);
-        StandardResult::new(error_codes::OK(), vec![])
-    }
-
-    pub fn outbound_release(
-        &self,
-        params: ReleaseParams,
-        stub: Arc<Mutex<ObjectStub>>,
-    ) -> StandardResult {
-        self.release_local_stub(
-            stub,
-            params.options == ReleaseOptions::OPTIMISTIC,
-            params.caller_zone_id,
-        );
-
-        StandardResult::new(error_codes::OK(), vec![])
     }
 
     pub fn outbound_get_new_zone_id(&self, _params: GetNewZoneIdParams) -> NewZoneIdResult {
@@ -1466,7 +1428,7 @@ impl RootService {
         target: Arc<T>,
     ) -> Result<Arc<Mutex<ObjectStub>>, i32>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
         self.service.register_local_object(object_id, target)
     }
@@ -1698,7 +1660,7 @@ impl ChildService {
         target: Arc<T>,
     ) -> Result<Arc<Mutex<ObjectStub>>, i32>
     where
-        T: crate::internal::GeneratedRustInterface,
+        T: crate::internal::CastingInterface,
     {
         self.service.register_local_object(object_id, target)
     }
@@ -1836,10 +1798,10 @@ pub fn bind_local_shared_interface<T, ProxyT>(
     encap: &RemoteObject,
     interface_id: crate::rpc_types::InterfaceOrdinal,
     convert_remote: impl FnOnce(Arc<ProxyT>) -> Arc<T>,
-) -> InterfaceBindResult<Arc<T>>
+) -> InterfaceBindResult<crate::internal::SharedPtr<T>>
 where
     T: crate::internal::CastingInterface + ?Sized + Send + Sync + 'static,
-    ProxyT: crate::internal::GeneratedRustInterface,
+    ProxyT: crate::internal::CastingInterface + crate::internal::CreateRemoteProxy,
 {
     if *encap == crate::internal::null_remote_descriptor() || !encap.is_set() {
         return InterfaceBindResult::null(error_codes::OK());
@@ -1850,7 +1812,10 @@ where
             encap.get_object_id(),
             interface_id,
         ) {
-            Ok(iface) => InterfaceBindResult::local(error_codes::OK(), iface),
+            Ok(iface) => InterfaceBindResult::local(
+                error_codes::OK(),
+                crate::internal::SharedPtr::from_arc(iface),
+            ),
             Err(error_code) if error_code == error_codes::OBJECT_GONE() => {
                 InterfaceBindResult::gone(
                     error_code,
@@ -1865,12 +1830,32 @@ where
         return InterfaceBindResult::null(error_codes::TRANSPORT_ERROR());
     };
 
-    let binding =
-        concrete_service.bind_incoming_shared_interface_from::<ProxyT>(caller_zone_id, encap);
+    let binding = concrete_service.bind_incoming_shared_interface_from::<ProxyT>(
+        caller_zone_id,
+        encap,
+        interface_id,
+    );
     match binding.iface {
-        crate::internal::BoundInterface::Value(proxy) => {
-            InterfaceBindResult::remote(binding.error_code, convert_remote(proxy))
-        }
+        crate::internal::BoundInterface::Value(proxy) => InterfaceBindResult::remote(
+            binding.error_code,
+            match proxy.control_block() {
+                Some(remote) => crate::internal::SharedPtr::from_remote_block(
+                    convert_remote(
+                        proxy
+                            .as_ref()
+                            .expect("shared proxy should contain a value")
+                            .clone(),
+                    ),
+                    remote,
+                ),
+                None => crate::internal::SharedPtr::from_arc(convert_remote(
+                    proxy
+                        .as_ref()
+                        .expect("shared proxy should contain a value")
+                        .clone(),
+                )),
+            },
+        ),
         crate::internal::BoundInterface::Null => InterfaceBindResult::null(binding.error_code),
         crate::internal::BoundInterface::Gone => InterfaceBindResult::gone(
             binding.error_code,
@@ -1888,10 +1873,10 @@ pub fn bind_local_optimistic_interface<T, ProxyT>(
     encap: &RemoteObject,
     interface_id: crate::rpc_types::InterfaceOrdinal,
     convert_remote: impl FnOnce(Arc<ProxyT>) -> Arc<T>,
-) -> InterfaceBindResult<crate::internal::LocalProxy<T>>
+) -> InterfaceBindResult<crate::internal::OptimisticPtr<T>>
 where
     T: crate::internal::CastingInterface + ?Sized + Send + Sync + 'static,
-    ProxyT: crate::internal::GeneratedRustInterface,
+    ProxyT: crate::internal::CastingInterface + crate::internal::CreateRemoteProxy,
 {
     if *encap == crate::internal::null_remote_descriptor() || !encap.is_set() {
         return InterfaceBindResult::null(error_codes::OK());
@@ -1904,7 +1889,9 @@ where
         ) {
             Ok(iface) => InterfaceBindResult::local(
                 error_codes::OK(),
-                crate::internal::LocalProxy::from_remote(iface),
+                crate::internal::OptimisticPtr::from_value(
+                    crate::internal::LocalProxy::from_remote(iface),
+                ),
             ),
             Err(error_code) if error_code == error_codes::OBJECT_GONE() => {
                 InterfaceBindResult::gone(
@@ -1920,13 +1907,17 @@ where
         return InterfaceBindResult::null(error_codes::TRANSPORT_ERROR());
     };
 
-    let binding =
-        concrete_service.bind_incoming_optimistic_interface_from::<ProxyT>(caller_zone_id, encap);
+    let binding = concrete_service.bind_incoming_optimistic_interface_from::<ProxyT>(
+        caller_zone_id,
+        encap,
+        interface_id,
+    );
     if crate::internal::is_critical(binding.error_code) {
         return InterfaceBindResult::null(binding.error_code);
     }
     match binding.iface {
         crate::internal::BoundInterface::Value(proxy) => {
+            let remote = proxy.control_block();
             let Some(proxy) = proxy.upgrade() else {
                 return InterfaceBindResult::gone(
                     error_codes::OBJECT_GONE(),
@@ -1936,7 +1927,14 @@ where
             let view = convert_remote(proxy);
             InterfaceBindResult::remote(
                 binding.error_code,
-                crate::internal::LocalProxy::from_remote(view),
+                match remote {
+                    Some(remote) => {
+                        crate::internal::OptimisticPtr::adopt_remote_block(view, remote)
+                    }
+                    None => crate::internal::OptimisticPtr::from_value(
+                        crate::internal::LocalProxy::from_remote(view),
+                    ),
+                },
             )
         }
         crate::internal::BoundInterface::Null => InterfaceBindResult::null(binding.error_code),
@@ -1953,11 +1951,11 @@ where
 pub fn bind_shared_local_object<T>(
     service: &dyn ServiceRuntime,
     caller_zone_id: CallerZone,
-    iface: &crate::internal::BoundInterface<Arc<T>>,
+    iface: &crate::internal::Shared<Arc<T>>,
     pointer_kind: InterfacePointerKind,
 ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
 where
-    T: crate::internal::GeneratedRustInterface + ?Sized,
+    T: crate::internal::CastingInterface + ?Sized,
 {
     let Some(concrete_service) = service.concrete_service() else {
         return RemoteObjectBindResult::new(
@@ -1973,10 +1971,10 @@ where
 pub fn bind_optimistic_local_object<T>(
     service: &dyn ServiceRuntime,
     caller_zone_id: CallerZone,
-    iface: &crate::internal::BoundInterface<crate::internal::LocalProxy<T>>,
+    iface: &crate::internal::OptimisticPtr<T>,
 ) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
 where
-    T: crate::internal::GeneratedRustInterface + ?Sized,
+    T: crate::internal::CastingInterface + ?Sized,
 {
     let Some(concrete_service) = service.concrete_service() else {
         return RemoteObjectBindResult::new(
@@ -2194,17 +2192,22 @@ mod tests {
 
         let encap = RemoteObject::from(zone(1).with_object(Object::new(71)).expect("object zone"));
 
-        let shared = service.bind_incoming_shared_interface::<TestLocalObject>(&encap);
+        let shared = service
+            .bind_incoming_shared_interface::<TestLocalObject>(&encap, InterfaceOrdinal::new(88));
         assert_eq!(shared.error_code, error_codes::OK());
         assert!(shared.is_local());
         assert!(matches!(shared.iface, crate::BoundInterface::Value(_)));
         if let crate::BoundInterface::Value(iface) = shared.iface {
-            assert!(Arc::ptr_eq(&iface, &local));
+            let bound = iface.as_ref().expect("expected local shared iface");
+            assert!(Arc::ptr_eq(bound, &local));
         } else {
             panic!("expected bound local shared value");
         }
 
-        let optimistic = service.bind_incoming_optimistic_interface::<TestLocalObject>(&encap);
+        let optimistic = service.bind_incoming_optimistic_interface::<TestLocalObject>(
+            &encap,
+            InterfaceOrdinal::new(88),
+        );
         assert_eq!(optimistic.error_code, error_codes::OK());
         assert!(optimistic.is_local());
         assert!(matches!(optimistic.iface, crate::BoundInterface::Value(_)));
@@ -2225,6 +2228,7 @@ mod tests {
 
         let missing = service.bind_incoming_shared_interface::<TestLocalObject>(
             &RemoteObject::from(zone(1).with_object(Object::new(999)).expect("object zone")),
+            InterfaceOrdinal::new(88),
         );
         assert_eq!(missing.error_code, error_codes::OBJECT_NOT_FOUND());
         assert!(matches!(missing.iface, crate::BoundInterface::Null));
@@ -2238,28 +2242,23 @@ mod tests {
             }
         }
 
+        impl crate::internal::CreateRemoteProxy for OtherLocalObject {
+            fn create_remote_proxy(
+                _caller: std::sync::Arc<dyn crate::internal::ProxyCaller>,
+            ) -> Self {
+                Self
+            }
+        }
+
         impl CastingInterface for OtherLocalObject {
             fn __rpc_query_interface(&self, interface_id: InterfaceOrdinal) -> bool {
                 interface_id == InterfaceOrdinal::new(1234)
             }
         }
 
-        impl crate::internal::GeneratedRustInterface for OtherLocalObject {
-            fn interface_name() -> &'static str {
-                "test::other"
-            }
-
-            fn get_id(_rpc_version: u64) -> u64 {
-                1234
-            }
-
-            fn binding_metadata() -> &'static [crate::GeneratedMethodBindingDescriptor] {
-                &[]
-            }
-        }
-
         let wrong = service.bind_incoming_shared_interface::<OtherLocalObject>(
             &RemoteObject::from(zone(1).with_object(Object::new(72)).expect("object zone")),
+            InterfaceOrdinal::new(1234),
         );
         assert_eq!(wrong.error_code, error_codes::INVALID_INTERFACE_ID());
         assert!(matches!(wrong.iface, crate::BoundInterface::Null));
@@ -2277,6 +2276,7 @@ mod tests {
             caller_zone(9),
             &crate::BoundInterface::Value(local),
             crate::InterfacePointerKind::Shared,
+            InterfaceOrdinal::new(88),
         );
 
         assert_eq!(result.error_code, error_codes::OK());
@@ -2304,6 +2304,7 @@ mod tests {
             caller_zone(11),
             &crate::BoundInterface::Value(local),
             crate::InterfacePointerKind::Shared,
+            InterfaceOrdinal::new(88),
         );
 
         assert_eq!(result.error_code, error_codes::OK());
@@ -2327,13 +2328,15 @@ mod tests {
             caller_zone(12),
             &crate::BoundInterface::Value(local.clone()),
             crate::InterfacePointerKind::Shared,
+            InterfaceOrdinal::new(88),
         );
         assert_eq!(shared_result.error_code, error_codes::OK());
-        let proxy = LocalProxy::from_shared(&local);
+        let proxy = crate::OptimisticPtr::from_shared(&local);
 
         let result = service.bind_outgoing_local_optimistic_interface(
             caller_zone(12),
-            &crate::BoundInterface::Value(proxy),
+            &proxy,
+            InterfaceOrdinal::new(88),
         );
 
         assert_eq!(result.error_code, error_codes::OK());
@@ -2344,21 +2347,23 @@ mod tests {
         );
 
         let unregistered = Arc::new(TestLocalObject);
-        let unregistered_proxy = LocalProxy::from_shared(&unregistered);
+        let unregistered_proxy = crate::OptimisticPtr::from_shared(&unregistered);
         let unregistered_result = service.bind_outgoing_local_optimistic_interface(
             caller_zone(12),
-            &crate::BoundInterface::Value(unregistered_proxy),
+            &unregistered_proxy,
+            InterfaceOrdinal::new(88),
         );
         assert_eq!(unregistered_result.error_code, error_codes::OBJECT_GONE());
         assert!(unregistered_result.stub.is_none());
 
         let shared = Arc::new(TestLocalObject);
-        let gone_proxy = LocalProxy::from_shared(&shared);
+        let gone_proxy = crate::OptimisticPtr::from_shared(&shared);
         drop(shared);
 
         let gone = service.bind_outgoing_local_optimistic_interface(
             caller_zone(12),
-            &crate::BoundInterface::Value(gone_proxy),
+            &gone_proxy,
+            InterfaceOrdinal::new(88),
         );
         assert_eq!(gone.error_code, error_codes::OBJECT_GONE());
         assert!(gone.stub.is_none());
@@ -2377,10 +2382,10 @@ mod tests {
         assert_eq!(shared_result.error_code, error_codes::OK());
         let object_id = shared_result.descriptor.get_object_id();
 
-        let optimistic_proxy = LocalProxy::from_shared(&local);
+        let optimistic_proxy = crate::OptimisticPtr::from_shared(&local);
         let optimistic_result = service.bind_outgoing_local_optimistic_rpc_object_interface(
             caller_zone(13),
-            &crate::BoundInterface::Value(optimistic_proxy),
+            &optimistic_proxy,
         );
         assert_eq!(optimistic_result.error_code, error_codes::OK());
         assert_eq!(optimistic_result.descriptor.get_object_id(), object_id);
@@ -2414,6 +2419,12 @@ mod tests {
         }
     }
 
+    impl crate::internal::CreateRemoteProxy for TestLocalObject {
+        fn create_remote_proxy(_caller: std::sync::Arc<dyn crate::internal::ProxyCaller>) -> Self {
+            Self
+        }
+    }
+
     impl CastingInterface for TestLocalObject {
         fn __rpc_query_interface(&self, interface_id: InterfaceOrdinal) -> bool {
             interface_id == InterfaceOrdinal::new(88)
@@ -2421,20 +2432,6 @@ mod tests {
 
         fn __rpc_call(&self, params: SendParams) -> crate::SendResult {
             crate::SendResult::new(0, vec![params.method_id.get_val() as u8], vec![])
-        }
-    }
-
-    impl crate::internal::GeneratedRustInterface for TestLocalObject {
-        fn interface_name() -> &'static str {
-            "test::local"
-        }
-
-        fn get_id(_rpc_version: u64) -> u64 {
-            88
-        }
-
-        fn binding_metadata() -> &'static [crate::GeneratedMethodBindingDescriptor] {
-            &[]
         }
     }
 

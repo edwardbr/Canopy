@@ -9,7 +9,9 @@ use crate::internal::base::RpcObject;
 use crate::internal::bindings_fwd::InterfacePointerKind;
 use crate::internal::casting_interface::CastingInterface;
 use crate::internal::error_codes;
-use crate::internal::marshaller_params::{SendParams, SendResult};
+use crate::internal::marshaller_params::{
+    AddRefParams, PostParams, SendParams, SendResult, StandardResult, TryCastParams,
+};
 use crate::internal::service::Service;
 use crate::rpc_types::{CallerZone, InterfaceOrdinal, Object, ReleaseOptions};
 
@@ -83,10 +85,16 @@ impl ObjectStub {
 
     pub fn attach_to_service(&mut self, service: &Service) {
         self.owner_service_addr = Some(service as *const Service as usize);
+        if let Some(target) = &self.target {
+            target.__rpc_set_owner_service_ptr(self.owner_service_addr);
+        }
     }
 
     pub fn detach_from_service(&mut self) {
         self.owner_service_addr = None;
+        if let Some(target) = &self.target {
+            target.__rpc_set_owner_service_ptr(None);
+        }
     }
 
     pub fn owner_service_addr(&self) -> Option<usize> {
@@ -168,6 +176,74 @@ impl ObjectStub {
 
     pub fn dispatch_target(&self) -> Option<Arc<dyn RpcObject>> {
         self.target.clone()
+    }
+
+    pub fn dispatch_send(stub: &Arc<Mutex<ObjectStub>>, params: SendParams) -> SendResult {
+        let target = stub
+            .lock()
+            .expect("object stub mutex poisoned")
+            .dispatch_target();
+
+        if let Some(target) = target {
+            return target.__rpc_call(params);
+        }
+
+        SendResult::new(error_codes::INVALID_INTERFACE_ID(), vec![], vec![])
+    }
+
+    pub fn dispatch_post(stub: &Arc<Mutex<ObjectStub>>, params: PostParams) {
+        let _ = Self::dispatch_send(
+            stub,
+            SendParams {
+                protocol_version: params.protocol_version,
+                encoding_type: params.encoding_type,
+                tag: params.tag,
+                caller_zone_id: params.caller_zone_id,
+                remote_object_id: params.remote_object_id,
+                interface_id: params.interface_id,
+                method_id: params.method_id,
+                in_data: params.in_data,
+                in_back_channel: params.in_back_channel,
+            },
+        );
+    }
+
+    pub fn dispatch_try_cast(
+        stub: &Arc<Mutex<ObjectStub>>,
+        params: TryCastParams,
+    ) -> StandardResult {
+        StandardResult::new(
+            stub.lock()
+                .expect("object stub mutex poisoned")
+                .try_cast(params.interface_id),
+            vec![],
+        )
+    }
+
+    pub fn dispatch_add_ref(stub: &Arc<Mutex<ObjectStub>>, params: AddRefParams) -> StandardResult {
+        let pointer_kind = if !(params.build_out_param_channel
+            & crate::rpc_types::AddRefOptions::OPTIMISTIC)
+            .is_empty()
+        {
+            InterfacePointerKind::Optimistic
+        } else {
+            InterfacePointerKind::Shared
+        };
+
+        stub.lock()
+            .expect("object stub mutex poisoned")
+            .add_ref(pointer_kind, params.caller_zone_id);
+        StandardResult::new(error_codes::OK(), vec![])
+    }
+
+    pub fn dispatch_release_count(
+        stub: &Arc<Mutex<ObjectStub>>,
+        options: ReleaseOptions,
+        caller_zone_id: CallerZone,
+    ) -> u64 {
+        stub.lock()
+            .expect("object stub mutex poisoned")
+            .release(options, caller_zone_id)
     }
 
     pub fn try_cast(&self, interface_id: InterfaceOrdinal) -> i32 {
@@ -261,7 +337,7 @@ mod tests {
 
     use super::ObjectStub;
     use crate::internal::bindings_fwd::InterfacePointerKind;
-    use crate::internal::casting_interface::{CastingInterface, GeneratedRustInterface};
+    use crate::internal::casting_interface::CastingInterface;
     use crate::internal::marshaller_params::{SendParams, SendResult};
     use crate::internal::remote_pointer::LocalProxy;
     use crate::rpc_types::{
@@ -363,20 +439,6 @@ mod tests {
 
         fn __rpc_call(&self, params: SendParams) -> SendResult {
             SendResult::new(0, vec![params.method_id.get_val() as u8], vec![])
-        }
-    }
-
-    impl GeneratedRustInterface for TestTarget {
-        fn interface_name() -> &'static str {
-            "test::target"
-        }
-
-        fn get_id(_rpc_version: u64) -> u64 {
-            5
-        }
-
-        fn binding_metadata() -> &'static [crate::GeneratedMethodBindingDescriptor] {
-            &[]
         }
     }
 

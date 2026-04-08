@@ -52,18 +52,17 @@ pub mod fuzz_test_protobuf {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::basic_rpc_probe::probe::{__generated, IMath, IPeer};
-    use __generated::IMath as i_math;
-    use __generated::IPeer as i_peer;
+    use crate::basic_rpc_probe::probe::{IMath, IPeer, i_math, i_peer};
 
     mod fuzz_interface_impls {
         use std::sync::Mutex;
 
-        use crate::fuzz_test::fuzz_test::{self as fuzz, __generated as fg};
+        use crate::fuzz_test::fuzz_test as fg;
+        use crate::fuzz_test::fuzz_test::{self as fuzz};
 
         macro_rules! impl_fuzz_runtime_interface {
             ($ty:ty, $module:ident) => {
-                impl canopy_rpc::CreateLocalProxy for $ty {}
+                impl canopy_rpc::internal::CreateLocalProxy for $ty {}
 
                 impl canopy_rpc::CastingInterface for $ty {
                     fn __rpc_query_interface(
@@ -71,25 +70,6 @@ mod tests {
                         interface_id: canopy_rpc::InterfaceOrdinal,
                     ) -> bool {
                         fg::$module::matches_interface_id(interface_id)
-                    }
-                }
-
-                impl canopy_rpc::GeneratedRustInterface for $ty {
-                    fn interface_name() -> &'static str {
-                        fg::$module::NAME
-                    }
-
-                    fn get_id(rpc_version: u64) -> u64 {
-                        if rpc_version >= 3 {
-                            fg::$module::ID_RPC_V3
-                        } else {
-                            fg::$module::ID_RPC_V2
-                        }
-                    }
-
-                    fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]
-                    {
-                        fg::$module::interface_binding::METHODS
                     }
                 }
             };
@@ -110,14 +90,14 @@ mod tests {
         pub(super) struct AutonomousNodeImpl;
         pub(super) struct FuzzControllerImpl;
 
-        impl_fuzz_runtime_interface!(CleanupImpl, ICleanup);
-        impl_fuzz_runtime_interface!(GarbageCollectorImpl, IGarbageCollector);
-        impl_fuzz_runtime_interface!(SharedObjectImpl, ISharedObject);
-        impl_fuzz_runtime_interface!(FuzzFactoryImpl, IFuzzFactory);
-        impl_fuzz_runtime_interface!(FuzzCacheImpl, IFuzzCache);
-        impl_fuzz_runtime_interface!(FuzzWorkerImpl, IFuzzWorker);
-        impl_fuzz_runtime_interface!(AutonomousNodeImpl, IAutonomousNode);
-        impl_fuzz_runtime_interface!(FuzzControllerImpl, IFuzzController);
+        impl_fuzz_runtime_interface!(CleanupImpl, i_cleanup);
+        impl_fuzz_runtime_interface!(GarbageCollectorImpl, i_garbage_collector);
+        impl_fuzz_runtime_interface!(SharedObjectImpl, i_shared_object);
+        impl_fuzz_runtime_interface!(FuzzFactoryImpl, i_fuzz_factory);
+        impl_fuzz_runtime_interface!(FuzzCacheImpl, i_fuzz_cache);
+        impl_fuzz_runtime_interface!(FuzzWorkerImpl, i_fuzz_worker);
+        impl_fuzz_runtime_interface!(AutonomousNodeImpl, i_autonomous_node);
+        impl_fuzz_runtime_interface!(FuzzControllerImpl, i_fuzz_controller);
 
         impl fuzz::ICleanup for CleanupImpl {
             fn cleanup(
@@ -417,23 +397,21 @@ mod tests {
 
     #[test]
     fn generated_rust_layout_uses_camel_case_public_api_and_innermost_generated_module() {
-        use crate::nested_layout_probe::outer::inner::{__generated, IWidget, WidgetState};
+        use crate::nested_layout_probe::outer::inner::{IWidget, WidgetState, i_widget};
 
         fn assert_widget_trait<T: IWidget>() {}
         fn assert_generated_proxy_skeleton<T>()
         where
-            T: canopy_rpc::CreateLocalProxy
-                + canopy_rpc::CastingInterface
-                + canopy_rpc::GeneratedRustInterface,
+            T: canopy_rpc::internal::CreateLocalProxy + canopy_rpc::CastingInterface,
         {
         }
 
-        assert_widget_trait::<__generated::IWidget::ProxySkeleton>();
-        assert_generated_proxy_skeleton::<__generated::IWidget::ProxySkeleton>();
+        assert_widget_trait::<i_widget::ProxySkeleton>();
+        assert_generated_proxy_skeleton::<i_widget::ProxySkeleton>();
 
         let state = WidgetState::default();
         assert_eq!(state.count, 0);
-        assert_eq!(__generated::IWidget::NAME, "i_widget");
+        assert_eq!(i_widget::NAME, "i_widget");
     }
 
     #[test]
@@ -443,18 +421,25 @@ mod tests {
         let peer = i_peer::ProxySkeleton::new();
         assert_dyn_peer(&peer);
 
-        let shared = canopy_rpc::SharedPtr::<dyn IPeer>::from_arc(Arc::new(peer));
+        let shared = canopy_rpc::SharedPtr::<dyn IPeer>::from_arc(Arc::new(PeerImpl));
         assert!(shared.as_ref().is_some());
+        let mut shared_value = 0;
+        assert_eq!(shared.ping(&mut shared_value), canopy_rpc::OK());
+        assert_eq!(shared_value, 7);
 
-        let optimistic_target: Arc<dyn IPeer> = Arc::new(i_peer::ProxySkeleton::new());
-        let optimistic = canopy_rpc::OptimisticPtr::<dyn IPeer>::from_local_proxy(
-            canopy_rpc::LocalProxy::from_shared(&optimistic_target),
-        );
-        assert!(
-            optimistic
-                .as_ref()
-                .and_then(|proxy| proxy.upgrade())
-                .is_some()
+        let optimistic_target: Arc<dyn IPeer> = Arc::new(PeerImpl);
+        let optimistic = canopy_rpc::OptimisticPtr::<dyn IPeer>::from_shared(&optimistic_target);
+        let mut optimistic_value = 0;
+        assert_eq!(optimistic.ping(&mut optimistic_value), canopy_rpc::OK());
+        assert_eq!(optimistic_value, 7);
+
+        let local_target: Arc<dyn IPeer> = Arc::new(PeerImpl);
+        let local_optimistic = canopy_rpc::OptimisticPtr::<dyn IPeer>::from_shared(&local_target);
+        drop(local_target);
+        let mut gone_value = 0;
+        assert_eq!(
+            local_optimistic.ping(&mut gone_value),
+            canopy_rpc::OBJECT_GONE()
         );
 
         let service = canopy_rpc::RootService::new_shared("probe-peer", zone(41));
@@ -478,7 +463,8 @@ mod tests {
 
     #[test]
     fn rust_implements_moved_fuzz_interfaces() {
-        use crate::fuzz_test::fuzz_test::{self as fuzz, __generated as fg};
+        use crate::fuzz_test::fuzz_test as fg;
+        use crate::fuzz_test::fuzz_test::{self as fuzz};
         use fuzz::ISharedObject as _;
 
         use fuzz_interface_impls::{
@@ -517,9 +503,9 @@ mod tests {
         assert_eq!(shared_object.get_stats(&mut count), canopy_rpc::OK());
         assert_eq!(count, 1);
 
-        assert_eq!(fg::ISharedObject::NAME, "i_shared_object");
-        assert!(fg::ISharedObject::matches_interface_id(
-            canopy_rpc::InterfaceOrdinal::new(fg::ISharedObject::ID_RPC_V3)
+        assert_eq!(fg::i_shared_object::NAME, "i_shared_object");
+        assert!(fg::i_shared_object::matches_interface_id(
+            canopy_rpc::InterfaceOrdinal::new(fg::i_shared_object::ID_RPC_V3)
         ));
     }
 
@@ -527,7 +513,7 @@ mod tests {
 
     pub(super) struct PeerImpl;
 
-    impl canopy_rpc::CreateLocalProxy for PeerImpl {}
+    impl canopy_rpc::internal::CreateLocalProxy for PeerImpl {}
 
     impl canopy_rpc::CastingInterface for PeerImpl {
         fn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool {
@@ -540,24 +526,6 @@ mod tests {
         }
     }
 
-    impl canopy_rpc::GeneratedRustInterface for PeerImpl {
-        fn interface_name() -> &'static str {
-            i_peer::NAME
-        }
-
-        fn get_id(rpc_version: u64) -> u64 {
-            if rpc_version >= 3 {
-                i_peer::ID_RPC_V3
-            } else {
-                i_peer::ID_RPC_V2
-            }
-        }
-
-        fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
-            i_peer::interface_binding::METHODS
-        }
-    }
-
     impl IPeer for PeerImpl {
         fn ping(&self, value: &mut i32) -> i32 {
             *value = 7;
@@ -565,29 +533,11 @@ mod tests {
         }
     }
 
-    impl canopy_rpc::CreateLocalProxy for MathImpl {}
+    impl canopy_rpc::internal::CreateLocalProxy for MathImpl {}
 
     impl canopy_rpc::CastingInterface for MathImpl {
         fn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool {
             i_math::matches_interface_id(interface_id)
-        }
-    }
-
-    impl canopy_rpc::GeneratedRustInterface for MathImpl {
-        fn interface_name() -> &'static str {
-            i_math::NAME
-        }
-
-        fn get_id(rpc_version: u64) -> u64 {
-            if rpc_version >= 3 {
-                i_math::ID_RPC_V3
-            } else {
-                i_math::ID_RPC_V2
-            }
-        }
-
-        fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
-            i_math::interface_binding::METHODS
         }
     }
 
@@ -661,10 +611,6 @@ mod tests {
             peer: canopy_rpc::SharedPtr<dyn IPeer>,
             seen: &mut i32,
         ) -> i32 {
-            let canopy_rpc::BoundInterface::Value(peer) = peer.into_inner() else {
-                *seen = -1;
-                return canopy_rpc::OK();
-            };
             let mut value = 0;
             let result = peer.ping(&mut value);
             if result == canopy_rpc::OK() {
@@ -678,14 +624,6 @@ mod tests {
             peer: canopy_rpc::OptimisticPtr<dyn IPeer>,
             seen: &mut i32,
         ) -> i32 {
-            let canopy_rpc::BoundInterface::Value(peer) = peer.into_inner() else {
-                *seen = -1;
-                return canopy_rpc::OK();
-            };
-            let Some(peer) = peer.upgrade() else {
-                *seen = -2;
-                return canopy_rpc::OBJECT_GONE();
-            };
             let mut value = 0;
             let result = peer.ping(&mut value);
             if result == canopy_rpc::OK() {
@@ -840,10 +778,9 @@ mod tests {
             canopy_rpc::InterfacePointerKind::Shared,
             caller_zone_id.clone(),
         );
-        let proxy_peer_view = canopy_rpc::LocalProxy::from_shared(&proxy_peer);
         let mut seen_optimistic = -1;
         let accept_optimistic_result = proxy.accept_optimistic_peer(
-            canopy_rpc::Optimistic::from_value(proxy_peer_view),
+            canopy_rpc::OptimisticPtr::from_shared(&proxy_peer),
             &mut seen_optimistic,
         );
         assert_eq!(accept_optimistic_result, canopy_rpc::OK());
@@ -900,7 +837,7 @@ mod tests {
 
     #[test]
     fn interface_pointer_kind_metadata_distinguishes_shared_from_optimistic() {
-        use crate::basic_rpc_probe_protobuf::probe::__generated::IMath::interface_binding::{
+        use crate::basic_rpc_probe_protobuf::probe::i_math::interface_binding::{
             accept_optimistic_peer, accept_shared_peer,
         };
         use canopy_rpc::serialization::protobuf::{
@@ -947,9 +884,7 @@ mod cxx_dll_tests {
     use std::ffi::c_void;
     use std::sync::{Arc, Mutex};
 
-    use crate::basic_rpc_probe::probe::{__generated, IMath, IPeer};
-    use __generated::IMath as i_math;
-    use __generated::IPeer as i_peer;
+    use crate::basic_rpc_probe::probe::{IMath, IPeer, i_math, i_peer};
     use canopy_rpc::internal::error_codes;
     use canopy_rpc::{
         AddRefParams, AddressType, DefaultValues, Encoding, GetNewZoneIdParams, IMarshaller,
@@ -1421,7 +1356,7 @@ mod cxx_dll_tests {
         let mut seen_optimistic = -1;
         assert_eq!(
             proxy.accept_optimistic_peer(
-                canopy_rpc::Optimistic::from_value(canopy_rpc::LocalProxy::from_shared(&peer)),
+                canopy_rpc::OptimisticPtr::from_shared(&peer),
                 &mut seen_optimistic
             ),
             canopy_rpc::OK()
@@ -1433,13 +1368,9 @@ mod cxx_dll_tests {
             proxy.create_shared_peer(&mut created_shared),
             canopy_rpc::OK()
         );
-        let canopy_rpc::BoundInterface::Value(created_shared_peer) = created_shared.into_inner()
-        else {
-            panic!("expected C++ created shared peer");
-        };
         let mut created_shared_ping = 0;
         assert_eq!(
-            created_shared_peer.ping(&mut created_shared_ping),
+            created_shared.ping(&mut created_shared_ping),
             canopy_rpc::OK()
         );
         assert_eq!(created_shared_ping, 11);
@@ -1450,36 +1381,21 @@ mod cxx_dll_tests {
             proxy.create_optimistic_peer(&mut created_optimistic),
             canopy_rpc::OK()
         );
-        let canopy_rpc::BoundInterface::Value(created_optimistic_peer) =
-            created_optimistic.into_inner()
-        else {
-            panic!("expected C++ created optimistic peer");
-        };
-        let created_optimistic_peer = created_optimistic_peer
-            .upgrade()
-            .expect("remote optimistic proxy should upgrade");
         let mut created_optimistic_ping = 0;
         assert_eq!(
-            created_optimistic_peer.ping(&mut created_optimistic_ping),
+            created_optimistic.ping(&mut created_optimistic_ping),
             canopy_rpc::OK()
         );
         assert_eq!(created_optimistic_ping, 11);
 
         let mut echoed_shared: canopy_rpc::SharedPtr<dyn IPeer> = canopy_rpc::Shared::null();
         assert_eq!(
-            proxy.echo_shared_peer(
-                canopy_rpc::Shared::from_value(created_shared_peer.clone()),
-                &mut echoed_shared
-            ),
+            proxy.echo_shared_peer(created_shared.clone(), &mut echoed_shared),
             canopy_rpc::OK()
         );
-        let canopy_rpc::BoundInterface::Value(echoed_shared_peer) = echoed_shared.into_inner()
-        else {
-            panic!("expected echoed shared peer");
-        };
         let mut echoed_shared_ping = 0;
         assert_eq!(
-            echoed_shared_peer.ping(&mut echoed_shared_ping),
+            echoed_shared.ping(&mut echoed_shared_ping),
             canopy_rpc::OK()
         );
         assert_eq!(echoed_shared_ping, 11);
@@ -1487,25 +1403,12 @@ mod cxx_dll_tests {
         let mut echoed_optimistic: canopy_rpc::OptimisticPtr<dyn IPeer> =
             canopy_rpc::Optimistic::null();
         assert_eq!(
-            proxy.echo_optimistic_peer(
-                canopy_rpc::Optimistic::from_value(canopy_rpc::LocalProxy::from_shared(
-                    &created_optimistic_peer,
-                )),
-                &mut echoed_optimistic
-            ),
+            proxy.echo_optimistic_peer(created_optimistic.clone(), &mut echoed_optimistic),
             canopy_rpc::OK()
         );
-        let canopy_rpc::BoundInterface::Value(echoed_optimistic_peer) =
-            echoed_optimistic.into_inner()
-        else {
-            panic!("expected echoed optimistic peer");
-        };
-        let echoed_optimistic_peer = echoed_optimistic_peer
-            .upgrade()
-            .expect("remote optimistic proxy should upgrade");
         let mut echoed_optimistic_ping = 0;
         assert_eq!(
-            echoed_optimistic_peer.ping(&mut echoed_optimistic_ping),
+            echoed_optimistic.ping(&mut echoed_optimistic_ping),
             canopy_rpc::OK()
         );
         assert_eq!(echoed_optimistic_ping, 11);

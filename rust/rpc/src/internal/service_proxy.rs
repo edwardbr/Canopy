@@ -27,7 +27,7 @@ pub struct GeneratedRpcCallContext {
     pub remote_object_id: RemoteObject,
 }
 
-pub trait GeneratedRpcCaller: Send + Sync {
+pub trait ProxyCaller: Send + Sync {
     fn marshaller(&self) -> &dyn IMarshaller;
 
     fn call_context(&self) -> GeneratedRpcCallContext;
@@ -40,10 +40,7 @@ pub trait GeneratedRpcCaller: Send + Sync {
         None
     }
 
-    fn make_remote_caller(
-        &self,
-        _remote_object_id: RemoteObject,
-    ) -> Option<Arc<dyn GeneratedRpcCaller>> {
+    fn make_remote_caller(&self, _remote_object_id: RemoteObject) -> Option<Arc<dyn ProxyCaller>> {
         None
     }
 
@@ -51,7 +48,7 @@ pub trait GeneratedRpcCaller: Send + Sync {
         &self,
         remote_object_id: RemoteObject,
         _pointer_kind: InterfacePointerKind,
-    ) -> Option<Arc<dyn GeneratedRpcCaller>> {
+    ) -> Option<Arc<dyn ProxyCaller>> {
         self.make_remote_caller(remote_object_id)
     }
 
@@ -332,7 +329,7 @@ impl std::fmt::Debug for ObjectProxyCaller {
     }
 }
 
-impl GeneratedRpcCaller for ObjectProxyCaller {
+impl ProxyCaller for ObjectProxyCaller {
     fn marshaller(&self) -> &dyn IMarshaller {
         self.object_proxy
             .service_proxy_ref()
@@ -354,10 +351,7 @@ impl GeneratedRpcCaller for ObjectProxyCaller {
             .map(|service_proxy| service_proxy.service.as_ref())
     }
 
-    fn make_remote_caller(
-        &self,
-        remote_object_id: RemoteObject,
-    ) -> Option<Arc<dyn GeneratedRpcCaller>> {
+    fn make_remote_caller(&self, remote_object_id: RemoteObject) -> Option<Arc<dyn ProxyCaller>> {
         let service_proxy = self.object_proxy.service_proxy()?;
         Some(service_proxy.proxy_for_remote_object(remote_object_id))
     }
@@ -366,13 +360,13 @@ impl GeneratedRpcCaller for ObjectProxyCaller {
         &self,
         remote_object_id: RemoteObject,
         pointer_kind: InterfacePointerKind,
-    ) -> Option<Arc<dyn GeneratedRpcCaller>> {
+    ) -> Option<Arc<dyn ProxyCaller>> {
         let service_proxy = self.object_proxy.service_proxy()?;
         Some(service_proxy.proxy_for_remote_object_with_ref(remote_object_id, pointer_kind))
     }
 }
 
-impl GeneratedRpcCaller for ServiceProxy {
+impl ProxyCaller for ServiceProxy {
     fn marshaller(&self) -> &dyn IMarshaller {
         match &self.transport {
             Some(transport) => transport.as_ref(),
@@ -388,10 +382,7 @@ impl GeneratedRpcCaller for ServiceProxy {
         Some(self.service.as_ref())
     }
 
-    fn make_remote_caller(
-        &self,
-        remote_object_id: RemoteObject,
-    ) -> Option<Arc<dyn GeneratedRpcCaller>> {
+    fn make_remote_caller(&self, remote_object_id: RemoteObject) -> Option<Arc<dyn ProxyCaller>> {
         let service_proxy = Arc::new(Self {
             service: self.service.clone(),
             transport: self.transport.clone(),
@@ -405,7 +396,7 @@ impl GeneratedRpcCaller for ServiceProxy {
         &self,
         remote_object_id: RemoteObject,
         pointer_kind: InterfacePointerKind,
-    ) -> Option<Arc<dyn GeneratedRpcCaller>> {
+    ) -> Option<Arc<dyn ProxyCaller>> {
         let service_proxy = Arc::new(Self {
             service: self.service.clone(),
             transport: self.transport.clone(),
@@ -420,7 +411,7 @@ impl GeneratedRpcCaller for ServiceProxy {
 mod tests {
     use std::sync::{Arc, Mutex, Weak};
 
-    use super::{GeneratedRpcCallContext, GeneratedRpcCaller, ServiceProxy};
+    use super::{GeneratedRpcCallContext, ProxyCaller, ServiceProxy};
     use crate::internal::{
         AddRefParams, GetNewZoneIdParams, IMarshaller, NewZoneIdResult, ObjectReleasedParams,
         PostParams, ReleaseParams, SendParams, SendResult, Service, ServiceRuntime, StandardResult,
@@ -492,7 +483,7 @@ mod tests {
         context: GeneratedRpcCallContext,
     }
 
-    impl GeneratedRpcCaller for FakeCaller {
+    impl ProxyCaller for FakeCaller {
         fn marshaller(&self) -> &dyn IMarshaller {
             self.marshaller.as_ref()
         }

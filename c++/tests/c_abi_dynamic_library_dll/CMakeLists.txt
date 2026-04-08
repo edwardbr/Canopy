@@ -29,9 +29,7 @@ if(NOT CANOPY_BUILD_COROUTINE)
 
   target_compile_options(
     canopy_example_c_abi_dll
-    PRIVATE ${CANOPY_COMPILE_OPTIONS}
-            ${CANOPY_WARN_OK}
-            $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
+    PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
             $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>)
 
   target_link_options(canopy_example_c_abi_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

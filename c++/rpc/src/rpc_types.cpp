@@ -257,8 +257,7 @@ namespace rpc
         rpc::expected<
             void,
             std::string>
-        validate_blob(
-            const zone_address& candidate)
+        validate_blob(const zone_address& candidate)
         {
             const auto& raw_blob = candidate.get_blob();
             if (raw_blob.size() < default_values::capability_blob_bytes)
@@ -275,9 +274,10 @@ namespace rpc
             if (type != address_type::ipv6_tun)
                 minimum_bits += subnet_bits + object_bits;
 
-            auto validation_offset_bits = type == address_type::ipv6_tun
-                ? static_cast<uint16_t>(header_bits + (candidate.has_port() ? port_bits : 0u) + 128u)
-                : static_cast<uint16_t>(minimum_bits);
+            auto validation_offset_bits
+                = type == address_type::ipv6_tun
+                      ? static_cast<uint16_t>(header_bits + (candidate.has_port() ? port_bits : 0u) + 128u)
+                      : static_cast<uint16_t>(minimum_bits);
             auto validation_offset_bytes = static_cast<size_t>(validation_offset_bits / 8u);
             if (validation_offset_bytes > raw_blob.size())
                 return rpc::unexpected<std::string>("zone_address blob is shorter than its declared field layout");
@@ -292,7 +292,8 @@ namespace rpc
             std::vector<uint8_t> validation_bits;
             if (has_val)
             {
-                validation_bits.assign(raw_blob.begin() + static_cast<std::ptrdiff_t>(validation_offset_bytes), raw_blob.end());
+                validation_bits.assign(
+                    raw_blob.begin() + static_cast<std::ptrdiff_t>(validation_offset_bytes), raw_blob.end());
             }
 
             return validate_constructor_args(
