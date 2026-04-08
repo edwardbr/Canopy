@@ -8,9 +8,8 @@ use crate::internal::marshaller_params::{
     AddRefParams, GetNewZoneIdParams, NewZoneIdResult, ObjectReleasedParams, PostParams,
     ReleaseParams, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams,
 };
-use crate::internal::service::Service;
-use crate::internal::transport::Transport;
-use crate::rpc_types::{DestinationZone, Zone};
+use crate::internal::runtime_traits::{ServiceRuntime, TransportRuntime};
+use crate::rpc_types::{AddRefOptions, DestinationZone, Zone};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PassThroughKey {
@@ -31,20 +30,29 @@ impl PassThroughKey {
     }
 }
 
-#[derive(Debug)]
 pub struct PassThrough {
-    forward: Arc<Transport>,
-    reverse: Arc<Transport>,
-    service: Weak<Service>,
+    forward: Arc<dyn TransportRuntime>,
+    reverse: Arc<dyn TransportRuntime>,
+    service: Weak<dyn ServiceRuntime>,
     forward_dest: DestinationZone,
     reverse_dest: DestinationZone,
 }
 
+impl std::fmt::Debug for PassThrough {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PassThrough")
+            .field("forward_dest", &self.forward_dest)
+            .field("reverse_dest", &self.reverse_dest)
+            .field("has_service", &self.service.strong_count())
+            .finish_non_exhaustive()
+    }
+}
+
 impl PassThrough {
     pub fn new(
-        forward: Arc<Transport>,
-        reverse: Arc<Transport>,
-        service: Weak<Service>,
+        forward: Arc<dyn TransportRuntime>,
+        reverse: Arc<dyn TransportRuntime>,
+        service: Weak<dyn ServiceRuntime>,
         forward_dest: DestinationZone,
         reverse_dest: DestinationZone,
     ) -> Self {
@@ -61,7 +69,7 @@ impl PassThrough {
         PassThroughKey::new(self.forward_dest.clone(), self.reverse_dest.clone())
     }
 
-    fn route_for_destination(&self, destination: &Zone) -> Option<&Transport> {
+    fn route_for_destination(&self, destination: &Zone) -> Option<&dyn TransportRuntime> {
         if destination == &self.forward_dest {
             Some(self.forward.as_ref())
         } else if destination == &self.reverse_dest {
@@ -71,7 +79,10 @@ impl PassThrough {
         }
     }
 
-    pub fn transport_for_destination(&self, destination: &Zone) -> Option<Arc<Transport>> {
+    pub fn transport_for_destination(
+        &self,
+        destination: &Zone,
+    ) -> Option<Arc<dyn TransportRuntime>> {
         if destination == &self.forward_dest {
             Some(self.forward.clone())
         } else if destination == &self.reverse_dest {
@@ -84,11 +95,11 @@ impl PassThrough {
     fn route_for_remote_object(
         &self,
         remote_object: &crate::rpc_types::RemoteObject,
-    ) -> Option<&Transport> {
+    ) -> Option<&dyn TransportRuntime> {
         self.route_for_destination(&remote_object.as_zone())
     }
 
-    pub fn service(&self) -> Option<Arc<Service>> {
+    pub fn service(&self) -> Option<Arc<dyn ServiceRuntime>> {
         self.service.upgrade()
     }
 }
@@ -113,9 +124,56 @@ impl IMarshaller for PassThrough {
     }
 
     fn add_ref(&self, params: AddRefParams) -> StandardResult {
-        self.route_for_remote_object(&params.remote_object_id)
-            .map(|transport| transport.add_ref(params.clone()))
-            .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]))
+        let build_caller_channel =
+            !(params.build_out_param_channel & AddRefOptions::BUILD_CALLER_ROUTE).is_empty();
+        let build_dest_channel =
+            !(params.build_out_param_channel & AddRefOptions::BUILD_DESTINATION_ROUTE).is_empty()
+                || params.build_out_param_channel == AddRefOptions::NORMAL
+                || params.build_out_param_channel == AddRefOptions::OPTIMISTIC;
+
+        let destination_transport = if build_dest_channel {
+            match self.route_for_remote_object(&params.remote_object_id) {
+                Some(transport) => Some(transport),
+                None => return StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]),
+            }
+        } else {
+            None
+        };
+
+        let caller_transport = if build_caller_channel {
+            match self.route_for_destination(&params.caller_zone_id) {
+                Some(transport) => Some(transport),
+                None => return StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]),
+            }
+        } else {
+            None
+        };
+
+        let mut out_back_channel = vec![];
+
+        if let Some(transport) = destination_transport {
+            let mut dest_params = params.clone();
+            dest_params.build_out_param_channel =
+                params.build_out_param_channel & !AddRefOptions::BUILD_CALLER_ROUTE;
+            let dest_result = transport.add_ref(dest_params);
+            if dest_result.error_code != error_codes::OK() {
+                return dest_result;
+            }
+            out_back_channel.extend(dest_result.out_back_channel);
+        }
+
+        if let Some(transport) = caller_transport {
+            let mut caller_params = params;
+            caller_params.build_out_param_channel =
+                caller_params.build_out_param_channel & !AddRefOptions::BUILD_DESTINATION_ROUTE;
+            let caller_result = transport.add_ref(caller_params);
+            if caller_result.error_code != error_codes::OK() {
+                return caller_result;
+            }
+            out_back_channel.extend(caller_result.out_back_channel);
+        }
+
+        StandardResult::new(error_codes::OK(), out_back_channel)
     }
 
     fn release(&self, params: ReleaseParams) -> StandardResult {

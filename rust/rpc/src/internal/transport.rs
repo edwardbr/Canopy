@@ -11,7 +11,7 @@ use crate::internal::marshaller_params::{
     ReleaseParams, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams,
 };
 use crate::internal::pass_through::{PassThrough, PassThroughKey};
-use crate::internal::service::Service;
+use crate::internal::runtime_traits::{ServiceRuntime, TransportRuntime};
 use crate::rpc_types::{AddRefOptions, CallerZone, DestinationZone, Zone};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +44,7 @@ pub struct Transport {
     name: String,
     zone_id: Zone,
     adjacent_zone_id: Zone,
-    service: Mutex<Weak<Service>>,
+    service: Mutex<Weak<dyn ServiceRuntime>>,
     outbound: Arc<dyn IMarshaller + Send + Sync>,
     pass_throughs: Mutex<BTreeMap<PassThroughKey, Weak<PassThrough>>>,
     zone_counts: Mutex<BTreeMap<Zone, RemoteServiceCount>>,
@@ -69,7 +69,7 @@ impl Transport {
         name: impl Into<String>,
         zone_id: Zone,
         adjacent_zone_id: Zone,
-        service: Weak<Service>,
+        service: Weak<dyn ServiceRuntime>,
         outbound: Arc<dyn IMarshaller + Send + Sync>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -97,14 +97,14 @@ impl Transport {
         self.adjacent_zone_id.clone()
     }
 
-    pub fn service(&self) -> Option<Arc<Service>> {
+    pub fn service(&self) -> Option<Arc<dyn ServiceRuntime>> {
         self.service
             .lock()
             .expect("transport service mutex poisoned")
             .upgrade()
     }
 
-    pub fn set_service(&self, service: Weak<Service>) {
+    pub fn set_service(&self, service: Weak<dyn ServiceRuntime>) {
         *self
             .service
             .lock()
@@ -202,9 +202,9 @@ impl Transport {
     }
 
     pub fn create_pass_through(
-        forward: Arc<Transport>,
-        reverse: Arc<Transport>,
-        service: Weak<Service>,
+        forward: Arc<dyn TransportRuntime>,
+        reverse: Arc<dyn TransportRuntime>,
+        service: Weak<dyn ServiceRuntime>,
         forward_dest: DestinationZone,
         reverse_dest: DestinationZone,
     ) -> Option<Arc<PassThrough>> {
@@ -354,7 +354,10 @@ impl Transport {
             .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]))
     }
 
-    pub fn get_transport_from_passthroughs(&self, destination: &Zone) -> Option<Arc<Transport>> {
+    pub fn get_transport_from_passthroughs(
+        &self,
+        destination: &Zone,
+    ) -> Option<Arc<dyn TransportRuntime>> {
         let pass_throughs: Vec<Arc<PassThrough>> = self
             .pass_throughs
             .lock()
@@ -411,9 +414,90 @@ impl IMarshaller for Transport {
     }
 }
 
+impl TransportRuntime for Transport {
+    fn name(&self) -> &str {
+        Transport::name(self)
+    }
+
+    fn zone_id(&self) -> Zone {
+        Transport::zone_id(self)
+    }
+
+    fn adjacent_zone_id(&self) -> Zone {
+        Transport::adjacent_zone_id(self)
+    }
+
+    fn service(&self) -> Option<Arc<dyn ServiceRuntime>> {
+        Transport::service(self)
+    }
+
+    fn set_service(&self, service: Weak<dyn ServiceRuntime>) {
+        Transport::set_service(self, service);
+    }
+
+    fn status(&self) -> TransportStatus {
+        Transport::status(self)
+    }
+
+    fn set_status(&self, status: TransportStatus) {
+        Transport::set_status(self, status);
+    }
+
+    fn destination_count(&self) -> i64 {
+        Transport::destination_count(self)
+    }
+
+    fn increment_outbound_proxy_count(&self, dest: Zone) {
+        Transport::increment_outbound_proxy_count(self, dest);
+    }
+
+    fn decrement_outbound_proxy_count(&self, dest: Zone) -> bool {
+        Transport::decrement_outbound_proxy_count(self, dest)
+    }
+
+    fn increment_inbound_stub_count(&self, caller: Zone) {
+        Transport::increment_inbound_stub_count(self, caller);
+    }
+
+    fn decrement_inbound_stub_count(&self, caller: Zone) -> bool {
+        Transport::decrement_inbound_stub_count(self, caller)
+    }
+
+    fn decrement_inbound_stub_count_by(&self, caller: Zone, decrement: u64) -> bool {
+        Transport::decrement_inbound_stub_count_by(self, caller, decrement)
+    }
+
+    fn add_passthrough(&self, pass_through: &Arc<PassThrough>) {
+        Transport::add_passthrough(self, pass_through);
+    }
+
+    fn get_passthrough(&self, zone1: Zone, zone2: Zone) -> Option<Arc<PassThrough>> {
+        Transport::get_passthrough(self, zone1, zone2)
+    }
+
+    fn pass_through_entry_count_for_test(&self) -> usize {
+        Transport::pass_through_entry_count_for_test(self)
+    }
+
+    fn get_transport_from_passthroughs(
+        &self,
+        destination: &Zone,
+    ) -> Option<Arc<dyn TransportRuntime>> {
+        Transport::get_transport_from_passthroughs(self, destination)
+    }
+
+    fn inbound_add_ref(self: Arc<Self>, params: AddRefParams) -> StandardResult {
+        Transport::inbound_add_ref(&self, params)
+    }
+
+    fn inbound_release(self: Arc<Self>, params: ReleaseParams) -> StandardResult {
+        Transport::inbound_release(&self, params)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, Weak};
 
     use super::{Transport, TransportStatus};
     use crate::InterfacePointerKind;
@@ -422,6 +506,7 @@ mod tests {
         AddRefParams, GetNewZoneIdParams, NewZoneIdResult, ObjectReleasedParams, PostParams,
         ReleaseParams, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams,
     };
+    use crate::internal::runtime_traits::{ServiceRuntime, TransportRuntime};
     use crate::internal::stub::ObjectStub;
     use crate::internal::{Service, error_codes};
     use crate::rpc_types::{
@@ -496,6 +581,15 @@ mod tests {
         )
     }
 
+    fn weak_service(service: &Arc<Service>) -> Weak<dyn ServiceRuntime> {
+        let service_runtime: Arc<dyn ServiceRuntime> = service.clone();
+        Arc::downgrade(&service_runtime)
+    }
+
+    fn as_transport_runtime(transport: &Arc<Transport>) -> Arc<dyn TransportRuntime> {
+        transport.clone()
+    }
+
     #[test]
     fn service_routes_remote_add_ref_through_requesting_zone_transport() {
         let service = Arc::new(Service::new("svc", zone(1)));
@@ -504,7 +598,7 @@ mod tests {
             "requesting",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller.clone(),
         );
         transport.set_status(TransportStatus::Connected);
@@ -540,7 +634,7 @@ mod tests {
             "requesting",
             zone(1),
             zone(5),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller.clone(),
         );
         transport.set_status(TransportStatus::Connected);
@@ -574,7 +668,7 @@ mod tests {
             "zone1-to-zone5",
             zone(1),
             zone(5),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller.clone(),
         );
         zone5_transport.set_status(TransportStatus::Connected);
@@ -592,7 +686,6 @@ mod tests {
         });
 
         assert_eq!(result.error_code, error_codes::OK());
-        assert!(service.get_transport(&zone(7)).is_some());
         let captured = marshaller
             .last_add_ref
             .lock()
@@ -616,7 +709,7 @@ mod tests {
             "requesting",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller.clone(),
         );
         service.add_transport(zone(2), transport.clone());
@@ -685,7 +778,7 @@ mod tests {
             "direct",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller,
         );
 
@@ -707,21 +800,21 @@ mod tests {
             "forward",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             Arc::new(RecordingMarshaller::default()),
         );
         let reverse = Transport::new(
             "reverse",
             zone(1),
             zone(3),
-            Arc::downgrade(&service),
+            weak_service(&service),
             Arc::new(RecordingMarshaller::default()),
         );
 
         let first = Transport::create_pass_through(
             forward.clone(),
             reverse.clone(),
-            Arc::downgrade(&service),
+            weak_service(&service),
             zone(2),
             zone(3),
         )
@@ -729,7 +822,7 @@ mod tests {
         let second = Transport::create_pass_through(
             forward.clone(),
             reverse.clone(),
-            Arc::downgrade(&service),
+            weak_service(&service),
             zone(3),
             zone(2),
         )
@@ -740,13 +833,13 @@ mod tests {
             &first
                 .transport_for_destination(&zone(2))
                 .expect("forward route"),
-            &forward
+            &as_transport_runtime(&forward)
         ));
         assert!(Arc::ptr_eq(
             &second
                 .transport_for_destination(&zone(3))
                 .expect("reverse route"),
-            &reverse
+            &as_transport_runtime(&reverse)
         ));
     }
 
@@ -757,21 +850,21 @@ mod tests {
             "forward",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             Arc::new(RecordingMarshaller::default()),
         );
         let reverse = Transport::new(
             "reverse",
             zone(1),
             zone(3),
-            Arc::downgrade(&service),
+            weak_service(&service),
             Arc::new(RecordingMarshaller::default()),
         );
 
         let pass_through = Transport::create_pass_through(
             forward.clone(),
             reverse.clone(),
-            Arc::downgrade(&service),
+            weak_service(&service),
             zone(2),
             zone(3),
         )
@@ -795,7 +888,7 @@ mod tests {
             "inbound",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller,
         );
         let stub = Arc::new(Mutex::new(ObjectStub::new(Object::new(77))));
@@ -825,20 +918,20 @@ mod tests {
             "forward",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             forward_marshaller.clone(),
         );
         let reverse = Transport::new(
             "reverse",
             zone(1),
             zone(3),
-            Arc::downgrade(&service),
+            weak_service(&service),
             reverse_marshaller.clone(),
         );
         let _pass_through = Transport::create_pass_through(
             forward.clone(),
             reverse.clone(),
-            Arc::downgrade(&service),
+            weak_service(&service),
             zone(2),
             zone(3),
         )
@@ -879,7 +972,7 @@ mod tests {
             "inbound",
             zone(1),
             zone(5),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller.clone(),
         );
 

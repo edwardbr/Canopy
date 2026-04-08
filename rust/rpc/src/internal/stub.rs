@@ -146,6 +146,18 @@ impl ObjectStub {
             .map(|view| view.as_arc())
     }
 
+    pub fn get_local_interface_erased(
+        &self,
+        interface_id: InterfaceOrdinal,
+    ) -> Option<Arc<dyn Any + Send + Sync>> {
+        let target = self.target.as_ref()?;
+        if interface_id.is_set() && !target.__rpc_query_interface(interface_id) {
+            return None;
+        }
+
+        target.clone().__rpc_get_local_interface_view(interface_id)
+    }
+
     pub fn call(&self, params: SendParams) -> SendResult {
         if let Some(target) = &self.target {
             return target.__rpc_call(params);

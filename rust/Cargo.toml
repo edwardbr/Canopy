@@ -8,5 +8,6 @@ members = [
     "third_party/protobuf_macros",
     "transports/dynamic_library",
     "transports/dynamic_library_test_child",
+    "transports/local",
 ]
 resolver = "2"

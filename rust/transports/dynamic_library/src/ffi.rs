@@ -4,13 +4,13 @@
 //! helpers, and foreign callback invocation layer. Keep unsafety here.
 
 use crate::context::DllContext;
-use canopy_rpc::{
-    AddRefParams, BackChannelEntry, Encoding, GetNewZoneIdParams, IMarshaller, NewZoneIdResult,
-    ObjectReleasedParams, PostParams, ReleaseParams, RemoteObject, SendParams, SendResult, StandardResult,
-    TransportDownParams, TryCastParams, Zone, ZoneAddress,
-};
 use canopy_rpc::internal::error_codes;
 use canopy_rpc::rpc_types::ConnectionSettings;
+use canopy_rpc::{
+    AddRefParams, BackChannelEntry, Encoding, GetNewZoneIdParams, IMarshaller, NewZoneIdResult,
+    ObjectReleasedParams, PostParams, ReleaseParams, RemoteObject, SendParams, SendResult,
+    StandardResult, TransportDownParams, TryCastParams, Zone, ZoneAddress,
+};
 
 use std::ffi::{c_char, c_void};
 use std::marker::PhantomData;
@@ -18,32 +18,27 @@ use std::mem::size_of;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyByteBuffer
-{
+pub struct CanopyByteBuffer {
     pub data: *mut u8,
     pub size: usize,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyConstByteBuffer
-{
+pub struct CanopyConstByteBuffer {
     pub data: *const u8,
     pub size: usize,
 }
 
-impl CanopyConstByteBuffer
-{
-    pub fn from_slice(data: &[u8]) -> Self
-    {
+impl CanopyConstByteBuffer {
+    pub fn from_slice(data: &[u8]) -> Self {
         Self {
             data: data.as_ptr(),
             size: data.len(),
         }
     }
 
-    pub(crate) fn as_slice<'a>(&self) -> &'a [u8]
-    {
+    pub(crate) fn as_slice<'a>(&self) -> &'a [u8] {
         if self.data.is_null() || self.size == 0 {
             &[]
         } else {
@@ -55,53 +50,46 @@ impl CanopyConstByteBuffer
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyBackChannelEntry
-{
+pub struct CanopyBackChannelEntry {
     pub type_id: u64,
     pub payload: CanopyConstByteBuffer,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyBackChannelSpan
-{
+pub struct CanopyBackChannelSpan {
     pub data: *const CanopyBackChannelEntry,
     pub size: usize,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyMutBackChannelSpan
-{
+pub struct CanopyMutBackChannelSpan {
     pub data: *mut CanopyBackChannelEntry,
     pub size: usize,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyZoneAddress
-{
+pub struct CanopyZoneAddress {
     pub blob: CanopyConstByteBuffer,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyZone
-{
+pub struct CanopyZone {
     pub address: CanopyZoneAddress,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyRemoteObject
-{
+pub struct CanopyRemoteObject {
     pub address: CanopyZoneAddress,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyConnectionSettings
-{
+pub struct CanopyConnectionSettings {
     pub inbound_interface_id: u64,
     pub outbound_interface_id: u64,
     pub remote_object_id: CanopyRemoteObject,
@@ -109,16 +97,14 @@ pub struct CanopyConnectionSettings
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyStandardResult
-{
+pub struct CanopyStandardResult {
     pub error_code: i32,
     pub out_back_channel: CanopyMutBackChannelSpan,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopySendResult
-{
+pub struct CanopySendResult {
     pub error_code: i32,
     pub out_buf: CanopyByteBuffer,
     pub out_back_channel: CanopyMutBackChannelSpan,
@@ -126,8 +112,7 @@ pub struct CanopySendResult
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyNewZoneIdResult
-{
+pub struct CanopyNewZoneIdResult {
     pub error_code: i32,
     pub zone_id: CanopyZone,
     pub out_back_channel: CanopyMutBackChannelSpan,
@@ -135,8 +120,7 @@ pub struct CanopyNewZoneIdResult
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopySendParams
-{
+pub struct CanopySendParams {
     pub protocol_version: u64,
     pub encoding_type: u64,
     pub tag: u64,
@@ -150,8 +134,7 @@ pub struct CanopySendParams
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyPostParams
-{
+pub struct CanopyPostParams {
     pub protocol_version: u64,
     pub encoding_type: u64,
     pub tag: u64,
@@ -165,8 +148,7 @@ pub struct CanopyPostParams
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyTryCastParams
-{
+pub struct CanopyTryCastParams {
     pub protocol_version: u64,
     pub caller_zone_id: CanopyZone,
     pub remote_object_id: CanopyRemoteObject,
@@ -176,8 +158,7 @@ pub struct CanopyTryCastParams
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyAddRefParams
-{
+pub struct CanopyAddRefParams {
     pub protocol_version: u64,
     pub remote_object_id: CanopyRemoteObject,
     pub caller_zone_id: CanopyZone,
@@ -188,8 +169,7 @@ pub struct CanopyAddRefParams
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyReleaseParams
-{
+pub struct CanopyReleaseParams {
     pub protocol_version: u64,
     pub remote_object_id: CanopyRemoteObject,
     pub caller_zone_id: CanopyZone,
@@ -199,8 +179,7 @@ pub struct CanopyReleaseParams
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyObjectReleasedParams
-{
+pub struct CanopyObjectReleasedParams {
     pub protocol_version: u64,
     pub remote_object_id: CanopyRemoteObject,
     pub caller_zone_id: CanopyZone,
@@ -209,8 +188,7 @@ pub struct CanopyObjectReleasedParams
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyTransportDownParams
-{
+pub struct CanopyTransportDownParams {
     pub protocol_version: u64,
     pub destination_zone_id: CanopyZone,
     pub caller_zone_id: CanopyZone,
@@ -219,8 +197,7 @@ pub struct CanopyTransportDownParams
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CanopyGetNewZoneIdParams
-{
+pub struct CanopyGetNewZoneIdParams {
     pub protocol_version: u64,
     pub in_back_channel: CanopyBackChannelSpan,
 }
@@ -228,20 +205,24 @@ pub struct CanopyGetNewZoneIdParams
 pub type CanopyParentContext = *mut c_void;
 pub type CanopyChildContext = *mut c_void;
 
-pub type CanopyAllocFn = unsafe extern "C" fn(allocator_ctx: *mut c_void, size: usize) -> CanopyByteBuffer;
-pub type CanopyFreeFn = unsafe extern "C" fn(allocator_ctx: *mut c_void, data: *mut u8, size: usize);
+pub type CanopyAllocFn =
+    unsafe extern "C" fn(allocator_ctx: *mut c_void, size: usize) -> CanopyByteBuffer;
+pub type CanopyFreeFn =
+    unsafe extern "C" fn(allocator_ctx: *mut c_void, data: *mut u8, size: usize);
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct CanopyAllocatorVtable
-{
+pub struct CanopyAllocatorVtable {
     pub allocator_ctx: *mut c_void,
     pub alloc: Option<CanopyAllocFn>,
     pub free: Option<CanopyFreeFn>,
 }
 
-pub type CanopyParentSendFn =
-    unsafe extern "C" fn(parent_ctx: CanopyParentContext, params: *const CanopySendParams, result: *mut CanopySendResult) -> i32;
+pub type CanopyParentSendFn = unsafe extern "C" fn(
+    parent_ctx: CanopyParentContext,
+    params: *const CanopySendParams,
+    result: *mut CanopySendResult,
+) -> i32;
 pub type CanopyParentPostFn =
     unsafe extern "C" fn(parent_ctx: CanopyParentContext, params: *const CanopyPostParams);
 pub type CanopyParentTryCastFn = unsafe extern "C" fn(
@@ -259,8 +240,10 @@ pub type CanopyParentReleaseFn = unsafe extern "C" fn(
     params: *const CanopyReleaseParams,
     result: *mut CanopyStandardResult,
 ) -> i32;
-pub type CanopyParentObjectReleasedFn =
-    unsafe extern "C" fn(parent_ctx: CanopyParentContext, params: *const CanopyObjectReleasedParams);
+pub type CanopyParentObjectReleasedFn = unsafe extern "C" fn(
+    parent_ctx: CanopyParentContext,
+    params: *const CanopyObjectReleasedParams,
+);
 pub type CanopyParentTransportDownFn =
     unsafe extern "C" fn(parent_ctx: CanopyParentContext, params: *const CanopyTransportDownParams);
 pub type CanopyParentGetNewZoneIdFn = unsafe extern "C" fn(
@@ -271,8 +254,11 @@ pub type CanopyParentGetNewZoneIdFn = unsafe extern "C" fn(
 
 pub type CanopyDllInitFn = unsafe extern "C" fn(params: *mut CanopyDllInitParams) -> i32;
 pub type CanopyDllDestroyFn = unsafe extern "C" fn(child_ctx: CanopyChildContext);
-pub type CanopyDllSendFn =
-    unsafe extern "C" fn(child_ctx: CanopyChildContext, params: *const CanopySendParams, result: *mut CanopySendResult) -> i32;
+pub type CanopyDllSendFn = unsafe extern "C" fn(
+    child_ctx: CanopyChildContext,
+    params: *const CanopySendParams,
+    result: *mut CanopySendResult,
+) -> i32;
 pub type CanopyDllPostFn =
     unsafe extern "C" fn(child_ctx: CanopyChildContext, params: *const CanopyPostParams);
 pub type CanopyDllTryCastFn = unsafe extern "C" fn(
@@ -302,8 +288,7 @@ pub type CanopyDllGetNewZoneIdFn = unsafe extern "C" fn(
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct CanopyDllInitParams
-{
+pub struct CanopyDllInitParams {
     pub name: *const c_char,
     pub parent_zone: CanopyZone,
     pub child_zone: CanopyZone,
@@ -322,16 +307,13 @@ pub struct CanopyDllInitParams
     pub output_obj: CanopyRemoteObject,
 }
 
-pub struct BorrowedConnectionSettings<'a>
-{
+pub struct BorrowedConnectionSettings<'a> {
     raw: CanopyConnectionSettings,
     _remote_object_blob: PhantomData<&'a RemoteObject>,
 }
 
-impl<'a> BorrowedConnectionSettings<'a>
-{
-    pub fn new(settings: &'a ConnectionSettings) -> Self
-    {
+impl<'a> BorrowedConnectionSettings<'a> {
+    pub fn new(settings: &'a ConnectionSettings) -> Self {
         Self {
             raw: CanopyConnectionSettings {
                 inbound_interface_id: settings.inbound_interface_id.get_val(),
@@ -342,22 +324,18 @@ impl<'a> BorrowedConnectionSettings<'a>
         }
     }
 
-    pub fn as_raw(&self) -> &CanopyConnectionSettings
-    {
+    pub fn as_raw(&self) -> &CanopyConnectionSettings {
         &self.raw
     }
 }
 
-pub struct BorrowedBackChannel<'a>
-{
+pub struct BorrowedBackChannel<'a> {
     entries: Vec<CanopyBackChannelEntry>,
     _marker: PhantomData<&'a [BackChannelEntry]>,
 }
 
-impl<'a> BorrowedBackChannel<'a>
-{
-    pub fn new(entries: &'a [BackChannelEntry]) -> Self
-    {
+impl<'a> BorrowedBackChannel<'a> {
+    pub fn new(entries: &'a [BackChannelEntry]) -> Self {
         let entries = entries
             .iter()
             .map(|entry| CanopyBackChannelEntry {
@@ -372,8 +350,7 @@ impl<'a> BorrowedBackChannel<'a>
         }
     }
 
-    pub fn as_raw(&self) -> CanopyBackChannelSpan
-    {
+    pub fn as_raw(&self) -> CanopyBackChannelSpan {
         CanopyBackChannelSpan {
             data: self.entries.as_ptr(),
             size: self.entries.len(),
@@ -383,23 +360,19 @@ impl<'a> BorrowedBackChannel<'a>
 
 macro_rules! define_borrowed_params {
     ($name:ident, $raw:ty, $params:ty, $builder:expr) => {
-        pub struct $name<'a>
-        {
+        pub struct $name<'a> {
             back_channel: BorrowedBackChannel<'a>,
             raw: $raw,
         }
 
-        impl<'a> $name<'a>
-        {
-            pub fn new(params: &'a $params) -> Self
-            {
+        impl<'a> $name<'a> {
+            pub fn new(params: &'a $params) -> Self {
                 let back_channel = BorrowedBackChannel::new(&params.in_back_channel);
                 let raw = $builder(params, &back_channel);
                 Self { back_channel, raw }
             }
 
-            pub fn as_raw(&self) -> &$raw
-            {
+            pub fn as_raw(&self) -> &$raw {
                 let _ = &self.back_channel;
                 &self.raw
             }
@@ -407,69 +380,91 @@ macro_rules! define_borrowed_params {
     };
 }
 
-define_borrowed_params!(BorrowedSendParams, CanopySendParams, SendParams, |params: &SendParams,
-                                                                        back_channel: &BorrowedBackChannel| CanopySendParams {
-    protocol_version: params.protocol_version,
-    encoding_type: params.encoding_type as u64,
-    tag: params.tag,
-    caller_zone_id: borrow_zone(&params.caller_zone_id),
-    remote_object_id: borrow_remote_object(&params.remote_object_id),
-    interface_id: params.interface_id.get_val(),
-    method_id: params.method_id.get_val(),
-    in_data: CanopyConstByteBuffer::from_slice(&params.in_data),
-    in_back_channel: back_channel.as_raw(),
-});
+define_borrowed_params!(
+    BorrowedSendParams,
+    CanopySendParams,
+    SendParams,
+    |params: &SendParams, back_channel: &BorrowedBackChannel| CanopySendParams {
+        protocol_version: params.protocol_version,
+        encoding_type: params.encoding_type as u64,
+        tag: params.tag,
+        caller_zone_id: borrow_zone(&params.caller_zone_id),
+        remote_object_id: borrow_remote_object(&params.remote_object_id),
+        interface_id: params.interface_id.get_val(),
+        method_id: params.method_id.get_val(),
+        in_data: CanopyConstByteBuffer::from_slice(&params.in_data),
+        in_back_channel: back_channel.as_raw(),
+    }
+);
 
-define_borrowed_params!(BorrowedPostParams, CanopyPostParams, PostParams, |params: &PostParams,
-                                                                        back_channel: &BorrowedBackChannel| CanopyPostParams {
-    protocol_version: params.protocol_version,
-    encoding_type: params.encoding_type as u64,
-    tag: params.tag,
-    caller_zone_id: borrow_zone(&params.caller_zone_id),
-    remote_object_id: borrow_remote_object(&params.remote_object_id),
-    interface_id: params.interface_id.get_val(),
-    method_id: params.method_id.get_val(),
-    in_data: CanopyConstByteBuffer::from_slice(&params.in_data),
-    in_back_channel: back_channel.as_raw(),
-});
+define_borrowed_params!(
+    BorrowedPostParams,
+    CanopyPostParams,
+    PostParams,
+    |params: &PostParams, back_channel: &BorrowedBackChannel| CanopyPostParams {
+        protocol_version: params.protocol_version,
+        encoding_type: params.encoding_type as u64,
+        tag: params.tag,
+        caller_zone_id: borrow_zone(&params.caller_zone_id),
+        remote_object_id: borrow_remote_object(&params.remote_object_id),
+        interface_id: params.interface_id.get_val(),
+        method_id: params.method_id.get_val(),
+        in_data: CanopyConstByteBuffer::from_slice(&params.in_data),
+        in_back_channel: back_channel.as_raw(),
+    }
+);
 
-define_borrowed_params!(BorrowedTryCastParams, CanopyTryCastParams, TryCastParams, |params: &TryCastParams,
-                                                                                      back_channel: &BorrowedBackChannel| CanopyTryCastParams {
-    protocol_version: params.protocol_version,
-    caller_zone_id: borrow_zone(&params.caller_zone_id),
-    remote_object_id: borrow_remote_object(&params.remote_object_id),
-    interface_id: params.interface_id.get_val(),
-    in_back_channel: back_channel.as_raw(),
-});
+define_borrowed_params!(
+    BorrowedTryCastParams,
+    CanopyTryCastParams,
+    TryCastParams,
+    |params: &TryCastParams, back_channel: &BorrowedBackChannel| CanopyTryCastParams {
+        protocol_version: params.protocol_version,
+        caller_zone_id: borrow_zone(&params.caller_zone_id),
+        remote_object_id: borrow_remote_object(&params.remote_object_id),
+        interface_id: params.interface_id.get_val(),
+        in_back_channel: back_channel.as_raw(),
+    }
+);
 
-define_borrowed_params!(BorrowedAddRefParams, CanopyAddRefParams, AddRefParams, |params: &AddRefParams,
-                                                                                  back_channel: &BorrowedBackChannel| CanopyAddRefParams {
-    protocol_version: params.protocol_version,
-    remote_object_id: borrow_remote_object(&params.remote_object_id),
-    caller_zone_id: borrow_zone(&params.caller_zone_id),
-    requesting_zone_id: borrow_zone(&params.requesting_zone_id),
-    build_out_param_channel: params.build_out_param_channel.0,
-    in_back_channel: back_channel.as_raw(),
-});
+define_borrowed_params!(
+    BorrowedAddRefParams,
+    CanopyAddRefParams,
+    AddRefParams,
+    |params: &AddRefParams, back_channel: &BorrowedBackChannel| CanopyAddRefParams {
+        protocol_version: params.protocol_version,
+        remote_object_id: borrow_remote_object(&params.remote_object_id),
+        caller_zone_id: borrow_zone(&params.caller_zone_id),
+        requesting_zone_id: borrow_zone(&params.requesting_zone_id),
+        build_out_param_channel: params.build_out_param_channel.0,
+        in_back_channel: back_channel.as_raw(),
+    }
+);
 
-define_borrowed_params!(BorrowedReleaseParams, CanopyReleaseParams, ReleaseParams, |params: &ReleaseParams,
-                                                                                      back_channel: &BorrowedBackChannel| CanopyReleaseParams {
-    protocol_version: params.protocol_version,
-    remote_object_id: borrow_remote_object(&params.remote_object_id),
-    caller_zone_id: borrow_zone(&params.caller_zone_id),
-    options: params.options.0,
-    in_back_channel: back_channel.as_raw(),
-});
+define_borrowed_params!(
+    BorrowedReleaseParams,
+    CanopyReleaseParams,
+    ReleaseParams,
+    |params: &ReleaseParams, back_channel: &BorrowedBackChannel| CanopyReleaseParams {
+        protocol_version: params.protocol_version,
+        remote_object_id: borrow_remote_object(&params.remote_object_id),
+        caller_zone_id: borrow_zone(&params.caller_zone_id),
+        options: params.options.0,
+        in_back_channel: back_channel.as_raw(),
+    }
+);
 
 define_borrowed_params!(
     BorrowedObjectReleasedParams,
     CanopyObjectReleasedParams,
     ObjectReleasedParams,
-    |params: &ObjectReleasedParams, back_channel: &BorrowedBackChannel| CanopyObjectReleasedParams {
-        protocol_version: params.protocol_version,
-        remote_object_id: borrow_remote_object(&params.remote_object_id),
-        caller_zone_id: borrow_zone(&params.caller_zone_id),
-        in_back_channel: back_channel.as_raw(),
+    |params: &ObjectReleasedParams, back_channel: &BorrowedBackChannel| {
+        CanopyObjectReleasedParams {
+            protocol_version: params.protocol_version,
+            remote_object_id: borrow_remote_object(&params.remote_object_id),
+            caller_zone_id: borrow_zone(&params.caller_zone_id),
+            in_back_channel: back_channel.as_raw(),
+        }
     }
 );
 
@@ -495,29 +490,25 @@ define_borrowed_params!(
     }
 );
 
-fn borrow_zone_address(value: &ZoneAddress) -> CanopyZoneAddress
-{
+fn borrow_zone_address(value: &ZoneAddress) -> CanopyZoneAddress {
     CanopyZoneAddress {
         blob: CanopyConstByteBuffer::from_slice(value.get_blob()),
     }
 }
 
-pub fn borrow_zone(value: &Zone) -> CanopyZone
-{
+pub fn borrow_zone(value: &Zone) -> CanopyZone {
     CanopyZone {
         address: borrow_zone_address(value.get_address()),
     }
 }
 
-pub fn borrow_remote_object(value: &RemoteObject) -> CanopyRemoteObject
-{
+pub fn borrow_remote_object(value: &RemoteObject) -> CanopyRemoteObject {
     CanopyRemoteObject {
         address: borrow_zone_address(value.get_address()),
     }
 }
 
-fn copy_back_channel(data: *const CanopyBackChannelEntry, size: usize) -> Vec<BackChannelEntry>
-{
+fn copy_back_channel(data: *const CanopyBackChannelEntry, size: usize) -> Vec<BackChannelEntry> {
     if data.is_null() || size == 0 {
         return Vec::new();
     }
@@ -530,33 +521,33 @@ fn copy_back_channel(data: *const CanopyBackChannelEntry, size: usize) -> Vec<Ba
             payload: if entry.payload.data.is_null() || entry.payload.size == 0 {
                 Vec::new()
             } else {
-                unsafe { std::slice::from_raw_parts(entry.payload.data, entry.payload.size).to_vec() }
+                unsafe {
+                    std::slice::from_raw_parts(entry.payload.data, entry.payload.size).to_vec()
+                }
             },
         })
         .collect()
 }
 
-fn copy_zone_address(value: CanopyZoneAddress) -> ZoneAddress
-{
+fn copy_zone_address(value: CanopyZoneAddress) -> ZoneAddress {
     if value.blob.data.is_null() || value.blob.size == 0 {
         ZoneAddress::default()
     } else {
-        ZoneAddress::new(unsafe { std::slice::from_raw_parts(value.blob.data, value.blob.size).to_vec() })
+        ZoneAddress::new(unsafe {
+            std::slice::from_raw_parts(value.blob.data, value.blob.size).to_vec()
+        })
     }
 }
 
-fn copy_zone(value: CanopyZone) -> Zone
-{
+pub fn copy_zone(value: CanopyZone) -> Zone {
     Zone::new(copy_zone_address(value.address))
 }
 
-pub fn copy_remote_object(value: CanopyRemoteObject) -> RemoteObject
-{
+pub fn copy_remote_object(value: CanopyRemoteObject) -> RemoteObject {
     RemoteObject::new(copy_zone_address(value.address))
 }
 
-fn copy_encoding(value: u64) -> Result<Encoding, i32>
-{
+fn copy_encoding(value: u64) -> Result<Encoding, i32> {
     match value {
         1 => Ok(Encoding::YasBinary),
         2 => Ok(Encoding::YasCompressedBinary),
@@ -566,8 +557,7 @@ fn copy_encoding(value: u64) -> Result<Encoding, i32>
     }
 }
 
-pub fn copy_connection_settings(raw: &CanopyConnectionSettings) -> ConnectionSettings
-{
+pub fn copy_connection_settings(raw: &CanopyConnectionSettings) -> ConnectionSettings {
     ConnectionSettings {
         inbound_interface_id: canopy_rpc::InterfaceOrdinal::new(raw.inbound_interface_id),
         outbound_interface_id: canopy_rpc::InterfaceOrdinal::new(raw.outbound_interface_id),
@@ -575,8 +565,7 @@ pub fn copy_connection_settings(raw: &CanopyConnectionSettings) -> ConnectionSet
     }
 }
 
-pub fn copy_init_connection_settings(params: &CanopyDllInitParams) -> Option<ConnectionSettings>
-{
+pub fn copy_init_connection_settings(params: &CanopyDllInitParams) -> Option<ConnectionSettings> {
     if params.input_descr.is_null() {
         None
     } else {
@@ -585,8 +574,7 @@ pub fn copy_init_connection_settings(params: &CanopyDllInitParams) -> Option<Con
     }
 }
 
-pub fn copy_send_params(raw: &CanopySendParams) -> Result<SendParams, i32>
-{
+pub fn copy_send_params(raw: &CanopySendParams) -> Result<SendParams, i32> {
     Ok(SendParams {
         protocol_version: raw.protocol_version,
         encoding_type: copy_encoding(raw.encoding_type)?,
@@ -600,8 +588,7 @@ pub fn copy_send_params(raw: &CanopySendParams) -> Result<SendParams, i32>
     })
 }
 
-pub fn copy_post_params(raw: &CanopyPostParams) -> Result<PostParams, i32>
-{
+pub fn copy_post_params(raw: &CanopyPostParams) -> Result<PostParams, i32> {
     Ok(PostParams {
         protocol_version: raw.protocol_version,
         encoding_type: copy_encoding(raw.encoding_type)?,
@@ -615,8 +602,7 @@ pub fn copy_post_params(raw: &CanopyPostParams) -> Result<PostParams, i32>
     })
 }
 
-pub fn copy_try_cast_params(raw: &CanopyTryCastParams) -> TryCastParams
-{
+pub fn copy_try_cast_params(raw: &CanopyTryCastParams) -> TryCastParams {
     TryCastParams {
         protocol_version: raw.protocol_version,
         caller_zone_id: copy_zone(raw.caller_zone_id),
@@ -626,8 +612,7 @@ pub fn copy_try_cast_params(raw: &CanopyTryCastParams) -> TryCastParams
     }
 }
 
-pub fn copy_add_ref_params(raw: &CanopyAddRefParams) -> AddRefParams
-{
+pub fn copy_add_ref_params(raw: &CanopyAddRefParams) -> AddRefParams {
     AddRefParams {
         protocol_version: raw.protocol_version,
         remote_object_id: copy_remote_object(raw.remote_object_id),
@@ -638,8 +623,7 @@ pub fn copy_add_ref_params(raw: &CanopyAddRefParams) -> AddRefParams
     }
 }
 
-pub fn copy_release_params(raw: &CanopyReleaseParams) -> ReleaseParams
-{
+pub fn copy_release_params(raw: &CanopyReleaseParams) -> ReleaseParams {
     ReleaseParams {
         protocol_version: raw.protocol_version,
         remote_object_id: copy_remote_object(raw.remote_object_id),
@@ -649,8 +633,7 @@ pub fn copy_release_params(raw: &CanopyReleaseParams) -> ReleaseParams
     }
 }
 
-pub fn copy_object_released_params(raw: &CanopyObjectReleasedParams) -> ObjectReleasedParams
-{
+pub fn copy_object_released_params(raw: &CanopyObjectReleasedParams) -> ObjectReleasedParams {
     ObjectReleasedParams {
         protocol_version: raw.protocol_version,
         remote_object_id: copy_remote_object(raw.remote_object_id),
@@ -659,8 +642,7 @@ pub fn copy_object_released_params(raw: &CanopyObjectReleasedParams) -> ObjectRe
     }
 }
 
-pub fn copy_transport_down_params(raw: &CanopyTransportDownParams) -> TransportDownParams
-{
+pub fn copy_transport_down_params(raw: &CanopyTransportDownParams) -> TransportDownParams {
     TransportDownParams {
         protocol_version: raw.protocol_version,
         destination_zone_id: copy_zone(raw.destination_zone_id),
@@ -669,24 +651,21 @@ pub fn copy_transport_down_params(raw: &CanopyTransportDownParams) -> TransportD
     }
 }
 
-pub fn copy_get_new_zone_id_params(raw: &CanopyGetNewZoneIdParams) -> GetNewZoneIdParams
-{
+pub fn copy_get_new_zone_id_params(raw: &CanopyGetNewZoneIdParams) -> GetNewZoneIdParams {
     GetNewZoneIdParams {
         protocol_version: raw.protocol_version,
         in_back_channel: copy_back_channel(raw.in_back_channel.data, raw.in_back_channel.size),
     }
 }
 
-pub fn copy_standard_result(raw: &CanopyStandardResult) -> StandardResult
-{
+pub fn copy_standard_result(raw: &CanopyStandardResult) -> StandardResult {
     StandardResult {
         error_code: raw.error_code,
         out_back_channel: copy_back_channel(raw.out_back_channel.data, raw.out_back_channel.size),
     }
 }
 
-pub fn copy_send_result(raw: &CanopySendResult) -> SendResult
-{
+pub fn copy_send_result(raw: &CanopySendResult) -> SendResult {
     SendResult {
         error_code: raw.error_code,
         out_buf: if raw.out_buf.data.is_null() || raw.out_buf.size == 0 {
@@ -698,8 +677,7 @@ pub fn copy_send_result(raw: &CanopySendResult) -> SendResult
     }
 }
 
-pub fn copy_new_zone_id_result(raw: &CanopyNewZoneIdResult) -> NewZoneIdResult
-{
+pub fn copy_new_zone_id_result(raw: &CanopyNewZoneIdResult) -> NewZoneIdResult {
     NewZoneIdResult {
         error_code: raw.error_code,
         zone_id: Zone::new(copy_zone_address(raw.zone_id.address)),
@@ -707,8 +685,7 @@ pub fn copy_new_zone_id_result(raw: &CanopyNewZoneIdResult) -> NewZoneIdResult
     }
 }
 
-fn alloc_bytes(allocator: &CanopyAllocatorVtable, len: usize) -> Result<CanopyByteBuffer, i32>
-{
+fn alloc_bytes(allocator: &CanopyAllocatorVtable, len: usize) -> Result<CanopyByteBuffer, i32> {
     if len == 0 {
         return Ok(CanopyByteBuffer::default());
     }
@@ -730,8 +707,7 @@ fn alloc_bytes(allocator: &CanopyAllocatorVtable, len: usize) -> Result<CanopyBy
     Ok(buffer)
 }
 
-fn free_bytes(allocator: &CanopyAllocatorVtable, buffer: &mut CanopyByteBuffer)
-{
+fn free_bytes(allocator: &CanopyAllocatorVtable, buffer: &mut CanopyByteBuffer) {
     if buffer.data.is_null() || buffer.size == 0 {
         *buffer = CanopyByteBuffer::default();
         return;
@@ -747,8 +723,7 @@ fn free_bytes(allocator: &CanopyAllocatorVtable, buffer: &mut CanopyByteBuffer)
 fn alloc_const_buffer_from_slice(
     allocator: &CanopyAllocatorVtable,
     bytes: &[u8],
-) -> Result<CanopyConstByteBuffer, i32>
-{
+) -> Result<CanopyConstByteBuffer, i32> {
     let raw = alloc_bytes(allocator, bytes.len())?;
     if !bytes.is_empty() {
         unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), raw.data, bytes.len()) };
@@ -759,8 +734,7 @@ fn alloc_const_buffer_from_slice(
     })
 }
 
-fn free_const_buffer(allocator: &CanopyAllocatorVtable, buffer: &mut CanopyConstByteBuffer)
-{
+fn free_const_buffer(allocator: &CanopyAllocatorVtable, buffer: &mut CanopyConstByteBuffer) {
     let mut owned = CanopyByteBuffer {
         data: buffer.data.cast_mut(),
         size: buffer.size,
@@ -772,8 +746,7 @@ fn free_const_buffer(allocator: &CanopyAllocatorVtable, buffer: &mut CanopyConst
 fn alloc_back_channel(
     allocator: &CanopyAllocatorVtable,
     entries: &[BackChannelEntry],
-) -> Result<CanopyMutBackChannelSpan, i32>
-{
+) -> Result<CanopyMutBackChannelSpan, i32> {
     if entries.is_empty() {
         return Ok(CanopyMutBackChannelSpan::default());
     }
@@ -810,8 +783,7 @@ fn alloc_back_channel(
     })
 }
 
-fn free_back_channel(allocator: &CanopyAllocatorVtable, span: &mut CanopyMutBackChannelSpan)
-{
+fn free_back_channel(allocator: &CanopyAllocatorVtable, span: &mut CanopyMutBackChannelSpan) {
     if span.data.is_null() || span.size == 0 {
         *span = CanopyMutBackChannelSpan::default();
         return;
@@ -833,8 +805,7 @@ fn free_back_channel(allocator: &CanopyAllocatorVtable, span: &mut CanopyMutBack
 pub fn write_remote_object(
     allocator: &CanopyAllocatorVtable,
     value: &RemoteObject,
-) -> Result<CanopyRemoteObject, i32>
-{
+) -> Result<CanopyRemoteObject, i32> {
     Ok(CanopyRemoteObject {
         address: CanopyZoneAddress {
             blob: alloc_const_buffer_from_slice(allocator, value.get_address().get_blob())?,
@@ -842,11 +813,7 @@ pub fn write_remote_object(
     })
 }
 
-pub fn write_zone(
-    allocator: &CanopyAllocatorVtable,
-    value: &Zone,
-) -> Result<CanopyZone, i32>
-{
+pub fn write_zone(allocator: &CanopyAllocatorVtable, value: &Zone) -> Result<CanopyZone, i32> {
     Ok(CanopyZone {
         address: CanopyZoneAddress {
             blob: alloc_const_buffer_from_slice(allocator, value.get_address().get_blob())?,
@@ -854,14 +821,12 @@ pub fn write_zone(
     })
 }
 
-pub fn free_remote_object(allocator: &CanopyAllocatorVtable, value: &mut CanopyRemoteObject)
-{
+pub fn free_remote_object(allocator: &CanopyAllocatorVtable, value: &mut CanopyRemoteObject) {
     free_const_buffer(allocator, &mut value.address.blob);
     *value = CanopyRemoteObject::default();
 }
 
-pub fn free_zone(allocator: &CanopyAllocatorVtable, value: &mut CanopyZone)
-{
+pub fn free_zone(allocator: &CanopyAllocatorVtable, value: &mut CanopyZone) {
     free_const_buffer(allocator, &mut value.address.blob);
     *value = CanopyZone::default();
 }
@@ -870,8 +835,7 @@ pub fn write_standard_result(
     allocator: &CanopyAllocatorVtable,
     value: &StandardResult,
     out: &mut CanopyStandardResult,
-) -> Result<(), i32>
-{
+) -> Result<(), i32> {
     out.error_code = value.error_code;
     out.out_back_channel = alloc_back_channel(allocator, &value.out_back_channel)?;
     Ok(())
@@ -881,12 +845,17 @@ pub fn write_send_result(
     allocator: &CanopyAllocatorVtable,
     value: &SendResult,
     out: &mut CanopySendResult,
-) -> Result<(), i32>
-{
+) -> Result<(), i32> {
     out.error_code = value.error_code;
     out.out_buf = alloc_bytes(allocator, value.out_buf.len())?;
     if !value.out_buf.is_empty() {
-        unsafe { std::ptr::copy_nonoverlapping(value.out_buf.as_ptr(), out.out_buf.data, value.out_buf.len()) };
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                value.out_buf.as_ptr(),
+                out.out_buf.data,
+                value.out_buf.len(),
+            )
+        };
     }
 
     match alloc_back_channel(allocator, &value.out_back_channel) {
@@ -905,8 +874,7 @@ pub fn write_new_zone_id_result(
     allocator: &CanopyAllocatorVtable,
     value: &NewZoneIdResult,
     out: &mut CanopyNewZoneIdResult,
-) -> Result<(), i32>
-{
+) -> Result<(), i32> {
     out.error_code = value.error_code;
     out.zone_id = write_zone(allocator, &value.zone_id)?;
     match alloc_back_channel(allocator, &value.out_back_channel) {
@@ -921,21 +889,21 @@ pub fn write_new_zone_id_result(
     }
 }
 
-pub fn free_standard_result(allocator: &CanopyAllocatorVtable, value: &mut CanopyStandardResult)
-{
+pub fn free_standard_result(allocator: &CanopyAllocatorVtable, value: &mut CanopyStandardResult) {
     free_back_channel(allocator, &mut value.out_back_channel);
     value.error_code = 0;
 }
 
-pub fn free_send_result(allocator: &CanopyAllocatorVtable, value: &mut CanopySendResult)
-{
+pub fn free_send_result(allocator: &CanopyAllocatorVtable, value: &mut CanopySendResult) {
     free_bytes(allocator, &mut value.out_buf);
     free_back_channel(allocator, &mut value.out_back_channel);
     value.error_code = 0;
 }
 
-pub fn free_new_zone_id_result(allocator: &CanopyAllocatorVtable, value: &mut CanopyNewZoneIdResult)
-{
+pub fn free_new_zone_id_result(
+    allocator: &CanopyAllocatorVtable,
+    value: &mut CanopyNewZoneIdResult,
+) {
     free_zone(allocator, &mut value.zone_id);
     free_back_channel(allocator, &mut value.out_back_channel);
     value.error_code = 0;
@@ -944,8 +912,7 @@ pub fn free_new_zone_id_result(allocator: &CanopyAllocatorVtable, value: &mut Ca
 pub fn write_init_output_obj(
     params: &mut CanopyDllInitParams,
     output_obj: &RemoteObject,
-) -> Result<(), i32>
-{
+) -> Result<(), i32> {
     params.output_obj = write_remote_object(&params.allocator, output_obj)?;
     Ok(())
 }
@@ -994,8 +961,7 @@ where
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ParentCallbacks
-{
+pub struct ParentCallbacks {
     pub parent_ctx: CanopyParentContext,
     pub send: Option<CanopyParentSendFn>,
     pub post: Option<CanopyParentPostFn>,
@@ -1007,10 +973,8 @@ pub struct ParentCallbacks
     pub get_new_zone_id: Option<CanopyParentGetNewZoneIdFn>,
 }
 
-impl ParentCallbacks
-{
-    pub fn from_init_params(params: &CanopyDllInitParams) -> Self
-    {
+impl ParentCallbacks {
+    pub fn from_init_params(params: &CanopyDllInitParams) -> Self {
         Self {
             parent_ctx: params.parent_ctx,
             send: params.parent_send,
@@ -1025,10 +989,8 @@ impl ParentCallbacks
     }
 }
 
-impl IMarshaller for ParentCallbacks
-{
-    fn send(&self, params: SendParams) -> SendResult
-    {
+impl IMarshaller for ParentCallbacks {
+    fn send(&self, params: SendParams) -> SendResult {
         let Some(callback) = self.send else {
             return SendResult::new(error_codes::ZONE_NOT_FOUND(), Vec::new(), Vec::new());
         };
@@ -1043,8 +1005,7 @@ impl IMarshaller for ParentCallbacks
         result
     }
 
-    fn post(&self, params: PostParams)
-    {
+    fn post(&self, params: PostParams) {
         let Some(callback) = self.post else {
             return;
         };
@@ -1053,8 +1014,7 @@ impl IMarshaller for ParentCallbacks
         unsafe { callback(self.parent_ctx, borrowed.as_raw()) };
     }
 
-    fn try_cast(&self, params: TryCastParams) -> StandardResult
-    {
+    fn try_cast(&self, params: TryCastParams) -> StandardResult {
         let Some(callback) = self.try_cast else {
             return StandardResult::new(error_codes::ZONE_NOT_FOUND(), Vec::new());
         };
@@ -1069,8 +1029,7 @@ impl IMarshaller for ParentCallbacks
         result
     }
 
-    fn add_ref(&self, params: AddRefParams) -> StandardResult
-    {
+    fn add_ref(&self, params: AddRefParams) -> StandardResult {
         let Some(callback) = self.add_ref else {
             return StandardResult::new(error_codes::ZONE_NOT_FOUND(), Vec::new());
         };
@@ -1085,8 +1044,7 @@ impl IMarshaller for ParentCallbacks
         result
     }
 
-    fn release(&self, params: ReleaseParams) -> StandardResult
-    {
+    fn release(&self, params: ReleaseParams) -> StandardResult {
         let Some(callback) = self.release else {
             return StandardResult::new(error_codes::ZONE_NOT_FOUND(), Vec::new());
         };
@@ -1101,8 +1059,7 @@ impl IMarshaller for ParentCallbacks
         result
     }
 
-    fn object_released(&self, params: ObjectReleasedParams)
-    {
+    fn object_released(&self, params: ObjectReleasedParams) {
         let Some(callback) = self.object_released else {
             return;
         };
@@ -1111,8 +1068,7 @@ impl IMarshaller for ParentCallbacks
         unsafe { callback(self.parent_ctx, borrowed.as_raw()) };
     }
 
-    fn transport_down(&self, params: TransportDownParams)
-    {
+    fn transport_down(&self, params: TransportDownParams) {
         let Some(callback) = self.transport_down else {
             return;
         };
@@ -1121,10 +1077,13 @@ impl IMarshaller for ParentCallbacks
         unsafe { callback(self.parent_ctx, borrowed.as_raw()) };
     }
 
-    fn get_new_zone_id(&self, params: GetNewZoneIdParams) -> NewZoneIdResult
-    {
+    fn get_new_zone_id(&self, params: GetNewZoneIdParams) -> NewZoneIdResult {
         let Some(callback) = self.get_new_zone_id else {
-            return NewZoneIdResult::new(error_codes::ZONE_NOT_FOUND(), Zone::default(), Vec::new());
+            return NewZoneIdResult::new(
+                error_codes::ZONE_NOT_FOUND(),
+                Zone::default(),
+                Vec::new(),
+            );
         };
 
         let borrowed = BorrowedGetNewZoneIdParams::new(&params);
@@ -1139,15 +1098,15 @@ impl IMarshaller for ParentCallbacks
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
-    use canopy_rpc::{AddressType, DefaultValues, InterfaceOrdinal, Method, Object, ZoneAddressArgs};
+    use canopy_rpc::{
+        AddressType, DefaultValues, InterfaceOrdinal, Method, Object, ZoneAddressArgs,
+    };
     use std::collections::HashMap;
 
     #[derive(Default)]
-    struct ParentCallbackState
-    {
+    struct ParentCallbackState {
         observed_interface_id: u64,
         observed_method_id: u64,
         out_buf: Vec<u8>,
@@ -1158,8 +1117,7 @@ mod tests
         parent_ctx: CanopyParentContext,
         params: *const CanopySendParams,
         result: *mut CanopySendResult,
-    ) -> i32
-    {
+    ) -> i32 {
         let state = unsafe { &mut *(parent_ctx as *mut ParentCallbackState) };
         let params = unsafe { &*params };
         let result = unsafe { &mut *result };
@@ -1188,8 +1146,7 @@ mod tests
         321
     }
 
-    fn sample_zone_address() -> ZoneAddress
-    {
+    fn sample_zone_address() -> ZoneAddress {
         ZoneAddress::create(ZoneAddressArgs::new(
             DefaultValues::VERSION_3,
             AddressType::Ipv4,
@@ -1205,13 +1162,11 @@ mod tests
     }
 
     #[derive(Default)]
-    struct TestAllocator
-    {
+    struct TestAllocator {
         allocations: HashMap<usize, Box<[u8]>>,
     }
 
-    unsafe extern "C" fn test_alloc(allocator_ctx: *mut c_void, size: usize) -> CanopyByteBuffer
-    {
+    unsafe extern "C" fn test_alloc(allocator_ctx: *mut c_void, size: usize) -> CanopyByteBuffer {
         let allocator = unsafe { &mut *(allocator_ctx as *mut TestAllocator) };
         let mut data = vec![0u8; size].into_boxed_slice();
         let ptr = data.as_mut_ptr();
@@ -1219,17 +1174,17 @@ mod tests
         CanopyByteBuffer { data: ptr, size }
     }
 
-    unsafe extern "C" fn test_free(allocator_ctx: *mut c_void, data: *mut u8, _size: usize)
-    {
+    unsafe extern "C" fn test_free(allocator_ctx: *mut c_void, data: *mut u8, _size: usize) {
         let allocator = unsafe { &mut *(allocator_ctx as *mut TestAllocator) };
         allocator.allocations.remove(&(data as usize));
     }
 
     #[test]
-    fn borrowed_send_params_preserve_runtime_values()
-    {
+    fn borrowed_send_params_preserve_runtime_values() {
         let zone = Zone::new(sample_zone_address());
-        let remote = zone.with_object(Object::new(9)).expect("with_object should succeed");
+        let remote = zone
+            .with_object(Object::new(9))
+            .expect("with_object should succeed");
         let params = SendParams {
             protocol_version: 3,
             encoding_type: Encoding::ProtocolBuffers,
@@ -1257,8 +1212,7 @@ mod tests
     }
 
     #[test]
-    fn copy_standard_result_copies_owned_data_out()
-    {
+    fn copy_standard_result_copies_owned_data_out() {
         let payload = [7u8, 8u8];
         let entries = [CanopyBackChannelEntry {
             type_id: 12,
@@ -1283,10 +1237,11 @@ mod tests
     }
 
     #[test]
-    fn parent_callbacks_send_routes_into_c_abi_function_pointer()
-    {
+    fn parent_callbacks_send_routes_into_c_abi_function_pointer() {
         let zone = Zone::new(sample_zone_address());
-        let remote = zone.with_object(Object::new(29)).expect("with_object should succeed");
+        let remote = zone
+            .with_object(Object::new(29))
+            .expect("with_object should succeed");
         let mut parent_state = ParentCallbackState::default();
         let callbacks = ParentCallbacks {
             parent_ctx: (&mut parent_state as *mut ParentCallbackState).cast(),
@@ -1322,8 +1277,7 @@ mod tests
     }
 
     #[test]
-    fn write_send_result_allocates_and_frees_with_allocator()
-    {
+    fn write_send_result_allocates_and_frees_with_allocator() {
         let mut allocator_state = TestAllocator::default();
         let allocator = CanopyAllocatorVtable {
             allocator_ctx: (&mut allocator_state as *mut TestAllocator).cast(),

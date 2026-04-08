@@ -1274,7 +1274,7 @@ namespace rust_protobuf_generator
                         output("\t\tlet{} message = Self::ProtoRequest::new();", has_request_fields ? " mut" : "");
                         if (has_interface_request_params)
                         {
-                            output("\t\tlet Some(service) = caller.local_service() else");
+                            output("\t\tlet Some(service) = caller.local_service_runtime() else");
                             output("\t\t{{");
                             output("\t\t\treturn Err(canopy_rpc::TRANSPORT_ERROR());");
                             output("\t\t}};");
@@ -1461,7 +1461,7 @@ namespace rust_protobuf_generator
                                     is_optimistic ? "canopy_rpc::Optimistic::null()" : "canopy_rpc::Shared::null()");
                                 output("\t\t}}");
                                 output(
-                                    "\t\telse if let Some(service) = caller.local_service().filter(|service| "
+                                    "\t\telse if let Some(service) = caller.local_service_runtime().filter(|service| "
                                     "{}_remote_object.as_zone() == service.zone_id())",
                                     field_name);
                                 output("\t\t{{");

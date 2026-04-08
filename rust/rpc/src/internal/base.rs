@@ -14,6 +14,7 @@ use crate::internal::bindings_fwd::GeneratedMethodBindingDescriptor;
 use crate::internal::casting_interface::{CastingInterface, GeneratedRustInterface};
 use crate::internal::marshaller_params::{SendParams, SendResult};
 use crate::internal::remote_pointer::CreateLocalProxy;
+use crate::internal::runtime_traits::ServiceRuntime;
 use crate::internal::service::Service;
 use crate::internal::stub::ObjectStub;
 use crate::rpc_types::{
@@ -145,6 +146,21 @@ where
     T: RpcObject + ?Sized,
 {
     object.__rpc_get_stub()
+}
+
+#[doc(hidden)]
+pub fn lookup_local_interface_view_from_runtime<T>(
+    service: &dyn ServiceRuntime,
+    object_id: crate::rpc_types::Object,
+    interface_id: InterfaceOrdinal,
+) -> Result<Arc<T>, i32>
+where
+    T: CastingInterface + ?Sized + Send + Sync + 'static,
+{
+    let erased = service.lookup_local_interface_view_erased(object_id, interface_id)?;
+    let typed = Arc::downcast::<LocalInterfaceView<T>>(erased)
+        .map_err(|_| crate::internal::error_codes::INVALID_INTERFACE_ID())?;
+    Ok(typed.as_arc())
 }
 
 #[doc(hidden)]

@@ -457,7 +457,7 @@ mod tests {
                 .is_some()
         );
 
-        let service = canopy_rpc::Service::new("probe-peer", zone(41));
+        let service = canopy_rpc::RootService::new_shared("probe-peer", zone(41));
         let object_id = service.generate_new_object_id();
         let rpc_object = i_peer::make_rpc_object(PeerImpl);
         let stub = Arc::new(Mutex::new(canopy_rpc::internal::ObjectStub::with_target(
@@ -724,7 +724,7 @@ mod tests {
 
     #[test]
     fn generated_idl_proxy_round_trips_over_local_protobuf_rpc() {
-        let service = Arc::new(canopy_rpc::Service::new("probe", zone(1)));
+        let service = canopy_rpc::RootService::new_shared("probe", zone(1));
         let object_id = service.generate_new_object_id();
         let rpc_object = i_math::make_rpc_object(MathImpl);
         let stub = Arc::new(Mutex::new(canopy_rpc::internal::ObjectStub::with_target(
@@ -738,8 +738,9 @@ mod tests {
             .expect("remote object descriptor");
         let caller_zone_id = canopy_rpc::CallerZone::from(service.zone_id().get_address().clone());
 
+        let service_runtime: Arc<dyn canopy_rpc::ServiceRuntime> = service.clone();
         let proxy = i_math::ProxySkeleton::with_caller(canopy_rpc::ServiceProxy::local(
-            service.clone(),
+            service_runtime,
             canopy_rpc::GeneratedRpcCallContext {
                 protocol_version: canopy_rpc::get_version(),
                 encoding_type: canopy_rpc::Encoding::ProtocolBuffers,
@@ -970,7 +971,7 @@ mod cxx_dll_tests {
     struct ParentCallbackState {
         next_zone_subnet: u64,
         allocator: CanopyAllocatorVtable,
-        service: Arc<canopy_rpc::Service>,
+        service: Arc<dyn canopy_rpc::ServiceRuntime>,
     }
 
     unsafe extern "C" fn test_alloc(ctx: *mut c_void, size: usize) -> CanopyByteBuffer {
@@ -1247,7 +1248,7 @@ mod cxx_dll_tests {
     struct CxxProbeRuntime {
         _alloc_state: Box<AllocState>,
         _parent_state: Box<ParentCallbackState>,
-        service: Arc<canopy_rpc::Service>,
+        service: Arc<canopy_rpc::RootService>,
         proxy: i_math::ProxySkeleton,
         last_add_ref: Arc<Mutex<Option<AddRefParams>>>,
         last_release: Arc<Mutex<Option<ReleaseParams>>>,
@@ -1264,7 +1265,8 @@ mod cxx_dll_tests {
 
         let parent_zone = sample_zone(parent_subnet);
         let child_zone = sample_zone(child_subnet);
-        let parent_service = Arc::new(canopy_rpc::Service::new("rust-parent", parent_zone.clone()));
+        let parent_service =
+            canopy_rpc::RootService::new_shared("rust-parent", parent_zone.clone());
         let mut alloc_state = Box::new(AllocState {
             allocations: HashMap::new(),
         });
@@ -1276,7 +1278,10 @@ mod cxx_dll_tests {
         let mut parent_state = Box::new(ParentCallbackState {
             next_zone_subnet: 1000,
             allocator,
-            service: parent_service.clone(),
+            service: {
+                let runtime: Arc<dyn canopy_rpc::ServiceRuntime> = parent_service.clone();
+                runtime
+            },
         });
 
         // Zone-only remote_object_id: object_id == 0 so C++ skips the i_peer parent bind.
@@ -1326,7 +1331,11 @@ mod cxx_dll_tests {
             "rust-parent-to-cxx-child",
             parent_service.zone_id(),
             child_zone.clone(),
-            Arc::downgrade(&parent_service),
+            {
+                let parent_service_runtime: Arc<dyn canopy_rpc::ServiceRuntime> =
+                    parent_service.clone();
+                Arc::downgrade(&parent_service_runtime)
+            },
             marshaller.clone(),
         );
         transport.set_status(canopy_rpc::TransportStatus::Connected);

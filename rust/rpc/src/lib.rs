@@ -17,6 +17,7 @@ pub use internal::BindableInterfaceValue;
 pub use internal::BoundInterface;
 #[doc(hidden)]
 pub use internal::CastingInterface;
+pub use internal::ChildService;
 #[doc(hidden)]
 pub use internal::ConnectResult;
 #[doc(hidden)]
@@ -95,6 +96,7 @@ pub use internal::RemoteObjectBindResult;
 pub use internal::RemoteObjectResult;
 #[doc(hidden)]
 pub use internal::RetryBuffer;
+pub use internal::RootService;
 #[doc(hidden)]
 pub use internal::RpcBase;
 #[doc(hidden)]
@@ -104,11 +106,14 @@ pub use internal::STUB_DESERIALISATION_ERROR;
 pub use internal::SendParams;
 #[doc(hidden)]
 pub use internal::SendResult;
+#[doc(hidden)]
 pub use internal::Service;
 pub use internal::ServiceConfig;
 pub use internal::ServiceEvent;
 #[doc(hidden)]
 pub use internal::ServiceProxy;
+#[doc(hidden)]
+pub use internal::ServiceRuntime;
 pub use internal::Shared;
 pub use internal::SharedPtr;
 pub use internal::StandardResult;
@@ -118,6 +123,8 @@ pub use internal::Transport;
 #[doc(hidden)]
 pub use internal::TransportDownParams;
 #[doc(hidden)]
+pub use internal::TransportRuntime;
+#[doc(hidden)]
 pub use internal::TransportStatus;
 #[doc(hidden)]
 pub use internal::TryCastParams;
@@ -126,9 +133,17 @@ pub use internal::add_ref_options_for_pointer_kind;
 #[doc(hidden)]
 pub use internal::bind_incoming_optimistic;
 #[doc(hidden)]
+pub use internal::bind_incoming_optimistic_interface_local_from_runtime;
+#[doc(hidden)]
 pub use internal::bind_incoming_shared;
 #[doc(hidden)]
+pub use internal::bind_incoming_shared_interface_local_from_runtime;
+#[doc(hidden)]
 pub use internal::bind_outgoing_interface;
+#[doc(hidden)]
+pub use internal::bind_outgoing_local_erased_interface_from_runtime;
+#[doc(hidden)]
+pub use internal::bind_outgoing_local_optimistic_erased_interface_from_runtime;
 pub use internal::bytes_to_string;
 #[doc(hidden)]
 pub use internal::get_object_stub;
@@ -138,6 +153,8 @@ pub use internal::is_bound_pointer_gone;
 pub use internal::is_bound_pointer_null;
 pub use internal::is_critical;
 pub use internal::is_error;
+#[doc(hidden)]
+pub use internal::lookup_local_interface_view_from_runtime;
 pub use internal::make_rpc_object_with_adapter;
 pub use internal::method_to_string;
 pub use internal::null_remote_descriptor;

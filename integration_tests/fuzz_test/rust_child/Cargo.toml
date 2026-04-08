@@ -10,4 +10,5 @@ crate-type = ["cdylib"]
 [dependencies]
 canopy-rpc = { path = "../../../rust/rpc", features = ["protobuf-runtime"] }
 canopy-transport-dynamic-library = { path = "../../../rust/transports/dynamic_library" }
+canopy-transport-local = { path = "../../../rust/transports/local" }
 canopy-protobuf-runtime-probe = { path = "../../../rust/tests/protobuf_runtime_probe" }

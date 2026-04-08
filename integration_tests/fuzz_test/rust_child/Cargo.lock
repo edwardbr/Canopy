@@ -9,6 +9,7 @@ dependencies = [
  "canopy-protobuf-runtime-probe",
  "canopy-rpc",
  "canopy-transport-dynamic-library",
+ "canopy-transport-local",
 ]
 
 [[package]]
@@ -30,6 +31,13 @@ dependencies = [
 
 [[package]]
 name = "canopy-transport-dynamic-library"
+version = "0.1.0"
+dependencies = [
+ "canopy-rpc",
+]
+
+[[package]]
+name = "canopy-transport-local"
 version = "0.1.0"
 dependencies = [
  "canopy-rpc",

@@ -72,6 +72,18 @@ if(NOT CANOPY_BUILD_COROUTINE)
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     DEPENDS generator protoc "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml"
             "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/src/lib.rs"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/Cargo.toml"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/pass_through.rs"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/service.rs"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/service_proxy.rs"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/internal/transport.rs"
+            "${CMAKE_SOURCE_DIR}/rust/rpc/src/lib.rs"
+            "${CMAKE_SOURCE_DIR}/rust/transports/dynamic_library/Cargo.toml"
+            "${CMAKE_SOURCE_DIR}/rust/transports/dynamic_library/src/ffi.rs"
+            "${CMAKE_SOURCE_DIR}/rust/transports/dynamic_library/src/lib.rs"
+            "${CMAKE_SOURCE_DIR}/rust/transports/dynamic_library/src/service_endpoint.rs"
+            "${CMAKE_SOURCE_DIR}/rust/transports/local/Cargo.toml"
+            "${CMAKE_SOURCE_DIR}/rust/transports/local/src/lib.rs"
     VERBATIM)
 
   add_custom_target(canopy_fuzz_test_rust_child DEPENDS "${CANOPY_RUST_FUZZ_CHILD_LIB}")

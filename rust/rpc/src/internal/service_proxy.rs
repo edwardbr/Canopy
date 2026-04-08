@@ -11,7 +11,7 @@ use crate::internal::marshaller_params::{
     AddRefParams, ReleaseParams, SendParams, SendResult, StandardResult,
 };
 use crate::internal::object_proxy::{ObjectProxy, RemoteRefGuard};
-use crate::internal::service::Service;
+use crate::internal::runtime_traits::{ServiceRuntime, TransportRuntime};
 use crate::internal::transport::Transport;
 use crate::rpc_types::{
     AddRefOptions, BackChannelEntry, CallerZone, Encoding, InterfaceOrdinal, Method, Object,
@@ -36,7 +36,7 @@ pub trait GeneratedRpcCaller: Send + Sync {
         None
     }
 
-    fn local_service(&self) -> Option<&Service> {
+    fn local_service_runtime(&self) -> Option<&dyn ServiceRuntime> {
         None
     }
 
@@ -110,8 +110,8 @@ pub trait GeneratedRpcCaller: Send + Sync {
 }
 
 pub struct ServiceProxy {
-    service: Arc<Service>,
-    transport: Option<Arc<Transport>>,
+    service: Arc<dyn ServiceRuntime>,
+    transport: Option<Arc<dyn TransportRuntime>>,
     context: GeneratedRpcCallContext,
     object_proxies: Arc<Mutex<BTreeMap<Object, Weak<ObjectProxy>>>>,
 }
@@ -135,7 +135,7 @@ impl std::fmt::Debug for ServiceProxy {
 }
 
 impl ServiceProxy {
-    pub fn local(service: Arc<Service>, context: GeneratedRpcCallContext) -> Arc<Self> {
+    pub fn local(service: Arc<dyn ServiceRuntime>, context: GeneratedRpcCallContext) -> Arc<Self> {
         Arc::new(Self {
             service,
             transport: None,
@@ -145,8 +145,8 @@ impl ServiceProxy {
     }
 
     pub fn with_transport(
-        service: Arc<Service>,
-        transport: Arc<Transport>,
+        service: Arc<dyn ServiceRuntime>,
+        transport: Arc<dyn TransportRuntime>,
         context: GeneratedRpcCallContext,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -157,11 +157,11 @@ impl ServiceProxy {
         })
     }
 
-    pub fn service(&self) -> &Arc<Service> {
+    pub fn service(&self) -> &Arc<dyn ServiceRuntime> {
         &self.service
     }
 
-    pub fn transport(&self) -> Option<Arc<Transport>> {
+    pub fn transport(&self) -> Option<Arc<dyn TransportRuntime>> {
         self.transport.clone()
     }
 
@@ -252,16 +252,34 @@ impl ServiceProxy {
         } else {
             AddRefOptions::NORMAL
         };
-        transport.add_ref(AddRefParams {
+        let add_ref_params = AddRefParams {
             protocol_version: self.context.protocol_version,
-            remote_object_id,
-            caller_zone_id,
+            remote_object_id: remote_object_id.clone(),
+            caller_zone_id: caller_zone_id.clone(),
             requesting_zone_id: self.service.zone_id(),
             build_out_param_channel: AddRefOptions::BUILD_DESTINATION_ROUTE
                 | AddRefOptions::BUILD_CALLER_ROUTE
                 | pointer_options,
             in_back_channel: vec![],
-        })
+        };
+
+        let destination_zone = remote_object_id.as_zone();
+        if caller_zone_id != self.service.zone_id()
+            && caller_zone_id != destination_zone
+            && let Some(caller_transport) = self.service.get_transport(&caller_zone_id)
+            && !Arc::ptr_eq(transport, &caller_transport)
+            && let Some(pass_through) = Transport::create_pass_through(
+                transport.clone(),
+                caller_transport,
+                Arc::downgrade(&self.service),
+                destination_zone,
+                caller_zone_id,
+            )
+        {
+            return pass_through.add_ref(add_ref_params);
+        }
+
+        transport.add_ref(add_ref_params)
     }
 
     pub fn release_remote_object_for_caller(
@@ -330,7 +348,7 @@ impl GeneratedRpcCaller for ObjectProxyCaller {
         Some(self.object_proxy.clone())
     }
 
-    fn local_service(&self) -> Option<&Service> {
+    fn local_service_runtime(&self) -> Option<&dyn ServiceRuntime> {
         self.object_proxy
             .service_proxy_ref()
             .map(|service_proxy| service_proxy.service.as_ref())
@@ -366,7 +384,7 @@ impl GeneratedRpcCaller for ServiceProxy {
         self.context.clone()
     }
 
-    fn local_service(&self) -> Option<&Service> {
+    fn local_service_runtime(&self) -> Option<&dyn ServiceRuntime> {
         Some(self.service.as_ref())
     }
 
@@ -400,13 +418,13 @@ impl GeneratedRpcCaller for ServiceProxy {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, Weak};
 
     use super::{GeneratedRpcCallContext, GeneratedRpcCaller, ServiceProxy};
     use crate::internal::{
         AddRefParams, GetNewZoneIdParams, IMarshaller, NewZoneIdResult, ObjectReleasedParams,
-        PostParams, ReleaseParams, SendParams, SendResult, Service, StandardResult, Transport,
-        TransportDownParams, TryCastParams,
+        PostParams, ReleaseParams, SendParams, SendResult, Service, ServiceRuntime, StandardResult,
+        Transport, TransportDownParams, TryCastParams,
     };
     use crate::rpc_types::{
         AddRefOptions, AddressType, CallerZone, DefaultValues, Encoding, InterfaceOrdinal, Method,
@@ -507,6 +525,11 @@ mod tests {
                 .with_object(Object::new(object))
                 .expect("remote object"),
         )
+    }
+
+    fn weak_service(service: &Arc<Service>) -> Weak<dyn ServiceRuntime> {
+        let service_runtime: Arc<dyn ServiceRuntime> = service.clone();
+        Arc::downgrade(&service_runtime)
     }
 
     #[test]
@@ -662,7 +685,7 @@ mod tests {
             "remote",
             zone(1),
             zone(2),
-            Arc::downgrade(&service),
+            weak_service(&service),
             marshaller.clone(),
         );
         let remote = remote_object(2, 55);
@@ -705,7 +728,7 @@ mod tests {
             "zone5-to-zone7",
             zone(5),
             zone(7),
-            Arc::downgrade(&zone5_service),
+            weak_service(&zone5_service),
             marshaller.clone(),
         );
         let zone7_object = remote_object(7, 77);
@@ -756,7 +779,7 @@ mod tests {
             "zone5-to-zone7",
             zone(5),
             zone(7),
-            Arc::downgrade(&zone5_service),
+            weak_service(&zone5_service),
             marshaller.clone(),
         );
         let zone7_object = remote_object(7, 78);
@@ -807,7 +830,7 @@ mod tests {
             "zone5-to-zone7",
             zone(5),
             zone(7),
-            Arc::downgrade(&zone5_service),
+            weak_service(&zone5_service),
             marshaller.clone(),
         );
         let zone7_object = remote_object(7, 79);
@@ -966,7 +989,7 @@ mod tests {
             "zone5-to-zone7",
             zone(5),
             zone(7),
-            Arc::downgrade(&zone5_service),
+            weak_service(&zone5_service),
             marshaller.clone(),
         );
         let zone7_object = remote_object(7, 80);
