@@ -1723,6 +1723,36 @@ TYPED_TEST(
 #  endif
 }
 
+TYPED_TEST(
+    fuzz_transport_test,
+    AutonomousInstructionStress)
+{
+#  ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = std::shared_ptr<coro::scheduler>(
+        coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+    this->transport_setup_.set_scheduler(scheduler);
+
+    bool completed = false;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+    auto wrapper_task = [&]() -> coro::task<void>
+    {
+        co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242);
+        completed = true;
+    }();
+
+    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
+
+    while (!completed)
+    {
+        scheduler->process_events(std::chrono::milliseconds(10));
+    }
+
+    scheduler->shutdown();
+#  else
+    run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242);
+#  endif
+}
+
 template<typename TransportSetup>
 CORO_TASK(void)
 run_child_status_and_cache_test_with_setup(TransportSetup& transport_setup)
@@ -1872,6 +1902,91 @@ TYPED_TEST(
     scheduler->shutdown();
 #  else
     run_receive_object_updates_status_test_with_setup(this->transport_setup_);
+#  endif
+}
+
+template<typename TransportSetup>
+CORO_TASK(void)
+run_execute_instruction_creates_shared_object_test_with_setup(TransportSetup& transport_setup)
+{
+    g_zone_id_counter = 0;
+    g_instruction_counter = 0;
+    transport_setup.set_up();
+
+    test_scenario_config scenario_config;
+    scenario_config.test_cycle = 79;
+    scenario_config.instruction_count = 1;
+
+    auto root_node = CO_AWAIT transport_setup.create_root_node(79, scenario_config);
+    EXPECT_TRUE(root_node);
+    if (!root_node)
+    {
+        transport_setup.tear_down();
+        CO_RETURN;
+    }
+
+    rpc::shared_ptr<i_shared_object> ignored_output;
+    instruction create_capability;
+    create_capability.instruction_id = 1;
+    create_capability.operation = "CREATE_CAPABILITY";
+    create_capability.target_value = 0;
+    EXPECT_EQ(CO_AWAIT root_node->execute_instruction(create_capability, {}, ignored_output), rpc::error::OK());
+
+    rpc::shared_ptr<i_shared_object> created_object;
+    instruction create_object;
+    create_object.instruction_id = 2;
+    create_object.operation = "CREATE_OBJECT";
+    create_object.target_value = 7;
+    EXPECT_EQ(CO_AWAIT root_node->execute_instruction(create_object, {}, created_object), rpc::error::OK());
+    EXPECT_TRUE(created_object);
+    if (!created_object)
+    {
+        transport_setup.tear_down();
+        CO_RETURN;
+    }
+
+    int value = 0;
+    EXPECT_EQ(CO_AWAIT created_object->get_value(value), rpc::error::OK());
+    EXPECT_EQ(value, 70);
+
+    auto test_result = CO_AWAIT created_object->test_function(3);
+    EXPECT_TRUE(test_result == rpc::error::OK() || test_result == 7);
+
+    int call_count = 0;
+    EXPECT_EQ(CO_AWAIT created_object->get_stats(call_count), rpc::error::OK());
+    EXPECT_EQ(call_count, 1);
+
+    transport_setup.tear_down();
+    CO_RETURN;
+}
+
+TYPED_TEST(
+    fuzz_transport_test,
+    ExecuteInstructionCreatesSharedObject)
+{
+#  ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = std::shared_ptr<coro::scheduler>(
+        coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+    this->transport_setup_.set_scheduler(scheduler);
+
+    bool completed = false;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+    auto wrapper_task = [&]() -> coro::task<void>
+    {
+        co_await run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_);
+        completed = true;
+    }();
+
+    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
+
+    while (!completed)
+    {
+        scheduler->process_events(std::chrono::milliseconds(10));
+    }
+
+    scheduler->shutdown();
+#  else
+    run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_);
 #  endif
 }
 #endif

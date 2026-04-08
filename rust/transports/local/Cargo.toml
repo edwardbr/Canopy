@@ -1,0 +1,11 @@
+[package]
+name = "canopy-transport-local"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "canopy_transport_local"
+path = "src/lib.rs"
+
+[dependencies]
+canopy-rpc = { path = "../../rpc" }

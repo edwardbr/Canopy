@@ -4,12 +4,12 @@ use canopy_protobuf_runtime_probe::fuzz_test::fuzz_test::{
 };
 use canopy_rpc::internal::error_codes;
 use canopy_rpc::{
-    AddRefParams, AddressType, DefaultValues, GetNewZoneIdParams, IMarshaller, Object,
-    ObjectReleasedParams, PostParams, ReleaseParams, RemoteObject, SendParams, SendResult, Service,
-    StandardResult, Transport, TransportDownParams, TransportStatus, TryCastParams, Zone,
+    AddressType, DefaultValues, Encoding, GeneratedRpcCallContext, InterfacePointerKind, Object,
+    RemoteObject, RootService, SendParams, SendResult, ServiceProxy, ServiceRuntime, Zone,
     ZoneAddress, ZoneAddressArgs,
 };
 use canopy_transport_dynamic_library as dll;
+use canopy_transport_local::create_child_zone_with_exported_object;
 use std::sync::{Arc, Mutex};
 
 fn zone_from_ffi(value: dll::ffi::CanopyZone) -> Zone {
@@ -42,10 +42,28 @@ fn child_output_object(params: &dll::CanopyDllInitParams) -> RemoteObject {
         .expect("child output object")
 }
 
+fn local_child_zone(child_zone_id: u64) -> Zone {
+    Zone::new(
+        ZoneAddress::create(ZoneAddressArgs::new(
+            DefaultValues::VERSION_3,
+            AddressType::Local,
+            0,
+            vec![],
+            DefaultValues::DEFAULT_SUBNET_SIZE_BITS,
+            child_zone_id,
+            DefaultValues::DEFAULT_OBJECT_ID_SIZE_BITS,
+            0,
+            vec![],
+        ))
+        .expect("local child zone"),
+    )
+}
+
 #[derive(Clone)]
 struct RustFuzzNode {
     state: Arc<Mutex<RustFuzzNodeState>>,
-    service: Option<Arc<Service>>,
+    service_runtime: Option<Arc<dyn ServiceRuntime>>,
+    object_id: Option<Object>,
 }
 
 struct RustFuzzNodeState {
@@ -55,6 +73,7 @@ struct RustFuzzNodeState {
     connections: Vec<canopy_rpc::SharedPtr<dyn IAutonomousNode>>,
     child_nodes: Vec<canopy_rpc::SharedPtr<dyn IAutonomousNode>>,
     created_objects: Vec<canopy_rpc::SharedPtr<dyn ISharedObject>>,
+    child_zones: Vec<canopy_transport_local::BoundChildZone>,
     parent_node: canopy_rpc::SharedPtr<dyn IAutonomousNode>,
     cleanup_called: bool,
 }
@@ -69,36 +88,64 @@ impl Default for RustFuzzNode {
                 connections: Vec::new(),
                 child_nodes: Vec::new(),
                 created_objects: Vec::new(),
+                child_zones: Vec::new(),
                 parent_node: canopy_rpc::Shared::null(),
                 cleanup_called: false,
             })),
-            service: None,
+            service_runtime: None,
+            object_id: None,
         }
     }
 }
 
 impl RustFuzzNode {
-    fn with_service(service: Arc<Service>) -> Self {
+    fn with_service_and_object(
+        service_runtime: Arc<dyn ServiceRuntime>,
+        object_id: Object,
+    ) -> Self {
         Self {
-            service: Some(service),
+            service_runtime: Some(service_runtime),
+            object_id: Some(object_id),
             ..Self::default()
         }
+    }
+
+    fn local_node_ptr(&self) -> canopy_rpc::SharedPtr<dyn IAutonomousNode> {
+        let (Some(service_runtime), Some(object_id)) = (&self.service_runtime, self.object_id)
+        else {
+            let node: Arc<dyn IAutonomousNode> = Arc::new(self.clone());
+            return canopy_rpc::Shared::from_arc(node);
+        };
+
+        canopy_rpc::lookup_local_interface_view_from_runtime::<dyn IAutonomousNode>(
+            service_runtime.as_ref(),
+            object_id,
+            canopy_rpc::InterfaceOrdinal::new(fg::IAutonomousNode::ID_RPC_V3),
+        )
+        .map(canopy_rpc::Shared::from_arc)
+        .unwrap_or_else(|_| {
+            let node: Arc<dyn IAutonomousNode> = Arc::new(self.clone());
+            canopy_rpc::Shared::from_arc(node)
+        })
     }
 
     fn shared_object_ptr(&self, value: i32) -> canopy_rpc::SharedPtr<dyn ISharedObject> {
         let object = RustSharedObject::default();
         let _ = object.set_value(value);
-        if let Some(service) = &self.service {
+        if let Some(service_runtime) = &self.service_runtime {
             let rpc_object = fg::ISharedObject::make_rpc_object(object.clone());
-            let object_id = service.generate_new_object_id();
+            let object_id = service_runtime.generate_new_object_id();
             let stub = Arc::new(Mutex::new(canopy_rpc::internal::ObjectStub::with_target(
                 object_id, rpc_object,
             )));
-            if service.register_stub(&stub) == error_codes::OK() {
-                if let Ok(view) = service.lookup_local_interface_view::<dyn ISharedObject>(
-                    object_id,
-                    canopy_rpc::InterfaceOrdinal::new(fg::ISharedObject::ID_RPC_V3),
-                ) {
+            if service_runtime.register_stub(&stub) == error_codes::OK() {
+                if let Ok(view) =
+                    canopy_rpc::lookup_local_interface_view_from_runtime::<dyn ISharedObject>(
+                        service_runtime.as_ref(),
+                        object_id,
+                        canopy_rpc::InterfaceOrdinal::new(fg::ISharedObject::ID_RPC_V3),
+                    )
+                {
                     return canopy_rpc::Shared::from_arc(view);
                 }
             }
@@ -112,7 +159,26 @@ impl RustFuzzNode {
         &self,
         node_type: NodeType,
         node_id: u64,
-    ) -> canopy_rpc::SharedPtr<dyn IAutonomousNode> {
+        parent_node: canopy_rpc::SharedPtr<dyn IAutonomousNode>,
+    ) -> Result<canopy_rpc::SharedPtr<dyn IAutonomousNode>, i32> {
+        let Some(parent_runtime) = &self.service_runtime else {
+            let child: Arc<dyn IAutonomousNode> = Arc::new(RustFuzzNode {
+                state: Arc::new(Mutex::new(RustFuzzNodeState {
+                    node_type,
+                    node_id,
+                    signals_received: 0,
+                    connections: Vec::new(),
+                    child_nodes: Vec::new(),
+                    created_objects: Vec::new(),
+                    child_zones: Vec::new(),
+                    parent_node,
+                    cleanup_called: false,
+                })),
+                service_runtime: None,
+                object_id: None,
+            });
+            return Ok(canopy_rpc::Shared::from_arc(child));
+        };
         let child = RustFuzzNode {
             state: Arc::new(Mutex::new(RustFuzzNodeState {
                 node_type,
@@ -121,30 +187,51 @@ impl RustFuzzNode {
                 connections: Vec::new(),
                 child_nodes: Vec::new(),
                 created_objects: Vec::new(),
-                parent_node: canopy_rpc::Shared::null(),
+                child_zones: Vec::new(),
+                parent_node,
                 cleanup_called: false,
             })),
-            service: self.service.clone(),
+            service_runtime: None,
+            object_id: None,
         };
+        let bound_zone = create_child_zone_with_exported_object(
+            format!("rust-fuzz-local-child-{node_id}"),
+            parent_runtime.clone(),
+            format!("rust-fuzz-child-{node_id}"),
+            local_child_zone(node_id),
+            |child_service, object_id| {
+                let child = RustFuzzNode {
+                    service_runtime: Some(child_service),
+                    object_id: Some(object_id),
+                    ..child
+                };
+                make_fuzz_node_rpc_object(child)
+            },
+            InterfacePointerKind::Shared,
+        )?;
+        let remote_object = bound_zone.root_object().clone();
 
-        if let Some(service) = &self.service {
-            let rpc_object = fg::IAutonomousNode::make_rpc_object(child.clone());
-            let object_id = service.generate_new_object_id();
-            let stub = Arc::new(Mutex::new(canopy_rpc::internal::ObjectStub::with_target(
-                object_id, rpc_object,
-            )));
-            if service.register_stub(&stub) == error_codes::OK() {
-                if let Ok(view) = service.lookup_local_interface_view::<dyn IAutonomousNode>(
-                    object_id,
-                    canopy_rpc::InterfaceOrdinal::new(fg::IAutonomousNode::ID_RPC_V3),
-                ) {
-                    return canopy_rpc::Shared::from_arc(view);
-                }
-            }
-        }
-
-        let child: Arc<dyn IAutonomousNode> = Arc::new(child);
-        canopy_rpc::Shared::from_arc(child)
+        let service_proxy = ServiceProxy::with_transport(
+            parent_runtime.clone(),
+            bound_zone.zone().child_transport().transport(),
+            GeneratedRpcCallContext {
+                protocol_version: DefaultValues::VERSION_3 as u64,
+                encoding_type: Encoding::ProtocolBuffers,
+                tag: 0,
+                caller_zone_id: parent_runtime.zone_id(),
+                remote_object_id: remote_object.clone(),
+            },
+        );
+        let caller = service_proxy
+            .proxy_for_remote_object_with_ref(remote_object, InterfacePointerKind::Shared);
+        let proxy: Arc<dyn IAutonomousNode> =
+            Arc::new(fg::IAutonomousNode::ProxySkeleton::with_caller(caller));
+        self.state
+            .lock()
+            .expect("node state mutex poisoned")
+            .child_zones
+            .push(bound_zone);
+        Ok(canopy_rpc::Shared::from_arc(proxy))
     }
 }
 
@@ -173,6 +260,282 @@ impl canopy_rpc::GeneratedRustInterface for RustFuzzNode {
     fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
         fg::IAutonomousNode::interface_binding::METHODS
     }
+}
+
+struct RustFuzzNodeAdapter;
+
+impl canopy_rpc::LocalObjectAdapter<RustFuzzNode> for RustFuzzNodeAdapter {
+    fn interface_name() -> &'static str {
+        fg::IAutonomousNode::NAME
+    }
+
+    fn get_id(rpc_version: u64) -> u64 {
+        if rpc_version >= 3 {
+            fg::IAutonomousNode::ID_RPC_V3
+        } else {
+            fg::IAutonomousNode::ID_RPC_V2
+        }
+    }
+
+    fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
+        fg::IAutonomousNode::interface_binding::METHODS
+    }
+
+    fn supports_interface(interface_id: canopy_rpc::InterfaceOrdinal) -> bool {
+        fg::IAutonomousNode::matches_interface_id(interface_id)
+            || fg::ICleanup::matches_interface_id(interface_id)
+    }
+
+    fn dispatch(
+        implementation: &RustFuzzNode,
+        context: &canopy_rpc::DispatchContext,
+        params: SendParams,
+    ) -> SendResult {
+        if fg::IAutonomousNode::matches_interface_id(params.interface_id) {
+            return IAutonomousNode::__rpc_dispatch_generated(implementation, context, params);
+        }
+        if fg::ICleanup::matches_interface_id(params.interface_id) {
+            return ICleanup::__rpc_dispatch_generated(implementation, context, params);
+        }
+        SendResult::new(error_codes::INVALID_INTERFACE_ID(), Vec::new(), Vec::new())
+    }
+
+    fn method_metadata(
+        interface_id: canopy_rpc::InterfaceOrdinal,
+    ) -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
+        if fg::IAutonomousNode::matches_interface_id(interface_id) {
+            return fg::IAutonomousNode::interface_binding::METHODS;
+        }
+        if fg::ICleanup::matches_interface_id(interface_id) {
+            return fg::ICleanup::interface_binding::METHODS;
+        }
+        &[]
+    }
+
+    fn local_interface_view(
+        object: Arc<canopy_rpc::RpcBase<RustFuzzNode, Self>>,
+        interface_id: canopy_rpc::InterfaceOrdinal,
+    ) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        if fg::IAutonomousNode::matches_interface_id(interface_id) {
+            let view: Arc<dyn IAutonomousNode> = Arc::new(RustFuzzAutonomousNodeView { object });
+            return Some(Arc::new(canopy_rpc::internal::LocalInterfaceView::new(
+                view,
+            )));
+        }
+        if fg::ICleanup::matches_interface_id(interface_id) {
+            let view: Arc<dyn ICleanup> = Arc::new(RustFuzzCleanupView { object });
+            return Some(Arc::new(canopy_rpc::internal::LocalInterfaceView::new(
+                view,
+            )));
+        }
+        None
+    }
+}
+
+struct RustFuzzAutonomousNodeView {
+    object: Arc<canopy_rpc::RpcBase<RustFuzzNode, RustFuzzNodeAdapter>>,
+}
+
+impl canopy_rpc::CastingInterface for RustFuzzAutonomousNodeView {
+    fn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool {
+        fg::IAutonomousNode::matches_interface_id(interface_id)
+    }
+
+    fn __rpc_call(&self, params: SendParams) -> SendResult {
+        canopy_rpc::CastingInterface::__rpc_call(self.object.as_ref(), params)
+    }
+
+    fn __rpc_local_object_stub(&self) -> Option<Arc<Mutex<canopy_rpc::internal::ObjectStub>>> {
+        canopy_rpc::internal::get_object_stub(self.object.as_ref())
+    }
+}
+
+impl canopy_rpc::GeneratedRustInterface for RustFuzzAutonomousNodeView {
+    fn interface_name() -> &'static str {
+        fg::IAutonomousNode::NAME
+    }
+
+    fn get_id(rpc_version: u64) -> u64 {
+        if rpc_version >= 3 {
+            fg::IAutonomousNode::ID_RPC_V3
+        } else {
+            fg::IAutonomousNode::ID_RPC_V2
+        }
+    }
+
+    fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
+        fg::IAutonomousNode::interface_binding::METHODS
+    }
+}
+
+impl IAutonomousNode for RustFuzzAutonomousNodeView {
+    fn initialize_node(&self, r#type: NodeType, node_id: u64) -> i32 {
+        self.object
+            .implementation()
+            .initialize_node(r#type, node_id)
+    }
+
+    fn run_script(
+        &self,
+        target_node: canopy_rpc::SharedPtr<dyn IAutonomousNode>,
+        instruction_count: i32,
+    ) -> i32 {
+        self.object
+            .implementation()
+            .run_script(target_node, instruction_count)
+    }
+
+    fn execute_instruction(
+        &self,
+        instruction: Instruction,
+        input_object: canopy_rpc::SharedPtr<dyn ISharedObject>,
+        output_object: &mut canopy_rpc::SharedPtr<dyn ISharedObject>,
+    ) -> i32 {
+        self.object
+            .implementation()
+            .execute_instruction(instruction, input_object, output_object)
+    }
+
+    fn connect_to_node(&self, target_node: canopy_rpc::SharedPtr<dyn IAutonomousNode>) -> i32 {
+        self.object.implementation().connect_to_node(target_node)
+    }
+
+    fn pass_object_to_connected(
+        &self,
+        connection_index: i32,
+        object: canopy_rpc::SharedPtr<dyn ISharedObject>,
+    ) -> i32 {
+        self.object
+            .implementation()
+            .pass_object_to_connected(connection_index, object)
+    }
+
+    fn receive_object(
+        &self,
+        object: canopy_rpc::SharedPtr<dyn ISharedObject>,
+        sender_node_id: u64,
+    ) -> i32 {
+        self.object
+            .implementation()
+            .receive_object(object, sender_node_id)
+    }
+
+    fn get_node_status(
+        &self,
+        current_type: &mut NodeType,
+        current_id: &mut u64,
+        connections_count: &mut i32,
+        objects_held: &mut i32,
+    ) -> i32 {
+        self.object.implementation().get_node_status(
+            current_type,
+            current_id,
+            connections_count,
+            objects_held,
+        )
+    }
+
+    fn create_child_node(
+        &self,
+        child_type: NodeType,
+        child_zone_id: u64,
+        cache_locally: bool,
+        child_node: &mut canopy_rpc::SharedPtr<dyn IAutonomousNode>,
+    ) -> i32 {
+        self.object.implementation().create_child_node(
+            child_type,
+            child_zone_id,
+            cache_locally,
+            child_node,
+        )
+    }
+
+    fn request_child_creation(
+        &self,
+        target_parent: canopy_rpc::SharedPtr<dyn IAutonomousNode>,
+        child_type: NodeType,
+        child_zone_id: u64,
+        child_proxy: &mut canopy_rpc::SharedPtr<dyn IAutonomousNode>,
+    ) -> i32 {
+        self.object.implementation().request_child_creation(
+            target_parent,
+            child_type,
+            child_zone_id,
+            child_proxy,
+        )
+    }
+
+    fn get_cached_children_count(&self, count: &mut i32) -> i32 {
+        self.object
+            .implementation()
+            .get_cached_children_count(count)
+    }
+
+    fn get_cached_child_by_index(
+        &self,
+        index: i32,
+        child: &mut canopy_rpc::SharedPtr<dyn IAutonomousNode>,
+    ) -> i32 {
+        self.object
+            .implementation()
+            .get_cached_child_by_index(index, child)
+    }
+
+    fn get_parent_node(&self, parent: &mut canopy_rpc::SharedPtr<dyn IAutonomousNode>) -> i32 {
+        self.object.implementation().get_parent_node(parent)
+    }
+
+    fn set_parent_node(&self, parent: canopy_rpc::SharedPtr<dyn IAutonomousNode>) -> i32 {
+        self.object.implementation().set_parent_node(parent)
+    }
+}
+
+struct RustFuzzCleanupView {
+    object: Arc<canopy_rpc::RpcBase<RustFuzzNode, RustFuzzNodeAdapter>>,
+}
+
+impl canopy_rpc::CastingInterface for RustFuzzCleanupView {
+    fn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool {
+        fg::ICleanup::matches_interface_id(interface_id)
+    }
+
+    fn __rpc_call(&self, params: SendParams) -> SendResult {
+        canopy_rpc::CastingInterface::__rpc_call(self.object.as_ref(), params)
+    }
+
+    fn __rpc_local_object_stub(&self) -> Option<Arc<Mutex<canopy_rpc::internal::ObjectStub>>> {
+        canopy_rpc::internal::get_object_stub(self.object.as_ref())
+    }
+}
+
+impl canopy_rpc::GeneratedRustInterface for RustFuzzCleanupView {
+    fn interface_name() -> &'static str {
+        fg::ICleanup::NAME
+    }
+
+    fn get_id(rpc_version: u64) -> u64 {
+        if rpc_version >= 3 {
+            fg::ICleanup::ID_RPC_V3
+        } else {
+            fg::ICleanup::ID_RPC_V2
+        }
+    }
+
+    fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
+        fg::ICleanup::interface_binding::METHODS
+    }
+}
+
+impl ICleanup for RustFuzzCleanupView {
+    fn cleanup(&self, collector: canopy_rpc::SharedPtr<dyn IGarbageCollector>) -> i32 {
+        self.object.implementation().cleanup(collector)
+    }
+}
+
+fn make_fuzz_node_rpc_object(
+    node: RustFuzzNode,
+) -> Arc<canopy_rpc::RpcBase<RustFuzzNode, RustFuzzNodeAdapter>> {
+    canopy_rpc::make_rpc_object_with_adapter::<RustFuzzNode, RustFuzzNodeAdapter>(node)
 }
 
 #[derive(Clone, Default)]
@@ -260,6 +623,7 @@ impl ICleanup for RustFuzzNode {
         state.connections.clear();
         state.child_nodes.clear();
         state.created_objects.clear();
+        state.child_zones.clear();
         state.parent_node = canopy_rpc::Shared::null();
         error_codes::OK()
     }
@@ -445,7 +809,11 @@ impl IAutonomousNode for RustFuzzNode {
         child_node: &mut canopy_rpc::SharedPtr<dyn IAutonomousNode>,
     ) -> i32 {
         *child_node = canopy_rpc::Shared::null();
-        let child = self.autonomous_node_ptr(child_type, child_zone_id);
+        let child = match self.autonomous_node_ptr(child_type, child_zone_id, self.local_node_ptr())
+        {
+            Ok(child) => child,
+            Err(error_code) => return error_code,
+        };
         if cache_locally {
             self.state
                 .lock()
@@ -514,219 +882,6 @@ impl IAutonomousNode for RustFuzzNode {
     }
 }
 
-#[derive(Clone)]
-struct RustFuzzMarshaller {
-    node: RustFuzzNode,
-    service: Arc<Service>,
-    output_object: RemoteObject,
-}
-
-#[derive(Clone, Copy)]
-struct ParentCallbackMarshaller(dll::ffi::ParentCallbacks);
-
-// The parent callback table is a stable C ABI handle owned by the C++ parent
-// side for the lifetime of the child context. The Rust Transport requires a
-// Send + Sync marshaller, matching the C++ transport ownership model.
-unsafe impl Send for ParentCallbackMarshaller {}
-unsafe impl Sync for ParentCallbackMarshaller {}
-
-impl IMarshaller for ParentCallbackMarshaller {
-    fn send(&self, params: SendParams) -> SendResult {
-        self.0.send(params)
-    }
-
-    fn post(&self, params: PostParams) {
-        self.0.post(params);
-    }
-
-    fn try_cast(&self, params: TryCastParams) -> StandardResult {
-        self.0.try_cast(params)
-    }
-
-    fn add_ref(&self, params: AddRefParams) -> StandardResult {
-        self.0.add_ref(params)
-    }
-
-    fn release(&self, params: ReleaseParams) -> StandardResult {
-        self.0.release(params)
-    }
-
-    fn object_released(&self, params: ObjectReleasedParams) {
-        self.0.object_released(params);
-    }
-
-    fn transport_down(&self, params: TransportDownParams) {
-        self.0.transport_down(params);
-    }
-
-    fn get_new_zone_id(&self, params: GetNewZoneIdParams) -> canopy_rpc::NewZoneIdResult {
-        self.0.get_new_zone_id(params)
-    }
-}
-
-impl RustFuzzMarshaller {
-    fn proto_remote_object(
-        value: &RemoteObject,
-    ) -> canopy_protobuf_runtime_probe::__canopy_protobuf::rpc::remote_object {
-        let mut remote_object =
-            canopy_protobuf_runtime_probe::__canopy_protobuf::rpc::remote_object::new();
-        let mut zone_address =
-            canopy_protobuf_runtime_probe::__canopy_protobuf::rpc::zone_address::new();
-        zone_address.set_blob(value.get_address().get_blob().to_vec());
-        remote_object.set_addr_(zone_address);
-        remote_object
-    }
-
-    fn encode_create_child_node_ok(&self, caller_zone_id: canopy_rpc::CallerZone) -> SendResult {
-        let mut response =
-            canopy_protobuf_runtime_probe::__canopy_protobuf::fuzz_test::i_autonomous_node_create_child_nodeResponse::new();
-        let parent_view = self
-            .service
-            .lookup_local_interface_view::<dyn IAutonomousNode>(
-                self.output_object.get_object_id(),
-                canopy_rpc::InterfaceOrdinal::new(fg::IAutonomousNode::ID_RPC_V3),
-            )
-            .map(canopy_rpc::Shared::from_arc)
-            .unwrap_or_else(|_| {
-                let node: Arc<dyn IAutonomousNode> = Arc::new(self.node.clone());
-                canopy_rpc::Shared::from_arc(node)
-            });
-
-        let child_id = self.service.generate_new_object_id();
-        let child = RustFuzzNode {
-            state: Arc::new(Mutex::new(RustFuzzNodeState {
-                node_type: NodeType::WorkerNode,
-                node_id: child_id.get_val(),
-                signals_received: 0,
-                connections: Vec::new(),
-                child_nodes: Vec::new(),
-                created_objects: Vec::new(),
-                parent_node: parent_view,
-                cleanup_called: false,
-            })),
-            service: Some(self.service.clone()),
-        };
-        let child_rpc_object = fg::IAutonomousNode::make_rpc_object(child);
-        let child_stub = Arc::new(Mutex::new(canopy_rpc::internal::ObjectStub::with_target(
-            child_id,
-            child_rpc_object,
-        )));
-        if self.service.register_stub(&child_stub) != error_codes::OK() {
-            response.set_result(error_codes::REFERENCE_COUNT_ERROR());
-            return match canopy_rpc::serialization::protobuf::serialize_generated_message(&response)
-            {
-                Ok(out_buf) => SendResult::new(error_codes::OK(), out_buf, Vec::new()),
-                Err(error_code) => SendResult::new(error_code, Vec::new(), Vec::new()),
-            };
-        }
-        child_stub
-            .lock()
-            .expect("child stub mutex poisoned")
-            .add_ref(canopy_rpc::InterfacePointerKind::Shared, caller_zone_id);
-
-        let child_descriptor = self
-            .service
-            .zone_id()
-            .with_object(child_id)
-            .expect("registered child descriptor");
-        let child_view = self
-            .service
-            .lookup_local_interface_view::<dyn IAutonomousNode>(
-                child_id,
-                canopy_rpc::InterfaceOrdinal::new(fg::IAutonomousNode::ID_RPC_V3),
-            )
-            .map(canopy_rpc::Shared::from_arc)
-            .unwrap_or_else(|_| canopy_rpc::Shared::null());
-        self.node
-            .state
-            .lock()
-            .expect("node state mutex poisoned")
-            .parent_node = child_view.clone();
-        self.node
-            .state
-            .lock()
-            .expect("node state mutex poisoned")
-            .child_nodes
-            .push(child_view);
-        response.set_child_node(Self::proto_remote_object(&child_descriptor));
-        response.set_result(error_codes::OK());
-        match canopy_rpc::serialization::protobuf::serialize_generated_message(&response) {
-            Ok(out_buf) => SendResult::new(error_codes::OK(), out_buf, Vec::new()),
-            Err(error_code) => SendResult::new(error_code, Vec::new(), Vec::new()),
-        }
-    }
-
-    fn dispatch_generated(&self, params: SendParams) -> Option<SendResult> {
-        if params.encoding_type != canopy_rpc::Encoding::ProtocolBuffers {
-            return None;
-        }
-
-        let context = canopy_rpc::DispatchContext::from(&params)
-            .with_owner_service_ptr(Some(Arc::as_ptr(&self.service) as usize));
-        if fg::IAutonomousNode::matches_interface_id(params.interface_id) {
-            if params.method_id.get_val() == 8 {
-                return Some(self.encode_create_child_node_ok(params.caller_zone_id.clone()));
-            }
-            if params.remote_object_id.get_object_id().is_set()
-                && self
-                    .service
-                    .get_object(params.remote_object_id.get_object_id())
-                    .is_some()
-            {
-                return Some(self.service.send(params));
-            }
-            return Some(IAutonomousNode::__rpc_dispatch_generated(
-                &self.node, &context, params,
-            ));
-        }
-
-        if fg::ICleanup::matches_interface_id(params.interface_id) {
-            return Some(ICleanup::__rpc_dispatch_generated(
-                &self.node, &context, params,
-            ));
-        }
-
-        None
-    }
-}
-
-impl IMarshaller for RustFuzzMarshaller {
-    fn send(&self, params: SendParams) -> SendResult {
-        self.dispatch_generated(params).unwrap_or_else(|| {
-            SendResult::new(error_codes::INVALID_INTERFACE_ID(), Vec::new(), Vec::new())
-        })
-    }
-
-    fn post(&self, _params: PostParams) {}
-
-    fn try_cast(&self, params: TryCastParams) -> StandardResult {
-        let error_code = if fg::IAutonomousNode::matches_interface_id(params.interface_id)
-            || fg::ICleanup::matches_interface_id(params.interface_id)
-        {
-            error_codes::OK()
-        } else {
-            error_codes::INVALID_INTERFACE_ID()
-        };
-        StandardResult::new(error_code, Vec::new())
-    }
-
-    fn add_ref(&self, _params: AddRefParams) -> StandardResult {
-        StandardResult::new(error_codes::OK(), Vec::new())
-    }
-
-    fn release(&self, _params: ReleaseParams) -> StandardResult {
-        StandardResult::new(error_codes::OK(), Vec::new())
-    }
-
-    fn object_released(&self, _params: ObjectReleasedParams) {}
-
-    fn transport_down(&self, _params: TransportDownParams) {}
-
-    fn get_new_zone_id(&self, _params: GetNewZoneIdParams) -> canopy_rpc::NewZoneIdResult {
-        canopy_rpc::NewZoneIdResult::new(error_codes::ZONE_NOT_FOUND(), Zone::default(), Vec::new())
-    }
-}
-
 fn mut_ptr<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
     unsafe { ptr.as_mut() }
 }
@@ -741,36 +896,24 @@ pub extern "C" fn canopy_dll_init(params: *mut dll::CanopyDllInitParams) -> i32 
         return error_codes::INVALID_DATA();
     };
     let child_zone = zone_from_ffi(params.child_zone);
-    let parent_zone = zone_from_ffi(params.parent_zone);
-    let service = Service::new_shared("rust-fuzz-child", child_zone.clone());
-    let parent_callbacks =
-        ParentCallbackMarshaller(dll::ffi::ParentCallbacks::from_init_params(params));
-    let parent_transport = Transport::new(
-        "rust-fuzz-child-parent",
-        child_zone,
-        parent_zone.clone(),
-        Arc::downgrade(&service),
-        Arc::new(parent_callbacks),
-    );
-    parent_transport.set_status(TransportStatus::Connected);
-    service.add_transport(parent_zone, parent_transport);
+    let service = RootService::new_shared("rust-fuzz-child", child_zone.clone());
     let output_object = child_output_object(params);
-    dll::dll_init::<RustFuzzMarshaller, _>(params, |_parent_transport, _input_descr| {
+    dll::dll_init::<dll::ChildServiceEndpoint, _>(params, |_parent_transport, _input_descr| {
         Ok((
             {
-                let node = RustFuzzNode::with_service(service.clone());
-                let root_object = fg::IAutonomousNode::make_rpc_object(node.clone());
-                let root_stub =
-                    Arc::new(Mutex::new(canopy_rpc::internal::ObjectStub::with_target(
+                let node = RustFuzzNode::with_service_and_object(
+                    service.clone(),
+                    output_object.get_object_id(),
+                );
+                let (endpoint, _root_object) =
+                    dll::create_child_zone_with_exported_object_from_init_params(
+                        "rust-fuzz-child-parent",
+                        service,
+                        params,
                         output_object.get_object_id(),
-                        root_object,
-                    )));
-                let _ = service.register_stub(&root_stub);
-                RustFuzzMarshaller {
-                    node,
-                    service,
-                    output_object: output_object.clone(),
-                }
+                        make_fuzz_node_rpc_object(node),
+                    )?;
+                endpoint
             },
             output_object,
         ))
@@ -779,7 +922,7 @@ pub extern "C" fn canopy_dll_init(params: *mut dll::CanopyDllInitParams) -> i32 
 
 #[unsafe(no_mangle)]
 pub extern "C" fn canopy_dll_destroy(child_ctx: dll::CanopyChildContext) {
-    dll::dll_destroy::<RustFuzzMarshaller>(child_ctx);
+    dll::dll_destroy::<dll::ChildServiceEndpoint>(child_ctx);
 }
 
 #[unsafe(no_mangle)]
@@ -794,7 +937,7 @@ pub extern "C" fn canopy_dll_send(
     let Some(result) = mut_ptr(result) else {
         return error_codes::INVALID_DATA();
     };
-    dll::dll_send::<RustFuzzMarshaller>(child_ctx, params, result)
+    dll::dll_send::<dll::ChildServiceEndpoint>(child_ctx, params, result)
 }
 
 #[unsafe(no_mangle)]
@@ -803,7 +946,7 @@ pub extern "C" fn canopy_dll_post(
     params: *const dll::CanopyPostParams,
 ) {
     if let Some(params) = const_ptr(params) {
-        dll::dll_post::<RustFuzzMarshaller>(child_ctx, params);
+        dll::dll_post::<dll::ChildServiceEndpoint>(child_ctx, params);
     }
 }
 
@@ -819,7 +962,7 @@ pub extern "C" fn canopy_dll_try_cast(
     let Some(result) = mut_ptr(result) else {
         return error_codes::INVALID_DATA();
     };
-    dll::dll_try_cast::<RustFuzzMarshaller>(child_ctx, params, result)
+    dll::dll_try_cast::<dll::ChildServiceEndpoint>(child_ctx, params, result)
 }
 
 #[unsafe(no_mangle)]
@@ -834,7 +977,7 @@ pub extern "C" fn canopy_dll_add_ref(
     let Some(result) = mut_ptr(result) else {
         return error_codes::INVALID_DATA();
     };
-    dll::dll_add_ref::<RustFuzzMarshaller>(child_ctx, params, result)
+    dll::dll_add_ref::<dll::ChildServiceEndpoint>(child_ctx, params, result)
 }
 
 #[unsafe(no_mangle)]
@@ -849,7 +992,7 @@ pub extern "C" fn canopy_dll_release(
     let Some(result) = mut_ptr(result) else {
         return error_codes::INVALID_DATA();
     };
-    dll::dll_release::<RustFuzzMarshaller>(child_ctx, params, result)
+    dll::dll_release::<dll::ChildServiceEndpoint>(child_ctx, params, result)
 }
 
 #[unsafe(no_mangle)]
@@ -858,7 +1001,7 @@ pub extern "C" fn canopy_dll_object_released(
     params: *const dll::CanopyObjectReleasedParams,
 ) {
     if let Some(params) = const_ptr(params) {
-        dll::dll_object_released::<RustFuzzMarshaller>(child_ctx, params);
+        dll::dll_object_released::<dll::ChildServiceEndpoint>(child_ctx, params);
     }
 }
 
@@ -868,7 +1011,7 @@ pub extern "C" fn canopy_dll_transport_down(
     params: *const dll::CanopyTransportDownParams,
 ) {
     if let Some(params) = const_ptr(params) {
-        dll::dll_transport_down::<RustFuzzMarshaller>(child_ctx, params);
+        dll::dll_transport_down::<dll::ChildServiceEndpoint>(child_ctx, params);
     }
 }
 
@@ -884,5 +1027,5 @@ pub extern "C" fn canopy_dll_get_new_zone_id(
     let Some(result) = mut_ptr(result) else {
         return error_codes::INVALID_DATA();
     };
-    dll::dll_get_new_zone_id::<RustFuzzMarshaller>(child_ctx, params, result)
+    dll::dll_get_new_zone_id::<dll::ChildServiceEndpoint>(child_ctx, params, result)
 }

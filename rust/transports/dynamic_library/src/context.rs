@@ -5,14 +5,16 @@
 //! service/transport stack.
 
 use crate::adapter::{ChildTransportAdapter, ParentTransportAdapter};
-use crate::ffi::{CanopyAllocatorVtable, CanopyDllInitParams, ParentCallbacks, copy_init_connection_settings, write_init_output_obj};
-use canopy_rpc::{IMarshaller, RemoteObject};
+use crate::ffi::{
+    CanopyAllocatorVtable, CanopyDllInitParams, ParentCallbacks, copy_init_connection_settings,
+    write_init_output_obj,
+};
 use canopy_rpc::rpc_types::ConnectionSettings;
+use canopy_rpc::{IMarshaller, RemoteObject};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub struct DllContext<M>
-{
+pub struct DllContext<M> {
     allocator: CanopyAllocatorVtable,
     parent_transport: ParentTransportAdapter<ParentCallbacks>,
     child_transport: ChildTransportAdapter<M>,
@@ -31,8 +33,7 @@ where
         child_transport: ChildTransportAdapter<M>,
         input_descr: Option<ConnectionSettings>,
         output_obj: RemoteObject,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             allocator,
             parent_transport,
@@ -43,44 +44,36 @@ where
         }
     }
 
-    pub fn parent_transport(&self) -> &ParentTransportAdapter<ParentCallbacks>
-    {
+    pub fn parent_transport(&self) -> &ParentTransportAdapter<ParentCallbacks> {
         &self.parent_transport
     }
 
-    pub fn allocator(&self) -> &CanopyAllocatorVtable
-    {
+    pub fn allocator(&self) -> &CanopyAllocatorVtable {
         &self.allocator
     }
 
-    pub fn child_transport(&self) -> &ChildTransportAdapter<M>
-    {
+    pub fn child_transport(&self) -> &ChildTransportAdapter<M> {
         &self.child_transport
     }
 
-    pub fn input_descr(&self) -> Option<&ConnectionSettings>
-    {
+    pub fn input_descr(&self) -> Option<&ConnectionSettings> {
         self.input_descr.as_ref()
     }
 
-    pub fn output_obj(&self) -> &RemoteObject
-    {
+    pub fn output_obj(&self) -> &RemoteObject {
         &self.output_obj
     }
 
-    pub fn is_destroyed(&self) -> bool
-    {
+    pub fn is_destroyed(&self) -> bool {
         self.destroyed.load(Ordering::Acquire)
     }
 
-    pub fn destroy(&self) -> bool
-    {
+    pub fn destroy(&self) -> bool {
         !self.destroyed.swap(true, Ordering::AcqRel)
     }
 }
 
-pub struct InitChildZoneResult<M>
-{
+pub struct InitChildZoneResult<M> {
     pub context: DllContext<M>,
     pub output_obj: RemoteObject,
 }
@@ -101,7 +94,13 @@ where
     let (child_marshaller, output_obj) = factory(&parent_transport, input_descr.as_ref())?;
     let child_transport = ChildTransportAdapter::new(child_marshaller);
     write_init_output_obj(params, &output_obj)?;
-    let context = DllContext::new(params.allocator, parent_transport, child_transport, input_descr, output_obj.clone());
+    let context = DllContext::new(
+        params.allocator,
+        parent_transport,
+        child_transport,
+        input_descr,
+        output_obj.clone(),
+    );
 
     Ok(InitChildZoneResult {
         context,
@@ -110,41 +109,35 @@ where
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
     use canopy_rpc::internal::error_codes;
     use canopy_rpc::{
-        AddRefParams, AddressType, DefaultValues, GetNewZoneIdParams, Object, ObjectReleasedParams, PostParams,
-        ReleaseParams, SendParams, StandardResult, TransportDownParams, TryCastParams, Zone, ZoneAddress,
-        ZoneAddressArgs,
+        AddRefParams, AddressType, DefaultValues, GetNewZoneIdParams, Object, ObjectReleasedParams,
+        PostParams, ReleaseParams, SendParams, StandardResult, TransportDownParams, TryCastParams,
+        Zone, ZoneAddress, ZoneAddressArgs,
     };
     use std::collections::HashMap;
 
     #[derive(Default)]
     struct NoopMarshaller;
 
-    impl IMarshaller for NoopMarshaller
-    {
-        fn send(&self, _params: SendParams) -> canopy_rpc::SendResult
-        {
+    impl IMarshaller for NoopMarshaller {
+        fn send(&self, _params: SendParams) -> canopy_rpc::SendResult {
             canopy_rpc::SendResult::new(error_codes::OK(), Vec::new(), Vec::new())
         }
 
         fn post(&self, _params: PostParams) {}
 
-        fn try_cast(&self, _params: TryCastParams) -> StandardResult
-        {
+        fn try_cast(&self, _params: TryCastParams) -> StandardResult {
             StandardResult::new(error_codes::OK(), Vec::new())
         }
 
-        fn add_ref(&self, _params: AddRefParams) -> StandardResult
-        {
+        fn add_ref(&self, _params: AddRefParams) -> StandardResult {
             StandardResult::new(error_codes::OK(), Vec::new())
         }
 
-        fn release(&self, _params: ReleaseParams) -> StandardResult
-        {
+        fn release(&self, _params: ReleaseParams) -> StandardResult {
             StandardResult::new(error_codes::OK(), Vec::new())
         }
 
@@ -152,14 +145,12 @@ mod tests
 
         fn transport_down(&self, _params: TransportDownParams) {}
 
-        fn get_new_zone_id(&self, _params: GetNewZoneIdParams) -> canopy_rpc::NewZoneIdResult
-        {
+        fn get_new_zone_id(&self, _params: GetNewZoneIdParams) -> canopy_rpc::NewZoneIdResult {
             canopy_rpc::NewZoneIdResult::new(error_codes::OK(), Zone::default(), Vec::new())
         }
     }
 
-    fn sample_remote_object() -> RemoteObject
-    {
+    fn sample_remote_object() -> RemoteObject {
         let zone_address = ZoneAddress::create(ZoneAddressArgs::new(
             DefaultValues::VERSION_3,
             AddressType::Ipv4,
@@ -179,13 +170,14 @@ mod tests
     }
 
     #[derive(Default)]
-    struct TestAllocator
-    {
+    struct TestAllocator {
         allocations: HashMap<usize, Box<[u8]>>,
     }
 
-    unsafe extern "C" fn test_alloc(allocator_ctx: *mut std::ffi::c_void, size: usize) -> crate::ffi::CanopyByteBuffer
-    {
+    unsafe extern "C" fn test_alloc(
+        allocator_ctx: *mut std::ffi::c_void,
+        size: usize,
+    ) -> crate::ffi::CanopyByteBuffer {
         let allocator = unsafe { &mut *(allocator_ctx as *mut TestAllocator) };
         let mut data = vec![0u8; size].into_boxed_slice();
         let ptr = data.as_mut_ptr();
@@ -193,15 +185,17 @@ mod tests
         crate::ffi::CanopyByteBuffer { data: ptr, size }
     }
 
-    unsafe extern "C" fn test_free(allocator_ctx: *mut std::ffi::c_void, data: *mut u8, _size: usize)
-    {
+    unsafe extern "C" fn test_free(
+        allocator_ctx: *mut std::ffi::c_void,
+        data: *mut u8,
+        _size: usize,
+    ) {
         let allocator = unsafe { &mut *(allocator_ctx as *mut TestAllocator) };
         allocator.allocations.remove(&(data as usize));
     }
 
     #[test]
-    fn init_child_zone_builds_context_and_output_descriptor()
-    {
+    fn init_child_zone_builds_context_and_output_descriptor() {
         let mut allocator = TestAllocator::default();
         let mut params = CanopyDllInitParams {
             allocator: crate::ffi::CanopyAllocatorVtable {
@@ -223,12 +217,14 @@ mod tests
         assert_eq!(result.context.output_obj(), &expected_output);
         assert!(!result.context.is_destroyed());
         assert!(!params.output_obj.address.blob.data.is_null());
-        assert_eq!(params.output_obj.address.blob.size, expected_output.get_address().get_blob().len());
+        assert_eq!(
+            params.output_obj.address.blob.size,
+            expected_output.get_address().get_blob().len()
+        );
     }
 
     #[test]
-    fn destroy_is_idempotent()
-    {
+    fn destroy_is_idempotent() {
         let mut allocator = TestAllocator::default();
         let mut params = CanopyDllInitParams {
             allocator: crate::ffi::CanopyAllocatorVtable {
@@ -239,8 +235,10 @@ mod tests
             ..CanopyDllInitParams::default()
         };
         let output = sample_remote_object();
-        let result = init_child_zone(&mut params, |_parent_transport, _input_descr| Ok((NoopMarshaller, output)))
-            .expect("init_child_zone should succeed");
+        let result = init_child_zone(&mut params, |_parent_transport, _input_descr| {
+            Ok((NoopMarshaller, output))
+        })
+        .expect("init_child_zone should succeed");
 
         assert!(result.context.destroy());
         assert!(result.context.is_destroyed());

@@ -1,26 +1,31 @@
 //! Safe parent-side dynamic-library loader for the shared `c_abi` surface.
 
 use crate::ffi::{
-    BorrowedAddRefParams, BorrowedGetNewZoneIdParams, BorrowedObjectReleasedParams, BorrowedPostParams,
-    BorrowedReleaseParams, BorrowedSendParams, BorrowedTransportDownParams, BorrowedTryCastParams,
-    CanopyAddRefParams, CanopyAllocatorVtable, CanopyChildContext, CanopyDllAddRefFn, CanopyDllDestroyFn,
-    CanopyDllGetNewZoneIdFn, CanopyDllInitFn, CanopyDllInitParams, CanopyDllObjectReleasedFn, CanopyDllPostFn,
-    CanopyDllReleaseFn, CanopyDllSendFn, CanopyDllTransportDownFn, CanopyDllTryCastFn, CanopyNewZoneIdResult,
-    CanopyObjectReleasedParams, CanopyPostParams, CanopyReleaseParams, CanopySendResult, CanopyStandardResult,
-    CanopyTransportDownParams, CanopyTryCastParams, copy_new_zone_id_result, copy_remote_object, copy_send_result,
-    copy_standard_result, free_new_zone_id_result, free_remote_object, free_send_result, free_standard_result,
+    BorrowedAddRefParams, BorrowedGetNewZoneIdParams, BorrowedObjectReleasedParams,
+    BorrowedPostParams, BorrowedReleaseParams, BorrowedSendParams, BorrowedTransportDownParams,
+    BorrowedTryCastParams, CanopyAddRefParams, CanopyAllocatorVtable, CanopyChildContext,
+    CanopyDllAddRefFn, CanopyDllDestroyFn, CanopyDllGetNewZoneIdFn, CanopyDllInitFn,
+    CanopyDllInitParams, CanopyDllObjectReleasedFn, CanopyDllPostFn, CanopyDllReleaseFn,
+    CanopyDllSendFn, CanopyDllTransportDownFn, CanopyDllTryCastFn, CanopyNewZoneIdResult,
+    CanopyObjectReleasedParams, CanopyPostParams, CanopyReleaseParams, CanopySendResult,
+    CanopyStandardResult, CanopyTransportDownParams, CanopyTryCastParams, copy_new_zone_id_result,
+    copy_remote_object, copy_send_result, copy_standard_result, free_new_zone_id_result,
+    free_remote_object, free_send_result, free_standard_result,
 };
 use crate::platform_ffi;
 use canopy_rpc::internal::error_codes;
-use canopy_rpc::{AddRefParams, GetNewZoneIdParams, NewZoneIdResult, ObjectReleasedParams, PostParams, ReleaseParams, RemoteObject, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams};
+use canopy_rpc::{
+    AddRefParams, GetNewZoneIdParams, NewZoneIdResult, ObjectReleasedParams, PostParams,
+    ReleaseParams, RemoteObject, SendParams, SendResult, StandardResult, TransportDownParams,
+    TryCastParams,
+};
 
 use std::ffi::CString;
 use std::ffi::c_void;
 use std::path::Path;
 
 #[derive(Clone, Copy)]
-pub struct DynamicLibraryExports
-{
+pub struct DynamicLibraryExports {
     pub init: CanopyDllInitFn,
     pub destroy: CanopyDllDestroyFn,
     pub send: CanopyDllSendFn,
@@ -33,28 +38,30 @@ pub struct DynamicLibraryExports
     pub get_new_zone_id: CanopyDllGetNewZoneIdFn,
 }
 
-pub struct DynamicLibrary
-{
+pub struct DynamicLibrary {
     handle: *mut c_void,
     exports: DynamicLibraryExports,
 }
 
-impl DynamicLibrary
-{
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, String>
-    {
+impl DynamicLibrary {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         let path = path.as_ref().to_string_lossy().into_owned();
-        let path = CString::new(path).map_err(|_| "library path contains interior NUL byte".to_string())?;
+        let path = CString::new(path)
+            .map_err(|_| "library path contains interior NUL byte".to_string())?;
         let init_name = CString::new("canopy_dll_init").expect("symbol name should be valid");
         let destroy_name = CString::new("canopy_dll_destroy").expect("symbol name should be valid");
         let send_name = CString::new("canopy_dll_send").expect("symbol name should be valid");
         let post_name = CString::new("canopy_dll_post").expect("symbol name should be valid");
-        let try_cast_name = CString::new("canopy_dll_try_cast").expect("symbol name should be valid");
+        let try_cast_name =
+            CString::new("canopy_dll_try_cast").expect("symbol name should be valid");
         let add_ref_name = CString::new("canopy_dll_add_ref").expect("symbol name should be valid");
         let release_name = CString::new("canopy_dll_release").expect("symbol name should be valid");
-        let object_released_name = CString::new("canopy_dll_object_released").expect("symbol name should be valid");
-        let transport_down_name = CString::new("canopy_dll_transport_down").expect("symbol name should be valid");
-        let get_new_zone_id_name = CString::new("canopy_dll_get_new_zone_id").expect("symbol name should be valid");
+        let object_released_name =
+            CString::new("canopy_dll_object_released").expect("symbol name should be valid");
+        let transport_down_name =
+            CString::new("canopy_dll_transport_down").expect("symbol name should be valid");
+        let get_new_zone_id_name =
+            CString::new("canopy_dll_get_new_zone_id").expect("symbol name should be valid");
 
         let handle = unsafe { platform_ffi::open_local_now(&path) };
         if handle.is_null() {
@@ -70,9 +77,13 @@ impl DynamicLibrary
                 try_cast: unsafe { platform_ffi::load_symbol(handle, &try_cast_name)? },
                 add_ref: unsafe { platform_ffi::load_symbol(handle, &add_ref_name)? },
                 release: unsafe { platform_ffi::load_symbol(handle, &release_name)? },
-                object_released: unsafe { platform_ffi::load_symbol(handle, &object_released_name)? },
+                object_released: unsafe {
+                    platform_ffi::load_symbol(handle, &object_released_name)?
+                },
                 transport_down: unsafe { platform_ffi::load_symbol(handle, &transport_down_name)? },
-                get_new_zone_id: unsafe { platform_ffi::load_symbol(handle, &get_new_zone_id_name)? },
+                get_new_zone_id: unsafe {
+                    platform_ffi::load_symbol(handle, &get_new_zone_id_name)?
+                },
             })
         })();
 
@@ -85,13 +96,11 @@ impl DynamicLibrary
         }
     }
 
-    pub fn exports(&self) -> &DynamicLibraryExports
-    {
+    pub fn exports(&self) -> &DynamicLibraryExports {
         &self.exports
     }
 
-    pub fn init_child(self, params: &mut CanopyDllInitParams) -> Result<LoadedChild, i32>
-    {
+    pub fn init_child(self, params: &mut CanopyDllInitParams) -> Result<LoadedChild, i32> {
         let error_code = unsafe { (self.exports.init)(params as *mut CanopyDllInitParams) };
         if error_code != error_codes::OK() {
             return Err(error_code);
@@ -112,10 +121,8 @@ impl DynamicLibrary
     }
 }
 
-impl Drop for DynamicLibrary
-{
-    fn drop(&mut self)
-    {
+impl Drop for DynamicLibrary {
+    fn drop(&mut self) {
         if !self.handle.is_null() {
             unsafe { platform_ffi::close(self.handle) };
             self.handle = std::ptr::null_mut();
@@ -123,36 +130,32 @@ impl Drop for DynamicLibrary
     }
 }
 
-pub struct LoadedChild
-{
+pub struct LoadedChild {
     library: Option<DynamicLibrary>,
     child_ctx: CanopyChildContext,
     allocator: CanopyAllocatorVtable,
     output_obj: RemoteObject,
 }
 
-impl LoadedChild
-{
-    pub fn output_obj(&self) -> &RemoteObject
-    {
+impl LoadedChild {
+    pub fn output_obj(&self) -> &RemoteObject {
         &self.output_obj
     }
 
-    pub fn allocator(&self) -> &CanopyAllocatorVtable
-    {
+    pub fn allocator(&self) -> &CanopyAllocatorVtable {
         &self.allocator
     }
 
-    pub fn send(&self, params: &SendParams) -> SendResult
-    {
+    pub fn send(&self, params: &SendParams) -> SendResult {
         let borrowed = BorrowedSendParams::new(params);
         let mut raw_result = CanopySendResult::default();
         let return_code = unsafe {
-            (self.library.as_ref().expect("library should be present").exports.send)(
-                self.child_ctx,
-                borrowed.as_raw(),
-                &mut raw_result,
-            )
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .send)(self.child_ctx, borrowed.as_raw(), &mut raw_result)
         };
         let mut result = copy_send_result(&raw_result);
         free_send_result(&self.allocator, &mut raw_result);
@@ -162,23 +165,28 @@ impl LoadedChild
         result
     }
 
-    pub fn post(&self, params: &PostParams)
-    {
+    pub fn post(&self, params: &PostParams) {
         let borrowed = BorrowedPostParams::new(params);
         unsafe {
-            (self.library.as_ref().expect("library should be present").exports.post)(
-                self.child_ctx,
-                borrowed.as_raw() as *const CanopyPostParams,
-            )
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .post)(self.child_ctx, borrowed.as_raw() as *const CanopyPostParams)
         };
     }
 
-    pub fn try_cast(&self, params: &TryCastParams) -> StandardResult
-    {
+    pub fn try_cast(&self, params: &TryCastParams) -> StandardResult {
         let borrowed = BorrowedTryCastParams::new(params);
         let mut raw_result = CanopyStandardResult::default();
         let return_code = unsafe {
-            (self.library.as_ref().expect("library should be present").exports.try_cast)(
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .try_cast)(
                 self.child_ctx,
                 borrowed.as_raw() as *const CanopyTryCastParams,
                 &mut raw_result,
@@ -192,12 +200,16 @@ impl LoadedChild
         result
     }
 
-    pub fn add_ref(&self, params: &AddRefParams) -> StandardResult
-    {
+    pub fn add_ref(&self, params: &AddRefParams) -> StandardResult {
         let borrowed = BorrowedAddRefParams::new(params);
         let mut raw_result = CanopyStandardResult::default();
         let return_code = unsafe {
-            (self.library.as_ref().expect("library should be present").exports.add_ref)(
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .add_ref)(
                 self.child_ctx,
                 borrowed.as_raw() as *const CanopyAddRefParams,
                 &mut raw_result,
@@ -211,12 +223,16 @@ impl LoadedChild
         result
     }
 
-    pub fn release(&self, params: &ReleaseParams) -> StandardResult
-    {
+    pub fn release(&self, params: &ReleaseParams) -> StandardResult {
         let borrowed = BorrowedReleaseParams::new(params);
         let mut raw_result = CanopyStandardResult::default();
         let return_code = unsafe {
-            (self.library.as_ref().expect("library should be present").exports.release)(
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .release)(
                 self.child_ctx,
                 borrowed.as_raw() as *const CanopyReleaseParams,
                 &mut raw_result,
@@ -230,38 +246,46 @@ impl LoadedChild
         result
     }
 
-    pub fn object_released(&self, params: &ObjectReleasedParams)
-    {
+    pub fn object_released(&self, params: &ObjectReleasedParams) {
         let borrowed = BorrowedObjectReleasedParams::new(params);
         unsafe {
-            (self.library.as_ref().expect("library should be present").exports.object_released)(
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .object_released)(
                 self.child_ctx,
                 borrowed.as_raw() as *const CanopyObjectReleasedParams,
             )
         };
     }
 
-    pub fn transport_down(&self, params: &TransportDownParams)
-    {
+    pub fn transport_down(&self, params: &TransportDownParams) {
         let borrowed = BorrowedTransportDownParams::new(params);
         unsafe {
-            (self.library.as_ref().expect("library should be present").exports.transport_down)(
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .transport_down)(
                 self.child_ctx,
                 borrowed.as_raw() as *const CanopyTransportDownParams,
             )
         };
     }
 
-    pub fn get_new_zone_id(&self, params: &GetNewZoneIdParams) -> NewZoneIdResult
-    {
+    pub fn get_new_zone_id(&self, params: &GetNewZoneIdParams) -> NewZoneIdResult {
         let borrowed = BorrowedGetNewZoneIdParams::new(params);
         let mut raw_result = CanopyNewZoneIdResult::default();
         let return_code = unsafe {
-            (self.library.as_ref().expect("library should be present").exports.get_new_zone_id)(
-                self.child_ctx,
-                borrowed.as_raw(),
-                &mut raw_result,
-            )
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .get_new_zone_id)(self.child_ctx, borrowed.as_raw(), &mut raw_result)
         };
         let mut result = copy_new_zone_id_result(&raw_result);
         free_new_zone_id_result(&self.allocator, &mut raw_result);
@@ -271,44 +295,49 @@ impl LoadedChild
         result
     }
 
-    pub fn destroy(&mut self)
-    {
+    pub fn destroy(&mut self) {
         if self.child_ctx.is_null() {
             return;
         }
 
         unsafe {
-            (self.library.as_ref().expect("library should be present").exports.destroy)(self.child_ctx);
+            (self
+                .library
+                .as_ref()
+                .expect("library should be present")
+                .exports
+                .destroy)(self.child_ctx);
         }
         self.child_ctx = std::ptr::null_mut();
     }
 }
 
-impl Drop for LoadedChild
-{
-    fn drop(&mut self)
-    {
+impl Drop for LoadedChild {
+    fn drop(&mut self) {
         self.destroy();
     }
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
-    use crate::ffi::{CanopyByteBuffer, CanopyConstByteBuffer, CanopyConnectionSettings, CanopyDllInitParams, CanopyMutBackChannelSpan, borrow_remote_object, borrow_zone};
-    use canopy_rpc::{AddressType, DefaultValues, Encoding, InterfaceOrdinal, Method, Object, Zone, ZoneAddress, ZoneAddressArgs};
+    use crate::ffi::{
+        CanopyByteBuffer, CanopyConnectionSettings, CanopyConstByteBuffer, CanopyDllInitParams,
+        CanopyMutBackChannelSpan, borrow_remote_object, borrow_zone,
+    };
+    use canopy_rpc::{
+        AddressType, DefaultValues, Encoding, InterfaceOrdinal, Method, Object, Zone, ZoneAddress,
+        ZoneAddressArgs,
+    };
     use std::collections::HashMap;
 
     #[derive(Default)]
-    struct AllocatorState
-    {
+    struct AllocatorState {
         allocations: HashMap<usize, Box<[u8]>>,
     }
 
     #[derive(Default)]
-    struct ParentState
-    {
+    struct ParentState {
         send_call_count: usize,
         zone_id_call_count: usize,
         observed_interface_id: u64,
@@ -318,8 +347,7 @@ mod tests
         zone_blob: Vec<u8>,
     }
 
-    unsafe extern "C" fn test_alloc(allocator_ctx: *mut c_void, size: usize) -> CanopyByteBuffer
-    {
+    unsafe extern "C" fn test_alloc(allocator_ctx: *mut c_void, size: usize) -> CanopyByteBuffer {
         let allocator = unsafe { &mut *(allocator_ctx as *mut AllocatorState) };
         let mut data = vec![0u8; size].into_boxed_slice();
         let ptr = data.as_mut_ptr();
@@ -327,8 +355,7 @@ mod tests
         CanopyByteBuffer { data: ptr, size }
     }
 
-    unsafe extern "C" fn test_free(allocator_ctx: *mut c_void, data: *mut u8, _size: usize)
-    {
+    unsafe extern "C" fn test_free(allocator_ctx: *mut c_void, data: *mut u8, _size: usize) {
         let allocator = unsafe { &mut *(allocator_ctx as *mut AllocatorState) };
         allocator.allocations.remove(&(data as usize));
     }
@@ -337,8 +364,7 @@ mod tests
         parent_ctx: *mut c_void,
         params: *const crate::ffi::CanopySendParams,
         result: *mut crate::ffi::CanopySendResult,
-    ) -> i32
-    {
+    ) -> i32 {
         let state = unsafe { &mut *(parent_ctx as *mut ParentState) };
         let params = unsafe { &*params };
         let result = unsafe { &mut *result };
@@ -362,8 +388,7 @@ mod tests
         parent_ctx: *mut c_void,
         _params: *const crate::ffi::CanopyGetNewZoneIdParams,
         result: *mut crate::ffi::CanopyNewZoneIdResult,
-    ) -> i32
-    {
+    ) -> i32 {
         let state = unsafe { &mut *(parent_ctx as *mut ParentState) };
         let result = unsafe { &mut *result };
         let zone = sample_zone();
@@ -380,8 +405,7 @@ mod tests
         result.error_code
     }
 
-    fn sample_zone() -> Zone
-    {
+    fn sample_zone() -> Zone {
         Zone::new(
             ZoneAddress::create(ZoneAddressArgs::new(
                 DefaultValues::VERSION_3,
@@ -398,15 +422,13 @@ mod tests
         )
     }
 
-    fn sample_remote_object() -> RemoteObject
-    {
+    fn sample_remote_object() -> RemoteObject {
         sample_zone()
             .with_object(Object::new(100))
             .expect("with_object should succeed")
     }
 
-    fn stats_request(output_obj: &RemoteObject) -> SendParams
-    {
+    fn stats_request(output_obj: &RemoteObject) -> SendParams {
         SendParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
             encoding_type: Encoding::ProtocolBuffers,
@@ -421,8 +443,7 @@ mod tests
     }
 
     #[test]
-    fn rust_parent_can_load_rust_child_dll_when_path_is_provided()
-    {
+    fn rust_parent_can_load_rust_child_dll_when_path_is_provided() {
         let Ok(path) = std::env::var("CANOPY_RUST_TEST_DLL_PATH") else {
             return;
         };
@@ -454,7 +475,9 @@ mod tests
         };
 
         let library = DynamicLibrary::load(path).expect("library should load");
-        let mut child = library.init_child(&mut init_params).expect("child should initialize");
+        let mut child = library
+            .init_child(&mut init_params)
+            .expect("child should initialize");
 
         let send_result = child.send(&SendParams {
             protocol_version: DefaultValues::VERSION_3 as u64,
@@ -507,8 +530,7 @@ mod tests
     }
 
     #[test]
-    fn rust_parent_loader_exercises_remaining_marshaller_methods_when_path_is_provided()
-    {
+    fn rust_parent_loader_exercises_remaining_marshaller_methods_when_path_is_provided() {
         let Ok(path) = std::env::var("CANOPY_RUST_TEST_DLL_PATH") else {
             return;
         };
@@ -536,7 +558,9 @@ mod tests
         };
 
         let library = DynamicLibrary::load(path).expect("library should load");
-        let mut child = library.init_child(&mut init_params).expect("child should initialize");
+        let mut child = library
+            .init_child(&mut init_params)
+            .expect("child should initialize");
         let output_obj = child.output_obj().clone();
 
         let try_cast_result = child.try_cast(&TryCastParams {

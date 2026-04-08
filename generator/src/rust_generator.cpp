@@ -775,17 +775,9 @@ namespace rust_generator
             const class_entity& lib,
             const std::string& root_module_name)
         {
-            for (const auto& function : iface.get_functions())
-            {
-                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
-                    continue;
-                const auto analysed_params = analyse_rust_method_params(iface, *function, lib, root_module_name);
-                for (const auto& param : analysed_params)
-                {
-                    if (param.is_interface)
-                        return false;
-                }
-            }
+            (void)iface;
+            (void)lib;
+            (void)root_module_name;
             return true;
         }
 
@@ -1182,89 +1174,42 @@ namespace rust_generator
                     output("");
                     output(
                         "pub fn bind_{}_incoming_local("
-                        "service: &canopy_rpc::Service, "
+                        "service: &dyn canopy_rpc::ServiceRuntime, "
                         "caller_zone_id: canopy_rpc::CallerZone, "
                         "encap: &canopy_rpc::RemoteObject) -> "
                         "canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<dyn {}>>",
                         param_name,
                         trait_path);
                     output("{{");
-                    output("\tif *encap == canopy_rpc::null_remote_descriptor() || !encap.is_set()");
-                    output("\t{{");
-                    output("\t\treturn canopy_rpc::InterfaceBindResult::null(canopy_rpc::OK());");
-                    output("\t}}");
-                    output("\tif encap.as_zone() == service.zone_id()");
-                    output("\t{{");
                     output(
-                        "\t\treturn match service.lookup_local_interface_view::<dyn {}>(encap.get_object_id(), {})",
+                        "\tcanopy_rpc::bind_incoming_optimistic_interface_local_from_runtime::<dyn {}, {}>("
+                        "service, caller_zone_id, encap, {}, |proxy| {{ let view: std::sync::Arc<dyn {}> = proxy; view "
+                        "}})",
                         trait_path,
-                        interface_id_expression);
-                    output("\t\t{{");
-                    output("\t\t\tOk(iface) => canopy_rpc::InterfaceBindResult::local(canopy_rpc::OK(), canopy_rpc::LocalProxy::from_remote(iface)),");
-                    output("\t\t\tErr(error_code) if error_code == canopy_rpc::OBJECT_GONE() => canopy_rpc::InterfaceBindResult::gone(error_code, canopy_rpc::InterfaceBindingOrigin::Local),");
-                    output("\t\t\tErr(error_code) => canopy_rpc::InterfaceBindResult::null(error_code),");
-                    output("\t\t}};");
-                    output("\t}}");
-                    output(
-                        "\tlet binding = service.bind_incoming_optimistic_interface_from::<{}>(caller_zone_id, encap);",
-                        proxy_skeleton_type);
-                    output("\tif canopy_rpc::is_critical(binding.error_code)");
-                    output("\t{{");
-                    output("\t\treturn canopy_rpc::InterfaceBindResult::null(binding.error_code);");
-                    output("\t}}");
-                    output("\tmatch binding.iface");
-                    output("\t{{");
-                    output("\t\tcanopy_rpc::BoundInterface::Value(proxy) =>");
-                    output("\t\t{{");
-                    output("\t\t\tlet Some(proxy) = proxy.upgrade() else {{ return canopy_rpc::InterfaceBindResult::gone(canopy_rpc::OBJECT_GONE(), canopy_rpc::InterfaceBindingOrigin::Remote); }};");
-                    output("\t\t\tlet view: std::sync::Arc<dyn {}> = proxy;", trait_path);
-                    output("\t\t\tcanopy_rpc::InterfaceBindResult::remote(binding.error_code, canopy_rpc::LocalProxy::from_remote(view))");
-                    output("\t\t}},");
-                    output("\t\tcanopy_rpc::BoundInterface::Null => canopy_rpc::InterfaceBindResult::null(binding.error_code),");
-                    output("\t\tcanopy_rpc::BoundInterface::Gone => canopy_rpc::InterfaceBindResult::gone(binding.error_code, binding.origin.unwrap_or(canopy_rpc::InterfaceBindingOrigin::Remote)),");
-                    output("\t}}");
+                        proxy_skeleton_type,
+                        interface_id_expression,
+                        trait_path);
                     output("}}");
                 }
                 else
                 {
                     output(
                         "pub fn bind_{}_incoming_local("
-                        "service: &canopy_rpc::Service, "
+                        "service: &dyn canopy_rpc::ServiceRuntime, "
                         "caller_zone_id: canopy_rpc::CallerZone, "
                         "encap: &canopy_rpc::RemoteObject) -> "
                         "canopy_rpc::InterfaceBindResult<std::sync::Arc<dyn {}>>",
                         param_name,
                         trait_path);
                     output("{{");
-                    output("\tif *encap == canopy_rpc::null_remote_descriptor() || !encap.is_set()");
-                    output("\t{{");
-                    output("\t\treturn canopy_rpc::InterfaceBindResult::null(canopy_rpc::OK());");
-                    output("\t}}");
-                    output("\tif encap.as_zone() == service.zone_id()");
-                    output("\t{{");
                     output(
-                        "\t\treturn match service.lookup_local_interface_view::<dyn {}>(encap.get_object_id(), {})",
+                        "\tcanopy_rpc::bind_incoming_shared_interface_local_from_runtime::<dyn {}, {}>("
+                        "service, caller_zone_id, encap, {}, |proxy| {{ let view: std::sync::Arc<dyn {}> = proxy; view "
+                        "}})",
                         trait_path,
-                        interface_id_expression);
-                    output("\t\t{{");
-                    output("\t\t\tOk(iface) => canopy_rpc::InterfaceBindResult::local(canopy_rpc::OK(), iface),");
-                    output("\t\t\tErr(error_code) if error_code == canopy_rpc::OBJECT_GONE() => canopy_rpc::InterfaceBindResult::gone(error_code, canopy_rpc::InterfaceBindingOrigin::Local),");
-                    output("\t\t\tErr(error_code) => canopy_rpc::InterfaceBindResult::null(error_code),");
-                    output("\t\t}};");
-                    output("\t}}");
-                    output(
-                        "\tlet binding = service.bind_incoming_shared_interface_from::<{}>(caller_zone_id, encap);",
-                        proxy_skeleton_type);
-                    output("\tmatch binding.iface");
-                    output("\t{{");
-                    output("\t\tcanopy_rpc::BoundInterface::Value(proxy) =>");
-                    output("\t\t{{");
-                    output("\t\t\tlet view: std::sync::Arc<dyn {}> = proxy;", trait_path);
-                    output("\t\t\tcanopy_rpc::InterfaceBindResult::remote(binding.error_code, view)");
-                    output("\t\t}},");
-                    output("\t\tcanopy_rpc::BoundInterface::Null => canopy_rpc::InterfaceBindResult::null(binding.error_code),");
-                    output("\t\tcanopy_rpc::BoundInterface::Gone => canopy_rpc::InterfaceBindResult::gone(binding.error_code, binding.origin.unwrap_or(canopy_rpc::InterfaceBindingOrigin::Remote)),");
-                    output("\t}}");
+                        proxy_skeleton_type,
+                        interface_id_expression,
+                        trait_path);
                     output("}}");
                 }
                 output("");
@@ -1288,7 +1233,7 @@ namespace rust_generator
                 output("");
                 output(
                     "pub fn bind_{}_outgoing_local<T>("
-                    "service: &canopy_rpc::Service, "
+                    "service: &dyn canopy_rpc::ServiceRuntime, "
                     "caller_zone_id: canopy_rpc::CallerZone, "
                     "iface: &{}) -> "
                     "canopy_rpc::RemoteObjectBindResult<std::sync::Arc<std::sync::Mutex<canopy_rpc::internal::"
@@ -1300,11 +1245,11 @@ namespace rust_generator
                 output("{{");
                 if (is_optimistic)
                 {
-                    output("\tservice.bind_outgoing_local_optimistic_erased_interface(caller_zone_id, iface.as_inner())");
+                    output("\tcanopy_rpc::bind_outgoing_local_optimistic_erased_interface_from_runtime(service, caller_zone_id, iface.as_inner())");
                 }
                 else
                 {
-                    output("\tservice.bind_outgoing_local_erased_interface(caller_zone_id, iface.as_inner(), canopy_rpc::InterfacePointerKind::Shared)");
+                    output("\tcanopy_rpc::bind_outgoing_local_erased_interface_from_runtime(service, caller_zone_id, iface.as_inner(), canopy_rpc::InterfacePointerKind::Shared)");
                 }
                 output("}}");
                 output("");
@@ -1386,7 +1331,7 @@ namespace rust_generator
 
                 output("impl{} IncomingLocalBindings{}{}", incoming_generics, incoming_generics, incoming_where);
                 output("{{");
-                output("\tpub fn bind(service: &canopy_rpc::Service, caller_zone_id: canopy_rpc::CallerZone");
+                output("\tpub fn bind(service: &dyn canopy_rpc::ServiceRuntime, caller_zone_id: canopy_rpc::CallerZone");
                 for (const auto& param : analysed_params)
                 {
                     if (!param.is_interface || !param.is_in)
@@ -1412,7 +1357,7 @@ namespace rust_generator
                 output("");
 
                 output(
-                    "pub fn bind_incoming_local{}(service: &canopy_rpc::Service, caller_zone_id: "
+                    "pub fn bind_incoming_local{}(service: &dyn canopy_rpc::ServiceRuntime, caller_zone_id: "
                     "canopy_rpc::CallerZone",
                     incoming_generics);
                 for (const auto& param : analysed_params)
@@ -1460,7 +1405,7 @@ namespace rust_generator
 
                 output("impl{} OutgoingLocalBindings{}{}", outgoing_generics, outgoing_generics, outgoing_where);
                 output("{{");
-                output("\tpub fn bind(service: &canopy_rpc::Service, caller_zone_id: canopy_rpc::CallerZone");
+                output("\tpub fn bind(service: &dyn canopy_rpc::ServiceRuntime, caller_zone_id: canopy_rpc::CallerZone");
                 for (const auto& param : analysed_params)
                 {
                     if (!param.is_interface || !param.is_out)
@@ -1486,7 +1431,7 @@ namespace rust_generator
                 output("}}");
                 output("");
 
-                output("pub fn bind_outgoing_local{}(service: &canopy_rpc::Service, caller_zone_id: canopy_rpc::CallerZone", outgoing_generics);
+                output("pub fn bind_outgoing_local{}(service: &dyn canopy_rpc::ServiceRuntime, caller_zone_id: canopy_rpc::CallerZone", outgoing_generics);
                 for (const auto& param : analysed_params)
                 {
                     if (!param.is_interface || !param.is_out)

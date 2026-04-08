@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 use crate::internal::bindings::{
-    BoundInterface, bind_incoming_optimistic, bind_incoming_shared, bind_outgoing_interface,
+    BindableInterfaceValue, BoundInterface, bind_incoming_optimistic, bind_incoming_shared,
+    bind_outgoing_interface,
 };
 use crate::internal::bindings_fwd::{
     InterfaceBindResult, InterfacePointerKind, RemoteObjectBindResult,
@@ -16,9 +17,9 @@ use crate::internal::marshaller_params::{
     AddRefParams, GetNewZoneIdParams, NewZoneIdResult, ObjectReleasedParams, PostParams,
     ReleaseParams, SendParams, SendResult, StandardResult, TransportDownParams, TryCastParams,
 };
+use crate::internal::runtime_traits::{ServiceRuntime, TransportRuntime};
 use crate::internal::service_proxy::{GeneratedRpcCallContext, ServiceProxy};
 use crate::internal::stub::ObjectStub;
-use crate::internal::transport::Transport;
 use crate::internal::version::{HIGHEST_SUPPORTED_VERSION, LOWEST_SUPPORTED_VERSION};
 use crate::rpc_types::CallerZone;
 use crate::rpc_types::{Encoding, Object, ReleaseOptions, RemoteObject, Zone, ZoneAddress};
@@ -71,10 +72,11 @@ pub struct Service {
     object_id_generator: AtomicU64,
     default_encoding: Mutex<Encoding>,
     stubs: Mutex<BTreeMap<Object, Weak<Mutex<ObjectStub>>>>,
-    transports: Mutex<BTreeMap<Zone, Weak<Transport>>>,
+    transports: Mutex<BTreeMap<Zone, Weak<dyn TransportRuntime>>>,
     service_proxies: Mutex<BTreeMap<Zone, Weak<ServiceProxy>>>,
     service_events: Mutex<Vec<Weak<dyn ServiceEvent>>>,
     self_weak: Mutex<Weak<Service>>,
+    runtime_weak: Mutex<Option<Weak<dyn ServiceRuntime>>>,
 }
 
 impl Service {
@@ -98,12 +100,15 @@ impl Service {
             service_proxies: Mutex::new(BTreeMap::new()),
             service_events: Mutex::new(Vec::new()),
             self_weak: Mutex::new(Weak::new()),
+            runtime_weak: Mutex::new(None),
         }
     }
 
     pub fn new_shared(name: impl Into<String>, zone_id: Zone) -> Arc<Self> {
         let service = Arc::new(Self::new(name, zone_id));
         service.attach_self(&service);
+        let runtime: Arc<dyn ServiceRuntime> = service.clone();
+        service.attach_runtime(&runtime);
         service
     }
 
@@ -115,11 +120,30 @@ impl Service {
         *self.self_weak.lock().expect("self_weak mutex poisoned") = Arc::downgrade(service);
     }
 
+    pub fn attach_runtime(&self, runtime: &Arc<dyn ServiceRuntime>) {
+        *self
+            .runtime_weak
+            .lock()
+            .expect("runtime_weak mutex poisoned") = Some(Arc::downgrade(runtime));
+    }
+
     fn shared_from_this(&self) -> Option<Arc<Self>> {
         self.self_weak
             .lock()
             .expect("self_weak mutex poisoned")
             .upgrade()
+    }
+
+    fn shared_runtime(&self) -> Option<Arc<dyn ServiceRuntime>> {
+        self.runtime_weak
+            .lock()
+            .expect("runtime_weak mutex poisoned")
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .or_else(|| {
+                self.shared_from_this()
+                    .map(|service| service as Arc<dyn ServiceRuntime>)
+            })
     }
 
     pub fn current_service() -> Option<*const Service> {
@@ -173,14 +197,14 @@ impl Service {
             .expect("default_encoding mutex poisoned") = encoding;
     }
 
-    pub fn add_transport(&self, destination: Zone, transport: Arc<Transport>) {
+    pub fn add_transport(&self, destination: Zone, transport: Arc<dyn TransportRuntime>) {
         self.transports
             .lock()
             .expect("transports mutex poisoned")
             .insert(destination, Arc::downgrade(&transport));
     }
 
-    pub fn get_transport(&self, destination: &Zone) -> Option<Arc<Transport>> {
+    pub fn get_transport(&self, destination: &Zone) -> Option<Arc<dyn TransportRuntime>> {
         let mut transports = self.transports.lock().expect("transports mutex poisoned");
         match transports.get(destination).and_then(Weak::upgrade) {
             Some(transport) => Some(transport),
@@ -195,7 +219,7 @@ impl Service {
         &self,
         destination: &Zone,
         requesting_zone_id: &Zone,
-    ) -> Option<Arc<Transport>> {
+    ) -> Option<Arc<dyn TransportRuntime>> {
         self.get_transport(destination).or_else(|| {
             let transport = self.get_transport(requesting_zone_id)?;
             self.add_transport(destination.clone(), transport.clone());
@@ -228,7 +252,7 @@ impl Service {
             self.add_transport(destination_zone_id.clone(), transport.clone());
         }
 
-        let service = self.shared_from_this()?;
+        let service = self.shared_runtime()?;
         let proxy = ServiceProxy::with_transport(
             service,
             transport,
@@ -340,6 +364,21 @@ impl Service {
         stub.lock()
             .expect("object stub mutex poisoned")
             .get_local_interface_view::<T>(interface_id)
+            .ok_or(error_codes::INVALID_INTERFACE_ID())
+    }
+
+    pub fn lookup_local_interface_view_erased(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<dyn std::any::Any + Send + Sync>, i32> {
+        let Some(stub) = self.get_object(object_id) else {
+            return Err(error_codes::OBJECT_NOT_FOUND());
+        };
+
+        stub.lock()
+            .expect("object stub mutex poisoned")
+            .get_local_interface_erased(interface_id)
             .ok_or(error_codes::INVALID_INTERFACE_ID())
     }
 
@@ -681,6 +720,8 @@ impl Service {
     where
         T: crate::internal::GeneratedRustInterface + ?Sized,
     {
+        let caller_zone_for_local = caller_zone_id.clone();
+        let caller_zone_for_remote = caller_zone_id;
         bind_outgoing_interface(
             iface,
             pointer_kind,
@@ -693,17 +734,29 @@ impl Service {
                     );
                 };
                 self.get_descriptor_from_local_stub(
-                    caller_zone_id,
+                    caller_zone_for_local,
                     stub,
                     pointer_kind.is_optimistic(),
                 )
             },
-            |_iface, _pointer_kind| {
-                RemoteObjectBindResult::new(
-                    error_codes::TRANSPORT_ERROR(),
-                    None,
-                    RemoteObject::default(),
-                )
+            |iface, pointer_kind| {
+                let Some(descriptor) = BindableInterfaceValue::remote_object_id(iface) else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::INVALID_DATA(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                let Some(object_proxy) = BindableInterfaceValue::remote_object_proxy(iface) else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::OBJECT_GONE(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                let add_ref =
+                    object_proxy.add_ref_remote_for_caller(caller_zone_for_remote, pointer_kind);
+                RemoteObjectBindResult::new(add_ref.error_code, None, descriptor)
             },
         )
     }
@@ -716,6 +769,8 @@ impl Service {
     where
         T: crate::internal::GeneratedRustInterface + ?Sized,
     {
+        let caller_zone_for_local = caller_zone_id.clone();
+        let caller_zone_for_remote = caller_zone_id;
         bind_outgoing_interface(
             iface,
             InterfacePointerKind::Optimistic,
@@ -734,14 +789,26 @@ impl Service {
                         RemoteObject::default(),
                     );
                 };
-                self.get_descriptor_from_local_stub(caller_zone_id, stub, true)
+                self.get_descriptor_from_local_stub(caller_zone_for_local, stub, true)
             },
-            |_iface, _pointer_kind| {
-                RemoteObjectBindResult::new(
-                    error_codes::TRANSPORT_ERROR(),
-                    None,
-                    RemoteObject::default(),
-                )
+            |iface, pointer_kind| {
+                let Some(descriptor) = BindableInterfaceValue::remote_object_id(iface) else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::INVALID_DATA(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                let Some(object_proxy) = BindableInterfaceValue::remote_object_proxy(iface) else {
+                    return RemoteObjectBindResult::new(
+                        error_codes::OBJECT_GONE(),
+                        None,
+                        RemoteObject::default(),
+                    );
+                };
+                let add_ref =
+                    object_proxy.add_ref_remote_for_caller(caller_zone_for_remote, pointer_kind);
+                RemoteObjectBindResult::new(add_ref.error_code, None, descriptor)
             },
         )
     }
@@ -859,7 +926,14 @@ impl Service {
         {
             return self
                 .get_transport(&params.remote_object_id.as_zone())
-                .map(|transport| transport.release(params))
+                .map(|transport| {
+                    self.shared_runtime()
+                        .map(|runtime| {
+                            runtime
+                                .outbound_release_via_transport(params.clone(), transport.clone())
+                        })
+                        .unwrap_or_else(|| transport.release(params))
+                })
                 .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]));
         }
 
@@ -972,7 +1046,13 @@ impl Service {
         {
             return self
                 .get_transport(&params.remote_object_id.as_zone())
-                .map(|transport| transport.send(params))
+                .map(|transport| {
+                    self.shared_runtime()
+                        .map(|runtime| {
+                            runtime.outbound_send_via_transport(params.clone(), transport.clone())
+                        })
+                        .unwrap_or_else(|| transport.send(params))
+                })
                 .unwrap_or_else(|| SendResult::new(error_codes::ZONE_NOT_FOUND(), vec![], vec![]));
         }
 
@@ -995,7 +1075,11 @@ impl Service {
             .same_zone(self.zone_id.get_address())
         {
             if let Some(transport) = self.get_transport(&params.remote_object_id.as_zone()) {
-                transport.post(params);
+                if let Some(runtime) = self.shared_runtime() {
+                    runtime.outbound_post_via_transport(params, transport);
+                } else {
+                    transport.post(params);
+                }
             }
             return;
         }
@@ -1020,7 +1104,14 @@ impl Service {
         {
             return self
                 .get_transport(&params.remote_object_id.as_zone())
-                .map(|transport| transport.try_cast(params))
+                .map(|transport| {
+                    self.shared_runtime()
+                        .map(|runtime| {
+                            runtime
+                                .outbound_try_cast_via_transport(params.clone(), transport.clone())
+                        })
+                        .unwrap_or_else(|| transport.try_cast(params))
+                })
                 .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]));
         }
 
@@ -1053,7 +1144,10 @@ impl Service {
 
         if build_caller_channel {
             if self.zone_id != params.caller_zone_id {
-                let Some(caller_transport) = self.get_transport(&params.caller_zone_id) else {
+                let Some(caller_transport) = self.get_transport_via_requesting_zone(
+                    &params.caller_zone_id,
+                    &params.requesting_zone_id,
+                ) else {
                     return StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]);
                 };
                 let mut caller_params = params.clone();
@@ -1065,7 +1159,11 @@ impl Service {
                         } else {
                             crate::rpc_types::AddRefOptions::NORMAL
                         };
-                let caller_result = caller_transport.add_ref(caller_params);
+                let caller_result = if let Some(runtime) = self.shared_runtime() {
+                    runtime.outbound_add_ref_via_transport(caller_params, caller_transport)
+                } else {
+                    caller_transport.add_ref(caller_params)
+                };
                 if caller_result.error_code != error_codes::OK() {
                     return caller_result;
                 }
@@ -1088,7 +1186,16 @@ impl Service {
                     & !crate::rpc_types::AddRefOptions::BUILD_CALLER_ROUTE;
                 return self
                     .get_transport_via_requesting_zone(&remote_zone, &params.requesting_zone_id)
-                    .map(|transport| transport.add_ref(dest_params))
+                    .map(|transport| {
+                        self.shared_runtime()
+                            .map(|runtime| {
+                                runtime.outbound_add_ref_via_transport(
+                                    dest_params.clone(),
+                                    transport.clone(),
+                                )
+                            })
+                            .unwrap_or_else(|| transport.add_ref(dest_params))
+                    })
                     .unwrap_or_else(|| StandardResult::new(error_codes::ZONE_NOT_FOUND(), vec![]));
             }
 
@@ -1235,8 +1342,650 @@ impl IMarshaller for Service {
     }
 }
 
+impl ServiceRuntime for Service {
+    fn name(&self) -> &str {
+        Service::name(self)
+    }
+
+    fn zone_id(&self) -> Zone {
+        Service::zone_id(self)
+    }
+
+    fn default_encoding(&self) -> Encoding {
+        Service::default_encoding(self)
+    }
+
+    fn generate_new_object_id(&self) -> Object {
+        Service::generate_new_object_id(self)
+    }
+
+    fn add_transport(&self, destination: Zone, transport: Arc<dyn TransportRuntime>) {
+        Service::add_transport(self, destination, transport);
+    }
+
+    fn get_transport(&self, destination: &Zone) -> Option<Arc<dyn TransportRuntime>> {
+        Service::get_transport(self, destination)
+    }
+
+    fn register_stub(&self, stub: &Arc<Mutex<ObjectStub>>) -> i32 {
+        Service::register_stub(self, stub)
+    }
+
+    fn register_rpc_object(
+        &self,
+        object_id: Object,
+        target: Arc<dyn crate::internal::RpcObject>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32> {
+        Service::register_rpc_object(self, object_id, target)
+    }
+
+    fn lookup_local_interface_view_erased(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<dyn std::any::Any + Send + Sync>, i32> {
+        let Some(stub) = self.get_object(object_id) else {
+            return Err(error_codes::OBJECT_NOT_FOUND());
+        };
+
+        stub.lock()
+            .expect("object stub mutex poisoned")
+            .get_local_interface_erased(interface_id)
+            .ok_or(error_codes::INVALID_INTERFACE_ID())
+    }
+
+    fn transport_down_from_params(&self, params: TransportDownParams) {
+        Service::transport_down_from_params(self, params);
+    }
+
+    fn concrete_service(&self) -> Option<&Service> {
+        Some(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct RootService {
+    service: Arc<Service>,
+    next_zone_subnet: AtomicU64,
+}
+
+impl RootService {
+    pub fn new_shared(name: impl Into<String>, zone_id: Zone) -> Arc<Self> {
+        let service = Arc::new(Service::new(name, zone_id.clone()));
+        service.attach_self(&service);
+        let next_zone_subnet = zone_id.get_subnet().saturating_add(1);
+        let root = Arc::new(Self {
+            service,
+            next_zone_subnet: AtomicU64::new(next_zone_subnet),
+        });
+        let runtime: Arc<dyn ServiceRuntime> = root.clone();
+        root.service.attach_runtime(&runtime);
+        root
+    }
+
+    pub fn from_config(name: impl Into<String>, config: ServiceConfig) -> Arc<Self> {
+        Self::new_shared(name, config.initial_zone)
+    }
+
+    #[doc(hidden)]
+    pub fn service(&self) -> &Arc<Service> {
+        &self.service
+    }
+
+    pub fn add_transport(&self, destination: Zone, transport: Arc<dyn TransportRuntime>) {
+        self.service.add_transport(destination, transport);
+    }
+
+    pub fn get_transport(&self, destination: &Zone) -> Option<Arc<dyn TransportRuntime>> {
+        self.service.get_transport(destination)
+    }
+
+    pub fn generate_new_object_id(&self) -> Object {
+        self.service.generate_new_object_id()
+    }
+
+    pub fn zone_id(&self) -> Zone {
+        self.service.zone_id()
+    }
+
+    pub fn register_rpc_object(
+        &self,
+        object_id: Object,
+        target: Arc<dyn crate::internal::RpcObject>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32> {
+        self.service.register_rpc_object(object_id, target)
+    }
+
+    pub fn register_stub(&self, stub: &Arc<Mutex<ObjectStub>>) -> i32 {
+        self.service.register_stub(stub)
+    }
+
+    pub fn register_local_object<T>(
+        &self,
+        object_id: Object,
+        target: Arc<T>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32>
+    where
+        T: crate::internal::GeneratedRustInterface,
+    {
+        self.service.register_local_object(object_id, target)
+    }
+
+    pub fn lookup_local_interface_view<T>(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<T>, i32>
+    where
+        T: crate::internal::CastingInterface + ?Sized,
+    {
+        self.service
+            .lookup_local_interface_view::<T>(object_id, interface_id)
+    }
+
+    pub fn send(&self, params: SendParams) -> SendResult {
+        self.service.send(params)
+    }
+
+    pub fn try_cast(&self, params: TryCastParams) -> StandardResult {
+        self.service.try_cast(params)
+    }
+
+    pub fn add_ref(&self, params: AddRefParams) -> StandardResult {
+        self.service.add_ref(params)
+    }
+
+    pub fn release(&self, params: ReleaseParams) -> StandardResult {
+        self.service.release(params)
+    }
+}
+
+impl IMarshaller for RootService {
+    fn send(&self, params: SendParams) -> SendResult {
+        self.service.send(params)
+    }
+
+    fn post(&self, params: PostParams) {
+        self.service.post(params);
+    }
+
+    fn try_cast(&self, params: TryCastParams) -> StandardResult {
+        self.service.try_cast(params)
+    }
+
+    fn add_ref(&self, params: AddRefParams) -> StandardResult {
+        self.service.add_ref(params)
+    }
+
+    fn release(&self, params: ReleaseParams) -> StandardResult {
+        self.service.release(params)
+    }
+
+    fn object_released(&self, params: ObjectReleasedParams) {
+        self.service.object_released(params);
+    }
+
+    fn transport_down(&self, params: TransportDownParams) {
+        self.service.transport_down_from_params(params);
+    }
+
+    fn get_new_zone_id(&self, _params: GetNewZoneIdParams) -> NewZoneIdResult {
+        let subnet = self.next_zone_subnet.fetch_add(1, Ordering::SeqCst);
+        let zone = Zone::from(
+            ZoneAddress::create(crate::rpc_types::ZoneAddressArgs::new(
+                crate::rpc_types::DefaultValues::VERSION_3,
+                crate::rpc_types::AddressType::Local,
+                0,
+                vec![],
+                crate::rpc_types::DefaultValues::DEFAULT_SUBNET_SIZE_BITS,
+                subnet,
+                crate::rpc_types::DefaultValues::DEFAULT_OBJECT_ID_SIZE_BITS,
+                0,
+                vec![],
+            ))
+            .expect("root service should allocate valid local zone"),
+        );
+        NewZoneIdResult::new(error_codes::OK(), zone, vec![])
+    }
+}
+
+impl ServiceRuntime for RootService {
+    fn name(&self) -> &str {
+        self.service.name()
+    }
+
+    fn zone_id(&self) -> Zone {
+        self.service.zone_id()
+    }
+
+    fn default_encoding(&self) -> Encoding {
+        self.service.default_encoding()
+    }
+
+    fn generate_new_object_id(&self) -> Object {
+        self.service.generate_new_object_id()
+    }
+
+    fn add_transport(&self, destination: Zone, transport: Arc<dyn TransportRuntime>) {
+        self.service.add_transport(destination, transport);
+    }
+
+    fn get_transport(&self, destination: &Zone) -> Option<Arc<dyn TransportRuntime>> {
+        self.service.get_transport(destination)
+    }
+
+    fn register_stub(&self, stub: &Arc<Mutex<ObjectStub>>) -> i32 {
+        self.service.register_stub(stub)
+    }
+
+    fn register_rpc_object(
+        &self,
+        object_id: Object,
+        target: Arc<dyn crate::internal::RpcObject>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32> {
+        self.service.register_rpc_object(object_id, target)
+    }
+
+    fn lookup_local_interface_view_erased(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<dyn std::any::Any + Send + Sync>, i32> {
+        self.service
+            .lookup_local_interface_view_erased(object_id, interface_id)
+    }
+
+    fn transport_down_from_params(&self, params: TransportDownParams) {
+        self.service.transport_down_from_params(params);
+    }
+
+    fn concrete_service(&self) -> Option<&Service> {
+        Some(self.service.as_ref())
+    }
+}
+
+pub struct ChildService {
+    service: Arc<Service>,
+    parent_zone_id: Zone,
+    parent_transport: Mutex<Option<Arc<dyn TransportRuntime>>>,
+}
+
+impl std::fmt::Debug for ChildService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChildService")
+            .field("zone_id", &self.service.zone_id())
+            .field("parent_zone_id", &self.parent_zone_id)
+            .field(
+                "has_parent_transport",
+                &self
+                    .parent_transport
+                    .lock()
+                    .expect("child parent_transport mutex poisoned")
+                    .is_some(),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+impl ChildService {
+    pub fn new_shared(name: impl Into<String>, zone_id: Zone, parent_zone_id: Zone) -> Arc<Self> {
+        let service = Arc::new(Service::new(name, zone_id));
+        service.attach_self(&service);
+        let child = Arc::new(Self {
+            service,
+            parent_zone_id,
+            parent_transport: Mutex::new(None),
+        });
+        let runtime: Arc<dyn ServiceRuntime> = child.clone();
+        child.service.attach_runtime(&runtime);
+        child
+    }
+
+    #[doc(hidden)]
+    pub fn service(&self) -> &Arc<Service> {
+        &self.service
+    }
+
+    pub fn add_transport(&self, destination: Zone, transport: Arc<dyn TransportRuntime>) {
+        self.service.add_transport(destination, transport);
+    }
+
+    pub fn get_transport(&self, destination: &Zone) -> Option<Arc<dyn TransportRuntime>> {
+        self.service.get_transport(destination)
+    }
+
+    pub fn set_parent_transport(&self, parent_transport: Arc<dyn TransportRuntime>) {
+        *self
+            .parent_transport
+            .lock()
+            .expect("child parent_transport mutex poisoned") = Some(parent_transport);
+    }
+
+    pub fn get_parent_transport(&self) -> Option<Arc<dyn TransportRuntime>> {
+        self.parent_transport
+            .lock()
+            .expect("child parent_transport mutex poisoned")
+            .clone()
+    }
+
+    pub fn parent_zone_id(&self) -> Zone {
+        self.parent_zone_id.clone()
+    }
+
+    pub fn generate_new_object_id(&self) -> Object {
+        self.service.generate_new_object_id()
+    }
+
+    pub fn zone_id(&self) -> Zone {
+        self.service.zone_id()
+    }
+
+    pub fn register_rpc_object(
+        &self,
+        object_id: Object,
+        target: Arc<dyn crate::internal::RpcObject>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32> {
+        self.service.register_rpc_object(object_id, target)
+    }
+
+    pub fn register_stub(&self, stub: &Arc<Mutex<ObjectStub>>) -> i32 {
+        self.service.register_stub(stub)
+    }
+
+    pub fn register_local_object<T>(
+        &self,
+        object_id: Object,
+        target: Arc<T>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32>
+    where
+        T: crate::internal::GeneratedRustInterface,
+    {
+        self.service.register_local_object(object_id, target)
+    }
+
+    pub fn lookup_local_interface_view<T>(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<T>, i32>
+    where
+        T: crate::internal::CastingInterface + ?Sized,
+    {
+        self.service
+            .lookup_local_interface_view::<T>(object_id, interface_id)
+    }
+
+    pub fn send(&self, params: SendParams) -> SendResult {
+        self.service.send(params)
+    }
+
+    pub fn try_cast(&self, params: TryCastParams) -> StandardResult {
+        self.service.try_cast(params)
+    }
+
+    pub fn add_ref(&self, params: AddRefParams) -> StandardResult {
+        self.service.add_ref(params)
+    }
+
+    pub fn release(&self, params: ReleaseParams) -> StandardResult {
+        self.service.release(params)
+    }
+}
+
+impl IMarshaller for ChildService {
+    fn send(&self, params: SendParams) -> SendResult {
+        self.service.send(params)
+    }
+
+    fn post(&self, params: PostParams) {
+        self.service.post(params);
+    }
+
+    fn try_cast(&self, params: TryCastParams) -> StandardResult {
+        self.service.try_cast(params)
+    }
+
+    fn add_ref(&self, params: AddRefParams) -> StandardResult {
+        self.service.add_ref(params)
+    }
+
+    fn release(&self, params: ReleaseParams) -> StandardResult {
+        self.service.release(params)
+    }
+
+    fn object_released(&self, params: ObjectReleasedParams) {
+        self.service.object_released(params);
+    }
+
+    fn transport_down(&self, params: TransportDownParams) {
+        self.service.transport_down_from_params(params);
+    }
+
+    fn get_new_zone_id(&self, params: GetNewZoneIdParams) -> NewZoneIdResult {
+        self.get_parent_transport()
+            .map(|transport| transport.get_new_zone_id(params))
+            .unwrap_or_else(|| {
+                NewZoneIdResult::new(error_codes::ZONE_NOT_FOUND(), Zone::default(), vec![])
+            })
+    }
+}
+
+impl ServiceRuntime for ChildService {
+    fn name(&self) -> &str {
+        self.service.name()
+    }
+
+    fn zone_id(&self) -> Zone {
+        self.service.zone_id()
+    }
+
+    fn default_encoding(&self) -> Encoding {
+        self.service.default_encoding()
+    }
+
+    fn generate_new_object_id(&self) -> Object {
+        self.service.generate_new_object_id()
+    }
+
+    fn add_transport(&self, destination: Zone, transport: Arc<dyn TransportRuntime>) {
+        self.service.add_transport(destination, transport);
+    }
+
+    fn get_transport(&self, destination: &Zone) -> Option<Arc<dyn TransportRuntime>> {
+        self.service.get_transport(destination)
+    }
+
+    fn register_stub(&self, stub: &Arc<Mutex<ObjectStub>>) -> i32 {
+        self.service.register_stub(stub)
+    }
+
+    fn register_rpc_object(
+        &self,
+        object_id: Object,
+        target: Arc<dyn crate::internal::RpcObject>,
+    ) -> Result<Arc<Mutex<ObjectStub>>, i32> {
+        self.service.register_rpc_object(object_id, target)
+    }
+
+    fn lookup_local_interface_view_erased(
+        &self,
+        object_id: Object,
+        interface_id: crate::rpc_types::InterfaceOrdinal,
+    ) -> Result<Arc<dyn std::any::Any + Send + Sync>, i32> {
+        self.service
+            .lookup_local_interface_view_erased(object_id, interface_id)
+    }
+
+    fn transport_down_from_params(&self, params: TransportDownParams) {
+        self.service.transport_down_from_params(params);
+    }
+
+    fn concrete_service(&self) -> Option<&Service> {
+        Some(self.service.as_ref())
+    }
+}
+
 pub struct CurrentServiceGuard {
     previous: *const Service,
+}
+
+#[doc(hidden)]
+pub fn bind_incoming_shared_interface_local_from_runtime<T, ProxyT>(
+    service: &dyn ServiceRuntime,
+    caller_zone_id: CallerZone,
+    encap: &RemoteObject,
+    interface_id: crate::rpc_types::InterfaceOrdinal,
+    convert_remote: impl FnOnce(Arc<ProxyT>) -> Arc<T>,
+) -> InterfaceBindResult<Arc<T>>
+where
+    T: crate::internal::CastingInterface + ?Sized + Send + Sync + 'static,
+    ProxyT: crate::internal::GeneratedRustInterface,
+{
+    if *encap == crate::internal::null_remote_descriptor() || !encap.is_set() {
+        return InterfaceBindResult::null(error_codes::OK());
+    }
+    if encap.as_zone() == service.zone_id() {
+        return match crate::internal::lookup_local_interface_view_from_runtime::<T>(
+            service,
+            encap.get_object_id(),
+            interface_id,
+        ) {
+            Ok(iface) => InterfaceBindResult::local(error_codes::OK(), iface),
+            Err(error_code) if error_code == error_codes::OBJECT_GONE() => {
+                InterfaceBindResult::gone(
+                    error_code,
+                    crate::internal::InterfaceBindingOrigin::Local,
+                )
+            }
+            Err(error_code) => InterfaceBindResult::null(error_code),
+        };
+    }
+
+    let Some(concrete_service) = service.concrete_service() else {
+        return InterfaceBindResult::null(error_codes::TRANSPORT_ERROR());
+    };
+
+    let binding =
+        concrete_service.bind_incoming_shared_interface_from::<ProxyT>(caller_zone_id, encap);
+    match binding.iface {
+        crate::internal::BoundInterface::Value(proxy) => {
+            InterfaceBindResult::remote(binding.error_code, convert_remote(proxy))
+        }
+        crate::internal::BoundInterface::Null => InterfaceBindResult::null(binding.error_code),
+        crate::internal::BoundInterface::Gone => InterfaceBindResult::gone(
+            binding.error_code,
+            binding
+                .origin
+                .unwrap_or(crate::internal::InterfaceBindingOrigin::Remote),
+        ),
+    }
+}
+
+#[doc(hidden)]
+pub fn bind_incoming_optimistic_interface_local_from_runtime<T, ProxyT>(
+    service: &dyn ServiceRuntime,
+    caller_zone_id: CallerZone,
+    encap: &RemoteObject,
+    interface_id: crate::rpc_types::InterfaceOrdinal,
+    convert_remote: impl FnOnce(Arc<ProxyT>) -> Arc<T>,
+) -> InterfaceBindResult<crate::internal::LocalProxy<T>>
+where
+    T: crate::internal::CastingInterface + ?Sized + Send + Sync + 'static,
+    ProxyT: crate::internal::GeneratedRustInterface,
+{
+    if *encap == crate::internal::null_remote_descriptor() || !encap.is_set() {
+        return InterfaceBindResult::null(error_codes::OK());
+    }
+    if encap.as_zone() == service.zone_id() {
+        return match crate::internal::lookup_local_interface_view_from_runtime::<T>(
+            service,
+            encap.get_object_id(),
+            interface_id,
+        ) {
+            Ok(iface) => InterfaceBindResult::local(
+                error_codes::OK(),
+                crate::internal::LocalProxy::from_remote(iface),
+            ),
+            Err(error_code) if error_code == error_codes::OBJECT_GONE() => {
+                InterfaceBindResult::gone(
+                    error_code,
+                    crate::internal::InterfaceBindingOrigin::Local,
+                )
+            }
+            Err(error_code) => InterfaceBindResult::null(error_code),
+        };
+    }
+
+    let Some(concrete_service) = service.concrete_service() else {
+        return InterfaceBindResult::null(error_codes::TRANSPORT_ERROR());
+    };
+
+    let binding =
+        concrete_service.bind_incoming_optimistic_interface_from::<ProxyT>(caller_zone_id, encap);
+    if crate::internal::is_critical(binding.error_code) {
+        return InterfaceBindResult::null(binding.error_code);
+    }
+    match binding.iface {
+        crate::internal::BoundInterface::Value(proxy) => {
+            let Some(proxy) = proxy.upgrade() else {
+                return InterfaceBindResult::gone(
+                    error_codes::OBJECT_GONE(),
+                    crate::internal::InterfaceBindingOrigin::Remote,
+                );
+            };
+            let view = convert_remote(proxy);
+            InterfaceBindResult::remote(
+                binding.error_code,
+                crate::internal::LocalProxy::from_remote(view),
+            )
+        }
+        crate::internal::BoundInterface::Null => InterfaceBindResult::null(binding.error_code),
+        crate::internal::BoundInterface::Gone => InterfaceBindResult::gone(
+            binding.error_code,
+            binding
+                .origin
+                .unwrap_or(crate::internal::InterfaceBindingOrigin::Remote),
+        ),
+    }
+}
+
+#[doc(hidden)]
+pub fn bind_outgoing_local_erased_interface_from_runtime<T>(
+    service: &dyn ServiceRuntime,
+    caller_zone_id: CallerZone,
+    iface: &crate::internal::BoundInterface<Arc<T>>,
+    pointer_kind: InterfacePointerKind,
+) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
+where
+    T: crate::internal::GeneratedRustInterface + ?Sized,
+{
+    let Some(concrete_service) = service.concrete_service() else {
+        return RemoteObjectBindResult::new(
+            error_codes::TRANSPORT_ERROR(),
+            None,
+            RemoteObject::default(),
+        );
+    };
+    concrete_service.bind_outgoing_local_erased_interface(caller_zone_id, iface, pointer_kind)
+}
+
+#[doc(hidden)]
+pub fn bind_outgoing_local_optimistic_erased_interface_from_runtime<T>(
+    service: &dyn ServiceRuntime,
+    caller_zone_id: CallerZone,
+    iface: &crate::internal::BoundInterface<crate::internal::LocalProxy<T>>,
+) -> RemoteObjectBindResult<Arc<Mutex<ObjectStub>>>
+where
+    T: crate::internal::GeneratedRustInterface + ?Sized,
+{
+    let Some(concrete_service) = service.concrete_service() else {
+        return RemoteObjectBindResult::new(
+            error_codes::TRANSPORT_ERROR(),
+            None,
+            RemoteObject::default(),
+        );
+    };
+    concrete_service.bind_outgoing_local_optimistic_erased_interface(caller_zone_id, iface)
 }
 
 impl CurrentServiceGuard {

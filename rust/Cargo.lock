@@ -36,6 +36,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "canopy-transport-local"
+version = "0.1.0"
+dependencies = [
+ "canopy-rpc",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 
