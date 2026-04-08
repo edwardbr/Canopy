@@ -1884,17 +1884,17 @@ void run_detached_and_drain_scheduler(
     const std::shared_ptr<coro::scheduler>& scheduler,
     MakeTask&& make_task)
 {
-    bool completed = false;
+    std::atomic<bool> completed = false;
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
     auto wrapper_task = [make_task = std::forward<MakeTask>(make_task), &completed]() mutable -> coro::task<void>
     {
         co_await make_task();
-        completed = true;
+        completed.store(true, std::memory_order_release);
     }();
 
     RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
 
-    while (!completed || !scheduler->empty())
+    while (!completed.load(std::memory_order_acquire) || !scheduler->empty())
     {
         scheduler->process_events(std::chrono::milliseconds(10));
     }
