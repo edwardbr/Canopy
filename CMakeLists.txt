@@ -57,43 +57,28 @@ if(CANOPY_BUILD_RUST)
     set(CANOPY_RUST_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust")
 
     # Build all Rust crates (compile only, no test execution).
-    add_custom_target(rust_build ALL
-      COMMAND
-        ${CMAKE_COMMAND} -E env
-          CANOPY_GENERATOR=$<TARGET_FILE:generator>
-          CANOPY_PROTOC=$<TARGET_FILE:protoc>
-        ${CARGO_EXECUTABLE} build --workspace
-          --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
+    add_custom_target(
+      rust_build ALL
+      COMMAND ${CMAKE_COMMAND} -E env CANOPY_GENERATOR=$<TARGET_FILE:generator> CANOPY_PROTOC=$<TARGET_FILE:protoc>
+              ${CARGO_EXECUTABLE} build --workspace --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
       WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR}
       COMMENT "Building Rust workspace"
-      VERBATIM
-    )
+      VERBATIM)
     add_dependencies(rust_build generator protoc)
 
-    set(CANOPY_RUST_TEST_ENV
-      CANOPY_GENERATOR=$<TARGET_FILE:generator>
-      CANOPY_PROTOC=$<TARGET_FILE:protoc>
-    )
+    set(CANOPY_RUST_TEST_ENV CANOPY_GENERATOR=$<TARGET_FILE:generator> CANOPY_PROTOC=$<TARGET_FILE:protoc>)
 
     if(TARGET canopy_probe_c_abi_dll)
-      list(APPEND CANOPY_RUST_TEST_ENV
-        CANOPY_CXX_PROBE_DLL_PATH=$<TARGET_FILE:canopy_probe_c_abi_dll>
-      )
+      list(APPEND CANOPY_RUST_TEST_ENV CANOPY_CXX_PROBE_DLL_PATH=$<TARGET_FILE:canopy_probe_c_abi_dll>)
     endif()
 
     # Run Rust tests via CTest.
     add_test(
       NAME rust_tests
       COMMAND
-        ${CMAKE_COMMAND} -E env
-          ${CANOPY_RUST_TEST_ENV}
-        ${CARGO_EXECUTABLE} test
-          -p canopy-rpc
-          -p canopy-transport-dynamic-library
-          -p canopy-transport-dynamic-library-test-child
-          -p canopy-protobuf-runtime-probe
-          --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
-      WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR}
-    )
+        ${CMAKE_COMMAND} -E env ${CANOPY_RUST_TEST_ENV} ${CARGO_EXECUTABLE} test -p canopy-rpc -p
+        canopy-transport-dynamic-library -p canopy-transport-dynamic-library-test-child -p canopy-protobuf-runtime-probe
+        --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
+      WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR})
   endif()
 endif()

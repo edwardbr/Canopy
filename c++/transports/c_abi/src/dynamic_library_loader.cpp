@@ -10,7 +10,7 @@ namespace rpc::c_abi
     bool dynamic_library_exports::is_complete() const
     {
         return init && destroy && send && post && try_cast && add_ref && release && object_released && transport_down
-            && get_new_zone_id;
+               && get_new_zone_id;
     }
 
     dynamic_library_loader::~dynamic_library_loader()
@@ -54,9 +54,12 @@ namespace rpc::c_abi
         exports_.try_cast = reinterpret_cast<canopy_dll_try_cast_fn>(resolve_symbol("canopy_dll_try_cast"));
         exports_.add_ref = reinterpret_cast<canopy_dll_add_ref_fn>(resolve_symbol("canopy_dll_add_ref"));
         exports_.release = reinterpret_cast<canopy_dll_release_fn>(resolve_symbol("canopy_dll_release"));
-        exports_.object_released = reinterpret_cast<canopy_dll_object_released_fn>(resolve_symbol("canopy_dll_object_released"));
-        exports_.transport_down = reinterpret_cast<canopy_dll_transport_down_fn>(resolve_symbol("canopy_dll_transport_down"));
-        exports_.get_new_zone_id = reinterpret_cast<canopy_dll_get_new_zone_id_fn>(resolve_symbol("canopy_dll_get_new_zone_id"));
+        exports_.object_released
+            = reinterpret_cast<canopy_dll_object_released_fn>(resolve_symbol("canopy_dll_object_released"));
+        exports_.transport_down
+            = reinterpret_cast<canopy_dll_transport_down_fn>(resolve_symbol("canopy_dll_transport_down"));
+        exports_.get_new_zone_id
+            = reinterpret_cast<canopy_dll_get_new_zone_id_fn>(resolve_symbol("canopy_dll_get_new_zone_id"));
 
         if (!exports_.is_complete())
         {

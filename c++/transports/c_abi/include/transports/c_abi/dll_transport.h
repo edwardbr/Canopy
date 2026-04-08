@@ -108,15 +108,17 @@ namespace rpc::c_abi
         if (!input_descr)
             return rpc::error::INVALID_DATA();
 
-        auto parent_zone = rpc::zone_address::from_blob(std::vector<uint8_t>(
-            params->parent_zone.address.blob.data,
-            params->parent_zone.address.blob.data + params->parent_zone.address.blob.size));
+        auto parent_zone = rpc::zone_address::from_blob(
+            std::vector<uint8_t>(
+                params->parent_zone.address.blob.data,
+                params->parent_zone.address.blob.data + params->parent_zone.address.blob.size));
         if (!parent_zone)
             return rpc::error::INVALID_DATA();
 
-        auto child_zone = rpc::zone_address::from_blob(std::vector<uint8_t>(
-            params->child_zone.address.blob.data,
-            params->child_zone.address.blob.data + params->child_zone.address.blob.size));
+        auto child_zone = rpc::zone_address::from_blob(
+            std::vector<uint8_t>(
+                params->child_zone.address.blob.data,
+                params->child_zone.address.blob.data + params->child_zone.address.blob.size));
         if (!child_zone)
             return rpc::error::INVALID_DATA();
 
@@ -136,10 +138,7 @@ namespace rpc::c_abi
             params->parent_get_new_zone_id);
 
         auto create_result = rpc::child_service::create_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>(
-            params->name ? params->name : "c_abi child",
-            pt,
-            *input_descr,
-            std::move(factory));
+            params->name ? params->name : "c_abi child", pt, *input_descr, std::move(factory));
 
         if (create_result.error_code != rpc::error::OK())
             return create_result.error_code;

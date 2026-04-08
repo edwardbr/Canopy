@@ -1409,9 +1409,9 @@ namespace protobuf_generator
     {
         std::string norm_type = normalize_type(type_str);
         return norm_type == "std::vector<uint8_t>" || norm_type == "std::vector<unsignedchar>"
-            || norm_type == "std::vector<unsigned char>" || norm_type == "std::vector<int8_t>"
-            || norm_type == "std::vector<char>" || norm_type == "std::vector<signedchar>"
-            || norm_type == "std::vector<signed char>";
+               || norm_type == "std::vector<unsigned char>" || norm_type == "std::vector<int8_t>"
+               || norm_type == "std::vector<char>" || norm_type == "std::vector<signedchar>"
+               || norm_type == "std::vector<signed char>";
     }
 
     bool is_simple_protobuf_type(const std::string& type_str)

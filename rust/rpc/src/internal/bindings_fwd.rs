@@ -29,14 +29,14 @@ pub enum InterfaceBindingOrigin {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterfaceBindResult<T> {
     pub error_code: i32,
-    pub iface: super::bindings::BoundInterface<T>,
+    pub iface: super::remote_pointer::BoundInterface<T>,
     pub origin: Option<InterfaceBindingOrigin>,
 }
 
 impl<T> InterfaceBindResult<T> {
     pub fn new(
         error_code: i32,
-        iface: super::bindings::BoundInterface<T>,
+        iface: super::remote_pointer::BoundInterface<T>,
         origin: Option<InterfaceBindingOrigin>,
     ) -> Self {
         Self {
@@ -47,13 +47,17 @@ impl<T> InterfaceBindResult<T> {
     }
 
     pub fn null(error_code: i32) -> Self {
-        Self::new(error_code, super::bindings::BoundInterface::Null, None)
+        Self::new(
+            error_code,
+            super::remote_pointer::BoundInterface::Null,
+            None,
+        )
     }
 
     pub fn gone(error_code: i32, origin: InterfaceBindingOrigin) -> Self {
         Self::new(
             error_code,
-            super::bindings::BoundInterface::Gone,
+            super::remote_pointer::BoundInterface::Gone,
             Some(origin),
         )
     }
@@ -61,7 +65,7 @@ impl<T> InterfaceBindResult<T> {
     pub fn local(error_code: i32, iface: T) -> Self {
         Self::new(
             error_code,
-            super::bindings::BoundInterface::Value(iface),
+            super::remote_pointer::BoundInterface::Value(iface),
             Some(InterfaceBindingOrigin::Local),
         )
     }
@@ -69,7 +73,7 @@ impl<T> InterfaceBindResult<T> {
     pub fn remote(error_code: i32, iface: T) -> Self {
         Self::new(
             error_code,
-            super::bindings::BoundInterface::Value(iface),
+            super::remote_pointer::BoundInterface::Value(iface),
             Some(InterfaceBindingOrigin::Remote),
         )
     }

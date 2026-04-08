@@ -123,6 +123,13 @@ std::vector<instruction> generate_instruction_set(
     bool has_parent,
     bool has_children);
 
+struct graph_summary
+{
+    int node_count{0};
+    int objects_held_total{0};
+    int auxiliary_zone_count{0};
+};
+
 // Shared object implementation
 class shared_object_impl : public rpc::base<shared_object_impl, i_shared_object, i_cleanup>,
                            public rpc::enable_shared_from_this<shared_object_impl>
@@ -482,6 +489,8 @@ private:
         auto connect_result = CO_AWAIT current_service->connect_to_zone<i_fuzz_factory, i_fuzz_factory>(
             factory_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_factory>());
         local_factory_ = std::move(connect_result.output_interface);
+        if (local_factory_)
+            connections_count_++;
         CO_RETURN;
     }
 
@@ -505,6 +514,8 @@ private:
         auto connect_result = CO_AWAIT current_service->connect_to_zone<i_fuzz_cache, i_fuzz_cache>(
             cache_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_cache>());
         local_cache_ = std::move(connect_result.output_interface);
+        if (local_cache_)
+            connections_count_++;
         CO_RETURN;
     }
 
@@ -528,6 +539,8 @@ private:
         auto connect_result = CO_AWAIT current_service->connect_to_zone<i_fuzz_worker, i_fuzz_worker>(
             worker_zone_name.c_str(), child_transport, rpc::shared_ptr<i_fuzz_worker>());
         local_worker_ = std::move(connect_result.output_interface);
+        if (local_worker_)
+            connections_count_++;
         CO_RETURN;
     }
 
@@ -1270,6 +1283,113 @@ std::vector<instruction> generate_instruction_set(
     return instructions;
 }
 
+CORO_TASK(int)
+execute_generated_script(
+    rpc::shared_ptr<i_autonomous_node> runner_node,
+    rpc::shared_ptr<i_autonomous_node> target_node,
+    int instruction_count)
+{
+    if (!runner_node || !target_node)
+    {
+        CO_RETURN rpc::error::INVALID_DATA();
+    }
+
+    rpc::shared_ptr<i_autonomous_node> parent_node;
+    auto parent_result = CO_AWAIT runner_node->get_parent_node(parent_node);
+    bool has_parent = parent_result == rpc::error::OK() && parent_node;
+
+    int child_count = 0;
+    auto child_result = CO_AWAIT runner_node->get_cached_children_count(child_count);
+    bool has_children = child_result == rpc::error::OK() && child_count > 0;
+
+    uint64_t runner_id = 0;
+    node_type runner_type = {};
+    int connections = 0;
+    int objects_held = 0;
+    auto status_result = CO_AWAIT runner_node->get_node_status(runner_type, runner_id, connections, objects_held);
+    if (status_result != rpc::error::OK())
+    {
+        CO_RETURN status_result;
+    }
+
+    auto instructions = generate_instruction_set(instruction_count, has_parent, has_children);
+    rpc::shared_ptr<i_shared_object> current_object;
+    for (const auto& current_instruction : instructions)
+    {
+        if (g_instruction_counter >= 50)
+        {
+            break;
+        }
+
+        if (current_instruction.operation.rfind("PASS_TO", 0) == 0)
+        {
+            auto receive_result = CO_AWAIT target_node->receive_object(current_object, runner_id);
+            if (receive_result != rpc::error::OK())
+            {
+                CO_RETURN receive_result;
+            }
+            continue;
+        }
+
+        rpc::shared_ptr<i_shared_object> output_object;
+        auto execute_result
+            = CO_AWAIT runner_node->execute_instruction(current_instruction, current_object, output_object);
+        if (execute_result != rpc::error::OK())
+        {
+            CO_RETURN execute_result;
+        }
+        if (output_object)
+        {
+            current_object = output_object;
+        }
+    }
+
+    CO_RETURN rpc::error::OK();
+}
+
+CORO_TASK(void)
+accumulate_graph_summary(
+    rpc::shared_ptr<i_autonomous_node> node,
+    graph_summary& summary,
+    std::set<uint64_t>& visited)
+{
+    if (!node)
+    {
+        CO_RETURN;
+    }
+
+    node_type type = {};
+    uint64_t node_id = 0;
+    int connections = 0;
+    int objects_held = 0;
+    if (CO_AWAIT node->get_node_status(type, node_id, connections, objects_held) != rpc::error::OK())
+    {
+        CO_RETURN;
+    }
+    if (!visited.insert(node_id).second)
+    {
+        CO_RETURN;
+    }
+
+    summary.node_count++;
+    summary.objects_held_total += objects_held;
+    summary.auxiliary_zone_count += connections;
+
+    int child_count = 0;
+    if (CO_AWAIT node->get_cached_children_count(child_count) != rpc::error::OK())
+    {
+        CO_RETURN;
+    }
+    for (int index = 0; index < child_count; ++index)
+    {
+        rpc::shared_ptr<i_autonomous_node> child;
+        if (CO_AWAIT node->get_cached_child_by_index(index, child) == rpc::error::OK())
+        {
+            CO_AWAIT accumulate_graph_summary(child, summary, visited);
+        }
+    }
+}
+
 // Helper function to create a chain of nodes using interface methods
 CORO_TASK(rpc::shared_ptr<i_autonomous_node>)
 create_deep_branch(
@@ -1489,16 +1609,18 @@ run_autonomous_instruction_test_with_setup(
             }
             all_nodes.push_back(root_node);
 
-            // 2. Build the deterministic graph structure
-            RPC_INFO("Building deterministic graph structure...");
-            // Create main branch 5 nodes deep
-            auto main_branch_end = CO_AWAIT create_deep_branch(root_node, 5, all_nodes);
-
-            // Create 5 sub-branches, each 5 nodes deep
-            for (int i = 0; i < 5; ++i)
+            RPC_INFO("Building deterministic fanout graph structure...");
+            for (int i = 0; i < 30; ++i)
             {
-                RPC_INFO("Creating sub-branch {}...", i + 1);
-                CO_AWAIT create_deep_branch(main_branch_end, 5, all_nodes);
+                rpc::shared_ptr<i_autonomous_node> child_node;
+                auto child_zone_id = 4242 + ++g_zone_id_counter;
+                auto result
+                    = CO_AWAIT root_node->create_child_node(node_type::WORKER_NODE, child_zone_id, true, child_node);
+                if (result != rpc::error::OK() || !child_node)
+                {
+                    throw std::runtime_error("Failed to create deterministic child node");
+                }
+                all_nodes.push_back(child_node);
             }
             RPC_INFO("Graph construction complete. Total nodes: {}", all_nodes.size());
 
@@ -1563,7 +1685,7 @@ run_autonomous_instruction_test_with_setup(
                         i + 1,
                         scenario_config.runner_target_pairs[i].target_id,
                         scenario_config.instruction_count);
-                    CO_AWAIT runner_node->run_script(target_node, scenario_config.instruction_count);
+                    CO_AWAIT execute_generated_script(runner_node, target_node, scenario_config.instruction_count);
                 }
             }
 
@@ -1648,6 +1770,91 @@ run_autonomous_instruction_test_with_setup(
     spdlog::info("=== Autonomous Test Cycle {} Completed ===", test_cycle);
 }
 
+template<typename TransportSetup>
+CORO_TASK(graph_summary)
+run_autonomous_instruction_summary_with_setup(
+    TransportSetup& transport_setup,
+    int test_cycle,
+    int instruction_count,
+    uint64_t seed)
+{
+    g_zone_id_counter = 0;
+    g_instruction_counter = 0;
+    transport_setup.set_up();
+    initialize_global_rng(seed);
+
+    test_scenario_config scenario_config;
+    scenario_config.test_cycle = test_cycle;
+    scenario_config.instruction_count = instruction_count;
+    scenario_config.random_seed = seed;
+
+    auto root_node = CO_AWAIT transport_setup.create_root_node(test_cycle, scenario_config);
+    if (!root_node)
+    {
+        spdlog::error("Failed to create root node for deterministic parity summary");
+        transport_setup.tear_down();
+        CO_RETURN graph_summary{};
+    }
+
+    std::vector<rpc::shared_ptr<i_autonomous_node>> all_nodes;
+    all_nodes.push_back(root_node);
+
+    for (int i = 0; i < 30; ++i)
+    {
+        rpc::shared_ptr<i_autonomous_node> child_node;
+        auto child_zone_id = 4242 + ++g_zone_id_counter;
+        auto result = CO_AWAIT root_node->create_child_node(node_type::WORKER_NODE, child_zone_id, true, child_node);
+        if (result != rpc::error::OK() || !child_node)
+        {
+            spdlog::error(
+                "Failed to create deterministic parity child node. result={}, has_child={}",
+                result,
+                static_cast<bool>(child_node));
+            transport_setup.tear_down();
+            CO_RETURN graph_summary{};
+        }
+        all_nodes.push_back(child_node);
+    }
+
+    std::mt19937& gen = get_global_rng();
+    std::vector<int> indices(all_nodes.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(), gen);
+
+    int runners_count = std::min(3, static_cast<int>(all_nodes.size()));
+    for (int i = 0; i < runners_count; ++i)
+    {
+        auto& runner_node = all_nodes[indices[i]];
+        std::uniform_int_distribution<size_t> target_dist(0, all_nodes.size() - 1);
+        auto& target_node = all_nodes[target_dist(gen)];
+        auto result = CO_AWAIT execute_generated_script(runner_node, target_node, instruction_count);
+        if (result != rpc::error::OK())
+        {
+            spdlog::error("Deterministic parity script execution failed. result={}", result);
+            transport_setup.tear_down();
+            CO_RETURN graph_summary{};
+        }
+    }
+
+    graph_summary summary;
+    summary.node_count = static_cast<int>(all_nodes.size());
+    for (const auto& node : all_nodes)
+    {
+        node_type type = {};
+        uint64_t node_id = 0;
+        int connections = 0;
+        int objects_held = 0;
+        if (CO_AWAIT node->get_node_status(type, node_id, connections, objects_held) == rpc::error::OK())
+        {
+            summary.objects_held_total += objects_held;
+            summary.auxiliary_zone_count += connections;
+        }
+    }
+
+    transport_setup.tear_down();
+    CO_RETURN summary;
+}
+
 // Run a complete autonomous instruction test cycle
 #ifdef CANOPY_BUILD_COROUTINE
 CORO_TASK(void)
@@ -1670,6 +1877,31 @@ run_autonomous_instruction_test(
 #endif
     CO_AWAIT run_autonomous_instruction_test_with_setup(transport_setup, test_cycle, instruction_count, override_seed);
 }
+
+#ifdef CANOPY_BUILD_COROUTINE
+template<typename MakeTask>
+void run_detached_and_drain_scheduler(
+    const std::shared_ptr<coro::scheduler>& scheduler,
+    MakeTask&& make_task)
+{
+    bool completed = false;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+    auto wrapper_task = [make_task = std::forward<MakeTask>(make_task), &completed]() mutable -> coro::task<void>
+    {
+        co_await make_task();
+        completed = true;
+    }();
+
+    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
+
+    while (!completed || !scheduler->empty())
+    {
+        scheduler->process_events(std::chrono::milliseconds(10));
+    }
+
+    scheduler->shutdown();
+}
+#endif
 
 #ifdef CANOPY_FUZZ_TEST_GTEST
 template<typename TransportSetup> class fuzz_transport_test : public testing::Test
@@ -1702,22 +1934,10 @@ TYPED_TEST(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
 
-    bool completed = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_task = [&]() -> coro::task<void>
-    {
-        co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1);
-        completed = true;
-    }();
-
-    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
-
-    while (!completed)
-    {
-        scheduler->process_events(std::chrono::milliseconds(10));
-    }
-
-    scheduler->shutdown();
+    run_detached_and_drain_scheduler(
+        scheduler,
+        [&]() -> coro::task<void>
+        { co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1); });
 #  else
     run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1);
 #  endif
@@ -1732,26 +1952,49 @@ TYPED_TEST(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
 
-    bool completed = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_task = [&]() -> coro::task<void>
-    {
-        co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242);
-        completed = true;
-    }();
-
-    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
-
-    while (!completed)
-    {
-        scheduler->process_events(std::chrono::milliseconds(10));
-    }
-
-    scheduler->shutdown();
+    run_detached_and_drain_scheduler(
+        scheduler,
+        [&]() -> coro::task<void>
+        { co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242); });
 #  else
     run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242);
 #  endif
 }
+
+#  ifdef CANOPY_RUST_FUZZ_TEST_DLL_PATH
+TEST(
+    fuzz_transport_cross_language_test,
+    DeterministicSeedParity)
+{
+#    ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = std::shared_ptr<coro::scheduler>(
+        coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+    cxx_local_child_fuzz_transport_setup cxx_setup;
+    rust_dynamic_library_fuzz_transport_setup rust_setup;
+    cxx_setup.set_scheduler(scheduler);
+
+    graph_summary cxx_summary;
+    graph_summary rust_summary;
+    run_detached_and_drain_scheduler(
+        scheduler,
+        [&]() -> coro::task<void>
+        {
+            cxx_summary = co_await run_autonomous_instruction_summary_with_setup(cxx_setup, 90, 12, 424242);
+            rust_summary = co_await run_autonomous_instruction_summary_with_setup(rust_setup, 90, 12, 424242);
+            co_return;
+        });
+#    else
+    cxx_local_child_fuzz_transport_setup cxx_setup;
+    rust_dynamic_library_fuzz_transport_setup rust_setup;
+    auto cxx_summary = run_autonomous_instruction_summary_with_setup(cxx_setup, 90, 12, 424242);
+    auto rust_summary = run_autonomous_instruction_summary_with_setup(rust_setup, 90, 12, 424242);
+#    endif
+
+    EXPECT_EQ(cxx_summary.node_count, rust_summary.node_count);
+    EXPECT_EQ(cxx_summary.objects_held_total, rust_summary.objects_held_total);
+    EXPECT_EQ(cxx_summary.auxiliary_zone_count, rust_summary.auxiliary_zone_count);
+}
+#  endif
 
 template<typename TransportSetup>
 CORO_TASK(void)
@@ -1808,22 +2051,9 @@ TYPED_TEST(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
 
-    bool completed = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_task = [&]() -> coro::task<void>
-    {
-        co_await run_child_status_and_cache_test_with_setup(this->transport_setup_);
-        completed = true;
-    }();
-
-    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
-
-    while (!completed)
-    {
-        scheduler->process_events(std::chrono::milliseconds(10));
-    }
-
-    scheduler->shutdown();
+    run_detached_and_drain_scheduler(
+        scheduler,
+        [&]() -> coro::task<void> { co_await run_child_status_and_cache_test_with_setup(this->transport_setup_); });
 #  else
     run_child_status_and_cache_test_with_setup(this->transport_setup_);
 #  endif
@@ -1884,22 +2114,9 @@ TYPED_TEST(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
 
-    bool completed = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_task = [&]() -> coro::task<void>
-    {
-        co_await run_receive_object_updates_status_test_with_setup(this->transport_setup_);
-        completed = true;
-    }();
-
-    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
-
-    while (!completed)
-    {
-        scheduler->process_events(std::chrono::milliseconds(10));
-    }
-
-    scheduler->shutdown();
+    run_detached_and_drain_scheduler(
+        scheduler,
+        [&]() -> coro::task<void> { co_await run_receive_object_updates_status_test_with_setup(this->transport_setup_); });
 #  else
     run_receive_object_updates_status_test_with_setup(this->transport_setup_);
 #  endif
@@ -1969,22 +2186,10 @@ TYPED_TEST(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
 
-    bool completed = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_task = [&]() -> coro::task<void>
-    {
-        co_await run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_);
-        completed = true;
-    }();
-
-    RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
-
-    while (!completed)
-    {
-        scheduler->process_events(std::chrono::milliseconds(10));
-    }
-
-    scheduler->shutdown();
+    run_detached_and_drain_scheduler(
+        scheduler,
+        [&]() -> coro::task<void>
+        { co_await run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_); });
 #  else
     run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_);
 #  endif
@@ -2106,24 +2311,10 @@ int main(
                 auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
                     coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
 
-                bool completed = false;
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                auto wrapper_task = [&]() -> coro::task<void>
-                {
-                    co_await run_autonomous_instruction_test(cycle, instructions, scheduler);
-                    completed = true;
-                }();
-
-                RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
-
-                // Process events until completion
-                while (!completed)
-                {
-                    scheduler->process_events(std::chrono::milliseconds(10));
-                }
-
-                // Shutdown scheduler
-                scheduler->shutdown();
+                run_detached_and_drain_scheduler(
+                    scheduler,
+                    [&]() -> coro::task<void>
+                    { co_await run_autonomous_instruction_test(cycle, instructions, scheduler); });
 #else
                 // Non-coroutine build - this won't work properly
                 run_autonomous_instruction_test(cycle, instructions);
@@ -2304,24 +2495,13 @@ int replay_test_scenario(const std::string& scenario_file)
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
             coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
 
-        // Run the exact same test scenario with the saved seed
-        bool completed = false;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        auto wrapper_task = [&]() -> coro::task<void>
-        {
-            co_await run_autonomous_instruction_test(
-                config.test_cycle, config.instruction_count, scheduler, config.random_seed);
-            completed = true;
-        }();
-
-        RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
-
-        while (!completed)
-        {
-            scheduler->process_events(std::chrono::milliseconds(10));
-        }
-
-        scheduler->shutdown();
+        run_detached_and_drain_scheduler(
+            scheduler,
+            [&]() -> coro::task<void>
+            {
+                co_await run_autonomous_instruction_test(
+                    config.test_cycle, config.instruction_count, scheduler, config.random_seed);
+            });
 #else
         run_autonomous_instruction_test(config.test_cycle, config.instruction_count, config.random_seed);
 #endif

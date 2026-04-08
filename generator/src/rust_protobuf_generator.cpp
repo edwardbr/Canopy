@@ -190,7 +190,7 @@ namespace rust_protobuf_generator
             auto result = qualified_rust_namespace_path(iface);
             if (!result.empty())
                 result += "::";
-            result += "__generated::" + upper_camel_identifier(iface.get_name());
+            result += sanitize_identifier(iface.get_name());
             return result;
         }
 
@@ -1051,8 +1051,7 @@ namespace rust_protobuf_generator
             const auto proto_package = protobuf_package_for_interface(iface);
             const auto schema_proto_file = protobuf_schema_file_for_interface(iface);
 
-            output("#[allow(non_snake_case)]");
-            output("pub mod {}", upper_camel_identifier(iface.get_name()));
+            output("pub mod {}", sanitize_identifier(iface.get_name()));
             output("{{");
             output("pub mod interface_binding");
             output("{{");
@@ -1266,7 +1265,7 @@ namespace rust_protobuf_generator
                     if (!interface_generics.empty())
                     {
                         output(
-                            "\tfn request_to_protobuf_message_with_caller({}: &dyn canopy_rpc::GeneratedRpcCaller, "
+                            "\tfn request_to_protobuf_message_with_caller({}: &dyn canopy_rpc::ProxyCaller, "
                             "{}: &Self::ProxyRequest) -> Result<Self::ProtoRequest, i32>",
                             has_interface_request_params ? "caller" : "_caller",
                             has_request_fields ? "request" : "_request");
@@ -1419,7 +1418,7 @@ namespace rust_protobuf_generator
                         output("");
                         output(
                             "\tfn response_from_protobuf_message_with_caller(caller: &dyn "
-                            "canopy_rpc::GeneratedRpcCaller, "
+                            "canopy_rpc::ProxyCaller, "
                             "message: Self::ProtoResponse) -> Result<Self::ProxyResponse, i32>");
                         output("\t{{");
                         output("\t\tlet context = caller.call_context();");
@@ -1476,10 +1475,14 @@ namespace rust_protobuf_generator
                                 output("\t\t\t{{");
                                 output("\t\t\t\treturn Err({}_binding.error_code);", field_name);
                                 output("\t\t\t}}");
-                                output(
-                                    "\t\t\t{}::from_inner({}_binding.iface)",
-                                    is_optimistic ? "canopy_rpc::Optimistic" : "canopy_rpc::Shared",
-                                    field_name);
+                                if (is_optimistic)
+                                {
+                                    output("\t\t\tcanopy_rpc::optimistic_from_binding({}_binding.iface)", field_name);
+                                }
+                                else
+                                {
+                                    output("\t\t\tcanopy_rpc::shared_from_binding({}_binding.iface)", field_name);
+                                }
                                 output("\t\t}}");
                                 output("\t\telse");
                                 output("\t\t{{");
@@ -1492,17 +1495,20 @@ namespace rust_protobuf_generator
                                     is_optimistic ? "Optimistic" : "Shared");
                                 output(
                                     "\t\t\tlet {}_proxy = std::sync::Arc::new(<{} as "
-                                    "canopy_rpc::GeneratedRustInterface>::create_remote_proxy({}_caller));",
+                                    "canopy_rpc::internal::CreateRemoteProxy>::create_remote_proxy({}_caller.clone()))"
+                                    ";",
                                     field_name,
                                     proxy_skeleton_type,
                                     field_name);
+                                output("\t\t\tlet {}_object_proxy = {}_caller.object_proxy().ok_or(canopy_rpc::TRANSPORT_ERROR())?;", field_name, field_name);
                                 output("\t\t\tlet {}_proxy: std::sync::Arc<dyn {}> = {}_proxy;", field_name, trait_path, field_name);
                                 output(
                                     "\t\t\t{}",
-                                    is_optimistic ? "canopy_rpc::Optimistic::from_value(canopy_rpc::LocalProxy::"
-                                                    "from_remote("
-                                                        + field_name + "_proxy))"
-                                                  : "canopy_rpc::Shared::from_value(" + field_name + "_proxy)");
+                                    is_optimistic
+                                        ? "canopy_rpc::Optimistic::from_remote(" + field_name + "_proxy, " + field_name
+                                              + "_remote_object.clone(), " + field_name + "_object_proxy)"
+                                        : "canopy_rpc::Shared::from_remote(" + field_name + "_proxy, " + field_name
+                                              + "_remote_object.clone(), " + field_name + "_object_proxy)");
                                 output("\t\t}};");
                             }
                         }
@@ -1665,10 +1671,6 @@ namespace rust_protobuf_generator
             }
             if (has_interfaces)
             {
-                output("#[doc(hidden)]");
-                output("#[allow(non_snake_case)]");
-                output("pub mod __generated");
-                output("{{");
                 for (auto& elem : scope.get_elements(entity_type::NAMESPACE_MEMBERS))
                 {
                     if (elem->is_in_import())
@@ -1677,7 +1679,6 @@ namespace rust_protobuf_generator
                         continue;
                     write_interface(output, lib, static_cast<const class_entity&>(*elem), root_module_name);
                 }
-                output("}}");
             }
         }
 

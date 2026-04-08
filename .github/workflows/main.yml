@@ -15,7 +15,14 @@ jobs:
     steps:
       - name: Install system and C++ dependencies
         run: |
-          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz curl
+      - name: Install Rust toolchain
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          $HOME/.cargo/bin/rustup show
+          $HOME/.cargo/bin/rustup toolchain install 1.94.1 --profile minimal --component rustfmt
+          $HOME/.cargo/bin/rustup default 1.94.1
       - name: Install clang-format 22.1.1
         run: |
           wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.1/LLVM-22.1.1-Linux-X64.tar.xz
@@ -83,7 +90,14 @@ jobs:
     steps:
       - name: Install system and C++ dependencies
         run: |
-          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz curl
+      - name: Install Rust toolchain
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          $HOME/.cargo/bin/rustup show
+          $HOME/.cargo/bin/rustup toolchain install 1.94.1 --profile minimal --component rustfmt
+          $HOME/.cargo/bin/rustup default 1.94.1
       - name: Install Perl dependencies
         run: |
           dnf install -y perl-core

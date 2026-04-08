@@ -2,8 +2,7 @@
 
 mod exports;
 
-use __generated::IMath as i_math;
-use canopy_protobuf_runtime_probe::basic_rpc_probe::probe::{__generated, IMath, IPeer};
+use canopy_protobuf_runtime_probe::basic_rpc_probe::probe::{IMath, IPeer, i_math};
 use canopy_rpc::internal::error_codes;
 use canopy_rpc::{
     AddRefParams, AddressType, DefaultValues, GetNewZoneIdParams, NewZoneIdResult, Object,
@@ -229,29 +228,11 @@ impl TestChildMarshaller {
 #[derive(Clone)]
 struct GeneratedMathObject;
 
-impl canopy_rpc::CreateLocalProxy for GeneratedMathObject {}
+impl canopy_rpc::internal::CreateLocalProxy for GeneratedMathObject {}
 
 impl canopy_rpc::CastingInterface for GeneratedMathObject {
     fn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool {
         i_math::matches_interface_id(interface_id)
-    }
-}
-
-impl canopy_rpc::GeneratedRustInterface for GeneratedMathObject {
-    fn interface_name() -> &'static str {
-        i_math::NAME
-    }
-
-    fn get_id(rpc_version: u64) -> u64 {
-        if rpc_version >= 3 {
-            i_math::ID_RPC_V3
-        } else {
-            i_math::ID_RPC_V2
-        }
-    }
-
-    fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] {
-        i_math::interface_binding::METHODS
     }
 }
 

@@ -229,7 +229,7 @@ namespace rust_generator
             auto result = qualified_rust_namespace_path(iface);
             if (!result.empty())
                 result += "::";
-            result += "__generated::" + upper_camel_identifier(iface.get_name());
+            result += sanitize_identifier(iface.get_name());
             return result;
         }
 
@@ -878,6 +878,64 @@ namespace rust_generator
             output("}}");
         }
 
+        void write_shared_pointer_method_body(
+            writer& output,
+            const class_entity& iface,
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
+        {
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
+
+            output("{} {{", rust_method_signature(iface, function, lib, root_module_name));
+            output("\tlet Some(target) = self.as_ref() else");
+            output("\t{{");
+            output("\t\treturn canopy_rpc::OBJECT_GONE();");
+            output("\t}};");
+            output("\ttarget.{}(", sanitize_identifier(function.get_name()));
+            {
+                bool first = true;
+                for (const auto& param : analysed_params)
+                {
+                    if (!first)
+                        output.raw(", ");
+                    first = false;
+                    output.raw("{}", param.rust_name);
+                }
+            }
+            output.raw(")\n");
+            output("}}");
+        }
+
+        void write_optimistic_pointer_method_body(
+            writer& output,
+            const class_entity& iface,
+            const function_entity& function,
+            const class_entity& lib,
+            const std::string& root_module_name)
+        {
+            const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
+
+            output("{} {{", rust_method_signature(iface, function, lib, root_module_name));
+            output("\tlet Some(target) = self.upgrade() else");
+            output("\t{{");
+            output("\t\treturn canopy_rpc::OBJECT_GONE();");
+            output("\t}};");
+            output("\ttarget.{}(", sanitize_identifier(function.get_name()));
+            {
+                bool first = true;
+                for (const auto& param : analysed_params)
+                {
+                    if (!first)
+                        output.raw(", ");
+                    first = false;
+                    output.raw("{}", param.rust_name);
+                }
+            }
+            output.raw(")\n");
+            output("}}");
+        }
+
         void write_generated_delegate_method(
             writer& output,
             const class_entity& iface,
@@ -1162,12 +1220,13 @@ namespace rust_generator
                         "service_zone: &canopy_rpc::Zone, "
                         "encap: &canopy_rpc::RemoteObject, "
                         "lookup_local: LocalLookup, "
-                        "bind_remote: RemoteBind) -> canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<T>>",
+                        "bind_remote: RemoteBind) -> "
+                        "canopy_rpc::InterfaceBindResult<canopy_rpc::OptimisticPtr<T>>",
                         param_name);
                     output("where");
                     output("\tT: ?Sized,");
                     output("\tLocalLookup: FnOnce(canopy_rpc::Object) -> Result<std::sync::Arc<T>, i32>,");
-                    output("\tRemoteBind: FnOnce(&canopy_rpc::RemoteObject) -> canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<T>>,");
+                    output("\tRemoteBind: FnOnce(&canopy_rpc::RemoteObject) -> canopy_rpc::InterfaceBindResult<canopy_rpc::OptimisticPtr<T>>,");
                     output("{{");
                     output("\tcanopy_rpc::bind_incoming_optimistic(service_zone, encap, lookup_local, bind_remote)");
                     output("}}");
@@ -1177,7 +1236,7 @@ namespace rust_generator
                         "service: &dyn canopy_rpc::ServiceRuntime, "
                         "caller_zone_id: canopy_rpc::CallerZone, "
                         "encap: &canopy_rpc::RemoteObject) -> "
-                        "canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<dyn {}>>",
+                        "canopy_rpc::InterfaceBindResult<canopy_rpc::OptimisticPtr<dyn {}>>",
                         param_name,
                         trait_path);
                     output("{{");
@@ -1198,7 +1257,7 @@ namespace rust_generator
                         "service: &dyn canopy_rpc::ServiceRuntime, "
                         "caller_zone_id: canopy_rpc::CallerZone, "
                         "encap: &canopy_rpc::RemoteObject) -> "
-                        "canopy_rpc::InterfaceBindResult<std::sync::Arc<dyn {}>>",
+                        "canopy_rpc::InterfaceBindResult<canopy_rpc::SharedPtr<dyn {}>>",
                         param_name,
                         trait_path);
                     output("{{");
@@ -1241,15 +1300,15 @@ namespace rust_generator
                     param_name,
                     is_optimistic ? "canopy_rpc::OptimisticPtr<T>" : "canopy_rpc::SharedPtr<T>");
                 output("where");
-                output("\tT: canopy_rpc::GeneratedRustInterface + ?Sized,");
+                output("\tT: canopy_rpc::CastingInterface + ?Sized,");
                 output("{{");
                 if (is_optimistic)
                 {
-                    output("\tcanopy_rpc::bind_optimistic_local_object(service, caller_zone_id, iface.as_inner())");
+                    output("\tcanopy_rpc::bind_optimistic_local_object(service, caller_zone_id, iface)");
                 }
                 else
                 {
-                    output("\tcanopy_rpc::bind_shared_local_object(service, caller_zone_id, iface.as_inner(), canopy_rpc::InterfacePointerKind::Shared)");
+                    output("\tcanopy_rpc::bind_shared_local_object(service, caller_zone_id, iface, canopy_rpc::InterfacePointerKind::Shared)");
                 }
                 output("}}");
                 output("");
@@ -1262,7 +1321,7 @@ namespace rust_generator
                     param_name,
                     is_optimistic ? "canopy_rpc::OptimisticPtr<T>" : "canopy_rpc::SharedPtr<T>");
                 output("where");
-                output("\tT: canopy_rpc::GeneratedRustInterface + ?Sized,");
+                output("\tT: canopy_rpc::CastingInterface + ?Sized,");
                 output("{{");
                 output(
                     "\tcanopy_rpc::bind_outgoing_interface("
@@ -1323,8 +1382,8 @@ namespace rust_generator
                         "\tpub {}: {},",
                         param.rust_name,
                         param.is_optimistic
-                            ? "canopy_rpc::InterfaceBindResult<canopy_rpc::LocalProxy<dyn " + param.trait_path + ">>"
-                            : "canopy_rpc::InterfaceBindResult<std::sync::Arc<dyn " + param.trait_path + ">>");
+                            ? "canopy_rpc::InterfaceBindResult<canopy_rpc::OptimisticPtr<dyn " + param.trait_path + ">>"
+                            : "canopy_rpc::InterfaceBindResult<canopy_rpc::SharedPtr<dyn " + param.trait_path + ">>");
                 }
                 output("}}");
                 output("");
@@ -1541,11 +1600,20 @@ namespace rust_generator
                     if (!param.is_interface || !param.is_in)
                         continue;
 
-                    output(
-                        "\tlet {} = {}::from_inner(incoming.{}.iface.clone());",
-                        param.rust_name,
-                        param.is_optimistic ? "canopy_rpc::Optimistic" : "canopy_rpc::Shared",
-                        param.rust_name);
+                    if (param.is_optimistic)
+                    {
+                        output(
+                            "\tlet {} = canopy_rpc::optimistic_from_binding(incoming.{}.iface.clone());",
+                            param.rust_name,
+                            param.rust_name);
+                    }
+                    else
+                    {
+                        output(
+                            "\tlet {} = canopy_rpc::shared_from_binding(incoming.{}.iface.clone());",
+                            param.rust_name,
+                            param.rust_name);
+                    }
                 }
             }
 
@@ -1901,9 +1969,6 @@ namespace rust_generator
         {
             output("pub mod interface_binding");
             output("{{");
-            output("pub struct BindingMetadata;");
-            output("");
-
             int method_count = 1;
             for (const auto& function : iface.get_functions())
             {
@@ -1963,32 +2028,9 @@ namespace rust_generator
             }
             output("];");
             output("");
-            output("impl canopy_rpc::GeneratedInterfaceBindingMetadata for BindingMetadata");
-            output("{{");
-            output("\tfn interface_name() -> &'static str");
-            output("\t{{");
-            output("\t\t\"{}\"", iface.get_name());
-            output("\t}}");
-            output("");
-            output("\tfn id_rpc_v2() -> u64");
-            output("\t{{");
-            output("\t\tsuper::ID_RPC_V2");
-            output("\t}}");
-            output("");
-            output("\tfn id_rpc_v3() -> u64");
-            output("\t{{");
-            output("\t\tsuper::ID_RPC_V3");
-            output("\t}}");
-            output("");
-            output("\tfn methods() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]");
-            output("\t{{");
-            output("\t\tMETHODS");
-            output("\t}}");
-            output("}}");
-            output("");
             output("pub fn by_method_id(method_id: u64) -> Option<&'static canopy_rpc::GeneratedMethodBindingDescriptor>");
             output("{{");
-            output("\t<BindingMetadata as canopy_rpc::GeneratedInterfaceBindingMetadata>::by_method_id(method_id)");
+            output("\tMETHODS.iter().find(|descriptor| descriptor.method_id == method_id)");
             output("}}");
             output("}}");
         }
@@ -2006,8 +2048,7 @@ namespace rust_generator
             const std::string& root_module_name,
             const class_entity& lib)
         {
-            output("#[allow(non_snake_case)]");
-            output("pub mod {}", upper_camel_identifier(iface.get_name()));
+            output("pub mod {}", sanitize_identifier(iface.get_name()));
             output("{{");
             output("pub const NAME: &str = \"{}\";", iface.get_name());
 
@@ -2028,7 +2069,7 @@ namespace rust_generator
                 }
             }
 
-            std::string trait_bases = "canopy_rpc::GeneratedRustInterface";
+            std::string trait_bases = "canopy_rpc::CastingInterface";
             for (auto* base_class : iface.get_base_classes())
             {
                 if (!base_class)
@@ -2038,11 +2079,6 @@ namespace rust_generator
 
             output("pub trait Interface: {}", trait_bases);
             output("{{");
-            output("fn interface_name() -> &'static str where Self: Sized");
-            output("{{");
-            output("\tNAME");
-            output("}}");
-            output("");
             output("fn get_id(rpc_version: u64) -> u64 where Self: Sized");
             output("{{");
             output("\tif rpc_version >= 3u64");
@@ -2059,9 +2095,23 @@ namespace rust_generator
             output("\t}}");
             output("}}");
             output("");
-            output("fn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor] where Self: Sized");
+            output("fn get_function_info(method_id: u64) -> Option<&'static canopy_rpc::GeneratedMethodBindingDescriptor> where Self: Sized");
             output("{{");
-            output("\tinterface_binding::METHODS");
+            output("\tinterface_binding::by_method_id(method_id)");
+            output("}}");
+            output("");
+            output("#[doc(hidden)]");
+            output("fn create_local_proxy(weak: std::sync::Weak<Self>) -> canopy_rpc::internal::LocalProxy<Self> where Self: Sized + canopy_rpc::internal::CreateLocalProxy");
+            output("{{");
+            output("\t<Self as canopy_rpc::internal::CreateLocalProxy>::create_local_proxy(weak)");
+            output("}}");
+            output("");
+            output("#[doc(hidden)]");
+            output(
+                "fn create_remote_proxy(caller: std::sync::Arc<dyn canopy_rpc::ProxyCaller>) -> "
+                "Self where Self: Sized + canopy_rpc::internal::CreateRemoteProxy");
+            output("{{");
+            output("\t<Self as canopy_rpc::internal::CreateRemoteProxy>::create_remote_proxy(caller)");
             output("}}");
             output("");
             output("#[doc(hidden)]");
@@ -2114,25 +2164,15 @@ namespace rust_generator
 
             write_interface_match_helpers(output, iface);
 
-            output("pub struct RpcObjectAdapter;");
+            output("pub struct LocalObjectAdapter;");
             output("");
-            output("impl<T> canopy_rpc::LocalObjectAdapter<T> for RpcObjectAdapter");
+            output("impl<T> canopy_rpc::LocalObjectAdapter<T> for LocalObjectAdapter");
             output("where");
             output("\tT: Interface,");
             output("{{");
-            output("\tfn interface_name() -> &'static str");
-            output("\t{{");
-            output("\t\tNAME");
-            output("\t}}");
-            output("");
             output("\tfn get_id(rpc_version: u64) -> u64");
             output("\t{{");
             output("\t\t<StubSkeleton as Interface>::get_id(rpc_version)");
-            output("\t}}");
-            output("");
-            output("\tfn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]");
-            output("\t{{");
-            output("\t\tinterface_binding::METHODS");
             output("\t}}");
             output("");
             output("\tfn supports_interface(interface_id: canopy_rpc::InterfaceOrdinal) -> bool");
@@ -2152,7 +2192,7 @@ namespace rust_generator
             if (interface_is_dyn_compatible_in_current_shape(iface, lib, root_module_name))
             {
                 output("");
-                output("\tfn local_interface_view(object: std::sync::Arc<canopy_rpc::RpcBase<T, RpcObjectAdapter>>, interface_id: canopy_rpc::InterfaceOrdinal) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>");
+                output("\tfn local_interface_view(object: std::sync::Arc<canopy_rpc::RpcBase<T, LocalObjectAdapter>>, interface_id: canopy_rpc::InterfaceOrdinal) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>");
                 output("\t{{");
                 output("\t\tif matches_interface_id(interface_id)");
                 output("\t\t{{");
@@ -2164,11 +2204,11 @@ namespace rust_generator
             }
             output("}}");
             output("");
-            output("pub fn make_rpc_object<T>(implementation: T) -> std::sync::Arc<canopy_rpc::RpcBase<T, RpcObjectAdapter>>");
+            output("pub fn make_rpc_object<T>(implementation: T) -> std::sync::Arc<canopy_rpc::RpcBase<T, LocalObjectAdapter>>");
             output("where");
             output("\tT: Interface,");
             output("{{");
-            output("\tcanopy_rpc::make_rpc_object_with_adapter::<T, RpcObjectAdapter>(implementation)");
+            output("\tcanopy_rpc::make_rpc_object_with_adapter::<T, LocalObjectAdapter>(implementation)");
             output("}}");
             output("");
             if (interface_is_dyn_compatible_in_current_shape(iface, lib, root_module_name))
@@ -2177,7 +2217,7 @@ namespace rust_generator
                 output("where");
                 output("\tT: Interface,");
                 output("{{");
-                output("\tobject: std::sync::Arc<canopy_rpc::RpcBase<T, RpcObjectAdapter>>,");
+                output("\tobject: std::sync::Arc<canopy_rpc::RpcBase<T, LocalObjectAdapter>>,");
                 output("}}");
                 output("");
                 output("impl<T> canopy_rpc::CastingInterface for RpcObjectView<T>");
@@ -2197,26 +2237,6 @@ namespace rust_generator
                 output("\tfn __rpc_local_object_stub(&self) -> Option<std::sync::Arc<std::sync::Mutex<canopy_rpc::internal::ObjectStub>>>");
                 output("\t{{");
                 output("\t\tcanopy_rpc::internal::get_object_stub(self.object.as_ref())");
-                output("\t}}");
-                output("}}");
-                output("");
-                output("impl<T> canopy_rpc::GeneratedRustInterface for RpcObjectView<T>");
-                output("where");
-                output("\tT: Interface,");
-                output("{{");
-                output("\tfn interface_name() -> &'static str");
-                output("\t{{");
-                output("\t\tNAME");
-                output("\t}}");
-                output("");
-                output("\tfn get_id(rpc_version: u64) -> u64");
-                output("\t{{");
-                output("\t\t<StubSkeleton as Interface>::get_id(rpc_version)");
-                output("\t}}");
-                output("");
-                output("\tfn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]");
-                output("\t{{");
-                output("\t\tinterface_binding::METHODS");
                 output("\t}}");
                 output("}}");
                 output("");
@@ -2249,7 +2269,7 @@ namespace rust_generator
             }
             output("pub trait Proxy: Interface");
             output("{{");
-            output("fn proxy_caller(&self) -> Option<&dyn canopy_rpc::GeneratedRpcCaller>");
+            output("fn proxy_caller(&self) -> Option<&dyn canopy_rpc::ProxyCaller>");
             output("{{");
             output("\tNone");
             output("}}");
@@ -2366,9 +2386,23 @@ namespace rust_generator
             output("}}");
             output("");
 
+            output("pub fn create_remote_shared(caller: std::sync::Arc<dyn canopy_rpc::ProxyCaller>) -> canopy_rpc::SharedPtr<dyn Interface>");
+            output("{{");
+            output("\tlet value: std::sync::Arc<dyn Interface> = std::sync::Arc::new(ProxySkeleton::with_caller(caller));");
+            output("\tcanopy_rpc::Shared::from_arc(value)");
+            output("}}");
+            output("");
+
+            output("pub fn create_remote_optimistic(caller: std::sync::Arc<dyn canopy_rpc::ProxyCaller>) -> canopy_rpc::OptimisticPtr<dyn Interface>");
+            output("{{");
+            output("\tlet value: std::sync::Arc<dyn Interface> = std::sync::Arc::new(ProxySkeleton::with_caller(caller));");
+            output("\tcanopy_rpc::OptimisticPtr::from_shared(&value)");
+            output("}}");
+            output("");
+
             output("pub struct ProxySkeleton");
             output("{{");
-            output("\tcaller: Option<std::sync::Arc<dyn canopy_rpc::GeneratedRpcCaller>>,");
+            output("\tcaller: Option<std::sync::Arc<dyn canopy_rpc::ProxyCaller>>,");
             output("}}");
             output("impl ProxySkeleton");
             output("{{");
@@ -2377,7 +2411,7 @@ namespace rust_generator
             output("\t\tSelf {{ caller: None }}");
             output("\t}}");
             output("");
-            output("\tpub fn with_caller(caller: std::sync::Arc<dyn canopy_rpc::GeneratedRpcCaller>) -> Self");
+            output("\tpub fn with_caller(caller: std::sync::Arc<dyn canopy_rpc::ProxyCaller>) -> Self");
             output("\t{{");
             output("\t\tSelf {{ caller: Some(caller) }}");
             output("\t}}");
@@ -2389,10 +2423,10 @@ namespace rust_generator
             output("\t\tSelf::new()");
             output("\t}}");
             output("}}");
-            output("impl canopy_rpc::CreateLocalProxy for ProxySkeleton {{}}");
-            output("impl canopy_rpc::CreateRemoteProxy for ProxySkeleton");
+            output("impl canopy_rpc::internal::CreateLocalProxy for ProxySkeleton {{}}");
+            output("impl canopy_rpc::internal::CreateRemoteProxy for ProxySkeleton");
             output("{{");
-            output("\tfn create_remote_proxy(caller: std::sync::Arc<dyn canopy_rpc::GeneratedRpcCaller>) -> Self");
+            output("\tfn create_remote_proxy(caller: std::sync::Arc<dyn canopy_rpc::ProxyCaller>) -> Self");
             output("\t{{");
             output("\t\tSelf::with_caller(caller)");
             output("\t}}");
@@ -2414,38 +2448,6 @@ namespace rust_generator
             output("\t\tself.caller.as_ref().and_then(|caller| caller.object_proxy())");
             output("\t}}");
             output("}}");
-            output("impl canopy_rpc::GeneratedRustInterface for ProxySkeleton");
-            output("{{");
-            output("\tfn interface_name() -> &'static str");
-            output("\t{{");
-            output("\t\tNAME");
-            output("\t}}");
-            output("");
-            output("\tfn get_id(rpc_version: u64) -> u64");
-            output("\t{{");
-            output("\t\t<ProxySkeleton as Interface>::get_id(rpc_version)");
-            output("\t}}");
-            output("");
-            output("\tfn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]");
-            output("\t{{");
-            output("\t\tinterface_binding::METHODS");
-            output("\t}}");
-            output("");
-            output("\tfn create_remote_proxy(caller: std::sync::Arc<dyn canopy_rpc::GeneratedRpcCaller>) -> Self");
-            output("\t{{");
-            output("\t\tSelf::with_caller(caller)");
-            output("\t}}");
-            output("");
-            output("\tfn remote_object_id(&self) -> Option<canopy_rpc::RemoteObject>");
-            output("\t{{");
-            output("\t\tself.caller.as_ref().map(|caller| caller.call_context().remote_object_id)");
-            output("\t}}");
-            output("");
-            output("\tfn remote_object_proxy(&self) -> Option<std::sync::Arc<canopy_rpc::ObjectProxy>>");
-            output("\t{{");
-            output("\t\tself.caller.as_ref().and_then(|caller| caller.object_proxy())");
-            output("\t}}");
-            output("}}");
             output("impl Interface for ProxySkeleton");
             output("{{");
             write_associated_type_impls(output, iface, lib, root_module_name);
@@ -2459,7 +2461,7 @@ namespace rust_generator
             output("}}");
             output("impl Proxy for ProxySkeleton");
             output("{{");
-            output("\tfn proxy_caller(&self) -> Option<&dyn canopy_rpc::GeneratedRpcCaller>");
+            output("\tfn proxy_caller(&self) -> Option<&dyn canopy_rpc::ProxyCaller>");
             output("\t{{");
             output("\t\tself.caller.as_deref()");
             output("\t}}");
@@ -2502,7 +2504,7 @@ namespace rust_generator
             output("\t}}");
             output("}}");
             output("");
-            output("impl<Local> canopy_rpc::CreateLocalProxy for Handle<Local> where {} {{}}", local_handle_bound);
+            output("impl<Local> canopy_rpc::internal::CreateLocalProxy for Handle<Local> where {} {{}}", local_handle_bound);
             output("");
             output("impl<Local> canopy_rpc::BindableInterfaceValue for Handle<Local>");
             output("where");
@@ -2577,53 +2579,6 @@ namespace rust_generator
             output("\t}}");
             output("}}");
             output("");
-            output("impl<Local> canopy_rpc::GeneratedRustInterface for Handle<Local>");
-            output("where");
-            output("\t{},", local_handle_bound);
-            output("{{");
-            output("\tfn interface_name() -> &'static str");
-            output("\t{{");
-            output("\t\tNAME");
-            output("\t}}");
-            output("");
-            output("\tfn get_id(rpc_version: u64) -> u64");
-            output("\t{{");
-            output("\t\t<StubSkeleton as Interface>::get_id(rpc_version)");
-            output("\t}}");
-            output("");
-            output("\tfn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]");
-            output("\t{{");
-            output("\t\tinterface_binding::METHODS");
-            output("\t}}");
-            output("");
-            output("\tfn create_remote_proxy(caller: std::sync::Arc<dyn canopy_rpc::GeneratedRpcCaller>) -> Self");
-            output("\t{{");
-            output("\t\tSelf::Remote(std::sync::Arc::new(ProxySkeleton::with_caller(caller)))");
-            output("\t}}");
-            output("");
-            output("\tfn remote_object_id(&self) -> Option<canopy_rpc::RemoteObject>");
-            output("\t{{");
-            output("\t\tmatch self");
-            output("\t\t{{");
-            output("\t\t\tSelf::Local(_) => None,");
-            output(
-                "\t\t\tSelf::Remote(value) => "
-                "canopy_rpc::CastingInterface::__rpc_remote_object_id(value.as_ref()),");
-            output("\t\t}}");
-            output("\t}}");
-            output("");
-            output("\tfn remote_object_proxy(&self) -> Option<std::sync::Arc<canopy_rpc::ObjectProxy>>");
-            output("\t{{");
-            output("\t\tmatch self");
-            output("\t\t{{");
-            output("\t\t\tSelf::Local(_) => None,");
-            output(
-                "\t\t\tSelf::Remote(value) => "
-                "canopy_rpc::CastingInterface::__rpc_remote_object_proxy(value.as_ref()),");
-            output("\t\t}}");
-            output("\t}}");
-            output("}}");
-            output("");
             output("impl<Local> Interface for Handle<Local>");
             output("where");
             output("\t{},", local_handle_bound);
@@ -2637,30 +2592,41 @@ namespace rust_generator
             output("}}");
             output("");
 
+            output("impl<T> Interface for canopy_rpc::SharedPtr<T>");
+            output("where");
+            output("\tT: Interface + ?Sized,");
+            output("{{");
+            write_associated_type_impls(output, iface, lib, root_module_name);
+            for (const auto& function : iface.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                write_shared_pointer_method_body(output, iface, *function, lib, root_module_name);
+            }
+            output("}}");
+            output("");
+
+            output("impl<T> Interface for canopy_rpc::OptimisticPtr<T>");
+            output("where");
+            output("\tT: Interface + ?Sized,");
+            output("{{");
+            write_associated_type_impls(output, iface, lib, root_module_name);
+            for (const auto& function : iface.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                write_optimistic_pointer_method_body(output, iface, *function, lib, root_module_name);
+            }
+            output("}}");
+            output("");
+
             output("pub struct StubSkeleton;");
-            output("impl canopy_rpc::CreateLocalProxy for StubSkeleton {{}}");
+            output("impl canopy_rpc::internal::CreateLocalProxy for StubSkeleton {{}}");
             output("impl canopy_rpc::CastingInterface for StubSkeleton");
             output("{{");
             output("\tfn __rpc_query_interface(&self, interface_id: canopy_rpc::InterfaceOrdinal) -> bool");
             output("\t{{");
             output("\t\tmatches_interface_id(interface_id)");
-            output("\t}}");
-            output("}}");
-            output("impl canopy_rpc::GeneratedRustInterface for StubSkeleton");
-            output("{{");
-            output("\tfn interface_name() -> &'static str");
-            output("\t{{");
-            output("\t\tNAME");
-            output("\t}}");
-            output("");
-            output("\tfn get_id(rpc_version: u64) -> u64");
-            output("\t{{");
-            output("\t\t<StubSkeleton as Interface>::get_id(rpc_version)");
-            output("\t}}");
-            output("");
-            output("\tfn binding_metadata() -> &'static [canopy_rpc::GeneratedMethodBindingDescriptor]");
-            output("\t{{");
-            output("\t\tinterface_binding::METHODS");
             output("\t}}");
             output("}}");
             output("impl Interface for StubSkeleton");
@@ -2813,12 +2779,12 @@ namespace rust_generator
                 {
                     has_interfaces = true;
                     output(
-                        "pub use __generated::{}::Interface as {};",
-                        upper_camel_identifier(elem->get_name()),
+                        "pub use {}::Interface as {};",
+                        sanitize_identifier(elem->get_name()),
                         upper_camel_identifier(elem->get_name()));
                     output(
-                        "pub use __generated::{}::Handle as {}Handle;",
-                        upper_camel_identifier(elem->get_name()),
+                        "pub use {}::Handle as {}Handle;",
+                        sanitize_identifier(elem->get_name()),
                         upper_camel_identifier(elem->get_name()));
                 }
                 else if (elem->get_entity_type() == entity_type::STRUCT)
@@ -2836,10 +2802,6 @@ namespace rust_generator
             }
             if (has_interfaces)
             {
-                output("#[doc(hidden)]");
-                output("#[allow(non_snake_case)]");
-                output("pub mod __generated");
-                output("{{");
                 for (const auto& elem : scope.get_elements(entity_type::NAMESPACE_MEMBERS))
                 {
                     if (elem->is_in_import())
@@ -2848,7 +2810,6 @@ namespace rust_generator
                         continue;
                     write_interface(output, static_cast<const class_entity&>(*elem), root_module_name, top_lib);
                 }
-                output("}}");
             }
         }
     } // namespace

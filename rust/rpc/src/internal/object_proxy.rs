@@ -164,6 +164,20 @@ impl ObjectProxy {
         Self::new_remote_with_service_proxy(remote_object_id, service_proxy.clone())
     }
 
+    #[doc(hidden)]
+    pub fn new_remote_identity(remote_object_id: RemoteObject) -> Self {
+        Self {
+            object_id: remote_object_id.get_object_id(),
+            remote_object_id: Some(remote_object_id),
+            service_proxy: None,
+            shared_count: AtomicU32::new(0),
+            optimistic_count: AtomicU32::new(0),
+            shared_caller_counts: Mutex::new(BTreeMap::new()),
+            optimistic_caller_counts: Mutex::new(BTreeMap::new()),
+            interface_views: Mutex::new(HashMap::new()),
+        }
+    }
+
     pub fn new_remote_with_service_proxy(
         remote_object_id: RemoteObject,
         service_proxy: Arc<ServiceProxy>,

@@ -10,8 +10,7 @@ target_compile_definitions(transport_c_abi PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
   transport_c_abi
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/rpc/include>"
+         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>" "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/rpc/include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(transport_c_abi PRIVATE yas_common rpc_types_idl rpc::rpc ${CANOPY_LIBRARIES})
@@ -31,23 +30,19 @@ endif()
 
 add_library(transport_c_abi_dll STATIC src/dll_transport.cpp)
 
-target_compile_definitions(
-  transport_c_abi_dll PRIVATE ${CANOPY_DEFINES} CANOPY_C_ABI_DLL_BUILDING)
+target_compile_definitions(transport_c_abi_dll PRIVATE ${CANOPY_DEFINES} CANOPY_C_ABI_DLL_BUILDING)
 
 target_include_directories(
   transport_c_abi_dll
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>"
-         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/rpc/include>"
+         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>" "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/rpc/include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(transport_c_abi_dll PRIVATE yas_common rpc_types_idl rpc::rpc ${CANOPY_LIBRARIES})
 
 target_compile_options(
   transport_c_abi_dll
-  PRIVATE ${CANOPY_COMPILE_OPTIONS}
-          ${CANOPY_WARN_OK}
-          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
+  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
           $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>)
 
 target_link_options(transport_c_abi_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

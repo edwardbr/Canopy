@@ -155,7 +155,7 @@ pub trait GeneratedProtobufMethodCodec {
     }
 
     fn request_to_protobuf_message_with_caller(
-        _caller: &dyn crate::GeneratedRpcCaller,
+        _caller: &dyn crate::ProxyCaller,
         request: &Self::ProxyRequest,
     ) -> Result<Self::ProtoRequest, i32> {
         Self::request_to_protobuf_message(request)
@@ -168,7 +168,7 @@ pub trait GeneratedProtobufMethodCodec {
     }
 
     fn response_from_protobuf_message_with_caller(
-        _caller: &dyn crate::GeneratedRpcCaller,
+        _caller: &dyn crate::ProxyCaller,
         message: Self::ProtoResponse,
     ) -> Result<Self::ProxyResponse, i32> {
         Self::response_from_protobuf_message(message)
@@ -185,7 +185,7 @@ pub trait GeneratedProtobufMethodCodec {
     }
 
     fn encode_request_with_caller(
-        caller: &dyn crate::GeneratedRpcCaller,
+        caller: &dyn crate::ProxyCaller,
         request: &Self::ProxyRequest,
     ) -> Result<Vec<u8>, i32> {
         let message = Self::request_to_protobuf_message_with_caller(caller, request)?;
@@ -203,7 +203,7 @@ pub trait GeneratedProtobufMethodCodec {
     }
 
     fn decode_response_with_caller(
-        caller: &dyn crate::GeneratedRpcCaller,
+        caller: &dyn crate::ProxyCaller,
         proto_bytes: &[u8],
     ) -> Result<Self::ProxyResponse, i32> {
         let message = Self::ProtoResponse::parse_from_bytes(proto_bytes)?;
@@ -240,7 +240,7 @@ where
 }
 
 pub fn call_generated_proxy_method<Codec, FromError, TransportError>(
-    caller: Option<&dyn crate::GeneratedRpcCaller>,
+    caller: Option<&dyn crate::ProxyCaller>,
     interface_id: crate::InterfaceOrdinal,
     method_id: crate::Method,
     request: &Codec::ProxyRequest,
