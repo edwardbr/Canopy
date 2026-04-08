@@ -149,7 +149,7 @@ where
 }
 
 #[doc(hidden)]
-pub fn lookup_local_interface_view_from_runtime<T>(
+pub fn get_local_interface_view<T>(
     service: &dyn ServiceRuntime,
     object_id: crate::rpc_types::Object,
     interface_id: InterfaceOrdinal,

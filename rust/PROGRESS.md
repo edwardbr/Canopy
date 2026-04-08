@@ -67,10 +67,13 @@ Current focus:
   that hide common wiring:
   - `canopy_transport_local::create_child_zone(...)`
   - `canopy_transport_local::create_child_zone_with_exported_object(...)`
-  - `canopy_transport_dynamic_library::create_child_zone_from_init_params(...)`
-  - `canopy_transport_dynamic_library::create_child_zone_with_exported_object_from_init_params(...)`
+  - `canopy_transport_dynamic_library::attach_child_zone(...)`
+  - `canopy_transport_dynamic_library::attach_child_zone_with_exported_object(...)`
   so application-side code does not need to manually stitch together child
   services, transports, and endpoint setup for those transport families
+- dynamic-library C ABI zone decoding and sample zone/object construction are
+  now centralized inside `canopy-transport-dynamic-library`, replacing
+  duplicated `zone_from_ffi(...)`-style helpers in test and child crates
 
 ## Verification Baseline
 
@@ -82,5 +85,6 @@ Most recently verified with:
 - `cargo test -p canopy-rpc --lib`
 - `cargo test -p canopy-transport-local --lib`
 - `cargo test -p canopy-transport-dynamic-library --lib`
+- `cargo test -p canopy-transport-dynamic-library-test-child --lib`
 - `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`
 - `ctest --test-dir build_debug -R rust_tests --output-on-failure`

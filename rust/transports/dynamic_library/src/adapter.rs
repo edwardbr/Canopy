@@ -148,11 +148,11 @@ mod tests {
         CanopyBackChannelEntry, CanopyBackChannelSpan, CanopyConstByteBuffer, CanopyDllInitParams,
         borrow_remote_object, borrow_zone,
     };
+    use crate::test_support::sample_zone;
     use canopy_rpc::internal::error_codes;
     use canopy_rpc::{
-        AddRefParams, AddressType, DefaultValues, Encoding, GetNewZoneIdParams, Object,
-        ObjectReleasedParams, PostParams, ReleaseParams, SendParams, TransportDownParams,
-        TryCastParams, Zone, ZoneAddress, ZoneAddressArgs,
+        AddRefParams, Encoding, GetNewZoneIdParams, Object, ObjectReleasedParams, PostParams,
+        ReleaseParams, SendParams, TransportDownParams, TryCastParams, Zone,
     };
     use std::sync::Mutex;
 
@@ -193,24 +193,9 @@ mod tests {
         }
     }
 
-    fn sample_zone_address() -> ZoneAddress {
-        ZoneAddress::create(ZoneAddressArgs::new(
-            DefaultValues::VERSION_3,
-            AddressType::Ipv4,
-            8080,
-            vec![127, 0, 0, 1],
-            32,
-            7,
-            16,
-            9,
-            vec![],
-        ))
-        .expect("sample zone address should be valid")
-    }
-
     #[test]
     fn child_transport_adapter_decodes_send_params() {
-        let zone = Zone::new(sample_zone_address());
+        let zone = sample_zone();
         let remote = zone
             .with_object(Object::new(17))
             .expect("with_object should succeed");
@@ -268,7 +253,7 @@ mod tests {
 
     #[test]
     fn parent_transport_adapter_forwards_send_to_marshaller() {
-        let zone = Zone::new(sample_zone_address());
+        let zone = sample_zone();
         let remote = zone
             .with_object(Object::new(23))
             .expect("with_object should succeed");

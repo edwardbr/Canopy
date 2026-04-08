@@ -2,8 +2,8 @@
 
 mod exports;
 
-use __Generated::IMath as i_math;
-use canopy_protobuf_runtime_probe::basic_rpc_probe::probe::{__Generated, IMath, IPeer};
+use __generated::IMath as i_math;
+use canopy_protobuf_runtime_probe::basic_rpc_probe::probe::{__generated, IMath, IPeer};
 use canopy_rpc::internal::error_codes;
 use canopy_rpc::{
     AddRefParams, AddressType, DefaultValues, GetNewZoneIdParams, NewZoneIdResult, Object,

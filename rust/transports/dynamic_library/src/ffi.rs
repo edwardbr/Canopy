@@ -543,6 +543,14 @@ pub fn copy_zone(value: CanopyZone) -> Zone {
     Zone::new(copy_zone_address(value.address))
 }
 
+pub fn decode_zone_or_else(value: CanopyZone, fallback: impl FnOnce() -> Zone) -> Zone {
+    if value.address.blob.data.is_null() || value.address.blob.size == 0 {
+        fallback()
+    } else {
+        copy_zone(value)
+    }
+}
+
 pub fn copy_remote_object(value: CanopyRemoteObject) -> RemoteObject {
     RemoteObject::new(copy_zone_address(value.address))
 }

@@ -5,7 +5,7 @@
 
 use crate::{TestChildMarshaller, sample_output_object};
 use canopy_rpc::internal::error_codes;
-use canopy_rpc::{Object, RemoteObject, Zone, ZoneAddress};
+use canopy_rpc::{Object, RemoteObject};
 use canopy_transport_dynamic_library as dll;
 
 fn mut_ptr<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
@@ -32,13 +32,8 @@ pub extern "C" fn canopy_dll_init(params: *mut dll::CanopyDllInitParams) -> i32 
 }
 
 fn output_object_for_child_zone(params: &dll::CanopyDllInitParams) -> RemoteObject {
-    let raw_blob = params.child_zone.address.blob;
-    let blob = if raw_blob.data.is_null() || raw_blob.size == 0 {
-        return sample_output_object();
-    } else {
-        unsafe { std::slice::from_raw_parts(raw_blob.data, raw_blob.size).to_vec() }
-    };
-    let child_zone = Zone::new(ZoneAddress::new(blob));
+    let child_zone =
+        dll::decode_zone_or_else(params.child_zone, || sample_output_object().as_zone());
     child_zone
         .with_object(Object::new(100))
         .unwrap_or_else(|_| sample_output_object())
