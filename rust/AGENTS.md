@@ -104,15 +104,20 @@ while the lock is held.
 
 ## Documentation Files
 
-- [`README.md`](/var/home/edward/projects/Canopy/rust/README.md)
-  is now a short pointer to the canonical Rust port docs under
-  [`documents/language-ports/rust/README.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/README.md)
-- [`PROGRESS.md`](/var/home/edward/projects/Canopy/rust/PROGRESS.md)
-  is now a short pointer to the canonical active Rust progress file under
-  [`documents/language-ports/rust/progress.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/progress.md)
-- [`COMPLETED.md`](/var/home/edward/projects/Canopy/rust/COMPLETED.md)
-  is now a short pointer to the canonical completed Rust migration history under
-  [`documents/language-ports/rust/completed.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/completed.md)
+- [`documents/language-ports/rust/README.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/README.md)
+  is the canonical Rust port overview
+- [`documents/language-ports/rust/current-state.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/current-state.md)
+  tracks the current implemented scope
+- [`documents/language-ports/rust/progress.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/progress.md)
+  is the canonical active Rust progress file
+- [`documents/language-ports/rust/completed.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/completed.md)
+  is the canonical completed Rust migration history
+- [`documents/language-ports/rust/original-translation-instructions.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/original-translation-instructions.md)
+  records the original Rust translation plan
+- [`documents/language-ports/rust/translation-retrospective.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/translation-retrospective.md)
+  records lessons learned from the Rust migration
+- [`documents/language-ports/rust/python-translation-instructions.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/python-translation-instructions.md)
+  records the Python translation guide derived from that work
 
 ## Verification Expectations
 
