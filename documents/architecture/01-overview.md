@@ -5,6 +5,14 @@ All rights reserved.
 
 # Architecture Overview
 
+Scope note:
+
+- this document describes shared Canopy architecture concepts through the
+  primary C++ implementation
+- conceptual sections should usually be read as shared semantics
+- code names, coroutine behavior, concrete classes, and build/runtime details
+  should be read as C++-specific unless explicitly stated otherwise
+
 This section provides a comprehensive view of Canopy's internal architecture. Understanding these components is essential for advanced usage, debugging, and contributing to the project.
 
 ## Document Organization
@@ -36,8 +44,8 @@ Each zone has a **service** that acts as the central authority for:
 
 Canopy's memory model is built entirely on **smart pointers**:
 - `rpc::shared_ptr` - RAII ownership semantics (object dies when references reach zero)
-- `rpc::weak_ptr` - Non-owning references for breaking cycles
-- `rpc::optimistic_ptr` - Non-RAII references for independent lifetimes
+- `rpc::weak_ptr` - local weak reference to a proxy/control block
+- `rpc::optimistic_ptr` - callable remote weak pointer for independent lifetimes and cycle breaking across zones
 
 **Zone Death (Amnesia)**: A zone dies when all `shared_ptr` references are released—references to objects **in** the zone, **from** the zone (outbound proxies), and **through** the zone (passthroughs).
 
@@ -60,8 +68,12 @@ Transport lifetime is managed by multiple strong reference holders:
 - **Active stubs** - May cause transports to hold strong references to adjacent transports
 - **Services** - Hold only weak references (registry only, doesn't keep alive)
 
-This creates the reference chain that keeps zones and their communication plumbing alive. Zones can function purely as routing intermediaries, staying alive as long as passthroughs exist routing traffic through them.
-These cirular references are designed to form a self supporting structure that can be torn down when no longer needed. when the last reference is released, the zone dies.  A bit like the last person walking off a suspension bridge results in the bridge neatly folding itself up and leaving no mess behind.
+This creates the reference chain that keeps zones and their communication
+plumbing alive. Zones can function purely as routing intermediaries, staying
+alive as long as passthroughs exist routing traffic through them.
+These circular references are designed to form a self-supporting structure that
+can be torn down when no longer needed. When the last reference is released,
+the zone dies.
 
 ## Component Interactions
 
@@ -185,7 +197,7 @@ Transports are kept alive by:
 - **Active stubs** causing transports to maintain references to adjacent zones
 - **Passthroughs** keeping routing paths alive
 - Services hold only **weak references** to transports (registry, doesn't keep alive)
-- child_service` holds a **strong reference** to its parent transport, ensuring the parent zone outlives the child. This creates an intentional circular dependency that's broken during shutdown.
+- `child_service` holds a **strong reference** to its parent transport, ensuring the parent zone outlives the child. This creates an intentional circular dependency that's broken during shutdown.
 
 When all service proxies and active stubs are destroyed, the transport can be cleaned up.
 
@@ -251,16 +263,21 @@ Each interface gets:
 
 ## Key Design Patterns
 
-### rpc::shared_ptr std::shared_ptr are not the same
+### `rpc::shared_ptr` and `std::shared_ptr` are not the same
 **Never mix `rpc::shared_ptr` with `std::shared_ptr`**. Use RPC smart pointers throughout RPC code, and keep standard pointers separate.
 
-`member_ptr` are non callable shared rpc and std pointers to access the shared pointer you need to extract a local variable copy of it preventing race condiditions on the lifetime of that object
+`member_ptr` is the thread-safe wrapper used by the C++ runtime for shared
+pointer state that must be accessed across concurrent teardown and call paths.
+Take a local copy before crossing a call boundary.
 
 ### Service Isolation
 Each service only interacts with its own zone's objects. It is possible to use `get_current_service()` to access the current service in non-coroutine code only (this function is not suitable for coroutine code). Cross-zone access goes through transports and proxies.
 
 ### Stack-Based Lifetime Protection
-When calls cross zone boundaries, stack-based `rpc::shared_ptr` and  `rpc::optimistic_ptr` prevents transport destruction during active calls, `rpc::weak_ptr` should not be used normally as it is a weak pointer to the proxy and not the remote object:
+When calls cross zone boundaries, stack-based strong references keep transports
+and proxy plumbing alive during the active call. `rpc::weak_ptr` is only a weak
+reference to the local proxy/control block; the distributed callable weak
+concept is `rpc::optimistic_ptr`.
 
 ## Debugging and Telemetry
 

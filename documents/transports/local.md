@@ -5,6 +5,13 @@ All rights reserved.
 
 # Local Transport (rpc::local)
 
+Scope note:
+
+- this document describes the current C++ local transport
+- the `rpc::local::child_transport` / `parent_transport` model is C++-specific
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 In-process communication between parent and child zones. No network overhead.
 
 ## When to Use
@@ -26,7 +33,7 @@ namespace rpc::local {
 
 **Parent Zone (server)**:
 ```cpp
-auto root_service = std::make_shared<rpc::service>("root", rpc::zone{1});
+auto root_service = std::make_shared<rpc::root_service>("root", rpc::zone{1});
 
 // Child will connect to this zone
 ```
@@ -35,7 +42,7 @@ auto root_service = std::make_shared<rpc::service>("root", rpc::zone{1});
 ```cpp
 auto child_transport = std::make_shared<rpc::local::child_transport>(
     "child_zone",
-    root_service_);
+    root_service);
 
 child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
     [&](rpc::shared_ptr<yyy::i_host> host,
@@ -50,7 +57,7 @@ child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
     });
 
 rpc::shared_ptr<yyy::i_host> host_ptr;
-auto ret = CO_AWAIT root_service_->connect_to_zone<yyy::i_host, yyy::i_example>(
+auto ret = CO_AWAIT root_service->connect_to_zone<yyy::i_host, yyy::i_example>(
     "child_zone", child_transport, host_ptr);
 
 if (ret.error_code != rpc::error::OK())
@@ -67,7 +74,12 @@ auto example_ptr = ret.output_interface;
 - **Direct function calls**: Messages pass through inbound handlers
 - **Hierarchical transport**: Implements parent/child zone pattern
 - **Bidirectional**: parent_transport and child_transport reference each other
-- **Zero serialization**: In-process function calls, no marshalling overhead
+- **No stream transport layer**: Calls stay within the in-process hierarchical
+  transport pair
+
+Local transport should be read as the simplest concrete C++ implementation of
+the hierarchical transport pattern, not as the definition of Canopy transport
+behaviour in every implementation.
 
 ## Hierarchical Transport Pattern
 

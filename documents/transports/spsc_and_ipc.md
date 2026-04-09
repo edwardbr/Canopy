@@ -5,9 +5,16 @@ All rights reserved.
 
 # SPSC Queues and Streams
 
+Scope note:
+
+- this document describes the current C++ SPSC/IPC transport stack
+- the SPSC stream and process-hosting transports described here are C++-specific
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 Single-Producer Single-Consumer queue-based communication for lock-free IPC.
 
-In the current Canopy transport stack, the SPSC queue is a stream primitive, not
+In the current C++ transport stack, the SPSC queue is a stream primitive, not
 a standalone top-level RPC transport API. It is primarily used underneath
 coroutine `rpc::stream_transport::transport` implementations.
 
@@ -19,7 +26,7 @@ coroutine `rpc::stream_transport::transport` implementations.
 - `rpc::ipc_transport` shared-memory process-owned connections
 - `rpc::libcoro_spsc_dynamic_dll` DLL hosting over process boundaries
 
-## Relationship To The New IPC Transports
+## Relationship To The IPC Transports
 
 The current split is:
 
@@ -79,7 +86,7 @@ namespace spsc {
 
 ## Queue Pair Setup
 
-The current pattern is to wrap each queue pair in
+The current C++ pattern is to wrap each queue pair in
 `streaming::spsc_queue::stream` and then hand the resulting stream to
 `rpc::stream_transport`.
 
@@ -105,3 +112,7 @@ auto initiator_transport =
 
 The envelope and handshake logic lives in `rpc::stream_transport`; the SPSC
 layer just moves bytes between the two stream endpoints.
+
+This page should therefore be read as streaming-transport guidance for the
+current C++ implementation, not as a statement that every Canopy implementation
+has an SPSC-backed IPC stack.

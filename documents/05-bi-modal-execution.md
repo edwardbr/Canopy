@@ -5,7 +5,17 @@ All rights reserved.
 
 # Bi-Modal Execution
 
-Canopy supports both blocking and coroutine execution modes using the same codebase. This section explains how bi-modal execution works and when to use each mode.
+Scope note:
+
+- this document describes the C++ bi-modal execution model
+- the blocking/coroutine macro surface is a C++ implementation feature, not a
+  guarantee of parity across other Canopy implementations
+- see [C++ Status](status/cpp.md), [Rust Status](status/rust.md), and
+  [JavaScript Status](status/javascript.md) for implementation scope
+
+The primary C++ implementation supports both blocking and coroutine execution
+modes using the same codebase. This section explains how bi-modal execution
+works and when to use each mode.
 
 ## 1. How Bi-Modal Execution Works
 
@@ -138,9 +148,10 @@ auto result = calculate_sync();
 
 ## 4. Coroutine Scheduler Setup
 
-### IO Scheduler
+### Scheduler Setup
 
-For coroutine mode, set up an IO scheduler:
+For coroutine mode, construct a scheduler and pass it to a concrete service
+type such as `rpc::root_service`:
 
 ```cpp
 auto scheduler = coro::scheduler::make_unique(
@@ -153,7 +164,7 @@ auto scheduler = coro::scheduler::make_unique(
     });
 
 // Pass scheduler to service
-auto service = std::make_shared<rpc::service>(
+auto service = std::make_shared<rpc::root_service>(
     "my_service",
     rpc::zone{1},
     scheduler);
@@ -187,12 +198,15 @@ while (!done)
 - Keep coroutines short and focused
 - Handle errors at each await point
 - Use blocking mode for debugging
+- Ensure no runtime locks remain held across marshaller, transport, or other I/O
+  boundaries
 
 ### Don't
 
-- Mix blocking calls with coroutines
+- Mix blocking calls with coroutines casually
 - Block in coroutine mode without careful consideration
 - Assume synchronous behavior in coroutine mode
+- Hold locks across operations that may suspend or perform RPC I/O
 
 ## 6. Performance Comparison
 
@@ -214,7 +228,7 @@ while (!done)
 
 ### From Blocking to Coroutine
 
-1. **Add scheduler** to service constructor
+1. **Add scheduler** to a concrete service such as `rpc::root_service`
 2. **Replace `return`** with `CO_RETURN`
 3. **Add `CO_AWAIT`** before async operations
 4. **Spawn tasks** instead of calling directly
@@ -290,7 +304,14 @@ CORO_TASK(error_code) chained_operations()
 }
 ```
 
-## 9. Next Steps
+## 9. Current Scope
+
+- C++ supports both blocking and coroutine builds.
+- The experimental Rust implementation is currently blocking-only.
+- The current JavaScript implementation does not mirror the C++ coroutine
+  runtime model.
+
+## 10. Next Steps
 
 - [YAS Serializer](serializers/yas-serializer.md) - Learn about encoding formats
 - [Protocol Buffers](serializers/protocol-buffers.md) - Cross-language serialization

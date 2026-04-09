@@ -5,6 +5,12 @@ All rights reserved.
 
 # Building Canopy
 
+Scope note:
+
+- this is the build and test guide for the primary C++ implementation
+- preset names, target names, test executables, and output paths in this file
+  refer to the C++ tree unless explicitly stated otherwise
+
 This guide covers building Canopy from source, including build configuration options and CMake presets.
 
 ## 1. Prerequisites
@@ -66,15 +72,14 @@ cmake --list-presets
 | `Debug` | Standard debug build with logging/telemetry |
 | `Debug_ASAN` | Debug build with AddressSanitizer |
 | `Debug_Coroutine` | Debug with C++20 coroutines enabled |
-| `Coroutine_Debug_ASAN` | Coroutine debug with AddressSanitizer |
-| `Debug_with_coroutines_no_logging` | Coroutines without logging overhead |
+| `Debug_Coroutine_ASAN` | Coroutine debug with AddressSanitizer |
+| `Debug_Coroutines_With_No_Logging` | Coroutines without logging overhead |
 | `Debug_Coverage` | Debug build with gcov coverage flags enabled |
-| `Coroutine_Debug_Coverage` | Coroutine debug build with gcov coverage flags enabled |
-| `Debug_multithreaded` | Multithreaded debugging with telemetry |
+| `Debug_Coroutine_Coverage` | Coroutine debug build with gcov coverage flags enabled |
 | `Release` | Optimized production build |
-| `SGX_Debug` | SGX hardware enclave support (debug) |
-| `SGX_Sim_Debug` | SGX simulation mode (debug) |
-| `SGX_Release` | SGX hardware release build |
+| `Debug_SGX` | SGX hardware enclave support (debug) |
+| `Debug_SGX_Sim` | SGX simulation mode (debug) |
+| `Release_SGX` | SGX hardware release build |
 | `Release_SGX_Sim` | SGX simulation release build |
 
 ### Local Custom Presets
@@ -132,11 +137,11 @@ This modular structure allows:
 cmake --preset Debug
 
 # Build the project
-cmake --build build --parallel $(nproc)
+cmake --build build_debug --parallel $(nproc)
 
 # Or for a specific target
-cmake --build build --target rpc        # Core library only
-cmake --build build --target generator  # IDL generator only
+cmake --build build_debug --target rpc        # Core library only
+cmake --build build_debug --target generator  # IDL generator only
 ```
 
 ### Coroutine Build
@@ -146,26 +151,28 @@ cmake --build build --target generator  # IDL generator only
 cmake --preset Debug_Coroutine
 
 # Build
-cmake --build build --parallel $(nproc)
+cmake --build build_debug_coroutine --parallel $(nproc)
 ```
 
 ### SGX Enclave Build
 
 ```bash
 # Hardware mode (requires SGX-capable CPU)
-cmake --preset SGX_Debug
+cmake --preset Debug_SGX
 
 # Simulation mode (no hardware required)
-cmake --preset SGX_Sim_Debug
+cmake --preset Debug_SGX_Sim
 
-cmake --build build
+cmake --build build_debug_sgx
+# or
+cmake --build build_debug_sgx_sim
 ```
 
 ### Release Build
 
 ```bash
 cmake --preset Release
-cmake --build build --config Release
+cmake --build build_release
 ```
 
 ### Coverage HTML Reports
@@ -174,13 +181,13 @@ Coverage targets are available when `CANOPY_ENABLE_COVERAGE=ON` and tests are en
 
 ```bash
 # Configure coverage build (debug)
-cmake --preset Coroutine_Debug_Coverage
+cmake --preset Debug_Coroutine_Coverage
 
 # Build tests and runtime
-cmake --build --preset Coroutine_Debug_Coverage
+cmake --build build_debug_coroutine --parallel $(nproc)
 
 # Run single-process rpc_test and generate HTML report
-cmake --build build_coroutine_coverage --target coverage-html
+cmake --build build_debug_coroutine --target coverage-html
 ```
 
 Available targets:
@@ -250,37 +257,43 @@ set(SGX_HW "OFF" CACHE BOOL "Enable SGX hardware (vs simulation)")
 ### Core Library
 
 ```bash
-cmake --build build --target rpc_host      # Host library
-cmake --build build --target rpc_enclave   # Enclave library
+cmake --build build_debug --target rpc          # Core RPC library
+cmake --build build_debug_sgx --target rpc_enclave   # Enclave library
 ```
 
 ### Generator
 
 ```bash
-cmake --build build --target generator  # IDL code generator
+cmake --build build_debug --target generator  # IDL code generator
 ```
 
 ### Transports
 
 ```bash
-cmake --build build --target rpc_transport_local   # Local transport
-cmake --build build --target rpc_transport_tcp     # TCP transport
-cmake --build build --target rpc_transport_spsc    # SPSC transport
-cmake --build build --target rpc_transport_sgx     # SGX transport
+cmake --build build_debug --target transport_local                # Local transport
+cmake --build build_debug --target transport_dynamic_library      # Blocking DLL transport
+cmake --build build_debug --target transport_c_abi                # C ABI DLL transport
+cmake --build build_debug_coroutine --target transport_streaming  # Stream-backed transport
+cmake --build build_debug_coroutine --target transport_ipc_transport
+cmake --build build_debug_coroutine --target transport_libcoro_dynamic_library
 ```
 
 ### Tests
 
 ```bash
-cmake --build build --target rpc_test           # All tests
-cmake --build build --target remote_type_test   # Remote type tests
-cmake --build build --target fuzz_test_main     # Fuzz tests
+cmake --build build_debug --target rpc_test
+cmake --build build_debug --target serialiser_test
+cmake --build build_debug --target fuzz_test_main
+cmake --build build_debug --target fuzz_test_gtest
+cmake --build build_debug --target member_ptr_test
+cmake --build build_debug --target passthrough_test
+cmake --build build_debug --target zone_address_test
 ```
 
 ### Demos
 
 ```bash
-cmake --build build --target websocket_server   # WebSocket demo server
+cmake --build build_debug_coroutine --target websocket_server   # WebSocket demo server
 ```
 
 ## 7. AddressSanitizer Support
@@ -292,7 +305,7 @@ Canopy has comprehensive AddressSanitizer (ASan) support for detecting memory sa
 | Preset | Description | Binary Directory |
 |--------|-------------|------------------|
 | `Debug_ASAN` | Standard debug build with ASan | `build_debug` |
-| `Coroutine_Debug_ASAN` | Coroutine build with ASan | `build_debug_coroutine` |
+| `Debug_Coroutine_ASAN` | Coroutine build with ASan | `build_debug_coroutine` |
 
 ### Building with AddressSanitizer
 
@@ -302,7 +315,7 @@ cmake --preset Debug_ASAN
 cmake --build build_debug --parallel $(nproc)
 
 # Coroutine build with ASan
-cmake --preset Coroutine_Debug_ASAN
+cmake --preset Debug_Coroutine_ASAN
 cmake --build build_debug_coroutine --parallel $(nproc)
 ```
 
@@ -310,8 +323,7 @@ cmake --build build_debug_coroutine --parallel $(nproc)
 
 **Individual test run:**
 ```bash
-cd build_debug
-./output/rpc_test --gtest_filter="*test_name*"
+./build_debug/output/rpc_test --gtest_filter="*test_name*"
 ```
 
 **Run all tests individually (recommended for ASan):**
@@ -344,7 +356,7 @@ For specialized testing scenarios, you can configure ASan behavior:
 export ASAN_OPTIONS="detect_leaks=0:detect_container_overflow=0"
 export LSAN_OPTIONS="detect_leaks=0"
 
-./output/rpc_test
+./build_debug/output/rpc_test
 ```
 
 ### Known Issues and Suppressions
@@ -361,13 +373,11 @@ export LSAN_OPTIONS="detect_leaks=0"
 
 ### Test Results
 
-Canopy's test suite passes 100% with AddressSanitizer:
+The exact test count changes over time. Treat the ASan expectation as:
 
-| Build Configuration | Tests | Status |
-|---------------------|-------|--------|
-| Debug_ASAN | 266 tests | ✅ All pass |
-| Coroutine_Debug_ASAN | 706 tests | ✅ All pass |
-| **Total** | **972 tests** | **✅ 100% pass** |
+- `Debug_ASAN` should configure and run the current debug test set cleanly
+- `Debug_Coroutine_ASAN` should configure and run the current coroutine test
+  set cleanly
 
 ### What AddressSanitizer Detects
 
@@ -396,7 +406,7 @@ For CI/CD pipelines, run ASan tests on critical paths:
 # Quick smoke test
 cmake --preset Debug_ASAN
 cmake --build build_debug --target rpc_test
-cd build_debug && ./output/rpc_test --gtest_filter="*standard_tests*"
+./build_debug/output/rpc_test --gtest_filter="*standard_tests*"
 
 # Full validation (takes longer)
 c++/tests/scripts/run_asan_tests.sh
@@ -411,57 +421,58 @@ c++/tests/scripts/run_asan_tests.sh
 ctest --output-on-failure
 
 # Or from project root
-ctest --test-dir build --output-on-failure
+ctest --test-dir build_debug --output-on-failure
+ctest --test-dir build_debug_coroutine --output-on-failure
 ```
 
 ### Run Specific Tests
 
 ```bash
 # Run SGX tests
-ctest --test-dir build --tests-regex enclave
+ctest --test-dir build_debug_sgx --tests-regex enclave
 
 # Run fuzz tests
-ctest --test-dir build --tests-regex fuzz
+ctest --test-dir build_debug --tests-regex fuzz
 
-# Run specific test
-./build/output/debug/tests/test_host/remote_type_test
+# Run a specific gtest suite inside rpc_test
+./build_debug/output/rpc_test --gtest_filter='*remote_type*'
 ```
 
 ### Test Categories
 
-| Category | Description | Test Target |
-|----------|-------------|-------------|
-| Unit tests | Component-level tests | `unit_tests` |
-| Integration tests | Full IDL→C++ pipeline | `remote_type_test` |
+| Category | Description | Current Executable |
+|----------|-------------|--------------------|
+| Main typed host tests | Core C++ RPC transport and type suites | `rpc_test` |
 | JSON schema tests | Metadata extraction | `json_schema_metadata_test` |
-| Hierarchical zone tests | Multi-level zones | `hierachical_transport_tests` |
-| SGX tests | Enclave functionality | `enclave_*` |
-| Fuzz tests | Property-based testing | `fuzz_test_main` |
+| Serializer tests | Serialization-focused checks | `serialiser_test` |
+| Fuzz harness | Iterative fuzz-style runner | `fuzz_test_main` |
+| Fuzz gtests | Discoverable fuzz scenarios | `fuzz_test_gtest` |
+| Unit tests | Focused standalone executables | `member_ptr_test`, `passthrough_test`, `zone_address_test` |
 
 ## 9. Build Output
 
 ### Directory Structure
 
 ```
-build/
-├── output/
-│   ├── debug/           # Debug builds
-│   │   ├── lib/         # Library files (.a, .so, .lib)
-│   │   ├── bin/         # Executables
-│   │   └── tests/       # Test executables
-│   └── release/         # Release builds
-├── generated/           # IDL-generated code
-├── generator/           # generator executable
-├── lib/                 # Intermediate build files
-└── CMakeFiles/          # CMake configuration
+build_<preset>/
+├── output/              # Executables and libraries for that preset
+├── generated/           # IDL-generated code for that preset
+├── CMakeFiles/          # CMake state for that preset
+└── ...                  # Other preset-local build products
 ```
+
+Typical examples:
+
+- `build_debug/output/rpc_test`
+- `build_debug/output/fuzz_test_gtest`
+- `build_debug_coroutine/output/websocket_server`
 
 ### Generated Files
 
 When you build with IDL files:
 
 ```
-build/generated/
+build_<preset>/generated/
 ├── include/
 │   └── {project}/
 │       ├── {name}.h
@@ -480,29 +491,29 @@ build/generated/
 
 ```bash
 # Regenerate code
-cmake --build build --target {interface_name}_idl
+cmake --build build_debug --target {interface_name}_idl
 
 # Or rebuild everything
-cmake --build build
+cmake --build build_debug
 ```
 
 ### Clean Build
 
 ```bash
 # Remove build directory and rebuild
-rm -rf build
+rm -rf build_debug
 cmake --preset Debug
-cmake --build build
+cmake --build build_debug
 ```
 
 ### Incremental Build
 
 ```bash
 # Standard incremental build
-cmake --build build
+cmake --build build_debug
 
 # Parallel build
-cmake --build build --parallel $(nproc)
+cmake --build build_debug --parallel $(nproc)
 ```
 
 ## 11. Docker Builds
@@ -525,9 +536,9 @@ COPY . .
 RUN git submodule update --init --recursive
 
 RUN cmake --preset Debug && \
-    cmake --build build --parallel $(nproc)
+    cmake --build build_debug --parallel $(nproc)
 
-CMD ["ctest", "--test-dir", "build", "--output-on-failure"]
+CMD ["ctest", "--test-dir", "build_debug", "--output-on-failure"]
 ```
 
 ## 12. Troubleshooting
@@ -542,7 +553,7 @@ cmake --version
 which ninja
 
 # Clean and retry
-rm -rf build
+rm -rf build_debug
 cmake --preset Debug
 ```
 
@@ -560,9 +571,9 @@ cat build/compile_commands.json | head -100
 
 ```bash
 # Rebuild from scratch
-rm -rf build
+rm -rf build_debug
 cmake --preset Debug
-cmake --build build
+cmake --build build_debug
 ```
 
 ### SGX Build Fails
@@ -572,7 +583,7 @@ cmake --build build
 ls /opt/intel/sgxsdk/include
 
 # Use simulation mode if no hardware
-cmake --preset SGX_Sim_Debug
+cmake --preset Debug_SGX_Sim
 ```
 
 ## 13. Building Demo Applications
@@ -582,7 +593,7 @@ cmake --preset SGX_Sim_Debug
 When building demo applications that use Canopy, follow the structure from `c++/demos/websocket/server/CMakeLists.txt`:
 
 ```cmake
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.24)
 project(my_demo)
 
 add_executable(my_demo demo.cpp)
@@ -601,10 +612,9 @@ target_include_directories(
 target_link_libraries(my_demo
     PUBLIC
         my_idl_host              # Your generated IDL library
-        transport_local_host     # Local transport (if using)
-        transport_tcp_host       # TCP transport (if using)
-        transport_spsc_host      # SPSC transport (if using)
-        rpc_host                 # Core RPC library
+        transport_local          # Local transport (if using)
+        transport_streaming      # Stream transport (if using)
+        rpc::rpc                 # Core RPC library
         ${CANOPY_LIBRARIES}        # System libraries
 )
 
@@ -625,11 +635,12 @@ endif()
 
 | Library | CMake Target | Purpose |
 |---------|--------------|---------|
-| Local transport | `transport_local_host` | In-process communication |
-| TCP transport | `transport_tcp_host` | Network communication |
-| SPSC transport | `transport_spsc_host` | Lock-free IPC |
-| Core RPC | `rpc_host` | Base RPC functionality |
-| Telemetry | `rpc_telemetry_host` | Logging/metrics |
+| Local transport | `transport_local` | In-process communication |
+| Blocking DLL transport | `transport_dynamic_library` | In-process child-zone loading |
+| Streaming transport | `transport_streaming` | Stream-backed RPC transport |
+| IPC transport | `transport_ipc_transport` | Coroutine process-owned transport |
+| Core RPC | `rpc::rpc` | Base RPC functionality |
+| Telemetry | `rpc::rpc_telemetry` | Logging/metrics |
 
 ### Build Order Issues
 
@@ -642,8 +653,8 @@ endif()
 target_link_libraries(my_demo
     PUBLIC
         my_idl_host
-        transport_local_host  # Required for local transport
-        rpc_host
+        transport_local  # Required for local transport
+        rpc::rpc
         ${CANOPY_LIBRARIES}
 )
 ```

@@ -147,10 +147,11 @@ The protobuf JavaScript files are **automatically generated** during the build p
 
 ```bash
 # Build the project (generates proto JS files automatically)
-cmake --build build
+cmake --preset Debug_Coroutine
+cmake --build build_debug_coroutine --target websocket_server
 
 # Or specifically build just the JS proto files
-cmake --build build --target websocket_proto_js
+cmake --build build_debug_coroutine --target websocket_demo_client
 ```
 
 **Requirements**:

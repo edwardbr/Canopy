@@ -39,11 +39,11 @@ comprehensive/
 cmake --preset Debug_Coroutine
 
 # Build the core library and generator
-cmake --build build --target rpc
-cmake --build build --target generator
+cmake --build build_debug_coroutine --target rpc
+cmake --build build_debug_coroutine --target generator
 
 # Generate IDL code (after creating the demo.idl generation target)
-cmake --build build --target demo_idl
+cmake --build build_debug_coroutine --target demo_idl
 ```
 
 ### Building the Demos
@@ -51,12 +51,18 @@ cmake --build build --target demo_idl
 1. **Uncomment the demo executables** in `CMakeLists.txt`
 2. **Build**:
 ```bash
-cmake --build build --target comprehensive_demo
+cmake --build build_debug_coroutine --target local_transport_demo
+# or one of:
+#   tcp_transport_demo
+#   spsc_transport_demo
+#   serialisation_demo
+#   shared_ptr_demo
+#   optimistic_ptr_demo
 ```
 
 3. **Run**:
 ```bash
-./build/output/debug/demos/comprehensive/comprehensive_demo
+./build_debug_coroutine/output/local_transport_demo
 ```
 
 ## Demo Categories
@@ -268,7 +274,7 @@ CORO_TASK(error_code) my_operation()
 ## Troubleshooting
 
 ### Build Errors
-- **"websocket_demo.h not found"**: Generate IDL code first with `cmake --build build --target demo_idl`
+- **"websocket_demo.h not found"**: Generate IDL code first with `cmake --build build_debug_coroutine --target demo_idl`
 - **"TCP/SPSC requires coroutines"**: Use `Debug_Coroutine` preset
 
 ### Runtime Errors

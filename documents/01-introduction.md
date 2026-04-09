@@ -5,6 +5,15 @@ All rights reserved.
 
 # Introduction to Canopy
 
+Scope note:
+
+- this introduction is written from the perspective of the primary C++
+  implementation
+- unless explicitly stated otherwise, references to transports, execution
+  modes, serializers, and examples should be read as C++ capabilities
+- see [C++ Status](status/cpp.md), [Rust Status](status/rust.md), and
+  [JavaScript Status](status/javascript.md) for implementation scope
+
 Canopy is a modern C++ Remote Procedure Call library that enables type-safe communication across different execution contexts. It provides a unified programming model for in-process calls, inter-process communication, remote machines, embedded devices, and secure Intel SGX enclaves.
 
 ## What is Canopy?
@@ -16,6 +25,15 @@ Canopy bridges the gap between local C++ objects and distributed systems by prov
 - **Format Flexibility**: Support for JSON, binary (YAS), and Protocol Buffers serialization
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
 - **Secure Enclaves**: Native support for Intel SGX secure computation
+
+Implementation note:
+
+- the C++ implementation is the primary implementation described by this
+  document
+- the experimental Rust implementation currently supports a smaller subset
+  (blocking, Protocol Buffers, local, dynamic-library)
+- the JavaScript implementation is currently a reduced-trust generated client
+  layer rather than a full runtime equivalent
 
 ## Key Features
 
@@ -43,7 +61,8 @@ The IDL compiler generates:
 
 ### Transport Agnostic Design
 
-Canopy abstracts transport details behind a consistent interface. Multiple transports are available:
+Canopy abstracts transport details behind a consistent interface. In the
+primary C++ implementation, multiple transports are available:
 
 | Transport | Use Case | Requirements |
 |-----------|----------|--------------|
@@ -88,12 +107,13 @@ Canopy is ideal for:
 
 ## Design Philosophy
 
-Canopy follows several key design principles:
+Canopy follows several key design principles in the primary C++ implementation:
 
 1. **Type Safety First**: Compile-time verification of all RPC calls
 2. **No Unsafe Casting**: Never mix `rpc::shared_ptr` with `std::shared_ptr`
 3. **RAII Throughout**: Resource management via constructors/destructors
-4. **Coroutines First**: API designed for async/await patterns
+4. **Bi-Modal Runtime Design**: C++ APIs are designed to support both blocking
+   and coroutine builds from the same source
 5. **Transparent Marshalling**: Parameters pass like local objects
 
 ## Project Structure
@@ -114,8 +134,11 @@ canopy/
 │   ├── telemetry/            # Telemetry services
 │   ├── streaming/            # Coroutine streaming stack
 │   └── subcomponents/        # Network config, SPSC queue, etc.
+├── rust/                     # Experimental Rust implementation and migration docs
 ├── generator/                # IDL code generator
 ├── interfaces/               # Shared IDL interfaces (rpc_types.idl, etc.)
+├── c_abi/                    # Language-neutral ABI specifications
+├── documents/                # Product, architecture, and status documentation
 └── submodules/               # Core dependencies (idlparser, protobuf)
 ```
 
@@ -129,7 +152,7 @@ canopy/
 
 1. [Getting Started](02-getting-started.md) - Follow a tutorial
 2. [IDL Guide](03-idl-guide.md) - Learn to define interfaces
-3. [Building Canopy](04-building.md) - Set up your build environment
+3. [C++ Build And Test Guide](build-and-test/cpp.md) - Set up your build environment
 4. [Bi-Modal Execution](05-bi-modal-execution.md) - Understand blocking vs coroutine modes
 5. [Error Handling](06-error-handling.md) - Handle errors in RPC calls
 

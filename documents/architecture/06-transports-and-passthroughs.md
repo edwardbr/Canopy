@@ -5,6 +5,15 @@ All rights reserved.
 
 # Transports and Passthroughs
 
+Scope note:
+
+- this document describes shared routing semantics through the primary C++
+  implementation
+- the transport and passthrough concepts are shared Canopy architecture
+- concrete class names, status machinery, stream/coroutine behavior, and exact
+  transport families described here are C++-specific unless explicitly stated
+  otherwise
+
 The Plumbing Between Services
 
 ## Overview
@@ -14,7 +23,8 @@ Canopy uses two complementary mechanisms for inter-zone communication:
 - **Transports**: Direct connections between adjacent zones (e.g., Zone 1 ↔ Zone 2)
 - **Passthroughs**: Connections through intermediary zones (e.g., Zone 3 ↔ Zone 4 through Zone 2)
 
-Together, they enable seamless communication across complex zone hierarchies without requiring every zone to connect directly to every other zone.
+Together, they enable communication across complex zone hierarchies without
+requiring every zone to connect directly to every other zone.
 
 ### Key Principles
 
@@ -32,7 +42,8 @@ Transports provide the communication channels between adjacent zones. Each trans
 
 ### Transport Architecture
 
-All transports inherit from `rpc::transport`, which defines the interface for:
+In the primary C++ implementation, transports inherit from `rpc::transport`,
+which defines the interface for:
 
 - **Connection establishment** via the `connect()` virtual method
 - **Message sending** with `send()` for request-response and `post()` for fire-and-forget operations
@@ -103,9 +114,15 @@ Status transitions are managed through the `set_status()` method, which can be o
 
 ### Inbound Message Processing
 
-Transports implement the `i_marshaller` interface for outbound communication—sending requests to the adjacent zone.
+In the C++ implementation, transports implement the `i_marshaller` interface
+for outbound communication to the adjacent zone.
 
-These base class methods are called by the specific transport implementation when invoked by messages from the adjacent zone or client to process the request. These methods call the `i_marshaller` interface of either a pass-through object to another transport (for multi-hop routing) or the local service (for direct delivery).
+The derived transport implementation decodes transport-specific traffic and then
+invokes the relevant base-class `inbound_*` path. The base class forwards the
+call either:
+
+- to the local service for direct delivery
+- or to a passthrough for onward routing
 
 - `outbound/inbound_send()` - Request-response RPC call; returns a response to the caller
 - `outbound/inbound_post()` - Fire-and-forget notification; no response expected
@@ -115,8 +132,9 @@ These base class methods are called by the specific transport implementation whe
 - `outbound/inbound_object_released()` - Notifies the transport that an object has been released
 - `outbound/inbound_transport_down()` - Notifies the transport that the adjacent transport has failed
 
-Each `inbound_*` method handles calls arriving from the adjacent zone. The derived transport implementation calls the appropriate `inbound_*` method once it has decoded a message from the wire; the base class then forwards the call to the local service or to a pass-through for onward routing.
-Each `outbound_*` method is overridden by the derived transport classes and sends the message to the adjacent zone.  These methods are private and are called by the base implementation on receiving an i_marshaller call.
+Each `inbound_*` method handles calls arriving from the adjacent zone.
+Each `outbound_*` method is implemented by the derived transport class and
+sends the message to the adjacent zone.
 
 ### Transport Types
 
@@ -132,7 +150,9 @@ Canopy provides several transport implementations, each optimized for different 
 | [SGX](../transports/sgx.md) | Secure enclave communication | SGX SDK |
 | [Custom](../transports/custom.md) | User-defined transport implementations | Depends on implementation |
 
-Choose the transport that matches your use case: Local for in-process testing, network transports for distributed systems, or custom transports for specialized requirements.
+Choose the transport that matches your use case. The table above should be read
+as a C++ implementation matrix, not as a statement that every Canopy
+implementation supports every transport family.
 
 ### Connection Handshake
 
@@ -283,22 +303,27 @@ The `connect_to_zone` function creates a connection between zones:
 
 ```cpp
 template<class in_param_type, class out_param_type>
-CORO_TASK(int)
+CORO_TASK(rpc::service_connect_result<out_param_type>)
 connect_to_zone(const char* name,
     std::shared_ptr<transport> child_transport,
-    const rpc::shared_ptr<in_param_type>& input_interface,
-    rpc::shared_ptr<out_param_type>& output_interface);
+    rpc::shared_ptr<in_param_type> input_interface);
 ```
 
 Parameters:
 - `name` - Unique name for the zone connection
-- `child_transport` - Transport connecting to the child zone
-- `input_interface` - Interface the child can call back to parent (owned by parent)
-- `output_interface` - Interface returned from child (owned by child)
+- `child_transport` - Transport used to reach the adjacent zone
+- `input_interface` - Interface exported by the connecting side
+
+Result:
+- `service_connect_result<out_param_type>` carries both an `error_code` and the
+  returned `output_interface`
 
 ### Child Transport Entry Point
 
-When creating a child zone, use `child_transport->set_child_entry_point<i_example_parent, i_example_child>(...)` to provide the callback for initializing the child zone. This callback is invoked when the parent connects to the child zone.
+When creating a hierarchical child zone in the local/DLL-style C++ transports,
+use transport-specific child-zone setup hooks such as
+`set_child_entry_point<...>(...)` to provide the callback for initializing the
+child zone.
 
 ## Part 2: Passthroughs
 

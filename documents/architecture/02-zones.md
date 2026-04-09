@@ -5,16 +5,28 @@ All rights reserved.
 
 # Zones
 
+Scope note:
+
+- this document describes the zone model through the primary C++
+  implementation
+- the zone and address concepts are shared architecture, but allocator,
+  CLI/network configuration, and transport examples are C++-specific
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 A zone is an execution context that represents a boundary between different parts of a distributed system. Zones are the fundamental isolation mechanism in Canopy, separating code running in different processes, machines, or security domains.
 
 ## What is a Zone?
 
-Each zone has its own:
+In the C++ implementation, each zone has its own:
 
-- **Zone Address**: A 128-bit unique identifier (`rpc::zone`) structured like an IPv6 address
-- **Object Namespace**: Objects are identified within a zone using a 32-bit Object ID, which is now part of the `zone_address`.
-- **Service**: Manages object lifecycle and references
-- **Transport Connections**: Links to other zones
+- **Subnet**: A unique subnet component allocated to the zone by the
+  `rpc::root_service`
+- **Service object**: The zone's service lives at local address `0` within that
+  subnet
+- **Object namespace**: The zone service allocates the non-zero local/object
+  address component for objects within that zone
+- **Transport connections**: Links to other zones
 
 Think of a zone as a membrane that separates "here" from "there":
 - **Inside the zone**: Direct C++ function calls, direct memory access
@@ -24,42 +36,66 @@ Think of a zone as a membrane that separates "here" from "there":
 
 ### Configurable Zone Addressing
 
-Canopy uses a structured addressing model inspired by IPv4/IPv6. This enables network-routable addressing and hierarchical subnet-based allocation.
+Canopy uses a structured addressing model inspired by IPv6. A full
+`zone_address` contains:
+
+- a **routing prefix**
+- a **subnet**
+- a **local/object address**
+
+The combination of routing prefix and subnet identifies the zone. The
+local/object address identifies the specific object inside that zone. Local
+address `0` is reserved for the service object of the zone itself.
 
 The `zone_address` struct supports three addressing modes, selectable at build time via CMake:
 
 **Mode: None (local-only)**
-No routing prefix. The address is a simple local identifier, equivalent to sequential zone counters. `subnet_id` identifies the zone, `object_id` identifies the resource within it. Suitable for single-process and in-memory transports.
+No routing prefix. `subnet_id` identifies the zone and `object_id` identifies
+the resource within it. Suitable for single-process and in-memory transports.
 
 **Mode: IPv4 with local suffix**
-A 32-bit IPv4 address is mapped into the 64-bit routing prefix (using 6to4 encoding). The remaining address space is split between subnet and object fields. Suitable for traditional network deployments where IPv4 addressing is used between nodes.
+A 32-bit IPv4 address is mapped into the 64-bit routing prefix (using 6to4
+encoding). The remaining address space is split between subnet and object
+fields. Suitable for traditional network deployments where IPv4 addressing is
+used between nodes.
 
 **Mode: IPv6**
-Full 128-bit address space usage. The routing prefix occupies the upper 64 bits, with subnet (32 bits) and object (32 bits) sharing the lower 64 bits.
+Full 128-bit address space usage. The exact split between routing prefix,
+subnet, and object fields is defined by the address capabilities in
+`interfaces/rpc/rpc_types.idl`.
 
-### Field Width Configuration (Future)
+### Field Width Configuration
 
-Future CMake options may allow configurable field widths:
+Field widths are defined by the address specification in
+`interfaces/rpc/rpc_types.idl`, not hardcoded in the documentation. The
+versioned capability header records, among other things:
 
-- **Subnet size**: Currently 32 bits (fixed)
-- **Object size**: Currently 32 bits (fixed)
+- **subnet_size_bits**
+- **object_id_size_bits**
 
-This allows the same `zone_address` type to serve different deployment scenarios while maintaining a consistent 128-bit total size.
+In the current default values used by the IDL:
+
+- **Default subnet size**: 64 bits
+- **Default object size**: 64 bits
 
 ### Zone Address Structure
 
-A `zone_address` consists of three main components:
+A `zone_address` consists of three main logical components:
 
-- **Routing Prefix (64 bits)**: Identifies the physical node or network (0 in local-only mode)
-- **Subnet ID (32 bits)**: Identifies the specific zone within that node
-- **Object ID (32 bits)**: Identifies a specific object within that zone (0 indicates a zone-only address)
+- **Routing Prefix**: Identifies the physical node or network (`0` in local-only
+  mode)
+- **Subnet ID**: Identifies the specific zone within that node
+- **Object ID**: Identifies a specific object within that zone. `0` is reserved
+  for the zone's service object.
 
-**Total size**: 16 bytes = 128 bits (one IPv6 address). The layout is:
+**Logical layout**:
 ```
-Bits 0-63:   routing_prefix (network prefix, identifies the physical node)
-Bits 64-95:  subnet_id (zone within the node)
-Bits 96-127: object_id (specific object, or 0 for zone-only)
+routing_prefix | subnet_id | object_id
 ```
+
+The concrete storage layout is versioned and format-dependent. See
+`interfaces/rpc/rpc_types.idl` for the current capability-header and
+address-type definitions.
 
 **CMake-configurable packed representation**: A CMake option controls whether the in-memory representation uses the structured form above or a packed `uint128_t` / `std::array<uint8_t, 16>` for compact storage and wire serialization. The structured form with named fields is always the canonical form for code access.
 
@@ -67,15 +103,24 @@ Bits 96-127: object_id (specific object, or 0 for zone-only)
 
 Canopy uses specialized types for different routing scenarios, all wrapping a `zone_address`:
 
-- `rpc::zone`: Stores a `zone_address` with `object_id = 0`. Used for general zone identity.
-- `rpc::remote_object`: Stores a full `zone_address` **including** the `object_id`. This identifies a specific object at a specific zone. Used in i_marshaller methods.
-- `rpc::destination_zone`: Stores a `zone_address` with `object_id = 0` (zone-only). Used for zone routing without object identity.
-- `rpc::caller_zone`: Stores a `zone_address` with `object_id = 0`. Never needs object identity.
-- `rpc::requesting_zone`: Stores a `zone_address` with `object_id = 0`. Used as a routing hint.
+- `rpc::zone`: Stores a `zone_address` with `object_id = 0`. Used for general
+  zone identity.
+- `rpc::remote_object`: Stores a full `zone_address` **including** the
+  `object_id`. This identifies a specific object at a specific zone. Used in
+  `i_marshaller` methods.
+- `rpc::destination_zone`: Stores a `zone_address` with `object_id = 0`
+  (zone-only). Used for zone routing without object identity.
+- `rpc::caller_zone`: Stores a `zone_address` with `object_id = 0`. Never
+  needs object identity.
+- `rpc::requesting_zone`: Stores a `zone_address` with `object_id = 0`. Used as
+  a routing hint.
 
 ### Zone ID Generation Strategies
 
-Zone IDs (subnets) are allocated using a `zone_address_allocator`. This ensures uniqueness within the node's allocated subnet range.
+Zone IDs are really subnet allocations. In the C++ runtime, the
+`rpc::root_service` obtains new subnets from the `zone_address_allocator`, and
+each zone service then allocates object addresses within its own subnet. This
+ensures uniqueness within the node's allocated subnet range.
 
 **CLI Configuration**:
 Nodes can be configured via CLI arguments to use specific network ranges:
@@ -152,14 +197,16 @@ parser.ParseCLI(argc, argv);
 auto cfg = canopy::network_config::get_network_config(parser);
 auto allocator = canopy::network_config::make_allocator(cfg);
 
-auto root_service = std::make_shared<rpc::service>(
+auto root_service = std::make_shared<rpc::root_service>(
     "root_service",
     allocator.allocate_zone(),
     scheduler
 );
 ```
 
-**Default behavior**: If no `--routing-prefix` is provided, the library auto-detects the best routing prefix from the host's network interfaces (globally-routable IPv6 > public IPv4 > private IPv4 > 0 for local-only).
+**Default behavior**: In the C++ network-config path, if no `--routing-prefix`
+is provided, the runtime chooses a routing prefix according to the configured
+network mode.
 
 ### Child Zone (Hierarchical)
 
@@ -194,7 +241,7 @@ Peer zones connect via TCP or other network transports, this example uses corout
 
 ```cpp
 // Server side
-auto server_service = std::make_shared<rpc::service>("server", get_next_zone_id(), io_scheduler_);
+auto server_service = std::make_shared<rpc::root_service>("server", get_next_zone_id(), io_scheduler_);
 
 // Create a streaming listener; the connection callback is invoked for each new client
 const coro::net::socket_address endpoint{
@@ -219,9 +266,7 @@ if (!listener->start_listening(server_service))
 }
 
 // Client side
-
-// Create the client service
-auto client_service = std::make_shared<rpc::service>("client", get_next_zone_id(), io_scheduler_);
+auto client_service = std::make_shared<rpc::root_service>("client", get_next_zone_id(), io_scheduler_);
 
 coro::net::tcp::client tcp_client(io_scheduler_,
     coro::net::socket_address{
@@ -262,9 +307,9 @@ Canopy uses specialized zone types for different routing scenarios:
 
 ```cpp
 struct zone   // The current zone where all this activity is happening
-struct destination_zone   // Where the call is going (includes object_id)
+struct destination_zone   // Where the call is going (zone-only address)
 struct caller_zone        // Where the call came from
-struct requesting_zone  // Zone with known calling direction, used in add_ref to deal with zones that do not know about the existance of other zones, the requesting_zone is used to route the add_ref to a zone that can pass on the add_ref to the correct zone
+struct requesting_zone  // Zone with known calling direction, used to route add_ref through intermediaries when needed
 ```
 
 ### Why Different Types?
@@ -275,15 +320,15 @@ These types enable efficient routing in multi-hop scenarios and provide type saf
 // Transport routing logic
 CORO_TASK(int) transport::inbound_send(
     rpc::caller_zone caller,           // Who's calling
-    rpc::destination_zone destination, // Where it's going (includes object_id)
+    rpc::destination_zone destination, // Where it's going (zone-only)
     rpc::interface_ordinal interface_id,
     rpc::method method_id,
     const rpc::span& in_data,
     std::vector<char>& out_data)
 {
-    // Route based on destination zone portion (ignoring object_id)
+    // Route based on destination zone portion
     if (destination.get_address().same_zone(get_zone_id())) {
-        // Deliver locally to the object specified in destination.get_address().object_id
+        // Deliver locally once the target remote_object has been resolved
     } else {
         // Forward to passthrough
     }
@@ -306,7 +351,7 @@ auto obj = dest.with_object(object_id);       // For specific object (remote_obj
 ```cpp
 rpc::remote_object remote_obj = ...;
 
-// Get the full zone_address (routing_prefix, subnet_id, object_id)
+// Get the full zone_address (routing prefix, subnet, local/object address)
 const zone_address& addr = remote_obj.get_address();
 
 // Access individual components
@@ -314,7 +359,7 @@ uint64_t prefix = addr.get_routing_prefix();
 uint64_t subnet = addr.get_subnet();
 uint64_t obj_id = addr.get_object_id();
 
-// Check if two addresses are in the same zone (ignoring object_id)
+// Check if two addresses are in the same zone (ignoring local/object address)
 if (addr1.same_zone(addr2)) { ... }
 ```
 
@@ -533,7 +578,7 @@ on_service_transport_down(
 - `interfaces/rpc/rpc_types.idl` - Zone definition
 
 **Service Management**:
-- `c++/rpc/include/rpc/service.h` - Zone lifecycle management
+- `c++/rpc/include/rpc/internal/service.h` - Zone lifecycle management
 - `c++/rpc/src/service.cpp` - Zone operations
 
 **Zone Types**:

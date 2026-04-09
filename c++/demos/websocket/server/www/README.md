@@ -11,7 +11,9 @@ Browser-based WebSocket test client with dual-mode support: Echo and Calculator.
 
 1. **Start the WebSocket server:**
    ```bash
-   ./build/output/debug/websocket_server
+   cmake --preset Debug_Coroutine
+   cmake --build build_debug_coroutine --target websocket_server
+   ./build_debug_coroutine/output/websocket_server
    ```
 
 2. **Open your browser:**

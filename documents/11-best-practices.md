@@ -5,6 +5,12 @@ All rights reserved.
 
 # Best Practices
 
+Scope note:
+
+- this guide is written for the primary C++ implementation
+- IDL guidance is broadly shared, but runtime, transport, coroutine, and smart
+  pointer details should be read as C++-specific unless stated otherwise
+
 Guidelines for effective Canopy usage, common pitfalls, and troubleshooting tips.
 
 ## 1. Interface Design
@@ -48,8 +54,10 @@ interface i_user_service_data_access_repository_cache_auth_session_logging
 
 - **Use `rpc::make_shared<T>()`** for creation
 - **Let reference counting handle cleanup**: Don't manually delete
-- **Use `rpc::weak_ptr`** not useful except for local objects, as it is a weak link to the prox and not to the remote object
-- **Use `rpc::optimistic_ptr`** for objects with independent lifetimes (databases, services, callbacks) or for breaking circular dependencies shared ptr going one way optimistic for the other the object owning the shared pointer goes out of scope it is cleaned up, as the optimist pointer to is has no control on its lifetime.
+- **Use `rpc::weak_ptr`** for local weak references to proxy/control-block state
+- **Use `rpc::optimistic_ptr`** for remote weak lifetime semantics: callbacks,
+  services, independent-lifetime objects, and circular-dependency breaking
+  across zones
 - **Prefer passing by value** for small types
 
 ### Don't
@@ -60,12 +68,13 @@ interface i_user_service_data_access_repository_cache_auth_session_logging
 - **Don't assume synchronous destruction**
 - **Don't hold references longer than needed**
 - **Don't use optimistic_ptr for objects that should die with last reference**
+- **Don't confuse `weak_ptr` and `optimistic_ptr`**: `weak_ptr` is local, `optimistic_ptr` is the callable remote weak pointer
 
 ### Example
 
 ```cpp
 // Good
-auto service = rpc::make_shared<my_service>();
+rpc::shared_ptr<i_service> service(new my_service());
 auto error = CO_AWAIT service->process(data);
 
 // Bad: Raw pointer
@@ -125,6 +134,7 @@ CO_AWAIT calculator_->divide(a, b, result);  // Ignore result!
 - **Handle errors at each await point**
 - **Use blocking mode for debugging**
 - **Spawn background tasks** for parallel operations
+- **Drop locks before marshaller, transport, or scheduler calls**
 
 ### Don't
 
@@ -132,6 +142,7 @@ CO_AWAIT calculator_->divide(a, b, result);  // Ignore result!
 - **Don't mix blocking and coroutine code**
 - **Don't create deep call chains** - harder to debug
 - **Don't forget to spawn** coroutine tasks
+- **Don't hold mutexes across transport, marshaller, or scheduler boundaries**
 
 ### Example
 

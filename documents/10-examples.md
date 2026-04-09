@@ -5,7 +5,16 @@ All rights reserved.
 
 # Examples
 
-Working examples demonstrating Canopy features and patterns.
+Scope note:
+
+- the examples in this document are written for the primary C++ implementation
+- they demonstrate C++ runtime patterns and do not imply full parity in Rust or
+  JavaScript
+- for implementation scope, see [C++ Status](status/cpp.md),
+  [Rust Status](status/rust.md), and [JavaScript Status](status/javascript.md)
+
+Working examples demonstrating Canopy features and patterns in the C++
+implementation.
 
 ## Getting Started
 
@@ -20,13 +29,13 @@ For basic calculator examples covering IDL definition, implementation, and simpl
 
 class server_app
 {
-    std::shared_ptr<rpc::service> service_;
+    std::shared_ptr<rpc::root_service> service_;
     rpc::shared_ptr<calculator::v1::i_calculator> calculator_;
 
 public:
     void start()
     {
-        service_ = std::make_shared<rpc::service>(
+        service_ = std::make_shared<rpc::root_service>(
             "server", rpc::zone{1});
 
         calculator_ = calculator::create_calculator();
@@ -40,7 +49,7 @@ public:
         return calculator_;
     }
 
-    std::shared_ptr<rpc::service> get_service()
+    std::shared_ptr<rpc::root_service> get_service()
     {
         return service_;
     }
@@ -54,13 +63,13 @@ public:
 
 class client_app
 {
-    std::shared_ptr<rpc::service> service_;
+    std::shared_ptr<rpc::root_service> service_;
     rpc::shared_ptr<calculator::v1::i_calculator> remote_calculator_;
 
 public:
-    void connect_to(server_app& server)
+    CORO_TASK(void) connect_to(server_app& server)
     {
-        service_ = std::make_shared<rpc::service>(
+        service_ = std::make_shared<rpc::root_service>(
             "client", rpc::zone{2});
 
         auto transport = std::make_shared<rpc::local::child_transport>(
@@ -78,17 +87,29 @@ public:
             });
 
         rpc::shared_ptr<calculator::v1::i_calculator> input_calculator;
-        auto error = CO_AWAIT service_->connect_to_zone(
-            "server", transport, input_calculator, remote_calculator_);
+        auto connect_result
+            = CO_AWAIT service_->connect_to_zone<
+                calculator::v1::i_calculator,
+                calculator::v1::i_calculator>(
+                    "server",
+                    transport,
+                    input_calculator);
+
+        if (connect_result.error_code != rpc::error::OK())
+            CO_RETURN;
+
+        remote_calculator_ = connect_result.output_interface;
 
         std::cout << "Connected to server\n";
+        CO_RETURN;
     }
 
-    void use_calculator()
+    CORO_TASK(void) use_calculator()
     {
         int result;
         auto error = CO_AWAIT remote_calculator_->add(100, 200, result);
         std::cout << "100 + 200 = " << result << "\n";
+        CO_RETURN;
     }
 };
 ```
@@ -102,7 +123,7 @@ public:
 
 class coro_server
 {
-    std::shared_ptr<rpc::service> service_;
+    std::shared_ptr<rpc::root_service> service_;
     rpc::shared_ptr<calculator::v1::i_calculator> calculator_;
     std::shared_ptr<coro::scheduler> scheduler_;
 
@@ -118,7 +139,7 @@ public:
                 .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool
             });
 
-        service_ = std::make_shared<rpc::service>(
+        service_ = std::make_shared<rpc::root_service>(
             "coro_server", rpc::zone{1}, scheduler_);
 
         calculator_ = calculator::create_calculator();
@@ -269,85 +290,34 @@ Optimistic pointers are for references to objects with independent lifetimes (e.
 ### Use Case 1: Database Connection
 
 ```cpp
-// Database service - managed externally, has its own lifetime
-auto db_service = database_manager->get_connection();
+// Long-lived service object with an independent lifetime
+rpc::optimistic_ptr<i_database> db = get_database_callback();
 
-// Create optimistic pointer (non-RAII reference)
-rpc::optimistic_ptr<i_database> opt_db;
-auto error = CO_AWAIT rpc::make_optimistic(db_service, opt_db);
-
-// Use the database - if it's still running, calls succeed
-auto result = CO_AWAIT opt_db->query("SELECT * FROM users");
-
-// If database is shut down externally, call returns OBJECT_GONE (not OBJECT_NOT_FOUND)
-db_service.reset();  // Release our reference
-auto result2 = CO_AWAIT opt_db->query("SELECT * FROM users");
-// Returns OBJECT_GONE - expected, database has its own lifetime
-
-// Contrast with shared_ptr:
-// auto error3 = CO_AWAIT db_service->query(...);  // Would return OBJECT_NOT_FOUND
+auto error = CO_AWAIT db->query("SELECT * FROM users");
+if (error == rpc::error::OBJECT_GONE())
+{
+    // Expected expiry for an optimistic pointer target
+    // Refresh the reference or skip this operation
+}
 ```
 
 ### Use Case 2: Callback Pattern (Prevents Circular Dependencies)
 
 ```cpp
-// Parent creates Child in another zone and needs callbacks without circular reference
-//
-// Zone 1: Parent (owns Child)
-//   └── shared_ptr<Child> (keeps Child alive)
-//
-// Zone 2: Child (created by Parent)
-//   └── optimistic_ptr<Parent> (for callbacks, NOT ownership)
+// A client gives a long-running service an optimistic callback reference.
+rpc::optimistic_ptr<i_token_listener> client_callback = ...;
 
-class parent : public i_parent
+auto error = CO_AWAIT client_callback->on_token("next token");
+if (error == rpc::error::OBJECT_GONE())
 {
-    rpc::shared_ptr<child> child_;  // Ownership
-
-public:
-    CORO_TASK(error_code) spawn_child()
-    {
-        // Create child in another zone
-        rpc::shared_ptr<child> new_child;
-        auto error = CO_AWAIT zone_->create_object(new_child);
-
-        // Give child an optimistic pointer to us for callbacks
-        // This allows child to notify us without creating circular reference
-        CO_AWAIT rpc::make_optimistic(
-            rpc::shared_ptr<parent>(this),
-            new_child->get_callback_handler());
-
-        child_ = new_child;  // Ownership reference
-        CO_RETURN error::OK();
-    }
-
-    // Callback from child
-    CORO_TASK(error_code) on_progress(int percent) override
-    {
-        RPC_INFO("Child progress: {}%", percent);
-        CO_RETURN error::OK();
-    }
-};
-
-class child : public i_child
-{
-    rpc::optimistic_ptr<parent> parent_;  // Callbacks only - no refcount
-public:
-    void set_parent(rpc::optimistic_ptr<parent> p) { parent_ = p; }
-
-    CORO_TASK(error_code) do_work()
-    {
-        for (int i = 0; i <= 100; i += 10)
-        {
-            // Notify parent of progress
-            // If parent is gone, returns OBJECT_GONE (expected)
-            CO_AWAIT parent_->on_progress(i);
-        }
-        CO_RETURN error::OK();
-    }
-};
+    // The client has disconnected or released the callback object.
+    // Stop streaming or clean up associated state.
+}
 ```
 
-**Key Difference**: `OBJECT_GONE` (optimistic) means "object with independent lifetime is gone" while `OBJECT_NOT_FOUND` (shared) means "object was destroyed while reference was held".
+**Key Difference**: `OBJECT_GONE` (optimistic) means the remote weak target
+was checked at call time and is no longer available, while `OBJECT_NOT_FOUND`
+(shared) means an object disappeared despite a strong distributed reference.
 
 ## 7. WebSocket Demo Structure
 

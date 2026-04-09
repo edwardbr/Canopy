@@ -32,11 +32,12 @@ Complete WebSocket server and client demonstration using libcoro and wslay.
 ### 1. Build and Start the Server
 
 ```bash
-# Build the server (automatically generates protobuf JavaScript)
-cmake --build build --target websocket_server
+# Configure and build the server (automatically generates protobuf JavaScript)
+cmake --preset Debug_Coroutine
+cmake --build build_debug_coroutine --target websocket_server
 
 # Run the server
-./build/output/debug/websocket_server
+./build_debug_coroutine/output/websocket_server
 ```
 
 **Note**: The build process automatically generates JavaScript protobuf files from the IDL definitions:
@@ -251,7 +252,7 @@ WS_URL=ws://192.168.1.100:8888 npm start
 ## Troubleshooting
 
 ### "Connection refused"
-- Ensure server is running: `./build/output/debug/websocket_server`
+- Ensure server is running: `./build_debug_coroutine/output/websocket_server`
 - Check firewall settings
 - Verify port 8888 is not in use: `netstat -tuln | grep 8888`
 

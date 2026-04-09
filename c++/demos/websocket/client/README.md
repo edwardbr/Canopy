@@ -112,7 +112,9 @@ Default: `http://localhost:8888`
 
 ### Start the C++ server
 ```bash
-./build/output/debug/websocket_server
+cmake --preset Debug_Coroutine
+cmake --build build_debug_coroutine --target websocket_server
+./build_debug_coroutine/output/websocket_server
 ```
 
 ### Run the simple client
@@ -225,8 +227,8 @@ The protobuf JavaScript files are **automatically generated** when you build the
 
 ```bash
 # Build the project (generates proto JS files automatically)
-cd /rpc
-cmake --build build
+cmake --preset Debug_Coroutine
+cmake --build build_debug_coroutine --target websocket_server
 
 # The websocket_proto.js file is automatically created in demos/websocket/client/
 ```

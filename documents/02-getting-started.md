@@ -5,11 +5,20 @@ All rights reserved.
 
 # Getting Started
 
-This tutorial guides you through creating your first Canopy application, from defining interfaces to making remote procedure calls.
+Scope note:
+
+- this tutorial is written for the primary C++ implementation
+- it introduces the generated-IDL and C++ runtime workflow, not a
+  language-neutral Canopy surface
+- for current implementation scope, see [C++ Status](status/cpp.md),
+  [Rust Status](status/rust.md), and [JavaScript Status](status/javascript.md)
+
+This tutorial guides you through creating your first C++ Canopy application,
+from defining interfaces to making remote procedure calls.
 
 ## Prerequisites
 
-- Completed [Building Canopy](04-building.md)
+- Completed [C++ Build And Test Guide](build-and-test/cpp.md)
 - Basic knowledge of C++17
 - CMake 3.24+
 - C++ compiler (Clang 10+, GCC 9.4+, or MSVC 2019+)
@@ -20,7 +29,9 @@ Before diving in, here are the essential concepts you'll encounter:
 
 - **Zone**: An execution context (process, thread, enclave, or remote machine) with a unique ID. Zones contain services and communicate via transports.
 
-- **Service**: Manages object lifecycle within a zone. Handles object registration, reference counting, and transport connections. Access via `rpc::service`.
+- **Service**: Manages object lifecycle within a zone. In normal application
+  code you usually construct a concrete service such as `rpc::root_service` or
+  `rpc::child_service`.
 
 - **Transport**: The communication channel between zones. Examples: local (in-process), TCP (network), SPSC (lock-free queues), SGX (secure enclaves).
 
@@ -71,18 +82,24 @@ namespace calculator
 
 ## 3. CMake Configuration
 
-Create `CMakeLists.txt`:
+Create `CMakeLists.txt`.
+
+For an exact external-project setup, use
+[Creating an External Project with Canopy](external-project-guide.md). The
+snippet below is intentionally minimal and C++-focused:
 
 ```cmake
 cmake_minimum_required(VERSION 3.24)
-project(my_rpc_app VERSION 1.0.0 LANGUAGES CXX)
+project(my_rpc_app VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find or build Canopy
-# For simplicity, we assume Canopy is in the parent directory
-add_subdirectory(../rpc build/rpc)
+# Build Canopy from a sibling checkout
+set(CANOPY_BUILD_TEST OFF CACHE BOOL "" FORCE)
+set(CANOPY_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
+add_subdirectory(../Canopy canopy_build)
 
 # Generate code from IDL
 CanopyGenerate(
@@ -93,9 +110,6 @@ CanopyGenerate(
     ""
     yas_binary
     yas_json
-
-    dependencies rpc_types_idl
-    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/idl
 )
 
 # Create executable
@@ -105,13 +119,13 @@ add_executable(my_rpc_app
 )
 
 target_link_libraries(my_rpc_app PRIVATE
-    rpc_host
+    rpc
     calculator_idl
+    ${CANOPY_LIBRARIES}
 )
 
 target_include_directories(my_rpc_app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/generated/include
 )
 ```
 
@@ -194,7 +208,7 @@ int main()
 
     // Create root service
     std::atomic<uint64_t> zone_gen = 0;
-    auto root_service = std::make_shared<rpc::service>(
+    auto root_service = std::make_shared<rpc::root_service>(
         "root",
         rpc::zone{++zone_gen});
 
@@ -233,17 +247,14 @@ int main()
 ## 6. Build and Run
 
 ```bash
-# Create build directory
-mkdir build && cd build
-
 # Configure
-cmake --preset Debug -DCMAKE_BUILD_TYPE=Debug ../my_rpc_app
+cmake -S . -B build_debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
 # Build
-cmake --build . --parallel $(nproc)
+cmake --build build_debug --parallel $(nproc)
 
 # Run
-./my_rpc_app
+./build_debug/my_rpc_app
 ```
 
 **Expected Output**:
@@ -297,7 +308,7 @@ int main()
     // === SERVER SIDE ===
 
     // Create server service
-    auto server_service = std::make_shared<rpc::service>(
+    auto server_service = std::make_shared<rpc::root_service>(
         "server",
         rpc::zone{++zone_gen});
 
@@ -309,7 +320,7 @@ int main()
     // === CLIENT SIDE ===
 
     // Create client service
-    auto client_service = std::make_shared<rpc::service>(
+    auto client_service = std::make_shared<rpc::root_service>(
         "client",
         rpc::zone{++zone_gen});
 
@@ -332,9 +343,11 @@ int main()
 
     // Connect client to server
     rpc::shared_ptr<v1::i_calculator> input_calculator;  // Input to child zone (unused in this example)
-    rpc::shared_ptr<v1::i_calculator> remote_calculator;
-    auto error = CO_AWAIT client_service->connect_to_zone(
-        "server", child_transport, input_calculator, remote_calculator);
+    auto [error, remote_calculator]
+        = CO_AWAIT client_service->connect_to_zone<v1::i_calculator>(
+            "server",
+            child_transport,
+            input_calculator);
 
     if (error != rpc::error::OK())
     {
@@ -373,8 +386,9 @@ Enable coroutines for async/await patterns:
 
 ### CMake Configuration
 
-```cmake
-cmake --preset Debug_Coroutine -DCMAKE_BUILD_TYPE=Debug
+```bash
+cmake --preset Debug_Coroutine
+cmake --build build_debug_coroutine
 ```
 
 ### Coroutine Main Program
@@ -403,7 +417,7 @@ int main()
 
     // Create service with scheduler
     std::atomic<uint64_t> zone_gen = 0;
-    auto service = std::make_shared<rpc::service>(
+    auto service = std::make_shared<rpc::root_service>(
         "coro_service",
         rpc::zone{++zone_gen},
         scheduler);

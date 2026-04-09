@@ -5,11 +5,22 @@ All rights reserved.
 
 # Zone Hierarchies
 
+Scope note:
+
+- this document describes the shared zone-topology model through the primary
+  C++ implementation
+- concrete class names, transport families, and lifecycle examples are
+  C++-specific unless explicitly stated otherwise
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 The name Canopy reflects the architecture: like a forest of trees, each node in the system grows its own tree of zones — a root zone from which child zones branch outward. Multiple nodes connect as peers across a network or mesh, and objects living at any level of any tree can communicate with objects at any level of any other tree, just as the leaves of a forest canopy interweave above the trunks.
 
 ## 1. Per-Node Zone Trees
 
-Each machine or process hosts its own root zone. From the root, child zones branch for plugins, enclaves, DLLs, or any other isolation boundary. A typical single-node hierarchy looks like:
+In the primary C++ implementation, each machine or process hosts its own root
+zone. From the root, child zones branch for plugins, enclaves, DLLs, or any
+other isolation boundary. A typical single-node hierarchy looks like:
 
 ```
 Root Zone (Node A)
@@ -77,14 +88,18 @@ Each node creates its own root service and connects out via transport:
 
 ```cpp
 // Node A: create root and connect to Node B
-auto root_service = rpc::make_shared<rpc::service>("node_a", zone_a_id);
+auto root_service = std::make_shared<rpc::root_service>("node_a", zone_a_id);
 auto transport = rpc::stream_transport::streaming_transport::create(
     root_service,
     tcp_stream,          // established TCP connection to Node B
     connection_handler); // handles inbound calls from Node B
 
 // Retrieve an interface from Node B's root zone
-auto [err, remote_factory] = CO_AWAIT root_service->connect_to_zone<i_factory>(zone_b_id);
+rpc::shared_ptr<i_factory> input_factory;
+auto [err, remote_factory] = CO_AWAIT root_service->connect_to_zone<i_factory>(
+    "node_b",
+    transport,
+    input_factory);
 ```
 
 ### Peer Zone Lifetime
@@ -99,7 +114,9 @@ Typical peer scenarios:
 
 ## 3. Multi-Hop Routing
 
-A **transport** links exactly two zones. The underlying mechanism may be a physical network connection (TCP between machines), a shared-memory queue between processes, or a direct software call between in-process zones — the transport abstraction is the same in all cases.
+A **transport** links exactly two adjacent zones. In the C++ implementation, the
+underlying mechanism may be a physical network connection, a shared-memory
+queue between processes, or a direct software call between in-process zones.
 
 When a call must cross more than one transport — for example from Zone A through Zone B to Zone C — Zone B acts as an intermediary, forwarding traffic between its two transport legs transparently. This works equally whether the zones are on the same machine or spread across the network.
 
@@ -133,7 +150,7 @@ Zone N
               Zone 4 (forked from Zone 3)
 ```
 
-### Implementation
+### Implementation Note
 
 ```idl
 interface i_example
@@ -228,6 +245,10 @@ class zone_factory : public i_zone_factory
 5. **Prefer peer root zones** for independent nodes rather than forcing an artificial parent–child relationship across machines
 6. **Use templates for test hierarchies** - enables parameterized testing
 
+The fork patterns above are conceptual topology examples. They are not a
+statement that every transport or every language implementation currently
+supports the same fork setup surface.
+
 ## 8. Code References
 
 **Hierarchical Transport Pattern**:
@@ -236,7 +257,7 @@ class zone_factory : public i_zone_factory
 - `documents/transports/sgx.md` - SGX enclave hierarchies
 
 **Implementation**:
-- `c++/rpc/include/rpc/child_service.h` - Child service class
+- `c++/rpc/include/rpc/internal/service.h` - `rpc::root_service`, `rpc::child_service`
 - `c++/transports/local/include/local/child_transport.h` - Child transport
 - `c++/transports/local/include/local/parent_transport.h` - Parent transport
 

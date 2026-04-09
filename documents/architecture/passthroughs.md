@@ -5,6 +5,14 @@ All rights reserved.
 
 # Passthrough Architecture
 
+Scope note:
+
+- this document explains passthrough routing through the current C++
+  implementation
+- the conceptual routing model is shared, but class layout, telemetry names,
+  and implementation details should be read as C++-specific unless stated
+  otherwise
+
 Passthroughs enable transparent communication between non-adjacent zones by routing through an intermediary zone.
 
 ## Purpose
@@ -34,7 +42,7 @@ class pass_through : public i_marshaller
 {
     std::shared_ptr<transport> forward_;   // To forward destination
     std::shared_ptr<transport> reverse_;   // To reverse destination
-    std::shared_ptr<service> service_;     // Hosting service (Zone 2)
+    std::shared_ptr<service> service_;     // Hosting service runtime (Zone 2)
 
     destination_zone forward_destination_;  // Zone 3
     destination_zone reverse_destination_;  // Zone 4
@@ -55,7 +63,9 @@ build_caller_route      = 0x02  // Bit 1
 // options = 3: Both bits set
 ```
 
-This signals a **relay operation**: "Don't create a reference here, route it somewhere else."
+This signals a **relay operation**: "build or reuse passthrough routing state
+for another caller/destination pair rather than treating this as a normal
+adjacent-zone reference."
 
 ### Relay Sequence
 
@@ -78,8 +88,8 @@ auto passthrough = std::make_shared<pass_through>(
     transport_to_zone3,    // forward
     transport_to_zone4,    // reverse
     service,               // Zone 2's service
-    Zone{3},              // forward_destination
-    Zone{4});             // reverse_destination
+    destination_zone{Zone{3}},  // forward_destination
+    destination_zone{Zone{4}}); // reverse_destination
 
 passthrough->shared_count_ = 1;  // Initial reference
 ```
@@ -237,7 +247,8 @@ If Zone 1 wants to reach Zone 4:
 - Zone 3 has passthrough: Zone 2 ↔ Zone 4
 - Calls route: Zone 1 → Zone 2 (passthrough) → Zone 3 (passthrough) → Zone 4
 
-Each passthrough maintains its own ref counts.
+Each passthrough maintains its own reference counts and adjacent transport
+links.
 
 ## Thread Safety
 
