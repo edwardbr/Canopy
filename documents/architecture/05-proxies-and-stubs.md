@@ -5,7 +5,14 @@ All rights reserved.
 
 # Proxies and Stubs
 
-Proxies and stubs are the client/server marshalling machinery that enables transparent remote procedure calls across zone boundaries. They form the foundation of Canopy's distributed object system.  You may use rpc::shared_ptr optimistic_pr and weak_ptr with local objects too, no marshalling will occur with them.
+Scope note:
+
+- this document explains shared proxy/stub semantics through the current C++
+  implementation
+- concrete class members, control-block details, and code examples should be
+  read as C++-specific unless stated otherwise
+
+Proxies and stubs are the client/server marshalling machinery that enables transparent remote procedure calls across zone boundaries. They form the foundation of Canopy's distributed object system. `rpc::shared_ptr`, `rpc::weak_ptr`, and `rpc::optimistic_ptr` may also refer to local objects, in which case no wire marshalling occurs.
 
 ## Conceptual Overview
 
@@ -51,7 +58,9 @@ Client Zone                        Server Zone
 
 ### object_proxy
 
-Represents a remote object in the local zone. When you hold an `rpc::shared_ptr<i_interface>` to a remote object, it's backed by an `object_proxy`.
+Represents a remote object in the local zone. When you hold an
+`rpc::shared_ptr<i_interface>` or `rpc::optimistic_ptr<i_interface>` to a
+remote object, it is backed by an `object_proxy`.
 
 **Key Members**:
 ```cpp
@@ -60,7 +69,7 @@ class object_proxy : public std::enable_shared_from_this<rpc::object_proxy>
     rpc::object object_id_;                          // Remote object ID
     stdex::member_ptr<service_proxy> service_proxy_; // Remote service
     std::unordered_map<interface_ordinal,
-        rpc::weak_ptr<casting_interface>> proxy_map; // Interface proxies
+        rpc::weak_ptr<casting_interface>> proxy_map; // Cached local weak refs to interface proxies
     std::atomic<int> shared_count_{0};               // Shared references
     std::atomic<int> optimistic_count_{0};           // Optimistic references
 };
@@ -82,7 +91,7 @@ auto proxy = std::make_shared<object_proxy>(
 
 **Lifecycle**:
 - Created when first reference to remote object arrives
-- Destroyed when last `rpc::shared_ptr` to the object is released
+- Destroyed when the last distributed reference path is released
 - Destructor sends final `release()` to remote zone
 
 ### object_stub
@@ -102,15 +111,16 @@ Represents a local object for remote callers. When a remote zone holds an `rpc::
 
 ### service_proxy
 
-Represents a remote zone's service. Acts as the gateway to all objects in that remote zone.
+Represents a remote zone's service. Acts as the gateway to all objects in that
+remote zone.
 
 **Key Members**:
 ```cpp
 class service_proxy
 {
     rpc::zone zone_id_;                      // Local zone
-    rpc::destination_zone dest_zone_id_;     // Remote zone
-    std::shared_ptr<service> service_;       // Local service
+    rpc::destination_zone dest_zone_id_;     // Remote zone (zone-only address)
+    std::shared_ptr<service> service_;       // Local service runtime
     stdex::member_ptr<transport> transport_; // Transport to remote zone
 
 };
@@ -120,7 +130,8 @@ class service_proxy
 1. **Zone Bridging**: Connects local zone to remote zone
 2. **Object Proxy Management**: Creates and caches `object_proxy` instances
 3. **Transport Access**: Routes calls through transport
-4. **Reference Propagation**: Forwards add_ref/release to remote zone
+4. **Reference Propagation**: Forwards add_ref/release and related marshaller
+   traffic to the remote zone
 
 **Creation**:
 ```cpp
@@ -163,7 +174,7 @@ class i_calculator_proxy : public comprehensive::i_calculator
 
 **Key Characteristics**:
 - Inherits from IDL interface
-- Holds `std::shared_ptr<object_proxy>`
+- Holds `std::shared_ptr<object_proxy>` in the C++ runtime
 - Each method marshals parameters, sends RPC, unmarshals result
 - Returns same error codes as defined in IDL
 

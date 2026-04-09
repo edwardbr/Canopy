@@ -5,7 +5,17 @@ All rights reserved.
 
 # Hierarchical Transport Pattern
 
-This document describes the circular dependency architecture and safe disconnection protocol used by all hierarchical transports in Canopy.
+Scope note:
+
+- this document describes the current C++ hierarchical transport pattern
+- the `child_transport` / `parent_transport` lifetime model is a C++ runtime
+  pattern, not a cross-language Canopy guarantee
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
+This document describes the circular dependency architecture and safe
+disconnection protocol used by hierarchical transports in the current C++
+implementation.
 
 ## Applicable Transports
 
@@ -48,7 +58,7 @@ Child Zone (zone 2):
 
 ### Ownership Chain
 
-1. `child_service` (child zone) holds `std::shared_ptr<parent_transport>`
+1. `rpc::child_service` (child zone) holds `std::shared_ptr<parent_transport>`
 2. `parent_transport` (child zone) holds `stdex::member_ptr<child_transport>` (parent zone)
 3. `child_transport` (parent zone) holds `stdex::member_ptr<parent_transport>` (child zone)
 
@@ -245,6 +255,6 @@ Enable telemetry to visualize the circular dependency lifecycle:
 
 ## See Also
 
-- `rpc/include/rpc/internal/member_ptr.h` - Thread-safe pointer wrapper
-- `rpc/include/rpc/internal/transport.h` - Base transport class
-- `rpc/include/rpc/internal/service.h` - Child service management
+- `c++/rpc/include/rpc/internal/member_ptr.h` - Thread-safe pointer wrapper
+- `c++/rpc/include/rpc/internal/transport.h` - Base transport class
+- `c++/rpc/include/rpc/internal/service.h` - `rpc::root_service` and `rpc::child_service`

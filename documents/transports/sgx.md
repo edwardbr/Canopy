@@ -5,6 +5,14 @@ All rights reserved.
 
 # SGX Enclave Transport (rpc::sgx)
 
+Scope note:
+
+- this document describes the current C++ SGX transport/runtime integration
+- the SGX transport model is a C++-specific transport family and depends on the
+  SGX build/toolchain support in the current tree
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 Secure communication between host application and Intel SGX enclaves.
 
 ## When to Use
@@ -19,6 +27,10 @@ Secure communication between host application and Intel SGX enclaves.
 - `CANOPY_BUILD_ENCLAVE=ON`
 
 ## Architecture
+
+The SGX path is a C++ hierarchical transport family. It should be read as a
+specialised host/enclave boundary implementation, not as a universal Canopy
+transport capability.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -76,7 +88,7 @@ auto enclave_proxy = rpc::enclave_service_proxy::create(
 ## Enclave Setup
 
 ```cpp
-// Inside enclave (marshal_test_enclave.cpp)
+// Inside enclave (illustrative test-style setup)
 int marshal_test_init_enclave(
     uint64_t host_zone_id,
     uint64_t host_id,
@@ -132,3 +144,8 @@ public:
         std::weak_ptr<rpc::child_service> service);
 };
 ```
+
+This page is best read together with:
+
+- [documents/transports/hierarchical.md](/var/home/edward/projects/Canopy/documents/transports/hierarchical.md)
+- [documents/architecture/07-zone-hierarchies.md](/var/home/edward/projects/Canopy/documents/architecture/07-zone-hierarchies.md)

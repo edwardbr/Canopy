@@ -5,6 +5,15 @@ All rights reserved.
 
 # Memory Management
 
+Scope note:
+
+- this document describes the current Canopy pointer and lifetime model through
+  the primary C++ implementation
+- the pointer types and semantics are shared architectural concepts, but the
+  concrete control-block implementation and examples are C++-specific
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 Canopy's memory management is built entirely on **smart pointers**. There is no separate garbage collector, no manual memory management—smart pointers ARE the memory management system. Understanding this is fundamental to working with Canopy.  Internally there are reference counts for passthroughs and stubs, however users of this library only need to worry about the shared_ptr and optimistic_ptr.
 
 ## Core Principle
@@ -20,12 +29,13 @@ When all three counts reach zero, the zone dies.
 
 ## Smart Pointer Foundation
 
-Canopy provides three smart pointer types, each with distinct lifetime semantics, only works with interfaces defined in the idl:
+Canopy provides three RPC-aware pointer types for IDL interfaces, each with
+distinct lifetime semantics:
 
 ```cpp
 rpc::shared_ptr<T>      // remote and local RAII ownership - object dies when refs = 0
-rpc::weak_ptr<T>        // Non-owning - maintains a reference to a the local proxy and not to the remote object, its use is therefore limited
-rpc::optimistic_ptr<T>  // Non-RAII callable weak pointer- for independent lifetimes, useful also for callbacks and to avoid circular references.
+rpc::weak_ptr<T>        // non-owning weak reference to the local proxy/control block
+rpc::optimistic_ptr<T>  // callable remote weak pointer for independent lifetimes
 ```
 
 **Critical Rule**: Never mix `rpc::shared_ptr` with `std::shared_ptr`. 
@@ -38,7 +48,8 @@ Thread-safe reference-counted smart pointer for remote objects with RAII semanti
 - Custom control block with shared, weak, and optimistic counts
 - Requires `casting_interface` inheritance
 - Compatible STL API with RPC-specific extensions
-- Keeps remote object **AND** transport chain alive
+- Keeps the referenced object alive and, for remote references, also keeps the
+  transport chain alive
 - Object destroyed when shared count reaches zero
 
 **Creation**:
@@ -93,7 +104,15 @@ if (auto locked = weak_ptr.lock()) {
 // else: object has been destroyed
 ```
 
-**Use Case**: Breaking circular references in complex hierarchies.
+`rpc::weak_ptr` is a weak reference to the local proxy/control-block state.
+
+`rpc::weak_ptr` and `rpc::optimistic_ptr` can both be used to break circular
+dependencies. The difference is where the weak state lives:
+
+- `rpc::weak_ptr` is local
+- `rpc::optimistic_ptr` is remote
+
+**Use Case**: Breaking local circular references in complex hierarchies.
 
 ```cpp
 class parent_node
@@ -109,13 +128,26 @@ class child_node
 
 ### rpc::optimistic_ptr<T>
 
-Non-RAII pointer for references to objects with **independent lifetimes**.
+Non-RAII remote weak pointer for references to objects with **independent
+lifetimes**.
 
 **Key Difference from shared_ptr**:
-- `rpc::shared_ptr`: RAII semantics - object dies when last shared_ptr is released
-- `rpc::optimistic_ptr`: Non-RAII semantics - assumes object has its own lifetime (e.g., database connection, singleton service)
+- `rpc::shared_ptr`: RAII semantics - object lifetime follows the last strong reference
+- `rpc::optimistic_ptr`: remote weak semantics - object has an independent lifetime and each call validates availability before dispatch
 
-**Important**: `rpc::optimistic_ptr` cannot be created directly. It can only be obtained from:
+**Important**: `rpc::optimistic_ptr` is not the same as `rpc::weak_ptr`.
+
+- `rpc::weak_ptr` weakens the local proxy/control-block reference
+- `rpc::optimistic_ptr` is the distributed callable weak-lifetime concept used
+  by the RPC system
+- for an optimistic call, the effective lock/check happens remotely as part of
+  the call path immediately before dispatch, not by promoting to shared
+  ownership in user code
+- `rpc::optimistic_ptr` can also be used to break circular dependencies, just
+  like `rpc::weak_ptr`, but with the weak state living remotely rather than
+  locally
+
+It is typically obtained from:
 1. Another `rpc::optimistic_ptr` (copy)
 2. `rpc::shared_ptr` via implicit conversion or `.to_optimistic()`
 
@@ -124,7 +156,7 @@ Non-RAII pointer for references to objects with **independent lifetimes**.
 | Pointer Type | Object Gone Error | Meaning |
 |--------------|-------------------|---------|
 | `rpc::shared_ptr` | `OBJECT_NOT_FOUND` | Serious - reference was held but object destroyed unexpectedly |
-| `rpc::optimistic_ptr` | `OBJECT_GONE` | Expected - object with independent lifetime is gone |
+| `rpc::optimistic_ptr` | `OBJECT_GONE` | Expected - the remote weak target was checked at call time and is no longer available |
 
 **Use Cases**:
 
@@ -132,59 +164,55 @@ Non-RAII pointer for references to objects with **independent lifetimes**.
 2. **Callback patterns** - Object A creates Object B and needs callbacks without circular dependency
 3. **Preventing circular dependencies in distributed systems**
 4. **Objects managed by external lifetime managers**
+5. **Listening for remote object deletion** so the local application can clean
+   up resources or attempt reconnection
 
 **Example: Callback Pattern Without Circular Dependency**
 
 ```cpp
-// Zone 1: Parent (creates child)
-//   └── shared_ptr<Child> (ownership - keeps child alive)
+// Peer-style example:
+// A client gives a long-running LLM service an optimistic callback object for
+// streamed tokens.
 //
-// Zone 2: Child (created by parent)
-//   └── optimistic_ptr<Parent> (callbacks only - no ownership)
+// If the client disconnects, the callback object goes away and subsequent calls
+// return OBJECT_GONE. This is a good fit for optimistic_ptr because the
+// callback target has an independent lifetime and should not be kept alive by
+// the service.
 
-class parent_service : public i_parent
+class llm_service : public i_llm_service
 {
-    rpc::shared_ptr<child_service> child_;  // Ownership
+    rpc::optimistic_ptr<i_token_listener> listener_;
 
 public:
-    CORO_TASK(error_code) create_child()
+    CORO_TASK(error_code) start_generation(
+        const std::string& prompt,
+        rpc::optimistic_ptr<i_token_listener> listener) override
     {
-        // Create child in another zone
-        rpc::shared_ptr<child_service> new_child;
-        auto error = CO_AWAIT factory_->create_child(new_child);
-
-        // Give child an optimistic pointer to us for callbacks
-        // This allows child to call us without creating circular reference
-        CO_AWAIT rpc::make_optimistic(
-            rpc::shared_ptr<parent_service>(this),
-            new_child->get_callback_target());
-
-        child_ = new_child;  // Ownership reference
+        listener_ = listener;
+        // Begin background generation...
         CO_RETURN error::OK();
     }
 
-    // Callback from child
-    CORO_TASK(error_code) on_child_event(int data) override
+    CORO_TASK(error_code) emit_token(const std::string& token)
     {
-        // Handle event
-        CO_RETURN error::OK();
+        auto error = CO_AWAIT listener_->on_token(token);
+        if (error == rpc::error::OBJECT_GONE())
+        {
+            // Client has disconnected or released its callback object.
+            // Stop streaming and clean up local generation state.
+            CO_RETURN rpc::error::OK();
+        }
+
+        CO_RETURN error;
     }
 };
 
-class child_service : public i_child
+class client_listener : public i_token_listener
 {
-    rpc::optimistic_ptr<parent_service> parent_;  // For callbacks only
-
 public:
-    void set_parent_callback(rpc::optimistic_ptr<parent_service> parent)
+    CORO_TASK(error_code) on_token(const std::string& token) override
     {
-        parent_ = parent;  // No refcount - no cycle!
-    }
-
-    CORO_TASK(error_code) process()
-    {
-        // Notify parent (if parent is gone, returns OBJECT_GONE - expected)
-        CO_AWAIT parent_->on_child_event(progress_);
+        // Render token in the UI or append to a buffer.
         CO_RETURN error::OK();
     }
 };
@@ -204,8 +232,8 @@ Shared Count (shared_count_)
 
 Optimistic Count (optimistic_count_)
 ├── Owned by: rpc::optimistic_ptr
-├── Does NOT keep object alive
-└── Returns: OBJECT_GONE when count exhausted
+├── Does NOT keep the object alive
+└── Returns: OBJECT_GONE when the independently managed object is no longer available
 
 Weak Count (weak_count_)
 ├── Owned by: rpc::weak_ptr
@@ -215,7 +243,8 @@ Weak Count (weak_count_)
 
 ### Control Block Structure
 
-Unlike `std::shared_ptr`, `rpc::shared_ptr` has a specialized control block:
+Unlike `std::shared_ptr`, the C++ implementation of `rpc::shared_ptr` has a
+specialized control block:
 
 ```cpp
 template<typename T>
@@ -281,7 +310,8 @@ As documented in `service.h`, transports are owned by:
 std::unordered_map<destination_zone, std::weak_ptr<transport>> transports_;
 ```
 
-Services hold **weak_ptr** (registry only), while actual ownership is distributed:
+Services hold **weak_ptr** registry entries, while actual ownership is
+distributed:
 
 ### 1. Service Proxies Hold Strong References
 

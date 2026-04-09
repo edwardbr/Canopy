@@ -5,6 +5,14 @@ All rights reserved.
 
 # TCP Transport
 
+Scope note:
+
+- this document describes the current C++ TCP transport stack
+- the TCP transport described here is built on the C++ streaming transport
+  layer and coroutine runtime
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 Network communication between different machines or processes.
 
 ## When to Use
@@ -24,7 +32,7 @@ Network communication between different machines or processes.
 - [SPSC Queues and Streams](spsc_and_ipc.md)
 - [Custom Transports](custom.md)
 
-Canopy's current TCP support is provided by:
+In the current C++ implementation, TCP support is provided by:
 
 - `streaming::tcp::acceptor`
 - `streaming::tcp::stream`
@@ -41,6 +49,9 @@ auto listener = std::make_unique<streaming::listener>(
 
 listener->start_listening(peer_service);
 ```
+
+The listener and stream objects are streaming-layer components. The RPC
+transport is `rpc::stream_transport::transport`.
 
 ## Client Connection
 
@@ -78,3 +89,7 @@ auto error = connect_result.error_code;
 TCP itself is just the stream layer. The RPC message envelope, handshake,
 reference counting, and request routing are all implemented by
 `rpc::stream_transport`.
+
+This page should therefore be read as transport-stack guidance for the current
+C++ implementation, not as a statement that every Canopy implementation
+provides a TCP transport.

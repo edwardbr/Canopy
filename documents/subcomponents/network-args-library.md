@@ -4,25 +4,28 @@
 
 All demo binaries and test hosts that create a `zone_address_allocator` need to parse address-family flags and routing-prefix arguments. Rather than duplicating this parsing logic across each binary, a shared static library (`canopy_network_config`) provides a common API. This keeps `args.hxx` boilerplate and the IPv4→IPv6 conversion in one place.
 
-## CMake Configuration (Phase 1b)
+## CMake Configuration
+
+Read this section against the current `interfaces/rpc/rpc_types.idl` and the
+live `zone_address` implementation.
+`zone_address` is now a versioned blob format whose capability header records
+the address layout, including `subnet_size_bits` and `object_id_size_bits`.
 
 The packed representation for wire serialization is configured at build time:
 
 ```cmake
-# Packed 128-bit representation for wire serialization
-# When ON: uses uint128_t or std::array<uint8_t, 16>
-# When OFF: uses structured form (uint64_t + uint32_t + uint32_t = 16 bytes)
 option(CANOPY_ADDRESS_PACKED "Use packed 128-bit representation" OFF)
 ```
 
-The `zone_address` structured form is always:
-- `uint64_t routing_prefix` (64 bits)
-- `uint32_t subnet_id` (32 bits)
-- `uint32_t object_id` (32 bits)
+Do not treat the old fixed structured form as authoritative. The authoritative
+address model is:
 
-**Total: 16 bytes = 128 bits** (one IPv6 address)
+- routing prefix
+- subnet
+- local/object address
 
-**Default**: `CANOPY_ADDRESS_PACKED=OFF` (structured form with named fields for debugger visibility).
+with the exact field widths described by the versioned address capabilities in
+`interfaces/rpc/rpc_types.idl`.
 
 ## CLI Address-Family Options
 
@@ -75,33 +78,36 @@ The first 64 bits of the address are taken directly as the routing prefix (equiv
 
 ## Public API
 
-**Location:** `subcomponents/network_config/`
+**Location:** `c++/subcomponents/network_config/`
 
 **CMake target:** `canopy_network_config` (static library)
 
 **Headers:**
-- `subcomponents/network_config/include/canopy/network_config/network_args.h`
+- `c++/subcomponents/network_config/include/canopy/network_config/network_args.h`
 
 ```cpp
 namespace canopy::network_config {
 
 struct network_config
 {
-    uint64_t routing_prefix = 0;    // converted uint64_t, ready for zone_address_allocator
-    uint32_t subnet_base    = 0;    // matches zone_address::subnet_id (32 bits)
-    uint32_t subnet_range   = 0xFFFFFFFFu;  // matches zone_address::subnet_id (32 bits)
+    std::vector<named_virtual_address> virtual_addresses;
+    std::vector<tcp_endpoint> listen_endpoints;
+    std::vector<tcp_endpoint> connect_endpoints;
 };
 
 // Add the address-family group and routing/subnet args to an existing ArgumentParser.
 // Call this before parser.ParseCLI(argc, argv).
-void add_network_args(args::ArgumentParser& parser);
+network_args_context add_network_args(args::ArgumentParser& parser);
 
-// Extract a network_config from a parser that was populated by add_network_args().
+// Extract a network_config from the context returned by add_network_args().
 // Throws std::invalid_argument on bad address format.
-network_config get_network_config(const args::ArgumentParser& parser);
+network_config get_network_config(const network_args_context& ctx);
 
 // Convenience: parse and return in one step.
-network_config parse_network_args(int argc, char* argv[], args::ArgumentParser& parser);
+network_config parse_network_args(
+    int argc,
+    char* argv[],
+    args::ArgumentParser& parser);
 
 // Build a zone_address_allocator from a network_config.
 zone_address_allocator make_allocator(const network_config& cfg);
@@ -110,13 +116,8 @@ zone_address_allocator make_allocator(const network_config& cfg);
 uint64_t ipv4_to_routing_prefix(const std::string& dotted_decimal);  // 6to4 mapping
 uint64_t ipv6_to_routing_prefix(const std::string& colon_hex);       // first 64 bits
 
-// Auto-detect the best routing prefix from the host's network interfaces.
-// Selection priority:
-//   1. First globally-routable unicast IPv6 address (non-link-local, non-loopback)
-//   2. First public IPv4 address (not 10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x)
-//   3. First private IPv4 address (RFC 1918)
-//   4. Returns 0 if no usable address is found (local-only mode)
-uint64_t detect_routing_prefix();
+// Auto-detect routing-prefix candidates from the host's network interfaces.
+bool detect_routing_prefix(...);
 
 }
 ```
@@ -156,7 +157,7 @@ The selected address is converted to a `routing_prefix` using the same rules as 
 int main(int argc, char* argv[])
 {
     args::ArgumentParser parser("TCP Transport Demo");
-    canopy::network_config::add_network_args(parser);
+    auto net_ctx = canopy::network_config::add_network_args(parser);
     // add any demo-specific args here ...
 
     try { parser.ParseCLI(argc, argv); }
@@ -165,10 +166,10 @@ int main(int argc, char* argv[])
 
     // If --routing-prefix was not supplied, get_network_config() calls
     // detect_routing_prefix() automatically to select the best interface address.
-    auto cfg       = canopy::network_config::get_network_config(parser);
+    auto cfg       = canopy::network_config::get_network_config(net_ctx);
     auto allocator = canopy::network_config::make_allocator(cfg);
 
-    auto service = std::make_shared<rpc::service>("server", allocator.allocate_zone(), scheduler);
+    auto service = std::make_shared<rpc::root_service>("server", allocator.allocate_zone(), scheduler);
     // ...
 }
 ```
@@ -176,7 +177,7 @@ int main(int argc, char* argv[])
 ## Files
 
 ```
-subcomponents/network_config/
+c++/subcomponents/network_config/
   CMakeLists.txt
   include/canopy/network_config/network_args.h
   src/network_args.cpp           ← CLI parsing, conversion, get_network_config()

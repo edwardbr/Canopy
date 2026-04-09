@@ -5,9 +5,19 @@ All rights reserved.
 
 # Error Handling
 
+Scope note:
+
+- this document describes the current Canopy error-code model through the
+  primary C++ implementation
+- the error names are shared protocol concepts, but helper APIs and examples
+  here are C++-specific
+- for implementation scope, see [C++ Status](status/cpp.md),
+  [Rust Status](status/rust.md), and [JavaScript Status](status/javascript.md)
+
 Canopy provides a comprehensive error handling system with 23 distinct error codes covering memory, transport, serialization, and lifecycle errors.
 
-For authoritative error code definitions, see `rpc/include/rpc/internal/error_codes.h`.
+For authoritative error code definitions, see
+`c++/rpc/include/rpc/internal/error_codes.h`.
 
 ## Error Code Offsets
 
@@ -51,7 +61,7 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | Error Code | Value | Description |
 |------------|-------|-------------|
 | `TRANSPORT_ERROR` | ±5 | Custom transport error |
-| `SERVICE_PROXY_LOST_CONNECTION` | ±21 | Channel unavailable |
+| `SERVICE_PROXY_LOST_CONNECTION` | ±20 | Channel unavailable |
 
 ### Zone Errors
 
@@ -66,7 +76,7 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | Error Code | Value | Description |
 |------------|-------|-------------|
 | `OBJECT_NOT_FOUND` | ±12 | Invalid object ID |
-| `OBJECT_GONE` | ±23 | Object no longer exists |
+| `OBJECT_GONE` | ±22 | Object no longer exists |
 
 ### Version/Compatibility Errors
 
@@ -90,8 +100,8 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | `SECURITY_ERROR` | ±3 | Security-specific issue |
 | `EXCEPTION` | ±14 | Uncaught exception |
 | `REFERENCE_COUNT_ERROR` | ±19 | Ref count issue |
-| `UNABLE_TO_CREATE_SERVICE_PROXY` | ±20 | Proxy creation failed |
-| `CALL_CANCELLED` | ±22 | Remote call cancelled |
+| `CALL_CANCELLED` | ±21 | Remote call cancelled |
+| `CALL_TIMEOUT` | ±23 | Outbound call timed out waiting for a response |
 
 ## 2. Error Checking Patterns
 

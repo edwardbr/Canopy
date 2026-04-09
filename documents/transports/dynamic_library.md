@@ -5,6 +5,14 @@ All rights reserved.
 
 # Dynamic Library and IPC Child Transports
 
+Scope note:
+
+- this document is primarily a C++ transport document
+- the transport concepts are still useful as shared Canopy semantics
+- exact target names, ABI names, coroutine behavior, and process-hosting
+  details should be read as C++ implementation details unless explicitly stated
+  otherwise
+
 Canopy now has four closely related transports and transport-adjacent runtime
 components for loading child zones from shared objects or child processes:
 
@@ -27,9 +35,13 @@ These pieces are intentionally separate:
 - `ipc_child_process` is also not a transport; it maps the shared queue pair and
   hosts a `rpc::stream_transport` directly inside the child process
 
-`rpc::ipc_transport` is not necesarily a hierarchical transport. It is a
+`rpc::ipc_transport` is not necessarily a hierarchical transport. It is a
 process-owning `rpc::stream_transport::transport` that can be combined with
 either a direct child-process runtime or a DLL-hosting child-process runtime.
+
+This page should therefore be read as C++ transport/runtime guidance for the
+current tree, not as a statement that every Canopy implementation provides the
+same DLL or child-process hosting stack.
 
 ## See Also
 

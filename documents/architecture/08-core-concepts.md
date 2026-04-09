@@ -5,29 +5,40 @@ All rights reserved.
 
 # Core Concepts
 
+Scope note:
+
+- this document explains shared Canopy concepts through the current C++
+  implementation
+- code examples, class names, coroutine behavior, and transport/runtime details
+  should be read as C++-specific unless stated otherwise
+
 This section covers the fundamental building blocks of Canopy: zones, services, smart pointers, and the proxy/stub architecture.
 
 ## 1. Zones
 
 A zone is an execution context that represents a boundary between different parts of a distributed system. Each zone has its own:
 
-- **Zone ID**: A unique identifier (`rpc::zone`)
-- **Object Namespace**: Objects are uniquely identified within a zone
-- **Service**: Manages object lifecycle and references
+- **Subnet**: A unique subnet component that identifies the zone within its
+  routing prefix
+- **Object Namespace**: Objects are uniquely identified within that zone by
+  their local/object address component
+- **Service**: Manages object lifecycle and references, typically via
+  `rpc::root_service` or `rpc::child_service`
 - **Transport Connections**: Links to other zones
 
 ### Zone Structure
 
 ```cpp
 // From rpc_types.idl
-// 128-bit address = 64-bit routing_prefix + 32-bit subnet_id + 32-bit object_id
+// zone_address is versioned and stores routing prefix, subnet, and object id
+// according to the capability header recorded in the blob representation
 
 struct zone_address
 {
 private:
-    uint64_t routing_prefix_ = 0;  // Bits 0-63: network prefix
-    uint32_t subnet_id_ = 0;       // Bits 64-95: zone within node
-    uint32_t object_id_ = 0;       // Bits 96-127: object within zone
+    uint64_t routing_prefix_ = 0;  // conceptual routing prefix
+    uint32_t subnet_id_ = 0;       // conceptual subnet component
+    uint32_t object_id_ = 0;       // conceptual local/object component, 0 for the service object
 
 public:
     // Accessors
@@ -45,8 +56,8 @@ public:
     // Conversion
     std::string to_string() const;  // CIDR-like notation
 
-    // Packed 128-bit representation (CMake-configurable)
-    // Converts to/from uint128_t or std::array<uint8_t, 16> for wire serialization
+    // Actual on-wire/in-memory layout is defined by rpc_types.idl and the
+    // versioned capability blob representation
 };
 
 struct zone
@@ -96,7 +107,7 @@ auto cfg = canopy::network_config::get_network_config(parser);
 auto allocator = canopy::network_config::make_allocator(cfg);
 
 // Default behavior: If no --routing-prefix is provided, auto-detects best interface
-auto root_service = std::make_shared<rpc::service>(
+auto root_service = std::make_shared<rpc::root_service>(
     "root_service",
     allocator.allocate_zone(),
 #ifdef CANOPY_BUILD_COROUTINE
@@ -105,7 +116,17 @@ auto root_service = std::make_shared<rpc::service>(
 );
 ```
 
-**Legacy compatibility**: `rpc::zone{42}` still works in local-only mode (routing_prefix=0).
+**Legacy compatibility**: `rpc::zone{42}` still works in local-only mode
+(`routing_prefix=0`).
+
+The routing prefix and subnet together identify the zone. The local/object
+address identifies a specific object inside that zone. Local address `0` is
+reserved for the zone's service object.
+
+The exact field widths are part of the address capabilities in
+`interfaces/rpc/rpc_types.idl`. The current default values are 64-bit subnet
+and 64-bit object-id fields, but the documentation should treat that as a
+default, not a fixed universal layout.
 
 ### Creating Child Zones
 
@@ -128,8 +149,8 @@ auto child_transport = std::make_shared<rpc::local::child_transport>(
             CO_RETURN rpc::error::OK();
         }));
 
-auto ret = CO_AWAIT root_service_->connect_to_zone(
-    "child_zone", child_transport, host_ptr, example_ptr);
+auto ret = CO_AWAIT root_service_->connect_to_zone<yyy::i_host, yyy::i_example>(
+    "child_zone", child_transport, host_ptr);
 ```
 
 ### Zone Types for Routing
@@ -137,14 +158,16 @@ auto ret = CO_AWAIT root_service_->connect_to_zone(
 Canopy uses specialized zone types for different routing scenarios, all wrapping `zone_address`:
 
 ```cpp
-struct zone               // General zone identity (object_id=0)
+struct zone               // General zone identity (routing_prefix + subnet, object_id=0)
 struct remote_object      // Routing target with object identity (includes object_id)
 struct destination_zone   // Zone-only routing (object_id=0)
 struct caller_zone        // Call origin (object_id=0)
 struct requesting_zone    // Known direction (object_id=0)
 ```
 
-**Key distinction**: `remote_object` carries the full `zone_address` including `object_id`, while `destination_zone` is zone-only. i_marshaller methods use `remote_object` for object identity.
+**Key distinction**: `remote_object` carries the full `zone_address` including
+the local/object address, while `destination_zone` is zone-only. `i_marshaller`
+methods use `remote_object` for object identity.
 
 ```cpp
 // Access the full address
@@ -155,12 +178,12 @@ uint64_t prefix = addr.get_routing_prefix();
 uint64_t subnet = addr.get_subnet();
 uint64_t obj_id = addr.get_object_id();
 
-// Compare zone portion only (ignoring object_id)
+// Compare zone portion only (ignoring local/object address)
 if (addr1.same_zone(addr2)) { ... }
 
 // Convert between types
-destination_zone dest = zone;  // zone-only
-remote_object obj = dest.with_object(object_id); // adds object_id
+destination_zone dest = zone;  // routing_prefix + subnet, local/object address = 0
+remote_object obj = dest.with_object(object_id); // adds local/object address
 ```
 
 ## 2. Services
@@ -179,18 +202,19 @@ A service manages the lifecycle of objects within a zone. It's the central autho
 ### Service Class Hierarchy
 
 ```
-rpc::service (base class for root zones)
+rpc::service       (abstract service base)
+├── rpc::root_service  (top-level zones)
 └── rpc::child_service (for hierarchical zones)
 ```
 
 ### Creating a Root Service
 
 ```cpp
-class my_service : public rpc::service
+class my_service : public rpc::root_service
 {
 public:
     my_service(const char* name, rpc::zone zone_id)
-        : rpc::service(name, zone_id)
+        : rpc::root_service(name, zone_id)
     {
         // Service initialization
     }
@@ -222,37 +246,40 @@ public:
 
 ```cpp
 // Zone and Object ID Management
-rpc::zone generate_new_zone_id();
 rpc::object generate_new_object_id();
 rpc::object get_object_id(const rpc::casting_interface* ptr);
 
 // Zone Connection
-template<typename ServiceProxyType, typename... Args>
-error_code connect_to_zone(const char* name,
-                           std::shared_ptr<rpc::transport> transport,
-                           const rpc::shared_ptr<ServiceProxyType>& service_proxy,
-                           Args&&... args);
+template<typename InInterface, typename OutInterface>
+CORO_TASK(rpc::service_connect_result<OutInterface>)
+connect_to_zone(const char* name,
+                std::shared_ptr<rpc::transport> transport,
+                const rpc::shared_ptr<InInterface>& input_interface);
 
 // Remote Zone Attachment
 template<typename InterfaceType, typename... Args>
-error_code attach_remote_zone(const char* name,
-                              std::shared_ptr<rpc::transport> transport,
-                              const rpc::interface_descriptor& input_descr,
-                              const rpc::interface_descriptor& output_descr,
-                              SetupCallback<InterfaceType, Args...> setup);
+CORO_TASK(rpc::remote_object_result)
+attach_remote_zone(const char* name,
+                   std::shared_ptr<rpc::transport> transport,
+                   const rpc::interface_descriptor& input_descr,
+                   const rpc::interface_descriptor& output_descr,
+                   SetupCallback<InterfaceType, Args...> setup);
 
 ```
 
 ## 3. Smart Pointers
 
-Canopy provides specialized smart pointers for remote object references. **Critical**: Never mix `rpc::shared_ptr` with `std::shared_ptr`.
+Canopy provides specialized smart pointers for local and remote interface
+references. **Critical**: Never mix `rpc::shared_ptr` with `std::shared_ptr`.
 
 ### rpc::shared_ptr<T>
 
-Thread-safe reference-counted smart pointer for remote objects.
+Thread-safe reference-counted smart pointer for local or remote interface
+objects.
 
 **Characteristics**:
-- Custom control block with shared, weak, and optimistic counts
+- Custom control block with shared, weak, and optimistic counts in the C++
+  runtime
 - Requires `casting_interface` inheritance
 - Compatible STL API with RPC-specific extensions
 - Keeps remote object and transport chain alive
@@ -295,7 +322,8 @@ if (raw) {
 
 ### rpc::weak_ptr<T>
 
-Non-owning reference to an `rpc::shared_ptr`-managed object.
+Non-owning local weak reference to an `rpc::shared_ptr`-managed proxy/control
+block.
 
 ```cpp
 rpc::shared_ptr<xxx::i_foo> shared_ptr = rpc::make_shared<foo_impl>();
@@ -309,15 +337,19 @@ if (auto locked = weak_ptr.lock()) {
 // else: object has been destroyed
 ```
 
-**Use Case**: Breaking circular references in complex hierarchies.
+**Use Case**: Breaking local circular references or holding non-owning local
+references to proxy/control-block state.
 
 ### rpc::optimistic_ptr<T>
 
-Non-RAII pointer for references to objects with independent lifetimes.
+Callable remote weak pointer for references to objects with independent
+lifetimes.
 
 **Key Difference from shared_ptr**:
 - `rpc::shared_ptr`: RAII semantics - object dies when last shared_ptr is released
-- `rpc::optimistic_ptr`: Non-RAII semantics - assumes object has its own lifetime (e.g., database connection, singleton service)
+- `rpc::optimistic_ptr`: Distributed weak-lifetime semantics - assumes the
+  object has its own lifetime (for example database connections, services, or
+  callback targets)
 
 **Important**: `rpc::optimistic_ptr` cannot be created directly. It can only be obtained from:
 1. Another `rpc::optimistic_ptr` (copy)
@@ -327,7 +359,7 @@ Non-RAII pointer for references to objects with independent lifetimes.
 | Pointer Type | Object Gone Error | Meaning |
 |--------------|-------------------|---------|
 | `rpc::shared_ptr` | `OBJECT_NOT_FOUND` | Serious - reference was held but object destroyed |
-| `rpc::optimistic_ptr` | `OBJECT_GONE` | Expected - object with independent lifetime is gone |
+| `rpc::optimistic_ptr` | `OBJECT_GONE` | Expected - the remote weak target was checked at call time and is gone |
 
 **Use Cases**:
 1. References to long-lived services (databases, message queues)
@@ -388,7 +420,7 @@ class object_b : public i_object_b
 public:
     void set_parent_callback(rpc::optimistic_ptr<object_a> parent)
     {
-        parent_a_ = parent;  // No refcount added - no circular dependency
+        parent_a_ = parent;  // No ownership cycle across zones
     }
 
     CORO_TASK(error_code) do_work()
@@ -396,7 +428,7 @@ public:
         // ... do work ...
 
         // Notify parent of progress (using optimistic_ptr)
-        // If parent is gone, returns OBJECT_GONE - expected for independent lifetime
+        // If parent is gone, returns OBJECT_GONE - expected for remote weak lifetime
         CO_AWAIT parent_a_->on_event(progress);
 
         CO_RETURN error::OK();

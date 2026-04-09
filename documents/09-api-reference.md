@@ -5,25 +5,62 @@ All rights reserved.
 
 # API Reference
 
+Scope note:
+
+- this is a quick-reference document for the primary C++ implementation
+- names, signatures, transport families, and coroutine macros here should be
+  read as C++ API guidance, not as a cross-language guarantee
+- use it as a navigation aid, not as a substitute for the current headers
+
 Quick reference for the main Canopy APIs.
 
-## 1. Service
+## 1. Services
 
-### Constructors
+The main concrete service entry points are:
+
+- `rpc::root_service` for top-level zones that allocate their own child zone IDs
+- `rpc::child_service` for hierarchical child zones that obtain new zone IDs
+  through their parent path
+
+Zones in Canopy follow an IPv6-inspired addressing model:
+
+- **routing prefix** identifies the node or routing domain
+- **subnet** identifies the zone
+- **local/object address** identifies the specific object within that zone
+
+The combination of routing prefix and subnet identifies the zone. Local/object
+address `0` is reserved for the zone's service object.
+
+### `rpc::root_service` Constructors
 
 ```cpp
 // Blocking mode
-rpc::service(const char* name, rpc::zone zone_id);
+rpc::root_service(const char* name, rpc::zone zone_id);
 
 // Coroutine mode
-rpc::service(const char* name, rpc::zone zone_id,
-             std::shared_ptr<coro::scheduler> scheduler);
+rpc::root_service(const char* name, rpc::zone zone_id,
+                  std::shared_ptr<coro::scheduler> scheduler);
+```
+
+### `rpc::child_service` Constructor
+
+```cpp
+// Blocking mode
+rpc::child_service(const char* name,
+                   rpc::zone zone_id,
+                   rpc::destination_zone parent_zone_id);
+
+// Coroutine mode
+rpc::child_service(const char* name,
+                   rpc::zone zone_id,
+                   rpc::destination_zone parent_zone_id,
+                   std::shared_ptr<coro::scheduler> scheduler);
 ```
 
 ### Zone and Object Management
 
 ```cpp
-rpc::zone generate_new_zone_id();
+CORO_TASK(rpc::new_zone_id_result) get_new_zone_id(rpc::get_new_zone_id_params params);
 rpc::object generate_new_object_id();
 rpc::object get_object_id(const rpc::casting_interface* ptr);
 ```
@@ -31,25 +68,53 @@ rpc::object get_object_id(const rpc::casting_interface* ptr);
 ### Zone Connection
 
 ```cpp
-template<typename ServiceProxyType, typename... Args>
-error_code connect_to_zone(
+template<class InInterface, class OutInterface>
+CORO_TASK(rpc::service_connect_result<OutInterface>)
+connect_to_zone(
     const char* name,
     std::shared_ptr<rpc::transport> transport,
-    const rpc::shared_ptr<ServiceProxyType>& service_proxy,
-    Args&&... args);
+    rpc::shared_ptr<InInterface> input_interface);
 ```
+
+Use `connect_to_zone(...)` when this zone is initiating a connection to another
+zone, including peer connections and parent-to-child connection setup.
 
 ### Remote Zone Attachment
 
 ```cpp
-template<typename InterfaceType, typename... Args>
-error_code attach_remote_zone(
+template<class ParentInterface, class ChildInterface>
+CORO_TASK(rpc::remote_object_result) attach_remote_zone(
     const char* name,
     std::shared_ptr<rpc::transport> transport,
-    const rpc::interface_descriptor& input_descr,
-    const rpc::interface_descriptor& output_descr,
-    SetupCallback<InterfaceType, Args...> setup);
+    rpc::connection_settings input_descr,
+    std::function<CORO_TASK(rpc::service_connect_result<ChildInterface>)(
+        rpc::shared_ptr<ParentInterface>,
+        std::shared_ptr<rpc::service>)> fn);
 ```
+
+Use `attach_remote_zone(...)` when this zone is accepting an incoming request
+from another zone and attaching that remote zone to this one in a peer-style
+fashion.
+
+### Hierarchical Child-Zone Creation
+
+```cpp
+template<class ParentInterface, class ChildInterface>
+static CORO_TASK(rpc::remote_object_result) rpc::child_service::create_child_zone(
+    const char* name,
+    std::shared_ptr<rpc::transport> parent_transport,
+    rpc::connection_settings input_descr,
+    std::function<CORO_TASK(rpc::service_connect_result<ChildInterface>)(
+        rpc::shared_ptr<ParentInterface>,
+        std::shared_ptr<rpc::child_service>)> fn
+#ifdef CANOPY_BUILD_COROUTINE
+    , std::shared_ptr<coro::scheduler> scheduler
+#endif
+);
+```
+
+Use `create_child_zone(...)` for hierarchical child zones attaching to their
+parent.
 
 ## 2. rpc::shared_ptr
 
@@ -267,17 +332,17 @@ const char* to_string(int error_code);
 ## 7. Zone Types
 
 ```cpp
-// 128-bit address = 64-bit routing_prefix + 32-bit subnet_id + 32-bit object_id
-// Packed representation (uint128_t / std::array<uint8_t, 16>) is CMake-configurable
+// zone_address is a versioned blob whose routing-prefix, subnet, and object-id
+// layout is described by the capability header in interfaces/rpc/rpc_types.idl
 
 struct zone_address
 {
     // Accessors
     uint64_t get_routing_prefix() const;
     void set_routing_prefix(uint64_t val);
-    uint64_t get_subnet() const;        // Returns subnet_id (32-bit value as uint64_t)
+    uint64_t get_subnet() const;        // Returns the subnet value as a uint64_t
     void set_subnet(uint64_t val);
-    uint64_t get_object_id() const;     // Returns object_id (32-bit value as uint64_t)
+    uint64_t get_object_id() const;     // Returns the local/object value as a uint64_t, 0 for the service object
     void set_object_id(uint64_t val);
 
     // Comparison
@@ -287,11 +352,11 @@ struct zone_address
     // Conversion
     std::string to_string() const;  // CIDR-like notation
 
-    // Packed 128-bit conversion (CMake-configurable)
-    // to_packed() / from_packed() for wire serialization
+    // Blob conversion helpers preserve the versioned capability layout from
+    // rpc_types.idl
 };
 
-struct zone { zone_address addr; };
+struct zone { zone_address addr; };  // routing_prefix + subnet, object_id=0
 struct remote_object { zone_address addr; };  // Includes object_id for i_marshaller methods
 struct destination_zone { zone_address addr; };  // Zone-only (object_id=0)
 struct caller_zone { zone_address addr; };
@@ -310,17 +375,17 @@ const zone_address& addr = remote_object.get_address();
 // Access components
 uint64_t prefix = addr.get_routing_prefix();
 uint64_t subnet = addr.get_subnet();
-uint64_t obj_id = addr.get_object_id();
+uint64_t obj_id = addr.get_object_id();  // local/object address
 
 // Zone type conversions
 destination_zone zone::as_destination() const;
 caller_zone zone::as_caller() const;
 requesting_zone zone::as_requesting_zone() const;
-zone remote_object::as_zone() const;  // Strip object_id
-remote_object destination_zone::with_object(object obj) const;  // Add object_id
+zone remote_object::as_zone() const;  // Strip local/object address
+remote_object destination_zone::with_object(object obj) const;  // Add local/object address
 ```
 
-### Legacy Compatibility
+### Compatibility Note
 
 ```cpp
 // Constructor from uint64_t (sets subnet_id, routing_prefix=0, object_id=0)

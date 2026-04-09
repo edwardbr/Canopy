@@ -1,42 +1,136 @@
-PROGRESS.md, rust_protobuf_generator.cpp, proto_generator.h, protobuf_generator.cpp.
-  *   *User's Request:* "Please action the next item to do in 'rust/PROGRESS.md'".
-  *   *Agent's action:* Read `PROGRESS.md`, read `rust_protobuf_generator.cpp`, `proto_generator.h`, and `protobuf_generator.cpp`. This is the setup phase for the next task.
-  *   *Goal:* The overall goal is a Rust port of the Canopy project. The immediate goal (from `PROGRESS.md`) is to replace field-by-field message population in `rust_protobuf_generator.cpp` with conversion driven directly from the canonical generated protobuf request/response message types.
-  *   *Instructions:* Follow the `PROGRESS.md` file for tracking and replayable migration history. Maintain C++ parity (e.g., pointer kinds, error classification).
-  *   *Discoveries:* The agent has explored the existing Rust protobuf generator and the shared `proto_generator` logic. It sees how `rust_protobuf_generator.cpp` currently emits `from_proto_X` and `to_proto_X` helpers by manually iterating over members.
-  *   *Accomplished:*
-      *   Read `PROGRESS.md` to identify the next task.
-      *   Examined `rust_protobuf_generator.cpp` to see the current implementation of struct/method protobuf conversion.
-      *   Examined `proto_generator.h` and `protobuf_generator.cpp` to understand the shared protobuf logic.
-  *   *Next Steps:* Implement the "Next implementation step" listed in `PROGRESS.md`: replace field-by-field population with schema-driven conversion.
-  *   *Goal:* Rust port of Canopy. Specifically, improving the Rust protobuf generator.
-  *   *Instructions:* Use `PROGRESS.md` as the source of truth and a history of implementation decisions.
-  *   *Relevant files:*
-      *   `rust/PROGRESS.md`: The project roadmap.
-      *   `generator/src/rust_protobuf_generator.cpp`: The file to be modified.
-      *   `generator/include/proto_generator.h`: Shared helpers.
-      *   `generator/src/protobuf_generator.cpp`: C++ protobuf generator reference.
+# Rust Development Notes
 
----
-Goal
-The overall goal is the Rust port of the Canopy project. The immediate objective is to advance the Rust protobuf generator to be more maintainable and robust.
-Instructions
-- Follow the roadmap and history tracked in /var/home/edward/projects/Canopy/rust/PROGRESS.md. 
-- Maintain strict parity with C++ runtime behavior, specifically regarding interface pointer kinds (shared_ptr vs optimistic_ptr), error classification (is_critical), and the rpc::base experience.
-- Ensure that generated Rust code remains in ignored/generated paths and is not committed to the repository.
-Discoveries
-- The current Rust protobuf generator (rust_protobuf_generator.cpp) handles struct and method conversion by manually iterating over members and emitting from_proto_X and to_proto_X helper functions.
-- There is a shared proto_generator layer used by both C++ and Rust protobuf generators to handle basic type mappings and normalization.
-- The project has already established a working end-to-end probe for basic RPC calls over generated protobuf messages.
-Accomplished
-The assistant has performed the initial discovery for the next task:
-- Identified the next item in PROGRESS.md: replace the remaining field-by-field message population in generator/src/rust_protobuf_generator.cpp with conversion driven directly from the canonical generated protobuf request/response message types.
-- Analyzed rust_protobuf_generator.cpp to locate the current member-iteration logic (e.g., lines 805-822 and 825-843).
-- Examined proto_generator.h and protobuf_generator.cpp to understand the shared type-mapping infrastructure.
-What needs to be done next:
-- Refactor rust_protobuf_generator.cpp to move away from hardcoded member iteration during conversion and instead drive the process from the schema shape of the generated protobuf messages. This will prevent the need to duplicate per-field set/get logic every time a new IDL field type is supported.
-Relevant files / directories
-- /var/home/edward/projects/Canopy/rust/PROGRESS.md: Project status and roadmap.
-- /var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp: The primary target for the current refactor.
-- /var/home/edward/projects/Canopy/generator/include/proto_generator.h: Shared protobuf utility headers.
-- /var/home/edward/projects/Canopy/generator/src/protobuf_generator.cpp: The C++ version of the protobuf generator, serving as a behavioral reference.
+This file is the Rust-specific companion to the repository-level development
+guide.
+
+## Current Supported Scope
+
+The Rust port currently supports:
+
+- Protocol Buffers only
+- blocking runtime behavior only
+- `local` transport
+- `dynamic_library` transport
+
+The Rust port does not currently support:
+
+- coroutine runtime behavior
+- streamed transports
+- YAS or other non-protobuf serialization formats
+- full transport parity with the C++ tree
+
+If you are changing Rust code, assume the supported scope above unless the code
+itself clearly shows otherwise.
+
+## Public Rust Surface
+
+Normal Rust application-facing code should stay on:
+
+- generated interface traits
+- `SharedPtr<dyn Interface>`
+- `OptimisticPtr<dyn Interface>`
+- `RootService`
+- `ChildService`
+
+Normal Rust application-facing code should not need to know about:
+
+- `ObjectStub`
+- `ObjectProxy`
+- `ServiceProxy`
+- `LocalProxy`
+- transport-local pointer/control details
+
+Those concepts belong under `canopy_rpc::internal` or transport internals.
+
+## Structural Intent
+
+The Rust tree should stay close to the C++ structure where practical.
+
+That means:
+
+- keep module and file responsibilities aligned with the corresponding C++ code
+- avoid inventing Rust-only runtime layers unless there is a clear technical
+  reason
+- prefer the same conceptual boundaries for:
+  - `service`
+  - `service_proxy`
+  - `object_proxy`
+  - `object_stub`
+  - `transport`
+  - `pass_through`
+
+If equivalent Rust entities become much larger or more complex than their C++
+counterparts, treat that as a design smell and re-check the split.
+
+## Runtime Boundary Rule
+
+Rust follows the same effective rule as the C++ marshaller boundary:
+
+- no runtime mutex or equivalent lock should remain held across RPC I/O or
+  re-entrant dispatch paths
+
+Treat the following kinds of calls as I/O/runtime boundaries:
+
+- `send`
+- `post`
+- `try_cast`
+- `add_ref`
+- `release`
+- `object_released`
+- `transport_down`
+- `get_new_zone_id`
+
+In blocking mode, no lock should cross these calls.
+
+If Rust coroutine support is added later, one-way send-style calls may only be
+relaxed deliberately where they are proven not to wait, suspend, or re-enter
+while the lock is held.
+
+## Generated Code Policy
+
+- do not commit machine-generated Rust output
+- generated Rust should continue to live in build output or ignored generated
+  paths
+- generator changes should keep Rust output aligned with C++ naming,
+  fingerprints, ordinals, and wire semantics
+
+## Pointer And Interface Guidance
+
+- app-facing Rust code should hide local-vs-remote mechanics behind
+  `SharedPtr` and `OptimisticPtr`
+- optimistic local failure should behave like optimistic remote failure:
+  `OBJECT_GONE`, not local weak-pointer mechanics exposed to the app
+- local proxy/control details are runtime internals, not the normal API
+
+## Documentation Files
+
+- [`README.md`](/var/home/edward/projects/Canopy/rust/README.md)
+  is now a short pointer to the canonical Rust port docs under
+  [`documents/language-ports/rust/README.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/README.md)
+- [`PROGRESS.md`](/var/home/edward/projects/Canopy/rust/PROGRESS.md)
+  is now a short pointer to the canonical active Rust progress file under
+  [`documents/language-ports/rust/progress.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/progress.md)
+- [`COMPLETED.md`](/var/home/edward/projects/Canopy/rust/COMPLETED.md)
+  is now a short pointer to the canonical completed Rust migration history under
+  [`documents/language-ports/rust/completed.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/completed.md)
+
+## Verification Expectations
+
+When changing Rust runtime, generator, or transport code, verify the smallest
+relevant checks first and broaden only as needed.
+
+Common checks include:
+
+- `cargo test -p canopy-rpc --lib`
+- `cargo test -p canopy-transport-local --lib`
+- `cargo test -p canopy-transport-dynamic-library --lib`
+- `cargo test -p canopy-protobuf-runtime-probe --lib -- --nocapture`
+- `ctest --test-dir build_debug -R 'rust_tests|fuzz_transport_test' --output-on-failure`
+
+If a change affects shared runtime behavior, consider both:
+
+- `build_debug`
+- `build_debug_coroutine`
+
+even though the Rust runtime itself remains blocking-only today, because the
+overall repository test harness exercises mixed C++/Rust paths.

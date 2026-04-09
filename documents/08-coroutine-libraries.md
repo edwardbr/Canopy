@@ -5,7 +5,24 @@ All rights reserved.
 
 # Coroutine Libraries
 
-Canopy is designed to be coroutine-library agnostic. While the library is currently written against libcoro, the core abstractions have been isolated to enable porting to other coroutine libraries with minimal changes.
+Scope note:
+
+- this document describes the C++ coroutine/backend strategy
+- it is not a statement that non-C++ Canopy implementations expose the same
+  coroutine abstraction layer
+- see [C++ Status](status/cpp.md), [Rust Status](status/rust.md), and
+  [JavaScript Status](status/javascript.md) for implementation scope
+
+Canopy is intended to become more coroutine-library agnostic over time. In the
+current C++ tree, the macro layer in `coroutine_support.h` isolates the basic
+syntax, but the streaming and coroutine transports still depend materially on
+the current backend choices.
+
+This document should therefore be read as:
+
+- current C++ state
+- target design direction
+- migration plan for reducing backend coupling
 
 ## Design Philosophy
 
@@ -13,7 +30,7 @@ The coroutine support is encapsulated in a single header file that defines macro
 
 ## Implementation Location
 
-All coroutine abstractions are defined in:
+The syntax-level coroutine abstractions are defined in:
 
 ```
 rpc/include/rpc/internal/coroutine_support.h
@@ -28,7 +45,6 @@ To support a new coroutine library, the following abstractions must be provided:
 | `CORO_TASK(x)` | Return type for coroutine functions | x             | Must be awaitable, copyable/movable             |
 | `CO_RETURN`    | Return from coroutine               | return        | Coroutine return statement                      |
 | `CO_AWAIT`     | Suspend until completion            | <empty>       | Must work with `co_await` expression            |
-| `SPAWN(x)`     | Launch a task and not wait          | <custom>      | Must spawn a separate thread or use a pool      |
 | `SYNC_WAIT(x)` | Blocking wait for coroutine         | <custom>      | Must block current thread/task until completion |
 
 ## Current Implementation (libcoro)
@@ -93,7 +109,7 @@ For transports that use async I/O (TCP, SPSC), you may need to adapt the network
 - **Asio**: Uses `asio::io_context` and `asio::ip::tcp::*`
 - **libunifex**: Uses `unifex::single_thread_context` and sender-based operations
 
-## Target Libraries
+## Candidate Libraries
 
 - [libcoro](libcoro.md) - Current implementation, C++20 coroutine library
 - [libunifex](libunifex.md) - Facebook's sender/receiver framework
@@ -110,13 +126,13 @@ For transports that use async I/O (TCP, SPSC), you may need to adapt the network
 | TCP I/O            | Yes     | Via libunifex | Limited            | Yes             |
 | UDP I/O            | Yes     | Via libunifex | Limited            | Yes             |
 | Timers             | Yes     | Via libunifex | Limited            | Yes             |
-| Active development | Yes     | No            | No                 | No              |
+| Active development | Current backend | Investigate | Investigate | Investigate |
 
-## Limitations
+## Current Limitations
 
-Some advanced features may require library-specific extensions:
+Some advanced features still require backend-specific integration work:
 
-- **io_scheduler integration** - Currently tied to libcoro's io_scheduler for TCP and SPSC transports
+- **Scheduler integration** - Currently tied to the active C++ coroutine backend for TCP and streaming transports
 - **Network primitives** - TCP client/server abstractions are libcoro-specific
 - **Channel/back-channel support** - May require adaptation for sender/receiver models
 
@@ -155,9 +171,9 @@ This keeps the rest of Canopy insulated from:
 - `coro::net::io_status`
 - backend-specific timeout and polling mechanics
 
-### Recommended Phases
+### Recommended Sequence
 
-#### Phase 1: Create a Canopy Async Facade
+#### Create a Canopy Async Facade
 
 Add a Canopy-owned header set that defines:
 
@@ -169,7 +185,7 @@ Add a Canopy-owned header set that defines:
 
 At this phase the implementation can still delegate entirely to `libcoro`, but direct `libcoro` types should stop appearing in transport-facing public headers.
 
-#### Phase 2: Move Streaming Public Headers to Canopy Types
+#### Move Streaming Public Headers to Canopy Types
 
 Refactor:
 
@@ -183,7 +199,7 @@ so their public APIs use Canopy types rather than `coro::*` and `coro::net::*`.
 
 This is the point where `streaming` stops leaking the backend choice into the wider codebase.
 
-#### Phase 3: Isolate Backend Implementations
+#### Isolate Backend Implementations
 
 Move backend-specific code into implementation-specific areas, for example:
 
@@ -199,7 +215,7 @@ The `libcoro` backend would adapt:
 
 The io_uring path can then be treated as a Canopy backend implementation decision rather than a transport class that is hardwired to `libcoro` scheduling semantics.
 
-#### Phase 4: Introduce Canopy-Owned I/O Execution
+#### Introduce Canopy-Owned I/O Execution
 
 Once the facade is in place, Canopy can choose a backend-specific execution strategy without changing the transport API:
 
@@ -210,7 +226,7 @@ Once the facade is in place, Canopy can choose a backend-specific execution stra
 
 This is the point where io_uring can be tuned for Canopy rather than shaped around a generic external scheduler.
 
-#### Phase 5: Add Alternate Backends
+#### Add Alternate Backends
 
 After `libcoro` is behind the facade, other backends can be introduced incrementally:
 
@@ -261,11 +277,11 @@ After porting, ensure all tests pass in both blocking and coroutine modes:
 ```bash
 # Coroutine mode
 cmake --preset Debug_Coroutine
-cmake --build build --target all
-ctest --test-dir build
+cmake --build build_debug_coroutine --target all
+ctest --test-dir build_debug_coroutine
 
 # Blocking mode (default)
 cmake --preset Debug
-cmake --build build --target all
-ctest --test-dir build
+cmake --build build_debug --target all
+ctest --test-dir build_debug
 ```

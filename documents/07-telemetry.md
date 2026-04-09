@@ -5,7 +5,16 @@ All rights reserved.
 
 # Telemetry
 
-Canopy includes a comprehensive telemetry subsystem for debugging, visualization, and performance analysis.
+Scope note:
+
+- this document describes the current C++ telemetry subsystem
+- the telemetry interfaces are C++ implementation details, not a cross-language
+  Canopy guarantee
+- see [C++ Status](status/cpp.md), [Rust Status](status/rust.md), and
+  [JavaScript Status](status/javascript.md) for implementation scope
+
+Canopy includes a comprehensive telemetry subsystem for debugging,
+visualization, and performance analysis in the primary C++ implementation.
 
 ## 1. Overview
 
@@ -23,8 +32,16 @@ The telemetry system captures all RPC operations and can output to multiple form
 ### Compile-Time Enable
 
 ```bash
-# In CMake configuration
-cmake --preset Debug -DCANOPY_USE_TELEMETRY=ON
+cmake --preset Debug
+```
+
+`CANOPY_USE_TELEMETRY` is already enabled by the current `Debug` preset. Some
+reduced-logging and release-oriented presets disable it.
+
+Telemetry service headers live under:
+
+```text
+c++/telemetry/include/rpc/telemetry/
 ```
 
 ### Programmatic Setup
@@ -40,7 +57,7 @@ rpc::console_telemetry_service::create(
     "/tmp/rpc_logs"      // Output directory
 );
 
-rpc::telemetry_service_ = telemetry_service;
+rpc::set_telemetry_service(telemetry_service);
 #endif
 ```
 
@@ -63,6 +80,10 @@ rpc::console_telemetry_service::create(
     test_name,
     "/tmp/rpc_logs");
 ```
+
+The concrete interface surface is defined in:
+
+- [i_telemetry_service.h](/var/home/edward/projects/Canopy/c++/telemetry/include/rpc/telemetry/i_telemetry_service.h)
 
 ### Sample Output
 
@@ -216,24 +237,19 @@ on_service_transport_down(zone_id,
             caller_zone_id)
 ```
 
-### Proxy Events
+### Proxy And Transport Events
 
 ```cpp
-on_service_proxy_creation(local_zone, remote_zone)
-on_service_proxy_deletion(local_zone, remote_zone)
-on_service_proxy_send(local_zone, remote_zone, method_id)
+on_service_proxy_creation(service_name, service_proxy_name, local_zone, remote_zone, caller_zone)
+on_service_proxy_deletion(local_zone, remote_zone, caller_zone)
+on_service_proxy_send(local_zone, remote_object, caller_zone, interface_id, method_id)
 on_object_proxy_creation(local_zone, remote_zone, object_id)
 on_interface_proxy_creation(local_zone, remote_zone, object_id, interface_id)
-```
-
-### Transport Events
-
-```cpp
-on_transport_creation(local_zone, remote_zone)
-on_transport_deletion(local_zone, remote_zone)
-on_transport_status_change(local_zone, remote_zone, status)
-on_transport_send(local_zone, remote_zone, method_id)
-on_transport_receive(local_zone, remote_zone, method_id)
+on_transport_creation(name, local_zone, adjacent_zone, status)
+on_transport_deletion(local_zone, adjacent_zone)
+on_transport_status_change(name, local_zone, adjacent_zone, old_status, new_status)
+on_transport_outbound_send(local_zone, adjacent_zone, remote_object, caller_zone, interface_id, method_id)
+on_transport_inbound_send(local_zone, adjacent_zone, remote_object, caller_zone, interface_id, method_id)
 ```
 
 ## 8. Thread-Local Logging
@@ -267,6 +283,16 @@ Entry 2: [ERROR] send failed error=5
 
 ## 9. Integration with Tests
 
+Telemetry is built when `CANOPY_USE_TELEMETRY=ON`. In the current C++ build
+that produces:
+
+- `rpc_telemetry_interface`
+- `rpc_telemetry`
+
+and, in enclave builds:
+
+- `rpc_telemetry_enclave`
+
 ### Test Fixture Integration
 
 ```cpp
@@ -281,13 +307,14 @@ protected:
             "my_test_suite",
             "my_test",
             "/tmp/rpc_logs");
-        rpc::telemetry_service_ = telemetry_service_;
+        rpc::set_telemetry_service(telemetry_service_);
 #endif
     }
 
     void TearDown() override
     {
 #ifdef CANOPY_USE_TELEMETRY
+        rpc::set_telemetry_service(nullptr);
         telemetry_service_.reset();
 #endif
     }

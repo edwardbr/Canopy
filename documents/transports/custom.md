@@ -5,6 +5,13 @@ All rights reserved.
 
 # Custom Transports
 
+Scope note:
+
+- this document describes how to extend the current C++ transport runtime
+- the `rpc::transport` subclassing model is C++-specific
+- see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
+  [JavaScript Status](../status/javascript.md) for implementation scope
+
 Implement your own transport by inheriting from `rpc::transport`.
 
 ## See Also
@@ -14,6 +21,11 @@ Implement your own transport by inheriting from `rpc::transport`.
 - [Hierarchical Transport Pattern](hierarchical.md)
 
 ## Required Overrides
+
+The canonical transport surface lives in:
+
+- [transport.h](/var/home/edward/projects/Canopy/c++/rpc/include/rpc/internal/transport.h)
+- [marshaller.h](/var/home/edward/projects/Canopy/c++/rpc/include/rpc/internal/marshaller.h)
 
 ```cpp
 class my_transport : public rpc::transport
@@ -47,7 +59,10 @@ virtual interface lives in `c++/rpc/include/rpc/internal/transport.h`.
 
 ## Lifecycle Notifications
 
-The base `transport` class handles inbound message processing automatically. Your derived class only needs to implement the `outbound_*` methods for sending messages to the remote zone. Inbound messages are processed by the base class which routes them to:
+The base `transport` class handles inbound message processing automatically.
+Your derived class implements the transport-specific connect/accept handshake
+and the `outbound_*` methods for sending messages to the adjacent zone. Inbound
+messages are processed by the base class which routes them to:
 - Local service (if destination matches zone_id_)
 - Passthrough handler (if routing to non-adjacent zone)
 
@@ -68,6 +83,8 @@ The base `transport` class handles inbound message processing automatically. You
 - `outbound_release()` - Send reference count decrements to remote
 - `outbound_object_released()` - Send object release notifications to remote
 - `outbound_transport_down()` - Send transport disconnection to remote
+- `outbound_get_new_zone_id()` - Override when a child-side hierarchical
+  transport must forward zone-id allocation to a parent/root zone
 
 ## Hierarchical Transports (Parent/Child Zones)
 
@@ -79,6 +96,8 @@ DLL transports) that creates parent/child zone relationships:
 3. **Stack-based protection**: Use `auto child = child_.get_nullable()` before boundary crossing
 4. **Safe disconnection**: Override `set_status()` and implement `on_child_disconnected()`
 5. **Thread safety**: Use `stdex::member_ptr` for cross-zone references
+6. **Marshaller boundary discipline**: do not hold transport-internal locks
+   across calls that cross a zone boundary or may suspend
 
 Examples:
 - **Local**: `c++/transports/local/` - In-process parent/child

@@ -5,6 +5,15 @@ All rights reserved.
 
 # Services
 
+Scope note:
+
+- this document describes shared service semantics through the primary C++
+  implementation
+- conceptual roles should usually be read as shared Canopy semantics
+- concrete class names, constructor forms, transport references, coroutine
+  behavior, and lifecycle details are C++-specific unless explicitly stated
+  otherwise
+
 A service manages the lifecycle of objects within a zone. It's the central authority for object management, acting as the registry, ID generator, and transport coordinator for its zone.
 
 ## What is a Service?
@@ -23,13 +32,14 @@ Think of the service as the "central nexus" for a zone — it knows about every 
 ## Service Class Hierarchy
 
 ```
-rpc::service (base class for root zones)
-└── rpc::child_service (for hierarchical zones)
+rpc::service       (abstract service base)
+├── rpc::root_service   (top-level zones)
+└── rpc::child_service  (hierarchical child zones)
 ```
 
 ### When to Use Each
 
-**`rpc::service`**:
+**`rpc::root_service`**:
 - Root zones (no parent)
 - Peer-to-peer network connections
 - Independent processes
@@ -38,9 +48,9 @@ rpc::service (base class for root zones)
 - Hierarchical topologies (parent/child zones)
 - Local transport (in-process child zones)
 - SGX enclaves (enclave is child of host)
-- DLL boundaries (loaded DLL is child)
+- DLLs  (loaded DLL is child)
 
-**make your own service**:
+**derive your own service type**:
 - When you need custom behavior
 - For specialized transport protocols
 - To integrate with existing systems
@@ -181,11 +191,11 @@ When an object is released, `service::notify_object_gone_event()` iterates all r
 ### Root Service
 
 ```cpp
-class my_service : public rpc::service
+class my_service : public rpc::root_service
 {
 public:
     my_service(const char* name, rpc::zone zone_id)
-        : rpc::service(name, zone_id)
+        : rpc::root_service(name, zone_id)
     {
         // Service initialization
     }
@@ -219,8 +229,8 @@ child_service::~child_service()
 ### Zone and Object ID Management
 
 ```cpp
-// Generate unique zone ID (for creating child zones)
-rpc::zone generate_new_zone_id();
+// Allocate or request a new zone ID
+CORO_TASK(rpc::new_zone_id_result) get_new_zone_id(rpc::get_new_zone_id_params params);
 
 // Generate unique object ID (for registering objects)
 rpc::object generate_new_object_id();
@@ -252,6 +262,8 @@ if (connect_result.error_code != rpc::error::OK())
 auto target = connect_result.output_interface;
 ```
 
+Use `connect_to_zone(...)` when this zone is initiating the connection.
+
 ### Remote Zone Attachment
 
 ```cpp
@@ -265,6 +277,29 @@ CORO_TASK(rpc::remote_object_result) attach_remote_zone(
 ```
 
 This is the server-side counterpart to `connect_to_zone()`. It demarshals the incoming interface, creates the local service proxy for the peer, and returns the remote object description for the interface supplied by the callback.
+
+Use `attach_remote_zone(...)` when this zone is accepting another zone's
+connection request in a peer-style relationship.
+
+### Hierarchical Child-Zone Creation
+
+```cpp
+template<class PARENT_INTERFACE, class CHILD_INTERFACE>
+static CORO_TASK(rpc::remote_object_result) rpc::child_service::create_child_zone(
+    const char* name,
+    std::shared_ptr<rpc::transport> parent_transport,
+    rpc::connection_settings input_descr,
+    std::function<CORO_TASK(rpc::service_connect_result<CHILD_INTERFACE>)(
+        rpc::shared_ptr<PARENT_INTERFACE>,
+        std::shared_ptr<rpc::child_service>)> fn
+#ifdef CANOPY_BUILD_COROUTINE
+    , std::shared_ptr<coro::scheduler> io_scheduler
+#endif
+);
+```
+
+Use `create_child_zone(...)` for hierarchical parent/child attachment. This is
+not the same operation as peer-style `attach_remote_zone(...)`.
 
 ## Service Lifecycle
 
@@ -377,7 +412,7 @@ Peer services connect via a streaming transport (TCP or SPSC). The server side r
 
 ```cpp
 // Server side — streaming listener with per-connection callback
-auto server_service = std::make_shared<rpc::service>("service1", get_next_zone_id());
+auto server_service = std::make_shared<rpc::root_service>("service1", get_next_zone_id());
 
 auto listener = std::make_shared<streaming::listener>("server",
     std::make_shared<streaming::tcp::acceptor>(endpoint),
@@ -393,7 +428,7 @@ auto listener = std::make_shared<streaming::listener>("server",
 listener->start_listening(server_service);
 
 // Client side — connect and obtain the remote interface
-auto client_service = std::make_shared<rpc::service>("service2", get_next_zone_id());
+auto client_service = std::make_shared<rpc::root_service>("service2", get_next_zone_id());
 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
 auto client_transport = rpc::stream_transport::make_client("client", client_service, std::move(tcp_stm));
 
@@ -410,10 +445,15 @@ auto example = connect_result.output_interface;
 
 ```cpp
 // Parent service
-auto parent_service = std::make_shared<rpc::service>("parent", rpc::zone{1});
+auto parent_service = std::make_shared<rpc::root_service>("parent", rpc::zone{1});
 
 // Create child zone
-auto new_zone_id = parent_service->generate_new_zone_id();
+auto new_zone_result = CO_AWAIT parent_service->get_new_zone_id({});
+if (new_zone_result.error_code != rpc::error::OK())
+{
+    CO_RETURN new_zone_result.error_code;
+}
+auto new_zone_id = new_zone_result.zone_id;
 
 auto child_transport = std::make_shared<rpc::local::child_transport>(
     "child",
@@ -438,7 +478,7 @@ child_transport->set_child_entry_point<i_example_parent, i_example_child>(
 ### Pattern 3: Service with Multiple Transports
 
 ```cpp
-auto service = std::make_shared<rpc::service>("hub", rpc::zone{1});
+auto service = std::make_shared<rpc::root_service>("hub", rpc::zone{1});
 
 // Connect to multiple zones
 service->add_transport(rpc::destination_zone{2}, tcp_transport1);
@@ -465,10 +505,8 @@ service->add_transport(rpc::destination_zone{4}, local_transport);
 ## Code References
 
 **Service Classes**:
-- `c++/rpc/include/rpc/service.h` - Service base class
-- `c++/rpc/include/rpc/child_service.h` - Child service class
-- `c++/rpc/src/service.cpp` - Service implementation
-- `c++/rpc/src/child_service.cpp` - Child service implementation
+- `c++/rpc/include/rpc/internal/service.h` - `service`, `root_service`, and `child_service`
+- `c++/rpc/src/service.cpp` - service implementation
 
 **Service Proxy**:
 - `c++/rpc/include/rpc/internal/service_proxy.h` - Service proxy class

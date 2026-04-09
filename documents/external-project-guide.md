@@ -6,8 +6,7 @@ All rights reserved.
 # Creating an External Project with Canopy
 
 This guide covers the end-to-end process of building a new C++ application that
-uses Canopy as a dependency via `add_subdirectory`. It records working patterns
-discovered while building the `test_app` example project.
+uses Canopy as a dependency via `add_subdirectory`.
 
 > **Source-of-truth note:** This document describes patterns validated against the
 > live repository. Always verify CMake variable names and API details from the actual
@@ -238,17 +237,21 @@ CORO_TASK(int) run_server(
     const canopy::network_config::network_config& cfg,
     rpc::event& shutdown)
 {
-    const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+    const auto* listen = cfg.first_listen();
+    if (!listen)
+        CO_RETURN 1;
+
+    const auto domain = listen->family == canopy::network_config::ip_address_family::ipv6
         ? coro::net::domain_t::ipv6 : coro::net::domain_t::ipv4;
     const coro::net::socket_address endpoint{
-        coro::net::ip_address::from_string(cfg.get_host_string(), domain), cfg.port};
+        coro::net::ip_address::from_string(listen->to_string(), domain), listen->port};
 
-    rpc::zone_address server_zone_addr;
-    canopy::network_config::make_allocator(cfg).allocate_zone(server_zone_addr);
+    auto allocator = canopy::network_config::make_allocator(cfg);
+    auto server_zone = allocator.allocate_zone();
 
     auto on_shutdown = std::make_shared<rpc::event>();
     auto service = std::make_shared<rpc::root_service>(
-        "my_server", rpc::zone{server_zone_addr}, scheduler);
+        "my_server", server_zone, scheduler);
     service->set_shutdown_event(on_shutdown);
 
     auto listener = std::make_shared<streaming::listener>(
@@ -279,18 +282,10 @@ CORO_TASK(int) run_server(
 
 int main(int argc, char* argv[])
 {
-    canopy::network_config::network_config cfg;
-    {
-        args::ArgumentParser parser("my server");
-        args::HelpFlag help(parser, "help", "Help", {'h', "help"});
-        auto net = canopy::network_config::add_network_args(parser);
-        try { parser.ParseCLI(argc, argv); }
-        catch (const args::Help&) { std::cout << parser; return 0; }
-        catch (const args::ParseError& e) { std::cerr << e.what() << "\n"; return 1; }
-        cfg = net.get_config();
-        if (cfg.port == 0) cfg.port = 7777;
-        cfg.log_values();
-    }
+    args::ArgumentParser parser("my server");
+    args::HelpFlag help(parser, "help", "Help", {'h', "help"});
+    auto cfg = canopy::network_config::parse_network_args(argc, argv, parser);
+    cfg.log_values();
 
     auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
         coro::scheduler::options{
@@ -324,18 +319,22 @@ CORO_TASK(int) run_client(
     std::shared_ptr<coro::scheduler> scheduler,
     const canopy::network_config::network_config& cfg)
 {
-    rpc::zone_address client_zone_addr;
-    canopy::network_config::make_allocator(cfg).allocate_zone(client_zone_addr);
+    const auto* remote = cfg.first_connect();
+    if (!remote)
+        CO_RETURN 1;
+
+    auto allocator = canopy::network_config::make_allocator(cfg);
+    auto client_zone = allocator.allocate_zone();
 
     auto client_service = std::make_shared<rpc::root_service>(
-        "my_client", rpc::zone{client_zone_addr}, scheduler);
+        "my_client", client_zone, scheduler);
 
-    const auto domain = cfg.host_family == canopy::network_config::ip_address_family::ipv6
+    const auto domain = remote->family == canopy::network_config::ip_address_family::ipv6
         ? coro::net::domain_t::ipv6 : coro::net::domain_t::ipv4;
 
     coro::net::tcp::client tcp_client(scheduler,
         coro::net::socket_address{
-            coro::net::ip_address::from_string(cfg.get_host_string(), domain), cfg.port});
+            coro::net::ip_address::from_string(remote->to_string(), domain), remote->port});
 
     auto status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds(5000));
     if (status != coro::net::connect_status::connected)
@@ -389,14 +388,22 @@ with `transport_local`.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--host <addr>` | auto-detected | IP to bind (server) or connect to (client) |
-| `--port <n>` | 0 (app must set fallback) | TCP port |
-| `--routing-prefix <addr>` | auto-detected | Network prefix for zone addressing |
-| `-4` / `--ipv4` | — | Interpret `--routing-prefix` as IPv4 |
-| `-6` / `--ipv6` | — | Interpret `--routing-prefix` as IPv6 |
-| `--object-offset <n>` | 64 | Bit boundary between subnet and object-id |
+| `--va-name <name>` | first virtual address becomes default | Name of a logical zone identity |
+| `--va-type <local\\|ipv4\\|ipv6\\|ipv6_tun>` | `local` | Address kind for the virtual address |
+| `--va-prefix <addr>` | auto / explicit | Routing prefix for that virtual address |
+| `--va-subnet-bits <n>` | from IDL defaults | Subnet field width |
+| `--va-subnet <value>` | `0` | Initial subnet value |
+| `--va-object-id-bits <n>` | from IDL defaults | Object-id field width |
+| `--va-object-id <value>` | `0` | Initial object-id value |
+| `--listen [name:]addr:port` | none | Physical listening endpoint mapped to a virtual address |
+| `--connect [name:]addr:port` | none | Physical outbound endpoint mapped to a virtual address |
 
-Always check `cfg.port == 0` after parsing and apply your own default.
+In practice, most applications should:
+
+- create at least one virtual address
+- provide at least one `--listen` endpoint for servers or one `--connect`
+  endpoint for clients
+- use `cfg.first_listen()` / `cfg.first_connect()` for the simplest single-endpoint setup
 
 ---
 
@@ -415,11 +422,6 @@ Canopy works around this by capturing module-relative paths at include time:
 # At module scope (outside any function), CMAKE_CURRENT_LIST_DIR is reliable:
 set(_CANOPY_GENERATE_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "")
 ```
-
-### `BUILD_TYPE` custom variable is removed
-
-Older Canopy presets set a lowercase `BUILD_TYPE` alongside `CMAKE_BUILD_TYPE`.
-This has been removed. Use `CMAKE_BUILD_TYPE` directly everywhere.
 
 ### Generated header availability
 

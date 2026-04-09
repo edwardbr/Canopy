@@ -5,11 +5,21 @@ All rights reserved.
 
 # IDL Guide
 
+Scope note:
+
+- this guide describes the shared Canopy IDL with examples and consequences
+  shown through the primary C++ generator/runtime
+- generated type names, include examples, and versioning examples are
+  C++-oriented unless explicitly stated otherwise
+- for implementation scope, see [C++ Status](status/cpp.md),
+  [Rust Status](status/rust.md), and [JavaScript Status](status/javascript.md)
+
 The Interface Definition Language (IDL) is used to define interfaces, structures, and data types that Canopy uses to generate type-safe proxy and stub code.
 
 ## 1. IDL Syntax Overview
 
-Canopy IDL uses a C++-like syntax with additional attributes for RPC-specific metadata.
+Canopy IDL uses a C++-like syntax with additional attributes for RPC-specific
+metadata.
 
 ### Basic Structure
 
@@ -133,6 +143,10 @@ namespace comprehensive
     }
 }
 ```
+
+The inline namespace example above describes how the C++ generator/runtime uses
+IDL versioning. Other language ports may expose the generated versioned surface
+differently.
 
 ### Namespace Attributes
 

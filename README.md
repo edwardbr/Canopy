@@ -19,6 +19,11 @@ All rights reserved.
 **A Modern C++ Remote Procedure Call Library for High-Performance Distributed Systems**
 
 > Note: Canopy is in Beta, including the documentation, and is under active development.
+>
+> Current implementation status:
+> - C++ is the primary and most complete implementation
+> - Rust exists as an experimental interoperable implementation under [`rust/`](/var/home/edward/projects/Canopy/rust), currently focused on blocking Protocol Buffers with local and dynamic-library transports
+> - JavaScript support exists as a reduced-trust generated client/transport layer for WebSocket-oriented scenarios, not as a full Canopy runtime equivalent
 
 If you want to make your own app try copying this to get started: [Example Canopy App](https://github.com/edwardbr/example_canopy_app)
 
@@ -52,7 +57,7 @@ Distributed C++ systems have always been hard. Getting two components talking ac
 </pre>
 </div>
 
-**Works across every boundary you care about.** The same generated code runs over in-process direct calls, in-process DLL boundaries, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, child-process IPC transports, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
+**Works across every boundary you care about.** The primary C++ implementation runs over in-process direct calls, in-process DLL boundaries, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, child-process IPC transports, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
 
 ---
 
@@ -113,7 +118,7 @@ blocking            co_await
 </pre>
 </div>
 
-**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call.
+**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
 
 ---
 
@@ -184,6 +189,8 @@ blocking            co_await
 - **Composable Streams**: TCP, TLS, SPSC, WebSocket layers in any combination
 - **Format Agnostic**: YAS binary, compressed binary, JSON, Protocol Buffers, more can be added
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
+- **Experimental Rust Runtime**: Interoperable blocking Rust implementation for Protocol Buffers over local and dynamic-library transports
+- **Reduced-Trust JavaScript Client**: Generated JavaScript/WebSocket client support without claiming full runtime parity
 - **SGX Enclave Support**: Secure computation in Intel SGX enclaves
 - **Comprehensive Telemetry**: Sequence diagrams, console output, HTML animations
 - **Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [08-coroutine-libraries.md](documents/08-coroutine-libraries.md))
@@ -209,8 +216,21 @@ Comprehensive documentation is available in the [documents/](documents/) directo
 11. [Best Practices](documents/11-best-practices.md) - Design guidelines and troubleshooting
 
 ### Architecture
-- [Architecture Overview](documents/architecture/01-overview.md) - Zones, services, transports, memory management
-  - Detailed guides: [Local](documents/transports/local.md), [Dynamic Library and IPC Child Transports](documents/transports/dynamic_library.md), [TCP](documents/transports/tcp.md), [SPSC](documents/transports/spsc.md), [SGX](documents/transports/sgx.md), [Custom](documents/transports/custom.md)
+- [Architecture Docs](documents/architecture/README.md) - shared-vs-C++ architecture navigation
+- [Shared Architecture View](documents/architecture/shared/README.md) - conceptual Canopy semantics
+- [C++ Architecture View](documents/architecture/cpp/README.md) - primary implementation view
+- [Transport Docs](documents/transports/README.md) - shared-vs-C++ transport navigation
+- [Shared Transport View](documents/transports/shared/README.md) - conceptual transport semantics
+- [C++ Transport View](documents/transports/cpp/README.md) - primary implementation view
+
+### Additional Implementation Notes
+- [C++ Status](documents/status/cpp.md) - current status of the primary implementation
+- [Rust Status](documents/status/rust.md) - current status and supported scope of the experimental Rust implementation
+- [JavaScript Status](documents/status/javascript.md) - current status of the reduced-trust JavaScript client layer
+- [Rust Port Documentation](documents/language-ports/rust/README.md) - Rust planning, migration history, and retrospectives
+
+### Build And Test
+- [C++ Build And Test Guide](documents/build-and-test/cpp.md) - current canonical build/test guide for the primary implementation
 
 ### Serialization
 - [YAS Serializer](documents/serializers/yas-serializer.md) - Binary, JSON, and compressed formats
@@ -423,6 +443,16 @@ For a complete working example see `demos/stream_composition/src/tcp_spsc_tls_de
 
 See [transport documentation](documents/transports/) for details, especially [Dynamic Library and IPC Child Transports](documents/transports/dynamic_library.md) and [Hierarchical Transport Pattern](documents/transports/hierarchical.md).
 
+Implementation note:
+
+- the table above describes Canopy transport concepts and the primary C++ implementation
+- the experimental Rust implementation currently supports only:
+  - local transport
+  - dynamic-library transport
+  - blocking runtime mode
+  - Protocol Buffers
+- the JavaScript implementation is a reduced-trust generated client/transport layer for WebSocket scenarios, not a full transport/runtime matrix equivalent to C++
+
 ---
 
 ## Requirements
@@ -450,6 +480,11 @@ Git submodules manage external dependencies they will auto load when required:
 
 ```
 canopy/
+├── rust/                   # Experimental Rust implementation and migration docs
+│   ├── rpc/                # Rust RPC runtime
+│   ├── transports/         # Rust local and dynamic-library transports
+│   ├── tests/              # Rust interop and probe tests
+│   └── *.md                # Port plan, progress, completed work, retrospectives
 ├── c++/                    # C++ source code
 │   ├── rpc/                # Core RPC library
 │   ├── transports/         # Transport implementations (local, tcp, spsc, sgx)
@@ -462,6 +497,7 @@ canopy/
 │   └── submodules/         # C++ third-party dependencies
 ├── generator/              # IDL code generator
 ├── interfaces/             # Shared IDL interface definitions
+├── c_abi/                  # Language-neutral ABI specifications
 ├── cmake/                  # CMake build configuration modules
 │   ├── Canopy.cmake        # Main build configuration
 │   ├── Linux.cmake         # Linux-specific settings
@@ -550,4 +586,3 @@ See [LICENSE](LICENSE) for details.
 ---
 
 *For technical questions and detailed API documentation, see the [documents directory](documents/).*
-
