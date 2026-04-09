@@ -14,6 +14,12 @@ Scope note:
 - see [C++ Status](status/cpp.md), [Rust Status](status/rust.md), and
   [JavaScript Status](status/javascript.md) for implementation scope
 
+Who this is for:
+
+- readers deciding whether Canopy fits their problem
+- C++ developers who want a high-level view before reading build or API docs
+- readers who need a quick overview of current implementation scope
+
 Canopy is a modern C++ Remote Procedure Call library that enables type-safe communication across different execution contexts. It provides a unified programming model for in-process calls, inter-process communication, remote machines, embedded devices, and secure Intel SGX enclaves.
 
 ## What is Canopy?
@@ -34,6 +40,52 @@ Implementation note:
   (blocking, Protocol Buffers, local, dynamic-library)
 - the JavaScript implementation is currently a reduced-trust generated client
   layer rather than a full runtime equivalent
+
+## How To Think About Canopy
+
+Canopy is best understood as generated RPC for C++ systems that cross
+boundaries frequently.
+
+If your application moves between:
+
+- local calls
+- child processes
+- plugins or dynamic libraries
+- network transports
+- trust boundaries such as SGX-oriented deployments
+
+then the expensive part is usually not the business logic. It is the repeated
+boundary glue: message schemas, serializers, transport plumbing, callback
+wiring, and lifetime handling. Canopy exists to turn that repeated glue into
+generated code and reusable runtime structure.
+
+## Comparison Points
+
+Compared with common alternatives, Canopy is usually strongest in these cases:
+
+- versus hand-written RPC glue:
+  Canopy is a better fit when you want repeatable generated bindings instead of
+  bespoke marshalling and transport code for each interface
+
+- versus request/response-only RPC systems:
+  Canopy is a better fit when you want remote object references, callbacks, and
+  distributed lifetime semantics rather than only stateless message exchange
+
+- versus one-transport plugin or IPC layers:
+  Canopy is a better fit when you want to preserve the same interface model
+  across local, process, network, and trust boundaries
+
+## When Not To Use Canopy
+
+Canopy is probably not the right choice when:
+
+- your application is entirely local and does not cross meaningful boundaries
+- simple HTTP or JSON request/response APIs are sufficient
+- you do not want generated code in the build
+- your team needs full cross-language runtime parity today rather than a
+  C++-primary implementation with smaller Rust and JavaScript support
+- you only need a very small amount of one-off IPC and the abstraction cost
+  would outweigh the repeated glue you are trying to remove
 
 ## Key Features
 
@@ -155,6 +207,11 @@ canopy/
 3. [C++ Build And Test Guide](build-and-test/cpp.md) - Set up your build environment
 4. [Bi-Modal Execution](05-bi-modal-execution.md) - Understand blocking vs coroutine modes
 5. [Error Handling](06-error-handling.md) - Handle errors in RPC calls
+
+Recommended first hands-on path:
+
+- start with [External Project Guide](external-project-guide.md)
+- then try the example consumer app linked from the root [README](../README.md)
 
 **Advanced Reading:**
 - [Architecture Overview](architecture/01-overview.md) - Internal plumbing and advanced features
