@@ -13,6 +13,12 @@ Scope note:
 - for implementation scope, see [C++ Status](status/cpp.md),
   [Rust Status](status/rust.md), and [JavaScript Status](status/javascript.md)
 
+Who this is for:
+
+- readers who understand the basics and want pattern-oriented examples
+- developers looking for a starting point rather than copy-paste-complete code
+- readers who want to see how the concepts fit together in C++
+
 Working examples demonstrating Canopy features and patterns in the C++
 implementation.
 

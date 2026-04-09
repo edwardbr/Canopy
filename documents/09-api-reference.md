@@ -12,6 +12,12 @@ Scope note:
   read as C++ API guidance, not as a cross-language guarantee
 - use it as a navigation aid, not as a substitute for the current headers
 
+Who this is for:
+
+- developers who already know the main Canopy concepts
+- readers who need a quick reminder of names and signatures
+- not the best first document for learning the system from scratch
+
 Quick reference for the main Canopy APIs.
 
 ## 1. Services

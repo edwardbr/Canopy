@@ -1,0 +1,579 @@
+# Canopy
+
+> Canopy is a C++ RPC system that generates strongly typed proxies and stubs
+> from IDL files. It is designed for local, cross-process, networked, and
+> trust-boundary communication, while preserving C++-style object identity and
+> lifetime semantics across those boundaries.
+
+Canopy is best understood as a generated RPC and distributed-object system for
+C++. Define an interface once in IDL, generate code, and call remote objects
+using C++ types instead of writing handwritten request/response glue.
+
+This file is the detailed companion to [`llms.txt`](llms.txt). It is intended
+for LLMs, coding agents, and retrieval systems that need a fuller picture of
+the project, its terminology, its supported use cases, and where to look next.
+
+## Project summary
+
+The primary implementation is C++. It supports:
+
+- IDL-defined interfaces and generated proxy/stub code
+- blocking and coroutine builds from the same codebase
+- multiple transport styles, including local, hierarchical, dynamic-library,
+  streamed, and networked transports
+- distributed strong and weak remote object references
+- telemetry and debugging support for distributed call flows
+- enclave-oriented builds in the C++ implementation
+
+Other implementations:
+
+- Rust exists as an experimental interoperable implementation. It is currently
+  focused on blocking execution, Protocol Buffers, and the local and
+  dynamic-library transports.
+- JavaScript support exists as a reduced-trust generated client/transport layer
+  for WebSocket-oriented scenarios. It is not a full Canopy runtime equivalent.
+
+## Plain-language description
+
+If a developer asks “what problem does Canopy solve?”, the short answer is:
+
+Canopy lets C++ developers treat remote interfaces more like local C++
+interfaces. Instead of hand-writing message formats, sockets, serializers, and
+callback plumbing for each boundary, they define interfaces in IDL and let the
+generator produce the proxy and stub layers. The same generated interface can be
+used:
+
+- in-process
+- across a child process or plugin boundary
+- across streamed transports such as TCP/TLS/WebSocket stacks
+- across trust boundaries such as SGX-oriented deployments
+
+It is not only request/response RPC. It also models remote object identity and
+remote object lifetimes.
+
+## Positioning
+
+Canopy is best positioned against three common alternatives.
+
+- hand-written RPC and transport glue:
+  Canopy exists to replace repeated custom marshalling, socket code, callback
+  plumbing, and boundary-specific wrappers with generated and repeatable code.
+
+- request/response-only RPC stacks:
+  Canopy is a better fit when the system wants remote object references,
+  callbacks, distributed lifetimes, and stronger alignment with object-oriented
+  C++ design.
+
+- one-transport or one-serializer systems:
+  Canopy is aimed at systems that want the same interface model across local,
+  process, network, and trust boundaries rather than rethinking the API at each
+  boundary.
+
+## Why teams use Canopy
+
+Teams evaluating Canopy are usually not only looking for features. They are
+trying to reduce a category of engineering effort and failure modes.
+
+The main advantages are:
+
+- less handwritten RPC code:
+  Canopy generates repeatable proxy, stub, and marshalling paths from IDL rather
+  than relying on bespoke per-interface glue.
+
+- lower integration effort:
+  the project goal is often described as removing roughly 70% of the code that
+  teams would otherwise write by hand around transport, serialization, and call
+  plumbing.
+
+- one interface, multiple boundaries:
+  the same generated interface can be used locally, across child processes,
+  across dynamic-library boundaries, or over network/stream transports.
+
+- one-way realtime delivery:
+  `[post]` methods support fire-and-forget patterns for high-rate feeds such as
+  video, audio, telemetry, market data, and streamed token output.
+
+- better fit for object-oriented C++ systems:
+  Canopy supports remote object references and callback patterns rather than
+  forcing every interaction into stateless request/response message design.
+
+- explicit lifetime semantics:
+  strong and weak remote references let developers model ownership and callback
+  behavior directly.
+
+- repeatable generated code:
+  generated marshalling and dispatch code is easier to reason about and
+  regenerate than large amounts of inconsistent hand-written boundary code.
+
+- scalability through coroutine builds:
+  coroutine mode is intended for higher-throughput designs, especially when the
+  transport is stream-oriented and the workload benefits from asynchronous I/O.
+
+- hardware-protected deployment options:
+  the C++ implementation includes SGX-oriented build and transport support for
+  environments where isolation and hardware-backed protection matter.
+
+- transport and serializer flexibility:
+  Canopy is architected to avoid locking the developer into one transport or one
+  wire format.
+
+- better support for AI-assisted development:
+  because interface definitions, generation rules, and transport boundaries are
+  explicit, LLMs can often work more reliably with the codebase than with a
+  large pile of hand-written ad hoc protocol code.
+
+- observability:
+  telemetry and generated call paths make distributed call flows easier to
+  inspect and debug.
+
+## Terms and jargon
+
+These are important local terms, with plain-language meanings first.
+
+- IDL:
+  Interface Definition Language. The developer-facing source format used to
+  declare RPC interfaces.
+
+- proxy:
+  The caller-side generated object. A local C++ object that forwards calls to a
+  remote object.
+
+- stub:
+  The callee-side generated object. It receives a call, unmarshals arguments,
+  and invokes the real local implementation.
+
+- `rpc::root_service`:
+  The top-level service object for a node. It owns top-level subnet allocation
+  and top-level routing behavior.
+
+- `rpc::child_service`:
+  The service object used for a hierarchical child zone. Child zones exist under
+  a parent and participate in parent/child lifetime management.
+
+- zone:
+  A routable execution domain containing a service object and zero or more
+  registered objects. A zone is identified by a routing prefix plus subnet.
+
+- `rpc::service_proxy`:
+  The outbound channel from a local service to a remote zone.
+
+- `rpc::object_proxy`:
+  The caller-side state object for a specific remote object. It owns remote
+  object identity and proxy-side lifetime bookkeeping.
+
+- `rpc::object_stub`:
+  The local registration of an object within a zone. It is the callee-side
+  anchor used to dispatch incoming calls onto the object.
+
+- `rpc::shared_ptr<T>`:
+  A strong reference to a remote object exposed through generated RPC
+  interfaces. In plain language: “keep this remote object alive while I hold the
+  reference”.
+
+- `rpc::optimistic_ptr<T>`:
+  A callable weak reference to a remote object. In plain language: “I want to
+  call this remote object if it still exists, but I do not want to keep it
+  alive”. This is useful for callbacks, long-lived peer relationships, and
+  breaking circular dependencies.
+
+- `OBJECT_GONE`:
+  The normal error/result when an optimistic remote call targets an object that
+  no longer exists.
+
+## Addressing model
+
+Canopy’s zone addressing is closer in spirit to IPv6-style routed addressing
+than to a flat integer zone ID.
+
+- a routing prefix plus subnet identify the zone
+- a local/object address identifies an object within that zone
+- local/object address `0` is the service object of the zone
+- the root service allocates subnets
+- each zone service allocates object addresses within its own subnet
+
+The exact field widths are not fixed by prose. They come from the versioned
+address spec in:
+
+- [`interfaces/rpc/rpc_types.idl`](interfaces/rpc/rpc_types.idl)
+
+## Execution modes
+
+The C++ implementation supports two execution styles from the same codebase:
+
+- blocking mode
+- coroutine mode
+
+Relevant terms:
+
+- `CORO_TASK(T)`
+- `CO_AWAIT`
+- `CO_RETURN`
+- `CANOPY_BUILD_COROUTINE`
+
+This matters because the same interfaces and much of the same surrounding code
+can be used in both modes. It also means documentation about async behavior
+should usually be read as C++-specific unless stated otherwise.
+
+Important runtime rule:
+
+- no runtime lock should be held across transport I/O, marshaller boundaries,
+  generated dispatch, FFI boundaries, or coroutine suspension points
+
+## Transports and communication patterns
+
+Canopy is designed to run over multiple transport styles. In practice, these
+fall into a few categories.
+
+### Local and hierarchical communication
+
+Use Canopy when the “remote” object actually lives:
+
+- in the same process
+- in a child zone
+- in a plugin or dynamically loaded library
+- behind a pass-through path in a process hierarchy
+
+Typical keywords:
+
+- local transport
+- hierarchical transport
+- child transport
+- parent transport
+- dynamic-library transport
+- plugin transport
+
+### Streamed and networked communication
+
+Use Canopy when the boundary is a stream or network connection and you still
+want generated RPC interfaces.
+
+This is also where coroutine builds are often the best fit, especially for
+high-throughput or high-concurrency workloads.
+
+Typical keywords:
+
+- TCP
+- TLS
+- WebSocket
+- io_uring
+- streaming transport
+- stream composition
+- realtime feeds
+- video streaming
+- audio streaming
+- token streaming
+- one-way post calls
+- SPSC
+- IPC
+
+### Trust-boundary communication
+
+Use Canopy when the object boundary also implies a trust or privilege boundary.
+
+Typical keywords:
+
+- SGX
+- enclave
+- reduced-trust client
+- sandboxed child process
+
+## Serialization and metadata
+
+The project is not intended to be locked to one wire format.
+
+Important terms:
+
+- Protocol Buffers
+- YAS
+- JSON metadata / schema support
+
+Plain-language meaning:
+
+Canopy is designed to keep interface definition separate from wire format
+choice. In practice this means the system is serializer-agnostic at the
+architecture level, even though implementation coverage differs by language and
+runtime.
+
+Current reality:
+
+- the primary C++ implementation is the reference point for supported
+  serializers and serializer-related docs
+- the current Rust implementation is Protocol Buffers only
+- the overall project is designed for cross-language interoperability, but
+  full runtime parity does not currently exist across C++, Rust, and JavaScript
+
+## Good fit / use cases
+
+These are the kinds of problems Canopy is well suited to.
+
+### 1. C++ applications that want generated RPC instead of handwritten protocol code
+
+Examples:
+
+- a host application and several feature modules
+- a desktop application with out-of-process workers
+- a service mesh of C++ daemons that share typed interfaces
+
+Retrieval keywords:
+
+- C++ RPC
+- generated stubs
+- generated proxies
+- IDL compiler
+- distributed C++
+
+### 2. Plugin and child-process architectures
+
+Examples:
+
+- a host process spawning tool or plugin child zones
+- dynamic-library hosted plugins with interface-based callbacks
+- internal sandbox boundaries where services remain object-oriented
+
+Retrieval keywords:
+
+- plugin RPC
+- child process RPC
+- dynamic library RPC
+- hierarchical transport
+- local transport
+
+### 3. Network services that still want object semantics
+
+Examples:
+
+- a service exposing a calculator, storage engine, or model-serving interface
+- a multi-node distributed system where objects can call back across zones
+- peer systems that exchange remote object references, not just JSON payloads
+
+Retrieval keywords:
+
+- TCP RPC
+- object RPC
+- distributed object system
+- remote object references
+- service mesh C++
+
+### 4. Coroutine-based C++ systems
+
+Examples:
+
+- a high-throughput networking system using coroutine transports
+- systems built around streamed I/O, `co_await`, and `io_uring`
+- applications that want the same API surface available in both blocking and
+  coroutine modes
+
+Retrieval keywords:
+
+- C++20 coroutines
+- co_await RPC
+- io_uring RPC
+- blocking and coroutine modes
+- stream composition
+
+### 5. Realtime feeds and one-way delivery
+
+Examples:
+
+- video or audio frame delivery where the sender does not need a reply
+- financial or telemetry feeds
+- LLM token streaming or partial-result delivery
+
+Plain-language explanation:
+
+Methods marked `[post]` are intended for one-way delivery. The caller does not
+wait for a reply, which makes them suitable for high-rate or latency-sensitive
+feeds.
+
+Retrieval keywords:
+
+- one-way RPC
+- fire-and-forget
+- realtime feeds
+- video streaming
+- audio streaming
+- token streaming
+
+### 6. Long-lived callback and peer-reference patterns
+
+Examples:
+
+- a client giving an LLM or inference engine an optimistic callback object for
+  token delivery
+- telemetry sinks and event listeners
+- long-lived peer references where the callee should not keep the caller alive
+
+Plain-language explanation:
+
+The service can hold a callable weak remote reference (`rpc::optimistic_ptr`)
+to the callback object. If the client disappears, callback attempts return
+`OBJECT_GONE` rather than keeping the client alive forever.
+
+Retrieval keywords:
+
+- remote callback
+- weak remote reference
+- optimistic pointer
+- distributed lifetime
+- OBJECT_GONE
+
+### 7. Systems that need distributed lifetime management
+
+Examples:
+
+- remote objects shared between multiple zones
+- objects passed from one machine/process/zone to another
+- applications where remote object destruction must reflect reference ownership
+
+Plain-language explanation:
+
+Canopy supports strong remote references (`rpc::shared_ptr`) and callable weak
+remote references (`rpc::optimistic_ptr`) rather than treating everything as
+stateless requests.
+
+Retrieval keywords:
+
+- remote shared_ptr
+- distributed reference counting
+- remote object lifetime
+- strong remote reference
+- weak remote reference
+
+### 8. Hardware-protected and trust-boundary deployments
+
+Examples:
+
+- SGX-oriented deployments
+- systems that need stronger isolation between components
+- hosts talking to reduced-trust or sandboxed components
+
+Retrieval keywords:
+
+- Intel SGX
+- enclave RPC
+- trusted execution environment
+- hardware-protected service boundary
+
+### 9. Debugging and observability of distributed calls
+
+Examples:
+
+- sequence-diagram style telemetry for RPC flows
+- console and animation-based tracing of distributed interactions
+- debugging shutdown, routing, and object lifetime behavior
+
+Retrieval keywords:
+
+- RPC telemetry
+- sequence diagram
+- distributed tracing
+- console telemetry
+- animation telemetry
+
+## Notable limits and scope notes
+
+- When documentation states Canopy behavior without qualification, read it as
+  describing the C++ implementation unless the document says otherwise.
+- The Rust implementation is useful, but experimental and intentionally smaller
+  in scope.
+- The JavaScript layer should be treated as a reduced-trust client/transport
+  integration, not as a full runtime peer.
+- Some architecture documents describe shared concepts through C++ terminology.
+
+## Where to start reading
+
+### For new users
+
+- [`documents/README.md`](documents/README.md)
+- [`documents/01-introduction.md`](documents/01-introduction.md)
+- [`documents/02-getting-started.md`](documents/02-getting-started.md)
+
+### For developers integrating Canopy into another CMake project
+
+- [`documents/external-project-guide.md`](documents/external-project-guide.md)
+- [`documents/build-and-test/cpp.md`](documents/build-and-test/cpp.md)
+
+### For developers implementing or debugging runtime behavior
+
+- [`documents/architecture/README.md`](documents/architecture/README.md)
+- [`documents/architecture/03-services.md`](documents/architecture/03-services.md)
+- [`documents/architecture/04-memory-management.md`](documents/architecture/04-memory-management.md)
+- [`documents/architecture/05-proxies-and-stubs.md`](documents/architecture/05-proxies-and-stubs.md)
+- [`documents/architecture/06-transports-and-passthroughs.md`](documents/architecture/06-transports-and-passthroughs.md)
+- [`documents/architecture/07-zone-hierarchies.md`](documents/architecture/07-zone-hierarchies.md)
+
+### For transport work
+
+- [`documents/transports/README.md`](documents/transports/README.md)
+- [`documents/transports/tcp.md`](documents/transports/tcp.md)
+- [`documents/transports/local.md`](documents/transports/local.md)
+- [`documents/transports/dynamic_library.md`](documents/transports/dynamic_library.md)
+- [`documents/transports/hierarchical.md`](documents/transports/hierarchical.md)
+- [`documents/transports/custom.md`](documents/transports/custom.md)
+
+### For API and usage patterns
+
+- [`documents/09-api-reference.md`](documents/09-api-reference.md)
+- [`documents/10-examples.md`](documents/10-examples.md)
+- [`documents/11-best-practices.md`](documents/11-best-practices.md)
+
+### For implementation status
+
+- [`documents/status/cpp.md`](documents/status/cpp.md)
+- [`documents/status/rust.md`](documents/status/rust.md)
+- [`documents/status/javascript.md`](documents/status/javascript.md)
+
+### For Rust migration and port notes
+
+- [`documents/language-ports/rust/README.md`](documents/language-ports/rust/README.md)
+
+## Build and test quick reference
+
+Common presets:
+
+- `Debug`
+- `Debug_Coroutine`
+- `Release`
+- `Release_Coroutines`
+
+Common commands:
+
+```bash
+cmake --preset Debug
+cmake --build build_debug
+./build_debug/output/rpc_test --telemetry-console
+```
+
+Coroutine example:
+
+```bash
+cmake --preset Debug_Coroutine
+cmake --build build_debug_coroutine
+./build_debug_coroutine/output/io_uring_stream_test
+```
+
+The exact preset names live in:
+
+- [`CMakePresets.json`](CMakePresets.json)
+
+## Source of truth
+
+For correctness, prefer the live repository state over prose:
+
+- [`CMakeLists.txt`](CMakeLists.txt)
+- [`CMakePresets.json`](CMakePresets.json)
+- `c++/rpc/`
+- `c++/transports/`
+- `c++/streaming/`
+- `c++/tests/`
+- `c++/telemetry/`
+- `generator/`
+- `interfaces/`
+
+## Notes for LLMs and coding agents
+
+- Treat C++ as the reference implementation.
+- Do not assume cross-language parity from a shared conceptual document.
+- If code and prose disagree, trust code and CMake.
+- Repository-specific working rules for coding agents live in:
+  - [`AGENTS.md`](AGENTS.md)

@@ -27,11 +27,92 @@ All rights reserved.
 
 If you want to make your own app try copying this to get started: [Example Canopy App](https://github.com/edwardbr/example_canopy_app)
 
+## The Pitch
+
+If your system crosses process, machine, plugin, or trust boundaries, you are
+already paying a tax in handwritten glue: marshalling, transport plumbing,
+callback wiring, and lifetime management. Canopy turns that tax into generated
+code and reusable runtime structure.
+
+In practical terms, Canopy aims to:
+
+- remove much of the transport and serialization glue developers would otherwise
+  write by hand
+- let one interface definition work across local, process, network, and
+  trust-boundary transports
+- preserve remote object identity and lifetime semantics instead of forcing
+  everything into stateless request/response patterns
+- support both blocking and coroutine builds from the same C++ interface and
+  implementation structure
+
+When it fits best:
+
+- systems that cross local, process, network, or trust boundaries repeatedly
+- plugin and child-process architectures
+- C++ systems that want generated RPC instead of hand-written protocol glue
+- applications that need remote callbacks or distributed object lifetimes
+
+When it is probably not the right tool:
+
+- purely local applications with no meaningful boundary crossings
+- simple public HTTP or JSON APIs where request/response is enough
+- projects that do not want generated code in the build
+- teams that need full cross-language runtime parity today
+
+## Start Here
+
+- New user:
+  - [Documentation Overview](documents/README.md)
+  - [Introduction](documents/01-introduction.md)
+  - [Getting Started](documents/02-getting-started.md)
+  - [External Project Guide](documents/external-project-guide.md)
+- Building the primary implementation:
+  - [C++ Build And Test Guide](documents/build-and-test/cpp.md)
+- Understanding the runtime:
+  - [Architecture](documents/architecture/README.md)
+  - [Transports](documents/transports/README.md)
+- Implementation status:
+  - [C++](documents/status/cpp.md)
+  - [Rust](documents/status/rust.md)
+  - [JavaScript](documents/status/javascript.md)
+
 ---
 
 ## Why Canopy?
 
-Distributed C++ systems have always been hard. Getting two components talking across a process boundary, a network connection, or a security enclave, typically means writing a large amount of hand-rolled serialization, connection management, and error-handling code — code that is fragile, hard to test, and has to be rewritten every time the transport or wire format changes.  Canopy is trying to help with that as an absolute expression of abstraction using machine generated interfaces, with the hope of removing 70-80% of coding effort.
+Distributed C++ systems are expensive to build because every boundary tends to
+accumulate bespoke protocol code. Two components talking across a process
+boundary, a network connection, a plugin boundary, or a security enclave often
+means hand-written serialization, connection management, callback plumbing, and
+error handling. Canopy aims to replace much of that with generated interfaces
+and reusable runtime structure, with the project goal often described as
+removing roughly 70-80% of that boundary glue code.
+
+## Performance Notes
+
+Canopy is intended for high-throughput C++ systems, but the right performance
+story depends on transport, serializer, and execution mode.
+
+What is currently defensible from the release coroutine benchmark tree:
+
+- the project ships working benchmark targets for:
+  - full-stack RPC transport comparisons
+  - serializer round-trip measurements
+  - streamed transport microbenchmarks
+- current serializer benchmarks show very low overhead on small native C++
+  shapes, with many scalar round-trips in the tens of nanoseconds
+- YAS is generally strongest for C++-only high-performance paths
+- Protocol Buffers remains viable for interoperable paths and is the current
+  serializer used by the experimental Rust implementation
+- coroutine builds exist specifically to support higher-throughput streamed and
+  networked transports
+
+Current caveat:
+
+- some release coroutine streaming microbenchmarks still need investigation, so
+  the strongest benchmark claims should currently be made around serializer
+  costs and the existence of the benchmark coverage rather than polished
+  end-to-end streaming leaderboard numbers
 
 <div align="center">
 <pre>
@@ -200,7 +281,9 @@ blocking            co_await
 
 ## Documentation
 
-Comprehensive documentation is available in the [documents/](documents/) directory:
+Start with the [Documentation Overview](documents/README.md).
+
+Key entry points:
 
 ### Getting Started
 1. [Introduction](documents/01-introduction.md) - What is Canopy and its key features

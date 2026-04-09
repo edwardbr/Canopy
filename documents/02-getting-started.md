@@ -13,6 +13,12 @@ Scope note:
 - for current implementation scope, see [C++ Status](status/cpp.md),
   [Rust Status](status/rust.md), and [JavaScript Status](status/javascript.md)
 
+Who this is for:
+
+- C++ developers building a first Canopy application
+- readers who want a practical path from IDL to running code
+- readers who are comfortable learning details later
+
 This tutorial guides you through creating your first C++ Canopy application,
 from defining interfaces to making remote procedure calls.
 
