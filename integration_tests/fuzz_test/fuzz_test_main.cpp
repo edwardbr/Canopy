@@ -1879,14 +1879,13 @@ run_autonomous_instruction_test(
 }
 
 #ifdef CANOPY_BUILD_COROUTINE
-template<typename MakeTask>
 void run_detached_and_drain_scheduler(
     const std::shared_ptr<coro::scheduler>& scheduler,
-    MakeTask&& make_task)
+    std::function<coro::task<void>()> make_task)
 {
     std::atomic<bool> completed = false;
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_task = [make_task = std::forward<MakeTask>(make_task), &completed]() mutable -> coro::task<void>
+    auto wrapper_task = [make_task = std::move(make_task), &completed]() mutable -> coro::task<void>
     {
         co_await make_task();
         completed.store(true, std::memory_order_release);
@@ -1933,11 +1932,12 @@ TYPED_TEST(
     auto scheduler = std::shared_ptr<coro::scheduler>(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
+    auto* transport_setup = &this->transport_setup_;
 
     run_detached_and_drain_scheduler(
         scheduler,
-        [&]() -> coro::task<void>
-        { co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1); });
+        [transport_setup]() -> coro::task<void>
+        { co_await run_autonomous_instruction_test_with_setup(*transport_setup, 1, 3, 1); });
 #  else
     run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1);
 #  endif
@@ -1951,11 +1951,12 @@ TYPED_TEST(
     auto scheduler = std::shared_ptr<coro::scheduler>(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
+    auto* transport_setup = &this->transport_setup_;
 
     run_detached_and_drain_scheduler(
         scheduler,
-        [&]() -> coro::task<void>
-        { co_await run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242); });
+        [transport_setup]() -> coro::task<void>
+        { co_await run_autonomous_instruction_test_with_setup(*transport_setup, 80, 12, 424242); });
 #  else
     run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242);
 #  endif
@@ -1972,15 +1973,17 @@ TEST(
     cxx_local_child_fuzz_transport_setup cxx_setup;
     rust_dynamic_library_fuzz_transport_setup rust_setup;
     cxx_setup.set_scheduler(scheduler);
+    auto* cxx_setup_ptr = &cxx_setup;
+    auto* rust_setup_ptr = &rust_setup;
 
     graph_summary cxx_summary;
     graph_summary rust_summary;
     run_detached_and_drain_scheduler(
         scheduler,
-        [&]() -> coro::task<void>
+        [&, cxx_setup_ptr, rust_setup_ptr]() -> coro::task<void>
         {
-            cxx_summary = co_await run_autonomous_instruction_summary_with_setup(cxx_setup, 90, 12, 424242);
-            rust_summary = co_await run_autonomous_instruction_summary_with_setup(rust_setup, 90, 12, 424242);
+            cxx_summary = co_await run_autonomous_instruction_summary_with_setup(*cxx_setup_ptr, 90, 12, 424242);
+            rust_summary = co_await run_autonomous_instruction_summary_with_setup(*rust_setup_ptr, 90, 12, 424242);
             co_return;
         });
 #    else
@@ -2050,10 +2053,12 @@ TYPED_TEST(
     auto scheduler = std::shared_ptr<coro::scheduler>(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
+    auto* transport_setup = &this->transport_setup_;
 
     run_detached_and_drain_scheduler(
         scheduler,
-        [&]() -> coro::task<void> { co_await run_child_status_and_cache_test_with_setup(this->transport_setup_); });
+        [transport_setup]() -> coro::task<void>
+        { co_await run_child_status_and_cache_test_with_setup(*transport_setup); });
 #  else
     run_child_status_and_cache_test_with_setup(this->transport_setup_);
 #  endif
@@ -2113,10 +2118,12 @@ TYPED_TEST(
     auto scheduler = std::shared_ptr<coro::scheduler>(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
+    auto* transport_setup = &this->transport_setup_;
 
     run_detached_and_drain_scheduler(
         scheduler,
-        [&]() -> coro::task<void> { co_await run_receive_object_updates_status_test_with_setup(this->transport_setup_); });
+        [transport_setup]() -> coro::task<void>
+        { co_await run_receive_object_updates_status_test_with_setup(*transport_setup); });
 #  else
     run_receive_object_updates_status_test_with_setup(this->transport_setup_);
 #  endif
@@ -2185,11 +2192,12 @@ TYPED_TEST(
     auto scheduler = std::shared_ptr<coro::scheduler>(
         coro::scheduler::make_unique(coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
     this->transport_setup_.set_scheduler(scheduler);
+    auto* transport_setup = &this->transport_setup_;
 
     run_detached_and_drain_scheduler(
         scheduler,
-        [&]() -> coro::task<void>
-        { co_await run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_); });
+        [transport_setup]() -> coro::task<void>
+        { co_await run_execute_instruction_creates_shared_object_test_with_setup(*transport_setup); });
 #  else
     run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_);
 #  endif
@@ -2310,11 +2318,13 @@ int main(
                 // Execute the coroutine with scheduler
                 auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
                     coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+                auto cycle_value = cycle;
+                auto instruction_count_value = instructions;
 
                 run_detached_and_drain_scheduler(
                     scheduler,
-                    [&]() -> coro::task<void>
-                    { co_await run_autonomous_instruction_test(cycle, instructions, scheduler); });
+                    [scheduler, cycle_value, instruction_count_value]() -> coro::task<void>
+                    { co_await run_autonomous_instruction_test(cycle_value, instruction_count_value, scheduler); });
 #else
                 // Non-coroutine build - this won't work properly
                 run_autonomous_instruction_test(cycle, instructions);
@@ -2494,14 +2504,14 @@ int replay_test_scenario(const std::string& scenario_file)
         // Create scheduler for replay
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
             coro::scheduler::options{.pool = coro::thread_pool::options{.thread_count = 1}}));
+        auto test_cycle = config.test_cycle;
+        auto instruction_count = config.instruction_count;
+        auto random_seed = config.random_seed;
 
         run_detached_and_drain_scheduler(
             scheduler,
-            [&]() -> coro::task<void>
-            {
-                co_await run_autonomous_instruction_test(
-                    config.test_cycle, config.instruction_count, scheduler, config.random_seed);
-            });
+            [scheduler, test_cycle, instruction_count, random_seed]() -> coro::task<void>
+            { co_await run_autonomous_instruction_test(test_cycle, instruction_count, scheduler, random_seed); });
 #else
         run_autonomous_instruction_test(config.test_cycle, config.instruction_count, config.random_seed);
 #endif
