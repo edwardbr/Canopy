@@ -79,70 +79,41 @@ the zone dies.
 
 ### Typical RPC Call Flow
 
-```
-Client Zone (Zone 1)          Server Zone (Zone 2)
-     │                             │
-     ├─ Client Code                │
-     │   └─ calc_proxy->add(a, b)  │
-     │                             │
-     ├─ Interface Proxy            │
-     │   (i_calculator_proxy)      │
-     │   └─ serialize params       │
-     │                             │
-     ├─ Object Proxy               │
-     │   └─ lookup service_proxy   │
-     │                             │
-     ├─ Service Proxy              │
-     │   └─ get transport          │
-     │                             │
-     ├─ Transport                  │
-     │   └─ send()                 │
-     │        ▼                    │
-     │   ════════════════════════► │
-     │                             ├─ Transport
-     │                             │   └─ inbound_send()
-     │                             │
-     │                             ├─ Object Stub
-     │                             │   └─ find interface_stub
-     │                             │
-     │                             ├─ Interface Stub
-     │                             │   (i_calculator_stub)
-     │                             │   └─ deserialize params
-     │                             │   └─ dispatch to impl
-     │                             │
-     │                             ├─ Implementation
-     │                             │   (calculator_impl)
-     │                             │   └─ result = a + b
-     │                             │
-     │   ◄════════════════════════ │
-     │        ▲                    │
-     └─ return result              │
+```mermaid
+sequenceDiagram
+    participant Client as Client Zone (Zone 1)
+    participant InterfaceProxy as Interface Proxy
+    participant ObjectProxy as Object Proxy
+    participant ServiceProxy as Service Proxy
+    participant Transport as Transport
+    participant ServerTransport as Server Transport
+    participant ObjectStub as Object Stub
+    participant InterfaceStub as Interface Stub
+    participant Impl as Implementation
+
+    Client->>InterfaceProxy: calc_proxy->add(a, b)
+    InterfaceProxy->>ObjectProxy: serialize params
+    ObjectProxy->>ServiceProxy: lookup service_proxy
+    ServiceProxy->>Transport: get transport
+    Transport->>ServerTransport: send()
+    ServerTransport->>ObjectStub: inbound_send()
+    ObjectStub->>InterfaceStub: find interface_stub
+    InterfaceStub->>Impl: deserialize params and dispatch
+    Impl-->>Client: return result
 ```
 
 ### Zone Lifecycle Dependencies
 
-```
-┌─────────────────────────────────────────────────────┐
-│                      Zone                            │
-│                       │                              │
-│  ┌────────────────────┼────────────────────┐        │
-│  │                    │                     │        │
-│  │                 Service                 │        │
-│  │                    │                     │        │
-│  │       ┌────────────┼────────────┐       │        │
-│  │       │            │             │       │        │
-│  │   Objects     Transports    Service      │        │
-│  │   (stubs)     (weak_ptr)    Proxies      │        │
-│  │       │            │             │       │        │
-│  └───────┼────────────┼─────────────┼───────┘        │
-│          │            │             │                │
-│   shared_ptr    member_ptr    shared_ptr            │
-│          │            │             │                │
-└──────────┼────────────┼─────────────┼────────────────┘
-           │            │             │
-      Local Objects  Transport  Remote Objects
-         (in zone)   (to other  (from other
-                      zones)     zones)
+```mermaid
+flowchart TD
+    Zone["Zone"] --> Service["Service"]
+    Service --> Objects["Objects (stubs)"]
+    Service --> Transports["Transports (weak_ptr)"]
+    Service --> ServiceProxies["Service Proxies"]
+
+    Objects -->|"shared_ptr"| LocalObjects["Local Objects (in zone)"]
+    Transports -->|"member_ptr"| TransportLinks["Transport (to other zones)"]
+    ServiceProxies -->|"shared_ptr"| RemoteObjects["Remote Objects (from other zones)"]
 ```
 
 **Key Insight**: Zone stays alive as long as there are references **in**, **from**, or **through** it. When all three counts reach zero, the zone enters "amnesia" and begins shutdown.
@@ -151,18 +122,13 @@ Client Zone (Zone 1)          Server Zone (Zone 2)
 
 ### Reference Count Propagation
 
-```
-Zone 1: Client creates shared_ptr<i_calc>
-  ↓
-Service 1: Marshals reference to Zone 2
-  ↓
-Transport 1→2: Sends add_ref(object_id, zone_id)
-  ↓
-Transport 2: Receives add_ref, creates object_stub
-  ↓
-Object Stub: Increments shared_count_
-  ↓
-Zone 2: Object kept alive by remote reference
+```mermaid
+flowchart TD
+    Step1["Zone 1: client creates shared_ptr to i_calc"] --> Step2["Service 1: marshals reference to Zone 2"]
+    Step2 --> Step3["Transport 1 to 2: sends add_ref(object_id, zone_id)"]
+    Step3 --> Step4["Transport 2: receives add_ref and creates object_stub"]
+    Step4 --> Step5["Object Stub: increments shared_count_"]
+    Step5 --> Step6["Zone 2: object kept alive by remote reference"]
 ```
 
 ### Zone Death Sequence
@@ -219,14 +185,11 @@ When all service proxies and active stubs are destroyed, the transport can be cl
 
 When zones aren't adjacent, a **passthrough** routes communication through an intermediary:
 
-```
-         Zone 1
-           ↓
-        ┌──┴──┐
-     Zone 2  Zone 3
-
-Zone 2 → Zone 3 communication:
-  Zone 2 → Zone 1 (passthrough) → Zone 3
+```mermaid
+flowchart TD
+    Zone1["Zone 1"] --> Zone2["Zone 2"]
+    Zone1 --> Zone3["Zone 3"]
+    Zone2 -. "passthrough via Zone 1" .-> Zone3
 ```
 
 Passthroughs hold **strong references** to both transports AND the intermediary service, keeping the entire routing path (including the intermediary zone) alive.

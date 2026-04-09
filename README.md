@@ -114,108 +114,103 @@ Current caveat:
   costs and the existence of the benchmark coverage rather than polished
   end-to-end streaming leaderboard numbers
 
-<div align="center">
-<pre>
-           .idl  
-         │
-         ┌────┴────┐
-       proxy      stub
-         │          │
-      caller      callee
-</pre>
-</div>
+```mermaid
+flowchart TD
+    IDL[".idl"] --> Proxy["proxy"]
+    IDL --> Stub["stub"]
+    Proxy --> Caller["caller"]
+    Stub --> Callee["callee"]
+```
 
 **Write the interface once in IDL.** Canopy generates type-safe C++ proxy and stub code from a simple Interface Definition Language. You call a remote object exactly as you would a local one; marshalling, routing, and lifecycle management are handled for you.
 
 ---
 
-<div align="center">
-<pre>
-  ┌──────────────────────────────────────┐
-  direct  DLL  SPSC   TCP   TLS   SGX  IPC
-  └──────────────────────────────────────┘
-       same generated interface
-</pre>
-</div>
+```mermaid
+flowchart TD
+    Interface["same generated interface"]
+    Interface --> Direct["direct"]
+    Interface --> DLL["DLL"]
+    Interface --> SPSC["SPSC"]
+    Interface --> TCP["TCP"]
+    Interface --> TLS["TLS"]
+    Interface --> SGX["SGX"]
+    Interface --> IPC["IPC"]
+```
 
 **Works across every boundary you care about.** The primary C++ implementation runs over in-process direct calls, in-process DLL boundaries, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, child-process IPC transports, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
 
 ---
 
-<div align="center">
-<pre>
- ╔═════════════ TLS ════════════════╗
- ║ ╔═══════════ TCP ══════════════╗ ║
- ║ ║ ╔═════════ SPSC ═══════════╗ ║ ║
- ║ ║ ║    streaming::stream     ║ ║ ║
- ║ ║ ╚══════════════════════════╝ ║ ║
- ║ ╚══════════════════════════════╝ ║
- ╚══════════════════════════════════╝
-</pre>
-</div>
+```mermaid
+flowchart TD
+    TLS["TLS"]
+    TCP["TCP"]
+    SPSC["SPSC"]
+    Stream["streaming::stream"]
+
+    TLS --> TCP
+    TCP --> SPSC
+    SPSC --> Stream
+```
 
 **Streams compose.** Transport streams stack cleanly: wrap a TCP stream in an SPSC buffering layer, then wrap that in TLS, and hand the result to the transport. Each layer only knows about the `stream` interface below it. Adding encryption, compression, or custom framing requires no changes to the RPC layer above or the network layer below.
 
 ---
 
-<div align="center">
-<pre>
-  ┌──── build flag ────┐
-  │                    │
-  ▼                    ▼
-blocking            co_await
- A→B→C→D            A→B→C→D
-    (same source code, two modes)
-</pre>
-</div>
+```mermaid
+flowchart TD
+    BuildFlag["build flag"] --> Blocking["blocking"]
+    BuildFlag --> Coroutine["co_await"]
+    Blocking --> Flow1["A -> B -> C -> D"]
+    Coroutine --> Flow2["A -> B -> C -> D"]
+    BuildFlag --> Source["same source code, two modes"]
+```
 
 **Blocking and coroutine modes from the same source.** The same C++ implementation compiles in both a straightforward blocking mode (useful for debugging and simple deployments) and a full coroutine mode using C++20 `co_await`. Switching between them is a build flag; your code does not change. This matters particularly for AI-assisted development: LLMs can generate and reason about Canopy interfaces and implementations reliably because there is no hidden async machinery to infer.
 
 ---
 
-<div align="center">
-<pre>
-            ┌──[root zone]──┐
-           /        │        \
-       [zone A]  [zone B]  [zone C]
-         │          │         │
-       [sub]    peer link    [sub]
-     /   \
-         node A    node B
-</pre>
-</div>
+```mermaid
+flowchart TD
+    Root["root zone"] --> ZoneA["zone A"]
+    Root --> ZoneB["zone B"]
+    Root --> ZoneC["zone C"]
+    ZoneA --> SubA["sub"]
+    ZoneC --> SubC["sub"]
+    ZoneB --- Peer["peer link"]
+    SubA --> NodeA["node A"]
+    SubA --> NodeB["node B"]
+```
 
 **Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, enclaves, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.  With TUN implementation planned it is hoped that each RPC object has the option of having its own exposed IP address.
 
 ---
 
-<div align="center">
-<pre>
-  ╭──────────────────────────────────╮
-  │  BINARY ◄────────●────────► JSON │
-  │            PROTO   YAS           │
-  │         per-connection dial      │
-  ╰──────────────────────────────────╯
-</pre>
-</div>
+```mermaid
+flowchart LR
+    Binary["BINARY"] --> Dial["per-connection dial"]
+    Dial --> JSON["JSON"]
+    Proto["PROTO"] --> Dial
+    YAS["YAS"] --> Dial
+```
 
 **No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
 
 ---
 
-<div align="center">
-<pre>
-[ Machine A ]          [ Machine B ]          [ Machine C ]
-       |                      |                      |
-  Owns Object <---shared_ptr--- Receives Ref          |
-       |                      |                      |
-       |                      ---shared_ptr--------> Receives Ref
-       |                      (B can drop Ref)       |
-       |                                             |
-  Object Kept Alive  <--------------------------  Active Ref
+```mermaid
+flowchart LR
+    A["Machine A<br/>Owns Object"]
+    B["Machine B<br/>Receives Ref"]
+    C["Machine C<br/>Receives Ref"]
+    Alive["Object kept alive while any remote ref remains"]
 
-</pre>
-</div>
+    A <-- "shared_ptr" --> B
+    B -- "shared_ptr" --> C
+    C --> Alive
+    Alive --> A
+```
   
 **Canopy extends C++ RAII across the network**. Using rpc::shared_ptr and rpc::optimistic_ptr, you can manage the lifetime of remote objects as easily as local ones, even in complex multi-hop topologies.
 
@@ -224,40 +219,35 @@ blocking            co_await
 
 ---
 
-<div align="center">
-<pre>
-  caller                      callee
-   🐒  ══[post]══▶▶▶▶▶▶▶▶   🐒
-   │
-   └──▶ continues immediately
-           (no reply needed)
-</pre>
-</div>
+```mermaid
+flowchart LR
+    Caller["caller"] -- "[post]" --> Callee["callee"]
+    Caller --> Continue["continues immediately"]
+    Continue --> NoReply["no reply needed"]
+```
 
 **One-directional calls for fire-and-forget workloads and streaming, good for financial data or streaming media.** Methods marked `[post]` are sent without waiting for a reply — the caller continues immediately. This eliminates round-trip latency for workloads where the caller does not need a result: streaming media frames, LLM inference token delivery, telemetry events, log records, or any high-throughput notification pattern.
 
 ---
 
-<div align="center">
-<pre>
-            ┌──[i_foo]──▶ 
-  [remote object]──┼──[i_bar]──▶ class X<i_foo, i_bar, i_baz>
-            └──[i_baz]──▶ 
-     cast performed against live object
-</pre>
-</div>
+```mermaid
+flowchart LR
+    Object["remote object"] --> IFoo["i_foo"]
+    Object --> IBar["i_bar"]
+    Object --> IBaz["i_baz"]
+    Impl["class X implementing i_foo, i_bar, i_baz"] --> Object
+    Object --> Cast["cast performed against live object"]
+```
 
 **Polymorphism and Multiple Inheritance.** A single remote object can implement multiple interfaces simultaneously, and many different classes can implement the same interface. Callers hold a proxy to one interface and can remotely cast to any other interface the object supports — the cast is performed against the live object in its zone, not a local copy. This gives you the full expressiveness of C++ polymorphism over any transport, without being limited to the single flat contracts that most RPC systems impose.
 
 ---
 
-<div align="center">
-<pre>
-  [zone] ──── discover ────▶  { i_calculator }  ──▶ MCP
-    ?                 { i_logger     }
-                      { i_storage    }
-</pre>
-</div>
+```mermaid
+flowchart LR
+    Zone["zone"] -- "discover" --> Metadata["interfaces: i_calculator, i_logger, i_storage"]
+    Metadata --> MCP["MCP"]
+```
 
 **Remote reflection.** Canopy carries interface metadata across zone boundaries, making it possible to discover what interfaces a remote object supports at runtime. This opens the door to generic tooling, dynamic proxies, and runtime composition — capabilities that are normally reserved for languages with built-in reflection and are unusual in a C++ RPC system. One practical application is implementing Model Context Protocol (MCP) services: because Canopy can enumerate the methods and types of a remote object at runtime, it can generate MCP tool descriptions dynamically, allowing AI assistants to discover and call C++ services without any hand-written schema.
 

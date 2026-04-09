@@ -221,12 +221,12 @@ CORO_TASK(error_code) bad_example(int item)
 
 Canopy zones form hierarchical parent-child relationships:
 
-```
-Zone 1 (Root)
-├── Zone 2 (created by Zone 1)
-│   └── Zone 4 (created by Zone 2)
-└── Zone 3 (created by Zone 1)
-    └── Zone 5 (created by Zone 3)
+```mermaid
+flowchart TD
+    Zone1["Zone 1 (Root)"] --> Zone2["Zone 2 (created by Zone 1)"]
+    Zone1 --> Zone3["Zone 3 (created by Zone 1)"]
+    Zone2 --> Zone4["Zone 4 (created by Zone 2)"]
+    Zone3 --> Zone5["Zone 5 (created by Zone 3)"]
 ```
 
 **Key rules**:

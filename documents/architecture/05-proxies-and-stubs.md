@@ -18,24 +18,23 @@ Proxies and stubs are the client/server marshalling machinery that enables trans
 
 When you call a method on a remote object, you're actually calling through a **proxy** that marshals the call across the transport. On the remote side, a **stub** receives the call, unmarshals the parameters, and dispatches to the actual implementation.
 
-```
-Client Zone                        Server Zone
-┌──────────────────┐              ┌──────────────────┐
-│  Your Code       │              │  Implementation  │
-│      │           │              │        ▲         │
-│      ▼           │              │        │         │
-│  Interface Proxy │─────RPC─────▶│  Interface Stub  │
-│  (i_calc_proxy)  │              │  (i_calc_stub)   │
-│      │           │              │        ▲         │
-│      ▼           │              │        │         │
-│  Object Proxy    │              │   Object Stub    │
-│      │           │              │        ▲         │
-│      ▼           │              │        │         │
-│  Service Proxy   │              │     Service      │
-│      │           │              │        ▲         │
-│      ▼           │              │        │         │
-│   Transport      │──────────────┤    Transport     │
-└──────────────────┘              └──────────────────┘
+```mermaid
+flowchart LR
+    subgraph Client["Client Zone"]
+        YourCode["Your Code"] --> InterfaceProxy["Interface Proxy (i_calc_proxy)"]
+        InterfaceProxy --> ObjectProxy["Object Proxy"]
+        ObjectProxy --> ServiceProxy["Service Proxy"]
+        ServiceProxy --> ClientTransport["Transport"]
+    end
+
+    subgraph Server["Server Zone"]
+        ServerTransport["Transport"] --> Service["Service"]
+        Service --> ObjectStub["Object Stub"]
+        ObjectStub --> InterfaceStub["Interface Stub (i_calc_stub)"]
+        InterfaceStub --> Impl["Implementation"]
+    end
+
+    ClientTransport -- "RPC" --> ServerTransport
 ```
 
 **Two Levels of Abstraction**:
@@ -265,98 +264,34 @@ The transport layer automatically negotiates the best available format between c
 
 ### Complete End-to-End Flow
 
-```
-1. Client Code Calls Method
-   │
-   ▼
-2. Interface Proxy (i_calculator_proxy)
-   - Serializes parameters (a=5, b=3)
-   - Calls object_proxy->send()
-   │
-   ▼
-3. Object Proxy
-   - Routes through service_proxy
-   - Adds object_id, interface_id, method_id
-   │
-   ▼
-4. Service Proxy
-   - Routes through transport
-   - Adds caller_zone, destination_zone
-   │
-   ▼
-5. Transport (TCP/SPSC/etc)
-   - Sends serialized message across zone boundary
-   │
-   ▼
-6. Transport (Server Side)
-   - Receives message
-   - Routes to service->deliver()
-   │
-   ▼
-7. Service
-   - Looks up object_stub by object_id
-   - Calls stub->call()
-   │
-   ▼
-8. Object Stub
-   - Looks up interface_stub by interface_id
-   - Calls stub->call()
-   │
-   ▼
-9. Interface Stub (i_calculator_stub)
-   - Deserializes parameters (a=5, b=3)
-   - Dispatches to implementation based on method_id
-   │
-   ▼
-10. Implementation (calculator_impl)
-    - Executes: sum = 5 + 3 = 8
-    - Returns error::OK()
-    │
-    ▼
-11. Interface Stub
-    - Serializes result (sum=8)
-    - Returns to object_stub
-    │
-    ▼
-12. Service, Transport, Service Proxy, Object Proxy
-    - Route response back to client zone
-    │
-    ▼
-13. Interface Proxy
-    - Deserializes result (sum=8)
-    - Returns to client code
-    │
-    ▼
-14. Client Code
-    - Receives: error=OK, sum=8
+```mermaid
+flowchart TD
+    Step1["1. Client code calls method"] --> Step2["2. Interface proxy serializes parameters and calls object_proxy->send()"]
+    Step2 --> Step3["3. Object proxy routes through service_proxy and adds object_id, interface_id, method_id"]
+    Step3 --> Step4["4. Service proxy routes through transport and adds caller_zone, destination_zone"]
+    Step4 --> Step5["5. Transport sends serialized message across the zone boundary"]
+    Step5 --> Step6["6. Server transport receives message and routes to service->deliver()"]
+    Step6 --> Step7["7. Service looks up object_stub by object_id"]
+    Step7 --> Step8["8. Object stub looks up interface_stub by interface_id"]
+    Step8 --> Step9["9. Interface stub deserializes parameters and dispatches by method_id"]
+    Step9 --> Step10["10. Implementation executes sum = 5 + 3 = 8 and returns OK"]
+    Step10 --> Step11["11. Interface stub serializes the result"]
+    Step11 --> Step12["12. Service, transport, service proxy, and object proxy route the response back"]
+    Step12 --> Step13["13. Interface proxy deserializes result sum = 8"]
+    Step13 --> Step14["14. Client code receives error = OK, sum = 8"]
 ```
 
 ### Reference Acquisition Flow
 
 When passing an `rpc::shared_ptr` across zones:
 
-```
-Zone 1: Client Code
-   rpc::shared_ptr<i_calc> calc = ...;  // Local object
-   CO_AWAIT remote_service->use_calculator(calc);
-   │
-   ▼
-Zone 1: Proxy Marshalling
-   - Checks if calc is local or remote
-   - If local: Creates object_stub if not exists
-   - Sends add_ref(object_id, zone_id) to Zone 2
-   │
-   ▼
-Zone 2: Stub Unmarshalling
-   - Receives add_ref
-   - Creates object_proxy for (object_id, zone_1)
-   - Increments shared_count_
-   - Returns proxy to application
-   │
-   ▼
-Zone 2: Application Code
-   rpc::shared_ptr<i_calc> calc;  // Now points to Zone 1's object
-   CO_AWAIT calc->add(5, 3, sum);  // Calls back to Zone 1
+```mermaid
+flowchart TD
+    Step1["Zone 1: client code passes rpc::shared_ptr to i_calc"] --> Step2["Zone 1: proxy marshalling checks whether calc is local or remote"]
+    Step2 --> Step3["If local, create object_stub if needed and send add_ref(object_id, zone_id) to Zone 2"]
+    Step3 --> Step4["Zone 2: stub unmarshalling receives add_ref and creates object_proxy for object_id in Zone 1"]
+    Step4 --> Step5["Zone 2: increment shared_count_ and return proxy to the application"]
+    Step5 --> Step6["Zone 2: application calls calc->add(5, 3, sum), which routes back to Zone 1"]
 ```
 
 ## Code Generation Process
@@ -430,30 +365,23 @@ static constexpr uint64_t get_id(uint64_t rpc_version)
 
 ### Object Lifetime Through Proxies and Stubs
 
-```
-Zone 1 (Client)                    Zone 2 (Server)
-┌──────────────────┐              ┌──────────────────┐
-│ rpc::shared_ptr  │              │                  │
-│  <i_calculator>  │              │                  │
-│        │         │              │                  │
-│        ▼         │              │                  │
-│ i_calculator_    │              │                  │
-│     proxy        │              │                  │
-│        │         │              │                  │
-│        ▼         │              │                  │
-│ object_proxy     │──add_ref()─▶│  object_stub     │
-│  shared_count=1  │              │  shared_count=1  │
-│        │         │              │        │         │
-│        │         │              │        ▼         │
-│        │         │              │ i_calculator_    │
-│        │         │              │     stub         │
-│        │         │              │        │         │
-│        │         │              │        ▼         │
-│        │         │              │ calculator_impl  │
-│        │         │──RPC calls─▶│  (your code)     │
-└──────────────────┘              └──────────────────┘
+```mermaid
+flowchart LR
+    subgraph Client["Zone 1 (Client)"]
+        SharedPtr["rpc::shared_ptr to i_calculator"] --> CalcProxy["i_calculator_proxy"]
+        CalcProxy --> ObjectProxy["object_proxy<br/>shared_count = 1"]
+    end
 
-When Zone 1's shared_ptr is destroyed:
+    subgraph Server["Zone 2 (Server)"]
+        ObjectStub["object_stub<br/>shared_count = 1"] --> CalcStub["i_calculator_stub"]
+        CalcStub --> Impl["calculator_impl (your code)"]
+    end
+
+    ObjectProxy -- "add_ref()" --> ObjectStub
+    ObjectProxy -- "RPC calls" --> Impl
+```
+
+When Zone 1's `shared_ptr` is destroyed:
 1. object_proxy->release() sends release() to Zone 2
 2. object_stub->shared_count_ decrements
 3. If shared_count == 0: object_stub destroyed

@@ -44,16 +44,26 @@ Think of it as: "I am a transport to reach my parent/child"
 
 ### Circular Reference Structure
 
-```
-Parent Zone (zone 1):
-  └─ child_transport
-      └─ child_: stdex::member_ptr<parent_transport>  (points to child zone)
+```mermaid
+flowchart TD
+    subgraph Parent["Parent Zone (zone 1)"]
+        ChildTransport["child_transport"]
+        ChildMember["child_: stdex::member_ptr<parent_transport><br/>(points to child zone)"]
+        ChildTransport --> ChildMember
+    end
 
-Child Zone (zone 2):
-  └─ child_service
-      └─ parent_transport_: std::shared_ptr<parent_transport>
-  └─ parent_transport
-      └─ parent_: stdex::member_ptr<child_transport>  (points back to parent zone)
+    subgraph Child["Child Zone (zone 2)"]
+        ChildService["child_service"]
+        ParentTransportRef["parent_transport_: std::shared_ptr<parent_transport>"]
+        ParentTransport["parent_transport"]
+        ParentMember["parent_: stdex::member_ptr<child_transport><br/>(points back to parent zone)"]
+
+        ChildService --> ParentTransportRef
+        ParentTransport --> ParentMember
+    end
+
+    ChildMember -. "references" .-> ParentTransport
+    ParentMember -. "references" .-> ChildTransport
 ```
 
 ### Ownership Chain

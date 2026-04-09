@@ -128,31 +128,21 @@ plain-C ABI boundary consisting of the `canopy_dll_*` entry points.
 
 ### Architecture
 
-```
-Host Process
-┌────────────────────────────────────────────────────────┐
-│  Host Zone (zone 1)                                    │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  child_transport (transport_dynamic_library)     │  │
-│  │  - holds lib_handle_ (dlopen result)             │  │
-│  │  - holds dll_ctx_ (opaque DLL state)             │  │
-│  │  - holds resolved canopy_dll_* fn pointers       │  │
-│  └──────────────┬───────────────────────────────────┘  │
-│                 │  canopy_dll_send / canopy_dll_*       │
-│  ───────────────┼──────────── DLL boundary ────────    │
-│                 │  host_send / host_* callbacks         │
-│  ┌──────────────┴───────────────────────────────────┐  │
-│  │  libmyplugin.so  (DLL zone, zone 2)              │  │
-│  │  ┌────────────────────────────────────────────┐  │  │
-│  │  │  parent_transport (transport_dynamic_       │  │  │
-│  │  │                    library_dll)             │  │  │
-│  │  │  - calls back to host via fn pointers       │  │  │
-│  │  └────────────────────────────────────────────┘  │  │
-│  │  ┌────────────────────────────────────────────┐  │  │
-│  │  │  child_service + user implementation       │  │  │
-│  │  └────────────────────────────────────────────┘  │  │
-│  └──────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Host["Host Process"]
+        subgraph HostZone["Host Zone (zone 1)"]
+            ChildTransport["child_transport (transport_dynamic_library)<br/>holds lib_handle_, dll_ctx_, and canopy_dll_* pointers"]
+        end
+
+        subgraph DLLZone["libmyplugin.so (DLL zone, zone 2)"]
+            ParentTransport["parent_transport (transport_dynamic_library_dll)<br/>calls back to host via function pointers"]
+            ChildService["child_service + user implementation"]
+            ParentTransport --> ChildService
+        end
+    end
+
+    ChildTransport <-- "DLL boundary: canopy_dll_send / canopy_dll_* and host_send / host_* callbacks" --> ParentTransport
 ```
 
 The boundary is a set of C function pointers — no C++ name mangling, no vtable
@@ -374,32 +364,21 @@ cannot be mistaken for the blocking variant.
 
 ### Architecture
 
-```
-Host Process
-┌───────────────────────────────────────────────────────────────┐
-│  Host Zone                                                    │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │ child_transport (transport_libcoro_dynamic_library)     │  │
-│  │ - dlopen / LoadLibrary shared object                    │  │
-│  │ - resolves canopy_libcoro_dll_create                    │  │
-│  │ - stores dll_coro_* coroutine fn pointers               │  │
-│  │ - CO_AWAITs returned init_fn                            │  │
-│  └──────────────────┬──────────────────────────────────────┘  │
-│                     │ plain-C create function + coro fn table │
-│  ───────────────────┼──────────── DLL boundary ─────────────  │
-│                     │ host_coro_* callbacks                   │
-│  ┌──────────────────┴──────────────────────────────────────┐  │
-│  │ libmyplugin.so                                          │  │
-│  │ ┌────────────────────────────────────────────────────┐  │  │
-│  │ │ parent_transport                                   │  │  │
-│  │ │ - calls host through host_coro_* function pointers │  │  │
-│  │ │ - exposes static_inbound_* as dll_coro_*           │  │  │
-│  │ └────────────────────────────────────────────────────┘  │  │
-│  │ ┌────────────────────────────────────────────────────┐  │  │
-│  │ │ child_service + user implementation               │  │  │
-│  │ └────────────────────────────────────────────────────┘  │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Host["Host Process"]
+        subgraph HostZone["Host Zone"]
+            CoroChild["child_transport (transport_libcoro_dynamic_library)<br/>loads shared object, resolves canopy_libcoro_dll_create,<br/>stores dll_coro_* pointers, CO_AWAITs init_fn"]
+        end
+
+        subgraph DLL["libmyplugin.so"]
+            CoroParent["parent_transport<br/>calls host via host_coro_* pointers<br/>exposes static_inbound_* as dll_coro_*"]
+            CoroService["child_service + user implementation"]
+            CoroParent --> CoroService
+        end
+    end
+
+    CoroChild <-- "DLL boundary: create function, coro fn table, and host_coro_* callbacks" --> CoroParent
 ```
 
 The host first calls a synchronous exported function,

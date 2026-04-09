@@ -362,13 +362,13 @@ When stubs are active (calls in progress), transports may hold strong references
 
 ### Transport Lifetime Pattern
 
-```
-Zone A ──► Transport ──► Zone B
-  │            ▲         │
-  │ weak_ptr   │         │
-  ▼            │         ▼
-Service    ServiceProxy  PassThrough
-           (strong)      (strong to transports + service)
+```mermaid
+flowchart LR
+    ZoneA["Zone A"] --> Transport["Transport"] --> ZoneB["Zone B"]
+    Service["Service"] -. "weak_ptr" .-> Transport
+    ServiceProxy["ServiceProxy (strong)"] --> Transport
+    PassThrough["PassThrough (strong to transports + service)"] --> Transport
+    PassThrough --> ZoneB
 ```
 
 **Transports** stay alive as long as ANY of these hold references:
@@ -436,23 +436,16 @@ public:
 
 ### State Diagram
 
-```
-        ┌─────────────────┐
-        │   ALIVE         │◄──────────────────────┐
-        │   (refs > 0)    │                        │
-        └────────┬────────┘                        │
-                 │ all refs released               │
-                 ▼                                 │
-        ┌─────────────────┐                        │
-        │  AMNESIA        │──► transport_down() ───┘
-        │  (refs = 0)     │
-        └────────┬────────┘
-                 │ transport cleanup
-                 ▼
-        ┌─────────────────┐
-        │  DELETED        │
-        │  (gone forever) │
-        └─────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> ALIVE
+    ALIVE: refs > 0
+    AMNESIA: refs = 0
+    DELETED: gone forever
+
+    ALIVE --> AMNESIA: all refs released
+    AMNESIA --> ALIVE: transport_down()
+    AMNESIA --> DELETED: transport cleanup
 ```
 
 ## member_ptr: Thread-Safe Transport References

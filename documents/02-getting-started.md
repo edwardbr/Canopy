@@ -279,15 +279,21 @@ This tutorial extends the calculator to support two zones communicating via the 
 
 ### Client-Server Architecture
 
-```
-┌─────────────────────┐         ┌─────────────────────┐
-│      Client Zone    │         │     Server Zone     │
-│                     │  local  │                     │
-│  client_service     │◄───────►│  server_service     │
-│         │           │ transport│         │          │
-│         ▼           │         │         ▼          │
-│  client_proxy       │         │  calculator_impl   │
-└─────────────────────┘         └─────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Client["Client Zone"]
+        ClientService["client_service"]
+        ClientProxy["client_proxy"]
+        ClientService --> ClientProxy
+    end
+
+    subgraph Server["Server Zone"]
+        ServerService["server_service"]
+        Calculator["calculator_impl"]
+        ServerService --> Calculator
+    end
+
+    ClientService <-- "local transport" --> ServerService
 ```
 
 ### Updated Main Program

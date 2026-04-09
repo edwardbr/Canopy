@@ -32,27 +32,21 @@ The SGX path is a C++ hierarchical transport family. It should be read as a
 specialised host/enclave boundary implementation, not as a universal Canopy
 transport capability.
 
-```
-┌─────────────────────────────────────────┐
-│                 Host                     │
-│  ┌───────────────────────────────────┐  │
-│  │         Host Application          │  │
-│  │  ┌─────────────────────────────┐  │  │
-│  │  │    host_service_proxy       │  │  │
-│  │  └──────────────┬──────────────┘  │  │
-│  └─────────────────┼──────────────────┘  │
-│                    │ OCALL               │
-│ ┌──────────────────┴──────────────────┐ │
-│ │           Enclave Boundary          │ │
-│ │  ┌─────────────────────────────┐    │ │
-│  │  │    enclave_service_proxy   │    │ │
-│  │  └──────────────┬──────────────┘    │ │
-│  │                 │ ECALL              │ │
-│  │  ┌─────────────────────────────┐    │ │
-│  │  │      Enclave Code           │    │ │
-│  │  └─────────────────────────────┘    │ │
-│  └────────────────────────────────────┘ │
-└─────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Host["Host"]
+        subgraph HostApp["Host Application"]
+            HostProxy["host_service_proxy"]
+        end
+    end
+
+    subgraph Boundary["Enclave Boundary"]
+        EnclaveProxy["enclave_service_proxy"]
+        EnclaveCode["Enclave Code"]
+    end
+
+    HostProxy -- "OCALL" --> EnclaveProxy
+    EnclaveProxy -- "ECALL" --> EnclaveCode
 ```
 
 ## Hierarchical Transport Pattern

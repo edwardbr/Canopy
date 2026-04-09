@@ -152,12 +152,12 @@ For example `192.168.1.1` (`0xC0A80101`): `routing_prefix = 0x2002C0A801010000`
 
 Zones can form parent/child relationships through hierarchical transports (local, SGX, DLL):
 
-```
-Zone 1 (Root)
-├── Zone 2 (Child)
-│   ├── Zone 4 (Grandchild)
-│   └── Zone 5 (Grandchild)
-└── Zone 3 (Child)
+```mermaid
+flowchart TD
+    Zone1["Zone 1 (Root)"] --> Zone2["Zone 2 (Child)"]
+    Zone1 --> Zone3["Zone 3 (Child)"]
+    Zone2 --> Zone4["Zone 4 (Grandchild)"]
+    Zone2 --> Zone5["Zone 5 (Grandchild)"]
 ```
 
 **Key Rules**:
@@ -453,30 +453,32 @@ Each zone's service manages only its own objects.
 
 Direct transport between two zones:
 
-```
-Zone 1 ←→ Zone 2
+```mermaid
+flowchart LR
+    Zone1["Zone 1"] <--> Zone2["Zone 2"]
 ```
 
 ### Hierarchical
 
 Parent/child relationships:
 
-```
-Zone 1 (Root)
-├── Zone 2 (Child)
-│   └── Zone 4 (Grandchild)
-└── Zone 3 (Child)
-    └── Zone 5 (Grandchild)
+```mermaid
+flowchart TD
+    Zone1["Zone 1 (Root)"] --> Zone2["Zone 2 (Child)"]
+    Zone1 --> Zone3["Zone 3 (Child)"]
+    Zone2 --> Zone4["Zone 4 (Grandchild)"]
+    Zone3 --> Zone5["Zone 5 (Grandchild)"]
 ```
 
 ### Mesh
 
 Passthroughs enable complex routing:
 
-```
-Zone 1 ←→ Zone 2 ←→ Zone 3
-           ↕
-        Zone 4
+```mermaid
+flowchart LR
+    Zone1["Zone 1"] <--> Zone2["Zone 2"]
+    Zone2 <--> Zone3["Zone 3"]
+    Zone2 <--> Zone4["Zone 4"]
 ```
 
 Zone 1 → Zone 4 communication routes through Zone 2's passthrough.

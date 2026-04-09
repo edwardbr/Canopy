@@ -21,11 +21,11 @@ When Zone A wants to share a reference with Zone C, but they're not directly con
 
 ## Topology Example
 
-```
-Zone 1 ←→ Zone 2
-           ↓
-        ┌──┴──┐
-     Zone 3  Zone 4
+```mermaid
+flowchart TD
+    Zone1["Zone 1"] <--> Zone2["Zone 2"]
+    Zone2 --> Zone3["Zone 3"]
+    Zone2 --> Zone4["Zone 4"]
 ```
 
 - Zone 1 and Zone 2 are adjacent (direct connection)

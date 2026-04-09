@@ -22,17 +22,14 @@ In the primary C++ implementation, each machine or process hosts its own root
 zone. From the root, child zones branch for plugins, enclaves, DLLs, or any
 other isolation boundary. A typical single-node hierarchy looks like:
 
-```
-Root Zone (Node A)
-│
-├── Zone 2 (Plugin A)
-│   ├── Zone 4 (Grandchild)
-│   └── Zone 5 (Grandchild)
-│
-├── Zone 3 (Plugin B)
-│   └── Zone 6 (Grandchild)
-│
-└── Zone 7 (SGX Enclave)
+```mermaid
+flowchart TD
+    Root["Root Zone (Node A)"] --> Zone2["Zone 2 (Plugin A)"]
+    Root --> Zone3["Zone 3 (Plugin B)"]
+    Root --> Zone7["Zone 7 (SGX Enclave)"]
+    Zone2 --> Zone4["Zone 4 (Grandchild)"]
+    Zone2 --> Zone5["Zone 5 (Grandchild)"]
+    Zone3 --> Zone6["Zone 6 (Grandchild)"]
 ```
 
 ### Key Properties
@@ -64,20 +61,34 @@ public:
 
 Separate nodes connect as peers through streaming transports (TCP, SPSC, WebSocket, and others). There is no global owner: each node's root zone is independent and the connection between two nodes is symmetric. A root zone on Node A connects to the root zone on Node B as a peer, not as a parent–child pair.
 
-```
-Node A                            Node B
-──────────────────                ──────────────────
-Root Zone (A)  ◄── TCP ──────►  Root Zone (B)
-├── Zone A2                       ├── Zone B2
-└── Zone A3                       └── Zone B3
+```mermaid
+flowchart LR
+    subgraph NodeA["Node A"]
+        RootA["Root Zone (A)"]
+        A2["Zone A2"]
+        A3["Zone A3"]
+        RootA --> A2
+        RootA --> A3
+    end
+
+    subgraph NodeB["Node B"]
+        RootB["Root Zone (B)"]
+        B2["Zone B2"]
+        B3["Zone B3"]
+        RootB --> B2
+        RootB --> B3
+    end
+
+    RootA <--> |TCP| RootB
 ```
 
 This arrangement scales naturally to a mesh of many nodes:
 
-```
-Node A ◄──────► Node B ◄──────► Node C
-  │                                 │
-  └─────────────────────────────────┘
+```mermaid
+flowchart LR
+    NodeA["Node A"] <--> NodeB["Node B"]
+    NodeB <--> NodeC["Node C"]
+    NodeA <--> NodeC
 ```
 
 Objects anywhere in the mesh — deep inside Zone A3 or at the root of Node C — reach each other through the same RPC mechanisms. When a call must travel through an intermediate node, that node acts as a relay, forwarding the message onward without the caller needing to know the full path.
@@ -132,22 +143,18 @@ From the caller's perspective the path is invisible: objects in Zone A call obje
 
 ### Simple Fork
 
-```
-Zone N
-    │
-    └── fork() ──► Zone N+1 (copy of Zone N)
+```mermaid
+flowchart TD
+    ZoneN["Zone N"] -->|"fork()"| ZoneNext["Zone N+1 (copy of Zone N)"]
 ```
 
 ### Y-Topology Fork
 
-```
-         Zone 1 (Origin)
-         /    \
-        /      \
-    Zone 2   Zone 3 (forked from Zone 1)
-              \
-               \
-              Zone 4 (forked from Zone 3)
+```mermaid
+flowchart TD
+    Zone1["Zone 1 (Origin)"] --> Zone2["Zone 2"]
+    Zone1 --> Zone3["Zone 3 (forked from Zone 1)"]
+    Zone3 --> Zone4["Zone 4 (forked from Zone 3)"]
 ```
 
 ### Implementation Note

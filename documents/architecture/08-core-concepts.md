@@ -80,12 +80,12 @@ struct zone
 
 Zones can form parent/child relationships:
 
-```
-Zone 1 (Root)
-├── Zone 2 (Child)
-│   ├── Zone 4 (Grandchild)
-│   └── Zone 5 (Grandchild)
-└── Zone 3 (Child)
+```mermaid
+flowchart TD
+    Zone1["Zone 1 (Root)"] --> Zone2["Zone 2 (Child)"]
+    Zone1 --> Zone3["Zone 3 (Child)"]
+    Zone2 --> Zone4["Zone 4 (Grandchild)"]
+    Zone2 --> Zone5["Zone 5 (Grandchild)"]
 ```
 
 **Key Rules**:
@@ -463,32 +463,12 @@ std::shared_ptr<non_rpc_impl> std_ptr = std::make_shared<non_rpc_impl>();
 
 Proxies represent remote objects locally and handle marshalling.
 
-```
-Client Code
-    │
-    ▼
-┌───────────────────────┐
-│   Interface Proxy     │  (Generated, e.g., i_calculator_proxy)
-│   (inherits interface)│
-└───────────┬───────────┘
-            │ holds
-            ▼
-┌───────────────────────┐
-│    Object Proxy       │  (rpc::object_proxy)
-│   (network client)    │
-└───────────┬───────────┘
-            │ uses
-            ▼
-┌───────────────────────┐
-│   Service Proxy       │  (rpc::service_proxy)
-│   (remote zone)       │
-└───────────┬───────────┘
-            │ uses
-            ▼
-┌───────────────────────┐
-│     Transport         │  (rpc::transport)
-│   (TCP/SPSC/etc)      │
-└───────────────────────┘
+```mermaid
+flowchart TD
+    Client["Client Code"] --> InterfaceProxy["Interface Proxy<br/>(generated, e.g. i_calculator_proxy)"]
+    InterfaceProxy -->|"holds"| ObjectProxy["Object Proxy<br/>(rpc::object_proxy)"]
+    ObjectProxy -->|"uses"| ServiceProxy["Service Proxy<br/>(rpc::service_proxy)"]
+    ServiceProxy -->|"uses"| Transport["Transport<br/>(rpc::transport, TCP/SPSC/etc)"]
 ```
 
 ### Object Proxy (`object_proxy`)
@@ -526,31 +506,12 @@ class service_proxy
 
 Stubs receive remote calls and dispatch to local implementations.
 
-```
-Transport (TCP/SPSC/etc)
-        │
-        ▼
-┌───────────────────────┐
-│   Transport Handler   │  (Deserializes message)
-└───────────┬───────────┘
-            │
-            ▼
-┌───────────────────────┐
-│    Object Stub        │  (rpc::object_stub)
-│   (dispatcher)        │
-└───────────┬───────────┘
-            │ holds
-            ▼
-┌───────────────────────┐
-│   Interface Stub      │  (Generated, e.g., i_calculator_stub)
-│   (method dispatch)   │
-└───────────┬───────────┘
-            │
-            ▼
-┌───────────────────────┐
-│   Implementation      │  (User code)
-│   (concrete class)    │
-└───────────────────────┘
+```mermaid
+flowchart TD
+    Transport["Transport (TCP/SPSC/etc)"] --> Handler["Transport Handler<br/>(deserializes message)"]
+    Handler --> ObjectStub["Object Stub<br/>(rpc::object_stub, dispatcher)"]
+    ObjectStub -->|"holds"| InterfaceStub["Interface Stub<br/>(generated, e.g. i_calculator_stub)"]
+    InterfaceStub --> Impl["Implementation<br/>(user code)"]
 ```
 
 ### Object Stub (`object_stub`)

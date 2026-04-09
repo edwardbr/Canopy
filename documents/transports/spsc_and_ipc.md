@@ -55,17 +55,12 @@ the DLL loader, and it is not itself a hierarchical transport.
 
 ## Architecture
 
-```
-Process A                          Process B
-    │                                  │
-    │  ┌───────────────────────────┐   │
-────┼─►│    send_queue (A → B)     │───┼───►
-    │  └───────────────────────────┘   │
-    │                                  │
-    │  ┌───────────────────────────┐   │
-◄───┼──│  receive_queue (B → A)    │◄──┼────
-    │  └───────────────────────────┘   │
-    │                                  │
+```mermaid
+flowchart LR
+    A["Process A"] --> SendQ["send_queue (A to B)"]
+    SendQ --> B["Process B"]
+    B --> ReceiveQ["receive_queue (B to A)"]
+    ReceiveQ --> A
 ```
 
 ## Queue Implementation
