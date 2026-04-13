@@ -5,6 +5,7 @@
 #pragma once
 
 #include <algorithm>
+#include <tuple>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -19,11 +20,7 @@
 #endif
 
 #ifndef RPC_HAS_STD_FORMAT
-#  ifdef FOR_SGX
-#    include <fmt/format-inl.h>
-#  else
-#    include <fmt/format.h>
-#  endif
+#  include <fmt/format.h>
 #endif
 
 namespace rpc
@@ -34,7 +31,13 @@ namespace rpc
         std::string_view format_string,
         Args&&... args)
     {
-        return std::vformat(format_string, std::make_format_args(std::forward<Args>(args)...));
+        auto format_args = std::make_tuple(std::forward<Args>(args)...);
+        return std::apply(
+            [&](auto&... packed_args)
+            {
+                return std::vformat(format_string, std::make_format_args(packed_args...));
+            },
+            format_args);
     }
 
     template<typename OutputIt, typename... Args>
@@ -52,9 +55,15 @@ namespace rpc
         std::string_view format_string,
         Args&&... args)
     {
-        return fmt::vformat(
-            fmt::string_view(format_string.data(), format_string.size()),
-            fmt::make_format_args(std::forward<Args>(args)...));
+        auto format_args = std::make_tuple(std::forward<Args>(args)...);
+        return std::apply(
+            [&](auto&... packed_args)
+            {
+                return fmt::vformat(
+                    fmt::string_view(format_string.data(), format_string.size()),
+                    fmt::make_format_args(packed_args...));
+            },
+            format_args);
     }
 
     template<typename OutputIt, typename... Args>
