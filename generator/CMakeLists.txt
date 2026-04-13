@@ -29,6 +29,9 @@ add_executable(
 
 target_compile_definitions(generator PRIVATE ${CANOPY_DEFINES})
 target_compile_options(generator PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_compile_options(generator PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-dangling-reference>)
+endif()
 target_include_directories(generator PRIVATE ${CANOPY_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(
   generator

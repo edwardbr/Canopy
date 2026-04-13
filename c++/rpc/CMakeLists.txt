@@ -46,7 +46,7 @@ if(CANOPY_BUILD_ENCLAVE)
     src/version.cpp)
 
   target_compile_definitions(rpc_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-  target_compile_options(rpc_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
+  target_compile_options(rpc_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC_ENCLAVE})
   target_include_directories(
     rpc_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include/rpc>"
@@ -94,11 +94,6 @@ add_library(
   src/stub.cpp
   src/transport.cpp
   src/version.cpp)
-
-# Conditionally add thread-local logger implementation
-if(CANOPY_USE_THREAD_LOCAL_LOGGING)
-  target_sources(rpc PRIVATE src/thread_local_logger.cpp)
-endif()
 
 target_compile_definitions(rpc PUBLIC ${CANOPY_DEFINES})
 

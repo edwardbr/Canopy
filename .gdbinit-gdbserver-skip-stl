@@ -1,0 +1,5 @@
+maint set worker-threads unlimited
+set auto-solib-add on
+set index-cache enabled on
+set disassembly-flavor intel
+skip -gfi **/bits/*

@@ -25,6 +25,18 @@ namespace rpc
             rpc::zone zone_id,
             rpc::destination_zone parent_zone_id) const override;
         void on_service_deletion(rpc::zone zone_id) const override;
+        void on_service_send(
+            rpc::zone zone_id,
+            rpc::remote_object remote_object_id,
+            rpc::caller_zone caller_zone_id,
+            rpc::interface_ordinal interface_id,
+            rpc::method method_id) const override;
+        void on_service_post(
+            rpc::zone zone_id,
+            rpc::remote_object remote_object_id,
+            rpc::caller_zone caller_zone_id,
+            rpc::interface_ordinal interface_id,
+            rpc::method method_id) const override;
         void on_service_try_cast(
             rpc::zone zone_id,
             rpc::remote_object remote_object_id,
@@ -41,6 +53,14 @@ namespace rpc
             rpc::remote_object remote_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::release_options options) const override;
+        void on_service_object_released(
+            rpc::zone zone_id,
+            rpc::remote_object remote_object_id,
+            rpc::caller_zone caller_zone_id) const override;
+        void on_service_transport_down(
+            rpc::zone zone_id,
+            rpc::destination_zone destination_zone_id,
+            rpc::caller_zone caller_zone_id) const override;
 
         void on_service_proxy_creation(
             const std::string& service_name,
@@ -58,6 +78,18 @@ namespace rpc
             rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,
             rpc::caller_zone caller_zone_id) const override;
+        void on_service_proxy_send(
+            rpc::zone zone_id,
+            rpc::remote_object remote_object_id,
+            rpc::caller_zone caller_zone_id,
+            rpc::interface_ordinal interface_id,
+            rpc::method method_id) const override;
+        void on_service_proxy_post(
+            rpc::zone zone_id,
+            rpc::remote_object remote_object_id,
+            rpc::caller_zone caller_zone_id,
+            rpc::interface_ordinal interface_id,
+            rpc::method method_id) const override;
         void on_service_proxy_try_cast(
             rpc::zone zone_id,
             rpc::remote_object remote_object_id,
@@ -74,6 +106,14 @@ namespace rpc
             rpc::remote_object remote_object_id,
             rpc::caller_zone caller_zone_id,
             rpc::release_options options) const override;
+        void on_service_proxy_object_released(
+            rpc::zone zone_id,
+            rpc::remote_object remote_object_id,
+            rpc::caller_zone caller_zone_id) const override;
+        void on_service_proxy_transport_down(
+            rpc::zone zone_id,
+            rpc::destination_zone destination_zone_id,
+            rpc::caller_zone caller_zone_id) const override;
         void on_service_proxy_add_external_ref(
             rpc::zone zone_id,
             rpc::destination_zone destination_zone_id,

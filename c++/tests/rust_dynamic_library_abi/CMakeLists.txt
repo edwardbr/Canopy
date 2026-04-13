@@ -11,6 +11,13 @@ set(CANOPY_RUST_TEST_CHILD_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
 set(CANOPY_RUST_TEST_CHILD_LIB
     "${CANOPY_RUST_TEST_CHILD_TARGET_DIR}/debug/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_dynamic_library_test_child${CMAKE_SHARED_LIBRARY_SUFFIX}"
 )
+set(CANOPY_RUST_TEST_CHILD_ENV CANOPY_GENERATOR=$<TARGET_FILE:generator>)
+set(CANOPY_RUST_TEST_CHILD_DEPENDS generator)
+
+if(TARGET protoc)
+  list(APPEND CANOPY_RUST_TEST_CHILD_ENV CANOPY_PROTOC=$<TARGET_FILE:protoc>)
+  list(APPEND CANOPY_RUST_TEST_CHILD_DEPENDS protoc)
+endif()
 
 CanopyGenerate(
   basic_rpc_probe
@@ -26,12 +33,10 @@ CanopyGenerate(
 
 add_custom_command(
   OUTPUT "${CANOPY_RUST_TEST_CHILD_LIB}"
-  COMMAND
-    ${CMAKE_COMMAND} -E env CANOPY_GENERATOR=$<TARGET_FILE:generator> CANOPY_PROTOC=$<TARGET_FILE:protoc> cargo build
-    --package canopy-transport-dynamic-library-test-child --target-dir "${CANOPY_RUST_TEST_CHILD_TARGET_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E env ${CANOPY_RUST_TEST_CHILD_ENV} cargo build --package
+          canopy-transport-dynamic-library-test-child --target-dir "${CANOPY_RUST_TEST_CHILD_TARGET_DIR}"
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust"
-  DEPENDS generator
-          protoc
+  DEPENDS ${CANOPY_RUST_TEST_CHILD_DEPENDS}
           "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
           "${CMAKE_SOURCE_DIR}/rust/transports/dynamic_library/Cargo.toml"
           "${CMAKE_SOURCE_DIR}/rust/transports/dynamic_library/src/lib.rs"

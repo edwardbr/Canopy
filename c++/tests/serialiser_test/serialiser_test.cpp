@@ -20,12 +20,13 @@
 // ============================================================
 // Encoding tag types for TYPED_TEST_SUITE
 //
-// Four encoding tags correspond to the four rpc::encoding values.
-// YAS tags work directly with any serialisable type (including raw
-// scalars via the YAS library).  The protocol_buffers tag requires
-// IDL-generated wrapper structs that carry protobuf_serialise /
-// protobuf_deserialise member functions; those wrappers are defined
-// in tests/idls/serialiser_test/test_types.idl.
+// The enabled encoding tags correspond to the rpc::encoding values
+// compiled into this build. YAS tags work directly with any
+// serialisable type (including raw scalars via the YAS library).
+// The protocol_buffers tag requires IDL-generated wrapper structs
+// that carry protobuf_serialise / protobuf_deserialise member
+// functions; those wrappers are defined in
+// tests/idls/serialiser_test/test_types.idl.
 // ============================================================
 
 struct yas_binary_enc
@@ -79,6 +80,7 @@ struct yas_json_enc
     }
 };
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 struct protocol_buffers_enc
 {
     static constexpr rpc::encoding value = rpc::encoding::protocol_buffers;
@@ -94,6 +96,7 @@ struct protocol_buffers_enc
         return rpc::from_protobuf(data, obj);
     }
 };
+#endif
 
 // ============================================================
 // IDL wrapper scalar suite – tests all four encodings including
@@ -102,7 +105,11 @@ struct protocol_buffers_enc
 // Each wrapper holds a single scalar field named "value".
 // ============================================================
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc, protocol_buffers_enc>;
+#else
+using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc>;
+#endif
 
 template<typename EncodingTag> class WrappedScalarSerialiserTest : public ::testing::Test
 {
@@ -691,6 +698,7 @@ TEST_F(
 }
 
 // Test to_protobuf serialization with generated structure
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     ToProtobuf)
@@ -704,6 +712,7 @@ TEST_F(
     EXPECT_FALSE(result.empty());
     EXPECT_GT(result.size(), 0u);
 }
+#endif
 
 // Test from_yas_json deserialization with generated structure
 TEST_F(
@@ -766,6 +775,7 @@ TEST_F(
 }
 
 // Test from_protobuf deserialization with generated structure
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     FromProtobuf)
@@ -784,6 +794,7 @@ TEST_F(
     EXPECT_EQ(deserialized.int_val, 100);
     EXPECT_EQ(deserialized.string_val, "hello");
 }
+#endif
 
 // Test serialise function with all encodings using generated structure
 TEST_F(
@@ -803,8 +814,10 @@ TEST_F(
     auto compressed_result = rpc::serialise(obj, rpc::encoding::yas_compressed_binary);
     EXPECT_FALSE(compressed_result.empty());
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     auto protobuf_result = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(protobuf_result.empty());
+#endif
 }
 
 // Test deserialise function with all encodings using generated structure
@@ -846,6 +859,7 @@ TEST_F(
         EXPECT_EQ(deserialized.string_val, obj.string_val);
     }
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     {
         auto serialized = rpc::serialise(obj, rpc::encoding::protocol_buffers);
         rpc::byte_span data_span(serialized);
@@ -855,6 +869,7 @@ TEST_F(
         EXPECT_EQ(deserialized.int_val, obj.int_val);
         EXPECT_EQ(deserialized.string_val, obj.string_val);
     }
+#endif
 }
 
 // Test get_saved_size function with all encodings
@@ -875,8 +890,10 @@ TEST_F(
     auto compressed_size = rpc::get_saved_size(obj, rpc::encoding::yas_compressed_binary);
     EXPECT_GT(compressed_size, 0u);
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     auto protobuf_size = rpc::get_saved_size(obj, rpc::encoding::protocol_buffers);
     EXPECT_GT(protobuf_size, 0u);
+#endif
 
     auto json_result = rpc::serialise(obj, rpc::encoding::yas_json);
     EXPECT_EQ(json_size, json_result.size());
@@ -884,11 +901,14 @@ TEST_F(
     auto binary_result = rpc::serialise(obj, rpc::encoding::yas_binary);
     EXPECT_EQ(binary_size, binary_result.size());
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     auto protobuf_result = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_EQ(protobuf_size, protobuf_result.size());
+#endif
 }
 
 // Test with complex structure
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     ComplexStructProtobuf)
@@ -908,8 +928,10 @@ TEST_F(
     EXPECT_EQ(deserialized.int_val, 123);
     EXPECT_EQ(deserialized.string_val, "complex_test");
 }
+#endif
 
 // Test with nested structure
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     NestedStructProtobuf)
@@ -931,6 +953,7 @@ TEST_F(
     EXPECT_EQ(deserialized.vector_val.size(), 2u);
     EXPECT_EQ(deserialized.map_val.size(), 2u);
 }
+#endif
 
 // Test roundtrip for all encodings with generated structure
 TEST_F(
@@ -941,10 +964,14 @@ TEST_F(
     original.int_val = 999;
     original.string_val = "roundtrip_test";
 
-    const std::vector<rpc::encoding> encodings = {rpc::encoding::yas_json,
+    const std::vector<rpc::encoding> encodings = {
+        rpc::encoding::yas_json,
         rpc::encoding::yas_binary,
         rpc::encoding::yas_compressed_binary,
-        rpc::encoding::protocol_buffers};
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+        rpc::encoding::protocol_buffers,
+#endif
+    };
 
     for (auto enc : encodings)
     {
@@ -963,6 +990,7 @@ TEST_F(
 }
 
 // Test with template structure
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     TemplateStructProtobuf)
@@ -980,8 +1008,10 @@ TEST_F(
     EXPECT_TRUE(error.empty());
     EXPECT_EQ(deserialized.type_t, 42);
 }
+#endif
 
 // Test protobuf_saved_size function
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     ProtobufSavedSize)
@@ -996,8 +1026,10 @@ TEST_F(
     auto serialized = rpc::to_protobuf(obj);
     EXPECT_EQ(size, serialized.size());
 }
+#endif
 
 // Test edge cases - empty string
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     EmptyStringProtobuf)
@@ -1016,8 +1048,10 @@ TEST_F(
     EXPECT_EQ(deserialized.int_val, 0);
     EXPECT_EQ(deserialized.string_val, "");
 }
+#endif
 
 // Test edge cases - large values
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
     SerialiserTest,
     LargeValuesProtobuf)
@@ -1036,6 +1070,7 @@ TEST_F(
     EXPECT_EQ(deserialized.int_val, INT_MAX);
     EXPECT_EQ(deserialized.string_val, std::string(1000, 'x'));
 }
+#endif
 
 // Test to_yas_json with std::array
 TEST_F(

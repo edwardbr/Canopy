@@ -14,8 +14,8 @@
 #include <rpc/internal/build_modifiers.h>
 
 // needed for uint128_t and int128_t serialisation support protobuffers are sending pairs of uint64_t's
-#include <rpc/internal/int128.h>
-#include <rpc/internal/expected.h>
+#include <rpc/internal/polyfill/int128.h>
+#include <rpc/internal/polyfill/expected.h>
 #include <rpc/rpc_types.h>
 #include <rpc/internal/zone_authenticator.h>
 
@@ -27,7 +27,7 @@
 #include <rpc/internal/member_ptr.h>
 #include <rpc/internal/remote_pointer.h>
 #include <rpc/internal/coroutine_support.h>
-#include <rpc/internal/event.h>
+#include <rpc/internal/polyfill/event.h>
 
 // synchronous/coroutine sensitive headers
 

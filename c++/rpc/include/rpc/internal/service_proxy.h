@@ -33,14 +33,14 @@ namespace rpc
     struct object_proxy_lookup_result
     {
         int error_code;
-        std::shared_ptr<object_proxy> object_proxy;
+        std::shared_ptr<object_proxy> proxy;
 
         object_proxy_lookup_result() = default;
         object_proxy_lookup_result(
             int error_code,
             std::shared_ptr<rpc::object_proxy> object_proxy)
             : error_code(error_code)
-            , object_proxy(std::move(object_proxy))
+            , proxy(std::move(object_proxy))
         {
         }
     };

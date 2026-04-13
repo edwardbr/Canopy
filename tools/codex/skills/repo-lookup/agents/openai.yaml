@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repo Lookup"
+  short_description: "Fast repository lookup and navigation"
+  default_prompt: "Use $repo-lookup to find definitions, references, build targets, and authoritative files in this repository."

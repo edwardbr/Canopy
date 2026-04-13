@@ -27,11 +27,11 @@
 #pragma once
 
 #include <rpc/internal/marshaller.h>
+#include <rpc/internal/polyfill/shared_mutex.h>
 #include <rpc/internal/types.h>
-#include <unordered_map>
-#include <memory>
-#include <shared_mutex>
 #include <atomic>
+#include <memory>
+#include <unordered_map>
 
 // Forward declaration to avoid circular dependency
 namespace rpc
@@ -166,7 +166,7 @@ namespace rpc
         // Weak reference to local service (lookup only, doesn't keep alive)
         std::weak_ptr<service> service_;
 
-        mutable std::shared_mutex destinations_mutex_;
+        mutable rpc::shared_mutex destinations_mutex_;
 
         // Passthrough routing map for non-adjacent zones
         std::unordered_map<pass_through_key, std::weak_ptr<pass_through>> pass_thoughs_;

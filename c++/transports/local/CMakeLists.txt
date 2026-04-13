@@ -7,13 +7,10 @@ cmake_minimum_required(VERSION 3.24)
 
 # Enclave version
 if(CANOPY_BUILD_ENCLAVE)
-
-  add_subdirectory(interface)
-
   add_library(transport_local_enclave src/transport.cpp)
 
   target_compile_definitions(transport_local_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-  target_compile_options(transport_local_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_compile_options(transport_local_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
 
   target_include_directories(
     transport_local_enclave

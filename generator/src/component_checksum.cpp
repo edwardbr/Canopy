@@ -7,7 +7,6 @@
 #include <type_traits>
 #include <algorithm>
 #include <tuple>
-#include <type_traits>
 
 #include "coreclasses.h"
 #include "cpp_parser.h"

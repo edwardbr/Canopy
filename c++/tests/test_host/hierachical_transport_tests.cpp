@@ -144,7 +144,58 @@ TYPED_TEST(
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_create_enclave<TypeParam>(lib); });
 }
+
+template<class T> CORO_TASK(bool) coro_call_host_create_enclave_and_run(T& lib)
+{
+    bool run_standard_tests = true;
+    rpc::shared_ptr<yyy::i_example> target;
+
+    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
+    CORO_ASSERT_NE(target, nullptr);
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_create_enclave_and_run)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_call_host_create_enclave_and_run<TypeParam>(lib); });
+}
 #endif
+
+template<class T> CORO_TASK(bool) coro_call_host_create_local_zone(T& lib)
+{
+    bool run_standard_tests = false;
+    rpc::shared_ptr<yyy::i_example> target;
+
+    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_local_zone(target, run_standard_tests), rpc::error::OK());
+    CORO_ASSERT_NE(target, nullptr);
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_create_local_zone)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_call_host_create_local_zone<TypeParam>(lib); });
+}
+
+template<class T> CORO_TASK(bool) coro_call_host_create_local_zone_and_run(T& lib)
+{
+    bool run_standard_tests = true;
+    rpc::shared_ptr<yyy::i_example> target;
+
+    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_local_zone(target, run_standard_tests), rpc::error::OK());
+    CORO_ASSERT_NE(target, nullptr);
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_create_local_zone_and_run)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_call_host_create_local_zone_and_run<TypeParam>(lib); });
+}
 
 template<class T> CORO_TASK(bool) coro_look_up_app_and_return_with_nothing(T& lib)
 {
@@ -175,6 +226,27 @@ TYPED_TEST(
     call_host_unload_app_not_there)
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_unload_app_not_there<TypeParam>(lib); });
+}
+
+template<class T> CORO_TASK(bool) coro_call_host_look_up_local_app_unload_app(T& lib)
+{
+    bool run_standard_tests = false;
+    rpc::shared_ptr<yyy::i_example> target;
+
+    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_local_zone(target, run_standard_tests), rpc::error::OK());
+    CORO_ASSERT_NE(target, nullptr);
+
+    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
+    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_unload_app("target"), rpc::error::OK());
+    target = nullptr;
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    hierachical_transport_tests,
+    call_host_look_up_local_app_unload_app)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_call_host_look_up_local_app_unload_app<TypeParam>(lib); });
 }
 
 #ifdef CANOPY_BUILD_ENCLAVE

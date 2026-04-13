@@ -60,7 +60,8 @@ namespace rpc
         int CALL_CANCELLED();                // Service proxy remote call is cancelled
         int OBJECT_GONE(); // The service no longer has an object of that id, perhaps an optimistic pointer call attempt is happening
         int CALL_TIMEOUT(); // an outbound RPC call received no response within the transport timeout window
-        int MAX();          // the biggest value
+        int NOT_IMPLEMENTED(); // operation exists in the interface surface but is not implemented on this platform/path yet
+        int MAX();             // the biggest value
 
         bool is_error(int err);    // any error listed above that is >= MIN() && <= MAX
         bool is_critical(int err); // any error listed above other than OBJECT_GONE and INVALID_CAST

@@ -28,6 +28,16 @@ Do not rely on `documents/` for correctness. It may be useful for background, bu
 - `documents/transports/tcp.md` — TCP transport overview.
 - `documents/architecture/` — zone, service, and lifetime architecture.
 
+### Local lookup tools
+
+- Use `scripts/repo-index.sh` to build the local `.codex-index/` file list and ctags index.
+- Use `scripts/repo-lookup.sh files '<pattern>'` to find filenames.
+- Use `scripts/repo-lookup.sh text '<pattern>'` to search repository text.
+- Use `scripts/repo-lookup.sh defs <symbol>` for indexed symbol lookups after indexing.
+- Use `scripts/repo-lookup.sh target <target>` to find CMake target definitions and references.
+- Use `scripts/repo-lookup.sh compile-db` to find `compile_commands.json` for `clangd`.
+- Prefer these local tools before broader repository scans when the task is simple lookup or navigation.
+
 ## Overview
 
 Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files. It supports multiple transport layers, optional coroutine builds, JSON schema metadata, enclave-related builds, demos, and benchmarks.

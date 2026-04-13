@@ -6,11 +6,11 @@
 /*
  *   Serialisation Benchmark
  *   Measures serialise + deserialise round-trip throughput for every type
- *   covered by the serialiser unit tests, across all four encoding formats:
+ *   covered by the serialiser unit tests, across the enabled encoding formats:
  *     - yas_binary
  *     - yas_compressed_binary
  *     - yas_json
- *     - protocol_buffers
+ *     - protocol_buffers (when CANOPY_BUILD_PROTOCOL_BUFFERS=ON)
  *
  *   Types exercised (matching serialiser_test.cpp):
  *     Scalars : int8, uint8, int16, uint16, int32, uint32, int64, uint64,
@@ -111,7 +111,9 @@ namespace serialisation_benchmark
         {rpc::encoding::yas_binary, "yas_binary"},
         {rpc::encoding::yas_compressed_binary, "yas_compressed"},
         {rpc::encoding::yas_json, "yas_json"},
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         {rpc::encoding::protocol_buffers, "protocol_buffers"},
+#endif
     };
 
     // -------------------------------------------------------------------------

@@ -10,18 +10,12 @@
 
 #ifndef RPC_LOGGING_DEFINED
 
-// Include thread-local logging if enabled (host only, not in enclave)
-#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-#    include <rpc/internal/thread_local_logger.h>
-#  endif
-
 // Determine which logging backend to use
-#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-// Use thread-local circular buffer logging
-#    define RPC_LOG_BACKEND(level, message) rpc::thread_local_log(level, message, __FILE__, __LINE__, __FUNCTION__)
-#  elif defined(CANOPY_USE_LOGGING)
+#  if defined(CANOPY_USE_LOGGING)
+
+#    include <rpc/internal/polyfill/format.h>
 // Use standard RPC logging
-#    ifdef _IN_ENCLAVE
+#    ifdef FOR_SGX
 #      include <sgx_error.h>
 extern "C"
 {
@@ -53,17 +47,14 @@ extern "C"
 #  ifdef __clang__
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+#  elif defined(__GNUC__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wdangling-reference"
 #  endif
 
 // Unified logging macros with levels (0=TRACE, 1=DEBUG, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)
 // CANOPY_LOGGING_LEVEL sets the minimum severity: only messages at or above this level are emitted.
-#  if defined(CANOPY_USE_LOGGING) || (defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE))
-
-#    ifdef _IN_ENCLAVE
-#      include <fmt/format-inl.h>
-#    else
-#      include <fmt/format.h>
-#    endif
+#  if defined(CANOPY_USE_LOGGING)
 
 #    ifndef CANOPY_LOGGING_LEVEL
 #      define CANOPY_LOGGING_LEVEL 2
@@ -73,7 +64,7 @@ extern "C"
 #      define RPC_TRACE(format_str, ...)                                                                               \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                 \
+              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
               RPC_LOG_BACKEND(0, formatted);                                                                           \
           } while (0)
 #    else
@@ -84,7 +75,7 @@ extern "C"
 #      define RPC_DEBUG(format_str, ...)                                                                               \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                 \
+              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
               RPC_LOG_BACKEND(1, formatted);                                                                           \
           } while (0)
 #    else
@@ -95,7 +86,7 @@ extern "C"
 #      define RPC_INFO(format_str, ...)                                                                                \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                 \
+              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
               RPC_LOG_BACKEND(2, formatted);                                                                           \
           } while (0)
 #    else
@@ -106,7 +97,7 @@ extern "C"
 #      define RPC_WARNING(format_str, ...)                                                                             \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                                 \
+              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
               RPC_LOG_BACKEND(3, formatted);                                                                           \
           } while (0)
 #    else
@@ -119,14 +110,14 @@ extern "C"
             do                                                                                                         \
             {                                                                                                          \
                 RPC_ASSERT(false);                                                                                     \
-                auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                               \
+                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
                 RPC_LOG_BACKEND(4, formatted);                                                                         \
             } while (0)
 #      else
 #        define RPC_ERROR(format_str, ...)                                                                             \
             do                                                                                                         \
             {                                                                                                          \
-                auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                               \
+                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
                 RPC_LOG_BACKEND(4, formatted);                                                                         \
             } while (0)
 #      endif
@@ -140,14 +131,14 @@ extern "C"
             do                                                                                                         \
             {                                                                                                          \
                 RPC_ASSERT(false);                                                                                     \
-                auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                               \
+                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
                 RPC_LOG_BACKEND(5, formatted);                                                                         \
             } while (0)
 #      else
 #        define RPC_CRITICAL(format_str, ...)                                                                          \
             do                                                                                                         \
             {                                                                                                          \
-                auto formatted = fmt::format(format_str, ##__VA_ARGS__);                                               \
+                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
                 RPC_LOG_BACKEND(5, formatted);                                                                         \
             } while (0)
 #      endif
@@ -165,8 +156,10 @@ extern "C"
 #    define RPC_CRITICAL(...)
 #  endif
 
-#  ifdef __clang__
+#  if defined(__clang__)
 #    pragma clang diagnostic pop
+#  elif defined(__GNUC__)
+#    pragma GCC diagnostic pop
 #  endif
 
 #  define RPC_LOGGING_DEFINED

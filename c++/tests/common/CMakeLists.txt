@@ -10,31 +10,21 @@ message("common_enclave")
 # common_enclave
 
 if(${CANOPY_BUILD_ENCLAVE})
-  add_library(common_enclave STATIC src/host_service_proxy.cpp)
+  add_library(common_enclave INTERFACE)
 
-  target_compile_definitions(common_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-  target_include_directories(
-    common_enclave
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include/marshalled_tests>"
-    PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
-
-  target_compile_options(common_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
-  target_link_options(common_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
+  target_include_directories(common_enclave INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+                                                      "$<INSTALL_INTERFACE:include/marshalled_tests>")
 
   target_link_libraries(
     common_enclave
-    PRIVATE rpc_enclave
-            marshal_test_edl_enclave
-            ${CANOPY_TELEMETRY_ENCLAVE_EDL}
-            ${CANOPY_ENCLAVE_FMT_LIB}
-            example_idl_enclave
-            yas_common)
-
-  set_property(TARGET common_enclave PROPERTY COMPILE_PDB_NAME common_enclave)
-
-  if(CANOPY_ENABLE_CLANG_TIDY)
-    set_target_properties(common_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
-  endif()
+    INTERFACE transport_sgx_enclave
+              transport_local_enclave
+              rpc_enclave
+              marshal_test_edl_enclave
+              ${CANOPY_TELEMETRY_ENCLAVE_EDL}
+              ${CANOPY_ENCLAVE_FMT_LIB}
+              example_idl_enclave
+              yas_common)
 
   # ####################################################################################################################
 
@@ -42,7 +32,6 @@ endif()
 
 set(SOURCES ${COROUTINE_SERVICE_PROXIES} src/foo_impl.cpp src/tests.cpp)
 if(CANOPY_BUILD_ENCLAVE)
-  list(APPEND SOURCES src/enclave_service_proxy.cpp)
   set(ADDITIONAL_TARGET marshal_test_edl rpc_telemetry_edl_header)
 endif()
 

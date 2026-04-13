@@ -6,8 +6,7 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
-#include <shared_mutex>
+#include <rpc/internal/polyfill/shared_mutex.h>
 
 // Forward declaration
 namespace rpc
@@ -60,7 +59,7 @@ namespace stdex
     {
     private:
         std::shared_ptr<T> ptr_;
-        mutable std::shared_mutex mutex_; // Protects ptr_ access
+        mutable rpc::shared_mutex mutex_; // Protects ptr_ access
 
     public:
         // Default constructor
@@ -79,7 +78,7 @@ namespace stdex
         // Copy constructor - thread-safe
         member_ptr(const member_ptr& other)
         {
-            std::shared_lock lock(other.mutex_);
+            std::unique_lock lock(other.mutex_);
             ptr_ = other.ptr_;
         }
 
@@ -140,7 +139,7 @@ namespace stdex
          */
         std::shared_ptr<T> get_nullable() const
         {
-            std::shared_lock lock(mutex_);
+            rpc::shared_lock<rpc::shared_mutex> lock(mutex_);
             return ptr_;
         }
 
@@ -208,7 +207,7 @@ namespace rpc
     {
     private:
         rpc::shared_ptr<T> ptr_;
-        mutable std::shared_mutex mutex_; // Protects ptr_ access
+        mutable rpc::shared_mutex mutex_; // Protects ptr_ access
 
     public:
         // Default constructor
@@ -227,7 +226,7 @@ namespace rpc
         // Copy constructor - thread-safe
         member_ptr(const member_ptr& other)
         {
-            std::shared_lock lock(other.mutex_);
+            std::unique_lock lock(other.mutex_);
             ptr_ = other.ptr_;
         }
 
@@ -289,7 +288,7 @@ namespace rpc
          */
         rpc::shared_ptr<T> get_nullable() const
         {
-            std::shared_lock lock(mutex_);
+            rpc::shared_lock<rpc::shared_mutex> lock(mutex_);
             return ptr_;
         }
 

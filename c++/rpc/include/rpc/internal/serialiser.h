@@ -78,6 +78,7 @@ namespace rpc
         YAS_WARNINGS_POP
     }
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     // note that this function is here for completeness but is not efficient as it requires serialisation to get size
     template<typename T> uint64_t protobuf_saved_size(const T& obj)
     {
@@ -85,6 +86,7 @@ namespace rpc
         obj.protobuf_serialise(buffer);
         return buffer.size();
     }
+#endif
 
     // Serialization functions - work with both std::vector-like containers and std::array
     template<
@@ -165,6 +167,7 @@ namespace rpc
         YAS_WARNINGS_POP
     }
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     // protobuf serialization using member function protobuf_serialise
     template<
         class OutputBlob = std::vector<std::uint8_t>,
@@ -190,6 +193,7 @@ namespace rpc
             return OutputBlob(buffer.data(), buffer.data() + buffer.size());
         }
     }
+#endif
 
     template<
         class OutputBlob = std::vector<std::uint8_t>,
@@ -204,8 +208,10 @@ namespace rpc
             return to_yas_binary<OutputBlob>(obj);
         if (enc == encoding::yas_compressed_binary)
             return to_compressed_yas_binary<OutputBlob>(obj);
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         if (enc == encoding::protocol_buffers)
             return to_protobuf<OutputBlob>(obj);
+#endif
         throw std::runtime_error("invalid encoding type");
     }
 
@@ -220,8 +226,10 @@ namespace rpc
             return yas_binary_saved_size(obj);
         if (enc == encoding::yas_compressed_binary)
             return compressed_yas_binary_saved_size(obj);
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         if (enc == encoding::protocol_buffers)
             return protobuf_saved_size(obj);
+#endif
         throw std::runtime_error("invalid encoding type");
     }
 
@@ -310,6 +318,7 @@ namespace rpc
         }
     }
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     template<typename T>
     std::string from_protobuf(
         const byte_span& data,
@@ -336,6 +345,7 @@ namespace rpc
             return "An exception has occurred a data blob was incompatible with the type that is deserialising to";
         }
     }
+#endif
 
     template<typename T>
     std::string deserialise(
@@ -349,8 +359,10 @@ namespace rpc
             return from_yas_binary(data, obj);
         if (enc == encoding::yas_compressed_binary)
             return from_yas_compressed_binary(data, obj);
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         if (enc == encoding::protocol_buffers)
             return from_protobuf(data, obj);
+#endif
         return "invalid encoding type";
     }
 }

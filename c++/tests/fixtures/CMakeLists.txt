@@ -25,7 +25,7 @@ target_include_directories(
 
 # Add enclave dependencies if needed
 if(CANOPY_BUILD_ENCLAVE)
-  set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header)
+  set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header transport_sgx)
 endif()
 
 # Link with required libraries
@@ -37,6 +37,7 @@ target_link_libraries(
          example_shared_idl
          rpc::rpc
          yas_common
+         transport_local
          fmt::fmt-header-only
          spdlog::spdlog
          GTest::gtest

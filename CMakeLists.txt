@@ -53,20 +53,32 @@ if(CANOPY_BUILD_RUST)
   find_program(CARGO_EXECUTABLE cargo HINTS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin")
   if(NOT CARGO_EXECUTABLE)
     message(WARNING "cargo not found — set CANOPY_BUILD_RUST=OFF to suppress this warning")
+  elseif(NOT CANOPY_BUILD_PROTOCOL_BUFFERS)
+    message(
+      STATUS
+        "Skipping Rust workspace build because this configuration disables Protocol Buffers and the Rust protobuf probes require protoc."
+    )
   else()
     set(CANOPY_RUST_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rust")
+    set(CANOPY_RUST_BUILD_ENV CANOPY_GENERATOR=$<TARGET_FILE:generator>)
+    set(CANOPY_RUST_BUILD_DEPENDS generator)
+
+    if(TARGET protoc)
+      list(APPEND CANOPY_RUST_BUILD_ENV CANOPY_PROTOC=$<TARGET_FILE:protoc>)
+      list(APPEND CANOPY_RUST_BUILD_DEPENDS protoc)
+    endif()
 
     # Build all Rust crates (compile only, no test execution).
     add_custom_target(
       rust_build ALL
-      COMMAND ${CMAKE_COMMAND} -E env CANOPY_GENERATOR=$<TARGET_FILE:generator> CANOPY_PROTOC=$<TARGET_FILE:protoc>
-              ${CARGO_EXECUTABLE} build --workspace --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
+      COMMAND ${CMAKE_COMMAND} -E env ${CANOPY_RUST_BUILD_ENV} ${CARGO_EXECUTABLE} build --workspace --manifest-path
+              ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
       WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR}
       COMMENT "Building Rust workspace"
       VERBATIM)
-    add_dependencies(rust_build generator protoc)
+    add_dependencies(rust_build ${CANOPY_RUST_BUILD_DEPENDS})
 
-    set(CANOPY_RUST_TEST_ENV CANOPY_GENERATOR=$<TARGET_FILE:generator> CANOPY_PROTOC=$<TARGET_FILE:protoc>)
+    set(CANOPY_RUST_TEST_ENV ${CANOPY_RUST_BUILD_ENV})
 
     if(TARGET canopy_probe_c_abi_dll)
       list(APPEND CANOPY_RUST_TEST_ENV CANOPY_CXX_PROBE_DLL_PATH=$<TARGET_FILE:canopy_probe_c_abi_dll>)

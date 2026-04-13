@@ -86,7 +86,7 @@ namespace rpc
 
     std::string console_telemetry_service::get_zone_name(uint64_t zone_id) const
     {
-        std::shared_lock<std::shared_mutex> lock(zone_names_mutex_);
+        rpc::shared_lock<rpc::shared_mutex> lock(zone_names_mutex_);
         auto it = zone_names_.find(zone_id);
         if (it != zone_names_.end())
         {
@@ -215,7 +215,7 @@ namespace rpc
         const std::string& name,
         bool optional_replace) const
     {
-        std::unique_lock<std::shared_mutex> lock(zone_names_mutex_);
+            std::unique_lock<rpc::shared_mutex> lock(zone_names_mutex_);
         auto it = zone_names_.find(zone_id);
         if (it != zone_names_.end())
         {
@@ -280,11 +280,11 @@ namespace rpc
 
         // Track the parent-child relationship
         {
-            std::unique_lock<std::shared_mutex> lock(zone_children_mutex_);
+            std::unique_lock<rpc::shared_mutex> lock(zone_children_mutex_);
             zone_children_[parent_zone_id.get_subnet()].insert(zone_id.get_subnet());
         }
         {
-            std::unique_lock<std::shared_mutex> lock(zone_parents_mutex_);
+            std::unique_lock<rpc::shared_mutex> lock(zone_parents_mutex_);
             zone_parents_[zone_id.get_subnet()] = parent_zone_id.get_subnet();
         }
         // Print topology diagram after each service creation
@@ -296,7 +296,7 @@ namespace rpc
         init_logger();
         logger_->info("{}=== TOPOLOGY DIAGRAM ==={}", get_level_color(level_enum::info), reset_color());
 
-        std::shared_lock<std::shared_mutex> names_lock(zone_names_mutex_);
+        rpc::shared_lock<rpc::shared_mutex> names_lock(zone_names_mutex_);
         if (zone_names_.empty())
         {
             logger_->info("{}No zones registered yet{}", get_level_color(level_enum::info), reset_color());
@@ -306,7 +306,7 @@ namespace rpc
         // Find root zones (zones with no parent)
         std::set<uint64_t> root_zones;
         {
-            std::shared_lock<std::shared_mutex> parents_lock(zone_parents_mutex_);
+            rpc::shared_lock<rpc::shared_mutex> parents_lock(zone_parents_mutex_);
             for (const auto& zone_pair : zone_names_)
             {
                 uint64_t zone_id = zone_pair.first;
@@ -350,7 +350,7 @@ namespace rpc
 
         std::string zone_name;
         {
-            std::shared_lock<std::shared_mutex> names_lock(zone_names_mutex_);
+            rpc::shared_lock<rpc::shared_mutex> names_lock(zone_names_mutex_);
             auto zone_name_it = zone_names_.find(zone_id);
             zone_name = (zone_name_it != zone_names_.end()) ? zone_name_it->second : "unknown";
         }
@@ -367,7 +367,7 @@ namespace rpc
             reset_color());
 
         // Print children
-        std::shared_lock<std::shared_mutex> children_lock(zone_children_mutex_);
+        rpc::shared_lock<rpc::shared_mutex> children_lock(zone_children_mutex_);
         auto children_it = zone_children_.find(zone_id);
         if (children_it != zone_children_.end())
         {
@@ -892,11 +892,6 @@ namespace rpc
         level_enum level,
         const std::string& message) const
     {
-#if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-        // Also log to thread-local circular buffer for debugging
-        rpc::telemetry_to_thread_local_buffer(level, message);
-#endif
-
         const char* level_str;
         switch (level)
         {

@@ -60,6 +60,7 @@ namespace rpc::local
         auto parent = parent_.get_nullable();
         if (!parent)
         {
+            RPC_ERROR("parent_transport::outbound_send: parent is NULL!");
             CO_RETURN send_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         }
 
@@ -73,6 +74,7 @@ namespace rpc::local
         auto parent = parent_.get_nullable();
         if (!parent)
         {
+            RPC_ERROR("parent_transport::outbound_post: parent is NULL!");
             CO_RETURN;
         }
 
@@ -85,6 +87,7 @@ namespace rpc::local
         auto parent = parent_.get_nullable();
         if (!parent)
         {
+            RPC_ERROR("parent_transport::outbound_try_cast: parent is NULL!");
             CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
@@ -120,6 +123,7 @@ namespace rpc::local
         auto parent = parent_.get_nullable();
         if (!parent)
         {
+            RPC_ERROR("parent_transport::outbound_release: parent is NULL!");
             CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
         }
 
@@ -132,6 +136,7 @@ namespace rpc::local
         auto parent = parent_.get_nullable();
         if (!parent)
         {
+            RPC_ERROR("parent_transport::outbound_object_released: parent is NULL!");
             CO_RETURN;
         }
 
@@ -144,6 +149,7 @@ namespace rpc::local
         auto parent = parent_.get_nullable();
         if (!parent)
         {
+            RPC_ERROR("parent_transport::outbound_transport_down: parent is NULL!");
             CO_RETURN;
         }
 
@@ -155,7 +161,10 @@ namespace rpc::local
     {
         auto parent = parent_.get_nullable();
         if (!parent)
+        {
+            RPC_ERROR("parent_transport::outbound_get_new_zone_id: parent is NULL!");
             CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
+        }
         CO_RETURN CO_AWAIT parent->get_new_zone_id(std::move(params));
     }
 

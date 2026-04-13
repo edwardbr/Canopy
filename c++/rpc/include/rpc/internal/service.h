@@ -58,6 +58,11 @@
 
 namespace rpc
 {
+    class i_telemetry_service;
+#ifdef CANOPY_USE_TELEMETRY
+    std::shared_ptr<i_telemetry_service> get_telemetry_service();
+#endif
+
     class object_stub;
     class service;
     class child_service;
@@ -883,7 +888,7 @@ namespace rpc
                   child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
-#  ifdef CANOPY_USE_TELEMETRY
+#  if defined(CANOPY_USE_TELEMETRY) && !defined(FOR_SGX)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
 #  endif
@@ -899,7 +904,7 @@ namespace rpc
                   child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
-#  ifdef CANOPY_USE_TELEMETRY
+#  if defined(CANOPY_USE_TELEMETRY) && !defined(FOR_SGX)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
 #  endif
@@ -991,7 +996,7 @@ namespace rpc
                     result.error_code = proxy_result.error_code;
                     CO_RETURN result;
                 }
-                auto op = std::move(proxy_result.object_proxy);
+                auto op = std::move(proxy_result.proxy);
                 RPC_ASSERT(op != nullptr);
                 if (!op)
                 {
@@ -1007,7 +1012,7 @@ namespace rpc
                 }
                 parent_ptr = std::move(query_result.iface);
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
                     auto inbound_obj_r = zone_id.with_object(input_descr.get_object_id());
@@ -1033,7 +1038,7 @@ namespace rpc
 
                 if (result.error_code == rpc::error::OK())
                 {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
                     if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                     {
                         auto outbound_obj_r = zone_id.with_object(result.descriptor.get_object_id());
@@ -1242,7 +1247,7 @@ namespace rpc
                 result.error_code = proxy_result.error_code;
                 CO_RETURN result;
             }
-            auto op = std::move(proxy_result.object_proxy);
+            auto op = std::move(proxy_result.proxy);
             RPC_ASSERT(op != nullptr);
             if (!op)
             {
@@ -1258,7 +1263,7 @@ namespace rpc
             }
             parent_ptr = std::move(query_result.iface);
 
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto inbound_obj_r = zone_id_.with_object(input_descr.get_object_id());
@@ -1287,7 +1292,7 @@ namespace rpc
 
             if (result.error_code == rpc::error::OK())
             {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
                 if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 {
                     auto outbound_obj_r = zone_id_.with_object(result.descriptor.get_object_id());
@@ -1383,7 +1388,7 @@ namespace rpc
             result.error_code = err_code;
             CO_RETURN result;
         }
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_add_ref(

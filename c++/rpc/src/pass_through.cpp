@@ -97,7 +97,7 @@ namespace rpc
 
         end_call();
 
-        if (result.error_code == error::TRANSPORT_ERROR())
+        if (error::is_error(result.error_code))
         {
             trigger_self_destruction();
         }
@@ -151,7 +151,7 @@ namespace rpc
 
         end_call();
 
-        if (result.error_code == error::TRANSPORT_ERROR())
+        if (error::is_critical(result.error_code))
         {
             trigger_self_destruction();
         }

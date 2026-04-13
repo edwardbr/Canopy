@@ -12,7 +12,7 @@
 #include <rpc/rpc.h>
 #include <rpc/telemetry/i_telemetry_service.h>
 
-#ifndef _IN_ENCLAVE
+#ifndef FOR_SGX
 // Forward declare TestInfo to avoid including gtest in headers
 namespace testing
 {
@@ -22,7 +22,7 @@ namespace testing
 
 namespace rpc
 {
-#ifndef _IN_ENCLAVE
+#ifndef FOR_SGX
     /**
      * @brief Configuration for creating telemetry services with test-specific names.
      */
@@ -54,7 +54,7 @@ namespace rpc
     {
     private:
         std::vector<std::shared_ptr<i_telemetry_service>> children_;
-#ifndef _IN_ENCLAVE
+#ifndef FOR_SGX
         std::vector<telemetry_service_config> service_configs_;
 #endif
 
@@ -99,7 +99,7 @@ namespace rpc
          */
         void clear_children();
 
-#ifndef _IN_ENCLAVE
+#ifndef FOR_SGX
         /**
          * @brief Register a telemetry service configuration that will be created for each test.
          *

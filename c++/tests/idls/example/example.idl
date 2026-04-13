@@ -47,6 +47,9 @@ namespace yyy
         [description = "Creates an enclave on the host and returns the instance"]
         error_code call_host_create_enclave([out] rpc::shared_ptr<i_example> & target, bool run_standard_tests);
 
+        [description = "Creates a local zone on the host and returns the instance via a different subordinate"]
+        error_code call_host_create_local_zone([out] rpc::shared_ptr<i_example> & target, bool run_standard_tests);
+
         // live app registry, it should have sole responsibility for the long term storage of app shared pointers
         [description = "Looks up an app by name without returning the instance"]
         error_code call_host_look_up_app_not_return(
@@ -105,6 +108,9 @@ namespace yyy
         [description
             = "Creates a new enclave instance"]
         error_code create_enclave([out] rpc::shared_ptr<i_example> & target);
+
+        [description = "Creates a new lcoal zone"]
+        error_code create_local_zone([out] rpc::shared_ptr<i_example> & target);
 
         // live app registry, it should have sole responsibility for the long term storage of app shared pointers
         [description = "Looks up an application by name from the registry"]

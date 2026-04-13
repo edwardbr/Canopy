@@ -509,7 +509,7 @@ template<class T> CORO_TASK(bool) coro_check_for_call_enclave_zone(T& lib)
     if (root_service)
         zone_id = root_service->get_zone_id();
     else
-        zone_id = {0};
+        zone_id = rpc::zone{};
 
     auto h = rpc::make_shared<host>();
     auto ret = CO_AWAIT lib.get_example()->call_create_enclave_val(h);

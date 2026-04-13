@@ -16,6 +16,7 @@ node_modules
 c++/demos/websocket/client/generated/
 c++/demos/websocket/server/www/generated/
 .cache
+.codex-index/
 venv
 __pycache__/
 *.pyc

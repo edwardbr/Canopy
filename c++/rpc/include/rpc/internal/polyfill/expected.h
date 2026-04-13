@@ -4,20 +4,27 @@
  */
 #pragma once
 
-// Lightweight C++17 polyfill for std::expected<T,E> and std::unexpected<E> (C++23).
-//
-// Migration path to C++23:
-//   template<typename T, typename E> using expected  = std::expected<T, E>;
-//   template<typename E>             using unexpected = std::unexpected<E>;
+#if defined(__has_include)
+#  if __has_include(<expected>) && ((defined(_MSVC_LANG) && _MSVC_LANG >= 202302L) || __cplusplus >= 202302L)
+#    include <expected>
+#    if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
+#      define RPC_HAS_STD_EXPECTED 1
+#    endif
+#  endif
+#endif
 
-#include <cassert>
-#include <variant>
-#include <utility>
+#ifndef RPC_HAS_STD_EXPECTED
+#  include <cassert>
+#  include <utility>
+#  include <variant>
+#endif
 
 namespace rpc
 {
-    // Mirrors std::unexpected<E>.  Wraps an error value so it can be assigned
-    // to an expected<T,E> unambiguously.
+#ifdef RPC_HAS_STD_EXPECTED
+    template<typename E> using unexpected = std::unexpected<E>;
+    template<typename T, typename E> using expected = std::expected<T, E>;
+#else
     template<typename E> class unexpected
     {
     public:
@@ -39,23 +46,16 @@ namespace rpc
         E error_;
     };
 
-    // Mirrors std::expected<T,E>.
-    //
-    // Preconditions (checked with assert in debug builds):
-    //   value(), operator*, operator->  require has_value() == true
-    //   error()                         requires has_value() == false
     template<typename T, typename E> class expected
     {
         std::variant<T, E> storage_;
 
     public:
-        // Construct a successful result.
         constexpr expected(T val)
             : storage_(std::move(val))
         {
         }
 
-        // Construct a failed result from an unexpected<E>.
         template<typename G>
         constexpr expected(unexpected<G> u)
             : storage_(std::move(u.error()))
@@ -65,7 +65,6 @@ namespace rpc
         [[nodiscard]] constexpr bool has_value() const noexcept { return std::holds_alternative<T>(storage_); }
         constexpr explicit operator bool() const noexcept { return has_value(); }
 
-        // Value access — undefined behaviour (asserted) if !has_value().
         constexpr T& operator*() & noexcept { return std::get<T>(storage_); }
         constexpr const T& operator*() const& noexcept { return std::get<T>(storage_); }
         constexpr T* operator->() noexcept { return &std::get<T>(storage_); }
@@ -87,26 +86,21 @@ namespace rpc
             return std::get<T>(std::move(storage_));
         }
 
-        // Error access — undefined behaviour (asserted) if has_value().
         constexpr E& error() & noexcept { return std::get<E>(storage_); }
         constexpr const E& error() const& noexcept { return std::get<E>(storage_); }
         constexpr E&& error() && noexcept { return std::get<E>(std::move(storage_)); }
     };
 
-    // Specialisation for expected<void, E> — models an operation that either
-    // succeeds (no value) or fails with an error.  Matches std::expected<void,E>.
     template<typename E> class expected<void, E>
     {
         std::variant<std::monostate, E> storage_;
 
     public:
-        // Default construct = success.
         constexpr expected()
             : storage_(std::monostate{})
         {
         }
 
-        // Construct a failed result from an unexpected<E>.
         template<typename G>
         constexpr expected(unexpected<G> u)
             : storage_(std::move(u.error()))
@@ -125,5 +119,5 @@ namespace rpc
         constexpr const E& error() const& noexcept { return std::get<E>(storage_); }
         constexpr E&& error() && noexcept { return std::get<E>(std::move(storage_)); }
     };
-
-} // namespace rpc
+#endif
+}

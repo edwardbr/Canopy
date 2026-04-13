@@ -201,7 +201,7 @@ namespace rpc
                 result.error_code = proxy_result.error_code;
                 CO_RETURN result;
             }
-            auto op = std::move(proxy_result.object_proxy);
+            auto op = std::move(proxy_result.proxy);
             RPC_ASSERT(op != nullptr);
             if (!op)
             {
@@ -286,9 +286,12 @@ namespace rpc
 
         if (sp->get_destination_zone_id() != encap.as_zone())
         {
-            // if the zone is different lookup or clone the right proxy
+            // If the returned object belongs to a different zone than the current
+            // service proxy, use the callee zone as the caller context. That lets
+            // get_zone_proxy() recreate a route via the current call path when a
+            // temporary direct transport entry has already been cleaned up.
             // the service proxy is where the object came from so it should be used as the new caller channel for this returned object
-            service_proxy = serv->get_zone_proxy(rpc::caller_zone(), {encap.as_zone()}, new_proxy_added);
+            service_proxy = serv->get_zone_proxy(sp->get_destination_zone_id(), {encap.as_zone()}, new_proxy_added);
             if (!service_proxy)
             {
                 RPC_ERROR("Object not found - service proxy is null in proxy_bind_out_param");
@@ -309,7 +312,7 @@ namespace rpc
             result.error_code = proxy_result.error_code;
             CO_RETURN result;
         }
-        auto op = std::move(proxy_result.object_proxy);
+        auto op = std::move(proxy_result.proxy);
         if (!op)
         {
             RPC_ERROR("Object not found in proxy_bind_out_param");
@@ -388,14 +391,14 @@ namespace rpc
             result.error_code = proxy_result.error_code;
             CO_RETURN result;
         }
-        auto op = std::move(proxy_result.object_proxy);
+        auto op = std::move(proxy_result.proxy);
         if (!op)
         {
             RPC_ERROR("Object not found in demarshall_interface_proxy");
             result.error_code = rpc::error::OBJECT_NOT_FOUND();
             CO_RETURN result;
         }
-#ifdef CANOPY_USE_TELEMETRY
+#if defined(CANOPY_USE_TELEMETRY) && !defined(FOR_SGX)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             auto encap_remote_r = encap.with_object(encap.get_object_id());

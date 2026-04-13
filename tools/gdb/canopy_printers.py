@@ -75,18 +75,94 @@ def _unwrap_value(val):
     return val
 
 
+def _strip_typedefs(type_obj):
+    try:
+        return type_obj.strip_typedefs()
+    except Exception:
+        return type_obj
+
+
+def _has_field(type_obj, name):
+    type_obj = _strip_typedefs(type_obj)
+    try:
+        for field in type_obj.fields():
+            if field.name == name:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _get_field_if_present(val, name):
+    try:
+        return val[name]
+    except Exception:
+        return None
+
+
 def _vector_to_bytes(vec_val):
     vec_val = _unwrap_value(vec_val)
-    impl = vec_val["_M_impl"]
-    start = int(impl["_M_start"])
-    finish = int(impl["_M_finish"])
-    if finish < start:
-        return []
-    size = finish - start
-    if size == 0:
-        return []
-    mem = bytes(gdb.selected_inferior().read_memory(start, size))
-    return list(mem)
+    inferior = gdb.selected_inferior()
+
+    # Prefer the public interface first. This is more robust across
+    # libstdc++ and libc++ / SGX libc++.
+    try:
+        size = int(vec_val["__end_"] - vec_val["__begin_"])
+        start = int(vec_val["__begin_"])
+        if size < 0:
+            return []
+        if size == 0:
+            return []
+        return list(bytes(inferior.read_memory(start, size)))
+    except Exception:
+        pass
+
+    try:
+        impl = vec_val["_M_impl"]
+        start = int(impl["_M_start"])
+        finish = int(impl["_M_finish"])
+        if finish < start:
+            return []
+        size = finish - start
+        if size == 0:
+            return []
+        return list(bytes(inferior.read_memory(start, size)))
+    except Exception:
+        pass
+
+    # libc++ may store begin/end directly on the vector object.
+    try:
+        if _has_field(vec_val.type, "__begin_") and _has_field(vec_val.type, "__end_"):
+            start = int(vec_val["__begin_"])
+            finish = int(vec_val["__end_"])
+            if finish < start:
+                return []
+            size = finish - start
+            if size == 0:
+                return []
+            return list(bytes(inferior.read_memory(start, size)))
+    except Exception:
+        pass
+
+    # Some libstdc++ variants expose the backing pointers through _M_impl only.
+    try:
+        impl = _get_field_if_present(vec_val, "_M_impl")
+        if impl is not None:
+            start_field = _get_field_if_present(impl, "_M_start")
+            finish_field = _get_field_if_present(impl, "_M_finish")
+            if start_field is not None and finish_field is not None:
+                start = int(start_field)
+                finish = int(finish_field)
+                if finish < start:
+                    return []
+                size = finish - start
+                if size == 0:
+                    return []
+                return list(bytes(inferior.read_memory(start, size)))
+    except Exception:
+        pass
+
+    raise RuntimeError("unsupported std::vector layout")
 
 
 def _bits_from_le_bytes(byte_list, begin, width):
@@ -248,9 +324,8 @@ class ZoneAddressPrinter:
             data = _read_zone_address(self.val)
             prefix = data["routing_prefix_str"] or str(data["routing_prefix"])
             return (
-                f"zone_address(v={data['version']} type={data['type_name']} "
-                f"port={data['port']} prefix={prefix} "
-                f"subnet={data['subnet']} object={data['object_id']})"
+                f"{prefix}/{data['subnet']}/{data['object_id']} v{data['version']} t={data['type_name']} "
+                f"p={data['port']}"
             )
         except Exception as e:
             return f"zone_address(<error: {e}>)"

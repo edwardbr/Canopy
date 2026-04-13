@@ -157,6 +157,7 @@ set(CANOPY_WARN_TYPE_SIZES -Wshorten-64-to-32 -Wsign-compare -Wshift-sign-overfl
 set(CANOPY_WARN_OK
     -DCANOPY_WARN_OK
     ${CANOPY_WARN_BASELINE}
+    -Wno-gnu-zero-variadic-macro-arguments
     -Wno-unused-parameter
     -Wno-unused-variable
     -Wno-sign-compare)

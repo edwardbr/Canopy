@@ -62,3 +62,7 @@
 	url = https://github.com/ggml-org/llama.cpp.git
 	update = none
 	shallow = true
+[submodule "submodules/confidential-computing.sgx"]
+	path = submodules/confidential-computing.sgx
+	url = https://github.com/intel/confidential-computing.sgx.git
+	branch = sgx_2.26

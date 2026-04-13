@@ -6,6 +6,17 @@ cmake_minimum_required(VERSION 3.24)
 
 set(telemetry_edl_path "${CMAKE_CURRENT_SOURCE_DIR}")
 
+CanopyGenerate(
+  enclave_marshal_test
+  edl/enclave_marshal_test.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/..
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_SOURCE_DIR}/interfaces
+  install_dir ${GENERATED_INSTALL_DIR})
+
 add_untrusted_header(
   rpc_telemetry_edl_header
   EDL ${telemetry_edl_path}/rpc_telemetry.edl
@@ -25,7 +36,9 @@ host_edl_library(
   ${telemetry_edl_path}
   OFF
   ""
-  "rpc::rpc_telemetry")
+  "rpc::rpc_telemetry"
+  EXTRA_DEPENDS
+  ${telemetry_edl_path}/rpc_telemetry.edl)
 
 set_property(TARGET marshal_test_edl PROPERTY COMPILE_PDB_NAME marshal_test_edl)
 
@@ -35,5 +48,7 @@ enclave_edl_library(
   ${telemetry_edl_path}
   OFF
   ""
-  "")
+  ""
+  EXTRA_DEPENDS
+  ${telemetry_edl_path}/rpc_telemetry.edl)
 set_property(TARGET marshal_test_edl_enclave PROPERTY COMPILE_PDB_NAME marshal_test_edl_enclave)

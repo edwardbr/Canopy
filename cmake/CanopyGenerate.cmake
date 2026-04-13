@@ -98,6 +98,11 @@ function(
         ""
         CACHE STRING "Warning flags that are acceptable")
   endif()
+  if(NOT DEFINED CANOPY_WARN_OK_ENCLAVE)
+    set(CANOPY_WARN_OK_ENCLAVE
+        "${CANOPY_WARN_OK}"
+        CACHE STRING "Enclave warning flags that are acceptable")
+  endif()
 
   # Extract directory and base filename from IDL path BEFORE converting to absolute idl parameter is like
   # "example_shared/example_shared.idl" or "rpc/rpc_types.idl" or just "example.idl"
@@ -562,7 +567,7 @@ function(
     target_include_directories(${name}_idl_enclave SYSTEM PRIVATE "${output_path}" "${output_path}/include")
     target_include_directories(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES} ${params_include_paths})
 
-    target_compile_options(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+    target_compile_options(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
     target_link_directories(${name}_idl_enclave PRIVATE ${SGX_LIBRARY_PATH})
     set_property(TARGET ${name}_idl_enclave PROPERTY COMPILE_PDB_NAME ${name}_idl_enclave)
 

@@ -9,17 +9,8 @@
 #include <rpc/internal/error_codes.h>
 #include <rpc/internal/logger.h>
 
-#if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-#  include <rpc/internal/thread_local_logger.h>
-// Enhanced RPC_ASSERT with thread-local buffer dumping
-#  define RPC_ASSERT(x)                                                                                                \
-      if (!(x))                                                                                                        \
-      {                                                                                                                \
-          rpc::thread_local_dump_on_assert("RPC_ASSERT failed: " #x, __FILE__, __LINE__);                              \
-          std::abort();                                                                                                \
-      }
-#elif defined(CANOPY_HANG_ON_FAILED_ASSERT)
-#  ifdef _IN_ENCLAVE
+#if defined(CANOPY_HANG_ON_FAILED_ASSERT)
+#  ifdef FOR_SGX
 #    include <sgx_error.h>
 extern "C"
 {

@@ -106,6 +106,10 @@ jobs:
           wget -q https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-linux-x86_64.tar.gz
           tar -zxf cmake-4.2.3-linux-x86_64.tar.gz
           cp -r cmake-4.2.3-linux-x86_64/* /usr/local/
+      - name: Show bootstrap and main CMake versions
+        run: |
+          /usr/bin/cmake --version
+          /usr/local/bin/cmake --version
       - name: Configure git safe directory
         run: git config --global --add safe.directory $GITHUB_WORKSPACE
       - name: Check out repository code
@@ -120,3 +124,59 @@ jobs:
       - name: Test (${{ matrix.name }})
         working-directory: ${{ matrix.build_dir }}/output
         run: ${{ matrix.test_cmds }}
+
+  build-sgx-sim:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:43
+    needs: lint
+    steps:
+      - name: Install system and C++ dependencies
+        run: |
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb git xz curl perl-core
+      - name: Install SGX SDK build prerequisites
+        run: |
+          dnf install -y ocaml ocaml-ocamlbuild autoconf automake libtool m4 python3
+      - name: Install CMake 4.2.3
+        run: |
+          wget -q https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-linux-x86_64.tar.gz
+          tar -zxf cmake-4.2.3-linux-x86_64.tar.gz
+          cp -r cmake-4.2.3-linux-x86_64/* /usr/local/
+      - name: Show bootstrap and main CMake versions
+        run: |
+          /usr/bin/cmake --version
+          /usr/local/bin/cmake --version
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+      - name: Cache SGX SDK build
+        id: cache-sgxsdk
+        uses: actions/cache@v4
+        with:
+          path: /opt/intel/sgxsdk
+          key: sgxsdk-${{ hashFiles('submodules/confidential-computing.sgx/sdk/**', 'submodules/confidential-computing.sgx/common/**') }}
+      - name: Build SGX SDK from submodule source
+        if: steps.cache-sgxsdk.outputs.cache-hit != 'true'
+        working-directory: submodules/confidential-computing.sgx
+        run: |
+          PATH="/usr/bin:$PATH" make preparation
+          PATH="/usr/bin:$PATH" make sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
+          ./linux/installer/bin/sgx_linux_x64_sdk_*.bin --prefix=/opt/intel
+      - name: CMake configure (Debug_SGX_Sim)
+        run: |
+          /usr/local/bin/cmake \
+            -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang \
+            -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ \
+            -DCANOPY_SGX_BOOTSTRAP_CMAKE:FILEPATH=/usr/bin/cmake \
+            -DSGX_DIR:FILEPATH=/opt/intel/sgxsdk \
+            -DGIT_SUBMODULE=ON \
+            --preset=Debug_SGX_Sim
+      - name: Build enclave and host (Debug_SGX_Sim)
+        run: /usr/local/bin/cmake --build build_debug_sgx_sim --target marshal_test_enclave rpc_test
+      - name: Test (Debug_SGX_Sim)
+        working-directory: build_debug_sgx_sim/output
+        run: ./rpc_test --gtest_filter="*Sgx*"

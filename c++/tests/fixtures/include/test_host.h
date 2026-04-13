@@ -20,8 +20,9 @@
 // Other headers
 #ifdef CANOPY_BUILD_ENCLAVE
 #  include "untrusted/enclave_marshal_test_u.h"
-#  include <common/enclave_service_proxy.h>
+#  include <transports/sgx/transport.h>
 #endif
+#include <transports/local/transport.h>
 #include <example/example.h>
 #include "test_globals.h"
 
@@ -35,6 +36,7 @@ public:
     host();
     ~host() override;
     CORO_TASK(error_code) create_enclave(rpc::shared_ptr<yyy::i_example>& target) override;
+    CORO_TASK(error_code) create_local_zone(rpc::shared_ptr<yyy::i_example>& target) override;
     CORO_TASK(error_code)
     look_up_app(
         const std::string& app_name,

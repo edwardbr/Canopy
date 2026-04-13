@@ -57,21 +57,25 @@ endif()
 include(GoogleTest)
 add_executable(fuzz_test_gtest fuzz_test_main.cpp fuzz_gtest_wrapper.cpp)
 
-if(NOT CANOPY_BUILD_COROUTINE)
+if(NOT CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_PROTOCOL_BUFFERS)
   set(CANOPY_RUST_FUZZ_CHILD_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-fuzz-target")
   set(CANOPY_RUST_FUZZ_CHILD_LIB
       "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}/debug/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_fuzz_test_rust_child${CMAKE_SHARED_LIBRARY_SUFFIX}"
   )
+  set(CANOPY_RUST_FUZZ_CHILD_ENV CANOPY_GENERATOR=$<TARGET_FILE:generator>)
+  set(CANOPY_RUST_FUZZ_CHILD_DEPENDS generator)
+
+  if(TARGET protoc)
+    list(APPEND CANOPY_RUST_FUZZ_CHILD_ENV CANOPY_PROTOC=$<TARGET_FILE:protoc>)
+    list(APPEND CANOPY_RUST_FUZZ_CHILD_DEPENDS protoc)
+  endif()
 
   add_custom_command(
     OUTPUT "${CANOPY_RUST_FUZZ_CHILD_LIB}"
-    COMMAND
-      ${CMAKE_COMMAND} -E env CANOPY_GENERATOR=$<TARGET_FILE:generator> CANOPY_PROTOC=$<TARGET_FILE:protoc> cargo build
-      --manifest-path "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml" --target-dir
-      "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E env ${CANOPY_RUST_FUZZ_CHILD_ENV} cargo build --manifest-path
+            "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml" --target-dir "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    DEPENDS generator
-            protoc
+    DEPENDS ${CANOPY_RUST_FUZZ_CHILD_DEPENDS}
             "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml"
             "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/src/lib.rs"
             "${CMAKE_SOURCE_DIR}/rust/rpc/Cargo.toml"
@@ -112,7 +116,7 @@ target_include_directories(
 
 target_compile_features(fuzz_test_gtest PRIVATE cxx_std_17)
 target_compile_definitions(fuzz_test_gtest PRIVATE ${CANOPY_DEFINES} "main=fuzz_test_entry" CANOPY_FUZZ_TEST_GTEST)
-if(NOT CANOPY_BUILD_COROUTINE)
+if(NOT CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_PROTOCOL_BUFFERS)
   target_compile_definitions(fuzz_test_gtest PRIVATE CANOPY_RUST_FUZZ_TEST_DLL_PATH="${CANOPY_RUST_FUZZ_CHILD_LIB}")
   add_dependencies(fuzz_test_gtest canopy_fuzz_test_rust_child)
 endif()

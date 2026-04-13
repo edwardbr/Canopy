@@ -197,6 +197,7 @@
             "binaryDir": "build_release_sgx_sim",
             "cacheVariables": {
                 "CANOPY_BUILD_ENCLAVE": "ON",
+                "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
                 "SGX_HW": "OFF",
                 "CMAKE_BUILD_TYPE": "Release",
                 "SGX_MODE": "release"
@@ -236,12 +237,26 @@
             }
         },
         {
+            "name": "Debug_SGX_GCC_Sim",
+            "binaryDir": "build_debug_sgx_gcc_sim",
+            "inherits": "Debug",
+            "cacheVariables": {
+                "CANOPY_USE_TELEMETRY": "ON",
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
+                "SGX_HW": "OFF",
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
             "name": "Debug_SGX_Sim",
             "binaryDir": "build_debug_sgx_sim",
             "inherits": "Debug",
             "cacheVariables": {
                 "CANOPY_USE_TELEMETRY": "ON",
                 "CANOPY_BUILD_ENCLAVE": "ON",
+                "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
                 "SGX_HW": "OFF"
             }
         },

@@ -70,7 +70,6 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_USE_LOGGING "Turn on Canopy logging" OFF)
   option(CANOPY_ADD_REF_COUNT_CHECKS "Turn on Canopy refcount checks" OFF)
   option(CANOPY_ASSERT_ON_LOGGER_ERROR "Turn on asserts when there is a logger error")
-  option(CANOPY_USE_THREAD_LOCAL_LOGGING "Turn on thread-local circular buffer logging" OFF)
   option(CANOPY_HANG_ON_FAILED_ASSERT "Hang on failed assert" OFF)
   option(CANOPY_USE_TELEMETRY "Turn on Canopy telemetry" OFF)
   option(CANOPY_USE_CONSOLE_TELEMETRY "Turn on Canopy console telemetry" OFF)
@@ -109,6 +108,21 @@ if(NOT DEPENDENCIES_LOADED)
              "YAS_BINARY"
              "YAS_JSON"
              "YAS_COMPRESSED_BINARY")
+
+  if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_PROTOCOL_BUFFERS)
+    message(
+      STATUS "Disabling Protocol Buffers for SGX enclave builds; SGX support currently uses YAS-only marshalling.")
+    set(CANOPY_BUILD_PROTOCOL_BUFFERS
+        OFF
+        CACHE BOOL "Include Protocol Buffers support" FORCE)
+  endif()
+
+  if(CANOPY_BUILD_ENCLAVE AND CANOPY_DEFAULT_ENCODING STREQUAL "PROTOCOL_BUFFERS")
+    message(STATUS "Switching SGX enclave builds to YAS_BINARY default encoding.")
+    set(CANOPY_DEFAULT_ENCODING
+        "YAS_BINARY"
+        CACHE STRING "Default encoding format for RPC serialization" FORCE)
+  endif()
 
   # Validate encoding selection
   if(NOT CANOPY_DEFAULT_ENCODING MATCHES "^(PROTOCOL_BUFFERS|YAS_BINARY|YAS_JSON|YAS_COMPRESSED_BINARY)$")
@@ -237,6 +251,9 @@ if(NOT DEPENDENCIES_LOADED)
       if(CANOPY_BUILD_PROTOCOL_BUFFERS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/protobuf)
       endif()
+      if(CANOPY_BUILD_ENCLAVE)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/confidential-computing.sgx)
+      endif()
       if(CANOPY_BUILD_TEST OR CANOPY_BUILD_GTEST)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/googletest)
       endif()
@@ -253,6 +270,7 @@ if(NOT DEPENDENCIES_LOADED)
           submodules/idlparser
           c++/submodules/args
           c++/submodules/libcoro_for_enclaves)
+      set(CANOPY_BRANCH_PINNED_SUBMODULES submodules/confidential-computing.sgx)
 
       function(canopy_submodule_is_populated submodule_path out_var)
         set(submodule_root "${CMAKE_CURRENT_LIST_DIR}/../${submodule_path}")
@@ -295,7 +313,14 @@ if(NOT DEPENDENCIES_LOADED)
         message(STATUS "Required submodules already present on disk; skipping git submodule init")
       else()
         foreach(CANOPY_SUBMODULE_PATH IN LISTS CANOPY_MISSING_SUBMODULES)
-          if(CANOPY_SUBMODULE_PATH IN_LIST CANOPY_FULL_HISTORY_SUBMODULES)
+          if(CANOPY_SUBMODULE_PATH IN_LIST CANOPY_BRANCH_PINNED_SUBMODULES)
+            message(STATUS "Submodule update (tracked branch): ${CANOPY_SUBMODULE_PATH}")
+            execute_process(
+              COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --depth 1 --remote --
+                      ${CANOPY_SUBMODULE_PATH}
+              WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+              RESULT_VARIABLE GIT_SUBMOD_RESULT)
+          elseif(CANOPY_SUBMODULE_PATH IN_LIST CANOPY_FULL_HISTORY_SUBMODULES)
             message(STATUS "Submodule update: ${CANOPY_SUBMODULE_PATH}")
             execute_process(
               COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout -- ${CANOPY_SUBMODULE_PATH}
@@ -350,12 +375,6 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_ASSERT_ON_LOGGER_ERROR_FLAG)
   endif()
 
-  if(CANOPY_USE_THREAD_LOCAL_LOGGING)
-    set(CANOPY_USE_THREAD_LOCAL_LOGGING_FLAG CANOPY_USE_THREAD_LOCAL_LOGGING)
-  else()
-    set(CANOPY_USE_THREAD_LOCAL_LOGGING_FLAG)
-  endif()
-
   if(CANOPY_HANG_ON_FAILED_ASSERT)
     set(CANOPY_HANG_ON_FAILED_ASSERT_FLAG CANOPY_HANG_ON_FAILED_ASSERT)
   else()
@@ -387,6 +406,13 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_BUILD_COROUTINE_FLAG)
   endif()
 
+  if(${CANOPY_BUILD_PROTOCOL_BUFFERS})
+    set(CANOPY_BUILD_PROTOCOL_BUFFERS_FLAG CANOPY_BUILD_PROTOCOL_BUFFERS)
+    set(CANOPY_CORO_RUNTIME libcoro)
+  else()
+    set(CANOPY_BUILD_PROTOCOL_BUFFERS_FLAG)
+  endif()
+
   if(${CANOPY_DEBUG_DEFAULT_DESTRUCTOR})
     set(CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG CANOPY_DEBUG_DEFAULT_DESTRUCTOR)
   else()
@@ -407,8 +433,8 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_USE_LOGGING_FLAG}
       ${CANOPY_ADD_REF_COUNT_CHECKS_FLAG}
       ${CANOPY_ASSERT_ON_LOGGER_ERROR_FLAG}
-      ${CANOPY_USE_THREAD_LOCAL_LOGGING_FLAG}
       ${CANOPY_BUILD_COROUTINE_FLAG}
+      ${CANOPY_BUILD_PROTOCOL_BUFFERS_FLAG}
       ${CANOPY_HANG_ON_FAILED_ASSERT_FLAG}
       ${CANOPY_USE_TELEMETRY_FLAG}
       ${CANOPY_USE_CONSOLE_TELEMETRY_FLAG}

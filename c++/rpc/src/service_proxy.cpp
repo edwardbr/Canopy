@@ -618,7 +618,7 @@ namespace rpc
             }
         }
 
-        result.object_proxy = std::move(tmp);
+        result.proxy = std::move(tmp);
 
         // self_ref goes out of scope here, allowing normal destruction if needed
         CO_RETURN result;

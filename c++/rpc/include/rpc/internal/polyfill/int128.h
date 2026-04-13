@@ -1,13 +1,18 @@
-#include <string_view>
-#include <string>
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+#pragma once
 
-// Disable pedantic warnings for YAS library headers
+#include <string>
+#include <string_view>
+
 YAS_WARNINGS_PUSH
 
 #include <yas/count_streams.hpp>
+#include <yas/object.hpp>
 #include <yas/serialize.hpp>
 #include <yas/std_types.hpp>
-#include <yas/object.hpp>
 
 YAS_WARNINGS_POP
 
@@ -57,8 +62,6 @@ namespace yas
 {
     namespace detail
     {
-        // Specialise serialization_method to bypass the has_const_memfn_serializer
-        // check, which tries to inherit from T and fails for scalar types like __int128.
         template<typename Ar> struct serialization_method<__int128, Ar>
         {
             static constexpr ser_case value = ser_case::use_internal_serializer;
@@ -85,7 +88,6 @@ namespace yas
                 else
                 {
                     auto* parts = reinterpret_cast<const uint64_t*>(&obj);
-
                     ar& parts[0];
                     ar& parts[1];
                 }
@@ -106,13 +108,12 @@ namespace yas
                     }
                     std::string str;
                     char ch = ar.getch();
-                    if (ch == '\"') // string
+                    if (ch == '\"')
                     {
                         load_string(str, ar);
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "\"");
                         obj = rpc::string_to_int128(str);
                     }
-
                     else
                     {
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "unreachable");
@@ -121,7 +122,6 @@ namespace yas
                 else
                 {
                     auto* parts = reinterpret_cast<uint64_t*>(&obj);
-
                     ar& parts[0];
                     ar& parts[1];
                 }
@@ -145,7 +145,6 @@ namespace yas
                 else
                 {
                     auto* parts = reinterpret_cast<const uint64_t*>(&obj);
-
                     ar& parts[0];
                     ar& parts[1];
                 }
@@ -166,13 +165,12 @@ namespace yas
                     }
                     std::string str;
                     char ch = ar.getch();
-                    if (ch == '\"') // string
+                    if (ch == '\"')
                     {
                         load_string(str, ar);
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "\"");
                         obj = rpc::string_to_uint128(str);
                     }
-
                     else
                     {
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "unreachable");
@@ -181,7 +179,6 @@ namespace yas
                 else
                 {
                     auto* parts = reinterpret_cast<uint64_t*>(&obj);
-
                     ar& parts[0];
                     ar& parts[1];
                 }

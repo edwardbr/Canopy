@@ -13,6 +13,7 @@
 #  include <gtest/gtest.h>
 #  include <common/foo_impl.h>
 #  include <common/tests.h>
+#  include <transports/sgx/transport.h>
 
 #  ifdef CANOPY_USE_TELEMETRY
 #    include <rpc/telemetry/i_telemetry_service.h>
@@ -73,10 +74,14 @@ public:
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());
         local_host_ptr_ = i_host_ptr_;
 
-        auto err_code = root_service_->connect_to_zone<rpc::enclave_service_proxy>(
-            "main child", {new_zone_id}, use_host_in_child_ ? i_host_ptr_ : nullptr, i_example_ptr_, enclave_path);
+        auto host_ptr = use_host_in_child_ ? i_host_ptr_ : nullptr;
 
-        RPC_ASSERT(err_code == rpc::error::OK());
+        auto transport = std::make_shared<rpc::sgx::enclave_transport>("main child", root_service_, enclave_path);
+        auto result
+            = SYNC_WAIT((root_service_->connect_to_zone<yyy::i_host, yyy::i_example>("main child", transport, host_ptr)));
+
+        i_example_ptr_ = std::move(result.output_interface);
+        RPC_ASSERT(result.error_code == rpc::error::OK());
     }
 
     virtual void tear_down()
@@ -97,16 +102,24 @@ public:
     rpc::shared_ptr<yyy::i_example> create_new_zone()
     {
         rpc::shared_ptr<yyy::i_example> ptr;
-        auto new_zone_id = zone_gen_.allocate_zone();
-        auto err_code = root_service_->connect_to_zone<rpc::enclave_service_proxy>(
-            "main child", {new_zone_id}, use_host_in_child_ ? i_host_ptr_ : nullptr, ptr, enclave_path);
+        rpc::get_new_zone_id_params zone_params{};
+        zone_params.protocol_version = rpc::get_version();
+        auto zone_result = SYNC_WAIT(root_service_->get_new_zone_id(zone_params));
+        if (zone_result.error_code != rpc::error::OK())
+            return nullptr;
 
-        if (err_code != rpc::error::OK())
+        auto transport = std::make_shared<rpc::sgx::enclave_transport>("main child", root_service_, enclave_path);
+        transport->set_adjacent_zone_id(zone_result.zone_id);
+        auto result = SYNC_WAIT((root_service_->connect_to_zone<yyy::i_host, yyy::i_example>(
+            "main child", transport, use_host_in_child_ ? i_host_ptr_ : nullptr)));
+
+        ptr = std::move(result.output_interface);
+        if (result.error_code != rpc::error::OK())
             return nullptr;
         if (CreateNewZoneThenCreateSubordinatedZone)
         {
             rpc::shared_ptr<yyy::i_example> new_ptr;
-            err_code = ptr->create_example_in_subordinate_zone(new_ptr, use_host_in_child_ ? i_host_ptr_ : nullptr);
+            auto err_code = ptr->create_example_in_subordinate_zone(new_ptr, use_host_in_child_ ? i_host_ptr_ : nullptr);
             if (err_code != rpc::error::OK())
                 return nullptr;
             ptr = new_ptr;

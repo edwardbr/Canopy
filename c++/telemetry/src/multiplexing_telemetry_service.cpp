@@ -6,7 +6,7 @@
 #include <rpc/rpc.h>
 #include <rpc/telemetry/multiplexing_telemetry_service.h>
 
-#ifndef _IN_ENCLAVE
+#ifndef FOR_SGX
 #  include <rpc/telemetry/console_telemetry_service.h>
 #  include <rpc/telemetry/sequence_diagram_telemetry_service.h>
 #  include <rpc/telemetry/animation_telemetry_service.h>
@@ -45,7 +45,7 @@ namespace rpc
         children_.clear();
     }
 
-#ifndef _IN_ENCLAVE
+#ifndef FOR_SGX
     void multiplexing_telemetry_service::register_service_config(
         const std::string& type,
         const std::string& output_path)

@@ -18,9 +18,12 @@ if(${CANOPY_BUILD_ENCLAVE})
     TRUSTED_LIBS
       rpc_enclave
       marshal_test_edl_enclave
-      ${CANOPY_ENCLAVE_TELEMETRY}
-      ${CANOPY_TELEMETRY_ENCLAVE_EDL}
+      rpc_telemetry_enclave
+      rpc_telemetry_edl_header_enclave
+      transport_sgx_enclave
+      transport_local_enclave
       common_enclave
+      enclave_marshal_test_idl_enclave
       example_import_idl_enclave
       example_idl_enclave
       example_shared_idl_enclave
@@ -31,15 +34,19 @@ if(${CANOPY_BUILD_ENCLAVE})
   target_include_directories(
     marshal_test_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
-           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>" "$<INSTALL_INTERFACE:include/marshalled_tests>"
+           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
+           "$<INSTALL_INTERFACE:include/marshalled_tests>"
     PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
 
   if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(EXTRA_MARSHAL_TEST_ENCLAVE_COMPILE_OPTIONS -Wno-unused-parameter)
   endif()
 
-  target_compile_options(marshal_test_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_BASELINE}
+  target_compile_options(marshal_test_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE}
                                                       ${EXTRA_MARSHAL_TEST_ENCLAVE_COMPILE_OPTIONS})
   target_link_options(marshal_test_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
 

@@ -124,16 +124,20 @@ namespace rpc
         {
             return state().offset_val + (state().offset_val_is_negative ? -24 : 24);
         }
+        [[nodiscard]] int NOT_IMPLEMENTED()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -25 : 25);
+        }
 
         // dont forget to update MIN & MAX if new values
 
         [[nodiscard]] int MIN()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -24 : 1);
+            return state().offset_val + (state().offset_val_is_negative ? -25 : 1);
         }
         [[nodiscard]] int MAX()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -1 : 24);
+            return state().offset_val + (state().offset_val_is_negative ? -1 : 25);
         }
 
         bool is_error(int err)
@@ -269,6 +273,10 @@ namespace rpc
             if (err == CALL_TIMEOUT())
             {
                 return "outbound RPC call timed out waiting for a response";
+            }
+            if (err == NOT_IMPLEMENTED())
+            {
+                return "not implemented";
             }
             return "invalid error code";
         }

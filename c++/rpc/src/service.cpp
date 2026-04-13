@@ -7,19 +7,18 @@
 #include <algorithm>
 
 // RPC headers
+#include <rpc/internal/polyfill/format.h>
 #include <rpc/rpc.h>
-
-#ifdef _IN_ENCLAVE
-#  include <fmt/format-inl.h>
-#else
-#  include <fmt/format.h>
-#endif
 namespace rpc
 {
     ////////////////////////////////////////////////////////////////////////////
     // service
 
+#ifdef FOR_SGX
+    service* current_service_ = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+#else
     thread_local service* current_service_ = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+#endif
     service* service::get_current_service()
     {
         return current_service_;
@@ -429,11 +428,7 @@ namespace rpc
         {
             auto object_id = casting_interface::get_object_id(*input_interface);
             auto ret = CO_AWAIT destination_zone->sp_release(object_id, release_options::normal);
-            if (ret == error::OK())
-            {
-                // destination_zone->release_external_ref();
-            }
-            else
+            if (error::is_error(ret))
             {
                 RPC_ERROR("destination_zone->sp_release failed with code {}", ret);
             }
@@ -1010,7 +1005,7 @@ namespace rpc
                 if (transport)
                 {
                     auto proxy = service_proxy::create(
-                        fmt::format("SP#{}", destination_zone_id.get_subnet()),
+                        rpc::format("SP#{}", destination_zone_id.get_subnet()),
                         shared_from_this(),
                         transport,
                         destination_zone_id);
@@ -1030,7 +1025,7 @@ namespace rpc
                 if (transport)
                 {
                     auto proxy = service_proxy::create(
-                        fmt::format("SP#{}", destination_zone_id.get_subnet()),
+                        rpc::format("SP#{}", destination_zone_id.get_subnet()),
                         shared_from_this(),
                         transport,
                         destination_zone_id);

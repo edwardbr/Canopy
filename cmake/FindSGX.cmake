@@ -10,15 +10,15 @@ include(CMakeParseArguments)
 
 set(SGX_FOUND "NO")
 
-if(EXISTS SGX_DIR)
-  set(SGX_PATH ${SGX_DIR})
-elseif(EXISTS SGX_ROOT)
-  set(SGX_PATH ${SGX_ROOT})
-elseif(EXISTS $ENV{SGX_SDK})
+if(DEFINED SGX_DIR AND EXISTS "${SGX_DIR}")
+  set(SGX_PATH "${SGX_DIR}")
+elseif(DEFINED SGX_ROOT AND EXISTS "${SGX_ROOT}")
+  set(SGX_PATH "${SGX_ROOT}")
+elseif(DEFINED ENV{SGX_SDK} AND EXISTS "$ENV{SGX_SDK}")
   set(SGX_PATH $ENV{SGX_SDK})
-elseif(EXISTS $ENV{SGX_DIR})
+elseif(DEFINED ENV{SGX_DIR} AND EXISTS "$ENV{SGX_DIR}")
   set(SGX_PATH $ENV{SGX_DIR})
-elseif(EXISTS $ENV{SGX_ROOT})
+elseif(DEFINED ENV{SGX_ROOT} AND EXISTS "$ENV{SGX_ROOT}")
   set(SGX_PATH $ENV{SGX_ROOT})
 else()
   if(WIN32)
@@ -343,6 +343,12 @@ if(SGX_FOUND)
     use_prefix
     edl_include_path
     edl_link_libraries)
+    cmake_parse_arguments(
+      "SGX"
+      ""
+      ""
+      "EXTRA_DEPENDS"
+      ${ARGN})
     get_filename_component(EDL_NAME ${edl} NAME_WE)
     get_filename_component(EDL_ABSPATH ${edl} ABSOLUTE)
     set(EDL_T_C "${CMAKE_CURRENT_BINARY_DIR}/${EDL_NAME}_t.c")
@@ -367,6 +373,7 @@ if(SGX_FOUND)
       OUTPUT ${EDL_TT_H} ${EDL_TT_C}
       BYPRODUCTS ${EDL_T_H} ${EDL_T_C}
       COMMAND ${SGX_EDGER8R} ${USE_PREFIX} ${EDGER8R_USE_CPP} --trusted "${EDL_ABSPATH}" --search-path "${SEARCH_PATHS}"
+      DEPENDS ${EDL_ABSPATH} ${SGX_EXTRA_DEPENDS}
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       COMMAND cmake -E copy_if_different ${EDL_T_H} ${EDL_TT_H}
       COMMAND cmake -E copy_if_different ${EDL_T_C} ${EDL_TT_C}
@@ -447,6 +454,7 @@ if(SGX_FOUND)
       BYPRODUCTS ${EDL_U_H} ${EDL_U_C}
       COMMAND ${SGX_EDGER8R} ${USE_PREFIX} ${EDGER8R_USE_CPP} --untrusted "${EDL_ABSPATH}" --search-path
               "${SEARCH_PATHS}"
+      DEPENDS ${EDL_ABSPATH} ${SGX_EXTRA_DEPENDS}
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       COMMAND cmake -E copy_if_different ${EDL_U_H} ${EDL_UT_H}
       COMMAND cmake -E copy_if_different ${EDL_U_C} ${EDL_UT_C}

@@ -598,6 +598,31 @@ namespace marshalled_tests
         }
 
         CORO_TASK(error_code)
+        call_host_create_local_zone(
+            rpc::shared_ptr<i_example>& target,
+            bool run_standard_tests) override
+        {
+            auto host = host_.get_nullable();
+            if (!host)
+                CO_RETURN rpc::error::INVALID_DATA();
+            auto err = CO_AWAIT host->create_local_zone(target);
+            if (err != rpc::error::OK())
+                CO_RETURN err;
+            if (!target)
+                CO_RETURN rpc::error::INVALID_DATA();
+            if (run_standard_tests)
+            {
+                int sum = 0;
+                err = CO_AWAIT target->add(1, 2, sum);
+                if (err != rpc::error::OK())
+                    CO_RETURN err;
+                if (sum != 3)
+                    CO_RETURN rpc::error::INVALID_DATA();
+            }
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
         call_host_look_up_app_not_return(
             const std::string& name,
             bool run_standard_tests) override

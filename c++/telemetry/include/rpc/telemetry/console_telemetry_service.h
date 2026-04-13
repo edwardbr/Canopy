@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <set>
 #include <memory>
-#include <shared_mutex>
+#include <rpc/rpc.h>
 // types.h is included via i_telemetry_service.h
 #include <rpc/telemetry/i_telemetry_service.h>
 
@@ -30,9 +30,9 @@ namespace rpc
         mutable std::unordered_map<uint64_t, uint64_t> zone_parents_;
 
         // Thread safety: shared_mutex allows multiple concurrent readers with exclusive writers
-        mutable std::shared_mutex zone_names_mutex_;
-        mutable std::shared_mutex zone_children_mutex_;
-        mutable std::shared_mutex zone_parents_mutex_;
+        mutable rpc::shared_mutex zone_names_mutex_;
+        mutable rpc::shared_mutex zone_children_mutex_;
+        mutable rpc::shared_mutex zone_parents_mutex_;
 
         // Optional file output
         std::filesystem::path log_directory_;

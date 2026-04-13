@@ -7,8 +7,8 @@
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <coro/scheduler.hpp>
 #else
-#  include <mutex>
 #  include <condition_variable>
+#  include <mutex>
 #endif
 
 namespace rpc
@@ -17,13 +17,8 @@ namespace rpc
     class event
     {
     public:
-        // Signal the event: Wake all waiting threads
         void set() { event_.set(); }
-
-        // Reset the event: Future calls to wait() will block
         void reset() { event_.reset(); }
-
-        // Block until the event is set
         CORO_TASK(void) wait() const { CO_AWAIT event_; }
 
     private:
@@ -38,28 +33,24 @@ namespace rpc
         {
         }
 
-        // Signal the event: Wake all waiting threads
         void set()
         {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 signaled_ = true;
             }
-            cv_.notify_all(); // Wake everyone
+            cv_.notify_all();
         }
 
-        // Reset the event: Future calls to wait() will block
         void reset()
         {
             std::lock_guard<std::mutex> lock(mutex_);
             signaled_ = false;
         }
 
-        // Block until the event is set
         void wait() const
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            // The lambda handles "spurious wakeups"
             cv_.wait(lock, [this] { return signaled_; });
         }
 

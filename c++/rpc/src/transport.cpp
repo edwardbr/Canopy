@@ -816,7 +816,7 @@ namespace rpc
 
     std::shared_ptr<transport> transport::inner_get_transport_from_passthroughs(destination_zone destination_zone_id) const
     {
-        std::shared_lock lock(destinations_mutex_);
+        rpc::shared_lock<rpc::shared_mutex> lock(destinations_mutex_);
         for (auto& [key, pt] : pass_thoughs_)
         {
             if (key.zone1 == destination_zone_id || key.zone2 == destination_zone_id)
@@ -836,7 +836,7 @@ namespace rpc
         RPC_ASSERT(zone1 != zone_id_);
         RPC_ASSERT(zone2 != zone_id_);
 
-        std::shared_lock lock(destinations_mutex_);
+        rpc::shared_lock<rpc::shared_mutex> lock(destinations_mutex_);
         auto handler = inner_get_passthrough(zone1, zone2);
         RPC_DEBUG(
             "get_passthrough: zone1={}, zone2={}, transport zone={}, adjacent_zone={}, found={}",
@@ -855,7 +855,7 @@ namespace rpc
         std::vector<destination_zone> zones_to_notify;
 
         {
-            std::shared_lock lock(destinations_mutex_);
+            rpc::shared_lock<rpc::shared_mutex> lock(destinations_mutex_);
             service = service_.lock();
             if (!service)
             {
@@ -1035,12 +1035,12 @@ namespace rpc
         RPC_DEBUG(
             "inbound_add_ref: svc_zone={}, dest_zone={}, caller_zone={}, build_caller_channel={}, "
             "build_dest_channel={}, requesting_zone_id={}",
-            svc->get_zone_id().get_subnet(),
-            params.remote_object_id.get_subnet(),
-            params.caller_zone_id.get_subnet(),
+            rpc::to_string(svc->get_zone_id()),
+            rpc::to_string(params.remote_object_id),
+            rpc::to_string(params.caller_zone_id),
             build_caller_channel,
             build_dest_channel,
-            params.requesting_zone_id.get_subnet());
+            rpc::to_string(params.requesting_zone_id));
 
         // Returns a copy of params with a modified build_out_param_channel flag
         auto make_add_ref_params = [&](add_ref_options opts) -> add_ref_params
@@ -1311,7 +1311,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
+            if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_send(
                     get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id);
@@ -1352,7 +1352,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
+            if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_try_cast(
                     get_zone_id(), get_adjacent_zone_id(), remote_object_id, get_zone_id(), interface_id);
@@ -1379,7 +1379,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
+            if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_add_ref(
                     get_zone_id(),
@@ -1410,7 +1410,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            if (result.error_code == error::OK() || result.error_code == error::OBJECT_GONE())
+            if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_release(
                     get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, options);

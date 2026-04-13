@@ -11,6 +11,7 @@
 #include <spdlog/spdlog.h>
 #include <fmt/os.h>
 
+#include <rpc/internal/polyfill/format.h>
 #include <rpc/rpc.h>
 #include <rpc/telemetry/sequence_diagram_telemetry_service.h>
 
@@ -174,7 +175,7 @@ namespace rpc
 
     std::string service_alias(rpc::zone zone_id)
     {
-        return fmt::format("s{}", zone_id.get_subnet());
+        return rpc::format("s{}", zone_id.get_subnet());
     }
 
     uint64_t service_order(rpc::zone zone_id)
@@ -186,7 +187,7 @@ namespace rpc
         rpc::zone zone_id,
         rpc::object object_id)
     {
-        return fmt::format("os_{}_{}", zone_id.get_subnet(), object_id.get_val());
+        return rpc::format("os_{}_{}", zone_id.get_subnet(), object_id.get_val());
     }
 
     uint64_t object_stub_order(
@@ -198,7 +199,7 @@ namespace rpc
 
     std::string object_alias(uint64_t address)
     {
-        return fmt::format("o_{}", address);
+        return rpc::format("o_{}", address);
     }
 
     uint64_t object_order(
@@ -213,7 +214,7 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::object object_id)
     {
-        return fmt::format("op_{}_{}_{}", zone_id.get_subnet(), destination_zone_id.get_subnet(), object_id.get_val());
+        return rpc::format("op_{}_{}_{}", zone_id.get_subnet(), destination_zone_id.get_subnet(), object_id.get_val());
     }
 
     uint64_t object_proxy_order(
@@ -229,7 +230,7 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id)
     {
-        return fmt::format(
+        return rpc::format(
             "sp{}_{}_{}", zone_id.get_subnet(), destination_zone_id.get_subnet(), caller_zone_id.get_subnet());
     }
 

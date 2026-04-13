@@ -6,9 +6,8 @@
 #include <string>
 #include <stdint.h>
 #include <functional>
-#include <sstream>
-#include <iomanip>
 #include <vector>
+#include <rpc/internal/polyfill/format.h>
 
 #include "rpc/internal/coroutine_support.h"
 #include <rpc/internal/serialiser.h>
@@ -20,15 +19,15 @@ namespace std
         if (bytes.empty())
             return {};
 
-        std::ostringstream stream;
-        stream << std::hex << std::setfill('0');
+        std::string result;
+        result.reserve(bytes.size() * 3 - 1);
         for (size_t i = 0; i < bytes.size(); ++i)
         {
             if (i != 0)
-                stream << '.';
-            stream << std::setw(2) << static_cast<unsigned int>(bytes[i]);
+                result += '.';
+            rpc::format_to(std::back_inserter(result), "{:02x}", bytes[i]);
         }
-        return stream.str();
+        return result;
     }
 
     inline std::string to_string(const rpc::zone_address& val)

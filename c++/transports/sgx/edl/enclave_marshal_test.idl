@@ -1,0 +1,128 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace sgx
+    {
+        namespace marshal_test
+        {
+            // SGX transport payloads intentionally stay separate from streaming transport DTOs.
+            // The EDL boundary has enclave-specific ABI concerns such as retry buffers and retryable
+            // output sizing that should not leak into the general transport schema.
+
+            struct init_request
+            {
+                rpc::remote_object host_remote_object;
+                rpc::zone child_zone_id;
+            };
+
+            struct init_response
+            {
+                int error_code;
+                rpc::remote_object example_object_id;
+            };
+
+            struct send_request
+            {
+                uint64_t protocol_version;
+                rpc::encoding encoding_type;
+                uint64_t tag;
+                rpc::caller_zone caller_zone_id;
+                rpc::remote_object remote_object_id;
+                rpc::interface_ordinal interface_id;
+                rpc::method method_id;
+                std::vector<char> in_data;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct post_request
+            {
+                uint64_t protocol_version;
+                rpc::encoding encoding_type;
+                uint64_t tag;
+                rpc::caller_zone caller_zone_id;
+                rpc::remote_object remote_object_id;
+                rpc::interface_ordinal interface_id;
+                rpc::method method_id;
+                std::vector<char> in_data;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct standard_response
+            {
+                int error_code;
+                std::vector<rpc::back_channel_entry> out_back_channel;
+            };
+
+            struct send_response
+            {
+                int error_code;
+                std::vector<char> out_data;
+                std::vector<rpc::back_channel_entry> out_back_channel;
+            };
+
+            struct try_cast_request
+            {
+                uint64_t protocol_version;
+                rpc::caller_zone caller_zone_id;
+                rpc::remote_object remote_object_id;
+                rpc::interface_ordinal interface_id;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct add_ref_request
+            {
+                uint64_t protocol_version;
+                rpc::remote_object remote_object_id;
+                rpc::caller_zone caller_zone_id;
+                rpc::requesting_zone requesting_zone_id;
+                rpc::add_ref_options build_out_param_channel;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct release_request
+            {
+                uint64_t protocol_version;
+                rpc::remote_object remote_object_id;
+                rpc::caller_zone caller_zone_id;
+                rpc::release_options options;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct object_released_request
+            {
+                uint64_t protocol_version;
+                rpc::remote_object remote_object_id;
+                rpc::caller_zone caller_zone_id;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct transport_down_request
+            {
+                uint64_t protocol_version;
+                rpc::destination_zone destination_zone_id;
+                rpc::caller_zone caller_zone_id;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct get_new_zone_id_request
+            {
+                uint64_t protocol_version;
+                rpc::caller_zone caller_zone_id;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+            };
+
+            struct new_zone_id_response
+            {
+                int error_code;
+                rpc::zone zone_id;
+                std::vector<rpc::back_channel_entry> out_back_channel;
+            };
+        }
+    }
+}

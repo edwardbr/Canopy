@@ -119,22 +119,6 @@ namespace crash_handler
         // Generate comprehensive crash report first
         auto report = generate_crash_report(signal);
 
-        // Dump thread-local circular buffers with enhanced stack trace
-#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-        try
-        {
-            std::cout << "\n=== DUMPING THREAD-LOCAL CIRCULAR BUFFERS ===" << std::endl;
-            std::string formatted_stack_trace = format_stack_trace_for_file(report);
-            rpc::thread_local_dump_on_assert_with_stacktrace(
-                "CRASH SIGNAL: " + signal_to_string(signal), __FILE__, __LINE__, formatted_stack_trace);
-            std::cout << "=== END THREAD-LOCAL BUFFER DUMP ===" << std::endl;
-        }
-        catch (...)
-        {
-            std::cerr << "[crash_handler] Exception while dumping thread-local buffers" << std::endl;
-        }
-#  endif
-
         // Print the crash report
         print_crash_report(report);
 
@@ -238,11 +222,6 @@ namespace crash_handler
         {
             std::cout << "Current Test: " << test_info->test_suite_name() << "." << test_info->name() << std::endl;
         }
-
-        // Print thread-local logging information if enabled
-#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-        std::cout << "Thread-Local Logs: Check /tmp/rpc_debug_dumps/ for per-thread message history" << std::endl;
-#  endif
 
         // Print threading debug info
         if (!report.threading_debug_info.empty())
@@ -773,10 +752,6 @@ namespace crash_handler
             {
                 file << "Current Test: " << test_info->test_suite_name() << "." << test_info->name() << "\n";
             }
-
-#  if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-            file << "Thread-Local Logs: Check /tmp/rpc_debug_dumps/ for per-thread message history\n";
-#  endif
 
             file << "Signal: " << report.signal_number;
             if (!report.signal_name.empty())

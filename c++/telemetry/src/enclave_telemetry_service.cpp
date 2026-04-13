@@ -3,10 +3,14 @@
  *   All rights reserved.
  */
 #include <rpc/telemetry/enclave_telemetry_service.h>
-#include <trusted/rpc_telemetry_t.h>
 
 namespace rpc
 {
+    namespace
+    {
+        template<typename... Args> void ignore_event(const Args&...) { }
+    }
+
     // Global telemetry service definition for enclave builds
 #ifdef CANOPY_USE_TELEMETRY
     std::shared_ptr<i_telemetry_service> telemetry_service_ = nullptr;
@@ -19,12 +23,32 @@ namespace rpc
         rpc::zone zone_id,
         rpc::destination_zone parent_zone_id) const
     {
-        on_service_creation_host(name, zone_id.get_subnet(), parent_zone_id.get_subnet());
+        ignore_event(name, zone_id, parent_zone_id);
     }
 
     void enclave_telemetry_service::on_service_deletion(rpc::zone zone_id) const
     {
-        on_service_deletion_host(zone_id.get_subnet());
+        ignore_event(zone_id);
+    }
+
+    void enclave_telemetry_service::on_service_send(
+        rpc::zone zone_id,
+        rpc::remote_object remote_object_id,
+        rpc::caller_zone caller_zone_id,
+        rpc::interface_ordinal interface_id,
+        rpc::method method_id) const
+    {
+        ignore_event(zone_id, remote_object_id, caller_zone_id, interface_id, method_id);
+    }
+
+    void enclave_telemetry_service::on_service_post(
+        rpc::zone zone_id,
+        rpc::remote_object remote_object_id,
+        rpc::caller_zone caller_zone_id,
+        rpc::interface_ordinal interface_id,
+        rpc::method method_id) const
+    {
+        ignore_event(zone_id, remote_object_id, caller_zone_id, interface_id, method_id);
     }
     void enclave_telemetry_service::on_service_try_cast(
         rpc::zone zone_id,
@@ -32,12 +56,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        on_service_try_cast_host(
-            zone_id.get_subnet(),
-            remote_object_id.get_subnet(),
-            caller_zone_id.get_subnet(),
-            remote_object_id.get_object_id().get_subnet(),
-            interface_id.get_val());
+        ignore_event(zone_id, remote_object_id, caller_zone_id, interface_id);
     }
 
     void enclave_telemetry_service::on_service_add_ref(
@@ -47,13 +66,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        on_service_add_ref_host(
-            zone_id.get_subnet(),
-            remote_object_id.get_subnet(),
-            remote_object_id.get_object_id().get_subnet(),
-            caller_zone_id.get_subnet(),
-            requesting_zone_id.get_subnet(),
-            (uint64_t)options);
+        ignore_event(zone_id, remote_object_id, caller_zone_id, requesting_zone_id, options);
     }
 
     void enclave_telemetry_service::on_service_release(
@@ -62,12 +75,23 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        on_service_release_host(
-            zone_id.get_subnet(),
-            remote_object_id.get_subnet(),
-            remote_object_id.get_object_id().get_subnet(),
-            caller_zone_id.get_subnet(),
-            static_cast<uint64_t>(options));
+        ignore_event(zone_id, remote_object_id, caller_zone_id, options);
+    }
+
+    void enclave_telemetry_service::on_service_object_released(
+        rpc::zone zone_id,
+        rpc::remote_object remote_object_id,
+        rpc::caller_zone caller_zone_id) const
+    {
+        ignore_event(zone_id, remote_object_id, caller_zone_id);
+    }
+
+    void enclave_telemetry_service::on_service_transport_down(
+        rpc::zone zone_id,
+        rpc::destination_zone destination_zone_id,
+        rpc::caller_zone caller_zone_id) const
+    {
+        ignore_event(zone_id, destination_zone_id, caller_zone_id);
     }
     void enclave_telemetry_service::on_service_proxy_creation(
         const std::string& service_name,
@@ -76,12 +100,7 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id) const
     {
-        on_service_proxy_creation_host(
-            service_name,
-            service_proxy_name,
-            zone_id.get_subnet(),
-            destination_zone_id.get_subnet(),
-            caller_zone_id.get_subnet());
+        ignore_event(service_name, service_proxy_name, zone_id, destination_zone_id, caller_zone_id);
     }
     void enclave_telemetry_service::on_cloned_service_proxy_creation(
         const std::string& service_name,
@@ -90,19 +109,32 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id) const
     {
-        on_cloned_service_proxy_creation_host(
-            service_name,
-            service_proxy_name,
-            zone_id.get_subnet(),
-            destination_zone_id.get_subnet(),
-            caller_zone_id.get_subnet());
+        ignore_event(service_name, service_proxy_name, zone_id, destination_zone_id, caller_zone_id);
     }
     void enclave_telemetry_service::on_service_proxy_deletion(
         rpc::zone zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id) const
     {
-        on_service_proxy_deletion_host(zone_id.get_subnet(), destination_zone_id.get_subnet(), caller_zone_id.get_subnet());
+        ignore_event(zone_id, destination_zone_id, caller_zone_id);
+    }
+    void enclave_telemetry_service::on_service_proxy_send(
+        rpc::zone zone_id,
+        rpc::remote_object remote_object_id,
+        rpc::caller_zone caller_zone_id,
+        rpc::interface_ordinal interface_id,
+        rpc::method method_id) const
+    {
+        ignore_event(zone_id, remote_object_id, caller_zone_id, interface_id, method_id);
+    }
+    void enclave_telemetry_service::on_service_proxy_post(
+        rpc::zone zone_id,
+        rpc::remote_object remote_object_id,
+        rpc::caller_zone caller_zone_id,
+        rpc::interface_ordinal interface_id,
+        rpc::method method_id) const
+    {
+        ignore_event(zone_id, remote_object_id, caller_zone_id, interface_id, method_id);
     }
     void enclave_telemetry_service::on_service_proxy_try_cast(
         rpc::zone zone_id,
@@ -110,12 +142,7 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::interface_ordinal interface_id) const
     {
-        on_service_proxy_try_cast_host(
-            zone_id.get_subnet(),
-            remote_object_id.get_subnet(),
-            caller_zone_id.get_subnet(),
-            remote_object_id.get_object_id().get_subnet(),
-            interface_id.get_val());
+        ignore_event(zone_id, remote_object_id, caller_zone_id, interface_id);
     }
     void enclave_telemetry_service::on_service_proxy_add_ref(
         rpc::zone zone_id,
@@ -124,13 +151,7 @@ namespace rpc
         rpc::requesting_zone requesting_zone_id,
         rpc::add_ref_options options) const
     {
-        on_service_proxy_add_ref_host(
-            zone_id.get_subnet(),
-            remote_object_id.get_subnet(),
-            caller_zone_id.get_subnet(),
-            remote_object_id.get_object_id().get_subnet(),
-            requesting_zone_id.get_subnet(),
-            (uint64_t)options);
+        ignore_event(zone_id, remote_object_id, caller_zone_id, requesting_zone_id, options);
     }
     void enclave_telemetry_service::on_service_proxy_release(
         rpc::zone zone_id,
@@ -138,12 +159,23 @@ namespace rpc
         rpc::caller_zone caller_zone_id,
         rpc::release_options options) const
     {
-        on_service_proxy_release_host(
-            zone_id.get_subnet(),
-            remote_object_id.get_subnet(),
-            caller_zone_id.get_subnet(),
-            remote_object_id.get_object_id().get_subnet(),
-            static_cast<uint64_t>(options));
+        ignore_event(zone_id, remote_object_id, caller_zone_id, options);
+    }
+
+    void enclave_telemetry_service::on_service_proxy_object_released(
+        rpc::zone zone_id,
+        rpc::remote_object remote_object_id,
+        rpc::caller_zone caller_zone_id) const
+    {
+        ignore_event(zone_id, remote_object_id, caller_zone_id);
+    }
+
+    void enclave_telemetry_service::on_service_proxy_transport_down(
+        rpc::zone zone_id,
+        rpc::destination_zone destination_zone_id,
+        rpc::caller_zone caller_zone_id) const
+    {
+        ignore_event(zone_id, destination_zone_id, caller_zone_id);
     }
 
     void enclave_telemetry_service::on_impl_creation(
@@ -151,13 +183,13 @@ namespace rpc
         uint64_t address,
         rpc::zone zone_id) const
     {
-        on_impl_creation_host(name, address, zone_id.get_subnet());
+        ignore_event(name, address, zone_id);
     }
     void enclave_telemetry_service::on_impl_deletion(
         uint64_t address,
         rpc::zone zone_id) const
     {
-        on_impl_deletion_host(address, zone_id.get_subnet());
+        ignore_event(address, zone_id);
     }
 
     void enclave_telemetry_service::on_stub_creation(
@@ -165,13 +197,13 @@ namespace rpc
         rpc::object object_id,
         uint64_t address) const
     {
-        on_stub_creation_host(zone_id.get_subnet(), object_id.get_val(), address);
+        ignore_event(zone_id, object_id, address);
     }
     void enclave_telemetry_service::on_stub_deletion(
         rpc::zone zone_id,
         rpc::object object_id) const
     {
-        on_stub_deletion_host(zone_id.get_subnet(), object_id.get_val());
+        ignore_event(zone_id, object_id);
     }
     void enclave_telemetry_service::on_stub_send(
         rpc::zone zone_id,
@@ -179,7 +211,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        on_stub_send_host(zone_id.get_subnet(), object_id.get_val(), interface_id.get_val(), method_id.get_val());
+        ignore_event(zone_id, object_id, interface_id, method_id);
     }
     void enclave_telemetry_service::on_stub_add_ref(
         rpc::zone zone_id,
@@ -188,8 +220,7 @@ namespace rpc
         uint64_t count,
         rpc::caller_zone caller_zone_id) const
     {
-        on_stub_add_ref_host(
-            zone_id.get_subnet(), object_id.get_val(), interface_id.get_val(), count, caller_zone_id.get_subnet());
+        ignore_event(zone_id, object_id, interface_id, count, caller_zone_id);
     }
     void enclave_telemetry_service::on_stub_release(
         rpc::zone zone_id,
@@ -198,8 +229,7 @@ namespace rpc
         uint64_t count,
         rpc::caller_zone caller_zone_id) const
     {
-        on_stub_release_host(
-            zone_id.get_subnet(), object_id.get_val(), interface_id.get_val(), count, caller_zone_id.get_subnet());
+        ignore_event(zone_id, object_id, interface_id, count, caller_zone_id);
     }
 
     void enclave_telemetry_service::on_object_proxy_creation(
@@ -208,15 +238,14 @@ namespace rpc
         rpc::object object_id,
         bool add_ref_done) const
     {
-        on_object_proxy_creation_host(
-            zone_id.get_subnet(), destination_zone_id.get_subnet(), object_id.get_val(), add_ref_done);
+        ignore_event(zone_id, destination_zone_id, object_id, add_ref_done);
     }
     void enclave_telemetry_service::on_object_proxy_deletion(
         rpc::zone zone_id,
         rpc::destination_zone destination_zone_id,
         rpc::object object_id) const
     {
-        on_object_proxy_deletion_host(zone_id.get_subnet(), destination_zone_id.get_subnet(), object_id.get_val());
+        ignore_event(zone_id, destination_zone_id, object_id);
     }
 
     void enclave_telemetry_service::on_interface_proxy_creation(
@@ -226,8 +255,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id) const
     {
-        on_interface_proxy_creation_host(
-            name, zone_id.get_subnet(), destination_zone_id.get_subnet(), object_id.get_val(), interface_id.get_val());
+        ignore_event(name, zone_id, destination_zone_id, object_id, interface_id);
     }
     void enclave_telemetry_service::on_interface_proxy_deletion(
         rpc::zone zone_id,
@@ -235,8 +263,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id) const
     {
-        on_interface_proxy_deletion_host(
-            zone_id.get_subnet(), destination_zone_id.get_subnet(), object_id.get_val(), interface_id.get_val());
+        ignore_event(zone_id, destination_zone_id, object_id, interface_id);
     }
     void enclave_telemetry_service::on_interface_proxy_send(
         const std::string& method_name,
@@ -246,13 +273,7 @@ namespace rpc
         rpc::interface_ordinal interface_id,
         rpc::method method_id) const
     {
-        on_interface_proxy_send_host(
-            method_name,
-            zone_id.get_subnet(),
-            destination_zone_id.get_subnet(),
-            object_id.get_val(),
-            interface_id.get_val(),
-            method_id.get_val());
+        ignore_event(method_name, zone_id, destination_zone_id, object_id, interface_id, method_id);
     }
 
     void enclave_telemetry_service::on_service_proxy_add_external_ref(
@@ -260,8 +281,7 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id) const
     {
-        on_service_proxy_add_external_ref_host(
-            operating_zone_id.get_subnet(), destination_zone_id.get_subnet(), caller_zone_id.get_subnet());
+        ignore_event(operating_zone_id, destination_zone_id, caller_zone_id);
     }
 
     void enclave_telemetry_service::on_service_proxy_release_external_ref(
@@ -269,15 +289,14 @@ namespace rpc
         rpc::destination_zone destination_zone_id,
         rpc::caller_zone caller_zone_id) const
     {
-        on_service_proxy_release_external_ref_host(
-            operating_zone_id.get_subnet(), destination_zone_id.get_subnet(), caller_zone_id.get_subnet());
+        ignore_event(operating_zone_id, destination_zone_id, caller_zone_id);
     }
 
     void enclave_telemetry_service::message(
         rpc::i_telemetry_service::level_enum level,
         const std::string& message) const
     {
-        message_host(level, message);
+        ignore_event(level, message);
     }
 
     void enclave_telemetry_service::on_transport_creation(
@@ -286,15 +305,14 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         rpc::transport_status status) const
     {
-        on_transport_creation_host(
-            name, zone_id.get_subnet(), adjacent_zone_id.get_subnet(), static_cast<uint32_t>(status));
+        ignore_event(name, zone_id, adjacent_zone_id, status);
     }
 
     void enclave_telemetry_service::on_transport_deletion(
         rpc::zone zone_id,
         rpc::zone adjacent_zone_id) const
     {
-        on_transport_deletion_host(zone_id.get_subnet(), adjacent_zone_id.get_subnet());
+        ignore_event(zone_id, adjacent_zone_id);
     }
 
     void enclave_telemetry_service::on_transport_status_change(
@@ -304,12 +322,7 @@ namespace rpc
         rpc::transport_status old_status,
         rpc::transport_status new_status) const
     {
-        on_transport_status_change_host(
-            name,
-            zone_id.get_subnet(),
-            adjacent_zone_id.get_subnet(),
-            static_cast<uint32_t>(old_status),
-            static_cast<uint32_t>(new_status));
+        ignore_event(name, zone_id, adjacent_zone_id, old_status, new_status);
     }
 
     void enclave_telemetry_service::on_transport_add_destination(
@@ -318,8 +331,7 @@ namespace rpc
         rpc::destination_zone destination,
         rpc::caller_zone caller) const
     {
-        on_transport_add_destination_host(
-            zone_id.get_subnet(), adjacent_zone_id.get_subnet(), destination.get_subnet(), caller.get_subnet());
+        ignore_event(zone_id, adjacent_zone_id, destination, caller);
     }
 
     void enclave_telemetry_service::on_transport_remove_destination(
@@ -328,8 +340,7 @@ namespace rpc
         rpc::destination_zone destination,
         rpc::caller_zone caller) const
     {
-        on_transport_remove_destination_host(
-            zone_id.get_subnet(), adjacent_zone_id.get_subnet(), destination.get_subnet(), caller.get_subnet());
+        ignore_event(zone_id, adjacent_zone_id, destination, caller);
     }
 
     void enclave_telemetry_service::on_transport_accept(
@@ -337,7 +348,7 @@ namespace rpc
         rpc::zone adjacent_zone_id,
         int result) const
     {
-        on_transport_accept_host(zone_id.get_subnet(), adjacent_zone_id.get_subnet(), result);
+        ignore_event(zone_id, adjacent_zone_id, result);
     }
 
     void enclave_telemetry_service::on_transport_outbound_send(
@@ -547,12 +558,7 @@ namespace rpc
         uint64_t shared_count,
         uint64_t optimistic_count) const
     {
-        on_pass_through_creation_host(
-            zone_id.get_subnet(),
-            forward_destination.get_subnet(),
-            reverse_destination.get_subnet(),
-            shared_count,
-            optimistic_count);
+        ignore_event(zone_id, forward_destination, reverse_destination, shared_count, optimistic_count);
     }
 
     void enclave_telemetry_service::on_pass_through_deletion(
@@ -560,8 +566,7 @@ namespace rpc
         rpc::destination_zone forward_destination,
         rpc::destination_zone reverse_destination) const
     {
-        on_pass_through_deletion_host(
-            zone_id.get_subnet(), forward_destination.get_subnet(), reverse_destination.get_subnet());
+        ignore_event(zone_id, forward_destination, reverse_destination);
     }
 
     void enclave_telemetry_service::on_pass_through_add_ref(
@@ -572,13 +577,7 @@ namespace rpc
         int64_t shared_delta,
         int64_t optimistic_delta) const
     {
-        on_pass_through_add_ref_host(
-            zone_id.get_subnet(),
-            forward_destination.get_subnet(),
-            reverse_destination.get_subnet(),
-            static_cast<uint64_t>(options),
-            shared_delta,
-            optimistic_delta);
+        ignore_event(zone_id, forward_destination, reverse_destination, options, shared_delta, optimistic_delta);
     }
 
     void enclave_telemetry_service::on_pass_through_release(
@@ -588,12 +587,7 @@ namespace rpc
         int64_t shared_delta,
         int64_t optimistic_delta) const
     {
-        on_pass_through_release_host(
-            zone_id.get_subnet(),
-            forward_destination.get_subnet(),
-            reverse_destination.get_subnet(),
-            shared_delta,
-            optimistic_delta);
+        ignore_event(zone_id, forward_destination, reverse_destination, shared_delta, optimistic_delta);
     }
 
     void enclave_telemetry_service::on_pass_through_status_change(
@@ -603,11 +597,6 @@ namespace rpc
         rpc::transport_status forward_status,
         rpc::transport_status reverse_status) const
     {
-        on_pass_through_status_change_host(
-            zone_id.get_subnet(),
-            forward_destination.get_subnet(),
-            reverse_destination.get_subnet(),
-            static_cast<uint32_t>(forward_status),
-            static_cast<uint32_t>(reverse_status));
+        ignore_event(zone_id, forward_destination, reverse_destination, forward_status, reverse_status);
     }
 }

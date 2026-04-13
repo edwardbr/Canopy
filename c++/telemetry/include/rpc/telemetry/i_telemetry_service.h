@@ -7,12 +7,8 @@
 #include <string>
 #include <rpc/rpc.h>
 
-#ifndef _IN_ENCLAVE
+#ifndef FOR_SGX
 #  include <filesystem>
-#endif
-
-#if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-#  include <rpc/internal/thread_local_logger.h>
 #endif
 
 // copied from spdlog
@@ -365,18 +361,6 @@ namespace rpc
             level_enum level,
             const std::string& message) const = 0;
     };
-
-#if defined(CANOPY_USE_THREAD_LOCAL_LOGGING) && !defined(_IN_ENCLAVE)
-    // Helper function to log telemetry messages to circular buffers
-    inline void telemetry_to_thread_local_buffer(
-        i_telemetry_service::level_enum level,
-        const std::string& message)
-    {
-        // Map telemetry levels to RPC logging levels
-        int rpc_level = static_cast<int>(level);
-        rpc::thread_local_log(rpc_level, "[TELEMETRY] " + message, __FILE__, __LINE__, __FUNCTION__);
-    }
-#endif
 
     // Global telemetry service - defined in main.cpp (host) or set by enclave initialization
     extern std::shared_ptr<i_telemetry_service> telemetry_service_; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
