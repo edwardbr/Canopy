@@ -141,12 +141,11 @@ public:
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
     }
 
-    void common_teardown()
+    void pump_until_idle()
     {
-        this->i_host_ptr_ = nullptr;
-        this->i_example_ptr_ = nullptr;
-        this->client_transport_.reset();
-
+        // Drive the scheduler until there are no pending events.  Only safe to call once
+        // the streaming transport has reached DISCONNECTED — before that, receive_consumer_loop
+        // re-schedules every 1ms and process_events never returns 0.
         if (this->io_scheduler_)
         {
             for (int idle_iterations = 0; idle_iterations < 10;)
@@ -157,6 +156,55 @@ public:
                     idle_iterations = 0;
             }
         }
+    }
+
+    void pump_for(
+        std::chrono::milliseconds duration)
+    {
+        if (!this->io_scheduler_)
+            return;
+
+        auto deadline = std::chrono::steady_clock::now() + duration;
+        while (std::chrono::steady_clock::now() < deadline)
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+    }
+
+    void pump_until_disconnected(
+        const std::shared_ptr<rpc::ipc_transport::transport>& t,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
+    {
+        // Drive the scheduler until the transport reaches DISCONNECTED (graceful disconnect
+        // handshake done) or the timeout expires.  pump_until_idle() is wrong here:
+        // receive_consumer_loop polls the SPSC stream every 1ms, so the scheduler always
+        // has ready tasks — it never idles while the streaming loops are alive.
+        if (!t || !this->io_scheduler_)
+            return;
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (t->get_status() != rpc::transport_status::DISCONNECTED
+               && std::chrono::steady_clock::now() < deadline)
+        {
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+        }
+    }
+
+    void common_teardown()
+    {
+        this->i_host_ptr_ = nullptr;
+        this->i_example_ptr_ = nullptr;
+
+        // Pump until the streaming transport's graceful disconnect handshake completes.
+        // This allows send_producer_loop to send close_connection_send and the child to
+        // reply with close_connection_ack before we destroy the transport.  Using the
+        // DISCONNECTED status as the exit condition avoids the hang that pump_until_idle()
+        // causes — the receive loop's 1ms polling makes the scheduler permanently busy.
+        pump_until_disconnected(this->client_transport_);
+
+        this->client_transport_.reset();
+
+        // Brief post-reset pump: activity_tracker's destructor spawned cleanup() which
+        // resets keep_alive_ and closes the stream.  That coroutine is short and leaves
+        // the scheduler idle, so pump_until_idle() converges quickly here.
+        pump_until_idle();
 
         this->root_service_ = nullptr;
         current_host_service.reset();

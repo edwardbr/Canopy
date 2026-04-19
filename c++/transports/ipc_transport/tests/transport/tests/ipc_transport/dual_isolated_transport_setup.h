@@ -45,7 +45,18 @@ public:
     {
         RPC_INFO("dual_isolated tear_down begin");
         second_example_ptr_ = nullptr;
+
+        // Pump until the second child's streaming transport reaches DISCONNECTED.
+        // pump_until_idle() does not work here — see pump_until_disconnected() comment.
+        this->pump_until_disconnected(second_client_transport_);
+
         second_client_transport_.reset();
+
+        // The first transport is still connected here, so pump_until_idle() would never
+        // converge: its receive loop keeps the manual scheduler busy with 1ms polling.
+        // A short bounded pump is enough to let the second transport's cleanup run.
+        this->pump_for(std::chrono::milliseconds(20));
+
         this->common_teardown();
         this->destroy_isolated_child(second_child_);
         this->destroy_isolated_child(first_child_);
