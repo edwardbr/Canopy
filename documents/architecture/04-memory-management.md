@@ -572,7 +572,7 @@ class node
 
 ```cpp
 #ifdef CANOPY_USE_TELEMETRY
-rpc::console_telemetry_service::create(telemetry, "test", "memory_test", "/tmp");
+rpc::telemetry::create_console_telemetry_service(telemetry, "test", "memory_test", "/tmp");
 #endif
 ```
 

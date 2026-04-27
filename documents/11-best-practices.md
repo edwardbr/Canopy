@@ -344,7 +344,7 @@ TYPED_TEST(calculator_test, add)
 
 ```cpp
 #ifdef CANOPY_USE_TELEMETRY
-rpc::console_telemetry_service::create(
+rpc::telemetry::create_console_telemetry_service(
     telemetry_service, "test", "debug_test", "/tmp");
 #endif
 ```
@@ -352,7 +352,7 @@ rpc::console_telemetry_service::create(
 ### Use Sequence Diagrams
 
 ```cpp
-rpc::sequence_diagram_telemetry_service::create(
+rpc::telemetry::create_sequence_diagram_telemetry_service(
     service, "test", "sequence", "/tmp");
 // Generates PlantUML file for visualization
 ```

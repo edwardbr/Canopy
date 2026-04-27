@@ -501,14 +501,14 @@ static std::shared_ptr<stub_type> create(
 ### Getting Service
 
 ```cpp
-std::shared_ptr<rpc::i_telemetry_service> get_telemetry_service();
+std::shared_ptr<rpc::telemetry::i_telemetry_service> rpc::telemetry::get_telemetry_service();
 ```
 
 ### Service Creation
 
 ```cpp
-rpc::console_telemetry_service::create(service, name, test, dir);
-rpc::sequence_diagram_telemetry_service::create(service, name, test, dir);
-rpc::animation_telemetry_service::create(service, name, test, dir);
-rpc::multiplexing_telemetry_service::create(service, children);
+rpc::telemetry::create_console_telemetry_service(service, name, test, dir);
+rpc::telemetry::create_sequence_diagram_telemetry_service(service, name, test, dir);
+rpc::telemetry::create_animation_telemetry_service(service, name, test, dir);
+rpc::telemetry::create_multiplexing_telemetry_service(service, std::move(children));
 ```
