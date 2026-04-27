@@ -198,10 +198,20 @@ error_code error = rpc::make_optimistic(shared, opt);
 ### Access
 
 ```cpp
-T* operator->() const;     // Arrow operator (may be null)
-T* get() const;            // Raw pointer (may be null)
+callable_accessor<T> get_callable() const;  // Pins local / captures remote
+callable_accessor<T> operator->() const;    // Same as get_callable()
+T* raw_get() const;                         // Raw dispatch pointer (may be null)
 explicit operator bool() const;
 ```
+
+`callable_accessor` is a lightweight object that always provides a valid dispatch
+pointer.  For local objects it pins the target via `weak_ptr::lock()` so the
+object cannot be destroyed while the accessor lives.  For remote objects it
+copies the `interface_proxy*` which is kept alive by the optimistic count.
+
+`callable_accessor::operator bool()` returns `true` only when the underlying
+object is actually alive (not just when a proxy is present).  Use it to
+distinguish local-alive from local-gone.
 
 ## 5. Transport
 

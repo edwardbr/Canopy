@@ -158,6 +158,29 @@ It is typically obtained from:
 | `rpc::shared_ptr` | `OBJECT_NOT_FOUND` | Serious - reference was held but object destroyed unexpectedly |
 | `rpc::optimistic_ptr` | `OBJECT_GONE` | Expected - the remote weak target was checked at call time and is no longer available |
 
+**Callable accessor pattern (race mitigation)**:
+
+`optimistic_ptr` is non-owning.  A check-then-call sequence is racy for local
+objects because the object can be destroyed between the check and the call.
+Use `get_callable()` to pin the local object for the duration of the accessor:
+
+```cpp
+// Safe: pins the local object via weak_ptr::lock()
+auto acc = opt->get_callable();
+if (!acc)
+    return;  // null or local-gone
+auto error = CO_AWAIT acc->method();
+
+// For remote objects the race is inherent to the design —
+// the interface_proxy* is kept alive by the optimistic count on the parent.
+if (opt)
+    auto error = CO_AWAIT opt->method();
+```
+
+`callable_accessor::operator bool()` returns `true` only when the underlying
+object is actually alive.  For local-gone objects the accessor still provides a
+valid dispatch pointer (the `local_proxy`) that returns `OBJECT_GONE`.
+
 **Use Cases**:
 
 1. **Long-lived services** (databases, message queues)

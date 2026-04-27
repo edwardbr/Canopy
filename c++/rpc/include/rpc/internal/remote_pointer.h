@@ -58,6 +58,7 @@
 #include <type_traits> // For std::is_base_of_v, std::is_convertible_v, std::remove_extent_t, etc.
 #include <functional>  // For std::hash
 #include <cstddef>     // For std::nullptr_t, std::size_t
+#include <cstdint>     // For std::int64_t
 #include <typeinfo>    // For std::type_info used by get_deleter
 
 #include "assert.h" //rpc assert.h
@@ -353,11 +354,14 @@ namespace rpc
             // NAMESPACE_INLINE_BEGIN  // Commented out to simplify
             struct control_block_base
             {
-                std::atomic<long> shared_count_{0}; // NOLINT(misc-non-private-member-variables-in-classes)
-                std::atomic<long> weak_count_{1};   // NOLINT(misc-non-private-member-variables-in-classes)
+                std::atomic<long> weak_count_{1}; // NOLINT(misc-non-private-member-variables-in-classes)
+                // Combined atomic: high 32 bits = shared_count, low 32 bits = optimistic_count
+                // This serves as the single source of truth for both RPC and STL compliance modes.
+                // In TEST_STL_COMPLIANCE mode, optimistic_count is always 0 so combined_count_ >> 32
+                // is the shared count. In RPC mode, both counts are tracked atomically.
+                std::atomic<std::int64_t> combined_count_{0}; // NOLINT(misc-non-private-member-variables-in-classes)
 #ifndef TEST_STL_COMPLIANCE
-                std::atomic<long> optimistic_count_{0}; // NOLINT(misc-non-private-member-variables-in-classes)
-                bool is_local_ = false;                 // NOLINT(misc-non-private-member-variables-in-classes)
+                bool is_local_ = false; // NOLINT(misc-non-private-member-variables-in-classes)
 #endif
 
             protected:
@@ -373,7 +377,8 @@ namespace rpc
                     {
                         is_local_ = ptr->__rpc_is_local();
                         // CRITICAL: Initialize object_proxy counters to match control block's initial state.
-                        // The control block starts with shared_count_=0, then immediately increments to 1.
+                        // The control block starts with combined_count_=0 (both shared and optimistic at 0),
+                        // then immediately increments the shared portion (high 32 bits) by 1.
                         // We need object_proxy to track this so that when control block decrements 1→0,
                         // the object_proxy can aggregate across all interface types and send sp_release
                         // when the total count reaches 0.
@@ -401,53 +406,57 @@ namespace rpc
                 // Synchronous because shared_ptr operations don't need async on shared 0→1 transitions
                 // Called in these scenarios:
                 // 1. Copy from existing shared_ptr (already > 0) - synchronous copy
-                // 2. Construct from weak_ptr (only succeeds if shared_count_ > 0) - synchronous lock
+                // 2. Construct from weak_ptr (only succeeds if shared portion of combined_count_ > 0) - synchronous lock
                 // 3. Construct from raw pointer via acquire_this() (0→1 transition) - synchronous, single-threaded constructor context
                 // 4. Aliasing constructor (already > 0) - synchronous copy
                 //
                 // NOTE: For interface proxies wrapping REMOTE objects (is_local_==false), the 0→1 transition happens
                 // during shared_ptr<T>(T*) constructor, which is single-threaded and doesn't need async remote call
                 // because the object hasn't been marshalled yet (no remote stub exists).
-                void increment_shared() { shared_count_.fetch_add(1, std::memory_order_relaxed); }
+                void increment_shared() { combined_count_.fetch_add(1LL << 32, std::memory_order_relaxed); }
                 void increment_weak() { weak_count_.fetch_add(1, std::memory_order_relaxed); }
 
                 // Try to increment shared count only if it's not zero (thread-safe)
                 bool try_increment_shared() noexcept
                 {
-                    long current = shared_count_.load(std::memory_order_relaxed);
+                    std::int64_t current = combined_count_.load(std::memory_order_relaxed);
                     do
                     {
-                        if (current == 0)
+                        if ((current >> 32) == 0)
                         {
                             return false; // Already expired, cannot increment
                         }
-                    } while (!shared_count_.compare_exchange_weak(current, current + 1, std::memory_order_relaxed));
+                    } while (!combined_count_.compare_exchange_weak(
+                        current, current + (1LL << 32), std::memory_order_relaxed));
                     return true;
                 }
 
                 void decrement_shared_and_dispose_if_zero()
                 {
-                    long prev_opt = shared_count_.fetch_sub(1, std::memory_order_relaxed);
+                    std::int64_t prev = combined_count_.fetch_sub(1LL << 32, std::memory_order_relaxed);
+                    long prev_shared = prev >> 32;
 
-                    if (prev_opt <= 0)
+                    if (prev_shared <= 0)
                     {
-                        RPC_ERROR(
-                            "decrement_shared_and_dispose_if_zero: shared_count_ was {} before decrement (now {})",
-                            prev_opt,
-                            shared_count_.load());
+                        RPC_ERROR("decrement_shared_and_dispose_if_zero: shared_count_ was {} before decrement (high 32 bits of combined_count_)", prev_shared);
                         RPC_ASSERT(!*"Negative shared_count_ count detected");
                     }
 
-                    if (prev_opt == 1)
+                    if (prev_shared == 1)
                     {
 #ifndef TEST_STL_COMPLIANCE
                         // Call object_proxy release on 1→0 transition for remote objects
                         control_block_call_release(false);
 
-                        // For remote objects, delay disposal until optimistic_count_ also reaches 0
-                        if (!is_local_ && optimistic_count_.load(std::memory_order_acquire) > 0)
+                        // For remote objects, delay disposal until optimistic_count_ also reaches 0.
+                        // Using the atomic snapshot from the combined fetch_sub, we know:
+                        // - If prev_opt == 0, no optimistic_ptr existed (or they all released before us)
+                        // - If prev_opt > 0, some optimistic_ptr still exists — but we atomically
+                        //   captured the state. The optimistic_ptr that decrements last will see
+                        //   prev_shared > 0 and skip disposal. Only one thread disposes.
+                        long prev_opt = prev & 0xFFFFFFFF;
+                        if (!is_local_ && prev_opt > 0)
                         {
-                            // Don't dispose yet - optimistic_ptrs are keeping interface_proxy alive
                             decrement_weak_and_destroy_if_zero();
                             return;
                         }
@@ -472,7 +481,7 @@ namespace rpc
 
                     if (prev_weak == 1)
                     {
-                        if (shared_count_.load(std::memory_order_acquire) == 0)
+                        if ((combined_count_.load(std::memory_order_acquire) >> 32) == 0)
                         {
                             destroy_self_actual();
                         }
@@ -485,7 +494,7 @@ namespace rpc
                 // Synchronous - no remote calls needed, just local reference counting
                 void increment_optimistic_no_lock() noexcept
                 {
-                    optimistic_count_.fetch_add(1, std::memory_order_relaxed);
+                    combined_count_.fetch_add(1, std::memory_order_relaxed);
                 }
 
                 // Safe increment when control block lifetime is uncertain (e.g., converting from shared_ptr/weak_ptr)
@@ -507,19 +516,42 @@ namespace rpc
                     } while (!weak_count_.compare_exchange_weak(
                         weak_count, weak_count + 1, std::memory_order_acquire, std::memory_order_relaxed));
 
-                    // Control block is now guaranteed alive, safe to check optimistic_count_
-                    long prev = optimistic_count_.fetch_add(1, std::memory_order_relaxed);
+                    // Control block is now guaranteed alive for the synchronous portion.
+                    // We increment optimistic_count (low 32 bits of combined_count).
+                    long prev = combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF;
 
                     if (prev == 0)
                     {
-                        // First optimistic_ptr: 0→1 transition - establish remote reference immediately
-                        // This increment becomes the "optimistic_ptr weak_owner"
-                        // Call object_proxy add_ref on 0→1 transition for remote objects
+                        // First optimistic_ptr: 0→1 transition — must notify remote stub.
+                        //
+                        // CRITICAL: Take a temporary shared reference before the CO_AWAIT.
+                        // Without it, the following race exists when called via make_optimistic(weak_ptr):
+                        //   1. We increment optimistic_count (control block opt=1, object_proxy opt=0)
+                        //   2. Coroutine suspends at CO_AWAIT — object_proxy not yet notified
+                        //   3. Another thread releases the last shared_ptr
+                        //   4. decrement_shared_and_dispose_if_zero sees prev_opt=1, defers disposal,
+                        //      but calls object_proxy_release(shared) → object_proxy sees (0,0) → cleanup!
+                        //   5. CO_AWAIT resumes: object_proxy_add_ref(optimistic) arrives after cleanup → ASSERT
+                        //
+                        // The temp shared ref keeps shared_count ≥ 2 while suspended, so no other
+                        // thread's shared release can become the "last" one and fire the object_proxy
+                        // shared notification before the optimistic add_ref has been delivered.
+                        // On both success and error paths we release the temp ref after CO_AWAIT.
+                        if (!try_increment_shared())
+                        {
+                            // Shared is already 0 — object is gone. Roll back optimistic count.
+                            combined_count_.fetch_sub(1, std::memory_order_relaxed);
+                            decrement_weak_and_destroy_if_zero();
+                            CO_RETURN error::OBJECT_GONE();
+                        }
+
                         auto err = CO_AWAIT control_block_call_add_ref(add_ref_options::optimistic);
                         if (err)
                         {
-                            // Failed - rollback local state
-                            long prev_rollback = optimistic_count_.fetch_sub(1, std::memory_order_relaxed);
+                            // Failed — roll back optimistic count BEFORE releasing the temp shared ref.
+                            // Rolling back first ensures decrement_shared_and_dispose_if_zero sees
+                            // prev_opt == 0 and triggers normal cleanup rather than deferral.
+                            long prev_rollback = combined_count_.fetch_sub(1, std::memory_order_relaxed) & 0xFFFFFFFF;
                             if (prev_rollback <= 0)
                             {
                                 RPC_ERROR(
@@ -527,9 +559,16 @@ namespace rpc
                                     prev_rollback);
                                 RPC_ASSERT(!*"Negative optimistic_count_ in rollback");
                             }
-                            decrement_weak_and_destroy_if_zero();
+                            decrement_shared_and_dispose_if_zero(); // release temp shared ref
+                            decrement_weak_and_destroy_if_zero();   // release weak_count_ taken at top
                             CO_RETURN err;
                         }
+
+                        // Success — release the temp shared ref now that the object_proxy has
+                        // been notified of the optimistic add_ref.  optimistic_count is ≥ 1,
+                        // so decrement_shared_and_dispose_if_zero will correctly defer the
+                        // object_proxy shared notification if shared_count just hit zero.
+                        decrement_shared_and_dispose_if_zero();
                     }
                     else
                     {
@@ -543,28 +582,32 @@ namespace rpc
 
                 void decrement_optimistic_and_dispose_if_zero() noexcept
                 {
-                    long prev = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
+                    std::int64_t prev = combined_count_.fetch_sub(1, std::memory_order_acq_rel);
+                    long prev_opt = prev & 0xFFFFFFFF;
+                    long prev_shared = prev >> 32;
 
-                    if (prev <= 0)
+                    if (prev_opt <= 0)
                     {
-                        RPC_ERROR(
-                            "decrement_optimistic_and_dispose_if_zero: optimistic_count_ was {} before decrement "
-                            "(now {})",
-                            prev,
-                            optimistic_count_.load());
+                        RPC_ERROR("decrement_optimistic_and_dispose_if_zero: optimistic_count_ was {} before decrement (low 32 bits of combined_count_)", prev_opt);
                         RPC_ASSERT(!*"Negative optimistic_count_ count detected");
                     }
 
-                    // If this was the last optimistic_ptr, decrement weak_count_
-                    // CRITICAL: This must be done last to prevent control block destruction
-                    // while other threads might be incrementing optimistic_count_
-                    if (prev == 1)
+                    // If this was the last optimistic_ptr, dispose and decrement weak_count_
+                    // CRITICAL: The combined atomic ensures that only one thread (the last to
+                    // decrement either shared or optimistic) will see both counts at zero and
+                    // perform disposal, preventing double-free.
+                    if (prev_opt == 1)
                     {
                         // Call object_proxy release on 1→0 transition for remote objects
                         control_block_call_release(true);
 
-                        // For remote objects, dispose interface_proxy if shared_count_ is also 0
-                        if (!is_local_ && shared_count_.load(std::memory_order_acquire) == 0)
+                        // For remote objects, dispose interface_proxy if shared_count_ is also 0.
+                        // Using the atomic snapshot from fetch_sub, we know the exact state:
+                        // - If prev_shared == 0, shared_ptrs already all released (or never existed)
+                        // - If prev_shared > 0, some shared_ptr still exists — but since we atomically
+                        //   captured the state, the shared_ptr that decrements last will see
+                        //   prev_opt > 0 and skip disposal. Only one thread disposes.
+                        if (!is_local_ && prev_shared == 0)
                         {
                             dispose_object_actual();
                         }
@@ -1274,7 +1317,7 @@ namespace rpc
         }
         [[nodiscard]] long use_count() const noexcept
         {
-            return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0;
+            return cb_ ? static_cast<long>(cb_->combined_count_.load(std::memory_order_relaxed) >> 32) : 0;
         }
         [[nodiscard]] bool unique() const noexcept { return use_count() == 1; }
         explicit operator bool() const noexcept { return ptr_ != nullptr; }
@@ -1639,17 +1682,18 @@ namespace rpc
         {
             if (!cb_)
                 return {};
-            long c = cb_->shared_count_.load(std::memory_order_relaxed);
-            while (c > 0)
+            std::int64_t c = cb_->combined_count_.load(std::memory_order_relaxed);
+            while ((c >> 32) > 0)
             {
-                if (cb_->shared_count_.compare_exchange_weak(c, c + 1, std::memory_order_acq_rel, std::memory_order_relaxed))
+                if (cb_->combined_count_.compare_exchange_weak(
+                        c, c + (1LL << 32), std::memory_order_acq_rel, std::memory_order_relaxed))
                     return shared_ptr<T>(cb_, ptr_for_lock_);
             }
             return {};
         }
         [[nodiscard]] long use_count() const noexcept
         {
-            return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0;
+            return cb_ ? static_cast<long>(cb_->combined_count_.load(std::memory_order_relaxed) >> 32) : 0;
         }
         [[nodiscard]] bool expired() const noexcept
         {
@@ -2302,6 +2346,54 @@ namespace rpc
     // Forward declaration
     template<typename T> class optimistic_ptr;
 
+    // callable_accessor<T> - Safe dispatch accessor for optimistic_ptr
+    // Provides a valid callable pointer in all cases (alive local, gone local, remote)
+    // while tracking whether the underlying object is actually alive.
+    //
+    // Local-alive: pin_ holds shared_ptr<T>, ptr_ = pin_.get() (actual object)
+    // Local-gone: pin_ is null, ptr_ = local_proxy_holder_.get() (returns OBJECT_GONE)
+    // Remote: pin_ is null, ptr_ = interface_proxy (kept alive by optimistic count)
+    //
+    // operator bool() returns alive_ (true only for live objects)
+    // get()/operator->()/operator*() return ptr_ (always valid for dispatch)
+    template<typename T> class callable_accessor
+    {
+        rpc::shared_ptr<T> pin_; // non-null only for local-alive: keeps object pinned
+        T* ptr_;                 // dispatch pointer — always valid if optimistic_ptr was non-null
+        bool alive_;             // true iff the underlying object is actually alive
+
+    public:
+        constexpr callable_accessor() noexcept
+            : ptr_(nullptr)
+            , alive_(false)
+        {
+        }
+
+        // Local path: sp = lock() result (may be null), fallback = local_proxy_holder_.get()
+        callable_accessor(
+            rpc::shared_ptr<T> sp,
+            T* fallback_proxy) noexcept
+            : pin_(std::move(sp))
+            , ptr_(pin_ ? pin_.get() : fallback_proxy)
+            , alive_(bool(pin_))
+        {
+        }
+
+        // Remote path: interface_proxy kept alive by optimistic count on the parent optimistic_ptr
+        explicit callable_accessor(T* remote_ptr) noexcept
+            : ptr_(remote_ptr)
+            , alive_(remote_ptr != nullptr)
+        {
+        }
+
+        [[nodiscard]] T* get() const noexcept { return ptr_; }
+        T* operator->() const noexcept { return ptr_; }
+        T& operator*() const noexcept { return *ptr_; }
+
+        // True only when the underlying object is actually alive
+        explicit operator bool() const noexcept { return alive_; }
+    };
+
     template<class T> class local_proxy : public T
     {
         rpc::weak_ptr<T> ptr_;
@@ -2366,8 +2458,16 @@ namespace rpc
      *
      * Internal Structure:
      * - Local objects: local_proxy_holder_ holds the callable proxy
-     * - Remote objects: ptr_ points to interface_proxy, cb_ for reference tracking
+     * - Remote objects: ptr_ points to interface_proxy, cb_ for refcounting
      * - local_proxy_holder_ IS the callable proxy (conditional forwarding pattern)
+     *
+     * Accessor Pattern (operator-> / get):
+     * - Returns callable_accessor<T> which always provides a valid dispatch pointer
+     * - For local-alive: pins the actual object via shared_ptr for the expression duration
+     * - For local-gone: falls back to local_proxy (which returns OBJECT_GONE)
+     * - For remote: returns interface_proxy kept alive by optimistic count
+     * - accessor.operator bool() returns true only when object is actually alive
+     * - accessor.get()/operator->() always returns a valid callable pointer
      *
      * Use Cases:
      * - Temporary references within a known scope
@@ -2484,7 +2584,7 @@ namespace rpc
             // local_proxy_holder_ destructor runs automatically
         }
 
-        [[nodiscard]] element_type_impl* get() const noexcept
+        [[nodiscard]] element_type_impl* raw_get() const noexcept
         {
             // For local objects: ptr_ points to __i_xxx_local_proxy (safe - returns OBJECT_GONE)
             // For remote objects: ptr_ points to interface_proxy (safe - RPC handles errors)
@@ -2497,7 +2597,7 @@ namespace rpc
         {
             if (local_proxy_holder_)
                 return local_proxy_holder_.use_count();
-            return cb_ ? cb_->shared_count_.load(std::memory_order_relaxed) : 0;
+            return cb_ ? static_cast<long>(cb_->combined_count_.load(std::memory_order_relaxed) >> 32) : 0;
         }
         [[nodiscard]] bool expired() const noexcept
         {
@@ -2559,18 +2659,25 @@ namespace rpc
         }
 
         // Access operators - operator-> is safe for making calls through the proxy
-        element_type_impl* operator->() const noexcept
+        // Returns a callable_accessor that provides:
+        // - get()/operator->()/operator*() returning a valid dispatch pointer in all cases
+        // - operator bool() reflecting whether the underlying object is actually alive
+        callable_accessor<element_type_impl> operator->() const noexcept
         {
-            // For local objects: ptr_ points to __i_xxx_local_proxy (safe - returns OBJECT_GONE)
-            // For remote objects: ptr_ points to interface_proxy (safe - RPC handles errors)
             if (local_proxy_holder_)
-                return local_proxy_holder_.get();
-            return ptr_;
+            {
+                auto sp = local_proxy_holder_->__get_weak().lock();
+                return callable_accessor<element_type_impl>(std::move(sp), local_proxy_holder_.get());
+            }
+            return callable_accessor<element_type_impl>(ptr_);
         }
+
+        [[nodiscard]] callable_accessor<element_type_impl> get_callable() const noexcept { return operator->(); }
 
         // UNSAFE: Direct pointer access - use ONLY for testing/comparison
         // The returned pointer may become invalid at any time due to concurrent deletion
-        // For safe calls, use operator-> instead
+        // For safe calls, use operator->() which returns a callable_accessor
+        // (get() on the accessor always returns a valid dispatch pointer)
         [[nodiscard]] element_type_impl* get_unsafe_only_for_testing() const noexcept
         {
             // WARNING: This pointer can dangle at any moment in multi-threaded scenarios
@@ -2588,7 +2695,15 @@ namespace rpc
             return ptr_;
         }
 
-        explicit operator bool() const noexcept { return get() != nullptr; }
+        explicit operator bool() const noexcept
+        {
+            if (local_proxy_holder_)
+            {
+                auto sp = local_proxy_holder_->__get_weak().lock();
+                return static_cast<bool>(sp);
+            }
+            return ptr_ != nullptr;
+        }
 
         [[nodiscard]] bool is_null() const noexcept
         {
@@ -2710,11 +2825,12 @@ namespace rpc
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
 #  ifdef CANOPY_ADD_REF_COUNT_CHECKS
-            // TELEMETRY: shared_count is not touched by make_optimistic, so only check optimistic.
+            // TELEMETRY: optimistic count is the low 32 bits of combined_count_.
             // optimistic_count fires a remote add_ref only on the 0→1 transition, so cb_optimistic
             // can exceed inherited_optimistic when multiple local copies exist.  The invariant is
             // that they agree on whether a remote reference exists (both zero or both non-zero).
-            long cb_optimistic_before = cb->optimistic_count_.load(std::memory_order_acquire);
+            long cb_optimistic_before
+                = static_cast<long>(cb->combined_count_.load(std::memory_order_acquire) & 0xFFFFFFFF);
 
             auto casting_iface = reinterpret_cast<rpc::casting_interface*>(in.internal_get_ptr());
             auto obj_proxy = casting_iface->__rpc_get_object_proxy();
@@ -2750,7 +2866,7 @@ namespace rpc
             }
 
 #  ifdef CANOPY_ADD_REF_COUNT_CHECKS
-            long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);
+            long cb_optimistic_after = static_cast<long>(cb->combined_count_.load(std::memory_order_acquire) & 0xFFFFFFFF);
             int inherited_optimistic_after = 0;
             if (obj_proxy)
             {
@@ -2813,8 +2929,9 @@ namespace rpc
             // Remote object: establish optimistic reference (0→1 transition, async!)
 #  ifdef CANOPY_ADD_REF_COUNT_CHECKS
             // TELEMETRY: Check reference counts BEFORE establishing optimistic reference
-            long cb_shared_before = cb->shared_count_.load(std::memory_order_acquire);
-            long cb_optimistic_before = cb->optimistic_count_.load(std::memory_order_acquire);
+            std::int64_t combined_before = cb->combined_count_.load(std::memory_order_acquire);
+            long cb_shared_before = combined_before >> 32;
+            long cb_optimistic_before = combined_before & 0xFFFFFFFF;
 
             // Get object_proxy to check inherited counts (service-level stub counts)
             auto casting_iface = reinterpret_cast<rpc::casting_interface*>(in.ptr_);
@@ -2864,8 +2981,9 @@ namespace rpc
 
 #  ifdef CANOPY_ADD_REF_COUNT_CHECKS
             // TELEMETRY: Check reference counts AFTER establishing optimistic reference
-            long cb_shared_after = cb->shared_count_.load(std::memory_order_acquire);
-            long cb_optimistic_after = cb->optimistic_count_.load(std::memory_order_acquire);
+            std::int64_t combined_after = cb->combined_count_.load(std::memory_order_acquire);
+            long cb_shared_after = combined_after >> 32;
+            long cb_optimistic_after = combined_after & 0xFFFFFFFF;
             int inherited_shared_after = 0;
             int inherited_optimistic_after = 0;
             if (obj_proxy)
@@ -2904,7 +3022,7 @@ namespace rpc
 #  endif
 
             out.cb_ = cb;
-            out.ptr_ = in.ptr_;
+            out.ptr_ = static_cast<typename optimistic_ptr<T>::element_type_impl*>(in.ptr_for_lock_);
             // out.local_proxy_holder_ remains empty for remote objects
             CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }

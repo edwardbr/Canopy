@@ -70,21 +70,27 @@ interface i_user_service_data_access_repository_cache_auth_session_logging
 - **Don't use optimistic_ptr for objects that should die with last reference**
 - **Don't confuse `weak_ptr` and `optimistic_ptr`**: `weak_ptr` is local, `optimistic_ptr` is the callable remote weak pointer
 
-### Example
+### Callable accessor pattern
+
+`optimistic_ptr` is non-owning.  A check-then-call sequence (`if (opt) opt->method()`)
+has a race window between the check and the call for local objects.  Use
+`get_callable()` to pin the object:
 
 ```cpp
-// Good
-rpc::shared_ptr<i_service> service(new my_service());
-auto error = CO_AWAIT service->process(data);
+// Good: pins the local object, eliminates race
+auto acc = opt->get_callable();
+if (!acc)
+    return;  // null or local-gone
+auto error = CO_AWAIT acc->method();
 
-// Bad: Raw pointer
-auto* raw = new my_service();
-auto error = CO_AWAIT raw->process(data);  // No refcount!
-
-// Bad: Mixing types
-std::shared_ptr<base> std_ptr = std::make_shared<derived>();
-rpc::shared_ptr<base> rpc_ptr(std_ptr.get());  // WRONG!
+// Acceptable: for remote objects the race is inherent to the design
+if (opt)
+    auto error = CO_AWAIT opt->method();
 ```
+
+`callable_accessor::operator bool()` returns `true` only when the underlying
+object is alive.  For local-gone objects the accessor still provides a valid
+dispatch pointer that returns `OBJECT_GONE`.
 
 ## 3. Error Handling
 

@@ -469,7 +469,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_transparent_access_test(T& lib)
         CORO_ASSERT_EQ(err, rpc::error::OK());
 
         // operator-> works transparently for local object
-        CORO_ASSERT_NE(opt_f_local.operator->(), nullptr);
+        CORO_ASSERT_NE(opt_f_local.operator->().get(), nullptr);
         CORO_ASSERT_NE(opt_f_local.get_unsafe_only_for_testing(), nullptr);
         CORO_ASSERT_EQ(opt_f_local.get_unsafe_only_for_testing(), f_local.get());
     }
@@ -485,7 +485,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_transparent_access_test(T& lib)
         CORO_ASSERT_EQ(err, rpc::error::OK());
 
         // operator-> works transparently for remote proxy
-        CORO_ASSERT_NE(opt_baz.operator->(), nullptr);
+        CORO_ASSERT_NE(opt_baz.operator->().get(), nullptr);
         CORO_ASSERT_EQ(opt_baz.get_unsafe_only_for_testing(), baz.get());
 
         // No bad_local_object exception - works transparently
@@ -964,7 +964,7 @@ template<class T> CORO_TASK(bool) optimistic_ptr_get_returns_object_gone_when_sh
     err = CO_AWAIT example->get_optimistic_ptr(opt_f_out);
     CORO_ASSERT_EQ(err, rpc::error::OBJECT_GONE());
 
-    CORO_ASSERT_EQ(nullptr, opt_f_out.get());
+    CORO_ASSERT_EQ(nullptr, opt_f_out.raw_get());
 
     // clean up example so that it does not trigger an unclean service error
     err = CO_AWAIT example->set_optimistic_ptr(nullptr);
@@ -1013,4 +1013,323 @@ TYPED_TEST(
     optimistic_ptr_null_roundtrip)
 {
     run_coro_test(*this, [](auto& lib) { return optimistic_ptr_null_roundtrip_test(lib); });
+}
+
+// ============================================================================
+// Multithreaded race condition tests for optimistic_ptr
+// ============================================================================
+
+// Test: concurrent shared_ptr and optimistic_ptr operations
+// Verifies that the combined atomic count prevents double-free
+template<class T> CORO_TASK(bool) multithreaded_try_increment_optimistic_test(T& lib)
+{
+    auto root = lib.get_root_service();
+    auto example = lib.get_example();
+    CORO_ASSERT_NE(example, nullptr);
+
+    // Create a shared_ptr to a remote object
+    rpc::shared_ptr<xxx::i_foo> f;
+    CORO_ASSERT_EQ(CO_AWAIT example->create_foo(f), rpc::error::OK());
+    CORO_ASSERT_NE(f, nullptr);
+
+    // Create multiple optimistic_ptrs from the shared_ptr (synchronously in coroutine context)
+    std::vector<rpc::optimistic_ptr<xxx::i_foo>> opt_ptrs;
+    const int num_optimistic = 50;
+    for (int i = 0; i < num_optimistic; ++i)
+    {
+        auto [err, opt] = CO_AWAIT rpc::make_optimistic(f);
+        CORO_ASSERT_EQ(err, rpc::error::OK());
+        CORO_ASSERT_NE(opt.raw_get(), nullptr);
+        opt_ptrs.push_back(std::move(opt));
+    }
+
+    std::atomic<int> optimistic_releases{0};
+    std::atomic<int> shared_releases{0};
+    std::vector<std::thread> threads;
+
+    // Release all optimistic_ptrs concurrently
+    for (int i = 0; i < num_optimistic; ++i)
+    {
+        threads.emplace_back(
+            [&opt_ptrs, &optimistic_releases, i]()
+            {
+                opt_ptrs[i].reset();
+                optimistic_releases.fetch_add(1);
+            });
+    }
+
+    // Release the shared_ptr from the main thread after a brief delay
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    f.reset();
+    shared_releases.fetch_add(1);
+
+    // Join all threads
+    for (auto& t : threads)
+    {
+        if (t.joinable())
+        {
+            t.join();
+        }
+    }
+
+    // All releases should have completed without crash or double-free
+    CORO_ASSERT_EQ(optimistic_releases.load(), num_optimistic);
+    CORO_ASSERT_EQ(shared_releases.load(), 1);
+
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    optimistic_ptr_test,
+    multithreaded_try_increment_optimistic)
+{
+    if (!enable_multithreaded_tests)
+    {
+        GTEST_SKIP() << "multithreaded tests are skipped";
+    }
+    if (!this->get_lib().has_service())
+    {
+        GTEST_SKIP() << "in memory tests do not apply to remote semantics";
+    }
+    run_coro_test(*this, [](auto& lib) { return multithreaded_try_increment_optimistic_test(lib); });
+}
+
+// Test: concurrent shared and optimistic release
+// Verifies that only one thread disposes the object when both counts race to zero
+template<class T> CORO_TASK(bool) multithreaded_concurrent_release_test(T& lib)
+{
+    auto root = lib.get_root_service();
+    auto example = lib.get_example();
+    CORO_ASSERT_NE(example, nullptr);
+
+    // Create a shared_ptr to a remote object
+    rpc::shared_ptr<xxx::i_foo> f;
+    CORO_ASSERT_EQ(CO_AWAIT example->create_foo(f), rpc::error::OK());
+    CORO_ASSERT_NE(f, nullptr);
+
+    // Create multiple optimistic_ptrs from the shared_ptr
+    std::vector<rpc::optimistic_ptr<xxx::i_foo>> opt_ptrs;
+    const int num_optimistic = 25;
+    for (int i = 0; i < num_optimistic; ++i)
+    {
+        auto [err, opt] = CO_AWAIT rpc::make_optimistic(f);
+        CORO_ASSERT_EQ(err, rpc::error::OK());
+        CORO_ASSERT_NE(opt.raw_get(), nullptr);
+        opt_ptrs.push_back(std::move(opt));
+    }
+
+    // Also create additional shared_ptrs
+    std::vector<rpc::shared_ptr<xxx::i_foo>> shared_ptrs;
+    const int num_shared = 25;
+    for (int i = 0; i < num_shared; ++i)
+    {
+        shared_ptrs.push_back(f);
+    }
+
+    std::atomic<int> optimistic_releases{0};
+    std::atomic<int> shared_releases{0};
+    std::vector<std::thread> threads;
+
+    // Release all optimistic_ptrs concurrently
+    for (int i = 0; i < num_optimistic; ++i)
+    {
+        threads.emplace_back(
+            [&opt_ptrs, &optimistic_releases, i]()
+            {
+                opt_ptrs[i].reset();
+                optimistic_releases.fetch_add(1);
+            });
+    }
+
+    // Release all shared_ptrs concurrently
+    for (int i = 0; i < num_shared; ++i)
+    {
+        threads.emplace_back(
+            [&shared_ptrs, &shared_releases, i]()
+            {
+                shared_ptrs[i].reset();
+                shared_releases.fetch_add(1);
+            });
+    }
+
+    for (auto& t : threads)
+    {
+        if (t.joinable())
+        {
+            t.join();
+        }
+    }
+
+    // All releases should have completed without crash or double-free
+    CORO_ASSERT_EQ(optimistic_releases.load(), num_optimistic);
+    CORO_ASSERT_EQ(shared_releases.load(), num_shared);
+
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    optimistic_ptr_test,
+    multithreaded_concurrent_release)
+{
+    if (!enable_multithreaded_tests)
+    {
+        GTEST_SKIP() << "multithreaded tests are skipped";
+    }
+    if (!this->get_lib().has_service())
+    {
+        GTEST_SKIP() << "in memory tests do not apply to remote semantics";
+    }
+    run_coro_test(*this, [](auto& lib) { return multithreaded_concurrent_release_test(lib); });
+}
+
+// Test: rapid creation and destruction of optimistic_ptrs
+// Verifies that no control block is accessed after destruction
+template<class T> CORO_TASK(bool) multithreaded_control_block_keep_alive_test(T& lib)
+{
+    auto root = lib.get_root_service();
+    auto example = lib.get_example();
+    CORO_ASSERT_NE(example, nullptr);
+
+    const int num_iterations = 20;
+    const int num_threads = 20;
+
+    for (int iter = 0; iter < num_iterations; ++iter)
+    {
+        // Create a shared_ptr to a remote object
+        rpc::shared_ptr<xxx::i_foo> f;
+        CORO_ASSERT_EQ(CO_AWAIT example->create_foo(f), rpc::error::OK());
+        CORO_ASSERT_NE(f, nullptr);
+
+        // Pre-create all optimistic_ptrs here in the coroutine context where
+        // CO_AWAIT is valid.  Thread lambdas cannot use CO_AWAIT (they have no
+        // coroutine frame), so creation must be done before the threads start.
+        std::vector<rpc::optimistic_ptr<xxx::i_foo>> opt_ptrs;
+        for (int i = 0; i < num_threads; ++i)
+        {
+            auto [err, opt] = CO_AWAIT rpc::make_optimistic(f);
+            if (err == rpc::error::OK() && opt)
+            {
+                opt_ptrs.push_back(std::move(opt));
+            }
+        }
+
+        std::vector<std::thread> threads;
+
+        // Release all optimistic_ptrs concurrently from separate threads
+        for (int i = 0; i < static_cast<int>(opt_ptrs.size()); ++i)
+        {
+            threads.emplace_back([&opt_ptrs, i]() { opt_ptrs[i].reset(); });
+        }
+
+        for (auto& t : threads)
+        {
+            if (t.joinable())
+            {
+                t.join();
+            }
+        }
+
+        // Release the shared_ptr
+        f.reset();
+    }
+
+    CO_RETURN true;
+}
+
+// Stress test for Issue 1: use-after-free in try_increment_optimistic across CO_AWAIT.
+//
+// Root cause recap:
+//   make_optimistic(shared_ptr<T>) holds a copy of the shared_ptr for the entire call,
+//   so shared_count cannot reach 0 while it runs — Issue 1 cannot be triggered via that
+//   overload.  make_optimistic(weak_ptr<T>) holds only a raw control-block pointer with no
+//   shared reference.  During the CO_AWAIT in try_increment_optimistic() (0→1 transition,
+//   remote add_ref call) the last shared_ptr can be released by another thread, decrementing
+//   shared_count to 0 and — under the broken guard-based fix — decrementing weak_count_ to 0
+//   as well, freeing the control block while the coroutine is still suspended.
+//
+// What the fix guarantees:
+//   weak_count_ is incremented at the top of try_increment_optimistic() and is not released
+//   until the last optimistic_ptr is destroyed.  The control block therefore stays alive
+//   across the CO_AWAIT regardless of what other threads do to the shared_ptr count.
+//
+// Scheduler note:
+//   The race window only opens if CO_AWAIT control_block_call_add_ref() actually suspends
+//   the coroutine (yields back to the scheduler).  For transports where the add_ref is
+//   processed synchronously within the same scheduler tick (e.g. inproc/direct), the
+//   coroutine never suspends and the std::thread has no window to interleave — the test
+//   becomes a no-op for those setups.  For transports with genuine async I/O (TCP, SPSC
+//   streaming), the coroutine genuinely suspends and the std::thread — running on a
+//   separate OS thread outside the scheduler's control — can race freely.
+//   The fix is correct on all transports regardless; only the test's ability to expose a
+//   regression is transport-dependent.
+//
+// This test is probabilistic — it cannot deterministically land in the exact suspension
+// window — but with enough iterations over async transports it will frequently expose a
+// regression.
+//
+// Both OK and OBJECT_GONE from make_optimistic are valid outcomes depending on timing.
+template<class T> CORO_TASK(bool) multithreaded_issue1_stress_test(T& lib)
+{
+    auto example = lib.get_example();
+    CORO_ASSERT_NE(example, nullptr);
+
+    const int num_iterations = 500;
+
+    for (int iter = 0; iter < num_iterations; ++iter)
+    {
+        // Create a remote object
+        rpc::shared_ptr<xxx::i_foo> f;
+        CORO_ASSERT_EQ(CO_AWAIT example->create_foo(f), rpc::error::OK());
+        CORO_ASSERT_NE(f, nullptr);
+
+        // A weak_ptr holds no shared reference — this is the overload that
+        // exposes Issue 1 because make_optimistic(weak_ptr) does not keep
+        // shared_count > 0 during its CO_AWAIT.
+        rpc::weak_ptr<xxx::i_foo> wf(f);
+
+        // Move f into a background thread so it can release the last
+        // shared reference while make_optimistic is suspended.
+        std::thread t([f = std::move(f)]() mutable { f.reset(); });
+
+        // Race: the thread may release the last shared_ptr while
+        // try_increment_optimistic() is at CO_AWAIT control_block_call_add_ref().
+        // The fix (weak_count_ held elevated across the await) must prevent UAF.
+        auto [err, opt] = CO_AWAIT rpc::make_optimistic(wf);
+        (void)err; // OK or OBJECT_GONE — both are valid race outcomes
+        (void)opt;
+
+        t.join();
+    }
+
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    optimistic_ptr_test,
+    multithreaded_issue1_stress)
+{
+    if (!enable_multithreaded_tests)
+    {
+        GTEST_SKIP() << "multithreaded tests are skipped";
+    }
+    if (!this->get_lib().has_service())
+    {
+        GTEST_SKIP() << "in memory tests do not apply to remote semantics";
+    }
+    run_coro_test(*this, [](auto& lib) { return multithreaded_issue1_stress_test(lib); });
+}
+
+TYPED_TEST(
+    optimistic_ptr_test,
+    multithreaded_control_block_keep_alive)
+{
+    if (!enable_multithreaded_tests)
+    {
+        GTEST_SKIP() << "multithreaded tests are skipped";
+    }
+    if (!this->get_lib().has_service())
+    {
+        GTEST_SKIP() << "in memory tests do not apply to remote semantics";
+    }
+    run_coro_test(*this, [](auto& lib) { return multithreaded_control_block_keep_alive_test(lib); });
 }

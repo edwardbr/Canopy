@@ -361,6 +361,20 @@ lifetimes.
 | `rpc::shared_ptr` | `OBJECT_NOT_FOUND` | Serious - reference was held but object destroyed |
 | `rpc::optimistic_ptr` | `OBJECT_GONE` | Expected - the remote weak target was checked at call time and is gone |
 
+**Callable accessor pattern** (race mitigation for local objects — see
+`documents/architecture/cpp/optimistic-ptr-race-conditions.md`):
+
+```cpp
+auto acc = opt_db->get_callable();  // pins local / captures remote
+if (!acc)
+    return;  // null or local-gone
+auto result = CO_AWAIT acc->query("SELECT ...");
+```
+
+`callable_accessor::operator bool()` is `true` only when the underlying object
+is alive.  For local-gone the accessor still provides a valid dispatch pointer
+that returns `OBJECT_GONE`.
+
 **Use Cases**:
 1. References to long-lived services (databases, message queues)
 2. Preventing circular dependencies in cross-zone communication

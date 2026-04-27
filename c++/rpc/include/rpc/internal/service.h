@@ -1331,7 +1331,7 @@ namespace rpc
             CO_RETURN result;
         }
 
-        RPC_ASSERT(iface.get() != nullptr);
+        RPC_ASSERT(static_cast<bool>(iface));
 
         RPC_ASSERT(!iface->__rpc_is_local());
 
