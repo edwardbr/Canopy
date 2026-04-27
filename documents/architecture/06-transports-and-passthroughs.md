@@ -101,14 +101,17 @@ The base `transport` class manages:
 ### Transport Status
 
 ```cpp
-enum class transport_status
+enum transport_status : uint8_t
 {
-    CONNECTING,    // Initial state, establishing connection
-    CONNECTED,     // Fully operational
-    DISCONNECTING, // Beginning to shut down, a close signal is being sent or received, all active outgoing calls are canceled, only incoming releases are processed, all out parameters of incoming calls are not marshalled
-    DISCONNECTED   // Terminal state, close signal has been acknowledged, or there is a terminal failure, no further traffic allowed
+    CONNECTING = 0,    // Initial state, establishing connection
+    CONNECTED = 1,     // Fully operational
+    DISCONNECTING = 2, // Beginning to shut down
+    DISCONNECTED = 3   // Terminal state
 };
 ```
+
+The source of truth for these values is `interfaces/rpc/rpc_types.idl`, because
+transport status is serialized in telemetry payloads.
 
 Status transitions are managed through the `set_status()` method, which can be overridden by transport implementations to handle status change events (e.g., propagating disconnection notifications).
 

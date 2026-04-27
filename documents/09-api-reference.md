@@ -507,8 +507,9 @@ std::shared_ptr<rpc::telemetry::i_telemetry_service> rpc::telemetry::get_telemet
 ### Service Creation
 
 ```cpp
-rpc::telemetry::create_console_telemetry_service(service, name, test, dir);
-rpc::telemetry::create_sequence_diagram_telemetry_service(service, name, test, dir);
-rpc::telemetry::create_animation_telemetry_service(service, name, test, dir);
-rpc::telemetry::create_multiplexing_telemetry_service(service, std::move(children));
+rpc::telemetry::create_console_telemetry_service(service, suite, test, dir);
+rpc::telemetry::create_sequence_diagram_telemetry_service(service, suite, test, dir);
+rpc::telemetry::create_animation_telemetry_service(service, suite, test, dir);
+rpc::telemetry::create_multiplexing_telemetry_service(service, children);
+rpc::telemetry::create_global_multiplexing_telemetry_service(children);
 ```

@@ -579,7 +579,7 @@ canopy/
 │   ├── benchmarking/       # Benchmark targets
 │   └── submodules/         # C++ third-party dependencies
 ├── generator/              # IDL code generator
-├── interfaces/             # Shared IDL interface definitions
+├── interfaces/             # Shared IDL definitions (rpc_types, logging, telemetry)
 ├── c_abi/                  # Language-neutral ABI specifications
 ├── cmake/                  # CMake build configuration modules
 │   ├── Canopy.cmake        # Main build configuration

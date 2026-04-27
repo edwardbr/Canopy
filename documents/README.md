@@ -22,6 +22,7 @@ Use this directory by task, not by file number.
 - Understanding the runtime:
   - [Architecture](architecture/README.md)
   - [Transports](transports/README.md)
+  - [Security Notes](security/README.md)
 - Looking up APIs and patterns:
   - [API Reference](09-api-reference.md)
   - [Examples](10-examples.md)

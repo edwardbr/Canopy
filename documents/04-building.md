@@ -640,7 +640,8 @@ endif()
 | Streaming transport | `transport_streaming` | Stream-backed RPC transport |
 | IPC transport | `transport_ipc_transport` | Coroutine process-owned transport |
 | Core RPC | `rpc::rpc` | Base RPC functionality |
-| Telemetry | `rpc::rpc_telemetry` | Logging/metrics |
+| Logging IDL | `logging_idl` | Generated `rpc::log_record` type |
+| Telemetry | `rpc::rpc_telemetry` | Optional telemetry sinks and reports |
 
 ### Build Order Issues
 
