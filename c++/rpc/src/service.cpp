@@ -342,7 +342,7 @@ namespace rpc
     {
 #  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation(name, zone_id, destination_zone());
+            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
 #  endif
     }
 
@@ -367,7 +367,7 @@ namespace rpc
     {
 #  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation(name, zone_id, destination_zone());
+            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
 #  endif
     }
 
@@ -395,7 +395,7 @@ namespace rpc
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_deletion(zone_id_);
+            telemetry_service->on_service_deletion({zone_id_});
 #endif
 
         // Child services use reference counting through service proxies to manage proper cleanup ordering.
@@ -585,7 +585,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_send(
-                zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id);
+                {zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id});
         }
 #endif
         if (!params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
@@ -626,7 +626,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_post(
-                zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id);
+                {zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id});
         }
 #endif
 
@@ -1031,7 +1031,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_add_ref(
-                zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel);
+                {zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel});
         }
 #endif
         CO_RETURN standard_result{rpc::error::OK(), {}};
@@ -1139,7 +1139,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_release(zone_id_, remote_object_id, caller_zone_id, options);
+            telemetry_service->on_service_release({zone_id_, remote_object_id, caller_zone_id, options});
         }
 #endif
         CO_RETURN standard_result{rpc::error::OK(), {}};
@@ -1157,7 +1157,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_object_released(zone_id_, remote_object_id, caller_zone_id);
+            telemetry_service->on_service_object_released({zone_id_, remote_object_id, caller_zone_id});
         }
 #endif
         if (caller_zone_id != zone_id_)
@@ -1189,7 +1189,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_service_transport_down(zone_id_, destination_zone_id, caller_zone_id);
+            telemetry_service->on_service_transport_down({zone_id_, destination_zone_id, caller_zone_id});
         }
 #endif
 
@@ -1367,7 +1367,9 @@ namespace rpc
         inner_remove_transport(adjacent_zone_id);
     }
 
-    void service::remove_transport_if_matches(destination_zone adjacent_zone_id, const transport* expected)
+    void service::remove_transport_if_matches(
+        destination_zone adjacent_zone_id,
+        const transport* expected)
     {
         std::lock_guard g(service_proxy_control_);
         auto it = transports_.find(adjacent_zone_id);

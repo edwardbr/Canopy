@@ -47,7 +47,7 @@ namespace rpc
         if (adjacent_zone_id_.get_subnet() != 0)
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_transport_deletion(zone_id_, adjacent_zone_id_);
+                telemetry_service->on_transport_deletion({zone_id_, adjacent_zone_id_});
         }
 #endif
     }
@@ -65,7 +65,7 @@ namespace rpc
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_creation(
-                    name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire));
+                    {name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire)});
         }
 #endif
 
@@ -80,12 +80,12 @@ namespace rpc
         {
             if (old_adjacent_zone_id.get_subnet() != 0)
             {
-                telemetry_service->on_transport_deletion(zone_id_, old_adjacent_zone_id);
+                telemetry_service->on_transport_deletion({zone_id_, old_adjacent_zone_id});
             }
             if (adjacent_zone_id_.get_subnet() != 0)
             {
                 telemetry_service->on_transport_creation(
-                    name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire));
+                    {name_, zone_id_, adjacent_zone_id_, status_.load(std::memory_order_acquire)});
             }
         }
 #endif
@@ -134,7 +134,7 @@ namespace rpc
 
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_transport_accept(zone_id_, adjacent_zone_id_, ret);
+            telemetry_service->on_transport_accept({zone_id_, adjacent_zone_id_, ret});
 #endif
 
         CO_RETURN ret;
@@ -186,7 +186,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_transport_add_destination(
-                zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2);
+                {zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2});
 #endif
 
         return true;
@@ -639,7 +639,7 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_transport_remove_destination(
-                    zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2);
+                    {zone_id_, adjacent_zone_id_, lookup_val.zone1, lookup_val.zone2});
 #endif
 
             should_shutdown = destination_count_ == 0 && get_status() == transport_status::CONNECTED;
@@ -779,7 +779,7 @@ namespace rpc
         if (adjacent_zone_id_.get_subnet() != 0 && old_status != new_status)
         {
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_transport_status_change(name_, zone_id_, adjacent_zone_id_, old_status, new_status);
+                telemetry_service->on_transport_status_change({name_, zone_id_, adjacent_zone_id_, old_status, new_status});
         }
 #endif
     }
@@ -909,7 +909,12 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_send(
-                zone_id_, adjacent_zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id);
+                {zone_id_,
+                    adjacent_zone_id_,
+                    params.remote_object_id,
+                    params.caller_zone_id,
+                    params.interface_id,
+                    params.method_id});
         }
 #endif
 
@@ -944,7 +949,12 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_post(
-                zone_id_, adjacent_zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id);
+                {zone_id_,
+                    adjacent_zone_id_,
+                    params.remote_object_id,
+                    params.caller_zone_id,
+                    params.interface_id,
+                    params.method_id});
         }
 #endif
 
@@ -1268,7 +1278,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_inbound_transport_down(
-                zone_id_, adjacent_zone_id_, params.destination_zone_id, params.caller_zone_id);
+                {zone_id_, adjacent_zone_id_, params.destination_zone_id, params.caller_zone_id});
         }
 #endif
 
@@ -1309,12 +1319,13 @@ namespace rpc
             if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_send(
-                    get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id);
+                    {get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id});
             }
             else
             {
                 // RPC_ASSERT(false);
-                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call outbound_send");
+                telemetry_service->message(
+                    {static_cast<uint64_t>(rpc::i_telemetry_service::level_enum::err), "failed to call outbound_send"});
             }
         }
 #endif
@@ -1331,7 +1342,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_outbound_post(
-                get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id);
+                {get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, interface_id, method_id});
         }
 #endif
         CO_AWAIT outbound_post(std::move(params));
@@ -1350,12 +1361,13 @@ namespace rpc
             if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_try_cast(
-                    get_zone_id(), get_adjacent_zone_id(), remote_object_id, get_zone_id(), interface_id);
+                    {get_zone_id(), get_adjacent_zone_id(), remote_object_id, get_zone_id(), interface_id});
             }
             else
             {
                 // RPC_ASSERT(false);
-                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call outbound_try_cast");
+                telemetry_service->message(
+                    {static_cast<uint64_t>(rpc::i_telemetry_service::level_enum::err), "failed to call outbound_try_cast"});
             }
         }
 #endif
@@ -1378,17 +1390,18 @@ namespace rpc
             if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_add_ref(
-                    get_zone_id(),
-                    get_adjacent_zone_id(),
-                    remote_object_id,
-                    caller_zone_id,
-                    requesting_zone_id,
-                    build_out_param_channel);
+                    {get_zone_id(),
+                        get_adjacent_zone_id(),
+                        remote_object_id,
+                        caller_zone_id,
+                        requesting_zone_id,
+                        build_out_param_channel});
             }
             else
             {
                 // RPC_ASSERT(false);
-                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call outbound_add_ref");
+                telemetry_service->message(
+                    {static_cast<uint64_t>(rpc::i_telemetry_service::level_enum::err), "failed to call outbound_add_ref"});
             }
         }
 #endif
@@ -1410,12 +1423,13 @@ namespace rpc
             if (!error::is_error(result.error_code))
             {
                 telemetry_service->on_transport_outbound_release(
-                    get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, options);
+                    {get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id, options});
             }
             else
             {
                 // RPC_ASSERT(false);
-                telemetry_service->message(rpc::i_telemetry_service::level_enum::err, "failed to call outbound_release");
+                telemetry_service->message(
+                    {static_cast<uint64_t>(rpc::i_telemetry_service::level_enum::err), "failed to call outbound_release"});
             }
         }
 #endif
@@ -1433,7 +1447,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_outbound_object_released(
-                get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id);
+                {get_zone_id(), get_adjacent_zone_id(), remote_object_id, caller_zone_id});
         }
 #endif
         decrement_inbound_stub_count(caller_zone_id);
@@ -1447,7 +1461,7 @@ namespace rpc
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_outbound_transport_down(
-                get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id);
+                {get_zone_id(), get_adjacent_zone_id(), destination_zone_id, caller_zone_id});
         }
 #endif
         CO_AWAIT outbound_transport_down(std::move(params));

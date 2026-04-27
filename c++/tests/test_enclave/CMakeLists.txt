@@ -18,7 +18,6 @@ if(${CANOPY_BUILD_ENCLAVE})
     TRUSTED_LIBS
       rpc_enclave
       marshal_test_edl_enclave
-      rpc_telemetry_enclave
       rpc_telemetry_edl_header_enclave
       transport_sgx_enclave
       transport_local_enclave

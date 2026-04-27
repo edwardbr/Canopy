@@ -6,7 +6,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if(CANOPY_USE_TELEMETRY)
-  set(CANOPY_ENCLAVE_TELEMETRY_SERVICE rpc::rpc_telemetry_enclave)
+  set(CANOPY_ENCLAVE_TELEMETRY_SERVICE)
   set(CANOPY_TELEMETRY_SERVICE rpc::rpc_telemetry)
   set(CANOPY_TELEMETRY_INTERFACE rpc::rpc_telemetry_interface)
   set(CANOPY_TELEMETRY_TYPES_IDL telemetry_types_idl)

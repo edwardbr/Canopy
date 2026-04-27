@@ -47,7 +47,7 @@ namespace rpc::sgx
         {
 #  ifdef CANOPY_USE_TELEMETRY
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->message(rpc::i_telemetry_service::err, call_name);
+                telemetry_service->message({static_cast<uint64_t>(rpc::i_telemetry_service::err), call_name});
 #  endif
             RPC_ERROR("{} failed {}", call_name, status);
         }

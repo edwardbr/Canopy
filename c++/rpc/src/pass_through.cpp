@@ -23,11 +23,11 @@ namespace rpc
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             telemetry_service->on_pass_through_creation(
-                zone_id_,
-                forward_dest,
-                reverse_dest,
-                shared_count_.load(std::memory_order_acquire),
-                optimistic_count_.load(std::memory_order_acquire));
+                {zone_id_,
+                    forward_dest,
+                    reverse_dest,
+                    shared_count_.load(std::memory_order_acquire),
+                    optimistic_count_.load(std::memory_order_acquire)});
 #endif
     }
 
@@ -53,7 +53,7 @@ namespace rpc
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_pass_through_deletion(zone_id_, forward_destination_, reverse_destination_);
+            telemetry_service->on_pass_through_deletion({zone_id_, forward_destination_, reverse_destination_});
 #endif
     }
 
@@ -292,7 +292,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_add_ref(
-                    zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 0, 1);
+                    {zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 0, 1});
 #endif
         }
         else
@@ -301,7 +301,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_add_ref(
-                    zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 1, 0);
+                    {zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 1, 0});
 #endif
         }
 
@@ -362,7 +362,7 @@ namespace rpc
             uint64_t prev = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_pass_through_release(zone_id_, forward_destination_, reverse_destination_, 0, -1);
+                telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, 0, -1});
 #endif
             if (prev == 1 && shared_count_.load(std::memory_order_acquire) == 0)
             {
@@ -374,7 +374,7 @@ namespace rpc
             uint64_t prev = shared_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_pass_through_release(zone_id_, forward_destination_, reverse_destination_, -1, 0);
+                telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, -1, 0});
 #endif
             if (prev == 1 && optimistic_count_.load(std::memory_order_acquire) == 0)
             {
@@ -421,7 +421,7 @@ namespace rpc
         uint64_t prev_optimistic = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_pass_through_release(zone_id_, forward_destination_, reverse_destination_, 0, -1);
+            telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, 0, -1});
 #endif
         if (prev_optimistic == 1 && shared_count_.load(std::memory_order_acquire) == 0)
         {
@@ -532,7 +532,7 @@ namespace rpc
     {
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_pass_through_deletion(zone_id_, forward_destination_, reverse_destination_);
+            telemetry_service->on_pass_through_deletion({zone_id_, forward_destination_, reverse_destination_});
 #endif
 
         // Remove this passthrough from both transports so no new calls are routed here.

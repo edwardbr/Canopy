@@ -11,10 +11,6 @@
 #include <string>
 
 #include <rpc/rpc.h>
-#ifdef CANOPY_USE_TELEMETRY
-#  include <rpc/telemetry/enclave_telemetry_service.h>
-#  include <rpc/telemetry/i_telemetry_service.h>
-#endif
 
 #include <edl/enclave_marshal_test.h>
 #include <trusted/enclave_marshal_test_t.h>
@@ -187,10 +183,6 @@ int marshal_test_init_enclave(
 
     auto input_descr = from_sgx_request(request);
     g_enclave_id = enclave_id;
-
-#ifdef CANOPY_USE_TELEMETRY
-    rpc::enclave_telemetry_service::create(rpc::telemetry_service_);
-#endif
 
     g_host_transport = std::make_shared<rpc::sgx::host_transport>(
         "test_enclave", g_enclave_id, request.child_zone_id, rpc::zone{request.host_remote_object.as_zone()});

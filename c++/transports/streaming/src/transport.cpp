@@ -243,7 +243,7 @@ namespace rpc::stream_transport
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("add_ref failed ") + std::to_string(response_data.err_code);
-                telemetry_service->message(rpc::i_telemetry_service::err, error_message.c_str());
+                telemetry_service->message({static_cast<uint64_t>(rpc::i_telemetry_service::err), error_message});
             }
 #endif
             CO_RETURN standard_result{response_data.err_code, std::move(response_data.back_channel)};

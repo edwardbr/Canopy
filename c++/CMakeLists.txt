@@ -34,7 +34,7 @@ endif()
 
 # Removed: CANOPY_USE_TELEMETRY - use CANOPY_USE_TELEMETRY instead
 if(CANOPY_USE_TELEMETRY)
-  set(CANOPY_ENCLAVE_TELEMETRY rpc::rpc_telemetry_enclave)
+  set(CANOPY_ENCLAVE_TELEMETRY)
   set(CANOPY_TELEMETRY_ENCLAVE_EDL rpc_telemetry_edl_header_enclave)
   set(CANOPY_TELEMETRY rpc::rpc_telemetry)
   set(CANOPY_TELEMETRY_INTERFACE rpc::rpc_telemetry_interface)

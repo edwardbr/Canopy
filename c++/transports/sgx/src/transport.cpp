@@ -57,7 +57,7 @@ namespace rpc::sgx
             if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
             {
                 auto message = std::string(call_name) + " failed " + std::to_string(status);
-                telemetry_service->message(rpc::i_telemetry_service::err, message.c_str());
+                telemetry_service->message({static_cast<uint64_t>(rpc::i_telemetry_service::err), message});
             }
 #    endif
             RPC_ERROR("{} gave an enclave error {}", call_name, status);
