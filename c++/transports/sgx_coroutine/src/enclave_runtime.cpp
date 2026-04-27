@@ -414,8 +414,7 @@ namespace rpc::sgx::coro::host
             if (!runtime.acceptor_factory)
                 return rpc::error::INCOMPATIBLE_SERVICE();
 
-            auto service = std::make_shared<rpc::root_service>(
-                "sgx_coroutine_enclave", request.enclave_zone_id, runtime.scheduler);
+            auto service = rpc::root_service::create("sgx_coroutine_enclave", request.enclave_zone_id, runtime.scheduler);
 #ifdef CANOPY_USE_TELEMETRY
             if (rpc::telemetry::telemetry_service_)
             {

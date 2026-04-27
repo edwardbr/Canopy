@@ -15,6 +15,8 @@ security review aid and a checklist for hardening work.
 
 ## Current Documents
 
+- [SGX Enclave Threat Model](sgx-threat-model.md)
+- [SGX Runtime Lifecycle Security](sgx-runtime-lifecycle.md)
 - [Untrusted Transport Input](untrusted-transport-input.md)
 - [Reference Protocol Security](reference-protocol-security.md)
 - [Telemetry And Logging Security](telemetry-and-logging.md)
@@ -40,3 +42,4 @@ security review aid and a checklist for hardening work.
 - generated binding validation
 - denial-of-service boundaries and timeouts
 - fuzzing and negative protocol tests
+- enclave zeroisation and fatal shutdown policy

@@ -97,6 +97,23 @@ Mitigation:
 - do not trust queue metadata for security decisions
 - keep parsing bounded even if queue metadata is hostile
 
+Additional SGX queue hardening:
+
+- wrap host-owned boundary queues with guard bytes before and after the queue
+  object where practical
+- expose only the validated inner queue pointer to the enclave
+- have host-side diagnostic drainers check guard bytes while tests run, so queue
+  object overruns are reported before timeout kills the process
+- reject blob length headers larger than the stream `max_payload`, preventing a
+  corrupted queue entry from reading past a fixed-size blob
+- measure queue pressure without adding high-volume SPSC log traffic from inside
+  the enclave hot path
+
+The current SPSC stream chunks outgoing data into queue blobs, so one oversized
+RPC payload should become multiple bounded blobs rather than one overlarge queue
+slot. Back pressure can still happen if the consumer side does not drain those
+blobs fast enough.
+
 ## Authenticated Stream Framing
 
 SGX needs an authenticated stream layer before the normal RPC transport acts on
@@ -123,4 +140,3 @@ should not be deserialised until the authentication tag has passed.
 Without authenticated framing, pointer validation and worker admission only
 protect the ECALL control plane. They do not protect against hostile queue
 messages.
-
