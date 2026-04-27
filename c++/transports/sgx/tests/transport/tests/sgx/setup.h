@@ -68,7 +68,7 @@ public:
             telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
         }
 #  endif
-        root_service_ = std::make_shared<rpc::root_service>("host", rpc::DEFAULT_PREFIX);
+        root_service_ = rpc::root_service::create("host", rpc::DEFAULT_PREFIX);
         current_host_service = root_service_;
 
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());

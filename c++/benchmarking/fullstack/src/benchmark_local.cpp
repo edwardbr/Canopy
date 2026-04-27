@@ -24,7 +24,7 @@ namespace comprehensive::v1
     {
         benchmark_result result{};
 
-        auto root_service = std::make_shared<rpc::root_service>(
+        auto root_service = rpc::root_service::create(
             "benchmark_root",
             rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE
@@ -74,7 +74,7 @@ namespace comprehensive::v1
     {
         benchmark_result result{};
 
-        auto root_service = std::make_shared<rpc::root_service>("benchmark_dynamic_library", rpc::DEFAULT_PREFIX);
+        auto root_service = rpc::root_service::create("benchmark_dynamic_library", rpc::DEFAULT_PREFIX);
         root_service->set_default_encoding(enc);
 
         auto child_transport = std::make_shared<rpc::dynamic_library::child_transport>(

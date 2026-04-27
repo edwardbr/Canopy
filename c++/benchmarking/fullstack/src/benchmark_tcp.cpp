@@ -40,7 +40,7 @@ namespace comprehensive::v1
             rpc::encoding enc,
             uint16_t port)
         {
-            auto service = std::make_shared<rpc::root_service>("tcp_server", rpc::DEFAULT_PREFIX, scheduler);
+            auto service = rpc::root_service::create("tcp_server", rpc::DEFAULT_PREFIX, scheduler);
             service->set_default_encoding(enc);
             coro::net::tcp::server server(scheduler, coro::net::socket_address{"127.0.0.1", port});
             server_started.store(true, std::memory_order_release);
@@ -91,7 +91,7 @@ namespace comprehensive::v1
                 CO_RETURN;
             }
 
-            auto client_service = std::make_shared<rpc::root_service>("tcp_client", make_client_zone_address(), scheduler);
+            auto client_service = rpc::root_service::create("tcp_client", make_client_zone_address(), scheduler);
             client_service->set_default_encoding(enc);
 
             coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", port});

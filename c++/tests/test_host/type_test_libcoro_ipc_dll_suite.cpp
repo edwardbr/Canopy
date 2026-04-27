@@ -157,7 +157,7 @@ namespace
             auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
                 coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                     .pool = coro::thread_pool::options{.thread_count = 1}}));
-            auto service = std::make_shared<rpc::root_service>("pdeathsig_host", rpc::DEFAULT_PREFIX, scheduler);
+            auto service = rpc::root_service::create("pdeathsig_host", rpc::DEFAULT_PREFIX, scheduler);
             auto dll_zone = rpc::DEFAULT_PREFIX;
             [[maybe_unused]] auto ok = dll_zone.set_subnet(dll_zone.get_subnet() + 10);
             RPC_ASSERT(ok);

@@ -169,7 +169,7 @@ int main(int argc, char* argv[])
     auto cfg       = canopy::network_config::get_network_config(net_ctx);
     auto allocator = canopy::network_config::make_allocator(cfg);
 
-    auto service = std::make_shared<rpc::root_service>("server", allocator.allocate_zone(), scheduler);
+    auto service = rpc::root_service::create("server", allocator.allocate_zone(), scheduler);
     // ...
 }
 ```

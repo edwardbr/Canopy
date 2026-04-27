@@ -30,7 +30,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
             std::shared_ptr<coro::scheduler> scheduler,
             std::shared_ptr<rpc::event> shutdown_event)
         {
-            auto service = std::make_shared<rpc::root_service>(name.c_str(), dll_zone, scheduler);
+            auto service = rpc::root_service::create(name.c_str(), dll_zone, scheduler);
             service->set_shutdown_event(shutdown_event);
 
             auto stream = std::make_shared<streaming::spsc_queue::stream>(send_queue, recv_queue, scheduler);

@@ -40,7 +40,7 @@ namespace comprehensive::v1
             rpc::encoding enc,
             uint16_t port)
         {
-            auto service = std::make_shared<rpc::root_service>("io_uring_server", rpc::DEFAULT_PREFIX, scheduler);
+            auto service = rpc::root_service::create("io_uring_server", rpc::DEFAULT_PREFIX, scheduler);
             service->set_default_encoding(enc);
             auto shutdown_event = std::make_shared<rpc::event>();
             service->set_shutdown_event(shutdown_event);
@@ -82,8 +82,7 @@ namespace comprehensive::v1
         {
             CO_AWAIT server_ready.wait();
 
-            auto client_service
-                = std::make_shared<rpc::root_service>("io_uring_client", make_client_zone_address(), scheduler);
+            auto client_service = rpc::root_service::create("io_uring_client", make_client_zone_address(), scheduler);
             client_service->set_default_encoding(enc);
             auto shutdown_event = std::make_shared<rpc::event>();
             client_service->set_shutdown_event(shutdown_event);

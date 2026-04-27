@@ -1442,7 +1442,7 @@ public:
     {
 #ifdef CANOPY_BUILD_COROUTINE
         RPC_ASSERT(scheduler_);
-        root_service_ = std::make_shared<rpc::root_service>(
+        root_service_ = rpc::root_service::create(
             "AUTONOMOUS_ROOT",
             rpc::zone{*rpc::zone_address::create(
                 rpc::zone_address_args(
@@ -1457,7 +1457,7 @@ public:
                     {}))},
             scheduler_);
 #else
-        root_service_ = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX);
+        root_service_ = rpc::root_service::create("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX);
 #endif
     }
 
@@ -1512,7 +1512,7 @@ class rust_dynamic_library_fuzz_transport_setup
     std::shared_ptr<rpc::root_service> root_service_;
 
 public:
-    void set_up() { root_service_ = std::make_shared<rpc::root_service>("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX); }
+    void set_up() { root_service_ = rpc::root_service::create("AUTONOMOUS_ROOT", rpc::DEFAULT_PREFIX); }
 
     void tear_down() { root_service_.reset(); }
 

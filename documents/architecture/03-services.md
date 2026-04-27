@@ -412,7 +412,7 @@ Peer services connect via a streaming transport (TCP or SPSC). The server side r
 
 ```cpp
 // Server side — streaming listener with per-connection callback
-auto server_service = std::make_shared<rpc::root_service>("service1", get_next_zone_id());
+auto server_service = rpc::root_service::create("service1", get_next_zone_id());
 
 auto listener = std::make_shared<streaming::listener>("server",
     std::make_shared<streaming::tcp::acceptor>(endpoint),
@@ -428,7 +428,7 @@ auto listener = std::make_shared<streaming::listener>("server",
 listener->start_listening(server_service);
 
 // Client side — connect and obtain the remote interface
-auto client_service = std::make_shared<rpc::root_service>("service2", get_next_zone_id());
+auto client_service = rpc::root_service::create("service2", get_next_zone_id());
 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
 auto client_transport = rpc::stream_transport::make_client("client", client_service, std::move(tcp_stm));
 
@@ -445,7 +445,7 @@ auto example = connect_result.output_interface;
 
 ```cpp
 // Parent service
-auto parent_service = std::make_shared<rpc::root_service>("parent", rpc::zone{1});
+auto parent_service = rpc::root_service::create("parent", rpc::zone{1});
 
 // Create child zone
 auto new_zone_result = CO_AWAIT parent_service->get_new_zone_id({});
@@ -478,7 +478,7 @@ child_transport->set_child_entry_point<i_example_parent, i_example_child>(
 ### Pattern 3: Service with Multiple Transports
 
 ```cpp
-auto service = std::make_shared<rpc::root_service>("hub", rpc::zone{1});
+auto service = rpc::root_service::create("hub", rpc::zone{1});
 
 // Connect to multiple zones
 service->add_transport(rpc::destination_zone{2}, tcp_transport1);

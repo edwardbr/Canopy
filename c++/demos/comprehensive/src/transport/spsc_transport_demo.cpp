@@ -56,7 +56,7 @@ namespace comprehensive
             int error = rpc::error::OK();
 
             {
-                auto service_1 = std::make_shared<rpc::root_service>("process_1", zone_1, scheduler);
+                auto service_1 = rpc::root_service::create("process_1", zone_1, scheduler);
 
                 service_1->set_shutdown_event(on_shutdown_event);
 
@@ -131,7 +131,7 @@ namespace comprehensive
             const rpc::event& client_finished)
         {
             auto on_shutdown_event = std::make_shared<rpc::event>();
-            auto service_2 = std::make_shared<rpc::root_service>("process_2", zone_2, scheduler);
+            auto service_2 = rpc::root_service::create("process_2", zone_2, scheduler);
             service_2->set_shutdown_event(on_shutdown_event);
 
             rpc::event on_connected;

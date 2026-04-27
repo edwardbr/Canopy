@@ -49,7 +49,7 @@ namespace comprehensive
             print_separator("LOCAL TRANSPORT DEMO (Coroutine Mode)");
 
             // Create root service in Zone 1
-            auto root_service = std::make_shared<rpc::root_service>(
+            auto root_service = rpc::root_service::create(
                 "root_service",
                 rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE

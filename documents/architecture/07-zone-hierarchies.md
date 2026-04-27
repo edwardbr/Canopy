@@ -88,7 +88,7 @@ Each node creates its own root service and connects out via transport:
 
 ```cpp
 // Node A: create root and connect to Node B
-auto root_service = std::make_shared<rpc::root_service>("node_a", zone_a_id);
+auto root_service = rpc::root_service::create("node_a", zone_a_id);
 auto transport = rpc::stream_transport::streaming_transport::create(
     root_service,
     tcp_stream,          // established TCP connection to Node B

@@ -214,7 +214,7 @@ int main()
 
     // Create root service
     std::atomic<uint64_t> zone_gen = 0;
-    auto root_service = std::make_shared<rpc::root_service>(
+    auto root_service = rpc::root_service::create(
         "root",
         rpc::zone{++zone_gen});
 
@@ -314,7 +314,7 @@ int main()
     // === SERVER SIDE ===
 
     // Create server service
-    auto server_service = std::make_shared<rpc::root_service>(
+    auto server_service = rpc::root_service::create(
         "server",
         rpc::zone{++zone_gen});
 
@@ -326,7 +326,7 @@ int main()
     // === CLIENT SIDE ===
 
     // Create client service
-    auto client_service = std::make_shared<rpc::root_service>(
+    auto client_service = rpc::root_service::create(
         "client",
         rpc::zone{++zone_gen});
 
@@ -423,7 +423,7 @@ int main()
 
     // Create service with scheduler
     std::atomic<uint64_t> zone_gen = 0;
-    auto service = std::make_shared<rpc::root_service>(
+    auto service = rpc::root_service::create(
         "coro_service",
         rpc::zone{++zone_gen},
         scheduler);

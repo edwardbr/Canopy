@@ -197,7 +197,7 @@ parser.ParseCLI(argc, argv);
 auto cfg = canopy::network_config::get_network_config(parser);
 auto allocator = canopy::network_config::make_allocator(cfg);
 
-auto root_service = std::make_shared<rpc::root_service>(
+auto root_service = rpc::root_service::create(
     "root_service",
     allocator.allocate_zone(),
     scheduler
@@ -241,7 +241,7 @@ Peer zones connect via TCP or other network transports, this example uses corout
 
 ```cpp
 // Server side
-auto server_service = std::make_shared<rpc::root_service>("server", get_next_zone_id(), io_scheduler_);
+auto server_service = rpc::root_service::create("server", get_next_zone_id(), io_scheduler_);
 
 // Create a streaming listener; the connection callback is invoked for each new client
 const coro::net::socket_address endpoint{
@@ -266,7 +266,7 @@ if (!listener->start_listening(server_service))
 }
 
 // Client side
-auto client_service = std::make_shared<rpc::root_service>("client", get_next_zone_id(), io_scheduler_);
+auto client_service = rpc::root_service::create("client", get_next_zone_id(), io_scheduler_);
 
 coro::net::tcp::client tcp_client(io_scheduler_,
     coro::net::socket_address{

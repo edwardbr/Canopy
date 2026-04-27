@@ -107,7 +107,7 @@ auto cfg = canopy::network_config::get_network_config(parser);
 auto allocator = canopy::network_config::make_allocator(cfg);
 
 // Default behavior: If no --routing-prefix is provided, auto-detects best interface
-auto root_service = std::make_shared<rpc::root_service>(
+auto root_service = rpc::root_service::create(
     "root_service",
     allocator.allocate_zone(),
 #ifdef CANOPY_BUILD_COROUTINE

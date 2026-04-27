@@ -435,7 +435,7 @@ namespace calculator {
 
 using namespace calculator::v1;
 
-auto service = std::make_shared<rpc::root_service>("calc_server", server_zone, scheduler);
+auto service = rpc::root_service::create("calc_server", server_zone, scheduler);
 
 auto tls_ctx = std::make_shared<streaming::tls::context>(cert_path, key_path);
 
@@ -475,7 +475,7 @@ listener->start_listening(service);
 
 using namespace calculator::v1;
 
-auto client_service = std::make_shared<rpc::root_service>("calc_client", client_zone, scheduler);
+auto client_service = rpc::root_service::create("calc_client", client_zone, scheduler);
 
 // 1. Establish TCP connection
 coro::net::tcp::client tcp_client(scheduler, endpoint);

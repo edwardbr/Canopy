@@ -84,9 +84,9 @@ namespace comprehensive
 
             // Create root service
 #ifdef CANOPY_BUILD_COROUTINE
-            auto service = std::make_shared<rpc::root_service>("shared_ptr_demo_service", rpc::DEFAULT_PREFIX, scheduler);
+            auto service = rpc::root_service::create("shared_ptr_demo_service", rpc::DEFAULT_PREFIX, scheduler);
 #else
-            auto service = std::make_shared<rpc::root_service>("shared_ptr_demo_service", rpc::DEFAULT_PREFIX);
+            auto service = rpc::root_service::create("shared_ptr_demo_service", rpc::DEFAULT_PREFIX);
 #endif
 
             RPC_INFO("Service zone ID: {}", service->get_zone_id().get_subnet());

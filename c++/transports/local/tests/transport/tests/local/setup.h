@@ -42,7 +42,7 @@ public:
     {
         this->start_telemetry_test();
 
-        this->root_service_ = std::make_shared<rpc::root_service>(
+        this->root_service_ = rpc::root_service::create(
             "host",
             rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE

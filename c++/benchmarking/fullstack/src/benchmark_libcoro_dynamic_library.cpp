@@ -19,8 +19,7 @@ namespace comprehensive::v1
     {
         benchmark_result result{};
 
-        auto root_service
-            = std::make_shared<rpc::root_service>("benchmark_libcoro_dynamic_library", rpc::DEFAULT_PREFIX, scheduler);
+        auto root_service = rpc::root_service::create("benchmark_libcoro_dynamic_library", rpc::DEFAULT_PREFIX, scheduler);
         root_service->set_default_encoding(enc);
 
         auto child_transport = std::make_shared<rpc::libcoro_dynamic_library::child_transport>(

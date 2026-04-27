@@ -383,7 +383,7 @@ namespace
         rust_dynamic_library_abi_test,
         generated_cxx_proxy_can_call_generated_rust_protobuf_method)
     {
-        auto root_service = std::make_shared<rpc::root_service>("cxx host", rpc::DEFAULT_PREFIX);
+        auto root_service = rpc::root_service::create("cxx host", rpc::DEFAULT_PREFIX);
         auto child_transport = std::make_shared<rpc::c_abi::child_transport>(
             "rust generated child", root_service, CANOPY_RUST_TEST_DLL_PATH);
 

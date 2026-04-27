@@ -60,7 +60,7 @@ public:
         RPC_INFO("passthrough_setup::CoroSetUp - Starting setup");
         RPC_INFO("passthrough_setup::CoroSetUp - Creating service");
 #ifdef CANOPY_BUILD_COROUTINE
-        service_ = std::make_shared<rpc::root_service>(
+        service_ = rpc::root_service::create(
             "test_service",
             rpc::zone{rpc::zone_address(
                 rpc::zone_address_args(
@@ -75,7 +75,7 @@ public:
                     {}))},
             io_scheduler_);
 #else
-        service_ = std::make_shared<rpc::root_service>(
+        service_ = rpc::root_service::create(
             "test_service",
             rpc::zone{rpc::zone_address(
                 rpc::zone_address_args(

@@ -250,7 +250,7 @@ CORO_TASK(int) run_server(
     auto server_zone = allocator.allocate_zone();
 
     auto on_shutdown = std::make_shared<rpc::event>();
-    auto service = std::make_shared<rpc::root_service>(
+    auto service = rpc::root_service::create(
         "my_server", server_zone, scheduler);
     service->set_shutdown_event(on_shutdown);
 
@@ -326,7 +326,7 @@ CORO_TASK(int) run_client(
     auto allocator = canopy::network_config::make_allocator(cfg);
     auto client_zone = allocator.allocate_zone();
 
-    auto client_service = std::make_shared<rpc::root_service>(
+    auto client_service = rpc::root_service::create(
         "my_client", client_zone, scheduler);
 
     const auto domain = remote->family == canopy::network_config::ip_address_family::ipv6

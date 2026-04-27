@@ -206,7 +206,7 @@ TEST(
 {
     auto scheduler = make_scheduler();
     auto zone_id = rpc::DEFAULT_PREFIX;
-    auto service = std::make_shared<rpc::root_service>("listener-test", zone_id, scheduler);
+    auto service = rpc::root_service::create("listener-test", zone_id, scheduler);
     auto accepted_stream = std::make_shared<late_accept_stream>();
     auto acceptor = std::make_shared<late_accept_acceptor>(accepted_stream);
     std::atomic<int> callback_calls{0};

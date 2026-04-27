@@ -154,7 +154,7 @@ namespace comprehensive
 
             auto on_shutdown_event = std::make_shared<rpc::event>();
 
-            auto service = std::make_shared<rpc::root_service>("tcp_server", server_zone, scheduler);
+            auto service = rpc::root_service::create("tcp_server", server_zone, scheduler);
             service->set_shutdown_event(on_shutdown_event);
 
             RPC_INFO("Server zone ID (address): {}", rpc::to_yas_json<std::string>(service->get_zone_id().get_address()));
@@ -207,7 +207,7 @@ namespace comprehensive
             const std::string host = connect_ep.to_string();
             const uint16_t port = connect_ep.port;
 
-            auto client_service = std::make_shared<rpc::root_service>("tcp_client", client_zone, scheduler);
+            auto client_service = rpc::root_service::create("tcp_client", client_zone, scheduler);
 
             rpc::shared_ptr<i_calculator> remote_calculator;
 

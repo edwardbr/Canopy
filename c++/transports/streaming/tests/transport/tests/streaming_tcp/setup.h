@@ -19,8 +19,8 @@ protected:
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        this->peer_service_ = std::make_shared<rpc::root_service>("peer", peer_zone_id, this->io_scheduler_);
-        this->root_service_ = std::make_shared<rpc::root_service>("host", root_zone_id, this->io_scheduler_);
+        this->peer_service_ = rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
+        this->root_service_ = rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
         current_host_service = this->root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());

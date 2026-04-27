@@ -41,7 +41,7 @@ class server_app
 public:
     void start()
     {
-        service_ = std::make_shared<rpc::root_service>(
+        service_ = rpc::root_service::create(
             "server", rpc::zone{1});
 
         calculator_ = calculator::create_calculator();
@@ -75,7 +75,7 @@ class client_app
 public:
     CORO_TASK(void) connect_to(server_app& server)
     {
-        service_ = std::make_shared<rpc::root_service>(
+        service_ = rpc::root_service::create(
             "client", rpc::zone{2});
 
         auto transport = std::make_shared<rpc::local::child_transport>(
@@ -145,7 +145,7 @@ public:
                 .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool
             });
 
-        service_ = std::make_shared<rpc::root_service>(
+        service_ = rpc::root_service::create(
             "coro_server", rpc::zone{1}, scheduler_);
 
         calculator_ = calculator::create_calculator();

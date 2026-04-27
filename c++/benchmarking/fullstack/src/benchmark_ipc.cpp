@@ -20,7 +20,7 @@ namespace comprehensive::v1
         benchmark_result result{};
         constexpr size_t ipc_child_scheduler_thread_count = 1;
 
-        auto root_service = std::make_shared<rpc::root_service>("benchmark_ipc_direct", rpc::DEFAULT_PREFIX, scheduler);
+        auto root_service = rpc::root_service::create("benchmark_ipc_direct", rpc::DEFAULT_PREFIX, scheduler);
         root_service->set_default_encoding(enc);
 
         auto child_zone = rpc::DEFAULT_PREFIX;
@@ -73,7 +73,7 @@ namespace comprehensive::v1
         benchmark_result result{};
         constexpr size_t ipc_child_scheduler_thread_count = 1;
 
-        auto root_service = std::make_shared<rpc::root_service>("benchmark_ipc_dll", rpc::DEFAULT_PREFIX, scheduler);
+        auto root_service = rpc::root_service::create("benchmark_ipc_dll", rpc::DEFAULT_PREFIX, scheduler);
         root_service->set_default_encoding(enc);
 
         auto child_zone = rpc::DEFAULT_PREFIX;

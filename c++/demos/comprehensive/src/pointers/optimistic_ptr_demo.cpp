@@ -114,7 +114,7 @@ namespace comprehensive
             print_separator("OPTIMISTIC PTR DEMO");
 
             // Create root service
-            auto service = std::make_shared<rpc::root_service>(
+            auto service = rpc::root_service::create(
                 "optimistic_ptr_demo_service",
                 rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE

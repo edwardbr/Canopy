@@ -164,7 +164,7 @@ auto scheduler = coro::scheduler::make_unique(
     });
 
 // Pass scheduler to service
-auto service = std::make_shared<rpc::root_service>(
+auto service = rpc::root_service::create(
     "my_service",
     rpc::zone{1},
     scheduler);

@@ -149,7 +149,7 @@ namespace stream_composition
         std::atomic<bool>& iteration_ok)
     {
         auto shutdown_event = std::make_shared<rpc::event>();
-        auto service = std::make_shared<rpc::root_service>("echo_server", server_zone, scheduler);
+        auto service = rpc::root_service::create("echo_server", server_zone, scheduler);
         service->set_shutdown_event(shutdown_event);
         service->set_default_encoding(rpc::encoding::yas_binary);
 
@@ -225,7 +225,7 @@ namespace stream_composition
     {
         co_await server_ready.wait();
 
-        auto client_service = std::make_shared<rpc::root_service>("echo_client", client_zone, scheduler);
+        auto client_service = rpc::root_service::create("echo_client", client_zone, scheduler);
         client_service->set_default_encoding(rpc::encoding::yas_binary);
 
         RPC_INFO("Client: connecting to {}:{}", connect_ep.to_string(), connect_ep.port);

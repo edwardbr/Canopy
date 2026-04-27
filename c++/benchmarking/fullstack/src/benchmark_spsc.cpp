@@ -40,7 +40,7 @@ namespace comprehensive::v1
         {
             CO_AWAIT server_ready.wait();
 
-            auto service = std::make_shared<rpc::root_service>("spsc_client", zone_1, scheduler);
+            auto service = rpc::root_service::create("spsc_client", zone_1, scheduler);
             service->set_default_encoding(enc);
 
             auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
@@ -85,7 +85,7 @@ namespace comprehensive::v1
             const rpc::event& client_finished,
             rpc::encoding enc)
         {
-            auto service = std::make_shared<rpc::root_service>("spsc_server", zone_2, scheduler);
+            auto service = rpc::root_service::create("spsc_server", zone_2, scheduler);
             service->set_default_encoding(enc);
             auto shutdown_event = std::make_shared<rpc::event>();
             service->set_shutdown_event(shutdown_event);

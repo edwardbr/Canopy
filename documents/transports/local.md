@@ -33,7 +33,7 @@ namespace rpc::local {
 
 **Parent Zone (server)**:
 ```cpp
-auto root_service = std::make_shared<rpc::root_service>("root", rpc::zone{1});
+auto root_service = rpc::root_service::create("root", rpc::zone{1});
 
 // Child will connect to this zone
 ```
