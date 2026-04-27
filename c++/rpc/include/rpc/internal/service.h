@@ -677,7 +677,9 @@ namespace rpc
          *
          * Thread-Safety: Protected by service_proxy_control_ mutex
          */
-        void remove_transport_if_matches(destination_zone adjacent_zone_id, const transport* expected);
+        void remove_transport_if_matches(
+            destination_zone adjacent_zone_id,
+            const transport* expected);
 
         /**
          * @brief Get transport to a destination zone (may route through intermediaries)

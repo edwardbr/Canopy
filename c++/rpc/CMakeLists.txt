@@ -106,7 +106,10 @@ target_include_directories(
 
 target_link_libraries(
   rpc
-  PUBLIC ${CANOPY_TELEMETRY_INTERFACE} ${CANOPY_TELEMETRY_SERVICE} rpc_types_idl logging_idl
+  PUBLIC ${CANOPY_TELEMETRY_INTERFACE}
+         ${CANOPY_TELEMETRY_SERVICE}
+         rpc_types_idl
+         logging_idl
          ${CANOPY_TELEMETRY_TYPES_IDL}
   PRIVATE yas_common ${CANOPY_LIBRARIES} ${CANOPY_FMT_LIB})
 

@@ -136,9 +136,9 @@ namespace rpc
                 }
                 ar_params.caller_zone_id = caller_zone_id;
                 ar_params.requesting_zone_id = get_zone()->get_zone_id();
-                ar_params.build_out_param_channel = rpc::add_ref_options::build_caller_route
-                                                    | (is_optimistic ? rpc::add_ref_options::optimistic
-                                                                     : rpc::add_ref_options::normal);
+                ar_params.build_out_param_channel
+                    = rpc::add_ref_options::build_caller_route
+                      | (is_optimistic ? rpc::add_ref_options::optimistic : rpc::add_ref_options::normal);
                 ar_params.request_id = request_id;
                 auto ar_result = CO_AWAIT transport->add_ref(std::move(ar_params));
                 ret = ar_result.error_code;

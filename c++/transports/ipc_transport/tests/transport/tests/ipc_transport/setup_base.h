@@ -158,8 +158,7 @@ public:
         }
     }
 
-    void pump_for(
-        std::chrono::milliseconds duration)
+    void pump_for(std::chrono::milliseconds duration)
     {
         if (!this->io_scheduler_)
             return;
@@ -180,8 +179,7 @@ public:
         if (!t || !this->io_scheduler_)
             return;
         auto deadline = std::chrono::steady_clock::now() + timeout;
-        while (t->get_status() != rpc::transport_status::DISCONNECTED
-               && std::chrono::steady_clock::now() < deadline)
+        while (t->get_status() != rpc::transport_status::DISCONNECTED && std::chrono::steady_clock::now() < deadline)
         {
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
         }

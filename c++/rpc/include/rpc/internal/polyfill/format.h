@@ -33,14 +33,13 @@ namespace rpc
     {
         auto format_args = std::make_tuple(std::forward<Args>(args)...);
         return std::apply(
-            [&](auto&... packed_args)
-            {
-                return std::vformat(format_string, std::make_format_args(packed_args...));
-            },
+            [&](auto&... packed_args) { return std::vformat(format_string, std::make_format_args(packed_args...)); },
             format_args);
     }
 
-    template<typename OutputIt, typename... Args>
+    template<
+        typename OutputIt,
+        typename... Args>
     inline OutputIt format_to(
         OutputIt out,
         std::string_view format_string,
@@ -60,13 +59,14 @@ namespace rpc
             [&](auto&... packed_args)
             {
                 return fmt::vformat(
-                    fmt::string_view(format_string.data(), format_string.size()),
-                    fmt::make_format_args(packed_args...));
+                    fmt::string_view(format_string.data(), format_string.size()), fmt::make_format_args(packed_args...));
             },
             format_args);
     }
 
-    template<typename OutputIt, typename... Args>
+    template<
+        typename OutputIt,
+        typename... Args>
     inline OutputIt format_to(
         OutputIt out,
         std::string_view format_string,

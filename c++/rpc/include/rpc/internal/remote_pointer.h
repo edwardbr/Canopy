@@ -2974,8 +2974,7 @@ namespace rpc
         // control block cannot be destroyed under us, then undo the elevation if this turns out not
         // to be a 0→1 transition (weak_count_ must be elevated exactly once per optimistic batch).
         cb->weak_count_.fetch_add(1, std::memory_order_relaxed);
-        long prev_opt
-            = static_cast<long>(cb->combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF);
+        long prev_opt = static_cast<long>(cb->combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF);
         if (prev_opt > 0)
         {
             // Not the 0→1 transition: the batch's weak_count_ elevation already exists.
@@ -3007,8 +3006,7 @@ namespace rpc
         // exactly once per optimistic batch (the 0→1 transition), so only bump it then.
         // Incrementing optimistic before weak is safe because we hold `in` (a shared_ptr),
         // which keeps the control block alive for the duration of this call.
-        long prev_opt
-            = static_cast<long>(cb->combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF);
+        long prev_opt = static_cast<long>(cb->combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF);
         if (prev_opt == 0)
             cb->weak_count_.fetch_add(1, std::memory_order_relaxed);
 
