@@ -78,7 +78,7 @@ jobs:
           - name: Release
             preset: Release
             build_dir: build_release
-            test_cmds: ./rpc_test && ctest --test-dir .. -R "^StdTest" --output-on-failure
+            test_cmds: ./rpc_test && /usr/local/bin/ctest --test-dir .. -R "^StdTest" --output-on-failure
           - name: Debug Coroutine
             preset: Debug_Coroutine
             build_dir: build_debug_coroutine
@@ -90,7 +90,7 @@ jobs:
     steps:
       - name: Install system and C++ dependencies
         run: |
-          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz curl
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz curl cmake
       - name: Install Rust toolchain
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain none
@@ -118,9 +118,9 @@ jobs:
           fetch-depth: 0
           submodules: false
       - name: CMake configure (${{ matrix.name }})
-        run: cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ -DGIT_SUBMODULE=ON --preset=${{ matrix.preset }}
+        run: /usr/local/bin/cmake -DCMAKE_C_COMPILER:FILEPATH=/usr/bin/clang -DCMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++ -DGIT_SUBMODULE=ON --preset=${{ matrix.preset }}
       - name: Build (${{ matrix.name }})
-        run: cmake --build ${{ matrix.build_dir }}
+        run: /usr/local/bin/cmake --build ${{ matrix.build_dir }}
       - name: Test (${{ matrix.name }})
         working-directory: ${{ matrix.build_dir }}/output
         run: ${{ matrix.test_cmds }}
@@ -133,7 +133,7 @@ jobs:
     steps:
       - name: Install system and C++ dependencies
         run: |
-          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb git xz curl perl-core
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb git xz curl perl-core cmake
       - name: Install SGX SDK build prerequisites
         run: |
           dnf install -y ocaml ocaml-ocamlbuild autoconf automake libtool m4 python3
