@@ -246,7 +246,7 @@ if(NOT DEPENDENCIES_LOADED)
           c++/submodules/json-schema-validator)
 
       if(CANOPY_BUILD_COROUTINE)
-        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libcoro_for_enclaves c++/submodules/c-ares)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libcoro c++/submodules/c-ares)
       endif()
       if(CANOPY_BUILD_PROTOCOL_BUFFERS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/protobuf)
@@ -268,8 +268,7 @@ if(NOT DEPENDENCIES_LOADED)
           c++/submodules/yas
           c++/submodules/fmt
           submodules/idlparser
-          c++/submodules/args
-          c++/submodules/libcoro_for_enclaves)
+          c++/submodules/args)
       set(CANOPY_BRANCH_PINNED_SUBMODULES submodules/confidential-computing.sgx)
 
       function(canopy_submodule_is_populated submodule_path out_var)

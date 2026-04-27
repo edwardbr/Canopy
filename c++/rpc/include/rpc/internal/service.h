@@ -821,11 +821,11 @@ namespace rpc
 
     public:
 #ifdef CANOPY_BUILD_COROUTINE
-        static CORO_TASK(std::shared_ptr<root_service>) create(
+        static std::shared_ptr<root_service> create(
             const char* name,
             zone zone_id,
             const std::shared_ptr<coro::scheduler>& scheduler);
-        static CORO_TASK(std::shared_ptr<root_service>) create(
+        static std::shared_ptr<root_service> create(
             const char* name,
             const service_config& config,
             const std::shared_ptr<coro::scheduler>& scheduler);
@@ -839,10 +839,10 @@ namespace rpc
             const service_config& config,
             const std::shared_ptr<coro::scheduler>& scheduler);
 #else
-        static CORO_TASK(std::shared_ptr<root_service>) create(
+        static std::shared_ptr<root_service> create(
             const char* name,
             zone zone_id);
-        static CORO_TASK(std::shared_ptr<root_service>) create(
+        static std::shared_ptr<root_service> create(
             const char* name,
             const service_config& config);
 

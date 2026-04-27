@@ -19,13 +19,9 @@
 [submodule "c++/submodules/args"]
 	path = c++/submodules/args
 	url = https://github.com/edwardbr/args.git
-[submodule "c++/submodules/libcoro_for_enclaves"]
-	path = c++/submodules/libcoro_for_enclaves
-	url = https://github.com/edwardbr/libcoro.git
-	update = none
 [submodule "c++/submodules/libcoro"]
 	path = c++/submodules/libcoro
-	url = https://github.com/jbaldwin/libcoro.git
+	url = https://github.com/edwardbr/libcoro.git
 	update = none
 	shallow = true
 [submodule "c++/submodules/c-ares"]

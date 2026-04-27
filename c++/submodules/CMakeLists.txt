@@ -71,7 +71,7 @@ if(CANOPY_BUILD_COROUTINE)
       CACHE BOOL "Disable examples" FORCE)
 
   add_subdirectory(c-ares)
-  add_subdirectory(libcoro_for_enclaves)
+  add_subdirectory(libcoro)
 
   if(CANOPY_BUILD_WEBSOCKET)
     add_subdirectory(wslay)

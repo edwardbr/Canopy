@@ -350,8 +350,7 @@ namespace rpc
     // root_service
 
 #ifdef CANOPY_BUILD_COROUTINE
-    CORO_TASK(std::shared_ptr<root_service>)
-    root_service::create(
+    std::shared_ptr<root_service> root_service::create(
         const char* name,
         zone zone_id,
         const std::shared_ptr<coro::scheduler>& scheduler)
@@ -361,16 +360,15 @@ namespace rpc
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             telemetry_service->on_service_creation({name, zone_id, destination_zone()});
 #  endif
-        CO_RETURN service;
+        return service;
     }
 
-    CORO_TASK(std::shared_ptr<root_service>)
-    root_service::create(
+    std::shared_ptr<root_service> root_service::create(
         const char* name,
         const service_config& config,
         const std::shared_ptr<coro::scheduler>& scheduler)
     {
-        CO_RETURN CO_AWAIT create(name, config.initial_zone, scheduler);
+        return create(name, config.initial_zone, scheduler);
     }
 
     root_service::root_service(
@@ -396,8 +394,7 @@ namespace rpc
     {
     }
 #else
-    CORO_TASK(std::shared_ptr<root_service>)
-    root_service::create(
+    std::shared_ptr<root_service> root_service::create(
         const char* name,
         zone zone_id)
     {
@@ -406,15 +403,14 @@ namespace rpc
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             telemetry_service->on_service_creation({name, zone_id, destination_zone()});
 #  endif
-        CO_RETURN service;
+        return service;
     }
 
-    CORO_TASK(std::shared_ptr<root_service>)
-    root_service::create(
+    std::shared_ptr<root_service> root_service::create(
         const char* name,
         const service_config& config)
     {
-        CO_RETURN CO_AWAIT create(name, config.initial_zone);
+        return create(name, config.initial_zone);
     }
 
     root_service::root_service(
