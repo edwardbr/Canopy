@@ -126,6 +126,11 @@ The runtime sequence is:
 6. Refcount-driven `DISCONNECTING` is recorded as a clean disconnect so the transport can flush release messages and close the stream without sending `transport_down`.
 7. The transport reaches `DISCONNECTED` after the stream close handshake and cleanup.
 8. Transport cleanup must reset transport self-keepalive state and release the stream.
+   It must not manufacture a late `set_closed()` or other close marker after the
+   send and receive loops have already finished, because the peer process,
+   dynamic library, or enclave may already have destroyed or unmapped its side of
+   a queue-backed stream. The close handshake belongs in the send/receive loops
+   while the peer stream is still known to be alive.
 9. The service weak reference should expire naturally after:
    - child objects have been destroyed,
    - object proxies have released remote references,
