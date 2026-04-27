@@ -26,8 +26,7 @@
 #include "transports/local/transport.h"
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
-#  include <rpc/telemetry/multiplexing_telemetry_service.h>
-#  include <rpc/telemetry/console_telemetry_service.h>
+#  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
 
 // Other headers
@@ -2261,15 +2260,12 @@ int main(
                 // Add test-specific telemetry services if the global multiplexer exists
                 if (rpc::telemetry_service_)
                 {
-                    auto multiplexing_service
-                        = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::telemetry_service_);
-
                     // Add console telemetry for this test
                     std::shared_ptr<rpc::i_telemetry_service> console_service;
-                    if (rpc::console_telemetry_service::create(
+                    if (rpc::telemetry::create_console_telemetry_service(
                             console_service, "autonomous_test", "autonomous_test", "../../c++/telemetry/reports/"))
                     {
-                        multiplexing_service->add_child(console_service);
+                        rpc::telemetry::add_telemetry_child(rpc::telemetry_service_, console_service);
                     }
                 }
             }
@@ -2296,15 +2292,12 @@ int main(
                 // Add test-specific telemetry services if the global multiplexer exists
                 if (rpc::telemetry_service_)
                 {
-                    auto multiplexing_service
-                        = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::telemetry_service_);
-
                     // Add console telemetry for this test
                     std::shared_ptr<rpc::i_telemetry_service> console_service;
-                    if (rpc::console_telemetry_service::create(
+                    if (rpc::telemetry::create_console_telemetry_service(
                             console_service, "autonomous_test", "autonomous_test", "../../c++/telemetry/reports/"))
                     {
-                        multiplexing_service->add_child(console_service);
+                        rpc::telemetry::add_telemetry_child(rpc::telemetry_service_, console_service);
                     }
                 }
             }
@@ -2335,21 +2328,13 @@ int main(
                 // collection in run_autonomous_instruction_test didn't complete
 
 #ifdef CANOPY_USE_TELEMETRY
-                if (auto telemetry_service
-                    = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-                {
-                    telemetry_service->reset_for_test();
-                }
+                rpc::telemetry::reset_telemetry_for_test(rpc::get_telemetry_service());
 #endif
                 throw; // Re-throw to let main catch block handle it
             }
 
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service
-                = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-            {
-                telemetry_service->reset_for_test();
-            }
+            rpc::telemetry::reset_telemetry_for_test(rpc::get_telemetry_service());
 #endif
         }
 
