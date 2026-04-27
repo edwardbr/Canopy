@@ -264,11 +264,7 @@ if(NOT DEPENDENCIES_LOADED)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/llama.cpp)
       endif()
 
-      set(CANOPY_FULL_HISTORY_SUBMODULES
-          c++/submodules/yas
-          c++/submodules/fmt
-          submodules/idlparser
-          c++/submodules/args)
+      set(CANOPY_FULL_HISTORY_SUBMODULES c++/submodules/yas c++/submodules/fmt submodules/idlparser c++/submodules/args)
       set(CANOPY_BRANCH_PINNED_SUBMODULES submodules/confidential-computing.sgx)
 
       function(canopy_submodule_is_populated submodule_path out_var)
