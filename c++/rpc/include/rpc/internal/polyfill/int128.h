@@ -4,6 +4,8 @@
  */
 #pragma once
 
+// needed for uint128_t and int128_t serialisation support protobuffers are sending pairs of uint64_t's
+
 #include <string>
 #include <string_view>
 

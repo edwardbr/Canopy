@@ -5,6 +5,8 @@
 #pragma once
 
 #ifdef CANOPY_BUILD_COROUTINE
+#  include <coroutine>
+#  include <rpc/internal/coro_runtime/runtime.h>
 #  define CORO_TASK(x) ::rpc::coro::task<x>
 #  define CO_RETURN co_return
 #  define CO_AWAIT co_await

@@ -4,7 +4,9 @@
  */
 #pragma once
 
-#include <memory>
+#ifdef CANOPY_USE_TELEMETRY
+
+#  include <memory>
 
 namespace rpc::telemetry
 {
@@ -12,3 +14,5 @@ namespace rpc::telemetry
 
     std::shared_ptr<i_telemetry_service> get_telemetry_service();
 }
+
+#endif

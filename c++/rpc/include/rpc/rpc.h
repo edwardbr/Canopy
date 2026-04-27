@@ -4,54 +4,42 @@
  */
 #pragma once
 
-// for future coroutine deliniation
-#define NAMESPACE_INLINE_BEGIN                                                                                         \
-    inline namespace synchronous                                                                                       \
-    {
-#define NAMESPACE_INLINE_END }
-
-#include <rpc/internal/version.h>
-#include <rpc/internal/build_modifiers.h>
-
-// needed for uint128_t and int128_t serialisation support protobuffers are sending pairs of uint64_t's
-#include <rpc/internal/polyfill/int128.h>
-#include <rpc/internal/polyfill/expected.h>
-#include <rpc/internal/polyfill/format.h>
 #include <chrono>
 #include <exception>
 #include <shared_mutex>
-#ifdef CANOPY_BUILD_COROUTINE
-#  include <coroutine>
-#  include <rpc/internal/coro_runtime/runtime.h>
-#endif
 
 namespace rpc
 {
     using shared_mutex = std::shared_mutex;
     template<typename Mutex> using shared_lock = std::shared_lock<Mutex>;
 }
-#include <rpc/internal/coroutine_support.h>
 
-// byte-span type used throughout the RPC layer
+#include <rpc/internal/version.h>
+#include <rpc/internal/build_modifiers.h>
+
+#include <rpc/internal/polyfill/int128.h>
+#include <rpc/internal/polyfill/expected.h>
+#include <rpc/internal/polyfill/format.h>
+
+// synchronous/coroutine sensitive headers
+#include <rpc/internal/coroutine_support.h>
 #include <rpc/internal/span.h>
 #include <rpc/internal/polyfill/event.h>
 
+// machine generated code
 #include <rpc/rpc_types.h>
+#include <rpc/logging.h>
+
+// internal headers
 #include <rpc/internal/zone_authenticator.h>
 #include <rpc/internal/address_utils.h>
-#ifdef CANOPY_USE_TELEMETRY
-#  include <rpc/internal/telemetry_fwd.h>
-#endif
-
+#include <rpc/internal/telemetry_fwd.h>
 #include <rpc/internal/error_codes.h>
 #include <rpc/internal/logger.h>
 #include <rpc/internal/assert.h>
-
 #include <rpc/internal/types.h>
 #include <rpc/internal/serialiser.h>
 #include <rpc/internal/member_ptr.h>
-
-// synchronous/coroutine sensitive headers
 
 // parameter/result bundles used by marshalling interfaces
 #include <rpc/internal/marshaller_params.h>
