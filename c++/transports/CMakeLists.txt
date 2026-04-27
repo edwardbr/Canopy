@@ -22,3 +22,7 @@ add_subdirectory(mock_test)
 if(CANOPY_BUILD_ENCLAVE)
   add_subdirectory(sgx)
 endif()
+
+if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
+  add_subdirectory(sgx_coroutine)
+endif()

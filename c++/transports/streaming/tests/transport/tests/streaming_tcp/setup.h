@@ -16,11 +16,10 @@ protected:
     CORO_TASK(bool) do_coro_setup() override
     {
         auto root_zone_id = rpc::DEFAULT_PREFIX;
-        auto peer_zone_id = rpc::DEFAULT_PREFIX;
-        std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
+        auto peer_zone_id = this->make_peer_zone_id();
 
-        this->peer_service_ = rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
-        this->root_service_ = rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
+        this->peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
+        this->root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
         current_host_service = this->root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());
@@ -29,8 +28,7 @@ protected:
         this->listener_ = std::make_unique<streaming::listener>(
             "responder_transport",
             std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8080}),
-            rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
-                this->make_interface_setup_factory()));
+            this->template make_test_connection_callback<yyy::i_host, yyy::i_example>());
 
         if (!this->listener_->start_listening(this->peer_service_))
         {
@@ -49,8 +47,8 @@ protected:
         }
 
         auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-        this->initiator_transport_
-            = rpc::stream_transport::make_client("initiator_transport", this->root_service_, std::move(tcp_stm));
+        this->initiator_transport_ = rpc::stream_transport::make_client(
+            "initiator_transport", this->root_service_, std::move(tcp_stm), this->test_transport_options_);
 
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
             "main child", this->initiator_transport_, hst);

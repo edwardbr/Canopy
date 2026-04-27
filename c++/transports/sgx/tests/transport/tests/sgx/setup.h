@@ -17,6 +17,7 @@
 
 #  ifdef CANOPY_USE_TELEMETRY
 #    include <rpc/telemetry/i_telemetry_service.h>
+#    include <rpc/telemetry/telemetry_service_factory.h>
 #  endif
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone> class sgx_setup
@@ -62,13 +63,10 @@ public:
     {
 #  ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
-        }
+        rpc::telemetry::start_telemetry_test(
+            rpc::telemetry::get_telemetry_service(), test_info->test_suite_name(), test_info->name());
 #  endif
-        root_service_ = rpc::root_service::create("host", rpc::DEFAULT_PREFIX);
+        root_service_ = SYNC_WAIT(rpc::root_service::create("host", rpc::DEFAULT_PREFIX));
         current_host_service = root_service_;
 
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());
@@ -91,11 +89,7 @@ public:
         root_service_ = nullptr;
         current_host_service.reset();
 #  ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->reset_for_test();
-        }
+        rpc::telemetry::reset_telemetry_for_test(rpc::telemetry::get_telemetry_service());
 #  endif
     }
 

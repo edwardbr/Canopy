@@ -11,25 +11,32 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 class streaming_spsc_setup
     : public streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-    streaming::spsc_queue::queue_type send_spsc_queue_;
-    streaming::spsc_queue::queue_type receive_spsc_queue_;
+    // These queues are stream-owned resources, not transport fixtures.
+    // The fixture should not keep transports alive, but transport pump tasks may
+    // still be draining while teardown releases services/proxies. Keeping the
+    // queue storage shared with the streams prevents late scheduler work from
+    // touching stack storage from a previous test instance.
+    std::shared_ptr<streaming::spsc_queue::queue_type> send_spsc_queue_;
+    std::shared_ptr<streaming::spsc_queue::queue_type> receive_spsc_queue_;
 
 protected:
     CORO_TASK(bool) do_coro_setup() override
     {
         auto root_zone_id = rpc::DEFAULT_PREFIX;
-        auto peer_zone_id = rpc::DEFAULT_PREFIX;
-        std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
-        this->root_service_ = rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
-        this->peer_service_ = rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
+        auto peer_zone_id = this->make_peer_zone_id();
+        this->root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
+        this->peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
+        current_host_service = this->root_service_;
+        send_spsc_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();
+        receive_spsc_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();
 
         auto io_sched = this->io_scheduler_;
         auto peer_stream
-            = std::make_shared<streaming::spsc_queue::stream>(&receive_spsc_queue_, &send_spsc_queue_, io_sched);
+            = std::make_shared<streaming::spsc_queue::stream>(receive_spsc_queue_, send_spsc_queue_, io_sched);
         this->responder_transport_ = std::static_pointer_cast<rpc::stream_transport::transport>(
             CO_AWAIT this->peer_service_->template make_acceptor<yyy::i_host, yyy::i_example>(
                 "responder_transport",
-                rpc::stream_transport::transport_factory(std::move(peer_stream)),
+                rpc::stream_transport::transport_factory(std::move(peer_stream), this->test_transport_options_),
                 this->make_interface_setup_factory()));
 
         CO_AWAIT this->responder_transport_->accept();
@@ -38,9 +45,9 @@ protected:
         this->local_host_ptr_ = hst;
 
         auto client_stream
-            = std::make_shared<streaming::spsc_queue::stream>(&send_spsc_queue_, &receive_spsc_queue_, io_sched);
-        this->initiator_transport_
-            = rpc::stream_transport::make_client("initiator_transport", this->root_service_, std::move(client_stream));
+            = std::make_shared<streaming::spsc_queue::stream>(send_spsc_queue_, receive_spsc_queue_, io_sched);
+        this->initiator_transport_ = rpc::stream_transport::make_client(
+            "initiator_transport", this->root_service_, std::move(client_stream), this->test_transport_options_);
 
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
             "main child", this->initiator_transport_, hst);

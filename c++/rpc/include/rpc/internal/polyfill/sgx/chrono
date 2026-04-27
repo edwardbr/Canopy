@@ -1,0 +1,166 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+#pragma once
+
+#if !defined(FOR_SGX)
+#  error "rpc/internal/polyfill/sgx/chrono is only valid for SGX builds"
+#endif
+
+#include <cstdint>
+
+namespace std::chrono
+{
+    inline constexpr long long sgx_rdtsc_ticks_per_millisecond = 3000000;
+
+    template<typename rep_type, typename period_type = void> class duration
+    {
+    public:
+        using rep = rep_type;
+        using period = period_type;
+
+        constexpr duration() = default;
+        constexpr explicit duration(rep_type rep)
+            : rep_(rep)
+        {
+        }
+
+        [[nodiscard]] constexpr rep_type count() const { return rep_; }
+
+    private:
+        rep_type rep_{};
+    };
+
+    using milliseconds = duration<long long, void>;
+
+    template<
+        typename to_duration,
+        typename rep_type,
+        typename period_type>
+    constexpr to_duration duration_cast(
+        duration<
+            rep_type,
+            period_type> value)
+    {
+        return to_duration(static_cast<typename to_duration::rep>(value.count()));
+    }
+
+    struct steady_clock
+    {
+        struct time_point
+        {
+            long long ticks{};
+        };
+
+        // SGX simulation builds use this only for polling and timeout-disabled
+        // paths. There is no trusted wall clock here; use the CPU counter as a
+        // monotonic ordering source, not as a real millisecond clock.
+        static time_point now() noexcept
+        {
+#if defined(__x86_64__) || defined(__i386__)
+            return time_point{static_cast<long long>(__builtin_ia32_rdtsc())};
+#else
+            return time_point{0};
+#endif
+        }
+    };
+
+    inline constexpr bool operator==(
+        milliseconds lhs,
+        milliseconds rhs)
+    {
+        return lhs.count() == rhs.count();
+    }
+
+    inline constexpr bool operator!=(
+        milliseconds lhs,
+        milliseconds rhs)
+    {
+        return !(lhs == rhs);
+    }
+
+    inline constexpr bool operator<(
+        milliseconds lhs,
+        milliseconds rhs)
+    {
+        return lhs.count() < rhs.count();
+    }
+
+    inline constexpr bool operator<=(
+        milliseconds lhs,
+        milliseconds rhs)
+    {
+        return lhs.count() <= rhs.count();
+    }
+
+    inline constexpr bool operator>(
+        milliseconds lhs,
+        milliseconds rhs)
+    {
+        return lhs.count() > rhs.count();
+    }
+
+    inline constexpr bool operator>=(
+        milliseconds lhs,
+        milliseconds rhs)
+    {
+        return lhs.count() >= rhs.count();
+    }
+
+    inline constexpr milliseconds operator-(
+        steady_clock::time_point lhs,
+        steady_clock::time_point rhs)
+    {
+        return milliseconds{(lhs.ticks - rhs.ticks) / sgx_rdtsc_ticks_per_millisecond};
+    }
+
+    inline constexpr steady_clock::time_point operator+(
+        steady_clock::time_point lhs,
+        milliseconds rhs)
+    {
+        return steady_clock::time_point{lhs.ticks + (rhs.count() * sgx_rdtsc_ticks_per_millisecond)};
+    }
+
+    inline constexpr bool operator==(
+        steady_clock::time_point lhs,
+        steady_clock::time_point rhs)
+    {
+        return lhs.ticks == rhs.ticks;
+    }
+
+    inline constexpr bool operator!=(
+        steady_clock::time_point lhs,
+        steady_clock::time_point rhs)
+    {
+        return !(lhs == rhs);
+    }
+
+    inline constexpr bool operator<(
+        steady_clock::time_point lhs,
+        steady_clock::time_point rhs)
+    {
+        return lhs.ticks < rhs.ticks;
+    }
+
+    inline constexpr bool operator<=(
+        steady_clock::time_point lhs,
+        steady_clock::time_point rhs)
+    {
+        return lhs.ticks <= rhs.ticks;
+    }
+
+    inline constexpr bool operator>(
+        steady_clock::time_point lhs,
+        steady_clock::time_point rhs)
+    {
+        return lhs.ticks > rhs.ticks;
+    }
+
+    inline constexpr bool operator>=(
+        steady_clock::time_point lhs,
+        steady_clock::time_point rhs)
+    {
+        return lhs.ticks >= rhs.ticks;
+    }
+}

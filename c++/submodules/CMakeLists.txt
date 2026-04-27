@@ -69,9 +69,39 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_BUILD_EXAMPLES
       OFF
       CACHE BOOL "Disable examples" FORCE)
+  set(LIBCORO_BUILD_TESTS
+      OFF
+      CACHE BOOL "Disable libcoro tests" FORCE)
+  set(LIBCORO_EXTERNAL_DEPENDENCIES
+      ON
+      CACHE BOOL "Use Canopy-provided dependencies for libcoro" FORCE)
 
   add_subdirectory(c-ares)
+  add_library(canopy_cares INTERFACE)
+  target_link_libraries(canopy_cares INTERFACE c-ares::cares)
+
+  set(CANOPY_CARES_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/canopy-cares-config")
+  file(MAKE_DIRECTORY "${CANOPY_CARES_CONFIG_DIR}")
+  file(
+    WRITE "${CANOPY_CARES_CONFIG_DIR}/c-ares-config.cmake"
+    "if(NOT TARGET c-ares::cares)\n"
+    "  message(FATAL_ERROR \"Canopy c-ares target is not available\")\n"
+    "endif()\n")
+  set(c-ares_DIR
+      "${CANOPY_CARES_CONFIG_DIR}"
+      CACHE PATH "Canopy c-ares package shim for libcoro" FORCE)
+
   add_subdirectory(libcoro)
+
+  if(CANOPY_BUILD_ENCLAVE)
+    add_library(libcoro_enclave INTERFACE)
+    target_compile_features(libcoro_enclave INTERFACE cxx_std_20)
+    target_include_directories(
+      libcoro_enclave
+      INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/libcoro/include
+                ${CMAKE_CURRENT_BINARY_DIR}/libcoro/include
+                ${CMAKE_SOURCE_DIR}/c++/rpc/include)
+  endif()
 
   if(CANOPY_BUILD_WEBSOCKET)
     add_subdirectory(wslay)

@@ -6,6 +6,15 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <coroutine>
+#  ifdef FOR_SGX
+#    include <rpc/internal/coro_runtime/sgx/task.h>
+#    include <rpc/internal/coro_runtime/sgx/thread_pool.h>
+#    include <rpc/internal/coro_runtime/sgx/scheduler.h>
+#    include <rpc/internal/coro_runtime/sgx/event.h>
+#    include <rpc/internal/coro_runtime/sgx/runtime.h>
+#  else
+#    include <rpc/internal/coro_runtime/libcoro/runtime.h>
+#  endif
 #  include <rpc/internal/coro_runtime/runtime.h>
 #  define CORO_TASK(x) ::rpc::coro::task<x>
 #  define CO_RETURN co_return

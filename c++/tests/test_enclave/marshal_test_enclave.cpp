@@ -11,6 +11,10 @@
 #include <string>
 
 #include <rpc/rpc.h>
+#ifdef CANOPY_USE_TELEMETRY
+#  include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/telemetry/telemetry_service_factory.h>
+#endif
 
 #include <edl/enclave_marshal_test.h>
 #include <trusted/enclave_marshal_test_t.h>
@@ -24,8 +28,8 @@ namespace
 {
     using namespace rpc::sgx::marshal_test;
 
-    std::shared_ptr<rpc::child_service> rpc_server;
-    std::shared_ptr<rpc::sgx::host_transport> g_host_transport;
+    // std::shared_ptr<rpc::child_service> rpc_server;
+    std::weak_ptr<rpc::sgx::host_transport> g_host_transport;
     uint64_t g_enclave_id = 0;
 
     template<typename T> std::vector<char> to_sgx_blob(const T& value)
@@ -71,15 +75,16 @@ namespace
 
     rpc::send_params from_sgx_request(const send_request& request)
     {
-        return rpc::send_params{request.protocol_version,
-            request.encoding_type,
-            request.tag,
-            request.caller_zone_id,
-            request.remote_object_id,
-            request.interface_id,
-            request.method_id,
-            request.in_data,
-            request.in_back_channel};
+        return rpc::send_params{FLD(protocol_version) request.protocol_version,
+            FLD(encoding_type) request.encoding_type,
+            FLD(tag) request.tag,
+            FLD(caller_zone_id) request.caller_zone_id,
+            FLD(remote_object_id) request.remote_object_id,
+            FLD(interface_id) request.interface_id,
+            FLD(method_id) request.method_id,
+            FLD(in_data) request.in_data,
+            FLD(in_back_channel) request.in_back_channel,
+            FLD(request_id) request.request_id};
     }
 
     rpc::post_params from_sgx_request(const post_request& request)
@@ -111,7 +116,8 @@ namespace
             request.caller_zone_id,
             request.requesting_zone_id,
             request.build_out_param_channel,
-            request.in_back_channel};
+            request.in_back_channel,
+            request.request_id};
     }
 
     rpc::release_params from_sgx_request(const release_request& request)
@@ -184,17 +190,22 @@ int marshal_test_init_enclave(
     auto input_descr = from_sgx_request(request);
     g_enclave_id = enclave_id;
 
-    g_host_transport = std::make_shared<rpc::sgx::host_transport>(
+#ifdef CANOPY_USE_TELEMETRY
+    rpc::telemetry::create_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
+#endif
+
+    auto ht = std::make_shared<rpc::sgx::host_transport>(
         "test_enclave", g_enclave_id, request.child_zone_id, rpc::zone{request.host_remote_object.as_zone()});
+
+    g_host_transport = ht;
 
     auto ret = rpc::child_service::create_child_zone<yyy::i_host, yyy::i_example>(
         "test_enclave",
-        g_host_transport,
+        ht,
         input_descr,
         [](const rpc::shared_ptr<yyy::i_host>& host,
             std::shared_ptr<rpc::child_service> child_service_ptr) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
         {
-            rpc_server = child_service_ptr;
             rpc::shared_ptr<yyy::i_example> new_example(new marshalled_tests::example(child_service_ptr, host));
             CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), new_example};
         });
@@ -207,7 +218,7 @@ int marshal_test_init_enclave(
 
 void marshal_test_destroy_enclave()
 {
-    rpc_server.reset();
+    // rpc_server.reset();
     g_host_transport.reset();
     g_enclave_id = 0;
 }
@@ -255,7 +266,13 @@ int call_enclave(
     if (params.protocol_version > rpc::get_version())
         return rpc::error::INVALID_VERSION();
 
-    auto result = g_host_transport->inbound_send(std::move(params));
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+    auto result = tp->inbound_send(std::move(params));
     auto blob = to_sgx_blob(to_sgx_response(result));
 
     *resp_sz = blob.size();
@@ -280,7 +297,13 @@ int post_enclave(
     auto params = from_sgx_request(request);
     if (params.protocol_version > rpc::get_version())
         return rpc::error::INVALID_VERSION();
-    g_host_transport->inbound_post(std::move(params));
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+    tp->inbound_post(std::move(params));
     return rpc::error::OK();
 }
 
@@ -298,7 +321,14 @@ int try_cast_enclave(
     auto params = from_sgx_request(request);
     if (params.protocol_version > rpc::get_version())
         return rpc::error::INVALID_VERSION();
-    auto result = g_host_transport->inbound_try_cast(std::move(params));
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+
+    auto result = tp->inbound_try_cast(std::move(params));
     return write_blob_response(to_sgx_response(result), resp_cap, resp, resp_sz);
 }
 
@@ -316,7 +346,14 @@ int add_ref_enclave(
     auto params = from_sgx_request(request);
     if (params.protocol_version > rpc::get_version())
         return rpc::error::INCOMPATIBLE_SERVICE();
-    auto result = g_host_transport->inbound_add_ref(std::move(params));
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+
+    auto result = tp->inbound_add_ref(std::move(params));
     return write_blob_response(to_sgx_response(result), resp_cap, resp, resp_sz);
 }
 
@@ -334,7 +371,14 @@ int release_enclave(
     auto params = from_sgx_request(request);
     if (params.protocol_version > rpc::get_version())
         return rpc::error::INCOMPATIBLE_SERVICE();
-    auto result = g_host_transport->inbound_release(std::move(params));
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+
+    auto result = tp->inbound_release(std::move(params));
     return write_blob_response(to_sgx_response(result), resp_cap, resp, resp_sz);
 }
 
@@ -347,7 +391,14 @@ int object_released_enclave(
     if (err != rpc::error::OK())
         return err;
     auto params = from_sgx_request(request);
-    g_host_transport->inbound_object_released(std::move(params));
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+
+    tp->inbound_object_released(std::move(params));
     return rpc::error::OK();
 }
 
@@ -360,7 +411,14 @@ int transport_down_enclave(
     if (err != rpc::error::OK())
         return err;
     auto params = from_sgx_request(request);
-    g_host_transport->inbound_transport_down(std::move(params));
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+
+    tp->inbound_transport_down(std::move(params));
     return rpc::error::OK();
 }
 

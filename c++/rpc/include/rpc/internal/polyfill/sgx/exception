@@ -1,0 +1,162 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+#pragma once
+
+#if !defined(FOR_SGX)
+#  error "rpc/internal/polyfill/sgx/exception is only valid for SGX builds"
+#endif
+
+#include <libcxx/exception>
+
+#include <cstddef>
+
+extern "C" void* __cxa_current_primary_exception() noexcept;
+extern "C" void __cxa_rethrow_primary_exception(void*) __attribute__((__noreturn__));
+extern "C" void __cxa_increment_exception_refcount(void*) noexcept;
+extern "C" void __cxa_decrement_exception_refcount(void*) noexcept;
+
+namespace std
+{
+    inline bool uncaught_exception() noexcept
+    {
+        return uncaught_exceptions() > 0;
+    }
+
+    class exception_ptr
+    {
+    public:
+        constexpr exception_ptr() noexcept = default;
+        constexpr exception_ptr(nullptr_t) noexcept
+            : ptr_(nullptr)
+        {
+        }
+
+        explicit exception_ptr(void* ptr) noexcept
+            : ptr_(ptr)
+        {
+        }
+
+        exception_ptr(const exception_ptr& other) noexcept
+            : ptr_(other.ptr_)
+        {
+            if (ptr_)
+                __cxa_increment_exception_refcount(ptr_);
+        }
+
+        exception_ptr(exception_ptr&& other) noexcept
+            : ptr_(other.ptr_)
+        {
+            other.ptr_ = nullptr;
+        }
+
+        exception_ptr& operator=(const exception_ptr& other) noexcept
+        {
+            if (this == &other)
+                return *this;
+
+            if (other.ptr_)
+                __cxa_increment_exception_refcount(other.ptr_);
+            if (ptr_)
+                __cxa_decrement_exception_refcount(ptr_);
+
+            ptr_ = other.ptr_;
+            return *this;
+        }
+
+        exception_ptr& operator=(exception_ptr&& other) noexcept
+        {
+            if (this == &other)
+                return *this;
+
+            if (ptr_)
+                __cxa_decrement_exception_refcount(ptr_);
+
+            ptr_ = other.ptr_;
+            other.ptr_ = nullptr;
+            return *this;
+        }
+
+        exception_ptr& operator=(nullptr_t) noexcept
+        {
+            if (ptr_)
+                __cxa_decrement_exception_refcount(ptr_);
+            ptr_ = nullptr;
+            return *this;
+        }
+
+        ~exception_ptr() noexcept
+        {
+            if (ptr_)
+                __cxa_decrement_exception_refcount(ptr_);
+        }
+
+        explicit constexpr operator bool() const noexcept { return ptr_ != nullptr; }
+
+        friend constexpr bool operator==(
+            const exception_ptr& lhs,
+            const exception_ptr& rhs) noexcept
+        {
+            return lhs.ptr_ == rhs.ptr_;
+        }
+
+        friend constexpr bool operator!=(
+            const exception_ptr& lhs,
+            const exception_ptr& rhs) noexcept
+        {
+            return !(lhs == rhs);
+        }
+
+        [[nodiscard]] void* __get() const noexcept { return ptr_; }
+
+    private:
+        void* ptr_ = nullptr;
+    };
+
+    inline exception_ptr current_exception() noexcept
+    {
+        return exception_ptr{__cxa_current_primary_exception()};
+    }
+
+    [[noreturn]] inline void rethrow_exception(exception_ptr ptr)
+    {
+        if (!ptr)
+            terminate();
+
+        auto raw = ptr.__get();
+        ptr = nullptr;
+        __cxa_rethrow_primary_exception(raw);
+    }
+
+    template<typename exception_type> inline exception_ptr make_exception_ptr(exception_type exception) noexcept
+    {
+#ifndef _LIBCPP_NO_EXCEPTIONS
+        try
+        {
+            throw exception;
+        }
+        catch (...)
+        {
+            return current_exception();
+        }
+#endif
+        (void)exception;
+        return nullptr;
+    }
+}
+
+// Trivially-destructible sentinel used as the exception alternative in
+// coroutine promise variants for SGX builds. std::exception_ptr has a
+// non-trivial destructor (CXA refcount), which forces std::variant into the
+// _Available destructor path whose __visit_alt dispatch crashes in the SGX
+// runtime. rpc::exception_ptr has a trivial destructor so the variant uses
+// the _TriviallyAvailable path (__destroy = default, no dispatch table invoked).
+// SGX enclaves do not propagate exceptions across the enclave boundary, so the
+// loss of actual exception storage is acceptable in this build mode.
+namespace rpc
+{
+    struct exception_ptr
+    {
+    };
+}

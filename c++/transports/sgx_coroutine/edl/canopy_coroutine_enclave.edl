@@ -1,0 +1,36 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+enclave
+{
+    from "sgx_tstdc.edl" import*;
+
+    struct canopy_coroutine_startup_status
+    {
+        uint32_t abi_version;
+        uint32_t state;
+        int32_t error_code;
+        uint32_t requested_workers;
+        uint32_t attached_workers;
+    };
+
+    trusted
+    {
+    public
+        int canopy_coroutine_init_enclave(
+            size_t req_sz,
+            [ in, size = req_sz ] const char* req,
+            [user_check] void* host_to_enclave_queue,
+            [user_check] void* enclave_to_host_queue,
+            [user_check] struct canopy_coroutine_startup_status* startup_status,
+            size_t resp_cap,
+            [ out, size = resp_cap ] char* resp,
+            [out] size_t* resp_sz);
+
+    public
+        int canopy_coroutine_enter_thread(size_t req_sz, [ in, size = req_sz ] const char* req);
+    };
+
+    untrusted{};
+};

@@ -1,0 +1,17 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+#pragma once
+
+#if !defined(FOR_SGX)
+#  error "rpc/internal/polyfill/sgx/shared_mutex is only valid for SGX builds"
+#endif
+
+#include <mutex>
+
+namespace rpc
+{
+    using shared_mutex = std::mutex;
+    template<typename Mutex> using shared_lock = std::unique_lock<Mutex>;
+}

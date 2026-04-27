@@ -12,15 +12,23 @@ message("common_enclave")
 if(${CANOPY_BUILD_ENCLAVE})
   add_library(common_enclave INTERFACE)
 
+  if(CANOPY_BUILD_COROUTINE)
+    set(COMMON_ENCLAVE_TRANSPORT_LIB transport_sgx_coroutine_enclave)
+    set(COMMON_ENCLAVE_EDL_LIB canopy_coroutine_edl_enclave)
+  else()
+    set(COMMON_ENCLAVE_TRANSPORT_LIB transport_sgx_enclave)
+    set(COMMON_ENCLAVE_EDL_LIB marshal_test_edl_enclave)
+  endif()
+
   target_include_directories(common_enclave INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
                                                       "$<INSTALL_INTERFACE:include/marshalled_tests>")
 
   target_link_libraries(
     common_enclave
-    INTERFACE transport_sgx_enclave
+    INTERFACE ${COMMON_ENCLAVE_TRANSPORT_LIB}
               transport_local_enclave
               rpc_enclave
-              marshal_test_edl_enclave
+              ${COMMON_ENCLAVE_EDL_LIB}
               ${CANOPY_TELEMETRY_ENCLAVE_EDL}
               ${CANOPY_ENCLAVE_FMT_LIB}
               example_idl_enclave
@@ -32,7 +40,11 @@ endif()
 
 set(SOURCES ${COROUTINE_SERVICE_PROXIES} src/foo_impl.cpp src/tests.cpp)
 if(CANOPY_BUILD_ENCLAVE)
-  set(ADDITIONAL_TARGET marshal_test_edl rpc_telemetry_edl_header)
+  if(CANOPY_BUILD_COROUTINE)
+    set(ADDITIONAL_TARGET canopy_coroutine_edl)
+  else()
+    set(ADDITIONAL_TARGET marshal_test_edl rpc_telemetry_edl_header)
+  endif()
 endif()
 
 add_library(common_tests STATIC ${SOURCES})

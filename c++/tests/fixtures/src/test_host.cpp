@@ -6,6 +6,11 @@
 #include "test_host.h"
 #include "common/foo_impl.h"
 #include <cstdint>
+#if defined(CANOPY_BUILD_ENCLAVE) && !defined(CANOPY_BUILD_COROUTINE)
+#  include <transports/sgx/transport.h>
+#elif defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)
+#  include <transports/sgx_coroutine/enclave/transport.h>
+#endif
 
 host::host()
 {
@@ -38,7 +43,11 @@ CORO_TASK(error_code) host::create_enclave(rpc::shared_ptr<yyy::i_example>& targ
     rpc::shared_ptr<yyy::i_host> host = shared_from_this();
     auto serv = current_host_service.lock();
 
+#  ifdef CANOPY_BUILD_COROUTINE
+    auto transport = std::make_shared<rpc::sgx::coro::enclave::transport>("an enclave", serv, coroutine_enclave_path);
+#  else
     auto transport = std::make_shared<rpc::sgx::enclave_transport>("an enclave", serv, enclave_path);
+#  endif
 
     auto result = CO_AWAIT serv->connect_to_zone<yyy::i_host, yyy::i_example>("an enclave", transport, host);
     target = std::move(result.output_interface);

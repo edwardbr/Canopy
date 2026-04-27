@@ -93,5 +93,22 @@ namespace rpc::telemetry
      * Clears the per-test child sinks owned by a multiplexer.
      */
     bool reset_telemetry_for_test(const std::shared_ptr<i_telemetry_service>& service);
+#elif !defined(CANOPY_BUILD_COROUTINE)
+    /**
+     * Creates the enclave-side telemetry sink that forwards events to host OCALLs.
+     */
+    bool create_enclave_telemetry_service(std::shared_ptr<i_telemetry_service>& service);
+#else
+    /**
+     * Creates the coroutine enclave telemetry sink; events are buffered until the stream transport drains them.
+     */
+    bool create_coro_enclave_telemetry_service(std::shared_ptr<i_telemetry_service>& service);
+
+    /**
+     * Moves pending coroutine enclave telemetry events into the supplied vector.
+     */
+    bool pop_coro_enclave_telemetry_events(
+        const std::shared_ptr<i_telemetry_service>& service,
+        std::vector<rpc::telemetry_event>& events);
 #endif
 }

@@ -9,7 +9,7 @@ message("marshal_test_enclave")
 # ######################################################################################################################
 # marshal_test_enclave
 
-if(${CANOPY_BUILD_ENCLAVE})
+if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
 
   add_enclave_library(
     marshal_test_enclave
@@ -18,6 +18,7 @@ if(${CANOPY_BUILD_ENCLAVE})
     TRUSTED_LIBS
       rpc_enclave
       marshal_test_edl_enclave
+      rpc_telemetry_enclave
       rpc_telemetry_edl_header_enclave
       transport_sgx_enclave
       transport_local_enclave
@@ -55,6 +56,62 @@ if(${CANOPY_BUILD_ENCLAVE})
   endif()
   enclave_sign(
     marshal_test_enclave
+    KEY marshal_test_enclave_private.pem
+    CONFIG marshal_test_enclave.config.${SGX_MODE}.xml)
+endif()
+
+if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
+
+  add_enclave_library(
+    marshal_test_coroutine_enclave
+    SRCS marshal_test_coroutine_enclave.cpp
+    HEADER_ONLY_LIBS
+    TRUSTED_LIBS
+      libcoro_enclave
+      rpc_enclave
+      streaming_enclave
+      transport_streaming_enclave
+      streaming_transport_idl_enclave
+      transport_sgx_coroutine_enclave
+      rpc_telemetry_enclave
+      streaming_spsc_queue_enclave
+      canopy_coroutine_edl_enclave
+      transport_local_enclave
+      common_enclave
+      example_import_idl_enclave
+      example_idl_enclave
+      example_shared_idl_enclave
+      yas_common
+      ${SGX_ENCLAVE_LIBS})
+
+  target_compile_definitions(marshal_test_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
+  target_include_directories(
+    marshal_test_coroutine_enclave
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx_coroutine/include>"
+           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
+           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
+           "$<INSTALL_INTERFACE:include/marshalled_tests>"
+    PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(EXTRA_MARSHAL_TEST_COROUTINE_ENCLAVE_COMPILE_OPTIONS -Wno-unused-parameter)
+  endif()
+
+  target_compile_options(
+    marshal_test_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE}
+                                           ${EXTRA_MARSHAL_TEST_COROUTINE_ENCLAVE_COMPILE_OPTIONS})
+  target_link_options(marshal_test_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
+
+  set_property(TARGET marshal_test_coroutine_enclave PROPERTY COMPILE_PDB_NAME marshal_test_coroutine_enclave)
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(marshal_test_coroutine_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+
+  enclave_sign(
+    marshal_test_coroutine_enclave
     KEY marshal_test_enclave_private.pem
     CONFIG marshal_test_enclave.config.${SGX_MODE}.xml)
 endif()

@@ -28,7 +28,7 @@ namespace
         rpc::zone child_zone,
         rpc::libcoro_spsc_dynamic_dll::queue_pair* queues)
     {
-        auto service = rpc::root_service::create("ipc_child_process", child_zone, scheduler);
+        auto service = CO_AWAIT rpc::root_service::create("ipc_child_process", child_zone, scheduler);
 
         auto stream
             = std::make_shared<streaming::spsc_queue::stream>(&queues->dll_to_host, &queues->host_to_dll, scheduler);

@@ -4,9 +4,14 @@
 ]]
 cmake_minimum_required(VERSION 3.24)
 
-if(CANOPY_BUILD_ENCLAVE)
+if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
   set(ENCLAVE_DEPENDANCIES marshal_test_edl rpc_telemetry_edl_header)
   set(SGX_TRANSPORT_TEST_LIB transport_sgx_test)
+endif()
+
+if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
+  set(SGX_COROUTINE_TRANSPORT_LIB transport_sgx_coroutine)
+  set(SGX_COROUTINE_TRANSPORT_TEST_LIB transport_sgx_coroutine_test)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
@@ -123,6 +128,8 @@ target_link_libraries(
          ${LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB}
          ${IPC_TRANSPORT_TEST_LIB}
          ${SGX_TRANSPORT_TEST_LIB}
+         ${SGX_COROUTINE_TRANSPORT_LIB}
+         ${SGX_COROUTINE_TRANSPORT_TEST_LIB}
          ${STREAMING_TRANSPORT_LIB}
          ${STREAMING_TRANSPORT_TEST_LIB}
          yas_common
@@ -170,6 +177,9 @@ if(CANOPY_BUILD_COROUTINE)
   add_dependencies(rpc_test ${LIBCORO_DLL_SCHEDULED_TEST_TARGET})
   add_dependencies(rpc_test ${LIBCORO_HOST_SCHEDULED_TEST_TARGET})
   add_dependencies(rpc_test ${LIBCORO_IPC_DLL_TEST_TARGET} ${LIBCORO_IPC_DLL_LOADER_TARGET})
+  if(CANOPY_BUILD_ENCLAVE)
+    add_dependencies(rpc_test marshal_test_coroutine_enclave)
+  endif()
 endif()
 
 include(CTest)

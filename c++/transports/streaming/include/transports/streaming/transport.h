@@ -368,7 +368,6 @@ namespace rpc::stream_transport
                     CO_RETURN peer_call_result<ReceivePayload>{rpc::error::TRANSPORT_ERROR(), {}};
                 }
             }
-
             send_payload(
                 protocol_version, message_direction::send, std::forward<SendPayload>(sendPayload), sequence_number);
 

@@ -3,17 +3,22 @@
 
 #pragma once
 
-#include <coro/coro.hpp>
 #include <rpc/rpc.h>
+#include <coro/task.hpp>
+#include <coro/net/io_status.hpp>
 
-#include <canopy/network_config/network_args.h>
+#ifndef FOR_SGX
+#  include <canopy/network_config/network_args.h>
+#endif
 
 namespace streaming
 {
     struct peer_info
     {
+#ifndef FOR_SGX
         canopy::network_config::ip_address addr = {};
         canopy::network_config::ip_address_family family = canopy::network_config::ip_address_family::ipv4;
+#endif
         uint16_t port = 0;
     };
 

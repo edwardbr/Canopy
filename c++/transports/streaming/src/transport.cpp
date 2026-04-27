@@ -4,8 +4,13 @@
  */
 
 #include <atomic>
-#include <cerrno>
+#ifndef FOR_SGX
+#  include <cerrno>
+#endif
 #include <transports/streaming/transport.h>
+#if defined(FOR_SGX) && defined(CANOPY_BUILD_COROUTINE) && defined(CANOPY_USE_TELEMETRY)
+#  include <rpc/telemetry/telemetry_service_factory.h>
+#endif
 
 namespace rpc::stream_transport
 {
@@ -21,8 +26,12 @@ namespace rpc::stream_transport
             if (send_status.is_closed())
                 return true;
 
+#ifndef FOR_SGX
             return send_status.type == coro::net::io_status::kind::native
                    && (send_status.native_code == EPIPE || send_status.native_code == ECONNRESET);
+#else
+            return false;
+#endif
         }
     } // namespace
 
@@ -46,6 +55,10 @@ namespace rpc::stream_transport
     void transport::initialise_after_construction()
     {
         keep_alive_ = std::static_pointer_cast<rpc::stream_transport::transport>(shared_from_this());
+#ifdef FOR_SGX
+        if (auto svc = get_service(); svc && svc->get_scheduler())
+            send_queue_ready_.set_scheduler(svc->get_scheduler().get());
+#endif
         set_status(rpc::transport_status::CONNECTED);
 
         if (connection_handler_)
@@ -764,6 +777,26 @@ namespace rpc::stream_transport
         auto svc = get_service();
         RPC_ASSERT(svc);
 
+#if defined(FOR_SGX) && defined(CANOPY_BUILD_COROUTINE) && defined(CANOPY_USE_TELEMETRY)
+        auto drain_pending_telemetry = [this]()
+        {
+            auto telemetry_service = rpc::telemetry::get_telemetry_service();
+            if (!telemetry_service)
+                return false;
+
+            std::vector<rpc::telemetry_event> events;
+            if (!rpc::telemetry::pop_coro_enclave_telemetry_events(telemetry_service, events) || events.empty())
+                return false;
+
+            for (auto& event : events)
+            {
+                event.zone_id = get_zone_id();
+                send_payload(rpc::get_version(), message_direction::one_way, std::move(event), 0, send_priority::high);
+            }
+            return true;
+        };
+#endif
+
         while (get_status() == rpc::transport_status::CONNECTED)
         {
             queued_send_message item;
@@ -829,6 +862,10 @@ namespace rpc::stream_transport
             {
                 if (get_status() != rpc::transport_status::CONNECTED)
                     continue;
+#if defined(FOR_SGX) && defined(CANOPY_BUILD_COROUTINE) && defined(CANOPY_USE_TELEMETRY)
+                if (drain_pending_telemetry())
+                    continue;
+#endif
                 CO_AWAIT svc->schedule();
                 if (get_status() != rpc::transport_status::CONNECTED)
                     continue;
@@ -846,6 +883,9 @@ namespace rpc::stream_transport
             CO_RETURN;
         }
 
+#if defined(FOR_SGX) && defined(CANOPY_BUILD_COROUTINE) && defined(CANOPY_USE_TELEMETRY)
+        drain_pending_telemetry();
+#endif
         if (!(CO_AWAIT flush_send_queue()))
         {
             send_cleanup_done_.store(true, std::memory_order_release);

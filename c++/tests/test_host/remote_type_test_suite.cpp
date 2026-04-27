@@ -46,7 +46,9 @@
 #include "test_host.h"
 #include <transport/tests/direct/setup.h>
 #include <transport/tests/local/setup.h>
-#ifdef CANOPY_BUILD_ENCLAVE
+#if defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)
+#  include <transport/tests/sgx_coroutine/setup.h>
+#elif defined(CANOPY_BUILD_ENCLAVE)
 #  include <transport/tests/sgx/setup.h>
 #endif
 #ifdef CANOPY_BUILD_COROUTINE
@@ -121,7 +123,13 @@ using remote_implementations = ::testing::Types<
 // streaming_iouring_setup<true, true, true>
 #endif
 
-#ifdef CANOPY_BUILD_ENCLAVE
+#if defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)
+    ,
+    sgx_coroutine_setup<true, false, false>,
+    sgx_coroutine_setup<true, false, true>,
+    sgx_coroutine_setup<true, true, false>,
+    sgx_coroutine_setup<true, true, true>
+#elif defined(CANOPY_BUILD_ENCLAVE)
     ,
     sgx_setup<true, false, false>,
     sgx_setup<true, false, true>,

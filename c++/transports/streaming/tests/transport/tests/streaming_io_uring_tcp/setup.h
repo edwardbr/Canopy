@@ -16,11 +16,10 @@ protected:
     CORO_TASK(bool) do_coro_setup() override
     {
         auto root_zone_id = rpc::DEFAULT_PREFIX;
-        auto peer_zone_id = rpc::DEFAULT_PREFIX;
-        std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
+        auto peer_zone_id = this->make_peer_zone_id();
 
-        this->peer_service_ = rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
-        this->root_service_ = rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
+        this->peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
+        this->root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
         current_host_service = this->root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());

@@ -22,6 +22,7 @@
 [submodule "c++/submodules/libcoro"]
 	path = c++/submodules/libcoro
 	url = https://github.com/edwardbr/libcoro.git
+	branch = client_and_server_with_shared_ptr_support
 	update = none
 	shallow = true
 [submodule "c++/submodules/c-ares"]

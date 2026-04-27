@@ -6,7 +6,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 # SGX transport requires enclave support
-if(CANOPY_BUILD_ENCLAVE)
+if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
   add_subdirectory(edl)
 
   add_library(transport_sgx src/transport.cpp)

@@ -54,10 +54,10 @@ namespace rpc::sgx
             int status)
         {
 #    ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             {
                 auto message = std::string(call_name) + " failed " + std::to_string(status);
-                telemetry_service->message({static_cast<uint64_t>(rpc::i_telemetry_service::err), message});
+                telemetry_service->message({rpc::telemetry::i_telemetry_service::err, message.c_str()});
             }
 #    endif
             RPC_ERROR("{} gave an enclave error {}", call_name, status);
@@ -86,6 +86,7 @@ namespace rpc::sgx
             return send_request{params.protocol_version,
                 params.encoding_type,
                 params.tag,
+                params.request_id,
                 params.caller_zone_id,
                 params.remote_object_id,
                 params.interface_id,
@@ -122,6 +123,7 @@ namespace rpc::sgx
                 params.remote_object_id,
                 params.caller_zone_id,
                 params.requesting_zone_id,
+                params.request_id,
                 params.build_out_param_channel,
                 params.in_back_channel};
         }
@@ -156,15 +158,16 @@ namespace rpc::sgx
 
         rpc::send_params from_sgx_request(const send_request& request)
         {
-            return rpc::send_params{request.protocol_version,
-                request.encoding_type,
-                request.tag,
-                request.caller_zone_id,
-                request.remote_object_id,
-                request.interface_id,
-                request.method_id,
-                request.in_data,
-                request.in_back_channel};
+            return rpc::send_params{FLD(protocol_version) request.protocol_version,
+                FLD(encoding_type) request.encoding_type,
+                FLD(tag) request.tag,
+                FLD(caller_zone_id) request.caller_zone_id,
+                FLD(remote_object_id) request.remote_object_id,
+                FLD(interface_id) request.interface_id,
+                FLD(method_id) request.method_id,
+                FLD(in_data) request.in_data,
+                FLD(in_back_channel) request.in_back_channel,
+                FLD(request_id) request.request_id};
         }
 
         rpc::post_params from_sgx_request(const post_request& request)
@@ -196,7 +199,8 @@ namespace rpc::sgx
                 request.caller_zone_id,
                 request.requesting_zone_id,
                 request.build_out_param_channel,
-                request.in_back_channel};
+                request.in_back_channel,
+                request.request_id};
         }
 
         rpc::release_params from_sgx_request(const release_request& request)
@@ -652,6 +656,34 @@ namespace rpc::sgx
     }
 }
 
+namespace
+{
+#    if defined(CANOPY_USE_TELEMETRY) && !defined(CANOPY_BUILD_COROUTINE)
+    rpc::zone make_sgx_telemetry_zone(uint64_t subnet)
+    {
+        auto address = rpc::DEFAULT_PREFIX;
+        std::ignore = address.set_subnet(subnet);
+        return rpc::zone{address};
+    }
+
+    rpc::remote_object make_sgx_telemetry_remote_object(
+        uint64_t destination_zone_id,
+        uint64_t object_id)
+    {
+        auto remote_object_id = make_sgx_telemetry_zone(destination_zone_id).with_object({object_id});
+        RPC_ASSERT(remote_object_id.has_value());
+        return *remote_object_id;
+    }
+
+    template<typename Fn> void with_sgx_telemetry(Fn&& fn)
+    {
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            fn(*telemetry_service);
+    }
+#    endif
+}
+
+#    ifndef CANOPY_BUILD_COROUTINE
 extern "C"
 {
     int call_host(
@@ -804,258 +836,860 @@ extern "C"
         std::abort();
     }
 
+#      ifndef CANOPY_BUILD_COROUTINE
     void on_service_creation_host(
-        const char*,
-        uint64_t,
-        uint64_t)
+        const char* name,
+        uint64_t zone_id,
+        uint64_t parent_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_creation(
+                    {name ? name : "", make_sgx_telemetry_zone(zone_id), make_sgx_telemetry_zone(parent_zone_id)});
+            });
+#        else
+        std::ignore = name;
+        std::ignore = zone_id;
+        std::ignore = parent_zone_id;
+#        endif
     }
-    void on_service_deletion_host(uint64_t) { }
-    void on_service_try_cast_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+    void on_service_deletion_host(uint64_t zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry([&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            { telemetry_service.on_service_deletion({make_sgx_telemetry_zone(zone_id)}); });
+#        else
+        std::ignore = zone_id;
+#        endif
+    }
+    void on_service_try_cast_host(
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id,
+        uint64_t object_id,
+        uint64_t interface_id)
+    {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_try_cast(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        {interface_id}});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+#        endif
     }
     void on_service_add_ref_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t requesting_zone_id,
+        uint64_t options)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_add_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        make_sgx_telemetry_zone(requesting_zone_id),
+                        static_cast<rpc::add_ref_options>(options)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = caller_zone_id;
+        std::ignore = requesting_zone_id;
+        std::ignore = options;
+#        endif
     }
     void on_service_release_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t options)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_release(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        static_cast<rpc::release_options>(options)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = caller_zone_id;
+        std::ignore = options;
+#        endif
     }
     void on_service_proxy_creation_host(
-        const char*,
-        const char*,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        const char* service_name,
+        const char* service_proxy_name,
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_proxy_creation(
+                    {service_name ? service_name : "",
+                        service_proxy_name ? service_proxy_name : "",
+                        make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        make_sgx_telemetry_zone(caller_zone_id)});
+            });
+#        else
+        std::ignore = service_name;
+        std::ignore = service_proxy_name;
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+#        endif
     }
     void on_cloned_service_proxy_creation_host(
-        const char*,
-        const char*,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        const char* service_name,
+        const char* service_proxy_name,
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_cloned_service_proxy_creation(
+                    {service_name ? service_name : "",
+                        service_proxy_name ? service_proxy_name : "",
+                        make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        make_sgx_telemetry_zone(caller_zone_id)});
+            });
+#        else
+        std::ignore = service_name;
+        std::ignore = service_proxy_name;
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+#        endif
     }
     void on_service_proxy_deletion_host(
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_proxy_deletion(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        make_sgx_telemetry_zone(caller_zone_id)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+#        endif
     }
     void on_service_proxy_try_cast_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id,
+        uint64_t object_id,
+        uint64_t interface_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_proxy_try_cast(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        {interface_id}});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+#        endif
     }
     void on_service_proxy_add_ref_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t requesting_zone_id,
+        uint64_t options)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_proxy_add_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        make_sgx_telemetry_zone(requesting_zone_id),
+                        static_cast<rpc::add_ref_options>(options)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = caller_zone_id;
+        std::ignore = requesting_zone_id;
+        std::ignore = options;
+#        endif
     }
     void on_service_proxy_release_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id,
+        uint64_t object_id,
+        uint64_t options)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_proxy_release(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        static_cast<rpc::release_options>(options)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+        std::ignore = object_id;
+        std::ignore = options;
+#        endif
     }
     void on_service_proxy_add_external_ref_host(
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_proxy_add_external_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        make_sgx_telemetry_zone(caller_zone_id)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+#        endif
     }
     void on_service_proxy_release_external_ref_host(
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t caller_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_service_proxy_release_external_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        make_sgx_telemetry_zone(caller_zone_id)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = caller_zone_id;
+#        endif
     }
     void on_impl_creation_host(
-        const char*,
-        uint64_t,
-        uint64_t)
+        const char* name,
+        uint64_t address,
+        uint64_t zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry([&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            { telemetry_service.on_impl_creation({name ? name : "", address, make_sgx_telemetry_zone(zone_id)}); });
+#        else
+        std::ignore = name;
+        std::ignore = address;
+        std::ignore = zone_id;
+#        endif
     }
     void on_impl_deletion_host(
-        uint64_t,
-        uint64_t)
+        uint64_t address,
+        uint64_t zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry([&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            { telemetry_service.on_impl_deletion({address, make_sgx_telemetry_zone(zone_id)}); });
+#        else
+        std::ignore = address;
+        std::ignore = zone_id;
+#        endif
     }
     void on_stub_creation_host(
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t object_id,
+        uint64_t address)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry([&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            { telemetry_service.on_stub_creation({make_sgx_telemetry_zone(zone_id), {object_id}, address}); });
+#        else
+        std::ignore = zone_id;
+        std::ignore = object_id;
+        std::ignore = address;
+#        endif
     }
     void on_stub_deletion_host(
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t object_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry([&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            { telemetry_service.on_stub_deletion({make_sgx_telemetry_zone(zone_id), {object_id}}); });
+#        else
+        std::ignore = zone_id;
+        std::ignore = object_id;
+#        endif
     }
     void on_stub_send_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t object_id,
+        uint64_t interface_id,
+        uint64_t method_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_stub_send(
+                    {make_sgx_telemetry_zone(zone_id), {object_id}, {interface_id}, {method_id}});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+        std::ignore = method_id;
+#        endif
     }
     void on_stub_add_ref_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t object_id,
+        uint64_t interface_id,
+        uint64_t count,
+        uint64_t caller_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_stub_add_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        {object_id},
+                        {interface_id},
+                        count,
+                        make_sgx_telemetry_zone(caller_zone_id)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+        std::ignore = count;
+        std::ignore = caller_zone_id;
+#        endif
     }
     void on_stub_release_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t object_id,
+        uint64_t interface_id,
+        uint64_t count,
+        uint64_t caller_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_stub_release(
+                    {make_sgx_telemetry_zone(zone_id),
+                        {object_id},
+                        {interface_id},
+                        count,
+                        make_sgx_telemetry_zone(caller_zone_id)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+        std::ignore = count;
+        std::ignore = caller_zone_id;
+#        endif
     }
     void on_object_proxy_creation_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        int)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        int add_ref_done)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_object_proxy_creation(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        {object_id},
+                        add_ref_done != 0});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = add_ref_done;
+#        endif
     }
     void on_object_proxy_deletion_host(
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_object_proxy_deletion(
+                    {make_sgx_telemetry_zone(zone_id), make_sgx_telemetry_zone(destination_zone_id), {object_id}});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+#        endif
     }
     void on_interface_proxy_creation_host(
-        const char*,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        const char* name,
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t interface_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_interface_proxy_creation(
+                    {name ? name : "",
+                        make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        {object_id},
+                        {interface_id}});
+            });
+#        else
+        std::ignore = name;
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+#        endif
     }
     void on_interface_proxy_deletion_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t interface_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_interface_proxy_deletion(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        {object_id},
+                        {interface_id}});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+#        endif
     }
     void on_interface_proxy_send_host(
-        const char*,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        const char* method_name,
+        uint64_t zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t interface_id,
+        uint64_t method_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_interface_proxy_send(
+                    {method_name ? method_name : "",
+                        make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(destination_zone_id),
+                        {object_id},
+                        {interface_id},
+                        {method_id}});
+            });
+#        else
+        std::ignore = method_name;
+        std::ignore = zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = interface_id;
+        std::ignore = method_id;
+#        endif
     }
     void message_host(
-        uint64_t,
-        const char*)
+        uint64_t level,
+        const char* message)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry([&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            { telemetry_service.message({level, message ? message : ""}); });
+#        else
+        std::ignore = level;
+        std::ignore = message;
+#        endif
     }
     void on_transport_creation_host(
-        const char*,
-        uint64_t,
-        uint64_t,
-        uint32_t)
+        const char* name,
+        uint64_t zone_id,
+        uint64_t adjacent_zone_id,
+        uint32_t status)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_transport_creation(
+                    {name ? name : "",
+                        make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(adjacent_zone_id),
+                        static_cast<rpc::transport_status>(status)});
+            });
+#        else
+        std::ignore = name;
+        std::ignore = zone_id;
+        std::ignore = adjacent_zone_id;
+        std::ignore = status;
+#        endif
     }
     void on_transport_deletion_host(
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t adjacent_zone_id)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_transport_deletion(
+                    {make_sgx_telemetry_zone(zone_id), make_sgx_telemetry_zone(adjacent_zone_id)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = adjacent_zone_id;
+#        endif
     }
     void on_transport_status_change_host(
-        const char*,
-        uint64_t,
-        uint64_t,
-        uint32_t,
-        uint32_t)
+        const char* name,
+        uint64_t zone_id,
+        uint64_t adjacent_zone_id,
+        uint32_t old_status,
+        uint32_t new_status)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_transport_status_change(
+                    {name ? name : "",
+                        make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(adjacent_zone_id),
+                        static_cast<rpc::transport_status>(old_status),
+                        static_cast<rpc::transport_status>(new_status)});
+            });
+#        else
+        std::ignore = name;
+        std::ignore = zone_id;
+        std::ignore = adjacent_zone_id;
+        std::ignore = old_status;
+        std::ignore = new_status;
+#        endif
     }
     void on_transport_add_destination_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t adjacent_zone_id,
+        uint64_t destination,
+        uint64_t caller)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_transport_add_destination(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(adjacent_zone_id),
+                        make_sgx_telemetry_zone(destination),
+                        make_sgx_telemetry_zone(caller)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = adjacent_zone_id;
+        std::ignore = destination;
+        std::ignore = caller;
+#        endif
     }
     void on_transport_remove_passthrough_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t adjacent_zone_id,
+        uint64_t destination,
+        uint64_t caller)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_transport_remove_destination(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(adjacent_zone_id),
+                        make_sgx_telemetry_zone(destination),
+                        make_sgx_telemetry_zone(caller)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = adjacent_zone_id;
+        std::ignore = destination;
+        std::ignore = caller;
+#        endif
+    }
+    void on_transport_outbound_add_ref_host(
+        uint64_t zone_id,
+        uint64_t adjacent_zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t requesting_zone_id,
+        uint64_t options)
+    {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_transport_outbound_add_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(adjacent_zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        make_sgx_telemetry_zone(requesting_zone_id),
+                        static_cast<rpc::add_ref_options>(options)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = adjacent_zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = caller_zone_id;
+        std::ignore = requesting_zone_id;
+        std::ignore = options;
+#        endif
+    }
+    void on_transport_inbound_add_ref_host(
+        uint64_t zone_id,
+        uint64_t adjacent_zone_id,
+        uint64_t destination_zone_id,
+        uint64_t object_id,
+        uint64_t caller_zone_id,
+        uint64_t requesting_zone_id,
+        uint64_t options)
+    {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_transport_inbound_add_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(adjacent_zone_id),
+                        make_sgx_telemetry_remote_object(destination_zone_id, object_id),
+                        make_sgx_telemetry_zone(caller_zone_id),
+                        make_sgx_telemetry_zone(requesting_zone_id),
+                        static_cast<rpc::add_ref_options>(options)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = adjacent_zone_id;
+        std::ignore = destination_zone_id;
+        std::ignore = object_id;
+        std::ignore = caller_zone_id;
+        std::ignore = requesting_zone_id;
+        std::ignore = options;
+#        endif
     }
     void on_pass_through_creation_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t forward_destination,
+        uint64_t reverse_destination,
+        uint64_t shared_count,
+        uint64_t optimistic_count)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_pass_through_creation(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(forward_destination),
+                        make_sgx_telemetry_zone(reverse_destination),
+                        shared_count,
+                        optimistic_count});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = forward_destination;
+        std::ignore = reverse_destination;
+        std::ignore = shared_count;
+        std::ignore = optimistic_count;
+#        endif
     }
     void on_pass_through_deletion_host(
-        uint64_t,
-        uint64_t,
-        uint64_t)
+        uint64_t zone_id,
+        uint64_t forward_destination,
+        uint64_t reverse_destination)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_pass_through_deletion(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(forward_destination),
+                        make_sgx_telemetry_zone(reverse_destination)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = forward_destination;
+        std::ignore = reverse_destination;
+#        endif
     }
     void on_pass_through_add_ref_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        int64_t,
-        int64_t)
+        uint64_t zone_id,
+        uint64_t forward_destination,
+        uint64_t reverse_destination,
+        uint64_t options,
+        int64_t shared_delta,
+        int64_t optimistic_delta)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_pass_through_add_ref(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(forward_destination),
+                        make_sgx_telemetry_zone(reverse_destination),
+                        static_cast<rpc::add_ref_options>(options),
+                        shared_delta,
+                        optimistic_delta});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = forward_destination;
+        std::ignore = reverse_destination;
+        std::ignore = options;
+        std::ignore = shared_delta;
+        std::ignore = optimistic_delta;
+#        endif
     }
     void on_pass_through_release_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        int64_t,
-        int64_t)
+        uint64_t zone_id,
+        uint64_t forward_destination,
+        uint64_t reverse_destination,
+        int64_t shared_delta,
+        int64_t optimistic_delta)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_pass_through_release(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(forward_destination),
+                        make_sgx_telemetry_zone(reverse_destination),
+                        shared_delta,
+                        optimistic_delta});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = forward_destination;
+        std::ignore = reverse_destination;
+        std::ignore = shared_delta;
+        std::ignore = optimistic_delta;
+#        endif
     }
     void on_pass_through_status_change_host(
-        uint64_t,
-        uint64_t,
-        uint64_t,
-        uint32_t,
-        uint32_t)
+        uint64_t zone_id,
+        uint64_t forward_destination,
+        uint64_t reverse_destination,
+        uint32_t forward_status,
+        uint32_t reverse_status)
     {
+#        ifdef CANOPY_USE_TELEMETRY
+        with_sgx_telemetry(
+            [&](const rpc::telemetry::i_telemetry_service& telemetry_service)
+            {
+                telemetry_service.on_pass_through_status_change(
+                    {make_sgx_telemetry_zone(zone_id),
+                        make_sgx_telemetry_zone(forward_destination),
+                        make_sgx_telemetry_zone(reverse_destination),
+                        static_cast<rpc::transport_status>(forward_status),
+                        static_cast<rpc::transport_status>(reverse_status)});
+            });
+#        else
+        std::ignore = zone_id;
+        std::ignore = forward_destination;
+        std::ignore = reverse_destination;
+        std::ignore = forward_status;
+        std::ignore = reverse_status;
+#        endif
     }
+#      endif
 }
+#    endif
 
 #  endif
 

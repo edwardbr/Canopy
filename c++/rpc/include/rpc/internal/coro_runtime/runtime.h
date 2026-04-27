@@ -4,8 +4,6 @@
  */
 #pragma once
 
-#include <coro/coro.hpp>
-
 #include <memory>
 #include <utility>
 
@@ -13,16 +11,29 @@ namespace rpc::coro
 {
     namespace net = ::coro::net;
 
-    using event = ::coro::event;
-    using scheduler = ::coro::scheduler;
-    using thread_pool = ::coro::thread_pool;
+#ifdef FOR_SGX
+    using event = sgx::event;
+    using scheduler = sgx::scheduler;
+    using thread_pool = sgx::thread_pool;
 
-    template<class T> using task = ::coro::task<T>;
+    template<class T> using task = sgx::task<T>;
 
     template<class Awaitable> decltype(auto) sync_wait(Awaitable&& awaitable)
     {
-        return ::coro::sync_wait(std::forward<Awaitable>(awaitable));
+        return sgx::sync_wait(std::forward<Awaitable>(awaitable));
     }
+#else
+    using event = libcoro::event;
+    using scheduler = libcoro::scheduler;
+    using thread_pool = libcoro::thread_pool;
+
+    template<class T> using task = libcoro::task<T>;
+
+    template<class Awaitable> decltype(auto) sync_wait(Awaitable&& awaitable)
+    {
+        return libcoro::sync_wait(std::forward<Awaitable>(awaitable));
+    }
+#endif
 
     using scheduler_ptr = std::shared_ptr<scheduler>;
 

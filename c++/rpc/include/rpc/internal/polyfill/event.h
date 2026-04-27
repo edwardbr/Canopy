@@ -25,6 +25,9 @@ namespace rpc
         void set() { event_.set(); }
         void reset() { event_.reset(); }
         bool is_set() const { return event_.is_set(); }
+#  ifdef FOR_SGX
+        void set_scheduler(rpc::coro::sgx::scheduler* scheduler) { event_.set_scheduler(scheduler); }
+#  endif
         CORO_TASK(void) wait() const { CO_AWAIT event_; }
 
     private:

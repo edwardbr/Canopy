@@ -46,8 +46,8 @@ namespace rpc::sgx
             int status)
         {
 #  ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->message({static_cast<uint64_t>(rpc::i_telemetry_service::err), call_name});
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+                telemetry_service->message({rpc::telemetry::i_telemetry_service::err, call_name});
 #  endif
             RPC_ERROR("{} failed {}", call_name, status);
         }
@@ -57,6 +57,7 @@ namespace rpc::sgx
             return send_request{params.protocol_version,
                 params.encoding_type,
                 params.tag,
+                params.request_id,
                 params.caller_zone_id,
                 params.remote_object_id,
                 params.interface_id,
@@ -93,6 +94,7 @@ namespace rpc::sgx
                 params.remote_object_id,
                 params.caller_zone_id,
                 params.requesting_zone_id,
+                params.request_id,
                 params.build_out_param_channel,
                 params.in_back_channel};
         }

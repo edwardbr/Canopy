@@ -41,7 +41,7 @@ public:
     {
         this->start_telemetry_test();
 
-        this->root_service_ = rpc::root_service::create(
+        this->root_service_ = CO_AWAIT rpc::root_service::create(
             "host",
             rpc::DEFAULT_PREFIX
 #ifdef CANOPY_BUILD_COROUTINE

@@ -17,12 +17,6 @@
 #  include <rpc/telemetry/i_telemetry_service.h>
 #endif
 
-// Other headers
-#ifdef CANOPY_BUILD_ENCLAVE
-#  include "untrusted/enclave_marshal_test_u.h"
-#  include <transports/sgx/transport.h>
-#endif
-#include <transports/local/transport.h>
 #include <example/example.h>
 #include "test_globals.h"
 

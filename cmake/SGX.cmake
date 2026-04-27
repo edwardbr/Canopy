@@ -442,10 +442,19 @@ else()
     list(APPEND CANOPY_ENCLAVE_DEFINES SGX_SDK_CONTAINS_DEBUG_INFORMATION)
   endif()
 
-  # Enclave include directories
+  # Enclave include directories.
+  #
+  # Put the Canopy SGX polyfill directory before the SGX libc++ headers. Enclave targets compile with -nostdinc++ and
+  # some third-party coroutine headers include standard names such as <coroutine>, <chrono>, and <exception> directly.
+  # The leading polyfill path makes those standard-name includes resolve to the enclave-safe implementations without
+  # exposing rpc/internal/polyfill/sgx/... includes from public Canopy headers.
+  set(CANOPY_ENCLAVE_POLYFILL_INCLUDES ${CMAKE_SOURCE_DIR}/c++/rpc/include/rpc/internal/polyfill/sgx)
   set(CANOPY_ENCLAVE_LIBC_INCLUDES ${SGX_INCLUDE_DIR} ${SGX_TLIBC_INCLUDE_DIR})
-  set(CANOPY_ENCLAVE_LIBCXX_INCLUDES ${CANOPY_ENCLAVE_LIBC_INCLUDES} ${SGX_LIBCXX_INCLUDE_DIR}
-                                     ${SGX_LIBSTDCXX_INCLUDE_DIR})
+  set(CANOPY_ENCLAVE_LIBCXX_INCLUDES ${CANOPY_ENCLAVE_POLYFILL_INCLUDES} ${CANOPY_ENCLAVE_LIBC_INCLUDES}
+                                     ${SGX_LIBCXX_INCLUDE_DIR} ${SGX_LIBSTDCXX_INCLUDE_DIR})
+  if(CANOPY_BUILD_COROUTINE)
+    list(APPEND CANOPY_ENCLAVE_LIBCXX_INCLUDES ${CMAKE_SOURCE_DIR}/c++/submodules/libcoro/include)
+  endif()
 endif()
 
 # ######################################################################################################################

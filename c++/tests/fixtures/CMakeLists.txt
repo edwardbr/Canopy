@@ -25,7 +25,11 @@ target_include_directories(
 
 # Add enclave dependencies if needed
 if(CANOPY_BUILD_ENCLAVE)
-  set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header transport_sgx)
+  if(CANOPY_BUILD_COROUTINE)
+    set(ENCLAVE_DEPENDENCIES canopy_coroutine_edl transport_sgx_coroutine)
+  else()
+    set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header transport_sgx)
+  endif()
 endif()
 
 # Link with required libraries

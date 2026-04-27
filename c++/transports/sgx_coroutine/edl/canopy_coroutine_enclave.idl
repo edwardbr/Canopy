@@ -1,0 +1,38 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "streaming/stream_transport.idl"
+
+namespace rpc
+{
+    namespace sgx
+    {
+        namespace coro
+        {
+            namespace protocol
+            {
+                struct init_request
+                {
+                    rpc::zone host_zone_id;
+                    rpc::zone enclave_zone_id;
+                    rpc::remote_object root_remote_object;
+                };
+
+                struct init_response
+                {
+                    int error_code;
+                    rpc::remote_object root_object_id;
+                };
+
+                struct enter_thread_request
+                {
+                    rpc::zone enclave_zone_id;
+                    uint64_t worker_index;
+                };
+            }
+        }
+    }
+}

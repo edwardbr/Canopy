@@ -14,7 +14,7 @@ target_compile_options(streaming_tcp PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_
 target_link_options(streaming_tcp PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   streaming_tcp
-  PUBLIC streaming libcoro
+  PUBLIC streaming libcoro canopy_cares
   PRIVATE rpc)
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_tcp PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")

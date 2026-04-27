@@ -7,7 +7,6 @@
 #include <memory>
 #include <optional>
 
-#include <coro/coro.hpp>
 #include <rpc/rpc.h>
 
 #include <streaming/stream.h>
@@ -19,7 +18,7 @@ namespace streaming
     public:
         virtual ~stream_acceptor() = default;
 
-        virtual bool init(std::shared_ptr<coro::scheduler> scheduler)
+        virtual bool init(std::shared_ptr<rpc::coro::scheduler> scheduler)
         {
             (void)scheduler;
             return true;

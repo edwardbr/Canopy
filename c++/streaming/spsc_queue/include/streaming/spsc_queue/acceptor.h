@@ -20,7 +20,7 @@ namespace streaming::spsc_queue
         acceptor(
             queue_type* send_q,
             queue_type* recv_q,
-            std::shared_ptr<coro::scheduler> scheduler)
+            std::shared_ptr<rpc::coro::scheduler> scheduler)
             : send_q_(send_q)
             , recv_q_(recv_q)
             , scheduler_(std::move(scheduler))
@@ -42,7 +42,7 @@ namespace streaming::spsc_queue
     private:
         queue_type* send_q_;
         queue_type* recv_q_;
-        std::shared_ptr<coro::scheduler> scheduler_;
+        std::shared_ptr<rpc::coro::scheduler> scheduler_;
         bool accepted_ = false;
         bool stop_ = false;
     };
