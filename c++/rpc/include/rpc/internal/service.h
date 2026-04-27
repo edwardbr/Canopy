@@ -51,7 +51,7 @@
 #include <rpc/internal/stub.h>
 
 #ifdef CANOPY_USE_TELEMETRY
-#  include <rpc/telemetry/i_telemetry_service.h>
+#  include <rpc/internal/telemetry_fwd.h>
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
@@ -60,11 +60,6 @@
 
 namespace rpc
 {
-    class i_telemetry_service;
-#ifdef CANOPY_USE_TELEMETRY
-    std::shared_ptr<i_telemetry_service> get_telemetry_service();
-#endif
-
     class object_stub;
     class service;
     class child_service;
@@ -1003,8 +998,8 @@ namespace rpc
             , parent_zone_id_(parent_zone_id)
         {
 #  if defined(CANOPY_USE_TELEMETRY) && !defined(FOR_SGX)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+                telemetry_service->on_service_creation({name, zone_id, parent_zone_id});
 #  endif
         }
 #else
@@ -1019,8 +1014,8 @@ namespace rpc
             , parent_zone_id_(parent_zone_id)
         {
 #  if defined(CANOPY_USE_TELEMETRY) && !defined(FOR_SGX)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_service_creation(name, zone_id, parent_zone_id);
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+                telemetry_service->on_service_creation({name, zone_id, parent_zone_id});
 #  endif
         }
 #endif

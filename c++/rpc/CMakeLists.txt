@@ -9,10 +9,12 @@ if(CANOPY_USE_TELEMETRY)
   set(CANOPY_ENCLAVE_TELEMETRY_SERVICE rpc::rpc_telemetry_enclave)
   set(CANOPY_TELEMETRY_SERVICE rpc::rpc_telemetry)
   set(CANOPY_TELEMETRY_INTERFACE rpc::rpc_telemetry_interface)
+  set(CANOPY_TELEMETRY_TYPES_IDL telemetry_types_idl)
 else()
   set(CANOPY_ENCLAVE_TELEMETRY_SERVICE)
   set(CANOPY_TELEMETRY_SERVICE)
   set(CANOPY_TELEMETRY_INTERFACE)
+  set(CANOPY_TELEMETRY_TYPES_IDL)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE)
@@ -104,7 +106,8 @@ target_include_directories(
 
 target_link_libraries(
   rpc
-  PUBLIC ${CANOPY_TELEMETRY_INTERFACE} ${CANOPY_TELEMETRY_SERVICE} rpc_types_idl
+  PUBLIC ${CANOPY_TELEMETRY_INTERFACE} ${CANOPY_TELEMETRY_SERVICE} rpc_types_idl logging_idl
+         ${CANOPY_TELEMETRY_TYPES_IDL}
   PRIVATE yas_common ${CANOPY_LIBRARIES} ${CANOPY_FMT_LIB})
 
 target_compile_options(rpc PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})

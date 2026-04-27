@@ -240,15 +240,15 @@ namespace websocket_protocol
     transport::outbound_send(rpc::send_params params)
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_outbound_send(
-                get_zone_id(),
-                get_adjacent_zone_id(),
-                params.remote_object_id,
-                params.caller_zone_id,
-                params.interface_id,
-                params.method_id);
+                {get_zone_id(),
+                    get_adjacent_zone_id(),
+                    params.remote_object_id,
+                    params.caller_zone_id,
+                    params.interface_id,
+                    params.method_id});
         }
 #endif
         if (stream_->is_closed())
@@ -289,15 +289,15 @@ namespace websocket_protocol
     transport::outbound_post(rpc::post_params params)
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_transport_outbound_post(
-                get_zone_id(),
-                get_adjacent_zone_id(),
-                params.remote_object_id,
-                params.caller_zone_id,
-                params.interface_id,
-                params.method_id);
+                {get_zone_id(),
+                    get_adjacent_zone_id(),
+                    params.remote_object_id,
+                    params.caller_zone_id,
+                    params.interface_id,
+                    params.method_id});
         }
 #endif
         if (stream_->is_closed())

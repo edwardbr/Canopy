@@ -12,7 +12,7 @@
 
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
-#  include <rpc/telemetry/multiplexing_telemetry_service.h>
+#  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
 
 template<bool UseHostInChild> class in_memory_setup
@@ -68,11 +68,8 @@ public:
 #endif
 #ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->start_test(test_info->test_suite_name(), test_info->name());
-        }
+        rpc::telemetry::start_telemetry_test(
+            rpc::telemetry::get_telemetry_service(), test_info->test_suite_name(), test_info->name());
 #endif
 
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());
@@ -86,11 +83,7 @@ public:
         i_host_ptr_ = nullptr;
         i_example_ptr_ = nullptr;
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service()))
-        {
-            telemetry_service->reset_for_test();
-        }
+        rpc::telemetry::reset_telemetry_for_test(rpc::telemetry::get_telemetry_service());
 #endif
     }
 };

@@ -10,21 +10,25 @@
 host::host()
 {
 #ifdef CANOPY_USE_TELEMETRY
-    if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+    if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+    {
         telemetry_service->on_impl_creation(
-            "host",
-            reinterpret_cast<std::uintptr_t>(this),
-            rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            {"host",
+                reinterpret_cast<std::uintptr_t>(this),
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone()});
+    }
 #endif
 }
 
 host::~host()
 {
 #ifdef CANOPY_USE_TELEMETRY
-    if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+    if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+    {
         telemetry_service->on_impl_deletion(
-            reinterpret_cast<std::uintptr_t>(this),
-            rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            {reinterpret_cast<std::uintptr_t>(this),
+                rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone()});
+    }
 #endif
 }
 

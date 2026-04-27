@@ -4,7 +4,7 @@
  */
 
 #include <rpc/rpc.h>
-#include <rpc/telemetry/animation_telemetry_service.h>
+#include <rpc/telemetry/telemetry_service_factory.h>
 
 #include <algorithm>
 #include <fstream>
@@ -38,7 +38,167 @@ namespace
     }
 }
 
-namespace rpc
+#include <chrono>
+#include <filesystem>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include <rpc/telemetry/i_telemetry_service.h>
+
+namespace rpc::telemetry
+{
+    class animation_telemetry_service : public i_telemetry_service
+    {
+    public:
+        static bool create(
+            std::shared_ptr<i_telemetry_service>& service,
+            const std::string& test_suite_name,
+            const std::string& name,
+            const std::filesystem::path& directory);
+
+        ~animation_telemetry_service() override;
+
+        void on_service_creation(const rpc::telemetry::service_creation_event& event) const override;
+        void on_service_deletion(const rpc::telemetry::service_deletion_event& event) const override;
+        void on_service_send(const rpc::telemetry::service_send_event& event) const override;
+        void on_service_post(const rpc::telemetry::service_post_event& event) const override;
+        void on_service_try_cast(const rpc::telemetry::service_try_cast_event& event) const override;
+        void on_service_add_ref(const rpc::telemetry::service_add_ref_event& event) const override;
+        void on_service_release(const rpc::telemetry::service_release_event& event) const override;
+        void on_service_object_released(const rpc::telemetry::service_object_released_event& event) const override;
+        void on_service_transport_down(const rpc::telemetry::service_transport_down_event& event) const override;
+        void on_service_proxy_creation(const rpc::telemetry::service_proxy_creation_event& event) const override;
+        void on_cloned_service_proxy_creation(
+            const rpc::telemetry::cloned_service_proxy_creation_event& event) const override;
+        void on_service_proxy_deletion(const rpc::telemetry::service_proxy_deletion_event& event) const override;
+        void on_service_proxy_send(const rpc::telemetry::service_proxy_send_event& event) const override;
+        void on_service_proxy_post(const rpc::telemetry::service_proxy_post_event& event) const override;
+        void on_service_proxy_try_cast(const rpc::telemetry::service_proxy_try_cast_event& event) const override;
+        void on_service_proxy_add_ref(const rpc::telemetry::service_proxy_add_ref_event& event) const override;
+        void on_service_proxy_release(const rpc::telemetry::service_proxy_release_event& event) const override;
+        void on_service_proxy_object_released(
+            const rpc::telemetry::service_proxy_object_released_event& event) const override;
+        void on_service_proxy_transport_down(const rpc::telemetry::service_proxy_transport_down_event& event) const override;
+        void on_service_proxy_add_external_ref(const rpc::telemetry::service_proxy_external_ref_event& event) const override;
+        void on_service_proxy_release_external_ref(
+            const rpc::telemetry::service_proxy_external_ref_event& event) const override;
+        void on_transport_creation(const rpc::telemetry::transport_creation_event& event) const override;
+        void on_transport_deletion(const rpc::telemetry::transport_deletion_event& event) const override;
+        void on_transport_status_change(const rpc::telemetry::transport_status_change_event& event) const override;
+        void on_transport_add_destination(const rpc::telemetry::transport_destination_event& event) const override;
+        void on_transport_remove_destination(const rpc::telemetry::transport_destination_event& event) const override;
+        void on_transport_accept(const rpc::telemetry::transport_accept_event& event) const override;
+        void on_transport_outbound_send(const rpc::telemetry::transport_send_event& event) const override;
+        void on_transport_outbound_post(const rpc::telemetry::transport_post_event& event) const override;
+        void on_transport_outbound_try_cast(const rpc::telemetry::transport_try_cast_event& event) const override;
+        void on_transport_outbound_add_ref(const rpc::telemetry::transport_add_ref_event& event) const override;
+        void on_transport_outbound_release(const rpc::telemetry::transport_release_event& event) const override;
+        void on_transport_outbound_object_released(
+            const rpc::telemetry::transport_object_released_event& event) const override;
+        void on_transport_outbound_transport_down(const rpc::telemetry::transport_transport_down_event& event) const override;
+        void on_transport_inbound_send(const rpc::telemetry::transport_send_event& event) const override;
+        void on_transport_inbound_post(const rpc::telemetry::transport_post_event& event) const override;
+        void on_transport_inbound_try_cast(const rpc::telemetry::transport_try_cast_event& event) const override;
+        void on_transport_inbound_add_ref(const rpc::telemetry::transport_add_ref_event& event) const override;
+        void on_transport_inbound_release(const rpc::telemetry::transport_release_event& event) const override;
+        void on_transport_inbound_object_released(
+            const rpc::telemetry::transport_object_released_event& event) const override;
+        void on_transport_inbound_transport_down(const rpc::telemetry::transport_transport_down_event& event) const override;
+        void on_impl_creation(const rpc::telemetry::impl_creation_event& event) const override;
+        void on_impl_deletion(const rpc::telemetry::impl_deletion_event& event) const override;
+        void on_stub_creation(const rpc::telemetry::stub_creation_event& event) const override;
+        void on_stub_deletion(const rpc::telemetry::stub_deletion_event& event) const override;
+        void on_stub_send(const rpc::telemetry::stub_send_event& event) const override;
+        void on_stub_add_ref(const rpc::telemetry::stub_add_ref_event& event) const override;
+        void on_stub_release(const rpc::telemetry::stub_release_event& event) const override;
+        void on_object_proxy_creation(const rpc::telemetry::object_proxy_creation_event& event) const override;
+        void on_object_proxy_deletion(const rpc::telemetry::object_proxy_deletion_event& event) const override;
+        void on_interface_proxy_creation(const rpc::telemetry::interface_proxy_creation_event& event) const override;
+        void on_interface_proxy_deletion(const rpc::telemetry::interface_proxy_deletion_event& event) const override;
+        void on_interface_proxy_send(const rpc::telemetry::interface_proxy_send_event& event) const override;
+        void on_pass_through_creation(const rpc::telemetry::pass_through_creation_event& event) const override;
+        void on_pass_through_deletion(const rpc::telemetry::pass_through_deletion_event& event) const override;
+        void on_pass_through_add_ref(const rpc::telemetry::pass_through_add_ref_event& event) const override;
+        void on_pass_through_release(const rpc::telemetry::pass_through_release_event& event) const override;
+        void on_pass_through_status_change(const rpc::telemetry::pass_through_status_change_event& event) const override;
+        void message(const rpc::log_record& event) const override;
+
+    private:
+        enum class field_kind
+        {
+            string,
+            number,
+            boolean,
+            floating
+        };
+
+        struct event_field
+        {
+            std::string key;
+            std::string value;
+            field_kind type;
+        };
+
+        struct event_record
+        {
+            double timestamp = 0.0;
+            std::string type;
+            std::vector<event_field> fields;
+        };
+
+        animation_telemetry_service(
+            std::filesystem::path output_path,
+            std::string test_suite_name,
+            std::string test_name);
+
+        static std::string sanitize_name(const std::string& name);
+        static std::string escape_json(const std::string& input);
+        static event_field make_string_field(
+            const std::string& key,
+            const std::string& value);
+        static event_field make_number_field(
+            const std::string& key,
+            uint64_t value);
+        static event_field make_signed_field(
+            const std::string& key,
+            int64_t value);
+        static event_field make_boolean_field(
+            const std::string& key,
+            bool value);
+        static event_field make_floating_field(
+            const std::string& key,
+            double value);
+
+        void record_event(
+            const std::string& type,
+            std::initializer_list<event_field> fields = {}) const;
+        void record_event(
+            const std::string& type,
+            std::vector<event_field>&& fields) const;
+        void write_output() const;
+
+        inline double timestamp_now() const
+        {
+            auto now = std::chrono::steady_clock::now();
+            auto delta = std::chrono::duration<double>(now - start_time_);
+            return delta.count();
+        }
+
+        mutable std::mutex mutex_;
+        mutable std::vector<event_record> events_;
+        mutable std::unordered_map<uint64_t, std::string> zone_names_;
+        mutable std::unordered_map<uint64_t, uint64_t> zone_parents_;
+
+        std::filesystem::path output_path_;
+        std::string suite_name_;
+        std::string test_name_;
+        std::chrono::steady_clock::time_point start_time_;
+    };
+}
+
+namespace rpc::telemetry
 {
     namespace
     {
@@ -46,7 +206,7 @@ namespace rpc
     }
 
     bool animation_telemetry_service::create(
-        std::shared_ptr<rpc::i_telemetry_service>& service,
+        std::shared_ptr<i_telemetry_service>& service,
         const std::string& test_suite_name,
         const std::string& name,
         const std::filesystem::path& directory)
@@ -58,9 +218,18 @@ namespace rpc
 
         auto output_path = output_directory / (name + ".html");
 
-        service = std::shared_ptr<rpc::i_telemetry_service>(
-            new animation_telemetry_service(output_path, test_suite_name, name));
+        service
+            = std::shared_ptr<i_telemetry_service>(new animation_telemetry_service(output_path, test_suite_name, name));
         return true;
+    }
+
+    bool create_animation_telemetry_service(
+        std::shared_ptr<i_telemetry_service>& service,
+        const std::string& test_suite_name,
+        const std::string& name,
+        const std::filesystem::path& directory)
+    {
+        return animation_telemetry_service::create(service, test_suite_name, name, directory);
     }
 
     animation_telemetry_service::animation_telemetry_service(
@@ -188,11 +357,11 @@ namespace rpc
         events_.push_back(std::move(record));
     }
 
-    void animation_telemetry_service::on_service_creation(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::destination_zone parent_zone_id) const
+    void animation_telemetry_service::on_service_creation(const rpc::telemetry::service_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto parent_zone_id = event.parent_zone_id;
         double ts = timestamp_now();
         std::vector<event_field> fields;
         fields.reserve(3);
@@ -211,10 +380,12 @@ namespace rpc
             record.fields = std::move(fields);
             events_.push_back(std::move(record));
         }
+        return;
     }
 
-    void animation_telemetry_service::on_service_deletion(rpc::zone zone_id) const
+    void animation_telemetry_service::on_service_deletion(const rpc::telemetry::service_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
         std::vector<event_field> fields = {make_number_field("zone", zone_id.get_subnet())};
         std::lock_guard<std::mutex> lock(mutex_);
         zone_names_.erase(zone_id.get_subnet());
@@ -225,14 +396,15 @@ namespace rpc
         record.type = "service_deletion";
         record.fields = std::move(fields);
         events_.push_back(std::move(record));
+        return;
     }
 
-    void animation_telemetry_service::on_service_try_cast(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+    void animation_telemetry_service::on_service_try_cast(const rpc::telemetry::service_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -242,15 +414,16 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_service_add_ref(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+    void animation_telemetry_service::on_service_add_ref(const rpc::telemetry::service_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -261,14 +434,15 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
-    void animation_telemetry_service::on_service_release(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+    void animation_telemetry_service::on_service_release(const rpc::telemetry::service_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -278,56 +452,61 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
-    void animation_telemetry_service::on_service_proxy_creation(
-        const std::string& service_name,
-        const std::string& service_proxy_name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+    void animation_telemetry_service::on_service_proxy_creation(const rpc::telemetry::service_proxy_creation_event& event) const
     {
+        const auto& service_name = event.service_name;
+        const auto& service_proxy_name = event.service_proxy_name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::vector<event_field> fields = {make_string_field("serviceName", service_name),
             make_string_field("serviceProxyName", service_proxy_name),
             make_number_field("zone", zone_id.get_subnet()),
             make_number_field("destinationZone", destination_zone_id.get_subnet()),
             make_number_field("callerZone", caller_zone_id.get_subnet())};
         record_event("service_proxy_creation", std::move(fields));
+        return;
     }
 
     void animation_telemetry_service::on_cloned_service_proxy_creation(
-        const std::string& service_name,
-        const std::string& service_proxy_name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::cloned_service_proxy_creation_event& event) const
     {
+        const auto& service_name = event.service_name;
+        const auto& service_proxy_name = event.service_proxy_name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::vector<event_field> fields = {make_string_field("serviceName", service_name),
             make_string_field("serviceProxyName", service_proxy_name),
             make_number_field("zone", zone_id.get_subnet()),
             make_number_field("destinationZone", destination_zone_id.get_subnet()),
             make_number_field("callerZone", caller_zone_id.get_subnet())};
         record_event("cloned_service_proxy_creation", std::move(fields));
+        return;
     }
 
-    void animation_telemetry_service::on_service_proxy_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+    void animation_telemetry_service::on_service_proxy_deletion(const rpc::telemetry::service_proxy_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "service_proxy_deletion",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
-    void animation_telemetry_service::on_service_proxy_try_cast(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+    void animation_telemetry_service::on_service_proxy_try_cast(const rpc::telemetry::service_proxy_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -337,15 +516,16 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_service_proxy_add_ref(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+    void animation_telemetry_service::on_service_proxy_add_ref(const rpc::telemetry::service_proxy_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -356,14 +536,15 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
-    void animation_telemetry_service::on_service_proxy_release(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+    void animation_telemetry_service::on_service_proxy_release(const rpc::telemetry::service_proxy_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -373,181 +554,199 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
     void animation_telemetry_service::on_service_proxy_add_external_ref(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_external_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "service_proxy_add_external_ref",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
     void animation_telemetry_service::on_service_proxy_release_external_ref(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_external_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "service_proxy_release_external_ref",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
-    void animation_telemetry_service::on_impl_creation(
-        const std::string& name,
-        uint64_t address,
-        rpc::zone zone_id) const
+    void animation_telemetry_service::on_impl_creation(const rpc::telemetry::impl_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto address = event.address;
+        auto zone_id = event.zone_id;
         std::vector<event_field> fields = {make_string_field("name", name),
             make_number_field("address", address),
             make_number_field("zone", zone_id.get_subnet())};
         record_event("impl_creation", std::move(fields));
+        return;
     }
 
-    void animation_telemetry_service::on_impl_deletion(
-        uint64_t address,
-        rpc::zone zone_id) const
+    void animation_telemetry_service::on_impl_deletion(const rpc::telemetry::impl_deletion_event& event) const
     {
+        auto address = event.address;
+        auto zone_id = event.zone_id;
         record_event(
             "impl_deletion", {make_number_field("address", address), make_number_field("zone", zone_id.get_subnet())});
+        return;
     }
 
-    void animation_telemetry_service::on_stub_creation(
-        rpc::zone zone_id,
-        rpc::object object_id,
-        uint64_t address) const
+    void animation_telemetry_service::on_stub_creation(const rpc::telemetry::stub_creation_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto object_id = event.object_id;
+        auto address = event.address;
         record_event(
             "stub_creation",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("address", address)});
+        return;
     }
 
-    void animation_telemetry_service::on_stub_deletion(
-        rpc::zone zone_id,
-        rpc::object object_id) const
+    void animation_telemetry_service::on_stub_deletion(const rpc::telemetry::stub_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto object_id = event.object_id;
         record_event(
             "stub_deletion",
             {make_number_field("zone", zone_id.get_subnet()), make_number_field("object", object_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_stub_send(
-        rpc::zone zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_stub_send(const rpc::telemetry::stub_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         record_event(
             "stub_send",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_stub_add_ref(
-        rpc::zone zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        uint64_t count,
-        rpc::caller_zone caller_zone_id) const
+    void animation_telemetry_service::on_stub_add_ref(const rpc::telemetry::stub_add_ref_event& event) const
     {
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto count = event.count;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "stub_add_ref",
-            {make_number_field("zone", zone_id.get_subnet()),
+            {make_number_field("zone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("count", count),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
-    void animation_telemetry_service::on_stub_release(
-        rpc::zone zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        uint64_t count,
-        rpc::caller_zone caller_zone_id) const
+    void animation_telemetry_service::on_stub_release(const rpc::telemetry::stub_release_event& event) const
     {
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto count = event.count;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "stub_release",
-            {make_number_field("zone", zone_id.get_subnet()),
+            {make_number_field("zone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("count", count),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
-    void animation_telemetry_service::on_object_proxy_creation(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        bool add_ref_done) const
+    void animation_telemetry_service::on_object_proxy_creation(const rpc::telemetry::object_proxy_creation_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto add_ref_done = event.add_ref_done;
         record_event(
             "object_proxy_creation",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_boolean_field("addRefDone", add_ref_done)});
+        return;
     }
 
-    void animation_telemetry_service::on_object_proxy_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id) const
+    void animation_telemetry_service::on_object_proxy_deletion(const rpc::telemetry::object_proxy_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
         record_event(
             "object_proxy_deletion",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
+        return;
     }
 
     void animation_telemetry_service::on_interface_proxy_creation(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::interface_proxy_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
         std::vector<event_field> fields = {make_string_field("name", name),
             make_number_field("zone", zone_id.get_subnet()),
             make_number_field("destinationZone", destination_zone_id.get_subnet()),
             make_number_field("object", object_id.get_val()),
             make_number_field("interface", interface_id.get_val())};
         record_event("interface_proxy_creation", std::move(fields));
+        return;
     }
 
     void animation_telemetry_service::on_interface_proxy_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::interface_proxy_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
         record_event(
             "interface_proxy_deletion",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_interface_proxy_send(
-        const std::string& method_name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_interface_proxy_send(const rpc::telemetry::interface_proxy_send_event& event) const
     {
+        const auto& method_name = event.method_name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         std::vector<event_field> fields = {make_string_field("methodName", method_name),
             make_number_field("zone", zone_id.get_subnet()),
             make_number_field("destinationZone", destination_zone_id.get_subnet()),
@@ -555,15 +754,17 @@ namespace rpc
             make_number_field("interface", interface_id.get_val()),
             make_number_field("method", method_id.get_val())};
         record_event("interface_proxy_send", std::move(fields));
+        return;
     }
 
-    void animation_telemetry_service::message(
-        level_enum level,
-        const std::string& message) const
+    void animation_telemetry_service::message(const rpc::log_record& event) const
     {
+        auto level = static_cast<level_enum>(event.level);
+        const auto& message = event.message;
         std::vector<event_field> fields
             = {make_number_field("level", static_cast<uint64_t>(level)), make_string_field("message", message)};
         record_event("message", std::move(fields));
+        return;
     }
 
     void animation_telemetry_service::write_output() const
@@ -673,37 +874,40 @@ namespace rpc
         output << "</body>\n</html>\n";
     }
 
-    void animation_telemetry_service::on_transport_creation(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::transport_status status) const
+    void animation_telemetry_service::on_transport_creation(const rpc::telemetry::transport_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto status = event.status;
         record_event(
             "transport_creation",
             {make_string_field("name", name),
                 make_number_field("zone_id", zone_id.get_subnet()),
                 make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_number_field("status", static_cast<uint32_t>(status))});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_deletion(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id) const
+    void animation_telemetry_service::on_transport_deletion(const rpc::telemetry::transport_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
         record_event(
             "transport_deletion",
             {make_number_field("zone_id", zone_id.get_subnet()),
                 make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet())});
+        return;
     }
 
     void animation_telemetry_service::on_transport_status_change(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::transport_status old_status,
-        rpc::transport_status new_status) const
+        const rpc::telemetry::transport_status_change_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto old_status = event.old_status;
+        auto new_status = event.new_status;
         record_event(
             "transport_status_change",
             {make_string_field("name", name),
@@ -711,55 +915,61 @@ namespace rpc
                 make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_number_field("old_status", static_cast<uint32_t>(old_status)),
                 make_number_field("new_status", static_cast<uint32_t>(new_status))});
+        return;
     }
 
     void animation_telemetry_service::on_transport_add_destination(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination,
-        rpc::caller_zone caller) const
+        const rpc::telemetry::transport_destination_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination = event.destination;
+        auto caller = event.caller;
         record_event(
             "transport_add_destination",
             {make_number_field("zone_id", zone_id.get_subnet()),
                 make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_number_field("destination", destination.get_subnet()),
                 make_number_field("caller", caller.get_subnet())});
+        return;
     }
 
     void animation_telemetry_service::on_transport_remove_destination(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination,
-        rpc::caller_zone caller) const
+        const rpc::telemetry::transport_destination_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination = event.destination;
+        auto caller = event.caller;
         record_event(
             "transport_remove_destination",
             {make_number_field("zone_id", zone_id.get_subnet()),
                 make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_number_field("destination", destination.get_subnet()),
                 make_number_field("caller", caller.get_subnet())});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_accept(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        int result) const
+    void animation_telemetry_service::on_transport_accept(const rpc::telemetry::transport_accept_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto result = event.result;
         record_event(
             "transport_accept",
             {make_number_field("zone_id", zone_id.get_subnet()),
                 make_number_field("adjacent_zone_id", adjacent_zone_id.get_subnet()),
                 make_signed_field("result", result)});
+        return;
     }
 
-    void animation_telemetry_service::on_pass_through_creation(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        uint64_t shared_count,
-        uint64_t optimistic_count) const
+    void animation_telemetry_service::on_pass_through_creation(const rpc::telemetry::pass_through_creation_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto shared_count = event.shared_count;
+        auto optimistic_count = event.optimistic_count;
         record_event(
             "pass_through_creation",
             {make_number_field("zone_id", zone_id.get_subnet()),
@@ -767,28 +977,30 @@ namespace rpc
                 make_number_field("reverse_destination", reverse_destination.get_subnet()),
                 make_number_field("shared_count", shared_count),
                 make_number_field("optimistic_count", optimistic_count)});
+        return;
     }
 
-    void animation_telemetry_service::on_pass_through_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination) const
+    void animation_telemetry_service::on_pass_through_deletion(const rpc::telemetry::pass_through_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
         record_event(
             "pass_through_deletion",
             {make_number_field("zone_id", zone_id.get_subnet()),
                 make_number_field("forward_destination", forward_destination.get_subnet()),
                 make_number_field("reverse_destination", reverse_destination.get_subnet())});
+        return;
     }
 
-    void animation_telemetry_service::on_pass_through_add_ref(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        rpc::add_ref_options options,
-        int64_t shared_delta,
-        int64_t optimistic_delta) const
+    void animation_telemetry_service::on_pass_through_add_ref(const rpc::telemetry::pass_through_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto options = event.options;
+        auto shared_delta = event.shared_delta;
+        auto optimistic_delta = event.optimistic_delta;
         record_event(
             "pass_through_add_ref",
             {make_number_field("zone_id", zone_id.get_subnet()),
@@ -797,15 +1009,16 @@ namespace rpc
                 make_number_field("options", static_cast<uint64_t>(options)),
                 make_signed_field("shared_delta", shared_delta),
                 make_signed_field("optimistic_delta", optimistic_delta)});
+        return;
     }
 
-    void animation_telemetry_service::on_pass_through_release(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        int64_t shared_delta,
-        int64_t optimistic_delta) const
+    void animation_telemetry_service::on_pass_through_release(const rpc::telemetry::pass_through_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto shared_delta = event.shared_delta;
+        auto optimistic_delta = event.optimistic_delta;
         record_event(
             "pass_through_release",
             {make_number_field("zone_id", zone_id.get_subnet()),
@@ -813,15 +1026,17 @@ namespace rpc
                 make_number_field("reverse_destination", reverse_destination.get_subnet()),
                 make_signed_field("shared_delta", shared_delta),
                 make_signed_field("optimistic_delta", optimistic_delta)});
+        return;
     }
 
     void animation_telemetry_service::on_pass_through_status_change(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        rpc::transport_status forward_status,
-        rpc::transport_status reverse_status) const
+        const rpc::telemetry::pass_through_status_change_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto forward_status = event.forward_status;
+        auto reverse_status = event.reverse_status;
         record_event(
             "pass_through_status_change",
             {make_number_field("zone_id", zone_id.get_subnet()),
@@ -829,16 +1044,17 @@ namespace rpc
                 make_number_field("reverse_destination", reverse_destination.get_subnet()),
                 make_number_field("forward_status", static_cast<uint32_t>(forward_status)),
                 make_number_field("reverse_status", static_cast<uint32_t>(reverse_status))});
+        return;
     }
 
     // Service methods
-    void animation_telemetry_service::on_service_send(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_service_send(const rpc::telemetry::service_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -849,15 +1065,16 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_service_post(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_service_post(const rpc::telemetry::service_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -868,13 +1085,15 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
     void animation_telemetry_service::on_service_object_released(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -883,28 +1102,30 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_service_transport_down(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+    void animation_telemetry_service::on_service_transport_down(const rpc::telemetry::service_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "service_transport_down",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
     // Service proxy methods
-    void animation_telemetry_service::on_service_proxy_send(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_service_proxy_send(const rpc::telemetry::service_proxy_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -915,15 +1136,16 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_service_proxy_post(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_service_proxy_post(const rpc::telemetry::service_proxy_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -934,13 +1156,15 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
     void animation_telemetry_service::on_service_proxy_object_released(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -949,29 +1173,32 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
+        return;
     }
 
     void animation_telemetry_service::on_service_proxy_transport_down(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "service_proxy_transport_down",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
     // Transport outbound methods
-    void animation_telemetry_service::on_transport_outbound_send(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_transport_outbound_send(const rpc::telemetry::transport_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -983,16 +1210,17 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_outbound_post(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_transport_outbound_post(const rpc::telemetry::transport_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1004,15 +1232,17 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
     void animation_telemetry_service::on_transport_outbound_try_cast(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::transport_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1023,16 +1253,17 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_outbound_add_ref(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+    void animation_telemetry_service::on_transport_outbound_add_ref(const rpc::telemetry::transport_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1044,15 +1275,16 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_outbound_release(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+    void animation_telemetry_service::on_transport_outbound_release(const rpc::telemetry::transport_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1063,14 +1295,16 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
     void animation_telemetry_service::on_transport_outbound_object_released(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1080,31 +1314,34 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
+        return;
     }
 
     void animation_telemetry_service::on_transport_outbound_transport_down(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "transport_outbound_transport_down",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 
     // Transport inbound methods
-    void animation_telemetry_service::on_transport_inbound_send(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_transport_inbound_send(const rpc::telemetry::transport_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1116,16 +1353,17 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_inbound_post(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void animation_telemetry_service::on_transport_inbound_post(const rpc::telemetry::transport_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1137,15 +1375,16 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val()),
                 make_number_field("method", method_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_inbound_try_cast(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+    void animation_telemetry_service::on_transport_inbound_try_cast(const rpc::telemetry::transport_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1156,16 +1395,17 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("interface", interface_id.get_val())});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_inbound_add_ref(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+    void animation_telemetry_service::on_transport_inbound_add_ref(const rpc::telemetry::transport_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1177,15 +1417,16 @@ namespace rpc
                 make_number_field("object", object_id.get_val()),
                 make_number_field("knownDirectionZone", requesting_zone_id.get_subnet()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
-    void animation_telemetry_service::on_transport_inbound_release(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+    void animation_telemetry_service::on_transport_inbound_release(const rpc::telemetry::transport_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1196,14 +1437,16 @@ namespace rpc
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val()),
                 make_number_field("options", static_cast<uint64_t>(options))});
+        return;
     }
 
     void animation_telemetry_service::on_transport_inbound_object_released(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         record_event(
@@ -1213,19 +1456,22 @@ namespace rpc
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet()),
                 make_number_field("object", object_id.get_val())});
+        return;
     }
 
     void animation_telemetry_service::on_transport_inbound_transport_down(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         record_event(
             "transport_inbound_transport_down",
             {make_number_field("zone", zone_id.get_subnet()),
                 make_number_field("adjacentZone", adjacent_zone_id.get_subnet()),
                 make_number_field("destinationZone", destination_zone_id.get_subnet()),
                 make_number_field("callerZone", caller_zone_id.get_subnet())});
+        return;
     }
 }

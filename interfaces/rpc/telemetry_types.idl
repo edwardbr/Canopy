@@ -1,0 +1,412 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/logging.idl"
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace telemetry
+    {
+        struct service_creation_event
+        {
+            std::string name;
+            rpc::zone zone_id;
+            rpc::destination_zone parent_zone_id;
+        };
+
+        struct service_deletion_event
+        {
+            rpc::zone zone_id;
+        };
+
+        struct service_send_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct service_post_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct service_try_cast_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+        };
+
+        struct service_add_ref_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::requesting_zone requesting_zone_id;
+            rpc::add_ref_options options;
+        };
+
+        struct service_release_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::release_options options;
+        };
+
+        struct service_object_released_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct service_transport_down_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct service_proxy_creation_event
+        {
+            std::string service_name;
+            std::string service_proxy_name;
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct cloned_service_proxy_creation_event
+        {
+            std::string service_name;
+            std::string service_proxy_name;
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct service_proxy_deletion_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct service_proxy_send_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct service_proxy_post_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct service_proxy_try_cast_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+        };
+
+        struct service_proxy_add_ref_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::requesting_zone requesting_zone_id;
+            rpc::add_ref_options options;
+        };
+
+        struct service_proxy_release_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::release_options options;
+        };
+
+        struct service_proxy_object_released_event
+        {
+            rpc::zone zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct service_proxy_transport_down_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct service_proxy_external_ref_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct transport_creation_event
+        {
+            std::string name;
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::transport_status status;
+        };
+
+        struct transport_deletion_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+        };
+
+        struct transport_status_change_event
+        {
+            std::string name;
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::transport_status old_status;
+            rpc::transport_status new_status;
+        };
+
+        struct transport_destination_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::destination_zone destination;
+            rpc::caller_zone caller;
+        };
+
+        struct transport_accept_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            int result;
+        };
+
+        struct transport_send_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct transport_post_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct transport_try_cast_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::interface_ordinal interface_id;
+        };
+
+        struct transport_add_ref_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::requesting_zone requesting_zone_id;
+            rpc::add_ref_options options;
+        };
+
+        struct transport_release_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::release_options options;
+        };
+
+        struct transport_object_released_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct transport_transport_down_event
+        {
+            rpc::zone zone_id;
+            rpc::zone adjacent_zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct impl_creation_event
+        {
+            std::string name;
+            uint64_t address;
+            rpc::zone zone_id;
+        };
+
+        struct impl_deletion_event
+        {
+            uint64_t address;
+            rpc::zone zone_id;
+        };
+
+        struct stub_creation_event
+        {
+            rpc::zone zone_id;
+            rpc::object object_id;
+            uint64_t address;
+        };
+
+        struct stub_deletion_event
+        {
+            rpc::zone zone_id;
+            rpc::object object_id;
+        };
+
+        struct stub_send_event
+        {
+            rpc::zone zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct stub_add_ref_event
+        {
+            rpc::zone destination_zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
+            uint64_t count;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct stub_release_event
+        {
+            rpc::zone destination_zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
+            uint64_t count;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct object_proxy_creation_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::object object_id;
+            bool add_ref_done;
+        };
+
+        struct object_proxy_deletion_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::object object_id;
+        };
+
+        struct interface_proxy_creation_event
+        {
+            std::string name;
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
+        };
+
+        struct interface_proxy_deletion_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
+        };
+
+        struct interface_proxy_send_event
+        {
+            std::string method_name;
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct pass_through_creation_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone forward_destination;
+            rpc::destination_zone reverse_destination;
+            uint64_t shared_count;
+            uint64_t optimistic_count;
+        };
+
+        struct pass_through_deletion_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone forward_destination;
+            rpc::destination_zone reverse_destination;
+        };
+
+        struct pass_through_add_ref_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone forward_destination;
+            rpc::destination_zone reverse_destination;
+            rpc::add_ref_options options;
+            int64_t shared_delta;
+            int64_t optimistic_delta;
+        };
+
+        struct pass_through_release_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone forward_destination;
+            rpc::destination_zone reverse_destination;
+            int64_t shared_delta;
+            int64_t optimistic_delta;
+        };
+
+        struct pass_through_status_change_event
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone forward_destination;
+            rpc::destination_zone reverse_destination;
+            rpc::transport_status forward_status;
+            rpc::transport_status reverse_status;
+        };
+
+    }
+}

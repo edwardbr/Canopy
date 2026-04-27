@@ -26,9 +26,7 @@
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
-#  include <rpc/telemetry/multiplexing_telemetry_service.h>
-#  include <rpc/telemetry/console_telemetry_service.h>
-#  include <rpc/telemetry/sequence_diagram_telemetry_service.h>
+#  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
 
 #include "rpc_global_logger.h"
@@ -59,14 +57,14 @@ int main(
     args::Flag enable_console_telemetry(
         parser, "console", "Add console telemetry service", {"telemetry-console", "console"});
     args::ValueFlag<std::string> console_path(
-        parser, "console-path", "Console telemetry output path", {"console-path"}, "../../c++/telemetry/reports/");
+        parser, "console-path", "Console telemetry output path", {"console-path"}, "c++/telemetry/reports/");
     args::Flag enable_sequence_diagram_telemetry(
         parser, "sequence", "Add sequence diagram telemetry service", {"telemetry-sequence"});
     args::ValueFlag<std::string> sequence_path(
-        parser, "sequence-path", "Sequence diagram output path", {"sequence-path"}, "../../c++/telemetry/reports/");
+        parser, "sequence-path", "Sequence diagram output path", {"sequence-path"}, "c++/telemetry/reports/");
     args::Flag enable_animation_telemetry(parser, "animation", "Add animation telemetry service", {"telemetry-animation"});
     args::ValueFlag<std::string> animation_path(
-        parser, "animation-path", "Animation diagram output path", {"animation-path"}, "../../c++/telemetry/reports/");
+        parser, "animation-path", "Animation diagram output path", {"animation-path"}, "c++/telemetry/reports/");
 
     args::Flag help(parser, "help", "Display this help menu", {'h', "help"});
 
@@ -105,34 +103,34 @@ int main(
             || args::get(enable_animation_telemetry)))
     {
         // Create empty multiplexing service
-        std::vector<std::shared_ptr<rpc::i_telemetry_service>> empty_services;
-        if (rpc::multiplexing_telemetry_service::create(std::move(empty_services)))
+        std::vector<std::shared_ptr<rpc::telemetry::i_telemetry_service>> empty_services;
+        if (rpc::telemetry::create_global_multiplexing_telemetry_service(std::move(empty_services)))
         {
             std::cout << "Created multiplexing telemetry service" << std::endl;
         }
     }
 
     // Assume telemetry_service_ is always a multiplexing service and register configurations
-    if (rpc::get_telemetry_service())
+    if (rpc::telemetry::get_telemetry_service())
     {
-        auto multiplexing_service
-            = std::static_pointer_cast<rpc::multiplexing_telemetry_service>(rpc::get_telemetry_service());
-
         if (args::get(enable_console_telemetry))
         {
-            multiplexing_service->register_service_config("console", console_path.Get());
+            rpc::telemetry::register_telemetry_service_config(
+                rpc::telemetry::get_telemetry_service(), "console", console_path.Get());
             // std::cout << "Registered console telemetry service configuration" << std::endl;
         }
 
         if (args::get(enable_sequence_diagram_telemetry))
         {
-            multiplexing_service->register_service_config("sequence", sequence_path.Get());
+            rpc::telemetry::register_telemetry_service_config(
+                rpc::telemetry::get_telemetry_service(), "sequence", sequence_path.Get());
             // std::cout << "Registered sequence diagram telemetry service configuration" << std::endl;
         }
 
         if (args::get(enable_animation_telemetry))
         {
-            multiplexing_service->register_service_config("animation", animation_path.Get());
+            rpc::telemetry::register_telemetry_service_config(
+                rpc::telemetry::get_telemetry_service(), "animation", animation_path.Get());
             std::cout << "Registered animation telemetry service configuration" << std::endl;
         }
     }

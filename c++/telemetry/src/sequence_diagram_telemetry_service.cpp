@@ -13,11 +13,205 @@
 
 #include <rpc/internal/polyfill/format.h>
 #include <rpc/rpc.h>
-#include <rpc/telemetry/sequence_diagram_telemetry_service.h>
+#include <rpc/telemetry/telemetry_service_factory.h>
 
 using namespace std::string_literals;
 
-namespace rpc
+#include <unordered_map>
+#include <string>
+#include <mutex>
+#include <fstream>
+#include <filesystem>
+
+// types.h is included via i_telemetry_service.h
+#include <rpc/telemetry/i_telemetry_service.h>
+
+namespace rpc::telemetry
+{
+    class sequence_diagram_telemetry_service : public i_telemetry_service
+    {
+        struct name_count
+        {
+            std::string name;
+            int count = 0;
+        };
+
+        struct zone_object
+        {
+            rpc::zone zone_id;
+            rpc::object object_id;
+
+            bool operator==(const zone_object& other) const
+            {
+                return zone_id == other.zone_id && object_id == other.object_id;
+            }
+        };
+
+        struct zone_object_hash
+        {
+            std::size_t operator()(zone_object const& s) const noexcept
+            {
+                std::size_t h1 = std::hash<uint64_t>{}(s.zone_id.get_subnet());
+                std::size_t h2 = std::hash<uint64_t>{}(s.object_id.get_val());
+                return h1 ^ (h2 << 1); // or use boost::hash_combine
+            }
+        };
+
+        struct orig_zone
+        {
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+            bool operator==(const orig_zone& other) const
+            {
+                return zone_id == other.zone_id && destination_zone_id == other.destination_zone_id
+                       && caller_zone_id == other.caller_zone_id;
+            }
+        };
+
+        struct orig_zone_hash
+        {
+            std::size_t operator()(orig_zone const& s) const noexcept
+            {
+                std::size_t h1 = std::hash<uint64_t>{}(s.zone_id.get_subnet());
+                std::size_t h2 = std::hash<uint64_t>{}(s.destination_zone_id.get_subnet());
+                std::size_t h3 = std::hash<uint64_t>{}(s.caller_zone_id.get_subnet());
+                return h1 ^ (h2 << 1) ^ (h3 << 2); // or use boost::hash_combine
+            }
+        };
+
+        struct interface_proxy_id
+        {
+            bool operator==(const interface_proxy_id& other) const
+            {
+                return zone_id == other.zone_id && destination_zone_id == other.destination_zone_id
+                       && object_id == other.object_id && interface_id == other.interface_id;
+            }
+            rpc::zone zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::object object_id;
+            rpc::interface_ordinal interface_id;
+        };
+
+        struct interface_proxy_id_hash
+        {
+            std::size_t operator()(interface_proxy_id const& s) const noexcept
+            {
+                std::size_t h1 = std::hash<uint64_t>{}(s.zone_id.get_subnet());
+                std::size_t h2 = std::hash<uint64_t>{}(s.destination_zone_id.get_subnet());
+                std::size_t h3 = std::hash<uint64_t>{}(s.object_id.get_val());
+                return h1 ^ (h2 << 1) ^ (h3 << 2); // or use boost::hash_combine
+            }
+        };
+
+        struct impl
+        {
+            rpc::zone zone_id;
+            std::string name;
+            uint_fast64_t count;
+        };
+
+        struct stub_info
+        {
+            uint64_t address = 0;
+            uint64_t count = 0;
+        };
+
+        mutable std::mutex mux;
+        mutable std::unordered_map<rpc::zone, name_count> services;
+        mutable std::unordered_map<orig_zone, name_count, orig_zone_hash> service_proxies;
+        mutable std::unordered_map<uint64_t, rpc::zone> historical_impls;
+        mutable std::unordered_map<uint64_t, impl> impls;
+        mutable std::unordered_map<zone_object, stub_info, zone_object_hash> stubs;
+        mutable std::unordered_map<interface_proxy_id, name_count, interface_proxy_id_hash> interface_proxies;
+        mutable std::unordered_map<interface_proxy_id, uint64_t, interface_proxy_id_hash> object_proxies;
+
+        FILE* output_ = nullptr;
+
+        sequence_diagram_telemetry_service(FILE* output);
+
+        void add_new_object(
+            const std::string& name,
+            uint64_t address,
+            rpc::zone zone_id) const;
+
+    public:
+        static bool create(
+            std::shared_ptr<i_telemetry_service>& service,
+            const std::string& test_suite_name,
+            const std::string& name,
+            const std::filesystem::path& directory);
+
+        ~sequence_diagram_telemetry_service() override;
+
+        void on_service_creation(const rpc::telemetry::service_creation_event& event) const override;
+        void on_service_deletion(const rpc::telemetry::service_deletion_event& event) const override;
+        void on_service_send(const rpc::telemetry::service_send_event& event) const override;
+        void on_service_post(const rpc::telemetry::service_post_event& event) const override;
+        void on_service_try_cast(const rpc::telemetry::service_try_cast_event& event) const override;
+        void on_service_add_ref(const rpc::telemetry::service_add_ref_event& event) const override;
+        void on_service_release(const rpc::telemetry::service_release_event& event) const override;
+        void on_service_object_released(const rpc::telemetry::service_object_released_event& event) const override;
+        void on_service_transport_down(const rpc::telemetry::service_transport_down_event& event) const override;
+        void on_service_proxy_creation(const rpc::telemetry::service_proxy_creation_event& event) const override;
+        void on_cloned_service_proxy_creation(
+            const rpc::telemetry::cloned_service_proxy_creation_event& event) const override;
+        void on_service_proxy_deletion(const rpc::telemetry::service_proxy_deletion_event& event) const override;
+        void on_service_proxy_send(const rpc::telemetry::service_proxy_send_event& event) const override;
+        void on_service_proxy_post(const rpc::telemetry::service_proxy_post_event& event) const override;
+        void on_service_proxy_try_cast(const rpc::telemetry::service_proxy_try_cast_event& event) const override;
+        void on_service_proxy_add_ref(const rpc::telemetry::service_proxy_add_ref_event& event) const override;
+        void on_service_proxy_release(const rpc::telemetry::service_proxy_release_event& event) const override;
+        void on_service_proxy_object_released(
+            const rpc::telemetry::service_proxy_object_released_event& event) const override;
+        void on_service_proxy_transport_down(const rpc::telemetry::service_proxy_transport_down_event& event) const override;
+        void on_service_proxy_add_external_ref(const rpc::telemetry::service_proxy_external_ref_event& event) const override;
+        void on_service_proxy_release_external_ref(
+            const rpc::telemetry::service_proxy_external_ref_event& event) const override;
+        void on_transport_creation(const rpc::telemetry::transport_creation_event& event) const override;
+        void on_transport_deletion(const rpc::telemetry::transport_deletion_event& event) const override;
+        void on_transport_status_change(const rpc::telemetry::transport_status_change_event& event) const override;
+        void on_transport_add_destination(const rpc::telemetry::transport_destination_event& event) const override;
+        void on_transport_remove_destination(const rpc::telemetry::transport_destination_event& event) const override;
+        void on_transport_accept(const rpc::telemetry::transport_accept_event& event) const override;
+        void on_transport_outbound_send(const rpc::telemetry::transport_send_event& event) const override;
+        void on_transport_outbound_post(const rpc::telemetry::transport_post_event& event) const override;
+        void on_transport_outbound_try_cast(const rpc::telemetry::transport_try_cast_event& event) const override;
+        void on_transport_outbound_add_ref(const rpc::telemetry::transport_add_ref_event& event) const override;
+        void on_transport_outbound_release(const rpc::telemetry::transport_release_event& event) const override;
+        void on_transport_outbound_object_released(
+            const rpc::telemetry::transport_object_released_event& event) const override;
+        void on_transport_outbound_transport_down(const rpc::telemetry::transport_transport_down_event& event) const override;
+        void on_transport_inbound_send(const rpc::telemetry::transport_send_event& event) const override;
+        void on_transport_inbound_post(const rpc::telemetry::transport_post_event& event) const override;
+        void on_transport_inbound_try_cast(const rpc::telemetry::transport_try_cast_event& event) const override;
+        void on_transport_inbound_add_ref(const rpc::telemetry::transport_add_ref_event& event) const override;
+        void on_transport_inbound_release(const rpc::telemetry::transport_release_event& event) const override;
+        void on_transport_inbound_object_released(
+            const rpc::telemetry::transport_object_released_event& event) const override;
+        void on_transport_inbound_transport_down(const rpc::telemetry::transport_transport_down_event& event) const override;
+        void on_impl_creation(const rpc::telemetry::impl_creation_event& event) const override;
+        void on_impl_deletion(const rpc::telemetry::impl_deletion_event& event) const override;
+        void on_stub_creation(const rpc::telemetry::stub_creation_event& event) const override;
+        void on_stub_deletion(const rpc::telemetry::stub_deletion_event& event) const override;
+        void on_stub_send(const rpc::telemetry::stub_send_event& event) const override;
+        void on_stub_add_ref(const rpc::telemetry::stub_add_ref_event& event) const override;
+        void on_stub_release(const rpc::telemetry::stub_release_event& event) const override;
+        void on_object_proxy_creation(const rpc::telemetry::object_proxy_creation_event& event) const override;
+        void on_object_proxy_deletion(const rpc::telemetry::object_proxy_deletion_event& event) const override;
+        void on_interface_proxy_creation(const rpc::telemetry::interface_proxy_creation_event& event) const override;
+        void on_interface_proxy_deletion(const rpc::telemetry::interface_proxy_deletion_event& event) const override;
+        void on_interface_proxy_send(const rpc::telemetry::interface_proxy_send_event& event) const override;
+        void on_pass_through_creation(const rpc::telemetry::pass_through_creation_event& event) const override;
+        void on_pass_through_deletion(const rpc::telemetry::pass_through_deletion_event& event) const override;
+        void on_pass_through_add_ref(const rpc::telemetry::pass_through_add_ref_event& event) const override;
+        void on_pass_through_release(const rpc::telemetry::pass_through_release_event& event) const override;
+        void on_pass_through_status_change(const rpc::telemetry::pass_through_status_change_event& event) const override;
+        void message(const rpc::log_record& event) const override;
+    };
+}
+
+namespace rpc::telemetry
 {
     std::string get_thread_id()
     {
@@ -27,7 +221,7 @@ namespace rpc
     }
 
     bool sequence_diagram_telemetry_service::create(
-        std::shared_ptr<rpc::i_telemetry_service>& service,
+        std::shared_ptr<i_telemetry_service>& service,
         const std::string& test_suite_name,
         const std::string& name,
         const std::filesystem::path& directory)
@@ -60,6 +254,15 @@ namespace rpc
 
         service = std::shared_ptr<sequence_diagram_telemetry_service>(new sequence_diagram_telemetry_service(output));
         return true;
+    }
+
+    bool create_sequence_diagram_telemetry_service(
+        std::shared_ptr<i_telemetry_service>& service,
+        const std::string& test_suite_name,
+        const std::string& name,
+        const std::filesystem::path& directory)
+    {
+        return sequence_diagram_telemetry_service::create(service, test_suite_name, name, directory);
     }
 
     sequence_diagram_telemetry_service::sequence_diagram_telemetry_service(FILE* output)
@@ -241,11 +444,11 @@ namespace rpc
         return service_order(zone_id) + destination_zone_id.get_subnet() * 10000;
     }
 
-    void sequence_diagram_telemetry_service::on_service_creation(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::destination_zone parent_zone_id) const
+    void sequence_diagram_telemetry_service::on_service_creation(const rpc::telemetry::service_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto parent_zone_id = event.parent_zone_id;
         std::ignore = parent_zone_id;
         std::lock_guard g(mux);
         auto entry = services.find(zone_id);
@@ -262,10 +465,12 @@ namespace rpc
             fmt::println(output_, "activate {} #Moccasin", service_alias(zone_id));
         }
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_service_deletion(rpc::zone zone_id) const
+    void sequence_diagram_telemetry_service::on_service_deletion(const rpc::telemetry::service_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
         std::lock_guard g(mux);
         auto found = services.find(zone_id);
         if (found == services.end())
@@ -288,14 +493,15 @@ namespace rpc
             }
         }
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_service_try_cast(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+    void sequence_diagram_telemetry_service::on_service_try_cast(const rpc::telemetry::service_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = zone_id;
@@ -320,15 +526,16 @@ namespace rpc
                 service_proxy_alias({zone_id}, destination_zone_id, caller_zone_id),
                 interface_id.get_val());
 #endif
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_service_add_ref(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+    void sequence_diagram_telemetry_service::on_service_add_ref(const rpc::telemetry::service_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = zone_id;
@@ -425,14 +632,15 @@ namespace rpc
             }
         }
 #endif
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_service_release(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+    void sequence_diagram_telemetry_service::on_service_release(const rpc::telemetry::service_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = zone_id;
@@ -458,15 +666,17 @@ namespace rpc
             fmt::println(output_, "{} -> {} : release", service_alias(zone_id), object_stub_alias(zone_id, object_id));
         }
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_creation(
-        const std::string& service_name,
-        const std::string& service_proxy_name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_creation_event& event) const
     {
+        const auto& service_name = event.service_name;
+        const auto& service_proxy_name = event.service_proxy_name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::ignore = service_name;
         std::ignore = service_proxy_name;
         std::ignore = zone_id;
@@ -518,15 +728,17 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_cloned_service_proxy_creation(
-        const std::string& service_name,
-        const std::string& service_proxy_name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::cloned_service_proxy_creation_event& event) const
     {
+        const auto& service_name = event.service_name;
+        const auto& service_proxy_name = event.service_proxy_name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::ignore = service_name;
         std::ignore = service_proxy_name;
         std::ignore = zone_id;
@@ -578,13 +790,15 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
         std::ignore = caller_zone_id;
@@ -632,14 +846,16 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_try_cast(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::service_proxy_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = zone_id;
@@ -657,15 +873,17 @@ namespace rpc
             service_alias(zone_id));
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_add_ref(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+        const rpc::telemetry::service_proxy_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = zone_id;
@@ -730,14 +948,16 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_release(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+        const rpc::telemetry::service_proxy_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = zone_id;
@@ -769,13 +989,15 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_add_external_ref(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_external_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
         std::ignore = caller_zone_id;
@@ -815,13 +1037,15 @@ namespace rpc
             get_thread_id());
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_release_external_ref(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_external_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
         std::ignore = caller_zone_id;
@@ -845,6 +1069,7 @@ namespace rpc
             get_thread_id());
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::add_new_object(
@@ -875,11 +1100,11 @@ namespace rpc
         fmt::println(output_, "activate {}", object_alias(address));
     }
 
-    void sequence_diagram_telemetry_service::on_impl_creation(
-        const std::string& name,
-        uint64_t address,
-        rpc::zone zone_id) const
+    void sequence_diagram_telemetry_service::on_impl_creation(const rpc::telemetry::impl_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto address = event.address;
+        auto zone_id = event.zone_id;
         std::lock_guard g(mux);
         if (historical_impls.find(address) != historical_impls.end())
         {
@@ -888,12 +1113,13 @@ namespace rpc
         }
         add_new_object(name, address, zone_id);
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_impl_deletion(
-        uint64_t address,
-        rpc::zone zone_id) const
+    void sequence_diagram_telemetry_service::on_impl_deletion(const rpc::telemetry::impl_deletion_event& event) const
     {
+        auto address = event.address;
+        auto zone_id = event.zone_id;
         std::ignore = zone_id;
 
         std::lock_guard g(mux);
@@ -910,13 +1136,14 @@ namespace rpc
         fmt::println(output_, "deactivate {}", object_alias(address));
         fmt::println(output_, "hnote over {} : deleted", object_alias(address));
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_stub_creation(
-        rpc::zone zone_id,
-        rpc::object object_id,
-        uint64_t address) const
+    void sequence_diagram_telemetry_service::on_stub_creation(const rpc::telemetry::stub_creation_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto object_id = event.object_id;
+        auto address = event.address;
         std::lock_guard g(mux);
 
         add_new_object("unknown", address, zone_id);
@@ -933,12 +1160,13 @@ namespace rpc
         fmt::println(output_, "{} --> {} : links to", object_stub_alias(zone_id, object_id), object_alias(address));
 #endif
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_stub_deletion(
-        rpc::zone zone_id,
-        rpc::object object_id) const
+    void sequence_diagram_telemetry_service::on_stub_deletion(const rpc::telemetry::stub_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto object_id = event.object_id;
         std::lock_guard g(mux);
         auto found = stubs.find(zone_object{zone_id, object_id});
         if (found == stubs.end())
@@ -968,14 +1196,15 @@ namespace rpc
         stubs.erase(found);
 #endif
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_stub_send(
-        rpc::zone zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_stub_send(const rpc::telemetry::stub_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         std::ignore = zone_id;
         std::ignore = object_id;
         std::ignore = interface_id;
@@ -985,16 +1214,17 @@ namespace rpc
         fmt::println(output_, "note over {} : send", object_stub_alias(zone_id, object_id));
         fflush(output_);
 #endif
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_stub_add_ref(
-        rpc::zone zone,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        uint64_t count,
-        rpc::caller_zone caller_zone_id) const
+    void sequence_diagram_telemetry_service::on_stub_add_ref(const rpc::telemetry::stub_add_ref_event& event) const
     {
-        std::ignore = zone;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto count = event.count;
+        auto caller_zone_id = event.caller_zone_id;
+        std::ignore = destination_zone_id;
         std::ignore = interface_id;
         std::ignore = object_id;
         std::ignore = count;
@@ -1002,32 +1232,34 @@ namespace rpc
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
         std::lock_guard g(mux);
-        auto found = stubs.find(zone_object{zone, object_id});
+        auto found = stubs.find(zone_object{destination_zone_id, object_id});
         if (found == stubs.end())
         {
             spdlog::error(
                 "stub not found zone_id {} caller_zone_id {} object_id {}",
-                zone.get_subnet(),
+                destination_zone_id.get_subnet(),
                 caller_zone_id.get_subnet(),
                 object_id.get_val());
         }
         else
         {
             found->second.count++;
-            fmt::println(output_, "hnote over {} : begin add_ref count {} ", object_stub_alias(zone, object_id), count);
+            fmt::println(
+                output_, "hnote over {} : begin add_ref count {} ", object_stub_alias(destination_zone_id, object_id), count);
         }
         fflush(output_);
 #endif
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_stub_release(
-        rpc::zone zone,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        uint64_t count,
-        rpc::caller_zone caller_zone_id) const
+    void sequence_diagram_telemetry_service::on_stub_release(const rpc::telemetry::stub_release_event& event) const
     {
-        std::ignore = zone;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto count = event.count;
+        auto caller_zone_id = event.caller_zone_id;
+        std::ignore = destination_zone_id;
         std::ignore = object_id;
         std::ignore = interface_id;
         std::ignore = count;
@@ -1035,12 +1267,12 @@ namespace rpc
 
 #ifdef CANOPY_USE_TELEMETRY_RAII_LOGGING
         std::lock_guard g(mux);
-        auto found = stubs.find(zone_object{zone, object_id});
+        auto found = stubs.find(zone_object{destination_zone_id, object_id});
         if (found == stubs.end())
         {
             spdlog::error(
                 "stub not found zone_id {} caller_zone_id {} object_id {}",
-                zone.get_subnet(),
+                destination_zone_id.get_subnet(),
                 caller_zone_id.get_subnet(),
                 object_id.get_val());
         }
@@ -1048,23 +1280,27 @@ namespace rpc
             auto new_count = --found->second.count;
             if (new_count == 0)
             {
-                fmt::println(output_, "hnote over {} : release count {}", object_stub_alias(zone, object_id), count);
+                fmt::println(
+                    output_, "hnote over {} : release count {}", object_stub_alias(destination_zone_id, object_id), count);
             }
             else
             {
-                fmt::println(output_, "hnote over {} : release count {}", object_stub_alias(zone, object_id), count);
+                fmt::println(
+                    output_, "hnote over {} : release count {}", object_stub_alias(destination_zone_id, object_id), count);
             }
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_object_proxy_creation(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        bool add_ref_done) const
+        const rpc::telemetry::object_proxy_creation_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto add_ref_done = event.add_ref_done;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
         std::ignore = object_id;
@@ -1106,13 +1342,15 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_object_proxy_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id) const
+        const rpc::telemetry::object_proxy_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
         std::ignore = object_id;
@@ -1152,15 +1390,17 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_interface_proxy_creation(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::interface_proxy_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
         std::ignore = name;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -1178,14 +1418,16 @@ namespace rpc
             name);
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_interface_proxy_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::interface_proxy_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
         std::ignore = object_id;
@@ -1231,16 +1473,18 @@ namespace rpc
         }
         fflush(output_);
 #endif
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_interface_proxy_send(
-        const std::string& method_name,
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::object object_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+        const rpc::telemetry::interface_proxy_send_event& event) const
     {
+        const auto& method_name = event.method_name;
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto object_id = event.object_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         std::ignore = method_name;
         std::ignore = zone_id;
         std::ignore = destination_zone_id;
@@ -1267,12 +1511,13 @@ namespace rpc
         }
 #endif
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::message(
-        level_enum level,
-        const std::string& message) const
+    void sequence_diagram_telemetry_service::message(const rpc::log_record& event) const
     {
+        auto level = static_cast<level_enum>(event.level);
+        const auto& message = event.message;
         std::string colour;
         switch (level)
         {
@@ -1300,14 +1545,15 @@ namespace rpc
         }
         fmt::println(output_, "note left #{}: {} {}", colour, message, get_thread_id());
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_transport_creation(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::transport_status status) const
+    void sequence_diagram_telemetry_service::on_transport_creation(const rpc::telemetry::transport_creation_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto status = event.status;
         fmt::println(
             output_,
             "note over zone_{}: transport_creation: name={} adjacent_zone={} status={}",
@@ -1316,27 +1562,30 @@ namespace rpc
             adjacent_zone_id.get_subnet(),
             static_cast<int>(status));
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_transport_deletion(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id) const
+    void sequence_diagram_telemetry_service::on_transport_deletion(const rpc::telemetry::transport_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
         fmt::println(
             output_,
             "note over zone_{}: transport_deletion: adjacent_zone={}",
             zone_id.get_subnet(),
             adjacent_zone_id.get_subnet());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_status_change(
-        const std::string& name,
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::transport_status old_status,
-        rpc::transport_status new_status) const
+        const rpc::telemetry::transport_status_change_event& event) const
     {
+        const auto& name = event.name;
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto old_status = event.old_status;
+        auto new_status = event.new_status;
         fmt::println(
             output_,
             "note over zone_{}: transport_status_change: name={} adjacent_zone={} old_status={} new_status={}",
@@ -1346,14 +1595,16 @@ namespace rpc
             static_cast<int>(old_status),
             static_cast<int>(new_status));
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_add_destination(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination,
-        rpc::caller_zone caller) const
+        const rpc::telemetry::transport_destination_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination = event.destination;
+        auto caller = event.caller;
         fmt::println(
             output_,
             "note over zone_{}: transport_add_destination: adjacent_zone={} destination={} caller={}",
@@ -1362,14 +1613,16 @@ namespace rpc
             destination.get_subnet(),
             caller.get_subnet());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_remove_destination(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination,
-        rpc::caller_zone caller) const
+        const rpc::telemetry::transport_destination_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination = event.destination;
+        auto caller = event.caller;
         fmt::println(
             output_,
             "note over zone_{}: transport_remove_destination: adjacent_zone={} destination={} caller={}",
@@ -1378,13 +1631,14 @@ namespace rpc
             destination.get_subnet(),
             caller.get_subnet());
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_transport_accept(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        int result) const
+    void sequence_diagram_telemetry_service::on_transport_accept(const rpc::telemetry::transport_accept_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto result = event.result;
         fmt::println(
             output_,
             "note over zone_{}: transport_accept: adjacent_zone={} result={}",
@@ -1392,15 +1646,17 @@ namespace rpc
             adjacent_zone_id.get_subnet(),
             result);
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_pass_through_creation(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        uint64_t shared_count,
-        uint64_t optimistic_count) const
+        const rpc::telemetry::pass_through_creation_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto shared_count = event.shared_count;
+        auto optimistic_count = event.optimistic_count;
         fmt::println(
             output_,
             "note over pass_through: pass_through_creation: zone={} forward_destination={} reverse_destination={} "
@@ -1411,13 +1667,15 @@ namespace rpc
             shared_count,
             optimistic_count);
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_pass_through_deletion(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination) const
+        const rpc::telemetry::pass_through_deletion_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
         fmt::println(
             output_,
             "note over pass_through: pass_through_deletion: zone={} forward_destination={} reverse_destination={}",
@@ -1425,16 +1683,18 @@ namespace rpc
             forward_destination.get_subnet(),
             reverse_destination.get_subnet());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_pass_through_add_ref(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        rpc::add_ref_options options,
-        int64_t shared_delta,
-        int64_t optimistic_delta) const
+        const rpc::telemetry::pass_through_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto options = event.options;
+        auto shared_delta = event.shared_delta;
+        auto optimistic_delta = event.optimistic_delta;
         fmt::println(
             output_,
             "note over pass_through: pass_through_add_ref: zone={} forward_destination={} reverse_destination={} "
@@ -1447,15 +1707,17 @@ namespace rpc
             shared_delta,
             optimistic_delta);
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_pass_through_release(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        int64_t shared_delta,
-        int64_t optimistic_delta) const
+        const rpc::telemetry::pass_through_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto shared_delta = event.shared_delta;
+        auto optimistic_delta = event.optimistic_delta;
         fmt::println(
             output_,
             "note over pass_through: pass_through_release: zone={} forward_destination={} reverse_destination={} "
@@ -1466,15 +1728,17 @@ namespace rpc
             shared_delta,
             optimistic_delta);
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_pass_through_status_change(
-        rpc::zone zone_id,
-        rpc::destination_zone forward_destination,
-        rpc::destination_zone reverse_destination,
-        rpc::transport_status forward_status,
-        rpc::transport_status reverse_status) const
+        const rpc::telemetry::pass_through_status_change_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto forward_destination = event.forward_destination;
+        auto reverse_destination = event.reverse_destination;
+        auto forward_status = event.forward_status;
+        auto reverse_status = event.reverse_status;
         fmt::println(
             output_,
             "note over pass_through: pass_through_status_change: zone={} forward_destination={} reverse_destination={} "
@@ -1485,16 +1749,17 @@ namespace rpc
             static_cast<int>(forward_status),
             static_cast<int>(reverse_status));
         fflush(output_);
+        return;
     }
 
     // Service methods (send/post operations - not RAII, always visible)
-    void sequence_diagram_telemetry_service::on_service_send(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_service_send(const rpc::telemetry::service_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = caller_zone_id;
@@ -1509,15 +1774,16 @@ namespace rpc
             method_id.get_val(),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_service_post(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_service_post(const rpc::telemetry::service_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = caller_zone_id;
@@ -1532,13 +1798,15 @@ namespace rpc
             method_id.get_val(),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_object_released(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         std::ignore = caller_zone_id;
@@ -1551,13 +1819,15 @@ namespace rpc
             object_id.get_val(),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_transport_down(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         std::ignore = caller_zone_id;
 
         fmt::println(
@@ -1567,16 +1837,17 @@ namespace rpc
             service_alias(destination_zone_id),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
     // Service proxy methods (send/post operations - not RAII, always visible)
-    void sequence_diagram_telemetry_service::on_service_proxy_send(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_service_proxy_send(const rpc::telemetry::service_proxy_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1589,15 +1860,16 @@ namespace rpc
             method_id.get_val(),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_service_proxy_post(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_service_proxy_post(const rpc::telemetry::service_proxy_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1610,13 +1882,15 @@ namespace rpc
             method_id.get_val(),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_object_released(
-        rpc::zone zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1627,13 +1901,15 @@ namespace rpc
             object_id.get_val(),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_service_proxy_transport_down(
-        rpc::zone zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::service_proxy_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         fmt::println(
             output_,
             "{} -X {} : transport_down {}",
@@ -1641,17 +1917,18 @@ namespace rpc
             service_alias(destination_zone_id),
             get_thread_id());
         fflush(output_);
+        return;
     }
 
     // Transport outbound methods
-    void sequence_diagram_telemetry_service::on_transport_outbound_send(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_transport_outbound_send(const rpc::telemetry::transport_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1665,16 +1942,17 @@ namespace rpc
             interface_id.get_val(),
             method_id.get_val());
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_transport_outbound_post(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_transport_outbound_post(const rpc::telemetry::transport_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1688,15 +1966,17 @@ namespace rpc
             interface_id.get_val(),
             method_id.get_val());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_outbound_try_cast(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::transport_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1709,16 +1989,18 @@ namespace rpc
             object_id.get_val(),
             interface_id.get_val());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_outbound_add_ref(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+        const rpc::telemetry::transport_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1733,15 +2015,17 @@ namespace rpc
             requesting_zone_id.get_subnet(),
             static_cast<int>(options));
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_outbound_release(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+        const rpc::telemetry::transport_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1754,14 +2038,16 @@ namespace rpc
             object_id.get_val(),
             static_cast<int>(options));
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_outbound_object_released(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1773,14 +2059,16 @@ namespace rpc
             caller_zone_id.get_subnet(),
             object_id.get_val());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_outbound_transport_down(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         fmt::println(
             output_,
             "note over zone_{}: transport_outbound_transport_down: adjacent={} dest={} caller={}",
@@ -1789,17 +2077,18 @@ namespace rpc
             destination_zone_id.get_subnet(),
             caller_zone_id.get_subnet());
         fflush(output_);
+        return;
     }
 
     // Transport inbound methods (send/post operations - not RAII, always visible)
-    void sequence_diagram_telemetry_service::on_transport_inbound_send(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_transport_inbound_send(const rpc::telemetry::transport_send_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1813,16 +2102,17 @@ namespace rpc
             interface_id.get_val(),
             method_id.get_val());
         fflush(output_);
+        return;
     }
 
-    void sequence_diagram_telemetry_service::on_transport_inbound_post(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id) const
+    void sequence_diagram_telemetry_service::on_transport_inbound_post(const rpc::telemetry::transport_post_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
+        auto method_id = event.method_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1836,15 +2126,17 @@ namespace rpc
             interface_id.get_val(),
             method_id.get_val());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_inbound_try_cast(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::interface_ordinal interface_id) const
+        const rpc::telemetry::transport_try_cast_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto interface_id = event.interface_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1857,16 +2149,18 @@ namespace rpc
             object_id.get_val(),
             interface_id.get_val());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_inbound_add_ref(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::requesting_zone requesting_zone_id,
-        rpc::add_ref_options options) const
+        const rpc::telemetry::transport_add_ref_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto requesting_zone_id = event.requesting_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1881,15 +2175,17 @@ namespace rpc
             requesting_zone_id.get_subnet(),
             static_cast<int>(options));
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_inbound_release(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id,
-        rpc::release_options options) const
+        const rpc::telemetry::transport_release_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
+        auto options = event.options;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1902,14 +2198,16 @@ namespace rpc
             object_id.get_val(),
             static_cast<int>(options));
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_inbound_object_released(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::remote_object remote_object_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_object_released_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto remote_object_id = event.remote_object_id;
+        auto caller_zone_id = event.caller_zone_id;
         auto destination_zone_id = remote_object_id.as_zone();
         auto object_id = remote_object_id.get_object_id();
         fmt::println(
@@ -1921,14 +2219,16 @@ namespace rpc
             caller_zone_id.get_subnet(),
             object_id.get_val());
         fflush(output_);
+        return;
     }
 
     void sequence_diagram_telemetry_service::on_transport_inbound_transport_down(
-        rpc::zone zone_id,
-        rpc::zone adjacent_zone_id,
-        rpc::destination_zone destination_zone_id,
-        rpc::caller_zone caller_zone_id) const
+        const rpc::telemetry::transport_transport_down_event& event) const
     {
+        auto zone_id = event.zone_id;
+        auto adjacent_zone_id = event.adjacent_zone_id;
+        auto destination_zone_id = event.destination_zone_id;
+        auto caller_zone_id = event.caller_zone_id;
         fmt::println(
             output_,
             "note over zone_{}: transport_inbound_transport_down: adjacent={} dest={} caller={}",
@@ -1937,6 +2237,7 @@ namespace rpc
             destination_zone_id.get_subnet(),
             caller_zone_id.get_subnet());
         fflush(output_);
+        return;
     }
 
 }

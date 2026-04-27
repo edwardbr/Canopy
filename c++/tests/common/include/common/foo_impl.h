@@ -21,6 +21,40 @@
 
 namespace marshalled_tests
 {
+#ifdef CANOPY_USE_TELEMETRY
+    inline rpc::zone current_service_zone()
+    {
+        return rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone();
+    }
+
+    inline void emit_impl_creation_telemetry(
+        const char* name,
+        std::uintptr_t address)
+    {
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_impl_creation({name, address, current_service_zone()});
+        }
+    }
+
+    inline void emit_impl_deletion_telemetry(std::uintptr_t address)
+    {
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_impl_deletion({address, current_service_zone()});
+        }
+    }
+
+    inline CORO_TASK(void) emit_message_telemetry(
+        rpc::telemetry::i_telemetry_service::level_enum level,
+        const char* message)
+    {
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            telemetry_service->message({level, message});
+        CO_RETURN;
+    }
+#endif
+
     CORO_TASK(bool)
     standard_tests(
         xxx::i_foo& foo,
@@ -32,21 +66,14 @@ namespace marshalled_tests
         baz()
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation(
-                    "baz",
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_creation_telemetry("baz", reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
 
         ~baz() override
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_deletion_telemetry(reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
         CORO_TASK(error_code) callback(int val) override
@@ -82,20 +109,13 @@ namespace marshalled_tests
         foo()
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation(
-                    "foo",
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_creation_telemetry("foo", reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
         ~foo() override
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_deletion_telemetry(reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
         CORO_TASK(error_code) do_something_in_val(int val) override
@@ -331,8 +351,7 @@ namespace marshalled_tests
         CORO_TASK(error_code) exception_test() override
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->message(rpc::i_telemetry_service::info, "exception_test");
+            CO_AWAIT emit_message_telemetry(rpc::telemetry::i_telemetry_service::info, "exception_test");
 #endif
             throw std::runtime_error("oops");
             CO_RETURN rpc::error::OK();
@@ -368,20 +387,13 @@ namespace marshalled_tests
         multiple_inheritance()
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation(
-                    "multiple_inheritance",
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_creation_telemetry("multiple_inheritance", reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
         ~multiple_inheritance() override
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_deletion_telemetry(reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
 
@@ -420,11 +432,7 @@ namespace marshalled_tests
             , this_service_(this_service)
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_creation(
-                    "example",
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_creation_telemetry("example", reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
         ~example() override
@@ -434,10 +442,7 @@ namespace marshalled_tests
                 rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id().get_subnet() : 0,
                 retained_peer_.get_nullable() != nullptr);
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_impl_deletion(
-                    reinterpret_cast<std::uintptr_t>(this),
-                    rpc::service::get_current_service() ? rpc::service::get_current_service()->get_zone_id() : rpc::zone());
+            emit_impl_deletion_telemetry(reinterpret_cast<std::uintptr_t>(this));
 #endif
         }
 
@@ -634,15 +639,17 @@ namespace marshalled_tests
             rpc::shared_ptr<i_example> app;
             {
 #ifdef CANOPY_USE_TELEMETRY
-                auto telemetry_service = rpc::get_telemetry_service();
+                auto telemetry_service = rpc::telemetry::get_telemetry_service();
                 if (telemetry_service)
-                    telemetry_service->message(rpc::i_telemetry_service::info, "call_host_look_up_app_not_return");
+                    telemetry_service->message(
+                        {rpc::telemetry::i_telemetry_service::info, "call_host_look_up_app_not_return"});
 #endif
                 auto err = CO_AWAIT host->look_up_app(name, app);
 
 #ifdef CANOPY_USE_TELEMETRY
                 if (telemetry_service)
-                    telemetry_service->message(rpc::i_telemetry_service::info, "call_host_look_up_app_not_return complete");
+                    telemetry_service->message(
+                        {rpc::telemetry::i_telemetry_service::info, "call_host_look_up_app_not_return complete"});
 #endif
                 if (err != rpc::error::OK())
                     CO_RETURN err;
@@ -672,16 +679,16 @@ namespace marshalled_tests
 
             {
 #ifdef CANOPY_USE_TELEMETRY
-                auto telemetry_service = rpc::get_telemetry_service();
+                auto telemetry_service = rpc::telemetry::get_telemetry_service();
                 if (telemetry_service)
-                    telemetry_service->message(rpc::i_telemetry_service::info, "look_up_app");
+                    telemetry_service->message({rpc::telemetry::i_telemetry_service::info, "look_up_app"});
 #endif
 
                 auto err = CO_AWAIT host->look_up_app(name, app);
 
 #ifdef CANOPY_USE_TELEMETRY
                 if (telemetry_service)
-                    telemetry_service->message(rpc::i_telemetry_service::info, "look_up_app complete");
+                    telemetry_service->message({rpc::telemetry::i_telemetry_service::info, "look_up_app complete"});
 #endif
 
                 if (err != rpc::error::OK())
@@ -711,9 +718,10 @@ namespace marshalled_tests
 
             rpc::shared_ptr<i_example> app;
 #ifdef CANOPY_USE_TELEMETRY
-            auto telemetry_service = rpc::get_telemetry_service();
+            auto telemetry_service = rpc::telemetry::get_telemetry_service();
             if (telemetry_service)
-                telemetry_service->message(rpc::i_telemetry_service::info, "call_host_look_up_app_not_return_and_delete");
+                telemetry_service->message(
+                    {rpc::telemetry::i_telemetry_service::info, "call_host_look_up_app_not_return_and_delete"});
 #endif
 
             auto err = CO_AWAIT host->look_up_app(name, app);
@@ -722,7 +730,7 @@ namespace marshalled_tests
 #ifdef CANOPY_USE_TELEMETRY
             if (telemetry_service)
                 telemetry_service->message(
-                    rpc::i_telemetry_service::info, "call_host_look_up_app_not_return_and_delete complete");
+                    {rpc::telemetry::i_telemetry_service::info, "call_host_look_up_app_not_return_and_delete complete"});
 #endif
             if (err != rpc::error::OK())
                 CO_RETURN err;
@@ -750,16 +758,18 @@ namespace marshalled_tests
 
             {
 #ifdef CANOPY_USE_TELEMETRY
-                auto telemetry_service = rpc::get_telemetry_service();
+                auto telemetry_service = rpc::telemetry::get_telemetry_service();
                 if (telemetry_service)
-                    telemetry_service->message(rpc::i_telemetry_service::info, "call_host_look_up_app_and_delete");
+                    telemetry_service->message(
+                        {rpc::telemetry::i_telemetry_service::info, "call_host_look_up_app_and_delete"});
 #endif
                 auto err = CO_AWAIT host->look_up_app(name, app);
                 CO_AWAIT host->unload_app(name);
 
 #ifdef CANOPY_USE_TELEMETRY
                 if (telemetry_service)
-                    telemetry_service->message(rpc::i_telemetry_service::info, "call_host_look_up_app_and_delete complete");
+                    telemetry_service->message(
+                        {rpc::telemetry::i_telemetry_service::info, "call_host_look_up_app_and_delete complete"});
 #endif
                 if (err != rpc::error::OK())
                     CO_RETURN err;
@@ -830,8 +840,8 @@ namespace marshalled_tests
             rpc::shared_ptr<xxx::i_baz>& output) override
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-                telemetry_service->message(rpc::i_telemetry_service::info, "send_interface_back");
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+                telemetry_service->message({rpc::telemetry::i_telemetry_service::info, "send_interface_back"});
 #endif
             output = input;
             CO_RETURN rpc::error::OK();

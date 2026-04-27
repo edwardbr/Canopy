@@ -27,6 +27,14 @@ namespace rpc
         // mpi = 64
     };
 
+    enum transport_status : uint8_t
+    {
+        CONNECTING = 0,
+        CONNECTED = 1,
+        DISCONNECTING = 2,
+        DISCONNECTED = 3
+    };
+
     enum add_ref_options : uint8_t
     {
         normal = 0,
@@ -629,5 +637,12 @@ namespace rpc
         std::string description;
         std::string in_json_schema;
         std::string out_json_schema;
+    };
+
+    struct telemetry_event
+    {
+        zone zone_id;
+        uint64_t event_type_id;
+        std::vector<char> payload;
     };
 }

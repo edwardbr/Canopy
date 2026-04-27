@@ -19,6 +19,30 @@ CanopyGenerate(
   install_dir ${GENERATED_INSTALL_DIR}
   additional_headers stdint.h no_include_rpc_headers ON)
 
+CanopyGenerate(
+  logging
+  rpc/logging.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR}
+  no_include_rpc_headers ON)
+
+CanopyGenerate(
+  telemetry_types
+  rpc/telemetry_types.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  dependencies rpc_types_idl logging_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR}
+  no_include_rpc_headers ON)
+
 if(CANOPY_BUILD_COROUTINE)
   CanopyGenerate(
     streaming_transport

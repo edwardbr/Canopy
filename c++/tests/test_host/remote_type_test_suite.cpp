@@ -14,9 +14,6 @@
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
-#  include <rpc/telemetry/multiplexing_telemetry_service.h>
-#  include <rpc/telemetry/console_telemetry_service.h>
-#  include <rpc/telemetry/sequence_diagram_telemetry_service.h>
 #endif
 
 // Other headers
@@ -1738,15 +1735,15 @@ do_something_in_val(
     auto __rpc_version = __rpc_sp->get_remote_rpc_version();
     const auto __rpc_min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
 #ifdef CANOPY_USE_TELEMETRY
-    if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+    if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
     {
         telemetry_service->on_interface_proxy_send(
-            "i_foo::do_something_in_val",
-            __rpc_sp->get_zone_id(),
-            __rpc_sp->get_destination_zone_id(),
-            __rpc_op->get_object_id(),
-            {xxx::i_foo::get_id(rpc::get_version())},
-            {1});
+            {"i_foo::do_something_in_val",
+                __rpc_sp->get_zone_id(),
+                __rpc_sp->get_destination_zone_id(),
+                __rpc_op->get_object_id(),
+                {xxx::i_foo::get_id(rpc::get_version())},
+                {1}});
     }
 #endif
     std::vector<char> __rpc_out_buf(CANOPY_OUT_BUFFER_SIZE); // max size using short string optimisation

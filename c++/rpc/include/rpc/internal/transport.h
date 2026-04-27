@@ -44,23 +44,6 @@ namespace rpc
     class pass_through;
 
     /**
-     * @brief Transport connection status lifecycle
-     *
-     * Status Progression:
-     * CONNECTING → CONNECTED → DISCONNECTING (optional) → DISCONNECTED (normal flow)
-     * Any state → DISCONNECTED (error/shutdown)
-     *
-     * DISCONNECTED is a terminal state - no further traffic allowed.
-     */
-    enum class transport_status
-    {
-        CONNECTING,    // Initial state, establishing connection
-        CONNECTED,     // Fully operational
-        DISCONNECTING, // Beginning to shut down, a close signal is being sent or received
-        DISCONNECTED // Terminal state, close signal has been acknowledged, or there is a terminal failure, no further traffic allowed
-    };
-
-    /**
      * @brief Key for identifying passthrough routes between zone pairs
      *
      * Used to register and lookup passthrough handlers that route RPC calls

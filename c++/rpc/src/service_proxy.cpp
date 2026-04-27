@@ -49,10 +49,10 @@ namespace rpc
             service->get_default_encoding()));
         transport->increment_outbound_proxy_count(destination_zone_id);
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_creation(
-                service->get_name(), name, service->get_zone_id(), destination_zone_id, service->get_zone_id());
+                {service->get_name(), name, service->get_zone_id(), destination_zone_id, service->get_zone_id()});
         }
 #endif
         return ret;
@@ -60,15 +60,15 @@ namespace rpc
 
     service_proxy::~service_proxy()
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_deletion(get_zone_id(), destination_zone_id_, zone_id_);
-        }
-#endif
-
         // keep service alive while service proxy cleans things up
         auto service = service_;
+
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_service_proxy_deletion({get_zone_id(), destination_zone_id_, zone_id_});
+        }
+#endif
 
         auto transport = transport_.get_nullable();
         if (transport)
@@ -139,10 +139,10 @@ namespace rpc
         if (!dest_with_obj_send)
             CO_RETURN rpc::send_result{rpc::error::INVALID_DATA(), {}, {}};
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_send(
-                get_zone_id(), *dest_with_obj_send, get_zone_id(), interface_id, method_id);
+                {get_zone_id(), *dest_with_obj_send, get_zone_id(), interface_id, method_id});
         }
 #endif
         send_params params;
@@ -196,10 +196,10 @@ namespace rpc
         if (!dest_with_obj_post)
             CO_RETURN rpc::error::INVALID_DATA();
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_post(
-                get_zone_id(), *dest_with_obj_post, get_zone_id(), interface_id, method_id);
+                {get_zone_id(), *dest_with_obj_post, get_zone_id(), interface_id, method_id});
         }
 #endif
         post_params params;
@@ -243,9 +243,9 @@ namespace rpc
                 CO_RETURN rpc::error::INVALID_DATA();
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             {
-                telemetry_service->on_service_proxy_try_cast(get_zone_id(), *dest_with_obj, get_zone_id(), if_id);
+                telemetry_service->on_service_proxy_try_cast({get_zone_id(), *dest_with_obj, get_zone_id(), if_id});
             }
 #endif
             try_cast_params tc_params;
@@ -310,10 +310,10 @@ namespace rpc
             if (attempt != rpc::error::INVALID_VERSION() && attempt != rpc::error::INCOMPATIBLE_SERVICE())
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 {
                     telemetry_service->on_service_proxy_add_ref(
-                        get_zone_id(), *dest_with_obj, zone_id_, requesting_zone_id, build_out_param_channel);
+                        {get_zone_id(), *dest_with_obj, zone_id_, requesting_zone_id, build_out_param_channel});
                 }
 #endif
                 if (original_version != version)
@@ -366,9 +366,9 @@ namespace rpc
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 {
-                    telemetry_service->on_service_proxy_release(get_zone_id(), *dest_with_obj, zone_id_, options);
+                    telemetry_service->on_service_proxy_release({get_zone_id(), *dest_with_obj, zone_id_, options});
                 }
 #endif
                 if (original_version != version)
@@ -417,13 +417,13 @@ namespace rpc
         auto rel_result = CO_AWAIT svc->outbound_release(std::move(rel_params), transport);
         auto ret = rel_result.error_code;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_release(
-                svc->get_zone_id(),
-                *dest_with_obj,
-                svc->get_zone_id(),
-                is_optimistic ? release_options::optimistic : release_options::normal);
+                {svc->get_zone_id(),
+                    *dest_with_obj,
+                    svc->get_zone_id(),
+                    is_optimistic ? release_options::optimistic : release_options::normal});
         }
 #endif
 
@@ -472,14 +472,14 @@ namespace rpc
             is_optimistic ? "optimistic" : "shared");
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             auto transport = transport_.get_nullable();
             RPC_ASSERT(transport);
             auto release_obj_r = destination_zone_id_.with_object(object_id);
             RPC_ASSERT(release_obj_r.has_value());
             telemetry_service->on_service_proxy_release(
-                get_zone_id(), *release_obj_r, zone_id_, is_optimistic ? release_options::optimistic : release_options::normal);
+                {get_zone_id(), *release_obj_r, zone_id_, is_optimistic ? release_options::optimistic : release_options::normal});
         }
 #endif
 
@@ -568,9 +568,10 @@ namespace rpc
                 // Either no entry exists, or the weak_ptr is expired - create new object_proxy
                 tmp = std::shared_ptr<rpc::object_proxy>(new object_proxy(object_id, shared_from_this()));
 #ifdef CANOPY_USE_TELEMETRY
-                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 {
-                    telemetry_service->on_object_proxy_creation(get_zone_id(), get_destination_zone_id(), object_id, true);
+                    telemetry_service->on_object_proxy_creation(
+                        {get_zone_id(), get_destination_zone_id(), object_id, true});
                 }
 #endif
                 proxies_[object_id] = tmp;
@@ -583,11 +584,11 @@ namespace rpc
         if (is_new && rule == object_proxy_creation_rule::ADD_REF_IF_NEW)
         {
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(
-                    rpc::i_telemetry_service::level_enum::info,
-                    "get_or_create_object_proxy calling sp_add_ref with normal options for new object_proxy");
+                    {rpc::telemetry::i_telemetry_service::level_enum::info,
+                        "get_or_create_object_proxy calling sp_add_ref with normal options for new object_proxy"});
             }
 #endif
             auto ret = CO_AWAIT sp_add_ref(

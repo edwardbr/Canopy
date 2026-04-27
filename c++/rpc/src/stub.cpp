@@ -16,8 +16,11 @@ namespace rpc
         , zone_(zone)
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_stub_creation(zone_->get_zone_id(), id_, reinterpret_cast<std::uintptr_t>(target.get()));
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_stub_creation(
+                {zone_->get_zone_id(), id_, reinterpret_cast<std::uintptr_t>(target.get())});
+        }
 #endif
 #ifdef CANOPY_USE_LOGGING
 #  if CANOPY_LOGGING_LEVEL <= 1
@@ -36,8 +39,10 @@ namespace rpc
     object_stub::~object_stub()
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_stub_deletion(zone_->get_zone_id(), id_);
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
+            telemetry_service->on_stub_deletion({zone_->get_zone_id(), id_});
+        }
 #endif
         RPC_ASSERT(shared_count_ == 0);
     }
@@ -107,8 +112,8 @@ namespace rpc
             count = ++shared_count_;
         }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_stub_add_ref(zone_->get_zone_id(), id_, {}, count, {});
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_stub_add_ref({zone_->get_zone_id(), id_, {}, count, {}});
 #endif
         RPC_ASSERT(count != std::numeric_limits<uint64_t>::max());
         RPC_ASSERT(count != 0);
@@ -230,8 +235,8 @@ namespace rpc
                 count = shared_count_.load(std::memory_order_acquire);
         }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_stub_release(zone_->get_zone_id(), id_, {}, count, {});
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_stub_release({zone_->get_zone_id(), id_, {}, count, {}});
 #endif
         RPC_ASSERT(count != std::numeric_limits<uint64_t>::max());
         auto transport = zone_->get_transport(caller_zone_id);

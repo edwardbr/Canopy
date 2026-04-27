@@ -473,17 +473,17 @@ namespace rpc
             result.error_code = rpc::error::OBJECT_NOT_FOUND();
             CO_RETURN result;
         }
-#if defined(CANOPY_USE_TELEMETRY) && !defined(FOR_SGX)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+#if defined(CANOPY_USE_TELEMETRY)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             auto encap_remote_r = encap.with_object(encap.get_object_id());
             RPC_ASSERT(encap_remote_r.has_value());
             telemetry_service->on_service_proxy_add_ref(
-                service_proxy->get_zone_id(),
-                *encap_remote_r,
-                service_proxy->get_zone_id(),
-                rpc::requesting_zone(),
-                rpc::add_ref_options::normal);
+                {service_proxy->get_zone_id(),
+                    *encap_remote_r,
+                    service_proxy->get_zone_id(),
+                    rpc::requesting_zone(),
+                    rpc::add_ref_options::normal});
         }
 #endif
 

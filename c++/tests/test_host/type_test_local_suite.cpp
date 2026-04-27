@@ -14,9 +14,7 @@
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
-#  include <rpc/telemetry/multiplexing_telemetry_service.h>
-#  include <rpc/telemetry/console_telemetry_service.h>
-#  include <rpc/telemetry/sequence_diagram_telemetry_service.h>
+#  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
 
 // Other headers
