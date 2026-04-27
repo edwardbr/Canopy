@@ -11,6 +11,68 @@
 #include <rpc/rpc.h>
 namespace rpc
 {
+    namespace
+    {
+        class service_i_no_op_proxy final : public rpc::interface_proxy<rpc::service::i_no_op>
+        {
+            mutable rpc::weak_ptr<service_i_no_op_proxy> weak_this_;
+
+        public:
+            explicit service_i_no_op_proxy(std::shared_ptr<rpc::object_proxy>&& object_proxy)
+                : rpc::interface_proxy<rpc::service::i_no_op>(std::move(object_proxy))
+            {
+            }
+            [[nodiscard]] static rpc::shared_ptr<rpc::service::i_no_op> create(
+                std::shared_ptr<rpc::object_proxy>&& object_proxy)
+            {
+                auto ret = rpc::shared_ptr<service_i_no_op_proxy>(new service_i_no_op_proxy(std::move(object_proxy)));
+                ret->weak_this_ = ret;
+                return rpc::static_pointer_cast<rpc::service::i_no_op>(ret);
+            }
+        };
+
+        class service_i_no_op_optimistic_control_block final
+            : public rpc::__rpc_internal::__shared_ptr_control_block::control_block_base
+        {
+        public:
+            explicit service_i_no_op_optimistic_control_block(service_i_no_op_proxy* p)
+                : control_block_base()
+            {
+                managed_object_ptr_ = static_cast<void*>(p);
+                is_local_ = false;
+                combined_count_.store(1, std::memory_order_relaxed);
+            }
+
+            void dispose_object_actual() override
+            {
+                delete static_cast<service_i_no_op_proxy*>(managed_object_ptr_);
+                managed_object_ptr_ = nullptr;
+            }
+
+            void destroy_self_actual() override { delete this; }
+        };
+    }
+
+    template<> void object_proxy::create_interface_proxy<service::i_no_op>(rpc::shared_ptr<service::i_no_op>& iface)
+    {
+        iface = service_i_no_op_proxy::create(shared_from_this());
+    }
+
+    template<>
+    optimistic_ptr<service::i_no_op>::optimistic_ptr(
+        const std::shared_ptr<rpc::object_proxy>& object_proxy,
+        from_object_proxy_tag)
+        : ptr_(nullptr)
+        , cb_(nullptr)
+    {
+        if (!object_proxy)
+            return;
+
+        auto* proxy = new service_i_no_op_proxy(std::shared_ptr<rpc::object_proxy>(object_proxy));
+        ptr_ = proxy;
+        cb_ = new service_i_no_op_optimistic_control_block(proxy);
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     // service
 
@@ -32,6 +94,190 @@ namespace rpc
     {
         auto count = ++object_id_generator_;
         return {count};
+    }
+
+    uint64_t service::begin_out_param_request()
+    {
+        auto request_id = ++request_id_generator_;
+        std::lock_guard guard(pending_out_params_control_);
+        pending_out_params_.try_emplace(request_id);
+        return request_id;
+    }
+
+    void service::finish_out_param_request(uint64_t request_id)
+    {
+        if (request_id == 0)
+            return;
+
+        std::lock_guard guard(pending_out_params_control_);
+        pending_out_params_.erase(request_id);
+    }
+
+    int service::add_pending_out_param(
+        uint64_t request_id,
+        remote_object remote_object_id,
+        const rpc::shared_ptr<service::i_no_op>& proxy)
+    {
+        if (request_id == 0)
+            return rpc::error::OK();
+
+        std::lock_guard guard(pending_out_params_control_);
+        auto item = pending_out_params_.find(request_id);
+        if (item == pending_out_params_.end())
+        {
+            RPC_ERROR(
+                "add_pending_out_param(shared): missing request_id={} zone={} dest_zone={} object_id={}",
+                request_id,
+                zone_id_.get_subnet(),
+                remote_object_id.get_subnet(),
+                std::to_string(remote_object_id.get_object_id()));
+            return rpc::error::FRAUDULANT_REQUEST();
+        }
+
+        auto& pending_entry = item->second[remote_object_id];
+        RPC_DEBUG(
+            "add_pending_out_param(shared): request_id={} key={} bool={} existing_shared={} existing_optimistic={}",
+            request_id,
+            std::to_string(remote_object_id),
+            static_cast<bool>(proxy),
+            static_cast<bool>(pending_entry.shared),
+            static_cast<bool>(pending_entry.optimistic));
+        if (!pending_entry.shared)
+            pending_entry.shared = proxy;
+        return rpc::error::OK();
+    }
+
+    int service::add_pending_out_param(
+        uint64_t request_id,
+        remote_object remote_object_id,
+        const rpc::optimistic_ptr<service::i_no_op>& proxy)
+    {
+        if (request_id == 0)
+            return rpc::error::OK();
+
+        std::lock_guard guard(pending_out_params_control_);
+        auto item = pending_out_params_.find(request_id);
+        if (item == pending_out_params_.end())
+        {
+            RPC_ERROR(
+                "add_pending_out_param(optimistic): missing request_id={} zone={} dest_zone={} object_id={}",
+                request_id,
+                zone_id_.get_subnet(),
+                remote_object_id.get_subnet(),
+                std::to_string(remote_object_id.get_object_id()));
+            return rpc::error::FRAUDULANT_REQUEST();
+        }
+
+        auto& pending_entry = item->second[remote_object_id];
+        RPC_DEBUG(
+            "add_pending_out_param(optimistic): request_id={} key={} bool={} existing_shared={} "
+            "existing_optimistic={}",
+            request_id,
+            std::to_string(remote_object_id),
+            static_cast<bool>(proxy),
+            static_cast<bool>(pending_entry.shared),
+            static_cast<bool>(pending_entry.optimistic));
+        if (!pending_entry.optimistic)
+            pending_entry.optimistic = proxy;
+        return rpc::error::OK();
+    }
+
+    rpc::shared_ptr<rpc::service::i_no_op> service::find_pending_out_param_shared(
+        uint64_t request_id,
+        remote_object remote_object_id,
+        int& error_code) const
+    {
+        error_code = rpc::error::OK();
+        if (request_id == 0)
+            return nullptr;
+
+        std::lock_guard guard(pending_out_params_control_);
+        auto item = pending_out_params_.find(request_id);
+        if (item == pending_out_params_.end())
+        {
+            RPC_ERROR(
+                "find_pending_out_param(shared): missing request_id={} zone={} dest_zone={} object_id={}",
+                request_id,
+                zone_id_.get_subnet(),
+                remote_object_id.get_subnet(),
+                std::to_string(remote_object_id.get_object_id()));
+            error_code = rpc::error::FRAUDULANT_REQUEST();
+            return nullptr;
+        }
+
+        auto pending_item = item->second.find(remote_object_id);
+        RPC_DEBUG(
+            "find_pending_out_param(shared): request_id={} key={} found_entry={} has_shared={} has_optimistic={} "
+            "bucket_size={}",
+            request_id,
+            std::to_string(remote_object_id),
+            pending_item != item->second.end(),
+            pending_item != item->second.end() && static_cast<bool>(pending_item->second.shared),
+            pending_item != item->second.end() && static_cast<bool>(pending_item->second.optimistic),
+            item->second.size());
+        if (pending_item == item->second.end() || !pending_item->second.shared)
+        {
+            RPC_ERROR(
+                "find_pending_out_param(shared): request_id={} zone={} dest_zone={} object_id={} missing shared "
+                "placeholder",
+                request_id,
+                zone_id_.get_subnet(),
+                remote_object_id.get_subnet(),
+                std::to_string(remote_object_id.get_object_id()));
+            error_code = rpc::error::FRAUDULANT_REQUEST();
+            return nullptr;
+        }
+
+        return pending_item->second.shared;
+    }
+
+    rpc::optimistic_ptr<rpc::service::i_no_op> service::find_pending_out_param_optimistic(
+        uint64_t request_id,
+        remote_object remote_object_id,
+        int& error_code) const
+    {
+        error_code = rpc::error::OK();
+        if (request_id == 0)
+            return nullptr;
+
+        std::lock_guard guard(pending_out_params_control_);
+        auto item = pending_out_params_.find(request_id);
+        if (item == pending_out_params_.end())
+        {
+            RPC_ERROR(
+                "find_pending_out_param(optimistic): missing request_id={} zone={} dest_zone={} object_id={}",
+                request_id,
+                zone_id_.get_subnet(),
+                remote_object_id.get_subnet(),
+                std::to_string(remote_object_id.get_object_id()));
+            error_code = rpc::error::FRAUDULANT_REQUEST();
+            return nullptr;
+        }
+
+        auto pending_item = item->second.find(remote_object_id);
+        RPC_DEBUG(
+            "find_pending_out_param(optimistic): request_id={} key={} found_entry={} has_shared={} has_optimistic={} "
+            "bucket_size={}",
+            request_id,
+            std::to_string(remote_object_id),
+            pending_item != item->second.end(),
+            pending_item != item->second.end() && static_cast<bool>(pending_item->second.shared),
+            pending_item != item->second.end() && static_cast<bool>(pending_item->second.optimistic),
+            item->second.size());
+        if (pending_item == item->second.end() || !pending_item->second.optimistic)
+        {
+            RPC_ERROR(
+                "find_pending_out_param(optimistic): request_id={} zone={} dest_zone={} object_id={} missing "
+                "optimistic placeholder",
+                request_id,
+                zone_id_.get_subnet(),
+                remote_object_id.get_subnet(),
+                std::to_string(remote_object_id.get_object_id()));
+            error_code = rpc::error::FRAUDULANT_REQUEST();
+            return nullptr;
+        }
+
+        return pending_item->second.optimistic;
     }
 
 #ifdef CANOPY_BUILD_COROUTINE
@@ -167,6 +413,10 @@ namespace rpc
             stubs_.clear();
         }
         service_proxies_.clear();
+        {
+            std::lock_guard guard(pending_out_params_control_);
+            pending_out_params_.clear();
+        }
 
         if (on_shutdown_)
         {
@@ -258,6 +508,18 @@ namespace rpc
                 }
             }
             success = false;
+        }
+
+        {
+            std::lock_guard guard(pending_out_params_control_);
+            if (!pending_out_params_.empty())
+            {
+                RPC_WARNING(
+                    "service zone_id {} has {} pending_out_params_ entries during shutdown",
+                    std::to_string(zone_id_),
+                    pending_out_params_.size());
+                success = false;
+            }
         }
 
         // Check for live transports
@@ -409,7 +671,8 @@ namespace rpc
             FLD(interface_id) params.interface_id,
             FLD(method_id) params.method_id,
             FLD(in_data) std::move(params.in_data),
-            FLD(in_back_channel) std::move(params.in_back_channel)};
+            FLD(in_back_channel) std::move(params.in_back_channel),
+            FLD(request_id) 0};
         CO_AWAIT stub->call(std::move(send));
 
         // Log that post was delivered to local stub
@@ -540,6 +803,7 @@ namespace rpc
         auto caller_zone_id = params.caller_zone_id;
         auto requesting_zone_id = params.requesting_zone_id;
         auto build_out_param_channel = params.build_out_param_channel;
+        auto request_id = params.request_id;
         auto object_id = remote_object_id.get_object_id();
 
         bool optimistic = !!(build_out_param_channel & add_ref_options::optimistic);
@@ -565,6 +829,7 @@ namespace rpc
                     = add_ref_options::build_caller_route
                       | (optimistic ? add_ref_options::optimistic : add_ref_options::normal);
                 caller_params.in_back_channel = params.in_back_channel;
+                caller_params.request_id = request_id;
                 auto caller_result = CO_AWAIT caller_transport->add_ref(std::move(caller_params));
                 if (caller_result.error_code != rpc::error::OK())
                 {
@@ -574,17 +839,136 @@ namespace rpc
             }
             else
             {
-                std::lock_guard g(service_proxy_control_);
-                auto destination_transport = inner_get_transport(remote_object_id.as_zone());
-                if (destination_transport == nullptr)
+                const auto destination_zone_id = remote_object_id.as_zone();
+                if (destination_zone_id != zone_id_)
                 {
-                    destination_transport = inner_get_transport(requesting_zone_id);
-                    if (destination_transport == nullptr)
+                    std::shared_ptr<transport> destination_transport;
                     {
-                        RPC_ERROR("Destination transport not found for zone {}", remote_object_id.get_subnet());
+                        std::lock_guard g(service_proxy_control_);
+                        destination_transport = inner_get_transport(destination_zone_id);
+                        if (destination_transport == nullptr)
+                        {
+                            destination_transport = inner_get_transport(requesting_zone_id);
+                            if (destination_transport == nullptr)
+                            {
+                                RPC_ERROR("Destination transport not found for zone {}", remote_object_id.get_subnet());
+                                CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
+                            }
+                            inner_add_transport(destination_zone_id, destination_transport);
+                        }
+                    }
+                }
+
+                bool track_pending_out_param_here = false;
+                if (request_id != 0)
+                {
+                    std::lock_guard pending_guard(pending_out_params_control_);
+                    track_pending_out_param_here = pending_out_params_.find(request_id) != pending_out_params_.end();
+                }
+
+                if (track_pending_out_param_here && destination_zone_id != zone_id_)
+                {
+                    bool new_proxy_added = false;
+                    auto destination_service_proxy
+                        = get_zone_proxy(requesting_zone_id, destination_zone_id, new_proxy_added);
+                    if (!destination_service_proxy)
+                    {
+                        RPC_ERROR(
+                            "service::add_ref: failed to create destination service_proxy for request_id={} "
+                            "destination_zone={}",
+                            request_id,
+                            destination_zone_id.get_subnet());
                         CO_RETURN standard_result{rpc::error::ZONE_NOT_FOUND(), {}};
                     }
-                    inner_add_transport(remote_object_id.as_zone(), destination_transport);
+
+                    auto proxy_result = CO_AWAIT destination_service_proxy->get_or_create_object_proxy(
+                        object_id, service_proxy::object_proxy_creation_rule::DO_NOTHING, new_proxy_added, {}, optimistic);
+                    if (proxy_result.error_code != rpc::error::OK())
+                    {
+                        CO_RETURN standard_result{proxy_result.error_code, {}};
+                    }
+
+                    auto object_proxy = std::move(proxy_result.proxy);
+                    if (!object_proxy)
+                    {
+                        CO_RETURN standard_result{rpc::error::OBJECT_NOT_FOUND(), {}};
+                    }
+
+                    int pending_result = rpc::error::OK();
+                    bool collapse_incoming_remote_ref = false;
+                    auto existing_iface = object_proxy->get_any_live_interface_proxy();
+                    RPC_DEBUG(
+                        "service::add_ref pending request_id={} remote_object={} optimistic={} existing_iface={} "
+                        "object_proxy_counts(shared={}, optimistic={})",
+                        request_id,
+                        std::to_string(remote_object_id),
+                        optimistic,
+                        static_cast<bool>(existing_iface),
+                        object_proxy->get_shared_count(),
+                        object_proxy->get_optimistic_count());
+
+                    if (optimistic)
+                    {
+                        rpc::optimistic_ptr<service::i_no_op> placeholder;
+                        if (existing_iface)
+                        {
+                            if (object_proxy->get_optimistic_count() > 0)
+                            {
+                                placeholder
+                                    = rpc::share_optimistic_from_existing_control_block<service::i_no_op, rpc::casting_interface>(
+                                        existing_iface);
+                                collapse_incoming_remote_ref = true;
+                            }
+                            else
+                            {
+                                placeholder = rpc::adopt_remote_optimistic<service::i_no_op, rpc::casting_interface>(
+                                    existing_iface);
+                            }
+                        }
+                        else
+                        {
+                            RPC_DEBUG(
+                                "service::add_ref pending request_id={} remote_object={} creating no-op optimistic "
+                                "placeholder",
+                                request_id,
+                                std::to_string(remote_object_id));
+                            placeholder
+                                = rpc::optimistic_ptr<service::i_no_op>(object_proxy, rpc::from_object_proxy_tag{});
+                        }
+                        pending_result = add_pending_out_param(request_id, remote_object_id, placeholder);
+                    }
+                    else
+                    {
+                        rpc::shared_ptr<service::i_no_op> placeholder;
+                        if (existing_iface)
+                        {
+                            placeholder = rpc::static_pointer_cast<service::i_no_op>(existing_iface);
+                            collapse_incoming_remote_ref = true;
+                        }
+                        else
+                        {
+                            RPC_DEBUG(
+                                "service::add_ref pending request_id={} remote_object={} creating no-op shared "
+                                "placeholder",
+                                request_id,
+                                std::to_string(remote_object_id));
+                            placeholder = rpc::shared_ptr<service::i_no_op>(object_proxy, rpc::from_object_proxy_tag{});
+                        }
+                        pending_result = add_pending_out_param(request_id, remote_object_id, placeholder);
+                    }
+                    if (pending_result != rpc::error::OK())
+                    {
+                        CO_RETURN standard_result{pending_result, {}};
+                    }
+                    if (collapse_incoming_remote_ref)
+                    {
+                        auto release_result = CO_AWAIT destination_service_proxy->sp_release(
+                            object_id, optimistic ? rpc::release_options::optimistic : rpc::release_options::normal);
+                        if (release_result != rpc::error::OK())
+                        {
+                            CO_RETURN standard_result{release_result, {}};
+                        }
+                    }
                 }
             }
         }
@@ -601,6 +985,7 @@ namespace rpc
                 dest_params.requesting_zone_id = requesting_zone_id;
                 dest_params.build_out_param_channel = build_out_param_channel & (~add_ref_options::build_caller_route);
                 dest_params.in_back_channel = params.in_back_channel;
+                dest_params.request_id = request_id;
                 CO_RETURN CO_AWAIT dest_transport->add_ref(std::move(dest_params));
             }
 
@@ -885,7 +1270,6 @@ namespace rpc
         RPC_ASSERT(destination_zone_id != zone_id_);
         RPC_ASSERT(service_proxies_.find(destination_zone_id) == service_proxies_.end());
         service_proxies_[destination_zone_id] = service_proxy;
-
         RPC_ASSERT(transports_.find(destination_zone_id) != transports_.end());
         // transports_[destination_zone_id] = service_proxy->get_transport();
         RPC_DEBUG(
@@ -907,7 +1291,23 @@ namespace rpc
         const std::shared_ptr<transport>& transport_ptr)
     {
         RPC_ASSERT(destination_zone_id.get_subnet());
-        RPC_ASSERT(transports_.find(destination_zone_id) == transports_.end());
+        auto existing = transports_.find(destination_zone_id);
+        if (existing != transports_.end())
+        {
+            auto registered_transport = existing->second.lock();
+            if (!registered_transport)
+            {
+                transports_.erase(existing);
+            }
+            else if (registered_transport.get() == transport_ptr.get())
+            {
+                return;
+            }
+            else
+            {
+                RPC_ASSERT(false);
+            }
+        }
         transports_[destination_zone_id] = transport_ptr;
         RPC_DEBUG(
             "inner_add_transport service zone: {} destination_zone={} adjacent_zone={}",
@@ -925,10 +1325,10 @@ namespace rpc
             auto dest = it->second.lock();
             if (!dest)
             {
-                RPC_ERROR(
-                    "inner_remove_transport: Transport for zone={} is in registry but already expired",
+                RPC_WARNING(
+                    "inner_remove_transport: Transport for zone={} already expired in registry, removing stale "
+                    "entry",
                     destination_zone_id.get_subnet());
-                RPC_ASSERT(false);
             }
             transports_.erase(it);
             RPC_DEBUG(
@@ -965,6 +1365,23 @@ namespace rpc
     {
         std::lock_guard g(service_proxy_control_);
         inner_remove_transport(adjacent_zone_id);
+    }
+
+    void service::remove_transport_if_matches(destination_zone adjacent_zone_id, const transport* expected)
+    {
+        std::lock_guard g(service_proxy_control_);
+        auto it = transports_.find(adjacent_zone_id);
+        if (it == transports_.end())
+            return;
+        auto registered = it->second.lock();
+        if (registered && registered.get() == expected)
+        {
+            transports_.erase(it);
+            RPC_DEBUG(
+                "remove_transport_if_matches service zone: {} destination_zone_id={}",
+                std::to_string(zone_id_),
+                std::to_string(adjacent_zone_id));
+        }
     }
 
     std::shared_ptr<rpc::transport> service::get_transport(destination_zone destination_zone_id) const

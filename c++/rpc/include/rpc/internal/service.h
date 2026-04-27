@@ -28,12 +28,14 @@
 #include <string>
 #include <memory>
 #include <list>
+#include <set>
 #include <unordered_map>
 #include <mutex>
 #include <atomic>
 #include <limits>
 #include <functional>
 #include <type_traits>
+#include <vector>
 
 #include <rpc/internal/error_codes.h>
 #include <rpc/internal/assert.h>
@@ -190,6 +192,7 @@ namespace rpc
         std::string name_;
 
         mutable std::atomic<uint64_t> object_id_generator_ = 0;
+        mutable std::atomic<uint64_t> request_id_generator_ = 0;
         std::atomic<encoding> default_encoding_ = CANOPY_DEFAULT_ENCODING;
 
         // map object_id's to stubs_
@@ -215,6 +218,80 @@ namespace rpc
         // child services to parent transports
         std::unordered_map<destination_zone, std::weak_ptr<transport>> transports_;
 
+    public:
+        class i_no_op : public rpc::casting_interface
+        {
+        public:
+            static rpc::interface_ordinal get_id(uint64_t rpc_version)
+            {
+#ifdef RPC_V3
+                if (rpc_version >= rpc::VERSION_3)
+                {
+                    /*::rpc::i_no_op{[]noop()}*/
+                    return {9999999999999999999ull};
+                }
+#endif
+                return {0};
+            }
+
+            static std::vector<rpc::function_info> get_function_info() { return {}; }
+            static std::shared_ptr<rpc::local_proxy<i_no_op>> create_local_proxy(const rpc::weak_ptr<i_no_op>&)
+            {
+                return nullptr;
+            }
+
+        virtual ~i_no_op() CANOPY_DEFAULT_DESTRUCTOR
+
+            // ********************* interface methods *********************
+            public :
+            // ********************* compile time polymorphic serialisers *********************
+            // template pure static class for serialising proxy request data to a stub or some other target
+            template<
+                typename __Serialiser,
+                typename... __Args>
+            struct proxy_serialiser
+            {
+            };
+
+            // template pure static class for deserialising data from a proxy or some other target into a
+            // stub
+            template<typename __Serialiser, typename... __Args> struct stub_deserialiser
+            {
+            };
+
+            // the caller to stubs
+            struct stub_caller
+            {
+                static CORO_TASK(rpc::send_result) call(
+                    i_no_op* __rpc_target_,
+                    rpc::send_params params);
+            };
+
+            // template pure static class for serialising reply data from a stub
+            template<typename __Serialiser, typename... __Args> struct stub_serialiser
+            {
+            };
+
+            // template pure static class for a proxy deserialising reply data from a stub
+            template<typename __Serialiser, typename... __Args> struct proxy_deserialiser
+            {
+            };
+
+            // proxy class for serialising requests into a buffer for optional dispatch at a future time
+            template<class Parent, typename ReturnType> class buffered_proxy_serialiser
+            {
+            };
+        };
+
+        struct pending_out_param_entry
+        {
+            rpc::shared_ptr<i_no_op> shared;
+            rpc::optimistic_ptr<i_no_op> optimistic;
+        };
+
+    private:
+        mutable std::mutex pending_out_params_control_;
+        std::unordered_map<uint64_t, std::unordered_map<remote_object, pending_out_param_entry>> pending_out_params_;
         void inner_add_transport(
             destination_zone adjacent_zone_id,
             const std::shared_ptr<transport>& transport_ptr);
@@ -236,6 +313,7 @@ namespace rpc
         remote_add_ref(
             uint64_t protocol_version,
             caller_zone caller_zone_id,
+            uint64_t request_id,
             PtrType<T> iface);
 
     protected:
@@ -416,6 +494,8 @@ namespace rpc
          * Thread-Safety: Protected by stub_control_ mutex
          */
         object get_object_id(const shared_ptr<casting_interface>& ptr) const;
+        uint64_t begin_out_param_request();
+        void finish_out_param_request(uint64_t request_id);
 
         /**
          * @brief Connect to a remote zone via a transport
@@ -590,6 +670,21 @@ namespace rpc
         void remove_transport(destination_zone adjacent_zone_id);
 
         /**
+         * @brief Remove a transport only if it is still the currently registered one.
+         *
+         * Performs the "check then remove" atomically under service_proxy_control_ to
+         * avoid the TOCTOU that arises when the caller checks get_transport() under one
+         * lock acquisition and removes under a second one.
+         *
+         * @param adjacent_zone_id  The zone whose transport entry is a candidate for removal.
+         * @param expected          The transport pointer that must still be registered for the
+         *                          removal to proceed.
+         *
+         * Thread-Safety: Protected by service_proxy_control_ mutex
+         */
+        void remove_transport_if_matches(destination_zone adjacent_zone_id, const transport* expected);
+
+        /**
          * @brief Get transport to a destination zone (may route through intermediaries)
          * @param destination_zone_id The target zone
          * @return Shared pointer to transport, or nullptr if not found
@@ -642,6 +737,22 @@ namespace rpc
             caller_zone caller_zone_id,
             rpc::shared_ptr<rpc::casting_interface> iface,
             bool optimistic);
+        int add_pending_out_param(
+            uint64_t request_id,
+            remote_object remote_object_id,
+            const rpc::shared_ptr<service::i_no_op>& proxy);
+        int add_pending_out_param(
+            uint64_t request_id,
+            remote_object remote_object_id,
+            const rpc::optimistic_ptr<service::i_no_op>& proxy);
+        rpc::shared_ptr<rpc::service::i_no_op> find_pending_out_param_shared(
+            uint64_t request_id,
+            remote_object remote_object_id,
+            int& error_code) const;
+        rpc::optimistic_ptr<rpc::service::i_no_op> find_pending_out_param_optimistic(
+            uint64_t request_id,
+            remote_object remote_object_id,
+            int& error_code) const;
 
         // Specialized version for binding out parameters (used by stub_bind_out_param)
         template<
@@ -651,6 +762,7 @@ namespace rpc
         stub_add_ref(
             uint64_t protocol_version,
             caller_zone caller_zone_id,
+            uint64_t request_id,
             PtrType<T> iface);
 
         /////////////////////////////////
@@ -675,6 +787,7 @@ namespace rpc
             template<class> class PtrType>
         friend CORO_TASK(interface_bind_result<PtrType<T>>) rpc::proxy_bind_out_param(
             std::shared_ptr<rpc::service_proxy> sp,
+            uint64_t request_id,
             rpc::remote_object encap);
 
         template<
@@ -699,6 +812,7 @@ namespace rpc
             std::shared_ptr<rpc::service> zone,
             uint64_t protocol_version,
             rpc::caller_zone caller_zone_id,
+            uint64_t request_id,
             PtrType<T> iface);
 
         template<
@@ -1032,7 +1146,7 @@ namespace rpc
             if (child_ptr)
             {
                 auto bind_result = CO_AWAIT rpc::stub_bind_out_param(
-                    child_svc, rpc::get_version(), parent_transport->get_adjacent_zone_id(), child_ptr);
+                    child_svc, rpc::get_version(), parent_transport->get_adjacent_zone_id(), 0, child_ptr);
                 result.error_code = bind_result.error_code;
                 result.descriptor = bind_result.descriptor;
 
@@ -1171,7 +1285,7 @@ namespace rpc
             add_zone_proxy(new_service_proxy);
 
             auto bind_result
-                = CO_AWAIT rpc::proxy_bind_out_param<out_param_type, rpc::shared_ptr>(new_service_proxy, output_descr);
+                = CO_AWAIT rpc::proxy_bind_out_param<out_param_type, rpc::shared_ptr>(new_service_proxy, 0, output_descr);
             err_code = bind_result.error_code;
             result.output_interface = std::move(bind_result.iface);
         }
@@ -1285,8 +1399,8 @@ namespace rpc
 
         if (child_ptr)
         {
-            auto bind_result
-                = CO_AWAIT rpc::stub_bind_out_param(shared_from_this(), rpc::get_version(), adjacent_zone_id, child_ptr);
+            auto bind_result = CO_AWAIT rpc::stub_bind_out_param(
+                shared_from_this(), rpc::get_version(), adjacent_zone_id, 0, child_ptr);
             result.error_code = bind_result.error_code;
             result.descriptor = bind_result.descriptor;
 
@@ -1320,6 +1434,7 @@ namespace rpc
     service::remote_add_ref(
         uint64_t protocol_version,
         caller_zone caller_zone_id,
+        uint64_t request_id,
         PtrType<T> iface)
     {
         remote_object_result result{error::OK(), {}};
@@ -1380,6 +1495,7 @@ namespace rpc
                                             | rpc::add_ref_options::build_caller_route
                                             | (optimistic ? add_ref_options::optimistic : add_ref_options::normal);
         ar_params.in_back_channel = empty_back_channel();
+        ar_params.request_id = request_id;
         auto ar_result = CO_AWAIT marshaller->add_ref(std::move(ar_params));
         err_code = ar_result.error_code;
         if (err_code != rpc::error::OK())
@@ -1412,6 +1528,7 @@ namespace rpc
     service::stub_add_ref(
         [[maybe_unused]] uint64_t protocol_version,
         caller_zone caller_zone_id,
+        uint64_t request_id,
         PtrType<T> iface)
     {
         remote_object_result result{error::OK(), {}};
@@ -1454,7 +1571,7 @@ namespace rpc
             }
         }
 
-        auto ret = CO_AWAIT stub->add_ref(optimistic, true, caller_zone_id); // outcall=true
+        auto ret = CO_AWAIT stub->add_ref(optimistic, true, caller_zone_id, request_id); // outcall=true
         if (ret != rpc::error::OK())
         {
             result.error_code = ret;

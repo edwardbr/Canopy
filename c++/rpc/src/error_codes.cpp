@@ -128,16 +128,20 @@ namespace rpc
         {
             return state().offset_val + (state().offset_val_is_negative ? -25 : 25);
         }
+        [[nodiscard]] int FRAUDULANT_REQUEST()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -26 : 26);
+        }
 
         // dont forget to update MIN & MAX if new values
 
         [[nodiscard]] int MIN()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -25 : 1);
+            return state().offset_val + (state().offset_val_is_negative ? -26 : 1);
         }
         [[nodiscard]] int MAX()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -1 : 25);
+            return state().offset_val + (state().offset_val_is_negative ? -1 : 26);
         }
 
         bool is_error(int err)
@@ -277,6 +281,10 @@ namespace rpc
             if (err == NOT_IMPLEMENTED())
             {
                 return "not implemented";
+            }
+            if (err == FRAUDULANT_REQUEST())
+            {
+                return "fraudulant request";
             }
             return "invalid error code";
         }

@@ -705,7 +705,7 @@ namespace interface_declaration_generator
             "static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
             interface_name);
         header("");
-        header("~{}() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
+        header("virtual ~{}() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
         header("");
         header("// ********************* interface methods *********************");
 

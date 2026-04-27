@@ -146,6 +146,7 @@ namespace rpc::stream_transport
             params.protocol_version,
             call_send{.encoding = params.encoding_type,
                 .tag = params.tag,
+                .request_id = params.request_id,
                 .caller_zone_id = params.caller_zone_id,
                 .destination_zone_id = params.remote_object_id,
                 .interface_id = params.interface_id,
@@ -224,6 +225,7 @@ namespace rpc::stream_transport
             addref_send{.destination_zone_id = params.remote_object_id,
                 .caller_zone_id = params.caller_zone_id,
                 .requesting_zone_id = params.requesting_zone_id,
+                .request_id = params.request_id,
                 .build_out_param_channel = params.build_out_param_channel,
                 .back_channel = std::move(params.in_back_channel)});
         int ret = response_result.error_code;
@@ -956,6 +958,7 @@ namespace rpc::stream_transport
                 .method_id = request.method_id,
                 .in_data = std::move(request.payload),
                 .in_back_channel = std::move(request.back_channel),
+                .request_id = request.request_id,
             });
 
         if (rpc::error::is_error(send_result.error_code))
@@ -1091,6 +1094,7 @@ namespace rpc::stream_transport
                 .requesting_zone_id = request.requesting_zone_id,
                 .build_out_param_channel = request.build_out_param_channel,
                 .in_back_channel = std::move(request.back_channel),
+                .request_id = request.request_id,
             });
 
         if (rpc::error::is_error(ar_result.error_code))

@@ -175,7 +175,8 @@ namespace rpc
         add_ref(
             bool is_optimistic,
             bool outcall,
-            caller_zone caller_zone_id);
+            caller_zone caller_zone_id,
+            uint64_t request_id = 0);
 
         /**
          * @brief Release reference to this stub

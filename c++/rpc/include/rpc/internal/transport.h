@@ -249,7 +249,7 @@ namespace rpc
          * Called when a new proxy is created that references an object in dest.
          * Prevents transport disconnect while proxies exist.
          *
-         * Thread-Safety: Uses atomic operations
+        * Thread-Safety: Uses atomic operations
          */
         void increment_outbound_proxy_count(destination_zone dest);
 

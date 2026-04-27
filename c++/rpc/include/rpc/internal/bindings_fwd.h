@@ -73,6 +73,7 @@ namespace rpc
         std::shared_ptr<rpc::service> zone,
         uint64_t protocol_version,
         caller_zone caller_zone_id,
+        uint64_t request_id,
         PtrType<T> iface);
 
     template<
@@ -102,5 +103,6 @@ namespace rpc
     CORO_TASK(interface_bind_result<PtrType<T>>)
     proxy_bind_out_param(
         std::shared_ptr<rpc::service_proxy> sp,
+        uint64_t request_id,
         rpc::remote_object encap);
 }

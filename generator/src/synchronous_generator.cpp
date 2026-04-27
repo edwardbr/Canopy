@@ -624,7 +624,7 @@ namespace synchronous_generator
             return name;
         case PROXY_VALUE_RETURN:
             return fmt::format(
-                "\t\t\t\tauto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, {0}_);\n"
+                "\t\t\t\tauto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, __rpc_request_id, {0}_);\n"
                 "\t\t\t\t__rpc_ret = {0}_ret.error_code;\n"
                 "\t\t\t\t{0} = std::move({0}_ret.iface);\n",
                 name,
@@ -636,7 +636,7 @@ namespace synchronous_generator
         case STUB_ADD_REF_OUT:
             return fmt::format(
                 "auto {0}_bind_result = CO_AWAIT rpc::stub_bind_out_param(zone_, params.protocol_version, "
-                "params.caller_zone_id, {0}); __rpc_ret = {0}_bind_result.error_code; {0}_ = "
+                "params.caller_zone_id, params.request_id, {0}); __rpc_ret = {0}_bind_result.error_code; {0}_ = "
                 "{0}_bind_result.descriptor;",
                 name);
         case STUB_MARSHALL_OUT:
@@ -681,6 +681,23 @@ namespace synchronous_generator
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
+    bool has_out_interface_params(
+        const class_entity& m_ob,
+        const std::shared_ptr<function_entity>& function)
+    {
+        for (auto& parameter : function->get_parameters())
+        {
+            if (!parameter.has_value("out"))
+                continue;
+
+            bool optimistic = false;
+            std::shared_ptr<class_entity> obj;
+            if (is_interface_param(m_ob, parameter.get_type(), optimistic, obj))
+                return true;
+        }
+        return false;
+    }
+
     // Lambda to emit PROXY_CLEAN_IN cleanup code - used at early return points and at end of function
     void emit_proxy_clean_in(
         bool from_host,
@@ -699,6 +716,10 @@ namespace synchronous_generator
                 proxy(clean_output);
             }
             clean_count++;
+        }
+        if (has_out_interface_params(m_ob, function))
+        {
+            proxy("if(__rpc_request_id != 0) __rpc_sp->get_operating_zone_service()->finish_out_param_request(__rpc_request_id);");
         }
     };
 
@@ -720,7 +741,6 @@ namespace synchronous_generator
             // Validate [post] attribute restrictions
             if (function->has_value("post"))
             {
-                const auto& library = get_root(m_ob);
                 for (auto& parameter : function->get_parameters())
                 {
                     // Check for [out] or [in,out] parameters
@@ -737,7 +757,7 @@ namespace synchronous_generator
                     // Check for interface parameters (rpc::shared_ptr or rpc::optimistic_ptr)
                     bool optimistic = false;
                     std::shared_ptr<class_entity> obj;
-                    bool is_interface = is_interface_param(library, parameter.get_type(), optimistic, obj);
+                    bool is_interface = is_interface_param(m_ob, parameter.get_type(), optimistic, obj);
                     if (is_interface)
                     {
                         throw std::runtime_error(
@@ -857,6 +877,10 @@ namespace synchronous_generator
                     "optimisation");
             }
             proxy("auto __rpc_ret = rpc::error::OK();");
+            if (!function->has_value("post"))
+            {
+                proxy("uint64_t __rpc_request_id = 0;");
+            }
 
             proxy("//PROXY_PREPARE_IN");
 
@@ -978,6 +1002,11 @@ namespace synchronous_generator
             emit_proxy_clean_in(from_host, m_ob, proxy, function);
             proxy("CO_RETURN __rpc_ret;");
             proxy("}}");
+            if (!function->has_value("post") && has_out_interface_params(m_ob, function))
+            {
+                // Interface out-params need a request-scoped handoff slot before the call is sent.
+                proxy("__rpc_request_id = __rpc_sp->get_operating_zone_service()->begin_out_param_request();");
+            }
 
             // Generate stub deserializer
             stub("int __rpc_ret = rpc::error::OK();");
@@ -1082,7 +1111,8 @@ namespace synchronous_generator
             {
                 proxy(
                     "auto __rpc_send_result = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, "
-                    "static_cast<uint64_t>({}), {}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
+                    "static_cast<uint64_t>({}), {}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}}, "
+                    "__rpc_request_id);",
                     tag,
                     interface_name,
                     function_count);
@@ -1106,6 +1136,12 @@ namespace synchronous_generator
             if (!function->has_value("post"))
             {
                 proxy("__rpc_out_buf = std::vector<char>(CANOPY_OUT_BUFFER_SIZE);");
+                if (has_out_interface_params(m_ob, function))
+                {
+                    // begin_out_param_request was called this iteration; release the slot
+                    // before looping so the next iteration starts with a fresh id.
+                    proxy("if(__rpc_request_id != 0) {{ __rpc_sp->get_operating_zone_service()->finish_out_param_request(__rpc_request_id); __rpc_request_id = 0; }}");
+                }
             }
             proxy("continue;");
             proxy("}}");
@@ -1122,6 +1158,11 @@ namespace synchronous_generator
                 if (!function->has_value("post"))
                 {
                     proxy("__rpc_out_buf = std::vector<char>(CANOPY_OUT_BUFFER_SIZE);");
+                    if (has_out_interface_params(m_ob, function))
+                    {
+                        // Same as INVALID_VERSION retry: release the slot before looping.
+                        proxy("if(__rpc_request_id != 0) {{ __rpc_sp->get_operating_zone_service()->finish_out_param_request(__rpc_request_id); __rpc_request_id = 0; }}");
+                    }
                 }
                 proxy("continue;");
                 proxy("}}");
@@ -1568,7 +1609,7 @@ namespace synchronous_generator
 
                     bool optimistic = false;
                     std::shared_ptr<class_entity> obj;
-                    marshalls_interfaces |= is_interface_param(library, parameter.get_type(), optimistic, obj);
+                    marshalls_interfaces |= is_interface_param(m_ob, parameter.get_type(), optimistic, obj);
                 }
 
                 // Get description attribute
@@ -1615,7 +1656,7 @@ namespace synchronous_generator
             proxy("__{0}_local_proxy(const rpc::weak_ptr<{0}>& ptr)", interface_name);
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
-            proxy("~__{0}_local_proxy() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
+            proxy("virtual ~__{0}_local_proxy() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
             proxy(
                 "[[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal "
                 "interface_id) const "
@@ -2572,6 +2613,14 @@ namespace synchronous_generator
             std::replace(path.begin(), path.end(), '\\', '/');
             header("#include \"{}.h\"", path);
         }
+
+        header("namespace rpc");
+        header("{{");
+        header("template<class T> class local_proxy;");
+        header("template<class T> class weak_ptr;");
+        header("template<class T> class shared_ptr;");
+        header("template<class T> class optimistic_ptr;");
+        header("}}");
 
         header("");
         header("// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)");

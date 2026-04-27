@@ -166,14 +166,15 @@ namespace rpc
         uint64_t tag,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        rpc::byte_span in_data)
+        rpc::byte_span in_data,
+        uint64_t request_id)
     {
         auto service_proxy = service_proxy_.get_nullable();
         RPC_ASSERT(service_proxy);
         if (!service_proxy)
             CO_RETURN rpc::send_result{rpc::error::ZONE_NOT_INITIALISED(), {}, {}};
         CO_RETURN CO_AWAIT service_proxy->send_from_this_zone(
-            protocol_version, encoding, tag, object_id_, interface_id, method_id, in_data);
+            protocol_version, encoding, tag, object_id_, interface_id, method_id, in_data, request_id);
     }
 
     CORO_TASK(int)
@@ -209,6 +210,18 @@ namespace rpc
         if (!service_proxy)
             return destination_zone();
         return service_proxy->get_destination_zone_id();
+    }
+
+    rpc::shared_ptr<casting_interface> object_proxy::get_any_live_interface_proxy()
+    {
+        std::lock_guard guard(insert_control_);
+        for (const auto& [_, proxy] : proxy_map)
+        {
+            auto live = proxy.lock();
+            if (live)
+                return live;
+        }
+        return {};
     }
 
     void object_proxy::register_interface(
@@ -254,6 +267,11 @@ namespace rpc
             void object_proxy_add_ref_shared(const std::shared_ptr<rpc::object_proxy>& ob)
             {
                 ob->add_ref_shared();
+            }
+
+            void object_proxy_add_ref_optimistic(const std::shared_ptr<rpc::object_proxy>& ob)
+            {
+                ob->add_ref_optimistic();
             }
         }
     }

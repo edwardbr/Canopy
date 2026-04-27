@@ -122,6 +122,9 @@ namespace rpc
     template<typename T> class weak_ptr;
 #ifndef TEST_STL_COMPLIANCE
     template<typename T> class optimistic_ptr;
+    struct from_object_proxy_tag
+    {
+    };
 #endif
 
     namespace __rpc_internal
@@ -346,6 +349,7 @@ namespace rpc
                 int& optimistic_count);
             // Synchronous direct increment for control block construction (no remote calls)
             void object_proxy_add_ref_shared(const std::shared_ptr<rpc::object_proxy>& ob);
+            void object_proxy_add_ref_optimistic(const std::shared_ptr<rpc::object_proxy>& ob);
 #endif
 
             template<typename T> class shared_ptr;
@@ -977,6 +981,11 @@ namespace rpc
 
         constexpr shared_ptr() noexcept = default;
         constexpr shared_ptr(std::nullptr_t) noexcept { }
+#ifndef TEST_STL_COMPLIANCE
+        explicit shared_ptr(
+            const std::shared_ptr<rpc::object_proxy>& object_proxy,
+            from_object_proxy_tag);
+#endif
 
         template<
             typename Y,
@@ -1394,6 +1403,14 @@ namespace rpc
         template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(weak_ptr<U>) noexcept;
         template<typename U> friend CORO_TASK(shared_response<U>) make_shared(optimistic_ptr<U>) noexcept;
         template<typename U> friend CORO_TASK(weak_response<U>) make_weak(optimistic_ptr<U>) noexcept;
+        template<
+            typename U,
+            typename Z>
+        friend optimistic_ptr<U> share_optimistic_from_existing_control_block(shared_ptr<Z>) noexcept;
+        template<
+            typename U,
+            typename Z>
+        friend optimistic_ptr<U> adopt_remote_optimistic(shared_ptr<Z>) noexcept;
 #endif
     };
 
@@ -2527,6 +2544,28 @@ namespace rpc
 
         constexpr optimistic_ptr() noexcept = default;
         constexpr optimistic_ptr(std::nullptr_t) noexcept { }
+        explicit optimistic_ptr(
+            const std::shared_ptr<rpc::object_proxy>& object_proxy,
+            from_object_proxy_tag);
+        template<typename Y>
+        optimistic_ptr(
+            const optimistic_ptr<Y>& r,
+            element_type* p_alias) noexcept
+            : ptr_(p_alias)
+            , cb_(r.internal_get_cb())
+        {
+            acquire_this();
+        }
+        template<typename Y>
+        optimistic_ptr(
+            optimistic_ptr<Y>&& r,
+            element_type* p_alias) noexcept
+            : ptr_(p_alias)
+            , cb_(r.internal_get_cb())
+        {
+            r.cb_ = nullptr;
+            r.ptr_ = nullptr;
+        }
 
         // Copy constructor - source is valid, control block guaranteed alive
         optimistic_ptr(const optimistic_ptr& r) noexcept
@@ -2736,6 +2775,18 @@ namespace rpc
         template<typename U> friend CORO_TASK(optimistic_response<U>) make_optimistic(weak_ptr<U>) noexcept;
         template<typename U> friend CORO_TASK(shared_response<U>) make_shared(optimistic_ptr<U>) noexcept;
         template<typename U> friend CORO_TASK(weak_response<U>) make_weak(optimistic_ptr<U>) noexcept;
+        template<
+            typename U,
+            typename Z>
+        friend optimistic_ptr<U> share_optimistic_from_existing_control_block(shared_ptr<Z>) noexcept;
+        template<
+            typename U,
+            typename Z>
+        friend optimistic_ptr<U> adopt_remote_optimistic(shared_ptr<Z>) noexcept;
+        template<
+            typename T1,
+            typename U1>
+        friend optimistic_ptr<T1> static_pointer_cast(const optimistic_ptr<U1>&) noexcept;
 #  endif
     };
 
@@ -2905,6 +2956,74 @@ namespace rpc
         }
     }
 
+    template<
+        typename T,
+        typename U>
+    [[nodiscard]] optimistic_ptr<T> share_optimistic_from_existing_control_block(shared_ptr<U> in) noexcept
+    {
+        optimistic_ptr<T> out;
+
+        auto cb = in.internal_get_cb();
+        if (!in || !cb)
+            return out;
+
+        if (cb->is_local_)
+            return out;
+
+        // Mirror try_increment_optimistic's safe pattern: always elevate weak_count_ first so the
+        // control block cannot be destroyed under us, then undo the elevation if this turns out not
+        // to be a 0→1 transition (weak_count_ must be elevated exactly once per optimistic batch).
+        cb->weak_count_.fetch_add(1, std::memory_order_relaxed);
+        long prev_opt
+            = static_cast<long>(cb->combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF);
+        if (prev_opt > 0)
+        {
+            // Not the 0→1 transition: the batch's weak_count_ elevation already exists.
+            // Undo the tentative bump we took above.
+            cb->decrement_weak_and_destroy_if_zero();
+        }
+
+        out.cb_ = cb;
+        out.ptr_ = static_cast<T*>(in.internal_get_ptr());
+        return out;
+    }
+
+    template<
+        typename T,
+        typename U>
+    [[nodiscard]] optimistic_ptr<T> adopt_remote_optimistic(shared_ptr<U> in) noexcept
+    {
+        optimistic_ptr<T> out;
+
+        auto cb = in.internal_get_cb();
+        if (!in || !cb)
+            return out;
+
+        if (cb->is_local_)
+            return out;
+
+        // Increment the optimistic count first and capture the previous value so we can
+        // determine whether this is the 0→1 transition.  weak_count_ must be elevated
+        // exactly once per optimistic batch (the 0→1 transition), so only bump it then.
+        // Incrementing optimistic before weak is safe because we hold `in` (a shared_ptr),
+        // which keeps the control block alive for the duration of this call.
+        long prev_opt
+            = static_cast<long>(cb->combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF);
+        if (prev_opt == 0)
+            cb->weak_count_.fetch_add(1, std::memory_order_relaxed);
+
+        auto* casting_iface = reinterpret_cast<rpc::casting_interface*>(in.internal_get_ptr());
+        if (casting_iface)
+        {
+            if (auto obj_proxy = casting_iface->__rpc_get_object_proxy())
+                __rpc_internal::__shared_ptr_control_block::object_proxy_add_ref_optimistic(obj_proxy);
+        }
+
+        out.cb_ = cb;
+        out.ptr_ = static_cast<T*>(in.internal_get_ptr());
+        return out;
+    }
+
     // Convert weak_ptr → optimistic_ptr
     template<typename T> [[nodiscard]] CORO_TASK(optimistic_response<T>) make_optimistic(weak_ptr<T> in) noexcept
     {
@@ -3056,6 +3175,20 @@ namespace rpc
             CO_RETURN std::make_tuple(error::OK(), std::move(out));
         }
     }
+
+#  ifndef TEST_STL_COMPLIANCE
+    template<
+        typename T,
+        typename U>
+    optimistic_ptr<T> static_pointer_cast(const optimistic_ptr<U>& from) noexcept
+    {
+        if (!from)
+            return {};
+
+        auto* ptr = static_cast<T*>(from.internal_get_ptr());
+        return optimistic_ptr<T>(from, ptr);
+    }
+#  endif
 
     // Convert optimistic_ptr → weak_ptr
     template<typename T> [[nodiscard]] CORO_TASK(weak_response<T>) make_weak(optimistic_ptr<T> in) noexcept

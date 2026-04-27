@@ -87,6 +87,7 @@ namespace rpc
         std::shared_ptr<rpc::service> zone,
         uint64_t protocol_version,
         caller_zone caller_zone_id,
+        uint64_t request_id,
         PtrType<T> iface)
     {
         RPC_ASSERT(caller_zone_id.is_set());
@@ -109,14 +110,14 @@ namespace rpc
 
         if (iface->__rpc_is_local())
         {
-            auto add_ref_result = CO_AWAIT zone->stub_add_ref(protocol_version, caller_zone_id, iface);
+            auto add_ref_result = CO_AWAIT zone->stub_add_ref(protocol_version, caller_zone_id, request_id, iface);
             result.error_code = add_ref_result.error_code;
             result.descriptor = std::move(add_ref_result.descriptor);
             CO_RETURN result;
         }
         else
         {
-            auto add_ref_result = CO_AWAIT zone->remote_add_ref(protocol_version, caller_zone_id, iface);
+            auto add_ref_result = CO_AWAIT zone->remote_add_ref(protocol_version, caller_zone_id, request_id, iface);
             result.error_code = add_ref_result.error_code;
             result.descriptor = std::move(add_ref_result.descriptor);
             CO_RETURN result;
@@ -223,6 +224,7 @@ namespace rpc
     CORO_TASK(interface_bind_result<PtrType<T>>)
     proxy_bind_out_param(
         std::shared_ptr<rpc::service_proxy> sp,
+        uint64_t request_id,
         rpc::remote_object encap)
     {
         static_assert(
@@ -277,6 +279,79 @@ namespace rpc
             {
                 result.iface = typed_iface;
                 CO_RETURN result;
+            }
+        }
+
+        if (request_id != 0)
+        {
+            int pending_error = rpc::error::OK();
+            if constexpr (__rpc_pointer_traits::is_optimistic_v<PtrType<T>>)
+            {
+                auto pending_iface = serv->find_pending_out_param_optimistic(request_id, encap, pending_error);
+                RPC_DEBUG(
+                    "proxy_bind_out_param pending optimistic request_id={} remote_object={} pending_error={} "
+                    "has_pending={}",
+                    request_id,
+                    std::to_string(encap),
+                    pending_error,
+                    static_cast<bool>(pending_iface));
+                if (pending_error != rpc::error::OK())
+                {
+                    result.error_code = pending_error;
+                    CO_RETURN result;
+                }
+                if (pending_iface)
+                {
+                    auto ob = pending_iface->__rpc_get_object_proxy();
+                    auto res = CO_AWAIT ob->template query_interface<T, rpc::optimistic_ptr>(false);
+                    if (error::is_error(res.error_code))
+                    {
+                        result.error_code = res.error_code;
+                        CO_RETURN result;
+                    }
+                    result.iface = res.iface;
+                    RPC_DEBUG(
+                        "proxy_bind_out_param pending optimistic request_id={} remote_object={} cast_result={}",
+                        request_id,
+                        std::to_string(encap),
+                        static_cast<bool>(result.iface));
+                    result.error_code = result.iface ? rpc::error::OK() : rpc::error::INVALID_INTERFACE_ID();
+                    CO_RETURN result;
+                }
+            }
+            else
+            {
+                auto pending_iface = serv->find_pending_out_param_shared(request_id, encap, pending_error);
+                RPC_DEBUG(
+                    "proxy_bind_out_param pending shared request_id={} remote_object={} pending_error={} "
+                    "has_pending={}",
+                    request_id,
+                    std::to_string(encap),
+                    pending_error,
+                    static_cast<bool>(pending_iface));
+                if (pending_error != rpc::error::OK())
+                {
+                    result.error_code = pending_error;
+                    CO_RETURN result;
+                }
+                if (pending_iface)
+                {
+                    auto ob = pending_iface->__rpc_get_object_proxy();
+                    auto res = CO_AWAIT ob->template query_interface<T>(false);
+                    if (error::is_error(res.error_code))
+                    {
+                        result.error_code = res.error_code;
+                        CO_RETURN result;
+                    }
+                    result.iface = res.iface;
+                    RPC_DEBUG(
+                        "proxy_bind_out_param pending shared request_id={} remote_object={} cast_result={}",
+                        request_id,
+                        std::to_string(encap),
+                        static_cast<bool>(result.iface));
+                    result.error_code = result.iface ? rpc::error::OK() : rpc::error::INVALID_INTERFACE_ID();
+                    CO_RETURN result;
+                }
             }
         }
 
@@ -353,7 +428,7 @@ namespace rpc
 
         if (encap.as_zone() != sp->get_destination_zone_id())
         {
-            CO_RETURN CO_AWAIT rpc::proxy_bind_out_param<T, PtrType>(sp, encap);
+            CO_RETURN CO_AWAIT rpc::proxy_bind_out_param<T, PtrType>(sp, 0, encap);
         }
 
         const auto& service_proxy = sp;

@@ -80,6 +80,7 @@ namespace rpc
 
         std::shared_ptr<rpc::service_proxy> get_service_proxy() const { return service_proxy_.get_nullable(); }
         object get_object_id() const { return {object_id_}; }
+        rpc::shared_ptr<casting_interface> get_any_live_interface_proxy();
         destination_zone get_destination_zone_id() const;
 
         [[nodiscard]] CORO_TASK(send_result) send(
@@ -88,7 +89,8 @@ namespace rpc
             uint64_t tag,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            rpc::byte_span in_data);
+            rpc::byte_span in_data,
+            uint64_t request_id = 0);
 
         CORO_TASK(int)
         post(
@@ -247,5 +249,39 @@ namespace rpc
             }
         }
     };
+
+    template<typename T>
+    shared_ptr<T>::shared_ptr(
+        const std::shared_ptr<rpc::object_proxy>& object_proxy,
+        from_object_proxy_tag)
+        : ptr_(nullptr)
+        , cb_(nullptr)
+    {
+        if (!object_proxy)
+            return;
+
+        shared_ptr<T> tmp;
+        object_proxy->template create_interface_proxy<T>(tmp);
+        swap(tmp);
+    }
+
+    template<typename T>
+    optimistic_ptr<T>::optimistic_ptr(
+        const std::shared_ptr<rpc::object_proxy>& object_proxy,
+        from_object_proxy_tag)
+        : ptr_(nullptr)
+        , cb_(nullptr)
+    {
+        if (!object_proxy)
+            return;
+
+        shared_ptr<T> tmp(object_proxy, from_object_proxy_tag{});
+        if (!tmp)
+            return;
+
+        ptr_ = tmp.internal_get_ptr();
+        cb_ = tmp.internal_get_cb();
+        acquire_this();
+    }
 
 }

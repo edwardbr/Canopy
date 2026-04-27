@@ -216,6 +216,7 @@ extern "C"
         uint64_t method_id;
         canopy_const_byte_buffer in_data;
         canopy_back_channel_span in_back_channel;
+        uint64_t request_id;
     } canopy_send_params;
 
     typedef struct canopy_post_params
@@ -261,6 +262,7 @@ extern "C"
         canopy_zone requesting_zone_id;
         uint8_t build_out_param_channel;
         canopy_back_channel_span in_back_channel;
+        uint64_t request_id;
     } canopy_add_ref_params;
 
     typedef struct canopy_release_params

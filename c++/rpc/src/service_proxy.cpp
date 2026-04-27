@@ -107,7 +107,8 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        rpc::byte_span in_data)
+        rpc::byte_span in_data,
+        uint64_t request_id)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
         const auto max_version = rpc::HIGHEST_SUPPORTED_VERSION;
@@ -153,6 +154,7 @@ namespace rpc
         params.interface_id = interface_id;
         params.method_id = method_id;
         params.in_data.assign(in_data.begin(), in_data.end());
+        params.request_id = request_id;
         CO_RETURN CO_AWAIT service_->outbound_send(std::move(params), transport);
     }
 
@@ -275,7 +277,8 @@ namespace rpc
     [[nodiscard]] CORO_TASK(int) service_proxy::sp_add_ref(
         object object_id,
         add_ref_options build_out_param_channel,
-        requesting_zone requesting_zone_id)
+        requesting_zone requesting_zone_id,
+        uint64_t request_id)
     {
         auto transport = transport_.get_nullable();
         if (!transport)
@@ -301,6 +304,7 @@ namespace rpc
             ar_params.caller_zone_id = zone_id_;
             ar_params.requesting_zone_id = requesting_zone_id;
             ar_params.build_out_param_channel = build_out_param_channel;
+            ar_params.request_id = request_id;
             auto ar_result = CO_AWAIT service_->outbound_add_ref(std::move(ar_params), transport);
             auto attempt = ar_result.error_code;
             if (attempt != rpc::error::INVALID_VERSION() && attempt != rpc::error::INCOMPATIBLE_SERVICE())

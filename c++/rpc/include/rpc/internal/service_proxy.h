@@ -72,11 +72,11 @@ namespace rpc
             encoding enc);
 
     public:
-        static std::shared_ptr<service_proxy> create(
-            const std::string& name,
-            std::shared_ptr<service> service,
-            const std::shared_ptr<transport>& transport,
-            destination_zone destination_zone_id);
+    static std::shared_ptr<service_proxy> create(
+        const std::string& name,
+        std::shared_ptr<service> service,
+        const std::shared_ptr<transport>& transport,
+        destination_zone destination_zone_id);
 
         virtual ~service_proxy();
 
@@ -99,9 +99,10 @@ namespace rpc
             rpc::encoding encoding,
             uint64_t tag,
             rpc::object object_id,
-            rpc::interface_ordinal interface_id,
-            rpc::method method_id,
-            rpc::byte_span in_data);
+        rpc::interface_ordinal interface_id,
+        rpc::method method_id,
+        rpc::byte_span in_data,
+        uint64_t request_id = 0);
 
         [[nodiscard]] CORO_TASK(int) post_from_this_zone(
             uint64_t protocol_version,
@@ -120,7 +121,8 @@ namespace rpc
         [[nodiscard]] CORO_TASK(int) sp_add_ref(
             object object_id,
             add_ref_options build_out_param_channel,
-            requesting_zone requesting_zone_id);
+            requesting_zone requesting_zone_id,
+            uint64_t request_id = 0);
 
         CORO_TASK(int)
         sp_release(

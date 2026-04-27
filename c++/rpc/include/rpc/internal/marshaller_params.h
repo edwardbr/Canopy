@@ -25,6 +25,7 @@ namespace rpc
         method method_id;
         std::vector<char> in_data;
         std::vector<rpc::back_channel_entry> in_back_channel;
+        uint64_t request_id = 0;
     };
 
     struct post_params
@@ -57,6 +58,7 @@ namespace rpc
         requesting_zone requesting_zone_id;
         add_ref_options build_out_param_channel;
         std::vector<rpc::back_channel_entry> in_back_channel;
+        uint64_t request_id = 0;
     };
 
     struct release_params

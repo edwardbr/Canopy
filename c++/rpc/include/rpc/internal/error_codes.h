@@ -61,6 +61,7 @@ namespace rpc
         int OBJECT_GONE(); // The service no longer has an object of that id, perhaps an optimistic pointer call attempt is happening
         int CALL_TIMEOUT(); // an outbound RPC call received no response within the transport timeout window
         int NOT_IMPLEMENTED(); // operation exists in the interface surface but is not implemented on this platform/path yet
+        int FRAUDULANT_REQUEST(); // request-scoped out-param handoff was used with an invalid request id
         int MAX();             // the biggest value
 
         bool is_error(int err);    // any error listed above that is >= MIN() && <= MAX

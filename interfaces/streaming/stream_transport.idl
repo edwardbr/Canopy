@@ -76,6 +76,7 @@ namespace rpc
         {
             rpc::encoding encoding;
             uint64_t tag;
+            uint64_t request_id;
             rpc::caller_zone caller_zone_id;
             rpc::remote_object destination_zone_id;
             rpc::interface_ordinal interface_id;
@@ -122,6 +123,7 @@ namespace rpc
             rpc::remote_object destination_zone_id;
             rpc::caller_zone caller_zone_id;
             rpc::requesting_zone requesting_zone_id;
+            uint64_t request_id;
             rpc::add_ref_options build_out_param_channel;
             std::vector<rpc::back_channel_entry> back_channel;
         };

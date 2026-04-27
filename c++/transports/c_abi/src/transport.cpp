@@ -129,7 +129,8 @@ namespace rpc::c_abi
                       params.interface_id.get_val(),
                       params.method_id.get_val(),
                       borrow_bytes(params.in_data),
-                      back_channel.span}
+                      back_channel.span,
+                      params.request_id}
             {
             }
         };
@@ -196,7 +197,8 @@ namespace rpc::c_abi
                       caller_zone,
                       requesting_zone,
                       static_cast<uint8_t>(params.build_out_param_channel),
-                      back_channel.span}
+                      back_channel.span,
+                      params.request_id}
             {
             }
         };
@@ -458,7 +460,8 @@ namespace rpc::c_abi
                 rpc::interface_ordinal(params.interface_id),
                 rpc::method(params.method_id),
                 copy_chars(canopy_byte_buffer{const_cast<uint8_t*>(params.in_data.data), params.in_data.size}),
-                std::move(*back_channel)};
+                std::move(*back_channel),
+                params.request_id};
         }
 
         rpc::expected<
@@ -532,7 +535,8 @@ namespace rpc::c_abi
                 *caller_zone,
                 *requesting_zone,
                 static_cast<rpc::add_ref_options>(params.build_out_param_channel),
-                std::move(*back_channel)};
+                std::move(*back_channel),
+                params.request_id};
         }
 
         rpc::expected<
