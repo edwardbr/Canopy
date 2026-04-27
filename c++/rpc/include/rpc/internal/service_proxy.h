@@ -12,12 +12,6 @@
 #include <functional>
 #include <vector>
 
-#include <rpc/internal/types.h>
-#include <rpc/internal/coroutine_support.h>
-#include <rpc/internal/serialiser.h>
-#include <rpc/internal/marshaller.h>
-#include <rpc/internal/version.h>
-
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
 #endif

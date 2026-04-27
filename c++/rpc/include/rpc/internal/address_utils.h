@@ -6,7 +6,6 @@
 
 #include <cstdint>
 #include <vector>
-#include <rpc/rpc_types.h>
 
 namespace rpc
 {

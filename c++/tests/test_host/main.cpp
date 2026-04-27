@@ -36,7 +36,7 @@
 
 #include <example/example.h>
 
-bool enable_multithreaded_tests = false; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+bool enable_multithreaded_tests = true; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // This line tests that we can define tests in an unnamed namespace.
 namespace
@@ -95,7 +95,10 @@ int main(
     }
 
     // Extract parsed values
-    enable_multithreaded_tests = args::get(enable_multithreaded_flag);
+    if (enable_multithreaded_flag)
+    {
+        enable_multithreaded_tests = args::get(enable_multithreaded_flag);
+    }
 
 #ifdef CANOPY_USE_TELEMETRY
     // Ensure we have a multiplexing telemetry service when any telemetry flags are provided

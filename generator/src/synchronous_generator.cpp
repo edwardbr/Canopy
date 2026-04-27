@@ -60,6 +60,7 @@ namespace synchronous_generator
         STUB_MARSHALL_IN,
         STUB_PARAM_WRAP,
         STUB_PARAM_CAST,
+        STUB_CLEAN_IN,
         STUB_ADD_REF_OUT_PREDECLARE,
         STUB_ADD_REF_OUT,
         STUB_MARSHALL_OUT,
@@ -532,6 +533,8 @@ namespace synchronous_generator
                 bind_template_args);
         case STUB_PARAM_CAST:
             return fmt::format("{}", name);
+        case STUB_CLEAN_IN:
+            return fmt::format("{} = nullptr;", name);
         case STUB_MARSHALL_OUT:
             return fmt::format("static_cast<uint64_t>({}), ", name);
         case PROXY_VALUE_RETURN:
@@ -622,6 +625,8 @@ namespace synchronous_generator
             return fmt::format("{} {}", object_type, name);
         case STUB_PARAM_CAST:
             return name;
+        case STUB_CLEAN_IN:
+            return "";
         case PROXY_VALUE_RETURN:
             return fmt::format(
                 "\t\t\t\tauto {0}_ret = CO_AWAIT rpc::proxy_bind_out_param<{1}>(__rpc_sp, __rpc_request_id, {0}_);\n"
@@ -1277,6 +1282,20 @@ namespace synchronous_generator
             }
 
             stub("}}");
+
+            {
+                uint64_t count = 1;
+                stub("//STUB_CLEAN_IN");
+                for (auto& parameter : function->get_parameters())
+                {
+                    std::string output;
+                    if (!do_in_param(
+                            STUB_CLEAN_IN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
+                        continue;
+                    if (!output.empty())
+                        stub(output);
+                }
+            }
 
             {
                 uint64_t count = 1;

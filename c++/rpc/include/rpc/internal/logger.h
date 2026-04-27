@@ -13,7 +13,6 @@
 // Determine which logging backend to use
 #  if defined(CANOPY_USE_LOGGING)
 
-#    include <rpc/internal/polyfill/format.h>
 // Use standard RPC logging
 #    ifdef FOR_SGX
 #      include <sgx_error.h>

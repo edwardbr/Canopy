@@ -5,7 +5,7 @@
 #pragma once
 
 #ifdef CANOPY_BUILD_COROUTINE
-#  include <coro/scheduler.hpp>
+#  include <coro/event.hpp>
 #else
 #  include <condition_variable>
 #  include <mutex>
@@ -17,8 +17,14 @@ namespace rpc
     class event
     {
     public:
+        explicit event(bool initially_set = false)
+            : event_(initially_set)
+        {
+        }
+
         void set() { event_.set(); }
         void reset() { event_.reset(); }
+        bool is_set() const { return event_.is_set(); }
         CORO_TASK(void) wait() const { CO_AWAIT event_; }
 
     private:
@@ -28,8 +34,8 @@ namespace rpc
     class event
     {
     public:
-        explicit event()
-            : signaled_(true)
+        explicit event(bool initially_set = true)
+            : signaled_(initially_set)
         {
         }
 
@@ -46,6 +52,12 @@ namespace rpc
         {
             std::lock_guard<std::mutex> lock(mutex_);
             signaled_ = false;
+        }
+
+        bool is_set() const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return signaled_;
         }
 
         void wait() const

@@ -60,8 +60,7 @@
 #include <cstddef>     // For std::nullptr_t, std::size_t
 #include <cstdint>     // For std::int64_t
 #include <typeinfo>    // For std::type_info used by get_deleter
-
-#include "assert.h" //rpc assert.h
+#include <cassert>     // For STL-compliance test mode assertions
 
 // Test mode: Use std namespace for STL compliance testing
 // Normal mode: Use rpc namespace for RPC-aware smart pointers
@@ -69,18 +68,15 @@
 #ifdef TEST_STL_COMPLIANCE
 
 #  define CANOPY_DEFAULT_DESTRUCTOR = default;
+#  define RPC_ASSERT(x) assert(x)
+#  define RPC_ERROR(...)
+#  define RPC_DEBUG(...)
 
 #  define RPC_MEMORY std
 
 namespace std
 {
 #else
-
-#  include "version.h"
-#  include "marshaller.h"
-#  include "member_ptr.h"
-#  include "coroutine_support.h" // Needed for CORO_TASK macro
-#  include "casting_interface.h"
 
 #  define RPC_MEMORY rpc
 

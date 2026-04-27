@@ -21,13 +21,15 @@ namespace rpc
         , zone_id_(service->get_zone_id())
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
             telemetry_service->on_pass_through_creation(
                 {zone_id_,
                     forward_dest,
                     reverse_dest,
                     shared_count_.load(std::memory_order_acquire),
                     optimistic_count_.load(std::memory_order_acquire)});
+        }
 #endif
     }
 
@@ -52,8 +54,10 @@ namespace rpc
     pass_through::~pass_through()
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
             telemetry_service->on_pass_through_deletion({zone_id_, forward_destination_, reverse_destination_});
+        }
 #endif
     }
 
@@ -77,6 +81,7 @@ namespace rpc
         {
             CO_RETURN send_result{error::TRANSPORT_ERROR(), {}, {}};
         }
+        auto keep_alive = shared_from_this();
 
         // Determine target transport based on destination_zone
         auto target_transport = get_directional_transport(params.remote_object_id.as_zone());
@@ -112,6 +117,7 @@ namespace rpc
         {
             CO_RETURN;
         }
+        auto keep_alive = shared_from_this();
 
         auto target_transport = get_directional_transport(params.remote_object_id.as_zone());
         if (!target_transport)
@@ -132,6 +138,7 @@ namespace rpc
         {
             CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
+        auto keep_alive = shared_from_this();
 
         auto target_transport = get_directional_transport(params.remote_object_id.as_zone());
         if (!target_transport)
@@ -228,6 +235,7 @@ namespace rpc
         {
             CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
+        auto keep_alive = shared_from_this();
 
         // We build the result by merging out_back_channels from both calls
         standard_result final_result{error::OK(), {}};
@@ -290,7 +298,7 @@ namespace rpc
         {
             optimistic_count_.fetch_add(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_add_ref(
                     {zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 0, 1});
 #endif
@@ -299,7 +307,7 @@ namespace rpc
         {
             shared_count_.fetch_add(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_add_ref(
                     {zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 1, 0});
 #endif
@@ -312,8 +320,6 @@ namespace rpc
     CORO_TASK(standard_result)
     pass_through::release(release_params params)
     {
-        remote_object remote_object_id = params.remote_object_id;
-        [[maybe_unused]] caller_zone caller_zone_id = params.caller_zone_id;
         release_options options = params.options;
 
         RPC_DEBUG(
@@ -321,27 +327,32 @@ namespace rpc
             zone_id_.get_subnet(),
             forward_destination_.get_subnet(),
             reverse_destination_.get_subnet(),
-            remote_object_id.get_subnet(),
-            caller_zone_id.get_subnet(),
+            params.remote_object_id.get_subnet(),
+            params.caller_zone_id.get_subnet(),
             static_cast<uint64_t>(options));
 
         if (!begin_call())
         {
             CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
         }
+        auto keep_alive = shared_from_this();
 
-        auto target_transport = get_directional_transport(remote_object_id.as_zone());
-        if (!target_transport)
+        std::shared_ptr<transport> target_transport;
         {
-            end_call();
-            CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
-        }
+            auto target_zone = params.remote_object_id.as_zone();
+            target_transport = get_directional_transport(target_zone);
+            if (!target_transport)
+            {
+                end_call();
+                CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
+            }
 
-        if (target_transport->get_status() != transport_status::CONNECTED)
-        {
-            end_call();
-            trigger_self_destruction();
-            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+            if (target_transport->get_status() != transport_status::CONNECTED)
+            {
+                end_call();
+                trigger_self_destruction();
+                CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+            }
         }
 
         auto result = CO_AWAIT target_transport->release(std::move(params));
@@ -361,7 +372,7 @@ namespace rpc
         {
             uint64_t prev = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, 0, -1});
 #endif
             if (prev == 1 && shared_count_.load(std::memory_order_acquire) == 0)
@@ -373,7 +384,7 @@ namespace rpc
         {
             uint64_t prev = shared_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, -1, 0});
 #endif
             if (prev == 1 && optimistic_count_.load(std::memory_order_acquire) == 0)
@@ -400,6 +411,7 @@ namespace rpc
         {
             CO_RETURN;
         }
+        auto keep_alive = shared_from_this();
 
         // The notification goes to the caller side (reverse direction).
         auto target_transport = get_directional_transport(caller_zone_id);
@@ -420,7 +432,7 @@ namespace rpc
         // Decrement the optimistic RAII count and trigger destruction if both counts hit zero.
         uint64_t prev_optimistic = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, 0, -1});
 #endif
         if (prev_optimistic == 1 && shared_count_.load(std::memory_order_acquire) == 0)
@@ -445,6 +457,14 @@ namespace rpc
         // Atomically mark shutdown. do_cleanup() will run either immediately (no
         // active calls) or when the last in-flight call's end_call() fires.
         trigger_self_destruction();
+    }
+
+    CORO_TASK(void)
+    pass_through::post_report(rpc::telemetry_event event)
+    {
+        if (service_)
+            CO_AWAIT service_->post_report(std::move(event));
+        CO_RETURN;
     }
 
     CORO_TASK(new_zone_id_result)
@@ -531,8 +551,10 @@ namespace rpc
     void pass_through::do_cleanup()
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
             telemetry_service->on_pass_through_deletion({zone_id_, forward_destination_, reverse_destination_});
+        }
 #endif
 
         // Remove this passthrough from both transports so no new calls are routed here.

@@ -6,7 +6,6 @@
 #pragma once
 
 #include <memory>
-#include <rpc/internal/polyfill/shared_mutex.h>
 
 // Forward declaration
 namespace rpc

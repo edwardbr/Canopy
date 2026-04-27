@@ -4,9 +4,6 @@
  */
 #pragma once
 
-#include <rpc/internal/service.h>
-#include <rpc/internal/service_proxy.h>
-
 namespace rpc
 {
     template<class PtrType> [[nodiscard]] bool is_bound_pointer_null(const PtrType& iface)

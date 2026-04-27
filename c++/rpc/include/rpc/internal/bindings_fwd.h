@@ -4,12 +4,6 @@
  */
 #pragma once
 
-#include <rpc/internal/error_codes.h>
-#include <rpc/internal/types.h>
-#include <rpc/internal/version.h>
-#include <rpc/internal/remote_pointer.h>
-#include <rpc/internal/coroutine_support.h>
-
 namespace rpc
 {
     class object_stub;

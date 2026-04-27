@@ -6,11 +6,19 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
+#include <vector>
 
-#include <rpc/rpc.h>
+#include <rpc/rpc_types.h>
 
 namespace rpc
 {
+    namespace error
+    {
+        int OK();
+        int INVALID_DATA();
+    }
+
     // Allocates zone and object IDs within the subnet range encoded in a zone_address prefix.
     //
     // The prefix passed to the constructor determines the routing prefix and, in the

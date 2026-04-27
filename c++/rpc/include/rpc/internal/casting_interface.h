@@ -12,8 +12,6 @@
 #include <memory>
 #include <unordered_map>
 
-#include <rpc/internal/marshaller_params.h>
-
 namespace rpc
 {
     class object_proxy;

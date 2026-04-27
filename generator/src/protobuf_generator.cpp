@@ -182,6 +182,38 @@ namespace protobuf_generator
         return proto_generator::cpp_type_to_proto_type(cpp_type);
     }
 
+    std::string resolve_typedef_alias(
+        const class_entity& current_scope,
+        const std::string& type_name)
+    {
+        auto normalized = proto_generator::normalise_cpp_type(type_name);
+        std::shared_ptr<class_entity> resolved_entity;
+
+        for (auto* scope = &current_scope; scope != nullptr; scope = scope->get_owner())
+        {
+            if (scope->find_class(normalized, resolved_entity))
+                break;
+        }
+
+        if (resolved_entity && resolved_entity->get_entity_type() == entity_type::TYPEDEF
+            && !resolved_entity->get_alias_name().empty())
+            return resolved_entity->get_alias_name();
+
+        return type_name;
+    }
+
+    std::string cpp_type_to_proto_type(
+        const class_entity& current_scope,
+        const std::string& cpp_type)
+    {
+        return proto_generator::cpp_type_to_proto_type(
+            cpp_type,
+            [](const std::string&) { return false; },
+            [](const std::string&) { return false; },
+            [&current_scope](const std::string& type_name)
+            { return sanitize_type_name(resolve_typedef_alias(current_scope, type_name)); });
+    }
+
     // Helper function to sanitize type name for protobuf
     std::string sanitize_type_name(const std::string& type_name)
     {
@@ -231,7 +263,7 @@ namespace protobuf_generator
                     continue;
 
                 // For struct fields, the return type is the field type and the name is the field name
-                std::string field_type = cpp_type_to_proto_type(func_entity->get_return_type());
+                std::string field_type = cpp_type_to_proto_type(entity, func_entity->get_return_type());
                 std::string field_name = sanitize_field_name(func_entity->get_name());
 
                 // For custom types with namespace, sanitize only the type name part

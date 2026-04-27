@@ -6,8 +6,6 @@
 #pragma once
 
 #include <assert.h>
-#include <rpc/internal/error_codes.h>
-#include <rpc/internal/logger.h>
 
 #if defined(CANOPY_HANG_ON_FAILED_ASSERT)
 #  ifdef FOR_SGX

@@ -10,10 +10,7 @@
 #include <mutex>
 #include <assert.h>
 #include <array>
-
-#include <rpc/internal/types.h>
-#include <rpc/internal/error_codes.h>
-#include <rpc/internal/span.h>
+#include <type_traits>
 
 namespace rpc
 {

@@ -47,20 +47,29 @@ namespace rpc
     };
 
 #cpp_quote(R^__(
-    inline add_ref_options operator|(add_ref_options lhs, add_ref_options rhs)
+    inline add_ref_options operator|(
+        add_ref_options lhs,
+        add_ref_options rhs)
     {
-        return static_cast<add_ref_options>(static_cast<std::underlying_type<add_ref_options>::type>(lhs)
-                                            | static_cast<std::underlying_type<add_ref_options>::type>(rhs));
+        return static_cast<add_ref_options>(
+            static_cast<std::underlying_type<add_ref_options>::type>(lhs)
+            | static_cast<std::underlying_type<add_ref_options>::type>(rhs));
     }
-    inline add_ref_options operator&(add_ref_options lhs, add_ref_options rhs)
+    inline add_ref_options operator&(
+        add_ref_options lhs,
+        add_ref_options rhs)
     {
-        return static_cast<add_ref_options>(static_cast<std::underlying_type<add_ref_options>::type>(lhs)
-                                            & static_cast<std::underlying_type<add_ref_options>::type>(rhs));
+        return static_cast<add_ref_options>(
+            static_cast<std::underlying_type<add_ref_options>::type>(lhs)
+            & static_cast<std::underlying_type<add_ref_options>::type>(rhs));
     }
-    inline add_ref_options operator^(add_ref_options lhs, add_ref_options rhs)
+    inline add_ref_options operator^(
+        add_ref_options lhs,
+        add_ref_options rhs)
     {
-        return static_cast<add_ref_options>(static_cast<std::underlying_type<add_ref_options>::type>(lhs)
-                                            ^ static_cast<std::underlying_type<add_ref_options>::type>(rhs));
+        return static_cast<add_ref_options>(
+            static_cast<std::underlying_type<add_ref_options>::type>(lhs)
+            ^ static_cast<std::underlying_type<add_ref_options>::type>(rhs));
     }
 
     inline add_ref_options operator~(add_ref_options lhs)
@@ -82,20 +91,29 @@ namespace rpc
     };
 
 #cpp_quote(R^__(
-    inline release_options operator|(release_options lhs, release_options rhs)
+    inline release_options operator|(
+        release_options lhs,
+        release_options rhs)
     {
-        return static_cast<release_options>(static_cast<std::underlying_type<release_options>::type>(lhs)
-                                            | static_cast<std::underlying_type<release_options>::type>(rhs));
+        return static_cast<release_options>(
+            static_cast<std::underlying_type<release_options>::type>(lhs)
+            | static_cast<std::underlying_type<release_options>::type>(rhs));
     }
-    inline release_options operator&(release_options lhs, release_options rhs)
+    inline release_options operator&(
+        release_options lhs,
+        release_options rhs)
     {
-        return static_cast<release_options>(static_cast<std::underlying_type<release_options>::type>(lhs)
-                                            & static_cast<std::underlying_type<release_options>::type>(rhs));
+        return static_cast<release_options>(
+            static_cast<std::underlying_type<release_options>::type>(lhs)
+            & static_cast<std::underlying_type<release_options>::type>(rhs));
     }
-    inline release_options operator^(release_options lhs, release_options rhs)
+    inline release_options operator^(
+        release_options lhs,
+        release_options rhs)
     {
-        return static_cast<release_options>(static_cast<std::underlying_type<release_options>::type>(lhs)
-                                            ^ static_cast<std::underlying_type<release_options>::type>(rhs));
+        return static_cast<release_options>(
+            static_cast<std::underlying_type<release_options>::type>(lhs)
+            ^ static_cast<std::underlying_type<release_options>::type>(rhs));
     }
 
     inline release_options operator~(release_options lhs)
@@ -201,10 +219,11 @@ namespace rpc
 
     enum address_type : uint8_t
     {
-        local = 0,      // no internet routing prefix only the subnet and object id have any data
-        ipv4 = 1,       // the routing prefix is a full 32 bit ipv4 address with validaton data
-        ipv6 = 2,       // the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id are not in the 128 bits
-        ipv6_tun = 3    // under review for tun server implementation where every object has an ip address: the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id ARE in the 128 bits
+        local = 0, // no internet routing prefix only the subnet and object id have any data
+        ipv4 = 1,  // the routing prefix is a full 32 bit ipv4 address with validaton data
+        ipv6 = 2, // the routing prefix is a full 128 bit ipv6 address with validaton data subnet and object id are not in the 128 bits
+        ipv6_tun = 3 // under review for tun server implementation where every object has an ip address: the routing prefix
+                     // is a full 128 bit ipv6 address with validaton data subnet and object id ARE in the 128 bits
     };
 
     struct zone_address_args
@@ -234,8 +253,8 @@ namespace rpc
             , validation_bits(validation_bits)
         {
         }
-)__^)            
-    };    
+)__^)
+    };
 
     struct zone_address
     {
@@ -252,15 +271,24 @@ namespace rpc
         zone_address& operator=(zone_address&&) noexcept = default;
 
         // comparison
-        friend inline bool operator==(const zone_address& lhs, const zone_address& rhs);
-        friend inline bool operator!=(const zone_address& lhs, const zone_address& rhs);
-
-
+        friend inline bool operator==(
+            const zone_address& lhs,
+            const zone_address& rhs);
+        friend inline bool operator!=(
+            const zone_address& lhs,
+            const zone_address& rhs);
 
     private:
-        [[nodiscard]] rpc::expected<void, std::string> initialise_blob(const capability_bits& caps, uint16_t port,
+        [[nodiscard]] rpc::expected<
+            void,
+            std::string>
+        initialise_blob(
+            const capability_bits& caps,
+            uint16_t port,
             const std::vector<uint8_t>& routing_prefix,
-            uint64_t subnet, uint64_t object_id, const std::vector<uint8_t>& validation_bits);
+            uint64_t subnet,
+            uint64_t object_id,
+            const std::vector<uint8_t>& validation_bits);
         [[nodiscard]] uint16_t address_offset_bits() const;
         [[nodiscard]] uint16_t subnet_offset_bits() const;
         [[nodiscard]] uint16_t object_offset_bits() const;
@@ -270,36 +298,58 @@ namespace rpc
         void clear_validation_bits();
 
     public:
-        [[nodiscard]] static rpc::expected<zone_address, std::string> create(const zone_address_args& args);
-        [[nodiscard]] static rpc::expected<zone_address, std::string> create(const capability_bits& caps,
-            uint16_t port, const std::vector<uint8_t>& routing_prefix, uint64_t subnet,
-            uint64_t object_id, const std::vector<uint8_t>& validation_bits = {});
-        [[nodiscard]] static rpc::expected<zone_address, std::string> from_blob(std::vector<uint8_t> raw_blob);
+        [[nodiscard]] static rpc::expected<
+            zone_address,
+            std::string>
+        create(const zone_address_args& args);
+        [[nodiscard]] static rpc::expected<
+            zone_address,
+            std::string>
+        create(
+            const capability_bits& caps,
+            uint16_t port,
+            const std::vector<uint8_t>& routing_prefix,
+            uint64_t subnet,
+            uint64_t object_id,
+            const std::vector<uint8_t>& validation_bits = {});
+        [[nodiscard]] static rpc::expected<
+            zone_address,
+            std::string>
+        from_blob(std::vector<uint8_t> raw_blob);
 
         [[nodiscard]] const std::vector<uint8_t>& get_blob() const { return blob; }
         [[nodiscard]] capability_bits get_capability_bits() const;
 
-        //metadata
+        // metadata
         [[nodiscard]] uint8_t get_version() const;
         [[nodiscard]] address_type get_address_type() const;
         [[nodiscard]] bool has_port() const;
         [[nodiscard]] bool has_validation() const;
         [[nodiscard]] uint8_t get_subnet_size_bits() const;
         [[nodiscard]] uint8_t get_object_id_size_bits() const;
-        [[nodiscard]] uint32_t get_validation_size_bytes() const; //returns a 32bit number just incase you want zk-STARK proofs
-        
+        [[nodiscard]] uint32_t get_validation_size_bytes() const; // returns a 32bit number just incase you want zk-STARK proofs
+
         [[nodiscard]] uint16_t get_port() const;
         [[nodiscard]] std::vector<uint8_t> get_routing_prefix() const;
         [[nodiscard]] uint64_t get_subnet() const;
         [[nodiscard]] uint64_t get_object_id() const;
 
-        [[nodiscard]] rpc::expected<void, std::string> set_subnet(uint64_t val);
-        [[nodiscard]] rpc::expected<void, std::string> set_object_id(uint64_t val);
+        [[nodiscard]] rpc::expected<
+            void,
+            std::string>
+        set_subnet(uint64_t val);
+        [[nodiscard]] rpc::expected<
+            void,
+            std::string>
+        set_object_id(uint64_t val);
 
-        //extract a copy without object_id and validation
+        // extract a copy without object_id and validation
         [[nodiscard]] zone_address zone_only() const;
-        //construct a copy with object_id no validation
-        [[nodiscard]] rpc::expected<zone_address, std::string> with_object(uint64_t obj) const;
+        // construct a copy with object_id no validation
+        [[nodiscard]] rpc::expected<
+            zone_address,
+            std::string>
+        with_object(uint64_t obj) const;
         [[nodiscard]] bool same_zone(const zone_address& other) const;
         [[nodiscard]] bool is_set() const noexcept;
         [[nodiscard]] bool operator<(const zone_address& other) const;
@@ -333,8 +383,12 @@ namespace rpc
         [[nodiscard]] const zone_address& get_address() const { return addr_; }
 
         // compare
-        friend inline bool operator==(const zone& lhs, const zone& rhs);
-        friend inline bool operator!=(const zone& lhs, const zone& rhs);
+        friend inline bool operator==(
+            const zone& lhs,
+            const zone& rhs);
+        friend inline bool operator!=(
+            const zone& lhs,
+            const zone& rhs);
 
         // less
         bool operator<(const zone& val) const { return addr_ < val.addr_; }
@@ -342,7 +396,10 @@ namespace rpc
         [[nodiscard]] bool is_set() const noexcept { return addr_.is_set(); }
 
         // create a remote_object from this zone and the given object_id
-        [[nodiscard]] inline rpc::expected<remote_object, std::string> with_object(object obj) const;
+        [[nodiscard]] inline rpc::expected<
+            remote_object,
+            std::string>
+        with_object(object obj) const;
             )__^)
     };
 
@@ -376,14 +433,26 @@ namespace rpc
         [[nodiscard]] uint64_t get_val() const { return id; }
 
         // compare
-        friend inline bool operator==(const object& lhs, const object& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
+        friend inline bool operator==(
+            const object& lhs,
+            const object& rhs);
+        template<
+            typename T,
+            std::enable_if_t<
+                std::is_unsigned<T>::value,
+                int> = 0>
         constexpr bool operator==(T val) const
         {
             return id == static_cast<uint64_t>(val);
         }
-        friend inline bool operator!=(const object& lhs, const object& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
+        friend inline bool operator!=(
+            const object& lhs,
+            const object& rhs);
+        template<
+            typename T,
+            std::enable_if_t<
+                std::is_unsigned<T>::value,
+                int> = 0>
         constexpr bool operator!=(T val) const
         {
             return id != static_cast<uint64_t>(val);
@@ -420,15 +489,22 @@ namespace rpc
         [[nodiscard]] const zone_address& get_address() const { return addr_; }
 
         // compare
-        friend inline bool operator==(const remote_object& lhs, const remote_object& rhs);
-        friend inline bool operator!=(const remote_object& lhs, const remote_object& rhs);
+        friend inline bool operator==(
+            const remote_object& lhs,
+            const remote_object& rhs);
+        friend inline bool operator!=(
+            const remote_object& lhs,
+            const remote_object& rhs);
         bool operator<(const remote_object& val) const { return addr_ < val.addr_; }
 
         [[nodiscard]] bool is_set() const noexcept { return addr_.is_set(); }
 
         // object accessors
         [[nodiscard]] inline object get_object_id() const;
-        [[nodiscard]] inline rpc::expected<remote_object, std::string> with_object(object obj) const;
+        [[nodiscard]] inline rpc::expected<
+            remote_object,
+            std::string>
+        with_object(object obj) const;
 
         // zone conversion methods
         [[nodiscard]] inline zone as_zone() const;
@@ -461,14 +537,26 @@ namespace rpc
         [[nodiscard]] uint64_t get_val() const { return id; }
 
         // compare
-        friend inline bool operator==(const interface_ordinal& lhs, const interface_ordinal& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
+        friend inline bool operator==(
+            const interface_ordinal& lhs,
+            const interface_ordinal& rhs);
+        template<
+            typename T,
+            std::enable_if_t<
+                std::is_unsigned<T>::value,
+                int> = 0>
         constexpr bool operator==(T val) const
         {
             return id == static_cast<uint64_t>(val);
         }
-        friend inline bool operator!=(const interface_ordinal& lhs, const interface_ordinal& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
+        friend inline bool operator!=(
+            const interface_ordinal& lhs,
+            const interface_ordinal& rhs);
+        template<
+            typename T,
+            std::enable_if_t<
+                std::is_unsigned<T>::value,
+                int> = 0>
         constexpr bool operator!=(T val) const
         {
             return id != static_cast<uint64_t>(val);
@@ -508,14 +596,26 @@ namespace rpc
         [[nodiscard]] uint64_t get_val() const { return id; }
 
         // compare
-        friend inline bool operator==(const method& lhs, const method& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
+        friend inline bool operator==(
+            const method& lhs,
+            const method& rhs);
+        template<
+            typename T,
+            std::enable_if_t<
+                std::is_unsigned<T>::value,
+                int> = 0>
         constexpr bool operator==(T val) const
         {
             return id == static_cast<uint64_t>(val);
         }
-        friend inline bool operator!=(const method& lhs, const method& rhs);
-        template<typename T, std::enable_if_t<std::is_unsigned<T>::value, int> = 0>
+        friend inline bool operator!=(
+            const method& lhs,
+            const method& rhs);
+        template<
+            typename T,
+            std::enable_if_t<
+                std::is_unsigned<T>::value,
+                int> = 0>
         constexpr bool operator!=(T val) const
         {
             return id != static_cast<uint64_t>(val);
@@ -532,7 +632,10 @@ namespace rpc
 #cpp_quote(R^__(
     // converters
 
-    [[nodiscard]] inline rpc::expected<remote_object, std::string> zone::with_object(object obj) const
+    [[nodiscard]] inline rpc::expected<
+        remote_object,
+        std::string>
+    zone::with_object(object obj) const
     {
         auto r = addr_.with_object(obj.get_val());
         if (!r)
@@ -546,7 +649,10 @@ namespace rpc
         return object(addr_.get_object_id());
     }
 
-    [[nodiscard]] inline rpc::expected<remote_object, std::string> remote_object::with_object(object obj) const
+    [[nodiscard]] inline rpc::expected<
+        remote_object,
+        std::string>
+    remote_object::with_object(object obj) const
     {
         auto r = addr_.with_object(obj.get_val());
         if (!r)
@@ -566,30 +672,45 @@ namespace rpc
 
     // Cross-type comparisons: remote_object vs destination_zone
     // destination_zone is zone-only, so compare zone fields using same_zone()
-    inline bool operator==(const remote_object& lhs, const zone& rhs)
+    inline bool operator==(
+        const remote_object& lhs,
+        const zone& rhs)
     {
         return lhs.get_address().same_zone(rhs.get_address());
     }
-    inline bool operator!=(const remote_object& lhs, const zone& rhs)
+    inline bool operator!=(
+        const remote_object& lhs,
+        const zone& rhs)
     {
         return !lhs.get_address().same_zone(rhs.get_address());
     }
-    inline bool operator==(const zone& lhs, const remote_object& rhs)
+    inline bool operator==(
+        const zone& lhs,
+        const remote_object& rhs)
     {
         return lhs.get_address().same_zone(rhs.get_address());
     }
-    inline bool operator!=(const zone& lhs, const remote_object& rhs)
+    inline bool operator!=(
+        const zone& lhs,
+        const remote_object& rhs)
     {
         return !lhs.get_address().same_zone(rhs.get_address());
     }
 
-// Default routing prefix for local-node zone addresses. Use when the application
-// does not specify a routing prefix explicitly.
+    // Default routing prefix for local-node zone addresses. Use when the application
+    // does not specify a routing prefix explicitly.
     inline const zone_address DEFAULT_PREFIX = []()
     {
-        auto r = zone_address::create(zone_address_args(default_values::version_3,
-            address_type::local, 0, {},
-            default_values::default_subnet_size_bits, 1, default_values::default_object_id_size_bits, 0, {}));
+        auto r = zone_address::create(zone_address_args(
+            default_values::version_3,
+            address_type::local,
+            0,
+            {},
+            default_values::default_subnet_size_bits,
+            1,
+            default_values::default_object_id_size_bits,
+            0,
+            {}));
         return std::move(*r);
     }();
 

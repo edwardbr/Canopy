@@ -5,12 +5,10 @@
 #pragma once
 
 #ifdef CANOPY_BUILD_COROUTINE
-#  include <coro/coro.hpp>
-
-#  define CORO_TASK(x) coro::task<x>
+#  define CORO_TASK(x) ::rpc::coro::task<x>
 #  define CO_RETURN co_return
 #  define CO_AWAIT co_await
-#  define SYNC_WAIT(x) coro::sync_wait(x)
+#  define SYNC_WAIT(x) ::rpc::coro::sync_wait(x)
 #else
 #  define CORO_TASK(x) x
 #  define CO_RETURN return

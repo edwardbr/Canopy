@@ -28,9 +28,6 @@
 
 #pragma once
 
-#include <rpc/internal/marshaller.h>
-#include <rpc/internal/types.h>
-#include <rpc/internal/coroutine_support.h>
 #include <memory>
 #include <atomic>
 
@@ -150,6 +147,7 @@ namespace rpc
         CORO_TASK(standard_result) release(release_params params) override;
         CORO_TASK(void) object_released(object_released_params params) override;
         CORO_TASK(void) transport_down(transport_down_params params) override;
+        CORO_TASK(void) post_report(rpc::telemetry_event event) override;
         CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override;
 
         CORO_TASK(void) local_transport_down(std::shared_ptr<transport> local_transport);

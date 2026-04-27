@@ -92,7 +92,7 @@ namespace rpc
         std::vector<rpc::back_channel_entry> in_back_channel;
     };
 
-    // Result structs — outputs travel up the return chain via move
+    // Result structs - outputs travel up the return chain via move
 
     struct standard_result
     {

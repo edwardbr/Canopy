@@ -4,7 +4,6 @@
  */
 
 #include <rpc/rpc.h>
-#include <rpc/internal/address_utils.h>
 
 namespace rpc
 {

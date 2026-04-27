@@ -12,16 +12,3 @@ namespace rpc::telemetry
 
     std::shared_ptr<i_telemetry_service> get_telemetry_service();
 }
-
-#ifndef RPC_TELEMETRY_COMPAT_DECLARED
-#  define RPC_TELEMETRY_COMPAT_DECLARED
-namespace rpc
-{
-    using i_telemetry_service = telemetry::i_telemetry_service;
-
-    inline std::shared_ptr<i_telemetry_service> get_telemetry_service()
-    {
-        return telemetry::get_telemetry_service();
-    }
-}
-#endif

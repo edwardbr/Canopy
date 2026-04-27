@@ -51,6 +51,26 @@ namespace rpc
 
             void destroy_self_actual() override { delete this; }
         };
+
+        bool relay_log_event(const rpc::telemetry_event& event)
+        {
+            if (event.event_type_id != rpc::id<rpc::log_record>::get(rpc::get_version()))
+                return false;
+
+            if (event.payload.empty())
+                return true;
+
+#ifdef CANOPY_USE_LOGGING
+            rpc::log_record message;
+            if (!rpc::from_yas_binary(rpc::byte_span(event.payload), message).empty())
+                return true;
+            RPC_LOG_BACKEND(static_cast<int>(message.level), message.message);
+#else
+            std::ignore = event;
+#endif
+            return true;
+        }
+
     }
 
     template<> void object_proxy::create_interface_proxy<service::i_no_op>(rpc::shared_ptr<service::i_no_op>& iface)
@@ -330,6 +350,29 @@ namespace rpc
     // root_service
 
 #ifdef CANOPY_BUILD_COROUTINE
+    CORO_TASK(std::shared_ptr<root_service>)
+    root_service::create(
+        const char* name,
+        zone zone_id,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto service = std::shared_ptr<root_service>(new root_service(name, zone_id, scheduler));
+#  ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
+#  endif
+        CO_RETURN service;
+    }
+
+    CORO_TASK(std::shared_ptr<root_service>)
+    root_service::create(
+        const char* name,
+        const service_config& config,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        CO_RETURN CO_AWAIT create(name, config.initial_zone, scheduler);
+    }
+
     root_service::root_service(
         const char* name,
         zone zone_id,
@@ -340,10 +383,6 @@ namespace rpc
               scheduler)
         , zone_allocator_(zone_id.get_address())
     {
-#  ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
-#  endif
     }
 
     root_service::root_service(
@@ -357,6 +396,27 @@ namespace rpc
     {
     }
 #else
+    CORO_TASK(std::shared_ptr<root_service>)
+    root_service::create(
+        const char* name,
+        zone zone_id)
+    {
+        auto service = std::shared_ptr<root_service>(new root_service(name, zone_id));
+#  ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
+#  endif
+        CO_RETURN service;
+    }
+
+    CORO_TASK(std::shared_ptr<root_service>)
+    root_service::create(
+        const char* name,
+        const service_config& config)
+    {
+        CO_RETURN CO_AWAIT create(name, config.initial_zone);
+    }
+
     root_service::root_service(
         const char* name,
         zone zone_id)
@@ -365,10 +425,6 @@ namespace rpc
               zone_id)
         , zone_allocator_(zone_id.get_address())
     {
-#  ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
-#  endif
     }
 
     root_service::root_service(
@@ -394,8 +450,10 @@ namespace rpc
     service::~service()
     {
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        {
             telemetry_service->on_service_deletion({zone_id_});
+        }
 #endif
 
         // Child services use reference counting through service proxies to manage proper cleanup ordering.
@@ -572,6 +630,54 @@ namespace rpc
         return success;
     }
 
+    bool service::has_live_entities(bool ignore_child_parent_transport) const
+    {
+        {
+            std::scoped_lock l(stub_control_, service_proxy_control_);
+            for (const auto& item : stubs_)
+            {
+                if (item.second.lock())
+                    return true;
+            }
+
+            for (const auto& item : service_proxies_)
+            {
+                if (item.second.lock())
+                    return true;
+            }
+
+            const auto* child_svc = dynamic_cast<const child_service*>(this);
+            std::shared_ptr<transport> expected_parent_transport;
+            destination_zone expected_parent_zone_id;
+            if (ignore_child_parent_transport && child_svc)
+            {
+                expected_parent_transport = child_svc->get_parent_transport();
+                expected_parent_zone_id = child_svc->get_parent_zone_id();
+            }
+
+            for (const auto& item : transports_)
+            {
+                auto transport_ptr = item.second.lock();
+                if (!transport_ptr)
+                    continue;
+
+                if (ignore_child_parent_transport && child_svc && expected_parent_transport == transport_ptr
+                    && item.first == expected_parent_zone_id)
+                    continue;
+
+                return true;
+            }
+        }
+
+        {
+            std::lock_guard guard(pending_out_params_control_);
+            if (!pending_out_params_.empty())
+                return true;
+        }
+
+        return false;
+    }
+
     CORO_TASK(send_result)
     service::send(send_params params)
     {
@@ -582,7 +688,7 @@ namespace rpc
         std::ignore = params.in_back_channel;
 
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_send(
                 {zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id});
@@ -623,7 +729,7 @@ namespace rpc
         std::ignore = params.in_back_channel;
 
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_post(
                 {zone_id_, params.remote_object_id, params.caller_zone_id, params.interface_id, params.method_id});
@@ -761,6 +867,7 @@ namespace rpc
 
         return item->second;
     }
+
     CORO_TASK(standard_result)
     service::try_cast(try_cast_params params)
     {
@@ -986,7 +1093,8 @@ namespace rpc
                 dest_params.build_out_param_channel = build_out_param_channel & (~add_ref_options::build_caller_route);
                 dest_params.in_back_channel = params.in_back_channel;
                 dest_params.request_id = request_id;
-                CO_RETURN CO_AWAIT dest_transport->add_ref(std::move(dest_params));
+                auto forward_result = CO_AWAIT dest_transport->add_ref(std::move(dest_params));
+                CO_RETURN forward_result;
             }
 
             // service has the implementation
@@ -1028,7 +1136,7 @@ namespace rpc
             }
         }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_add_ref(
                 {zone_id_, remote_object_id, caller_zone_id, requesting_zone_id, build_out_param_channel});
@@ -1058,7 +1166,6 @@ namespace rpc
             } // Release stub_control_ lock before calling object_released
 
             stub->dont_keep_alive();
-            // stub = nullptr;
 
             // Now notify all transports that had optimistic references
             // IMPORTANT: This must be done AFTER releasing stub_control_ mutex to avoid deadlock
@@ -1137,7 +1244,7 @@ namespace rpc
         }
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_release({zone_id_, remote_object_id, caller_zone_id, options});
         }
@@ -1155,7 +1262,7 @@ namespace rpc
 
         std::ignore = params.in_back_channel;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_object_released({zone_id_, remote_object_id, caller_zone_id});
         }
@@ -1187,7 +1294,7 @@ namespace rpc
 
         std::ignore = params.in_back_channel;
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_transport_down({zone_id_, destination_zone_id, caller_zone_id});
         }
@@ -1207,7 +1314,7 @@ namespace rpc
             CO_RETURN;
         }
 
-        RPC_INFO(
+        RPC_DEBUG(
             "Transport down notification received from caller_zone={} to destination_zone={}",
             caller_zone_id.get_subnet(),
             destination_zone_id.get_subnet());
@@ -1226,7 +1333,7 @@ namespace rpc
                 }
             }
 
-            RPC_INFO(
+            RPC_DEBUG(
                 "transport_down: Found {} stubs with references from zone {}",
                 stubs_to_cleanup.size(),
                 caller_zone_id.get_subnet());
@@ -1258,7 +1365,7 @@ namespace rpc
             CO_AWAIT notify_object_gone_event(obj_id, destination_zone_id);
         }
 
-        RPC_INFO("transport_down: Cleanup complete, {} objects deleted", objects_to_notify.size());
+        RPC_DEBUG("transport_down: Cleanup complete, {} objects deleted", objects_to_notify.size());
     }
 
     void service::inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)
@@ -1519,12 +1626,11 @@ namespace rpc
 
     child_service::~child_service()
     {
-        // Disconnect parent transport to break circular reference
+        // Request normal transport shutdown so stream transports can flush releases
+        // and send their close handshake instead of leaving the peer receive loop alive.
         auto parent = get_parent_transport();
-        if (parent)
-        {
-            parent->set_status(transport_status::DISCONNECTED);
-        }
+        if (parent && parent->get_status() < transport_status::DISCONNECTING)
+            parent->set_status(transport_status::DISCONNECTING);
     }
 
     CORO_TASK(new_zone_id_result)
@@ -1534,6 +1640,30 @@ namespace rpc
         if (!parent)
             CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         CO_RETURN CO_AWAIT parent->get_new_zone_id(std::move(params));
+    }
+
+    CORO_TASK(void)
+    service::post_report(rpc::telemetry_event event)
+    {
+        if (relay_log_event(event))
+            CO_RETURN;
+
+#ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            telemetry_service->handle_telemetry_event(std::move(event));
+#else
+        std::ignore = event;
+#endif
+        CO_RETURN;
+    }
+
+    CORO_TASK(void)
+    child_service::post_report(rpc::telemetry_event event)
+    {
+        auto parent = get_parent_transport();
+        if (parent)
+            CO_AWAIT parent->post_report(std::move(event));
+        CO_RETURN;
     }
 
     ///////////////////////////////////////////////////////////////////////////////

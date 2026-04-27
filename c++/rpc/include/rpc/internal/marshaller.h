@@ -11,8 +11,6 @@
 
 // types.h, error_codes.h, and serialiser.h are included by rpc.h
 
-#include <rpc/internal/marshaller_params.h>
-
 namespace rpc
 {
     inline const std::vector<rpc::back_channel_entry>& empty_back_channel() noexcept
@@ -47,6 +45,9 @@ namespace rpc
 
         // notify callers that a transport is down unidirectional call
         virtual CORO_TASK(void) transport_down(transport_down_params params) = 0;
+
+        // post log, telemetry, or diagnostic report events towards the root zone as a one-way message
+        virtual CORO_TASK(void) post_report(rpc::telemetry_event event) = 0;
 
         // request a new zone id from the root zone
         virtual CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) = 0;

@@ -37,27 +37,6 @@
 #include <type_traits>
 #include <vector>
 
-#include <rpc/internal/error_codes.h>
-#include <rpc/internal/assert.h>
-#include <rpc/internal/types.h>
-#include <rpc/internal/version.h>
-#include <rpc/internal/marshaller.h>
-#include <rpc/internal/zone_id_allocator.h>
-#include <rpc/internal/pass_through.h>
-#include <rpc/internal/bindings_fwd.h>
-#include <rpc/internal/remote_pointer.h>
-#include <rpc/internal/coroutine_support.h>
-#include <rpc/internal/service_proxy.h>
-#include <rpc/internal/stub.h>
-
-#ifdef CANOPY_USE_TELEMETRY
-#  include <rpc/internal/telemetry_fwd.h>
-#endif
-
-#ifdef CANOPY_BUILD_COROUTINE
-#  include <coro/scheduler.hpp>
-#endif
-
 namespace rpc
 {
     class object_stub;
@@ -442,6 +421,7 @@ namespace rpc
          * An assertion will fire if objects remain when the service destructs.
          */
         virtual bool check_is_empty() const;
+        bool has_live_entities(bool ignore_child_parent_transport = true) const;
 
         /////////////////////////////////
         // NOTIFICATION LOGIC
@@ -608,6 +588,7 @@ namespace rpc
         CORO_TASK(standard_result) release(release_params params) override;
         CORO_TASK(void) object_released(object_released_params params) override;
         CORO_TASK(void) transport_down(transport_down_params params) override;
+        CORO_TASK(void) post_report(rpc::telemetry_event event) override;
         CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override = 0;
 
         ///////////////////////////////////////////////////////////////////////////////
@@ -840,6 +821,15 @@ namespace rpc
 
     public:
 #ifdef CANOPY_BUILD_COROUTINE
+        static CORO_TASK(std::shared_ptr<root_service>) create(
+            const char* name,
+            zone zone_id,
+            const std::shared_ptr<coro::scheduler>& scheduler);
+        static CORO_TASK(std::shared_ptr<root_service>) create(
+            const char* name,
+            const service_config& config,
+            const std::shared_ptr<coro::scheduler>& scheduler);
+
         explicit root_service(
             const char* name,
             zone zone_id,
@@ -849,6 +839,13 @@ namespace rpc
             const service_config& config,
             const std::shared_ptr<coro::scheduler>& scheduler);
 #else
+        static CORO_TASK(std::shared_ptr<root_service>) create(
+            const char* name,
+            zone zone_id);
+        static CORO_TASK(std::shared_ptr<root_service>) create(
+            const char* name,
+            const service_config& config);
+
         explicit root_service(
             const char* name,
             zone zone_id);
@@ -1026,6 +1023,7 @@ namespace rpc
 
         // Forwards the request up to the parent zone via the parent transport.
         CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) override;
+        CORO_TASK(void) post_report(rpc::telemetry_event event) override;
 
         template<
             class PARENT_INTERFACE,
@@ -1124,12 +1122,12 @@ namespace rpc
                 parent_ptr = std::move(query_result.iface);
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
-                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 {
                     auto inbound_obj_r = zone_id.with_object(input_descr.get_object_id());
                     RPC_ASSERT(inbound_obj_r.has_value());
                     telemetry_service->on_transport_inbound_add_ref(
-                        zone_id, adjacent_zone_id, *inbound_obj_r, adjacent_zone_id, adjacent_zone_id, rpc::add_ref_options::normal);
+                        {zone_id, adjacent_zone_id, *inbound_obj_r, adjacent_zone_id, adjacent_zone_id, rpc::add_ref_options::normal});
                 }
 #endif
             }
@@ -1150,17 +1148,17 @@ namespace rpc
                 if (result.error_code == rpc::error::OK())
                 {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
-                    if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                    if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                     {
                         auto outbound_obj_r = zone_id.with_object(result.descriptor.get_object_id());
                         RPC_ASSERT(outbound_obj_r.has_value());
                         telemetry_service->on_transport_outbound_add_ref(
-                            zone_id,
-                            adjacent_zone_id,
-                            *outbound_obj_r,
-                            adjacent_zone_id,
-                            zone_id,
-                            rpc::add_ref_options::build_caller_route);
+                            {zone_id,
+                                adjacent_zone_id,
+                                *outbound_obj_r,
+                                adjacent_zone_id,
+                                zone_id,
+                                rpc::add_ref_options::build_caller_route});
                     }
 #endif
                 }
@@ -1375,12 +1373,12 @@ namespace rpc
             parent_ptr = std::move(query_result.iface);
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             {
                 auto inbound_obj_r = zone_id_.with_object(input_descr.get_object_id());
                 RPC_ASSERT(inbound_obj_r.has_value());
                 telemetry_service->on_transport_inbound_add_ref(
-                    zone_id_, adjacent_zone_id, *inbound_obj_r, adjacent_zone_id, adjacent_zone_id, rpc::add_ref_options::normal);
+                    {zone_id_, adjacent_zone_id, *inbound_obj_r, adjacent_zone_id, adjacent_zone_id, rpc::add_ref_options::normal});
             }
 #endif
         }
@@ -1404,17 +1402,17 @@ namespace rpc
             if (result.error_code == rpc::error::OK())
             {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
-                if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+                if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 {
                     auto outbound_obj_r = zone_id_.with_object(result.descriptor.get_object_id());
                     RPC_ASSERT(outbound_obj_r.has_value());
                     telemetry_service->on_transport_outbound_add_ref(
-                        zone_id_,
-                        adjacent_zone_id,
-                        *outbound_obj_r,
-                        adjacent_zone_id,
-                        zone_id_,
-                        rpc::add_ref_options::build_caller_route);
+                        {zone_id_,
+                            adjacent_zone_id,
+                            *outbound_obj_r,
+                            adjacent_zone_id,
+                            zone_id_,
+                            rpc::add_ref_options::build_caller_route});
                 }
 #endif
             }
@@ -1502,15 +1500,15 @@ namespace rpc
             CO_RETURN result;
         }
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING) && !defined(FOR_SGX)
-        if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_add_ref(
-                zone_id_,
-                *dest_with_obj,
-                caller_zone_id,
-                known_direction,
-                rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
-                    | (optimistic ? add_ref_options::optimistic : add_ref_options::normal));
+                {zone_id_,
+                    *dest_with_obj,
+                    caller_zone_id,
+                    known_direction,
+                    rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route
+                        | (optimistic ? add_ref_options::optimistic : add_ref_options::normal)});
         }
 #endif
 

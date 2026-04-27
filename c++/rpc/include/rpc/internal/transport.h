@@ -26,9 +26,6 @@
 
 #pragma once
 
-#include <rpc/internal/marshaller.h>
-#include <rpc/internal/polyfill/shared_mutex.h>
-#include <rpc/internal/types.h>
 #include <atomic>
 #include <memory>
 #include <unordered_map>
@@ -390,6 +387,8 @@ namespace rpc
 
         CORO_TASK(void) inbound_transport_down(transport_down_params params);
 
+        CORO_TASK(void) inbound_post_report(rpc::telemetry_event event);
+
         /////////////////////////////////
         // OUTBOUND METHODS (i_marshaller implementation) - Send calls to remote zone
         /////////////////////////////////
@@ -416,6 +415,7 @@ namespace rpc
         CORO_TASK(standard_result) release(release_params params) final;
         CORO_TASK(void) object_released(object_released_params params) final;
         CORO_TASK(void) transport_down(transport_down_params params) final;
+        CORO_TASK(void) post_report(rpc::telemetry_event event) final;
 
         // Requests a new zone ID from the root zone.
         // Non-hierarchical transports forward to the local service allocator.
@@ -424,6 +424,7 @@ namespace rpc
         CORO_TASK(new_zone_id_result) get_new_zone_id(get_new_zone_id_params params) final;
 
         virtual CORO_TASK(new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params);
+        virtual CORO_TASK(void) outbound_post_report(rpc::telemetry_event event);
 
         /////////////////////////////////
         // VIRTUAL METHODS - Derived classes implement transport-specific behavior

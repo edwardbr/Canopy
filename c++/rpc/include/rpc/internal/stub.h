@@ -39,14 +39,9 @@
 #include <mutex>
 #include <atomic>
 
-#include <rpc/internal/assert.h>
-#include <rpc/internal/types.h>
-#include <rpc/internal/marshaller.h>
-#include <rpc/internal/remote_pointer.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
 #endif
-#include <rpc/internal/service.h>
 
 namespace rpc
 {
