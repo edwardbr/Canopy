@@ -1640,13 +1640,10 @@ namespace synchronous_generator
                 // Generate JSON schemas for function parameters
                 std::string in_json_schema;
                 std::string out_json_schema;
-                if (!marshalls_interfaces)
-                {
-                    in_json_schema
-                        = json_schema::generate_function_input_parameter_schema_with_recursion(library, m_ob, *function);
-                    out_json_schema
-                        = json_schema::generate_function_output_parameter_schema_with_recursion(library, m_ob, *function);
-                }
+                in_json_schema
+                    = json_schema::generate_function_input_parameter_schema_with_recursion(library, m_ob, *function);
+                out_json_schema
+                    = json_schema::generate_function_output_parameter_schema_with_recursion(library, m_ob, *function);
 
                 proxy(
                     "functions.emplace_back(rpc::function_info{{FLD(full_name)\"{0}.{1}\", FLD(name)\"{1}\", "
