@@ -532,8 +532,8 @@ protected:
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
-        root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, io_scheduler_);
+        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
+        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
         listener_ = std::make_unique<streaming::listener>(
             "responder",
@@ -602,8 +602,8 @@ protected:
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, io_scheduler_);
-        peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
+        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
+        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
 
         auto peer_stream = std::make_shared<streaming::spsc_queue::stream>(&recv_queue_, &send_queue_, io_scheduler_);
         auto responder = std::static_pointer_cast<rpc::stream_transport::transport>(
@@ -647,8 +647,8 @@ protected:
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
-        root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, io_scheduler_);
+        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
+        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
         canopy::network_config::ip_address addr{};
         addr[0] = 127;
@@ -719,8 +719,8 @@ protected:
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
-        root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, io_scheduler_);
+        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
+        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
         auto cert_dir = test_cert_dir();
         auto cert_path = cert_dir + "/cert.pem";
@@ -831,8 +831,8 @@ protected:
         auto peer_zone_id = rpc::DEFAULT_PREFIX;
         std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
 
-        peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
-        root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, io_scheduler_);
+        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
+        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
         // Server wraps accepted TCP streams with server-mode WebSocket framing.
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)

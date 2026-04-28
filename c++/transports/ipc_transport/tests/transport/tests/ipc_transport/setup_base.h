@@ -107,7 +107,7 @@ protected:
 
     void initialise_root_service()
     {
-        this->root_service_ = SYNC_WAIT(rpc::root_service::create("host", host_zone_, this->io_scheduler_));
+        this->root_service_ = rpc::root_service::create("host", host_zone_, this->io_scheduler_);
         current_host_service = this->root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());

@@ -53,7 +53,7 @@ public:
             coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{.thread_count = 1}}));
 
-        this->root_service_ = SYNC_WAIT(rpc::root_service::create("host", host_zone_, this->io_scheduler_));
+        this->root_service_ = rpc::root_service::create("host", host_zone_, this->io_scheduler_);
         current_host_service = this->root_service_;
         rpc::shared_ptr<yyy::i_host> hst(new host());
         this->i_host_ptr_ = hst;

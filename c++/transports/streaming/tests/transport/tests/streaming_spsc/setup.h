@@ -24,8 +24,8 @@ protected:
     {
         auto root_zone_id = rpc::DEFAULT_PREFIX;
         auto peer_zone_id = this->make_peer_zone_id();
-        this->root_service_ = CO_AWAIT rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
-        this->peer_service_ = CO_AWAIT rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
+        this->root_service_ = rpc::root_service::create("host", root_zone_id, this->io_scheduler_);
+        this->peer_service_ = rpc::root_service::create("peer", peer_zone_id, this->io_scheduler_);
         current_host_service = this->root_service_;
         send_spsc_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();
         receive_spsc_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();

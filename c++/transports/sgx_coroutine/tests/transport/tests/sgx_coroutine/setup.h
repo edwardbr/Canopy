@@ -72,7 +72,7 @@ public:
                 .thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{.thread_count = 1},
             }));
-        root_service_ = SYNC_WAIT(rpc::root_service::create("host", rpc::DEFAULT_PREFIX, io_scheduler_));
+        root_service_ = rpc::root_service::create("host", rpc::DEFAULT_PREFIX, io_scheduler_);
         current_host_service = root_service_;
 
         i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());

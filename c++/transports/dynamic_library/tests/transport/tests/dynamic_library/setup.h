@@ -34,7 +34,7 @@ public:
     {
         this->start_telemetry_test();
 
-        this->root_service_ = CO_AWAIT rpc::root_service::create("host", rpc::DEFAULT_PREFIX);
+        this->root_service_ = rpc::root_service::create("host", rpc::DEFAULT_PREFIX);
         current_host_service = this->root_service_;
 
         rpc::shared_ptr<yyy::i_host> hst(new host());
