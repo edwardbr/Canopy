@@ -24,6 +24,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
             streaming_transport_idl
             streaming
             ${CANOPY_LIBRARIES}
+            ${CANOPY_SGX_HOST_LIBRARIES}
             rpc::rpc
             canopy_coroutine_edl)
   target_compile_options(transport_sgx_coroutine PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

@@ -462,12 +462,14 @@ endif()
 # ######################################################################################################################
 set(CANOPY_INCLUDES ${SGX_INCLUDE_DIR})
 
-# Add SGX libraries to CANOPY_LIBRARIES
+# Host-side SGX runtime libraries. Keep these separate from CANOPY_LIBRARIES so
+# non-SGX targets in an enclave-enabled build do not inherit SGX link dependencies.
+set(CANOPY_SGX_HOST_LIBRARIES)
 if(WIN32)
   if(${SGX_HW})
     list(
       APPEND
-      CANOPY_LIBRARIES
+      CANOPY_SGX_HOST_LIBRARIES
       sgx_tcrypto.lib
       sgx_uae_service.lib
       sgx_capable.lib
@@ -475,7 +477,7 @@ if(WIN32)
   else()
     list(
       APPEND
-      CANOPY_LIBRARIES
+      CANOPY_SGX_HOST_LIBRARIES
       sgx_tcrypto.lib
       sgx_uae_service_sim.lib
       sgx_capable.lib
@@ -484,7 +486,7 @@ if(WIN32)
 else()
   list(
     APPEND
-    CANOPY_LIBRARIES
+    CANOPY_SGX_HOST_LIBRARIES
     ${SGX_USVC_LIB}
     sgx_capable
     ${SGX_URTS_LIB})

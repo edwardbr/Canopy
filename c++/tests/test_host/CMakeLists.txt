@@ -141,6 +141,7 @@ target_link_libraries(
          ${CANOPY_FMT_LIB}
          ${ENCLAVE_DEPENDANCIES}
          ${CANOPY_LIBRARIES}
+         ${CANOPY_SGX_HOST_LIBRARIES}
          rpc_log)
 
 if(CANOPY_BUILD_COROUTINE)

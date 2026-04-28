@@ -124,7 +124,6 @@ target_link_libraries(
 
 target_compile_options(rpc PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(rpc PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-target_link_directories(rpc PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET rpc PROPERTY COMPILE_PDB_NAME rpc)
 
 if(CANOPY_ENABLE_CLANG_TIDY)

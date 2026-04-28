@@ -705,7 +705,6 @@ function(
   target_include_directories(${name}_idl SYSTEM PRIVATE "${output_path}" "${output_path}/include")
   target_include_directories(${name}_idl PRIVATE ${CANOPY_INCLUDES} ${params_include_paths})
   target_compile_options(${name}_idl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-  target_link_directories(${name}_idl PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET ${name}_idl PROPERTY COMPILE_PDB_NAME ${name}_idl)
 
   if(CANOPY_ENABLE_CLANG_TIDY)

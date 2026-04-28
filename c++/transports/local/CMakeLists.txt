@@ -42,7 +42,6 @@ target_link_libraries(transport_local PRIVATE yas_common rpc_types_idl ${CANOPY_
 
 target_compile_options(transport_local PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(transport_local PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-target_link_directories(transport_local PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET transport_local PROPERTY COMPILE_PDB_NAME transport_local)
 
 if(CANOPY_ENABLE_CLANG_TIDY)

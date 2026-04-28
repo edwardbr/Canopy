@@ -18,15 +18,9 @@ target_include_directories(
          "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
   PRIVATE ${CANOPY_INCLUDES})
 
-if(CANOPY_BUILD_ENCLAVE)
-  set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header)
-endif()
-
-# Link with libraries similar to test
 target_link_libraries(
   json_schema_metadata_test
-  PUBLIC common_tests
-         example_idl
+  PUBLIC example_idl
          example_import_idl
          example_shared_idl
          rpc::rpc
@@ -37,15 +31,11 @@ target_link_libraries(
          spdlog::spdlog
          nlohmann_json::nlohmann_json
          nlohmann_json_schema_validator
-         ${CANOPY_LIBRARIES}
-         ${ENCLAVE_DEPENDENCIES}
-         test_fixtures
          rpc_log)
 
 # Add compile options and link options like test
 target_compile_options(json_schema_metadata_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(json_schema_metadata_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-target_link_directories(json_schema_metadata_test PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET json_schema_metadata_test PROPERTY COMPILE_PDB_NAME json_schema_metadata_test)
 
 if(CANOPY_ENABLE_CLANG_TIDY)

@@ -21,6 +21,7 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
             enclave_marshal_test_idl
             rpc_types_idl
             ${CANOPY_LIBRARIES}
+            ${CANOPY_SGX_HOST_LIBRARIES}
             rpc::rpc
             marshal_test_edl)
   target_compile_options(transport_sgx PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
