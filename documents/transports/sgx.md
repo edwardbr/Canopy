@@ -33,8 +33,21 @@ Security note:
 
 - Intel SGX SDK
 - `CANOPY_BUILD_ENCLAVE=ON`
+- `CANOPY_BUILD_NANOPB=ON` for protobuf-compatible enclave serialization
 - Coroutine SGX additionally requires a coroutine build and the SGX simulation or
   hardware preset that enables `c++/transports/sgx_coroutine`
+
+The SGX enclave path should not depend on the full Google C++ protobuf runtime.
+Use `CANOPY_BUILD_PROTOCOL_BUFFERS=OFF` with `CANOPY_BUILD_NANOPB=ON` when you
+need protobuf-compatible wire bytes inside enclaves. Nanopb keeps the `.proto`
+schema contract and protobuf wire format while compiling a much smaller runtime
+with enclave flags.
+
+If `CANOPY_BOOTSTRAP_SGX_SDK=ON`, Canopy can install the SDK from
+`submodules/confidential-computing.sgx`. Set
+`CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES=OFF` after the SGX source tree has been
+prepared once, or when an SGX SDK installer already exists, to avoid repeated
+nested SGX submodule updates during configure.
 
 ## Architecture
 

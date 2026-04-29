@@ -44,6 +44,8 @@ message("CANOPY_DEBUG_ENCLAVE_MEMLEAK ${CANOPY_DEBUG_ENCLAVE_MEMLEAK}")
 # The bootstrap path here only ensures an installed SDK exists before find_package(SGX REQUIRED) runs. It does not
 # replace FindSGX.cmake.
 option(CANOPY_BOOTSTRAP_SGX_SDK "Build and install the Intel SGX SDK from the local source submodule when missing" OFF)
+option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES
+       "Run the Intel SGX SDK preparation step, which updates nested SGX SDK submodules" ON)
 set(CANOPY_SGX_SDK_INSTALL_PREFIX
     "${CMAKE_BINARY_DIR}/sgx-sdk"
     CACHE PATH "Install prefix root used when bootstrapping the Intel SGX SDK from submodule source")
@@ -168,31 +170,60 @@ function(canopy_bootstrap_sgx_sdk)
     set(canopy_sgx_bootstrap_path "${canopy_sgx_bootstrap_tools_dir}")
   endif()
 
-  message(STATUS "Bootstrapping Intel SGX SDK from submodules/confidential-computing.sgx")
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
-            "CXXFLAGS=-std=gnu++17" "${CANOPY_MAKE_EXECUTABLE}" preparation
-    WORKING_DIRECTORY "${sgx_source_dir}"
-    RESULT_VARIABLE sgx_sdk_prep_result)
-
-  if(NOT sgx_sdk_prep_result EQUAL 0)
-    message(FATAL_ERROR "Failed to prepare Intel SGX SDK sources in ${sgx_source_dir}. "
-                        "Install the SGX SDK prerequisites or inspect the submodule preparation step.")
-  endif()
-
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
-            "CXXFLAGS=-std=gnu++17" "${CANOPY_MAKE_EXECUTABLE}" sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
-    WORKING_DIRECTORY "${sgx_source_dir}"
-    RESULT_VARIABLE sgx_sdk_build_result)
-
-  if(NOT sgx_sdk_build_result EQUAL 0)
-    message(FATAL_ERROR "Failed to build Intel SGX SDK from ${sgx_source_dir}. "
-                        "Install the SGX SDK prerequisites or set SGX_DIR to an existing SDK.")
-  endif()
-
   file(GLOB sgx_sdk_installers "${sgx_source_dir}/linux/installer/bin/sgx_linux_x64_sdk_*.bin")
   list(LENGTH sgx_sdk_installers sgx_sdk_installer_count)
+
+  if(sgx_sdk_installer_count EQUAL 0)
+    set(canopy_sgx_prepared_markers
+        "${sgx_source_dir}/external/ippcp_internal/lib/linux/intel64"
+        "${sgx_source_dir}/external/cbor/sgx_libcbor"
+        "${sgx_source_dir}/external/protobuf/protobuf_code/third_party/abseil-cpp"
+        "${sgx_source_dir}/external/dcap_source/external/jwt-cpp")
+    set(canopy_sgx_sources_prepared TRUE)
+    foreach(canopy_sgx_prepared_marker IN LISTS canopy_sgx_prepared_markers)
+      if(NOT EXISTS "${canopy_sgx_prepared_marker}")
+        set(canopy_sgx_sources_prepared FALSE)
+      endif()
+    endforeach()
+
+    if(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES)
+      message(STATUS "Bootstrapping Intel SGX SDK from submodules/confidential-computing.sgx")
+      execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
+                "CXXFLAGS=-std=gnu++17" "${CANOPY_MAKE_EXECUTABLE}" preparation
+        WORKING_DIRECTORY "${sgx_source_dir}"
+        RESULT_VARIABLE sgx_sdk_prep_result)
+
+      if(NOT sgx_sdk_prep_result EQUAL 0)
+        message(FATAL_ERROR "Failed to prepare Intel SGX SDK sources in ${sgx_source_dir}. "
+                            "Install the SGX SDK prerequisites or inspect the submodule preparation step.")
+      endif()
+    elseif(canopy_sgx_sources_prepared)
+      message(STATUS "Skipping Intel SGX SDK source preparation because CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES is OFF "
+                     "and the prepared source markers are present.")
+    else()
+      message(FATAL_ERROR "CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES is OFF, but no SGX SDK installer exists and "
+                          "the SGX source tree does not look prepared. Enable CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "
+                          "for the first bootstrap, or populate submodules/confidential-computing.sgx manually.")
+    endif()
+
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
+              "CXXFLAGS=-std=gnu++17" "${CANOPY_MAKE_EXECUTABLE}" sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
+      WORKING_DIRECTORY "${sgx_source_dir}"
+      RESULT_VARIABLE sgx_sdk_build_result)
+
+    if(NOT sgx_sdk_build_result EQUAL 0)
+      message(FATAL_ERROR "Failed to build Intel SGX SDK from ${sgx_source_dir}. "
+                          "Install the SGX SDK prerequisites or set SGX_DIR to an existing SDK.")
+    endif()
+
+    file(GLOB sgx_sdk_installers "${sgx_source_dir}/linux/installer/bin/sgx_linux_x64_sdk_*.bin")
+    list(LENGTH sgx_sdk_installers sgx_sdk_installer_count)
+  else()
+    message(STATUS "Using existing Intel SGX SDK installer from submodules/confidential-computing.sgx")
+  endif()
+
   if(sgx_sdk_installer_count EQUAL 0)
     message(FATAL_ERROR "Intel SGX SDK build completed but no installer was produced under "
                         "${sgx_source_dir}/linux/installer/bin.")
@@ -265,6 +296,8 @@ set(CANOPY_BUILD_ENCLAVE_FLAG CANOPY_BUILD_ENCLAVE)
 # Enclave format library
 # ######################################################################################################################
 set(CANOPY_ENCLAVE_FMT_LIB fmt::fmt-header-only)
+set(CANOPY_ENCLAVE_PROTOBUF_TARGET)
+set(CANOPY_SGX_PROTOC_EXECUTABLE)
 
 # ######################################################################################################################
 # Platform-specific SGX configuration

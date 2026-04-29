@@ -696,6 +696,16 @@ function(
   if(generate_protobuf)
     list(APPEND IDL_SOURCES ${full_protobuf_cpp_path} ${PROTO_PB_SOURCES})
   endif()
+
+  set(IDL_SOURCES_ENCLAVE ${IDL_SOURCES})
+  if(generate_nanopb)
+    set(IDL_SOURCES_ENCLAVE ${full_header_path} ${full_stub_header_path} ${full_stub_path} ${full_proxy_path})
+    if(generate_yas)
+      list(APPEND IDL_SOURCES_ENCLAVE ${full_yas_path})
+    endif()
+    list(APPEND IDL_SOURCES_ENCLAVE ${full_nanopb_cpp_path} ${NANOPB_PB_SOURCES})
+  endif()
+
   # Create the host IDL library
   add_library(${name}_idl STATIC ${IDL_SOURCES})
   target_compile_definitions(${name}_idl PRIVATE ${CANOPY_DEFINES})
@@ -770,7 +780,7 @@ function(
 
   if(CANOPY_BUILD_ENCLAVE)
     # Create the enclave IDL library
-    add_library(${name}_idl_enclave STATIC ${IDL_SOURCES})
+    add_library(${name}_idl_enclave STATIC ${IDL_SOURCES_ENCLAVE})
     target_compile_definitions(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
     target_include_directories(${name}_idl_enclave SYSTEM PUBLIC "$<BUILD_INTERFACE:${output_path}>"
                                                                  "$<BUILD_INTERFACE:${output_path}/include>")
@@ -792,8 +802,18 @@ function(
       target_link_libraries(${name}_idl_enclave PUBLIC yas_common)
     endif()
 
-    # Link protobuf library if building protobuf support
-    if(generate_protobuf)
+    # Link Nanopb runtime if building Nanopb support
+    if(generate_nanopb)
+      target_compile_definitions(${name}_idl_enclave PRIVATE CANOPY_USE_NANOPB_FOR_PROTOCOL_BUFFERS)
+      target_include_directories(${name}_idl_enclave BEFORE PRIVATE ${nanopb_include_roots})
+      target_include_directories(${name}_idl_enclave SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
+      if(TARGET canopy_nanopb_runtime_enclave)
+        target_link_libraries(${name}_idl_enclave PUBLIC canopy_nanopb_runtime_enclave)
+      else()
+        message(FATAL_ERROR "Target ${name}_idl_enclave requires canopy_nanopb_runtime_enclave")
+      endif()
+      add_dependencies(${name}_idl_enclave ${name}_idl_generate ${name}_nanopb_compile)
+    elseif(generate_protobuf)
       if(TARGET protobuf::libprotobuf)
         target_link_libraries(${name}_idl_enclave PUBLIC protobuf::libprotobuf)
         target_include_directories(${name}_idl_enclave SYSTEM PRIVATE ${proto_dir} ${output_path}/src)

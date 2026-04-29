@@ -10,16 +10,28 @@ message("marshal_test_enclave")
 # marshal_test_enclave
 
 if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
+  set(MARSHAL_TEST_TELEMETRY_ENCLAVE_LIBS)
+  if(CANOPY_USE_TELEMETRY)
+    list(APPEND MARSHAL_TEST_TELEMETRY_ENCLAVE_LIBS rpc_telemetry_enclave rpc_telemetry_edl_header_enclave)
+  endif()
+
+  set(MARSHAL_TEST_PROTOBUF_ENCLAVE_LIBS)
+  if(TARGET canopy_nanopb_runtime_enclave)
+    list(APPEND MARSHAL_TEST_PROTOBUF_ENCLAVE_LIBS canopy_nanopb_runtime_enclave)
+  endif()
+  if(TARGET rpc_types_idl_enclave AND (CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_BUILD_NANOPB))
+    list(APPEND MARSHAL_TEST_PROTOBUF_ENCLAVE_LIBS rpc_types_idl_enclave)
+  endif()
 
   add_enclave_library(
     marshal_test_enclave
     SRCS marshal_test_enclave.cpp
     HEADER_ONLY_LIBS
+      ${CANOPY_ENCLAVE_FMT_LIB}
     TRUSTED_LIBS
       rpc_enclave
       marshal_test_edl_enclave
-      rpc_telemetry_enclave
-      rpc_telemetry_edl_header_enclave
+      ${MARSHAL_TEST_TELEMETRY_ENCLAVE_LIBS}
       transport_sgx_enclave
       transport_local_enclave
       common_enclave
@@ -28,6 +40,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
       example_idl_enclave
       example_shared_idl_enclave
       yas_common
+      ${MARSHAL_TEST_PROTOBUF_ENCLAVE_LIBS}
       ${SGX_ENCLAVE_LIBS})
 
   target_compile_definitions(marshal_test_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
@@ -61,11 +74,24 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
 endif()
 
 if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
+  set(MARSHAL_TEST_COROUTINE_TELEMETRY_ENCLAVE_LIBS)
+  if(CANOPY_USE_TELEMETRY)
+    list(APPEND MARSHAL_TEST_COROUTINE_TELEMETRY_ENCLAVE_LIBS rpc_telemetry_enclave)
+  endif()
+
+  set(MARSHAL_TEST_COROUTINE_PROTOBUF_ENCLAVE_LIBS)
+  if(TARGET canopy_nanopb_runtime_enclave)
+    list(APPEND MARSHAL_TEST_COROUTINE_PROTOBUF_ENCLAVE_LIBS canopy_nanopb_runtime_enclave)
+  endif()
+  if(TARGET rpc_types_idl_enclave AND (CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_BUILD_NANOPB))
+    list(APPEND MARSHAL_TEST_COROUTINE_PROTOBUF_ENCLAVE_LIBS rpc_types_idl_enclave)
+  endif()
 
   add_enclave_library(
     marshal_test_coroutine_enclave
     SRCS marshal_test_coroutine_enclave.cpp
     HEADER_ONLY_LIBS
+      ${CANOPY_ENCLAVE_FMT_LIB}
     TRUSTED_LIBS
       libcoro_enclave
       rpc_enclave
@@ -73,7 +99,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
       transport_streaming_enclave
       streaming_transport_idl_enclave
       transport_sgx_coroutine_enclave
-      rpc_telemetry_enclave
+      ${MARSHAL_TEST_COROUTINE_TELEMETRY_ENCLAVE_LIBS}
       streaming_spsc_queue_enclave
       canopy_coroutine_edl_enclave
       transport_local_enclave
@@ -82,6 +108,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
       example_idl_enclave
       example_shared_idl_enclave
       yas_common
+      ${MARSHAL_TEST_COROUTINE_PROTOBUF_ENCLAVE_LIBS}
       ${SGX_ENCLAVE_LIBS})
 
   target_compile_definitions(marshal_test_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})

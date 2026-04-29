@@ -30,13 +30,18 @@ if(CANOPY_USE_TELEMETRY)
 
 endif()
 
+set(MARSHAL_TEST_EDL_HOST_LIBS)
+if(CANOPY_USE_TELEMETRY)
+  list(APPEND MARSHAL_TEST_EDL_HOST_LIBS rpc::rpc_telemetry)
+endif()
+
 host_edl_library(
   marshal_test_edl
   enclave_marshal_test.edl
   ${telemetry_edl_path}
   OFF
   ""
-  "rpc::rpc_telemetry"
+  "${MARSHAL_TEST_EDL_HOST_LIBS}"
   EXTRA_DEPENDS
   ${telemetry_edl_path}/rpc_telemetry.edl)
 

@@ -18,6 +18,20 @@ if(CANOPY_BUILD_NANOPB)
   target_include_directories(canopy_nanopb_runtime SYSTEM
                              PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/submodules/nanopb>")
   set_property(TARGET canopy_nanopb_runtime PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+  if(CANOPY_BUILD_ENCLAVE)
+    add_library(
+      canopy_nanopb_runtime_enclave STATIC
+      ${CANOPY_NANOPB_RUNTIME_SOURCES})
+    target_compile_definitions(canopy_nanopb_runtime_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
+    target_compile_options(
+      canopy_nanopb_runtime_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE}
+                                             "SHELL:-Wno-unused-command-line-argument")
+    target_include_directories(
+      canopy_nanopb_runtime_enclave SYSTEM PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/submodules/nanopb>")
+    target_include_directories(canopy_nanopb_runtime_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+    set_property(TARGET canopy_nanopb_runtime_enclave PROPERTY POSITION_INDEPENDENT_CODE ON)
+  endif()
 endif()
 
 set(CANOPY_NEED_BUNDLED_PROTOC OFF)

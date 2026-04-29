@@ -89,7 +89,7 @@ set(CANOPY_BUILD_DEMOS      OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
 
 # Optional serialization choices. Full protobuf is useful for host interop.
-# Nanopb is protobuf-compatible and is the preferred small-runtime path.
+# Nanopb is protobuf-compatible and is the preferred SGX/small-runtime path.
 set(CANOPY_BUILD_PROTOCOL_BUFFERS ON CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_NANOPB           ON CACHE BOOL "" FORCE)
 
@@ -139,7 +139,7 @@ Canopy has two protobuf-compatible C++ backends:
 - `CANOPY_BUILD_PROTOCOL_BUFFERS=ON` enables the full Google C++ protobuf runtime.
 - `CANOPY_BUILD_NANOPB=ON` enables the Nanopb-backed runtime.
 
-Both use generated `.proto` schemas and protobuf wire bytes. For normal host processes, full protobuf is appropriate when you need the Google generated C++ API or other full-runtime features. For small-runtime deployments, prefer Nanopb so generated code does not link `protobuf::libprotobuf` into generated runtime targets.
+Both use generated `.proto` schemas and protobuf wire bytes. For normal host processes, full protobuf is appropriate when you need the Google generated C++ API or other full-runtime features. For SGX enclaves or other small-runtime deployments, prefer Nanopb so generated code does not link `protobuf::libprotobuf` into generated runtime targets.
 
 The two build options are independent.  `CanopyGenerate(... protocol_buffers
 ...)` requests protobuf-compatible schema/wire support for that IDL target.  If

@@ -199,7 +199,7 @@ blocking            co_await
 </pre>
 </div>
 
-**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, and Protocol Buffers-compatible wire formats for teams that need language-neutral schemas. Canopy supports both the full Google C++ protobuf runtime and a Nanopb-backed protobuf-compatible path for constrained-runtime deployments that cannot carry the full protobuf runtime. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
+**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, and Protocol Buffers-compatible wire formats for teams that need language-neutral schemas. Canopy supports both the full Google C++ protobuf runtime and a Nanopb-backed protobuf-compatible path; Nanopb exists primarily so SGX enclave builds can use `.proto` wire compatibility without linking the full protobuf runtime inside the enclave. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
 
 ---
 
@@ -318,7 +318,7 @@ Key entry points:
 ### Serialization
 - [YAS Serializer](documents/serializers/yas-serializer.md) - Binary, JSON, and compressed formats
 - [Protocol Buffers](documents/serializers/protocol-buffers.md) - Cross-language serialization
-- [Nanopb](documents/serializers/nanopb.md) - Protobuf-compatible encoding for small-runtime builds
+- [Nanopb](documents/serializers/nanopb.md) - Protobuf-compatible encoding for SGX and small-runtime builds
 
 ### Companion Repositories
 
@@ -558,7 +558,7 @@ Git submodules manage external dependencies they will auto load when required:
 - **YAS**: Serialization framework
 - **libcoro**: Coroutine support (when `CANOPY_BUILD_COROUTINE=ON`)
 - **protobuf**: Protocol Buffers compiler and optional full C++ runtime
-- **nanopb**: Small Protocol Buffers-compatible runtime used by constrained-runtime builds
+- **nanopb**: Small Protocol Buffers-compatible runtime used by enclave-safe builds
 - **idlparser**: IDL parser
 
 ---

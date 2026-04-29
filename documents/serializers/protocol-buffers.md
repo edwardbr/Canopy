@@ -12,7 +12,7 @@ There are two C++ protobuf-compatible backends:
 - `protocol_buffers`: the full Google C++ protobuf runtime and generated C++ message API.
 - `nanopb`: a small C runtime with Canopy-generated C++ adapters over Nanopb-generated C structs.
 
-Both paths are intended to encode the same `.proto` schema and wire format. The important distinction is runtime footprint and deployment boundary: full protobuf is useful for ordinary host processes that want the Google C++ API and tooling, while Nanopb is the small-runtime path for environments where linking the full protobuf library is not practical.
+Both paths are intended to encode the same `.proto` schema and wire format. The important distinction is runtime footprint and deployment boundary: full protobuf is useful for ordinary host processes that want the Google C++ API and tooling, while Nanopb is the enclave-safe path for SGX and other small-runtime environments where linking the full protobuf library is not practical.
 
 ## 1. Overview
 
@@ -270,9 +270,10 @@ yas_json:         1.0 ms (slowest)
 
 ### Use Nanopb When
 
+- Building SGX enclave code
 - You need protobuf-compatible wire bytes but cannot link the full protobuf runtime
 - Runtime footprint and dependency surface matter more than access to the Google C++ generated message API
-- You want one `.proto` compatibility contract across host, JavaScript, and constrained-runtime paths
+- You want one `.proto` compatibility contract across host, JavaScript, and enclave paths
 
 ### Use YAS Binary When
 

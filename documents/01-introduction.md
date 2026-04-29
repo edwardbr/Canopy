@@ -40,8 +40,9 @@ Implementation note:
   (blocking, Protocol Buffers, local, dynamic-library)
 - the JavaScript implementation is currently a reduced-trust generated client
   layer rather than a full runtime equivalent
-- Nanopb is the protobuf-compatible C++ path for small-runtime builds where
-  the full Google protobuf runtime is too heavy or unsuitable to link
+- Nanopb is the protobuf-compatible C++ path intended for SGX enclaves and
+  other small-runtime builds where the full Google protobuf runtime is too
+  heavy or unsuitable to link
 
 ## How To Think About Canopy
 

@@ -254,22 +254,27 @@ option(CANOPY_DEBUG_ALL "Enable all sanitizers" OFF)
 # SGX options
 set(SGX_MODE "debug" CACHE STRING "SGX mode: debug or release")
 set(SGX_HW "OFF" CACHE BOOL "Enable SGX hardware (vs simulation)")
+option(CANOPY_BOOTSTRAP_SGX_SDK "Build and install the Intel SGX SDK from submodule source when missing" OFF)
+option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "Run the Intel SGX SDK preparation step, which updates nested SGX SDK submodules" ON)
 ```
 
 ### Protobuf-Compatible Serialization Options
 
 `CANOPY_BUILD_PROTOCOL_BUFFERS` enables the full Google C++ protobuf runtime and generated C++ protobuf API. It is useful for ordinary host processes that need the full protobuf feature set.
 
-`CANOPY_BUILD_NANOPB` enables the Nanopb-backed protobuf-compatible runtime. It uses `.proto` files and protobuf wire bytes, but links the small Nanopb C runtime plus Canopy-generated adapters instead of `protobuf::libprotobuf`. This is intended for constrained-runtime builds.
+`CANOPY_BUILD_NANOPB` enables the Nanopb-backed protobuf-compatible runtime. It uses `.proto` files and protobuf wire bytes, but links the small Nanopb C runtime plus Canopy-generated adapters instead of `protobuf::libprotobuf`. This is the intended protobuf-compatible path for SGX enclave builds.
 
-Typical constrained-runtime configurations use:
+Typical SGX release-style configurations use:
 
 ```cmake
+CANOPY_BUILD_ENCLAVE=ON
 CANOPY_BUILD_NANOPB=ON
 CANOPY_BUILD_PROTOCOL_BUFFERS=OFF
 ```
 
-Nanopb still needs protobuf tooling at build time so Canopy can compile the generated `.proto` files. That build-time dependency does not imply that generated targets link the full protobuf runtime.
+Nanopb still needs protobuf tooling at build time so Canopy can compile the generated `.proto` files. That build-time dependency does not imply that enclave targets link the full protobuf runtime.
+
+`CANOPY_BOOTSTRAP_SGX_SDK=ON` allows CMake to install the SGX SDK from `submodules/confidential-computing.sgx` when no SDK is already available. `CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES=OFF` keeps bootstrap enabled but skips SGX SDK source preparation when an SDK installer or already-prepared source tree is present, avoiding repeated nested SGX submodule updates after the first preparation.
 
 ## 6. Build Targets
 
