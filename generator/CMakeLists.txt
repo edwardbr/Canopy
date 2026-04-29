@@ -15,6 +15,7 @@ add_executable(
   src/yas_generator.cpp
   src/proto_generator.cpp
   src/protobuf_generator.cpp
+  src/nanopb_generator.cpp
   src/rust_generator.cpp
   src/rust_protobuf_generator.cpp
   src/javascript_generator.cpp

@@ -22,6 +22,7 @@ Use this directory by task, not by file number.
 - Understanding the runtime:
   - [Architecture](architecture/README.md)
   - [Transports](transports/README.md)
+  - [Serializers](serializers/)
   - [Security Notes](security/README.md)
 - Looking up APIs and patterns:
   - [API Reference](09-api-reference.md)
@@ -37,6 +38,12 @@ Use this directory by task, not by file number.
 ## Language Port Material
 
 - [Rust Port Documentation](language-ports/rust/README.md)
+
+## Serialization
+
+- [YAS Serializer](serializers/yas-serializer.md)
+- [Protocol Buffers](serializers/protocol-buffers.md)
+- [Nanopb](serializers/nanopb.md)
 
 ## How To Read These Docs
 

@@ -254,6 +254,13 @@ namespace javascript_generator
             out << "    };\n\n";
 
             out << "    " << iface << "_stub.prototype.handlePost = function(proto, interfaceId, methodId, data) {\n";
+            out << "        var ifaceId = interfaceId && interfaceId.id ? interfaceId.id : interfaceId;\n";
+            out << "        var matchesInterface = ifaceId && ifaceId.eq ? ifaceId.eq(" << to_upper(iface) << "_ID) : "
+                   "String(ifaceId) === String("
+                << to_upper(iface) << "_ID);\n";
+            out << "        if (!matchesInterface) {\n";
+            out << "            return false;\n";
+            out << "        }\n";
             out << "        var methodNum = (methodId && methodId.toNumber) ? methodId.toNumber() : "
                    "Number(methodId);\n";
             out << "        switch (methodNum) {\n";
@@ -286,13 +293,14 @@ namespace javascript_generator
                 }
                 out << ");\n";
                 out << "                }\n";
-                out << "                break;\n";
+                out << "                return true;\n";
                 out << "            }\n";
             }
 
             out << "            default:\n";
             out << "                console.warn('[Canopy] Unknown post method id:', methodNum);\n";
             out << "        }\n";
+            out << "        return false;\n";
             out << "    };\n\n";
 
             // Unused lib suppression

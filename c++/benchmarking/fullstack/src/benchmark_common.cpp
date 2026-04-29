@@ -30,15 +30,16 @@ namespace comprehensive::v1
         return data;
     }
 
-    benchmark_stats compute_stats(const std::vector<int64_t>& samples)
+    benchmark_stats compute_stats(const std::vector<int64_t>& samples_ns)
     {
         benchmark_stats stats{};
-        if (samples.size() < (trim_each_side * 2))
+        if (samples_ns.size() < (trim_each_side * 2))
             return stats;
 
         const size_t begin = trim_each_side;
-        const size_t end = samples.size() - trim_each_side;
-        std::vector<int64_t> mid(samples.begin() + static_cast<long>(begin), samples.begin() + static_cast<long>(end));
+        const size_t end = samples_ns.size() - trim_each_side;
+        std::vector<int64_t> mid(
+            samples_ns.begin() + static_cast<long>(begin), samples_ns.begin() + static_cast<long>(end));
 
         std::sort(mid.begin(), mid.end());
         const size_t mid_count = mid.size();
@@ -46,12 +47,13 @@ namespace comprehensive::v1
             return stats;
 
         const auto sum = std::accumulate(mid.begin(), mid.end(), int64_t{0});
-        stats.avg_us = static_cast<double>(sum) / static_cast<double>(mid_count);
-        stats.min_us = static_cast<double>(mid.front());
-        stats.max_us = static_cast<double>(mid.back());
-        stats.p50_us = static_cast<double>(mid[(mid_count * 50) / 100]);
-        stats.p90_us = static_cast<double>(mid[(mid_count * 90) / 100]);
-        stats.p95_us = static_cast<double>(mid[(mid_count * 95) / 100]);
+        constexpr double ns_to_us = 1.0 / 1000.0;
+        stats.avg_us = (static_cast<double>(sum) / static_cast<double>(mid_count)) * ns_to_us;
+        stats.min_us = static_cast<double>(mid.front()) * ns_to_us;
+        stats.max_us = static_cast<double>(mid.back()) * ns_to_us;
+        stats.p50_us = static_cast<double>(mid[(mid_count * 50) / 100]) * ns_to_us;
+        stats.p90_us = static_cast<double>(mid[(mid_count * 90) / 100]) * ns_to_us;
+        stats.p95_us = static_cast<double>(mid[(mid_count * 95) / 100]) * ns_to_us;
         return stats;
     }
 
@@ -62,8 +64,7 @@ namespace comprehensive::v1
         const benchmark_stats& stats)
     {
         const double size_mb = static_cast<double>(blob_size) / (1024.0 * 1024.0);
-        constexpr double min_time_us = 0.5;
-        const bool throughput_valid = (stats.avg_us >= min_time_us);
+        const bool throughput_valid = (stats.avg_us > 0.0);
 
         if (throughput_valid)
         {
@@ -106,11 +107,11 @@ namespace comprehensive::v1
     run_benchmark_calls(
         rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,
-        std::vector<int64_t>& durations_us,
+        std::vector<int64_t>& durations_ns,
         size_t warmup_count)
     {
-        durations_us.clear();
-        durations_us.reserve(call_count);
+        durations_ns.clear();
+        durations_ns.reserve(call_count);
 
         std::vector<uint8_t> response;
 
@@ -135,8 +136,8 @@ namespace comprehensive::v1
                 CO_RETURN rpc::error::INVALID_DATA();
             }
 
-            const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-            durations_us.push_back(static_cast<int64_t>(elapsed));
+            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+            durations_ns.push_back(static_cast<int64_t>(elapsed));
         }
 
         CO_RETURN rpc::error::OK();
@@ -194,7 +195,7 @@ namespace comprehensive::v1
 #else
         fmt::print("Warmup: local=10 calls, dynamic_library=20 calls (not included in timing)\n");
 #endif
-        fmt::print("Note: Throughput shown as 'N/A' when avg time < 0.5us (insufficient timing precision)\n");
+        fmt::print("Note: Timings are sampled in nanoseconds and displayed in microseconds\n");
         fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");
         fmt::print(
             "---------------------------------------------------------------------------------------------------"

@@ -50,12 +50,13 @@ endif()
 
 # Add test to CTest
 if(CANOPY_BUILD_TEST)
-  add_test(NAME fuzz_test_main COMMAND fuzz_test_main 10) # Run 10 iterations
+  add_test(NAME fuzz_test_main COMMAND fuzz_test_main --cycles=10) # Run 10 iterations
 endif()
 
-# GTest-wrapped version so IDE test discovery (TestMate) can see the fuzz test
-include(GoogleTest)
-add_executable(fuzz_test_gtest fuzz_test_main.cpp fuzz_gtest_wrapper.cpp)
+if(CANOPY_BUILD_TEST)
+  # GTest-wrapped version so IDE test discovery (TestMate) can see the fuzz test
+  include(GoogleTest)
+  add_executable(fuzz_test_gtest fuzz_test_main.cpp fuzz_gtest_wrapper.cpp)
 
 if(NOT CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_PROTOCOL_BUFFERS)
   set(CANOPY_RUST_FUZZ_CHILD_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-fuzz-target")
@@ -130,4 +131,5 @@ if(CANOPY_USE_TELEMETRY)
   target_link_libraries(fuzz_test_gtest PRIVATE rpc_telemetry)
 endif()
 
-gtest_discover_tests(fuzz_test_gtest)
+  gtest_discover_tests(fuzz_test_gtest)
+endif()

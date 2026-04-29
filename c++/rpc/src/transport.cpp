@@ -865,7 +865,7 @@ namespace rpc
             rpc::shared_lock<rpc::shared_mutex> lock(destinations_mutex_);
             if (!service)
             {
-                RPC_ERROR(
+                RPC_DEBUG(
                     "notify_all_destinations_of_disconnect: Local service no longer exists on transport zone={} "
                     "adjacent_zone={}",
                     zone_id_.get_subnet(),

@@ -35,6 +35,7 @@
 #include "synchronous_mock_generator.h"
 #include "yas_generator.h"
 #include "protobuf_generator.h"
+#include "nanopb_generator.h"
 #include "rust_generator.h"
 #include "rust_protobuf_generator.h"
 #include "javascript_generator.h"
@@ -109,6 +110,7 @@ int main(
         args::Flag yas_arg(args_parser, "yas", "enable YAS serialization generation", {'y', "yas"});
         args::Flag protobuf_arg(
             args_parser, "protobuf", "enable Protocol Buffers serialization generation", {'b', "protobuf"});
+        args::Flag nanopb_arg(args_parser, "nanopb", "enable Nanopb serialization generation", {"nanopb"});
         args::Flag javascript_arg(
             args_parser, "javascript", "enable JavaScript proxy/stub generation", {'j', "javascript"});
         args::Flag rust_arg(args_parser, "rust", "enable initial Rust constants generation", {'R', "rust"});
@@ -152,6 +154,7 @@ int main(
         std::filesystem::path mock_path = args::get(mock_path_arg);
         bool enable_yas = args::get(yas_arg);
         bool enable_protobuf = args::get(protobuf_arg);
+        bool enable_nanopb = args::get(nanopb_arg) || enable_protobuf;
         bool enable_javascript = args::get(javascript_arg);
         bool enable_rust = args::get(rust_arg);
         std::vector<std::string> namespaces = args::get(namespaces_arg);
@@ -340,7 +343,8 @@ int main(
                 additional_stub_headers,
                 !no_include_rpc_headers_arg,
                 enable_yas,
-                enable_protobuf);
+                enable_protobuf,
+                enable_nanopb);
 
             header_stream << ends;
             proxy_stream << ends;
@@ -434,7 +438,7 @@ int main(
         }
 
         // do the generation of the protobuf definitions
-        if (enable_protobuf)
+        if (enable_protobuf || enable_nanopb)
         {
             // Construct protobuf path from proxy_path
             // proxy_path is like "example/example_proxy.cpp"
@@ -466,63 +470,95 @@ int main(
             // Generate the protobuf C++ serialization file
             std::string protobuf_cpp_filename = base_filename + ".cpp";
             auto protobuf_cpp_path = output_path / "src" / sub_directory / protobuf_cpp_filename;
+            std::string nanopb_cpp_filename = base_filename + "_nanopb.cpp";
+            auto nanopb_cpp_path = output_path / "src" / sub_directory / nanopb_cpp_filename;
             // Include path for the aggregator .pb.h file with full module path
             auto protobuf_include_path = sub_directory / (base_filename + "_all.pb.h");
+            auto nanopb_include_path = sub_directory / (base_filename + "_all.pb.h");
 
-            std::stringstream protobuf_cpp_stream;
-            protobuf_generator::write_cpp_files(
-                *objects,
-                protobuf_cpp_stream,
-                namespaces,
-                std::filesystem::path(header_path),
-                protobuf_include_path,
-                additional_stub_headers);
-
-            // Append fingerprint data as comments to ensure type changes trigger rebuild
-            // even if the serialization code itself doesn't change
-            protobuf_cpp_stream << "\n// Type Fingerprints - DO NOT EDIT (auto-generated for dependency tracking)\n";
+            if (enable_protobuf)
             {
-                auto checksums_path_for_embed = output_path / "check_sums";
-                if (std::filesystem::exists(checksums_path_for_embed))
+                std::stringstream protobuf_cpp_stream;
+                protobuf_generator::write_cpp_files(
+                    *objects,
+                    protobuf_cpp_stream,
+                    namespaces,
+                    std::filesystem::path(header_path),
+                    protobuf_include_path,
+                    additional_stub_headers);
+
+                // Append fingerprint data as comments to ensure type changes trigger rebuild
+                // even if the serialization code itself doesn't change
+                protobuf_cpp_stream << "\n// Type Fingerprints - DO NOT EDIT (auto-generated for dependency tracking)\n";
                 {
-                    // Iterate through status subdirectories
-                    for (const auto& status_dir : std::filesystem::directory_iterator(checksums_path_for_embed))
+                    auto checksums_path_for_embed = output_path / "check_sums";
+                    if (std::filesystem::exists(checksums_path_for_embed))
                     {
-                        if (status_dir.is_directory())
+                        // Iterate through status subdirectories
+                        for (const auto& status_dir : std::filesystem::directory_iterator(checksums_path_for_embed))
                         {
-                            std::string status = status_dir.path().filename().string();
-                            for (const auto& type_file : std::filesystem::directory_iterator(status_dir))
+                            if (status_dir.is_directory())
                             {
-                                if (type_file.is_regular_file())
+                                std::string status = status_dir.path().filename().string();
+                                for (const auto& type_file : std::filesystem::directory_iterator(status_dir))
                                 {
-                                    std::string full_name = type_file.path().filename().string();
-                                    std::ifstream fingerprint_file(type_file.path());
-                                    std::string fingerprint;
-                                    std::getline(fingerprint_file, fingerprint);
-                                    protobuf_cpp_stream << "// " << full_name << "," << status << "," << fingerprint
-                                                        << "\n";
+                                    if (type_file.is_regular_file())
+                                    {
+                                        std::string full_name = type_file.path().filename().string();
+                                        std::ifstream fingerprint_file(type_file.path());
+                                        std::string fingerprint;
+                                        std::getline(fingerprint_file, fingerprint);
+                                        protobuf_cpp_stream << "// " << full_name << "," << status << "," << fingerprint
+                                                            << "\n";
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                protobuf_cpp_stream << ends;
+
+                // Read existing file if it exists
+                std::string existing_protobuf_cpp_data;
+                if (std::filesystem::exists(protobuf_cpp_path))
+                {
+                    std::ifstream existing_file(protobuf_cpp_path);
+                    std::getline(existing_file, existing_protobuf_cpp_data, '\0');
+                }
+
+                // Write if different or doesn't exist
+                if (is_different(protobuf_cpp_stream, existing_protobuf_cpp_data))
+                {
+                    std::ofstream protobuf_cpp_file(protobuf_cpp_path);
+                    protobuf_cpp_file << protobuf_cpp_stream.str();
+                }
             }
 
-            protobuf_cpp_stream << ends;
-
-            // Read existing file if it exists
-            std::string existing_protobuf_cpp_data;
-            if (std::filesystem::exists(protobuf_cpp_path))
+            if (enable_nanopb)
             {
-                std::ifstream existing_file(protobuf_cpp_path);
-                std::getline(existing_file, existing_protobuf_cpp_data, '\0');
-            }
+                std::stringstream nanopb_cpp_stream;
+                nanopb_generator::write_cpp_files(
+                    *objects,
+                    nanopb_cpp_stream,
+                    namespaces,
+                    std::filesystem::path(header_path),
+                    nanopb_include_path,
+                    additional_stub_headers);
+                nanopb_cpp_stream << ends;
 
-            // Write if different or doesn't exist
-            if (is_different(protobuf_cpp_stream, existing_protobuf_cpp_data))
-            {
-                std::ofstream protobuf_cpp_file(protobuf_cpp_path);
-                protobuf_cpp_file << protobuf_cpp_stream.str();
+                std::string existing_nanopb_cpp_data;
+                if (std::filesystem::exists(nanopb_cpp_path))
+                {
+                    std::ifstream existing_file(nanopb_cpp_path);
+                    std::getline(existing_file, existing_nanopb_cpp_data, '\0');
+                }
+
+                if (is_different(nanopb_cpp_stream, existing_nanopb_cpp_data))
+                {
+                    std::ofstream nanopb_cpp_file(nanopb_cpp_path);
+                    nanopb_cpp_file << nanopb_cpp_stream.str();
+                }
             }
         }
 

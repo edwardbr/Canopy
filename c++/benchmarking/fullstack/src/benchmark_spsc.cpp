@@ -61,10 +61,10 @@ namespace comprehensive::v1
             if (error == rpc::error::OK())
             {
                 const auto payload = make_blob(blob_size);
-                std::vector<int64_t> durations_us;
-                result.error = CO_AWAIT run_benchmark_calls(remote_processor, payload, durations_us, spsc_warmup_calls);
+                std::vector<int64_t> durations_ns;
+                result.error = CO_AWAIT run_benchmark_calls(remote_processor, payload, durations_ns, spsc_warmup_calls);
                 if (result.error == rpc::error::OK())
-                    result.stats = compute_stats(durations_us);
+                    result.stats = compute_stats(durations_ns);
             }
             else
             {

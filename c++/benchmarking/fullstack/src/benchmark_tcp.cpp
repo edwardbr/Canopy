@@ -126,10 +126,10 @@ namespace comprehensive::v1
             }
 
             const auto payload = make_blob(blob_size);
-            std::vector<int64_t> durations_us;
-            result.error = CO_AWAIT run_benchmark_calls(remote_processor, payload, durations_us, tcp_warmup_calls);
+            std::vector<int64_t> durations_ns;
+            result.error = CO_AWAIT run_benchmark_calls(remote_processor, payload, durations_ns, tcp_warmup_calls);
             if (result.error == rpc::error::OK())
-                result.stats = compute_stats(durations_us);
+                result.stats = compute_stats(durations_ns);
 
             remote_processor.reset();
             client_finished.set();

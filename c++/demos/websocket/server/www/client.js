@@ -158,6 +158,8 @@ function connect() {
         url: wsUrl,
         proto: transportProto,
         appProto: appProto,
+        encoding: (window.CanopyWebsocketDemoConfig && window.CanopyWebsocketDemoConfig.encoding)
+            || CanopyWebsocketTransport.ENCODING_NANOPB,
         inboundInterfaceId: WebsocketDemo.interfaceIds.i_context_event,
         outboundInterfaceId: WebsocketDemo.interfaceIds.i_calculator,
         onOpen: function(t) {

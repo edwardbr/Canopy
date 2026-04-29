@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <array>
 #include <type_traits>
+#include <utility>
 
 namespace rpc
 {
@@ -25,6 +26,32 @@ namespace rpc
     };
 
     template<typename T> inline constexpr bool is_std_array_v = is_std_array<T>::value;
+
+    template<typename T, typename = void> struct has_nanopb_serialise : std::false_type
+    {
+    };
+
+    template<typename T>
+    struct has_nanopb_serialise<T, std::void_t<decltype(std::declval<const T&>().nanopb_serialise(std::declval<std::vector<char>&>()))>>
+        : std::true_type
+    {
+    };
+
+    template<typename T> inline constexpr bool has_nanopb_serialise_v = has_nanopb_serialise<T>::value;
+
+    template<typename T, typename = void> struct has_nanopb_deserialise : std::false_type
+    {
+    };
+
+    template<typename T>
+    struct has_nanopb_deserialise<
+        T,
+        std::void_t<decltype(std::declval<T&>().nanopb_deserialise(std::declval<const std::vector<char>&>()))>>
+        : std::true_type
+    {
+    };
+
+    template<typename T> inline constexpr bool has_nanopb_deserialise_v = has_nanopb_deserialise<T>::value;
 
     // Helper to extract array element type and size
     template<typename T> struct array_traits;
@@ -42,6 +69,9 @@ namespace rpc
         {
         };
         class protocol_buffers
+        {
+        };
+        class nanopb
         {
         };
         class flat_buffers
@@ -75,13 +105,30 @@ namespace rpc
         YAS_WARNINGS_POP
     }
 
-#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#if defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
     // note that this function is here for completeness but is not efficient as it requires serialisation to get size
     template<typename T> uint64_t protobuf_saved_size(const T& obj)
     {
         std::vector<char> buffer;
         obj.protobuf_serialise(buffer);
         return buffer.size();
+    }
+#endif
+
+#if defined(CANOPY_BUILD_NANOPB)
+    template<typename T> uint64_t nanopb_saved_size(const T& obj)
+    {
+        std::vector<char> buffer;
+        obj.nanopb_serialise(buffer);
+        return buffer.size();
+    }
+
+    template<typename T> uint64_t nanopb_saved_size_if_supported(const T& obj)
+    {
+        if constexpr (has_nanopb_serialise_v<T>)
+            return nanopb_saved_size(obj);
+        else
+            throw std::runtime_error("nanopb serialization is not available for this type");
     }
 #endif
 
@@ -164,7 +211,7 @@ namespace rpc
         YAS_WARNINGS_POP
     }
 
-#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#if defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
     // protobuf serialization using member function protobuf_serialise
     template<
         class OutputBlob = std::vector<std::uint8_t>,
@@ -192,6 +239,44 @@ namespace rpc
     }
 #endif
 
+#if defined(CANOPY_BUILD_NANOPB)
+    template<
+        class OutputBlob = std::vector<std::uint8_t>,
+        typename T>
+    OutputBlob to_nanopb(const T& obj)
+    {
+        std::vector<char> buffer;
+        obj.nanopb_serialise(buffer);
+
+        if constexpr (is_std_array_v<OutputBlob>)
+        {
+            constexpr size_t N = array_traits<OutputBlob>::size;
+            if (N < buffer.size())
+            {
+                throw std::runtime_error("Array too small for nanopb serialization");
+            }
+            OutputBlob result{};
+            std::copy(buffer.begin(), buffer.end(), result.begin());
+            return result;
+        }
+        else
+        {
+            return OutputBlob(buffer.data(), buffer.data() + buffer.size());
+        }
+    }
+
+    template<
+        class OutputBlob = std::vector<std::uint8_t>,
+        typename T>
+    OutputBlob to_nanopb_if_supported(const T& obj)
+    {
+        if constexpr (has_nanopb_serialise_v<T>)
+            return to_nanopb<OutputBlob>(obj);
+        else
+            throw std::runtime_error("nanopb serialization is not available for this type");
+    }
+#endif
+
     template<
         class OutputBlob = std::vector<std::uint8_t>,
         typename T>
@@ -208,6 +293,10 @@ namespace rpc
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         if (enc == encoding::protocol_buffers)
             return to_protobuf<OutputBlob>(obj);
+#endif
+#ifdef CANOPY_BUILD_NANOPB
+        if (enc == encoding::nanopb)
+            return to_nanopb_if_supported<OutputBlob>(obj);
 #endif
         throw std::runtime_error("invalid encoding type");
     }
@@ -226,6 +315,10 @@ namespace rpc
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         if (enc == encoding::protocol_buffers)
             return protobuf_saved_size(obj);
+#endif
+#ifdef CANOPY_BUILD_NANOPB
+        if (enc == encoding::nanopb)
+            return nanopb_saved_size_if_supported(obj);
 #endif
         throw std::runtime_error("invalid encoding type");
     }
@@ -315,7 +408,7 @@ namespace rpc
         }
     }
 
-#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#if defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
     template<typename T>
     std::string from_protobuf(
         const byte_span& data,
@@ -344,6 +437,44 @@ namespace rpc
     }
 #endif
 
+#if defined(CANOPY_BUILD_NANOPB)
+    template<typename T>
+    std::string from_nanopb(
+        const byte_span& data,
+        T& obj)
+    {
+        try
+        {
+            obj.nanopb_deserialise(
+                std::vector<char>(
+                    reinterpret_cast<const char*>(data.data()), reinterpret_cast<const char*>(data.data()) + data.size()));
+            return "";
+        }
+        catch (const std::exception& ex)
+        {
+            return std::string(
+                       "An exception has occurred a data blob was incompatible with the type that is "
+                       "deserialising to: ")
+                   + ex.what();
+        }
+        catch (...)
+        {
+            return "An exception has occurred a data blob was incompatible with the type that is deserialising to";
+        }
+    }
+
+    template<typename T>
+    std::string from_nanopb_if_supported(
+        const byte_span& data,
+        T& obj)
+    {
+        if constexpr (has_nanopb_deserialise_v<T>)
+            return from_nanopb(data, obj);
+        else
+            return "nanopb deserialization is not available for this type";
+    }
+#endif
+
     template<typename T>
     std::string deserialise(
         encoding enc,
@@ -359,6 +490,10 @@ namespace rpc
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         if (enc == encoding::protocol_buffers)
             return from_protobuf(data, obj);
+#endif
+#ifdef CANOPY_BUILD_NANOPB
+        if (enc == encoding::nanopb)
+            return from_nanopb_if_supported(data, obj);
 #endif
         return "invalid encoding type";
     }

@@ -654,6 +654,57 @@ protected:
     void TearDown() override { }
 };
 
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+template<typename T>
+void expect_google_nanopb_compatible(
+    const T& original,
+    const char* case_name)
+{
+    {
+        auto serialized = rpc::to_protobuf(original);
+        rpc::byte_span data_span(serialized);
+
+        T deserialized{};
+        auto error = rpc::from_nanopb(data_span, deserialized);
+
+        EXPECT_TRUE(error.empty()) << case_name << ": Google protobuf -> Nanopb failed: " << error;
+        EXPECT_TRUE(deserialized == original) << case_name << ": Google protobuf -> Nanopb value mismatch";
+    }
+
+    {
+        auto serialized = rpc::to_nanopb(original);
+        rpc::byte_span data_span(serialized);
+
+        T deserialized{};
+        auto error = rpc::from_protobuf(data_span, deserialized);
+
+        EXPECT_TRUE(error.empty()) << case_name << ": Nanopb -> Google protobuf failed: " << error;
+        EXPECT_TRUE(deserialized == original) << case_name << ": Nanopb -> Google protobuf value mismatch";
+    }
+}
+
+template<typename T>
+void expect_nanopb_unsupported(
+    const T& original,
+    const char* case_name)
+{
+    EXPECT_THROW(
+        {
+            auto serialized = rpc::to_nanopb(original);
+            (void)serialized;
+        },
+        std::runtime_error)
+        << case_name << ": Nanopb serialization unexpectedly succeeded";
+
+    auto protobuf_serialized = rpc::to_protobuf(original);
+    rpc::byte_span protobuf_span(protobuf_serialized);
+
+    T nanopb_deserialized{};
+    const auto error = rpc::from_nanopb(protobuf_span, nanopb_deserialized);
+    EXPECT_FALSE(error.empty()) << case_name << ": Nanopb deserialization unexpectedly succeeded";
+}
+#endif
+
 // Test to_yas_json serialization with generated structure
 TEST_F(
     SerialiserTest,
@@ -793,6 +844,219 @@ TEST_F(
     EXPECT_TRUE(error.empty());
     EXPECT_EQ(deserialized.int_val, 100);
     EXPECT_EQ(deserialized.string_val, "hello");
+}
+#endif
+
+// Test nanopb serialization with generated structure
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+TEST_F(
+    SerialiserTest,
+    ToNanopb)
+{
+    scalar_test::something_complicated obj;
+    obj.int_val = 42;
+    obj.string_val = "test";
+
+    auto result = rpc::to_nanopb(obj);
+
+    EXPECT_FALSE(result.empty());
+    EXPECT_GT(result.size(), 0u);
+}
+
+TEST_F(
+    SerialiserTest,
+    NanopbRoundtrip)
+{
+    scalar_test::something_complicated obj;
+    obj.int_val = 100;
+    obj.string_val = "hello";
+
+    auto serialized = rpc::to_nanopb(obj);
+    rpc::byte_span data_span(serialized);
+
+    scalar_test::something_complicated deserialized;
+    auto error = rpc::from_nanopb(data_span, deserialized);
+
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(deserialized.int_val, 100);
+    EXPECT_EQ(deserialized.string_val, "hello");
+}
+
+TEST_F(
+    SerialiserTest,
+    ProtobufToNanopbCompatibility)
+{
+    scalar_test::something_complicated obj;
+    obj.int_val = 123;
+    obj.string_val = "google_to_nanopb";
+
+    auto serialized = rpc::to_protobuf(obj);
+    rpc::byte_span data_span(serialized);
+
+    scalar_test::something_complicated deserialized;
+    auto error = rpc::from_nanopb(data_span, deserialized);
+
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(deserialized.int_val, obj.int_val);
+    EXPECT_EQ(deserialized.string_val, obj.string_val);
+}
+
+TEST_F(
+    SerialiserTest,
+    NanopbToProtobufCompatibility)
+{
+    scalar_test::something_complicated obj;
+    obj.int_val = 456;
+    obj.string_val = "nanopb_to_google";
+
+    auto serialized = rpc::to_nanopb(obj);
+    rpc::byte_span data_span(serialized);
+
+    scalar_test::something_complicated deserialized;
+    auto error = rpc::from_protobuf(data_span, deserialized);
+
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(deserialized.int_val, obj.int_val);
+    EXPECT_EQ(deserialized.string_val, obj.string_val);
+}
+
+TEST_F(
+    SerialiserTest,
+    GoogleNanopbScalarCompatibility)
+{
+    expect_google_nanopb_compatible(scalar_test::int8_holder{std::numeric_limits<int8_t>::min()}, "int8_t");
+    expect_google_nanopb_compatible(scalar_test::uint8_holder{std::numeric_limits<uint8_t>::max()}, "uint8_t");
+    expect_google_nanopb_compatible(scalar_test::int16_holder{std::numeric_limits<int16_t>::min()}, "int16_t");
+    expect_google_nanopb_compatible(scalar_test::uint16_holder{std::numeric_limits<uint16_t>::max()}, "uint16_t");
+    expect_google_nanopb_compatible(scalar_test::int32_holder{-123456789}, "int32_t");
+    expect_google_nanopb_compatible(scalar_test::uint32_holder{1234567890U}, "uint32_t");
+    expect_google_nanopb_compatible(scalar_test::int64_holder{-9876543210LL}, "int64_t");
+    expect_google_nanopb_compatible(scalar_test::uint64_holder{9876543210ULL}, "uint64_t");
+    expect_google_nanopb_compatible(scalar_test::float_holder{3.14159265f}, "float");
+    expect_google_nanopb_compatible(scalar_test::double_holder{3.14159265358979323846}, "double");
+}
+
+TEST_F(
+    SerialiserTest,
+    GoogleNanopbEnumAndStringCompatibility)
+{
+    expect_google_nanopb_compatible(scalar_test::enum_holder{static_cast<scalar_test::enum_value>(2)}, "enum");
+    expect_google_nanopb_compatible(scalar_test::string_holder{"google_nanopb_string"}, "std::string");
+}
+
+TEST_F(
+    SerialiserTest,
+    GoogleNanopbIntegerSequenceCompatibility)
+{
+    expect_google_nanopb_compatible(
+        scalar_test::int8_vec_holder{{std::numeric_limits<int8_t>::min(), -1, 0, 1, std::numeric_limits<int8_t>::max()}},
+        "std::vector<int8_t>");
+    expect_google_nanopb_compatible(
+        scalar_test::uint8_vec_holder{{0, 1, 127, std::numeric_limits<uint8_t>::max()}}, "std::vector<uint8_t>");
+    expect_google_nanopb_compatible(
+        scalar_test::int16_vec_holder{{std::numeric_limits<int16_t>::min(), -1, 0, std::numeric_limits<int16_t>::max()}},
+        "std::vector<int16_t>");
+    expect_google_nanopb_compatible(
+        scalar_test::uint16_vec_holder{{0, 1, 1000, std::numeric_limits<uint16_t>::max()}}, "std::vector<uint16_t>");
+    expect_google_nanopb_compatible(
+        scalar_test::int32_vec_holder{{std::numeric_limits<int32_t>::min(), -1, 0, std::numeric_limits<int32_t>::max()}},
+        "std::vector<int32_t>");
+    expect_google_nanopb_compatible(
+        scalar_test::uint32_vec_holder{{0, 1, 123456, std::numeric_limits<uint32_t>::max()}}, "std::vector<uint32_t>");
+    expect_google_nanopb_compatible(
+        scalar_test::int64_vec_holder{{std::numeric_limits<int64_t>::min(), -1LL, 0LL, std::numeric_limits<int64_t>::max()}},
+        "std::vector<int64_t>");
+    expect_google_nanopb_compatible(
+        scalar_test::uint64_vec_holder{{0ULL, 1ULL, 42ULL, std::numeric_limits<uint64_t>::max()}}, "std::vector<uint64_t>");
+}
+
+TEST_F(
+    SerialiserTest,
+    GoogleNanopbStructureSequenceAndDictionaryCompatibility)
+{
+    expect_google_nanopb_compatible(
+        scalar_test::something_complicated{FLD(int_val) 123, FLD(string_val) "structure"}, "structure");
+
+    scalar_test::something_more_complicated obj;
+    obj.scalar_value = {FLD(int_val) 7, FLD(string_val) "nested"};
+    obj.vector_val.push_back({FLD(int_val) 1, FLD(string_val) "first"});
+    obj.vector_val.push_back({FLD(int_val) 2, FLD(string_val) "second"});
+    obj.map_val["alpha"] = {FLD(int_val) 10, FLD(string_val) "map_alpha"};
+    obj.map_val["beta"] = {FLD(int_val) 20, FLD(string_val) "map_beta"};
+
+    expect_google_nanopb_compatible(obj, "nested structure with sequence and dictionary");
+
+    {
+        auto serialized = rpc::to_protobuf(obj);
+        rpc::byte_span data_span(serialized);
+        scalar_test::something_more_complicated deserialized{};
+        ASSERT_TRUE(rpc::from_nanopb(data_span, deserialized).empty());
+        EXPECT_EQ(deserialized.scalar_value, obj.scalar_value);
+        EXPECT_EQ(deserialized.vector_val, obj.vector_val);
+        EXPECT_EQ(deserialized.map_val, obj.map_val);
+    }
+
+    {
+        auto serialized = rpc::to_nanopb(obj);
+        rpc::byte_span data_span(serialized);
+        scalar_test::something_more_complicated deserialized{};
+        ASSERT_TRUE(rpc::from_protobuf(data_span, deserialized).empty());
+        EXPECT_EQ(deserialized.scalar_value, obj.scalar_value);
+        EXPECT_EQ(deserialized.vector_val, obj.vector_val);
+        EXPECT_EQ(deserialized.map_val, obj.map_val);
+    }
+}
+
+TEST_F(
+    SerialiserTest,
+    GoogleNanopbExplicitMapCompatibility)
+{
+    scalar_test::string_struct_map_holder obj;
+    obj.map_value["alpha"] = {FLD(int_val) 10, FLD(string_val) "map_alpha"};
+    obj.map_value["beta"] = {FLD(int_val) 20, FLD(string_val) "map_beta"};
+
+    expect_google_nanopb_compatible(obj, "std::map<std::string, structure>");
+}
+
+TEST_F(
+    SerialiserTest,
+    GoogleNanopbTemplateStructCompatibility)
+{
+    scalar_test::test_template<int> templated;
+    templated.type_t = 42;
+    expect_google_nanopb_compatible(templated, "test_template<int>");
+
+    scalar_test::something_with_a_template obj;
+    obj.template_int_val.type_t = 1234;
+    expect_google_nanopb_compatible(obj, "structure containing test_template<int>");
+}
+
+TEST_F(
+    SerialiserTest,
+    NanopbUnsupportedTypeCoverage)
+{
+    expect_nanopb_unsupported(scalar_test::int128_holder{__int128{1} << 100}, "__int128");
+
+    expect_nanopb_unsupported(
+        scalar_test::uint128_holder{(static_cast<unsigned __int128>(0xDEADBEEFCAFEBABEULL) << 64) | 0x0123456789ABCDEFULL},
+        "unsigned __int128");
+
+    scalar_test::int128_vec_holder int128_vec;
+    int128_vec.value = {__int128{0}, -(__int128{1} << 100), __int128{1} << 100};
+    expect_nanopb_unsupported(int128_vec, "std::vector<__int128>");
+
+    expect_nanopb_unsupported(
+        scalar_test::int32_arr_holder{{{std::numeric_limits<int32_t>::min(), -1, 0, std::numeric_limits<int32_t>::max()}}},
+        "std::array<int32_t, 4>");
+
+    scalar_test::string_int_map_holder int_map;
+    int_map.map_value["one"] = 1;
+    int_map.map_value["two"] = 2;
+    expect_nanopb_unsupported(int_map, "std::map<std::string, int32_t>");
+
+    scalar_test::string_string_map_holder string_map;
+    string_map.map_value["hello"] = "world";
+    expect_nanopb_unsupported(string_map, "std::map<std::string, std::string>");
 }
 #endif
 

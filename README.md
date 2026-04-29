@@ -199,7 +199,7 @@ blocking            co_await
 </pre>
 </div>
 
-**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, Protocol Buffers for teams that need a language-neutral wire format. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
+**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, and Protocol Buffers-compatible wire formats for teams that need language-neutral schemas. Canopy supports both the full Google C++ protobuf runtime and a Nanopb-backed protobuf-compatible path for constrained-runtime deployments that cannot carry the full protobuf runtime. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
 
 ---
 
@@ -268,7 +268,7 @@ blocking            co_await
 - **Type-Safe**: Full C++ type system integration with compile-time verification
 - **Transport Agnostic**: Local, DLL, IPC, TCP, SPSC, SGX Enclave, and custom transports
 - **Composable Streams**: TCP, TLS, SPSC, WebSocket layers in any combination
-- **Format Agnostic**: YAS binary, compressed binary, JSON, Protocol Buffers, more can be added
+- **Format Agnostic**: YAS binary, compressed binary, JSON, full Protocol Buffers, Nanopb protobuf-compatible encoding, more can be added
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
 - **Experimental Rust Runtime**: Interoperable blocking Rust implementation for Protocol Buffers over local and dynamic-library transports
 - **Reduced-Trust JavaScript Client**: Generated JavaScript/WebSocket client support without claiming full runtime parity
@@ -318,6 +318,7 @@ Key entry points:
 ### Serialization
 - [YAS Serializer](documents/serializers/yas-serializer.md) - Binary, JSON, and compressed formats
 - [Protocol Buffers](documents/serializers/protocol-buffers.md) - Cross-language serialization
+- [Nanopb](documents/serializers/nanopb.md) - Protobuf-compatible encoding for small-runtime builds
 
 ### Companion Repositories
 
@@ -394,9 +395,11 @@ This keeps your custom presets local while still inheriting from project presets
 CANOPY_BUILD_COROUTINE=ON    # Enable async/await support (requires C++20)
 
 # Features
-CANOPY_BUILD_ENCLAVE=ON      # SGX enclave support
-CANOPY_BUILD_TEST=ON         # Test suite
-CANOPY_BUILD_DEMOS=ON        # Demo applications
+CANOPY_BUILD_ENCLAVE=ON          # SGX enclave support
+CANOPY_BUILD_TEST=ON             # Test suite
+CANOPY_BUILD_DEMOS=ON            # Demo applications
+CANOPY_BUILD_PROTOCOL_BUFFERS=ON # Full Google C++ protobuf runtime support
+CANOPY_BUILD_NANOPB=ON           # Nanopb protobuf-compatible runtime support
 
 # Development
 CANOPY_USE_LOGGING=ON        # Comprehensive logging
@@ -554,7 +557,8 @@ Implementation note:
 Git submodules manage external dependencies they will auto load when required:
 - **YAS**: Serialization framework
 - **libcoro**: Coroutine support (when `CANOPY_BUILD_COROUTINE=ON`)
-- **protobuf**: Protocol Buffers
+- **protobuf**: Protocol Buffers compiler and optional full C++ runtime
+- **nanopb**: Small Protocol Buffers-compatible runtime used by constrained-runtime builds
 - **idlparser**: IDL parser
 
 ---

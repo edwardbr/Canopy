@@ -13,6 +13,10 @@ endif()
 if(NOT OUTPUT_DIR)
   set(OUTPUT_DIR ${PROTO_DIR})
 endif()
+if(NOT CPP_OUT_DIR)
+  set(CPP_OUT_DIR ${OUTPUT_DIR})
+endif()
+file(MAKE_DIRECTORY "${CPP_OUT_DIR}")
 
 # SUB_DIR
 
@@ -41,7 +45,7 @@ foreach(PROTO_NAME ${PROTO_FILE_NAMES})
     list(APPEND PROTO_FILES "${OUTPUT_DIR}/${PROTO_NAME}")
     # Convert example.proto -> example.pb.cc
     string(REGEX REPLACE "\\.proto$" ".pb.cc" PB_CC_NAME "${PROTO_NAME}")
-    set(pb_cc_file "${PROTO_DIR}/${PB_CC_NAME}")
+    set(pb_cc_file "${CPP_OUT_DIR}/${PB_CC_NAME}")
     list(APPEND PROTO_PB_SOURCES "${pb_cc_file}")
     message("list(APPEND PROTO_PB_SOURCES ${pb_cc_file})")
   endif()
@@ -75,7 +79,7 @@ if(PROTOC)
       "        execute_process(
             COMMAND ${PROTOC}
             --proto_path=${PROTO_SRC_DIR}
-            --cpp_out=${OUTPUT_DIR}
+            --cpp_out=${CPP_OUT_DIR}
             ${PROTO_FILE}
             RESULT_VARIABLE PROTOC_RESULT
             OUTPUT_VARIABLE PROTOC_OUTPUT
@@ -85,7 +89,7 @@ if(PROTOC)
     # Run protoc with src directory as the single proto_path All imports in .proto files use full paths relative to src
     # directory
     execute_process(
-      COMMAND ${PROTOC} --proto_path=${PROTO_SRC_DIR} --cpp_out=${OUTPUT_DIR} ${PROTO_FILE}
+      COMMAND ${PROTOC} --proto_path=${PROTO_SRC_DIR} --cpp_out=${CPP_OUT_DIR} ${PROTO_FILE}
       RESULT_VARIABLE PROTOC_RESULT
       OUTPUT_VARIABLE PROTOC_OUTPUT
       ERROR_VARIABLE PROTOC_ERROR)

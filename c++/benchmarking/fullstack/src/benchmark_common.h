@@ -55,7 +55,7 @@ namespace comprehensive::v1
     };
 
     std::vector<uint8_t> make_blob(size_t size);
-    benchmark_stats compute_stats(const std::vector<int64_t>& samples);
+    benchmark_stats compute_stats(const std::vector<int64_t>& samples_ns);
     void print_stats(
         const char* transport,
         const char* encoding,
@@ -65,7 +65,7 @@ namespace comprehensive::v1
     run_benchmark_calls(
         rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,
-        std::vector<int64_t>& durations_us,
+        std::vector<int64_t>& durations_ns,
         size_t warmup_count = 0);
 
 #ifdef CANOPY_BUILD_COROUTINE

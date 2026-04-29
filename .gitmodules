@@ -62,3 +62,6 @@
 	path = submodules/confidential-computing.sgx
 	url = https://github.com/intel/confidential-computing.sgx.git
 	branch = sgx_2.26
+[submodule "c++/submodules/nanopb"]
+	path = c++/submodules/nanopb
+	url = https://github.com/nanopb/nanopb.git

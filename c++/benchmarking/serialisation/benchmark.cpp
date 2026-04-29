@@ -50,6 +50,7 @@ namespace serialisation_benchmark
 
     constexpr size_t call_count = 10000;
     constexpr size_t trim_each_side = call_count / 10;
+    volatile uint64_t benchmark_sink = 0;
 
     // -------------------------------------------------------------------------
     // Statistics helpers (identical pattern to fullstack benchmark)
@@ -88,6 +89,82 @@ namespace serialisation_benchmark
         return stats;
     }
 
+    void consume(uint64_t value)
+    {
+        benchmark_sink = (benchmark_sink * 1315423911u) ^ value;
+    }
+
+    void consume_bytes(const std::vector<uint8_t>& bytes)
+    {
+        uint64_t value = bytes.size();
+        if (!bytes.empty())
+            value ^= static_cast<uint64_t>(bytes.front()) << 8;
+        consume(value);
+    }
+
+    void consume_bytes(const std::vector<char>& bytes)
+    {
+        uint64_t value = bytes.size();
+        if (!bytes.empty())
+            value ^= static_cast<uint64_t>(static_cast<unsigned char>(bytes.front())) << 8;
+        consume(value);
+    }
+
+    uint64_t checksum_string(const std::string& value)
+    {
+        uint64_t result = value.size();
+        if (!value.empty())
+            result ^= static_cast<uint64_t>(static_cast<unsigned char>(value.front())) << 16;
+        return result;
+    }
+
+    template<typename T> uint64_t checksum_value(const T&)
+    {
+        return sizeof(T);
+    }
+
+    uint64_t checksum_value(const scalar_test::int32_holder& value)
+    {
+        return static_cast<uint32_t>(value.value);
+    }
+
+    uint64_t checksum_value(const scalar_test::string_holder& value)
+    {
+        return checksum_string(value.value);
+    }
+
+    uint64_t checksum_value(const scalar_test::something_complicated& value)
+    {
+        return static_cast<uint32_t>(value.int_val) ^ checksum_string(value.string_val);
+    }
+
+    uint64_t checksum_value(const scalar_test::something_more_complicated& value)
+    {
+        uint64_t result = checksum_value(value.scalar_value);
+        result ^= value.vector_val.size() << 8;
+        for (const auto& entry : value.vector_val)
+            result ^= checksum_value(entry) + 0x9e3779b97f4a7c15ULL + (result << 6) + (result >> 2);
+        result ^= value.map_val.size() << 24;
+        for (const auto& [key, entry] : value.map_val)
+            result ^= checksum_string(key) ^ checksum_value(entry);
+        return result;
+    }
+
+    uint64_t checksum_value(const scalar_test::test_template<int>& value)
+    {
+        return static_cast<uint32_t>(value.type_t);
+    }
+
+    uint64_t checksum_value(const scalar_test::something_with_a_template& value)
+    {
+        return checksum_value(value.template_int_val);
+    }
+
+    template<typename T> void consume_object(const T& value)
+    {
+        consume(checksum_value(value));
+    }
+
     struct encoding_info
     {
         rpc::encoding enc;
@@ -114,6 +191,9 @@ namespace serialisation_benchmark
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         {rpc::encoding::protocol_buffers, "protocol_buffers"},
 #endif
+#ifdef CANOPY_BUILD_NANOPB
+        {rpc::encoding::nanopb, "nanopb"},
+#endif
     };
 
     // -------------------------------------------------------------------------
@@ -136,6 +216,8 @@ namespace serialisation_benchmark
             auto buf = enc.serialise(value);
             rpc::byte_span span(buf);
             enc.deserialise(span, scratch);
+            consume_bytes(buf);
+            consume_object(scratch);
         }
 
         for (size_t i = 0; i < call_count; ++i)
@@ -146,6 +228,116 @@ namespace serialisation_benchmark
             enc.deserialise(span, scratch);
             const auto t1 = clock_type::now();
 
+            consume_bytes(buf);
+            consume_object(scratch);
+            samples.push_back(static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()));
+        }
+
+        return compute_stats(std::move(samples));
+    }
+
+    template<
+        typename T,
+        typename Serialise,
+        typename Deserialise>
+    benchmark_stats measure_direct_roundtrip(
+        const T& value,
+        Serialise serialise,
+        Deserialise deserialise)
+    {
+        std::vector<int64_t> samples;
+        samples.reserve(call_count);
+
+        std::vector<char> buffer;
+        T scratch{};
+
+        for (size_t i = 0; i < 100; ++i)
+        {
+            buffer.clear();
+            serialise(value, buffer);
+            deserialise(buffer, scratch);
+            consume_bytes(buffer);
+            consume_object(scratch);
+        }
+
+        for (size_t i = 0; i < call_count; ++i)
+        {
+            const auto t0 = clock_type::now();
+            buffer.clear();
+            serialise(value, buffer);
+            deserialise(buffer, scratch);
+            const auto t1 = clock_type::now();
+
+            consume_bytes(buffer);
+            consume_object(scratch);
+            samples.push_back(static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()));
+        }
+
+        return compute_stats(std::move(samples));
+    }
+
+    template<
+        typename T,
+        typename Serialise>
+    benchmark_stats measure_direct_serialise(
+        const T& value,
+        Serialise serialise)
+    {
+        std::vector<int64_t> samples;
+        samples.reserve(call_count);
+
+        std::vector<char> buffer;
+
+        for (size_t i = 0; i < 100; ++i)
+        {
+            buffer.clear();
+            serialise(value, buffer);
+            consume_bytes(buffer);
+        }
+
+        for (size_t i = 0; i < call_count; ++i)
+        {
+            const auto t0 = clock_type::now();
+            buffer.clear();
+            serialise(value, buffer);
+            const auto t1 = clock_type::now();
+
+            consume_bytes(buffer);
+            samples.push_back(static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()));
+        }
+
+        return compute_stats(std::move(samples));
+    }
+
+    template<
+        typename T,
+        typename Serialise,
+        typename Deserialise>
+    benchmark_stats measure_direct_deserialise(
+        const T& value,
+        Serialise serialise,
+        Deserialise deserialise)
+    {
+        std::vector<int64_t> samples;
+        samples.reserve(call_count);
+
+        std::vector<char> buffer;
+        serialise(value, buffer);
+        T scratch{};
+
+        for (size_t i = 0; i < 100; ++i)
+        {
+            deserialise(buffer, scratch);
+            consume_object(scratch);
+        }
+
+        for (size_t i = 0; i < call_count; ++i)
+        {
+            const auto t0 = clock_type::now();
+            deserialise(buffer, scratch);
+            const auto t1 = clock_type::now();
+
+            consume_object(scratch);
             samples.push_back(static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()));
         }
 
@@ -174,6 +366,24 @@ namespace serialisation_benchmark
             stats.p95_ns,
             stats.min_ns,
             stats.max_ns);
+    }
+
+    void print_unsupported_row(
+        const char* type_name,
+        const char* enc_name,
+        const char* reason)
+    {
+        fmt::print(
+            "{:<36} | {:<18} | {:>10} | {:<13} | {:<11} | {:<11} | {:<11} | {:<11} | {:<11}\n",
+            type_name,
+            enc_name,
+            "n/a",
+            reason,
+            "n/a",
+            "n/a",
+            "n/a",
+            "n/a",
+            "n/a");
     }
 
     void print_header()
@@ -214,10 +424,123 @@ namespace serialisation_benchmark
     {
         for (const auto& enc : all_encodings)
         {
-            auto buf = enc.serialise(value);
-            const auto stats = measure(enc, value);
-            print_row(type_name, enc.name, buf.size(), stats);
+            try
+            {
+                auto buf = enc.serialise(value);
+                const auto stats = measure(enc, value);
+                print_row(type_name, enc.name, buf.size(), stats);
+            }
+            catch (const std::exception&)
+            {
+                print_unsupported_row(type_name, enc.name, "unsupported");
+            }
         }
+    }
+
+    scalar_test::something_more_complicated make_more_complicated()
+    {
+        scalar_test::something_more_complicated obj;
+        obj.scalar_value.int_val = 123456789;
+        obj.scalar_value.string_val = "benchmark_scalar";
+        obj.vector_val.push_back({1, "first"});
+        obj.vector_val.push_back({2, "second"});
+        obj.vector_val.push_back({3, "third"});
+        obj.map_val["key1"] = {FLD(int_val) 10, FLD(string_val) "map_first"};
+        obj.map_val["key2"] = {FLD(int_val) 20, FLD(string_val) "map_second"};
+        return obj;
+    }
+
+    template<typename T>
+    void run_permutation_type(
+        const char* type_name,
+        const T& value)
+    {
+        fmt::print("\n{}\n", type_name);
+        fmt::print(
+            "{:-<37}+{:-<20}+{:-<11}+{:-<14}+{:-<12}+{:-<12}+{:-<12}+{:-<12}+{:-<13}\n", "", "", "", "", "", "", "", "", "");
+
+        for (const auto& enc : all_encodings)
+        {
+            try
+            {
+                auto buf = enc.serialise(value);
+                const auto stats = measure(enc, value);
+                print_row(type_name, enc.name, buf.size(), stats);
+            }
+            catch (const std::exception&)
+            {
+                print_unsupported_row(type_name, enc.name, "unsupported");
+            }
+        }
+
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+        const auto protobuf_serialise
+            = [](const T& object, std::vector<char>& buffer) { object.protobuf_serialise(buffer); };
+        const auto protobuf_deserialise
+            = [](const std::vector<char>& buffer, T& object) { object.protobuf_deserialise(buffer); };
+        {
+            std::vector<char> buf;
+            protobuf_serialise(value, buf);
+            print_row(
+                type_name,
+                "protobuf direct rt",
+                buf.size(),
+                measure_direct_roundtrip(value, protobuf_serialise, protobuf_deserialise));
+            print_row(type_name, "protobuf ser only", buf.size(), measure_direct_serialise(value, protobuf_serialise));
+            print_row(
+                type_name,
+                "protobuf de only",
+                buf.size(),
+                measure_direct_deserialise(value, protobuf_serialise, protobuf_deserialise));
+        }
+#endif
+
+#ifdef CANOPY_BUILD_NANOPB
+        {
+            const auto nanopb_serialise
+                = [](const T& object, std::vector<char>& buffer) { object.nanopb_serialise(buffer); };
+            const auto nanopb_deserialise
+                = [](const std::vector<char>& buffer, T& object) { object.nanopb_deserialise(buffer); };
+            try
+            {
+                std::vector<char> buf;
+                nanopb_serialise(value, buf);
+                print_row(
+                    type_name,
+                    "nanopb direct rt",
+                    buf.size(),
+                    measure_direct_roundtrip(value, nanopb_serialise, nanopb_deserialise));
+                print_row(type_name, "nanopb ser only", buf.size(), measure_direct_serialise(value, nanopb_serialise));
+                print_row(
+                    type_name,
+                    "nanopb de only",
+                    buf.size(),
+                    measure_direct_deserialise(value, nanopb_serialise, nanopb_deserialise));
+            }
+            catch (const std::exception&)
+            {
+                print_unsupported_row(type_name, "nanopb direct", "unsupported");
+            }
+        }
+#endif
+    }
+
+    void run_permutations()
+    {
+        fmt::print("Serialisation Benchmark Permutations — {} calls, middle 80% (drop first/last 10%)\n", call_count);
+        fmt::print("Default rows use rpc::serialise/rpc::deserialise and consume the decoded object.\n");
+        fmt::print("Direct rows call generated protobuf/nanopb methods with a reusable std::vector<char> buffer.\n");
+
+        run_permutation_type("int32_holder (typical)", scalar_test::int32_holder{123456789});
+        run_permutation_type("string_holder (13 chars)", scalar_test::string_holder{"hello, world!"});
+        run_permutation_type("something_more_complicated", make_more_complicated());
+        {
+            scalar_test::something_with_a_template obj;
+            obj.template_int_val.type_t = 99;
+            run_permutation_type("something_with_a_template", obj);
+        }
+
+        fmt::print("\nbenchmark sink: {}\n", benchmark_sink);
     }
 
     // -------------------------------------------------------------------------
@@ -358,15 +681,7 @@ namespace serialisation_benchmark
             obj.string_val = "benchmark_string";
             bench_type("something_complicated", obj);
         }
-        {
-            scalar_test::something_more_complicated obj;
-            obj.vector_val.push_back({1, "first"});
-            obj.vector_val.push_back({2, "second"});
-            obj.vector_val.push_back({3, "third"});
-            obj.map_val["key1"] = {FLD(int_val) 10, FLD(string_val) "map_first"};
-            obj.map_val["key2"] = {FLD(int_val) 20, FLD(string_val) "map_second"};
-            bench_type("something_more_complicated", obj);
-        }
+        bench_type("something_more_complicated", make_more_complicated());
         {
             scalar_test::test_template<int> obj;
             obj.type_t = 42;
@@ -380,10 +695,18 @@ namespace serialisation_benchmark
     }
 }
 
-int main()
+int main(
+    int argc,
+    char** argv)
 {
     std::cout << "RPC++ Serialisation Benchmark\n";
     std::cout << "=============================\n\n";
+
+    if (argc > 1 && std::string(argv[1]) == "--permutations")
+    {
+        serialisation_benchmark::run_permutations();
+        return 0;
+    }
 
     serialisation_benchmark::print_header();
     serialisation_benchmark::run_all();

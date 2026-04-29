@@ -5,9 +5,37 @@
 
 #include <transports/websocket/transport.h>
 #include <rpc/internal/address_utils.h>
+#include <rpc/internal/serialiser.h>
+
+#ifndef CANOPY_WEBSOCKET_ENCODING
+#define CANOPY_WEBSOCKET_ENCODING CANOPY_DEFAULT_ENCODING
+#endif
 
 namespace websocket_protocol
 {
+    namespace
+    {
+        constexpr rpc::encoding websocket_encoding()
+        {
+            return CANOPY_WEBSOCKET_ENCODING;
+        }
+
+        template<
+            class OutputBlob = std::vector<std::uint8_t>,
+            typename T>
+        OutputBlob encode_transport_message(const T& obj)
+        {
+            return rpc::serialise<OutputBlob>(obj, websocket_encoding());
+        }
+
+        template<typename T>
+        std::string decode_transport_message(
+            const rpc::byte_span& data,
+            T& obj)
+        {
+            return rpc::deserialise(websocket_encoding(), data, obj);
+        }
+    }
 
     transport::transport(
         const std::shared_ptr<rpc::service>& service,
@@ -103,7 +131,7 @@ namespace websocket_protocol
 
         // decode the outer envelope
         websocket_protocol::v1::envelope handshake_env;
-        auto env_parse_err = rpc::from_protobuf<websocket_protocol::v1::envelope>(received_span, handshake_env);
+        auto env_parse_err = decode_transport_message(received_span, handshake_env);
         if (!env_parse_err.empty())
         {
             RPC_ERROR("[WS] invalid handshake envelope: {}", env_parse_err);
@@ -117,7 +145,7 @@ namespace websocket_protocol
 
         // decode connect_request from envelope data
         websocket_protocol::v1::connect_request req;
-        auto parse_err = rpc::from_protobuf<websocket_protocol::v1::connect_request>(handshake_env.data, req);
+        auto parse_err = decode_transport_message(handshake_env.data, req);
         if (!parse_err.empty())
         {
             RPC_ERROR("[WS] invalid connect_request: {}", parse_err);
@@ -145,12 +173,12 @@ namespace websocket_protocol
             websocket_protocol::v1::connect_initial_response initial_resp;
             initial_resp.zone_id = get_zone_id();
             initial_resp.remote_object_id = to_zone_address_args(client_object.get_address());
-            auto initial_payload = rpc::to_protobuf<std::vector<char>>(initial_resp);
+            auto initial_payload = encode_transport_message<std::vector<char>>(initial_resp);
             websocket_protocol::v1::envelope initial_env;
             initial_env.id = 0;
             initial_env.type = websocket_protocol::v1::message_type::handshake_ack;
             initial_env.data = std::move(initial_payload);
-            auto initial_complete = rpc::to_protobuf<std::vector<uint8_t>>(initial_env);
+            auto initial_complete = encode_transport_message<std::vector<uint8_t>>(initial_env);
             auto initial_send_status = CO_AWAIT stream_->send(rpc::byte_span{initial_complete});
 
             if (!is_valid(initial_send_status))
@@ -173,12 +201,12 @@ namespace websocket_protocol
         websocket_protocol::v1::connect_response connect_resp;
         connect_resp.outbound_remote_object = to_zone_address_args(output_descr.get_address());
 
-        auto resp_payload = rpc::to_protobuf<std::vector<char>>(connect_resp);
+        auto resp_payload = encode_transport_message<std::vector<char>>(connect_resp);
         websocket_protocol::v1::envelope resp_env;
         resp_env.id = handshake_env.id;
         resp_env.type = websocket_protocol::v1::message_type::handshake_complete;
         resp_env.data = std::move(resp_payload);
-        auto resp_complete = rpc::to_protobuf<std::vector<uint8_t>>(resp_env);
+        auto resp_complete = encode_transport_message<std::vector<uint8_t>>(resp_env);
         auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_complete});
         if (!is_valid(send_status))
         {
@@ -194,7 +222,7 @@ namespace websocket_protocol
             if (!recv_span.empty())
             {
                 websocket_protocol::v1::envelope env;
-                auto env_err = rpc::from_protobuf<websocket_protocol::v1::envelope>(recv_span, env);
+                auto env_err = decode_transport_message(recv_span, env);
                 if (!env_err.empty())
                 {
                     RPC_ERROR("[WS] envelope parse error: {}", env_err);
@@ -267,11 +295,11 @@ namespace websocket_protocol
         request.data = std::move(params.in_data);
         request.back_channel = std::move(params.in_back_channel);
 
-        auto payload = rpc::to_protobuf<std::vector<char>>(request);
+        auto payload = encode_transport_message<std::vector<char>>(request);
         websocket_protocol::v1::envelope envelope;
         envelope.type = websocket_protocol::v1::message_type::send;
         envelope.data = std::move(payload);
-        auto complete_payload = rpc::to_protobuf(envelope);
+        auto complete_payload = encode_transport_message(envelope);
         // send to parent
 
         auto status = CO_AWAIT stream_->send(
@@ -315,11 +343,11 @@ namespace websocket_protocol
         request.data = std::move(params.in_data);
         request.back_channel = {};
 
-        auto payload = rpc::to_protobuf<std::vector<char>>(request);
+        auto payload = encode_transport_message<std::vector<char>>(request);
         websocket_protocol::v1::envelope envelope;
         envelope.type = websocket_protocol::v1::message_type::post;
         envelope.data = std::move(payload);
-        auto complete_payload = rpc::to_protobuf(envelope);
+        auto complete_payload = encode_transport_message(envelope);
         // send to parent
 
         auto status = CO_AWAIT stream_->send(
@@ -375,7 +403,7 @@ namespace websocket_protocol
         RPC_DEBUG("stub_handle_send");
 
         websocket_protocol::v1::request request;
-        auto error = rpc::from_protobuf<websocket_protocol::v1::request>(envelope.data, request);
+        auto error = decode_transport_message(envelope.data, request);
         if (error.length())
         {
             RPC_DEBUG("Received message ({} bytes) parsing error: {}", envelope.data.size(), error);
@@ -386,7 +414,7 @@ namespace websocket_protocol
         auto send_result = CO_AWAIT inbound_send(
             rpc::send_params{
                 .protocol_version = rpc::get_version(),
-                .encoding_type = rpc::encoding::protocol_buffers,
+                .encoding_type = request.encoding,
                 .tag = request.tag,
                 .caller_zone_id = get_adjacent_zone_id(),
                 .remote_object_id = rpc::remote_object(to_zone_address(request.destination_zone_id)),
@@ -408,7 +436,7 @@ namespace websocket_protocol
         response.back_channel = {};
 
         // convert to protobuf
-        auto payload = rpc::to_protobuf<std::vector<char>>(response);
+        auto payload = encode_transport_message<std::vector<char>>(response);
 
         // make a type determinate envelope
         websocket_protocol::v1::envelope response_envelope;
@@ -417,7 +445,7 @@ namespace websocket_protocol
         response_envelope.data = std::move(payload);
 
         // convert to protobuf
-        auto complete_payload = rpc::to_protobuf(response_envelope);
+        auto complete_payload = encode_transport_message(response_envelope);
 
         CO_AWAIT stream_->send(
             rpc::byte_span(reinterpret_cast<const char*>(complete_payload.data()), complete_payload.size()));

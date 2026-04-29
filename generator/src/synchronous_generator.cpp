@@ -739,7 +739,8 @@ namespace synchronous_generator
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
         bool enable_yas,
-        bool enable_protobuf)
+        bool enable_protobuf,
+        bool enable_nanopb)
     {
         if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
         {
@@ -779,25 +780,30 @@ namespace synchronous_generator
 
             stub("case {}:", function_count);
             stub("{{");
-            stub("// Validate encoding format support");
-            stub("if (");
+            std::vector<std::string> unsupported_encoding_checks;
             if (enable_yas)
             {
-                stub("    params.encoding_type != rpc::encoding::yas_binary &&");
-                stub("    params.encoding_type != rpc::encoding::yas_compressed_binary &&");
-                stub("    params.encoding_type != rpc::encoding::yas_json");
+                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::yas_binary");
+                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::yas_compressed_binary");
+                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::yas_json");
             }
             if (enable_protobuf)
             {
-                if (enable_yas)
-                {
-                    stub("    &&");
-                }
-                stub("    params.encoding_type != rpc::encoding::protocol_buffers");
+                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::protocol_buffers");
             }
-            stub(")");
-            if (enable_yas || enable_protobuf)
+            if (enable_nanopb)
             {
+                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::nanopb");
+            }
+            if (!unsupported_encoding_checks.empty())
+            {
+                stub("// Validate encoding format support");
+                stub("if (");
+                for (size_t i = 0; i < unsupported_encoding_checks.size(); ++i)
+                {
+                    stub("    {}{}", unsupported_encoding_checks[i], i + 1 < unsupported_encoding_checks.size() ? " &&" : "");
+                }
+                stub(")");
                 stub("{{");
                 stub("    CO_RETURN rpc::send_result{{rpc::error::INCOMPATIBLE_SERIALISATION(), {{}}, {{}}}};");
                 stub("}}");
@@ -997,6 +1003,41 @@ namespace synchronous_generator
                 proxy("break;");
                 proxy("}}");
             }
+            if (enable_nanopb)
+            {
+                proxy("case rpc::encoding::nanopb:");
+                proxy("{{");
+                {
+                    proxy.print_tabs();
+                    proxy.raw(
+                        "__rpc_ret = {}proxy_serialiser<rpc::serialiser::nanopb>::{}(",
+                        scoped_namespace,
+                        function->get_name());
+                    count = 1;
+                    for (auto& parameter : function->get_parameters())
+                    {
+                        std::string output;
+                        {
+                            if (!do_in_param(
+                                    PROXY_MARSHALL_IN,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+
+                            proxy.raw(output);
+                        }
+                        count++;
+                    }
+                    proxy.raw("__rpc_in_buf);\n");
+                }
+                proxy("break;");
+                proxy("}}");
+            }
             proxy("default:");
             proxy("__rpc_ret = rpc::error::INCOMPATIBLE_SERIALISATION();");
             proxy("break;");
@@ -1062,6 +1103,41 @@ namespace synchronous_generator
                     stub.print_tabs();
                     stub.raw(
                         "__rpc_ret = {}stub_deserialiser<rpc::serialiser::protocol_buffers>::{}(",
+                        scoped_namespace,
+                        function->get_name());
+                    count = 1;
+                    for (auto& parameter : function->get_parameters())
+                    {
+                        std::string output;
+                        {
+                            if (!do_in_param(
+                                    STUB_MARSHALL_IN,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+
+                            stub.raw(output);
+                        }
+                        count++;
+                    }
+                    stub.raw("__rpc_in_data);\n");
+                }
+                stub("break;");
+                stub("}}");
+            }
+            if (enable_nanopb)
+            {
+                stub("case rpc::encoding::nanopb:");
+                stub("{{");
+                {
+                    stub.print_tabs();
+                    stub.raw(
+                        "__rpc_ret = {}stub_deserialiser<rpc::serialiser::nanopb>::{}(",
                         scoped_namespace,
                         function->get_name());
                     count = 1;
@@ -1445,6 +1521,38 @@ namespace synchronous_generator
                     proxy("break;");
                     proxy("}}");
                 }
+                if (enable_nanopb)
+                {
+                    proxy("case rpc::encoding::nanopb:");
+                    proxy("{{");
+                    {
+                        proxy.print_tabs();
+                        proxy.raw(
+                            "__rpc_ret = {}proxy_deserialiser<rpc::serialiser::nanopb>::{}(",
+                            scoped_namespace,
+                            function->get_name());
+                        count = 1;
+                        for (auto& parameter : function->get_parameters())
+                        {
+                            count++;
+                            std::string output;
+                            if (!do_out_param(
+                                    PROXY_MARSHALL_OUT,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+                            proxy.raw(output);
+                        }
+                        proxy.raw("__rpc_out_buf);\n");
+                    }
+                    proxy("break;");
+                    proxy("}}");
+                }
                 proxy("default:");
                 proxy("__rpc_ret = rpc::error::INCOMPATIBLE_SERIALISATION();");
                 proxy("break;");
@@ -1526,6 +1634,37 @@ namespace synchronous_generator
                     stub("break;");
                     stub("}}");
                 }
+                if (enable_nanopb)
+                {
+                    stub("case rpc::encoding::nanopb:");
+                    stub("{{");
+                    {
+                        count = 1;
+                        stub.print_tabs();
+                        stub.raw("{}stub_serialiser<rpc::serialiser::nanopb>::{}(", scoped_namespace, function->get_name());
+
+                        for (auto& parameter : function->get_parameters())
+                        {
+                            count++;
+                            std::string output;
+                            if (!do_out_param(
+                                    STUB_MARSHALL_OUT,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+
+                            stub.raw(output);
+                        }
+                        stub.raw("__rpc_result.out_buf);\n");
+                    }
+                    stub("break;");
+                    stub("}}");
+                }
                 stub("default:");
                 stub("__rpc_ret = rpc::error::INCOMPATIBLE_SERIALISATION();");
                 stub("break;");
@@ -1574,7 +1713,8 @@ namespace synchronous_generator
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
         bool enable_yas,
-        bool enable_protobuf)
+        bool enable_protobuf,
+        bool enable_nanopb)
     {
         if (m_ob.is_in_import())
             return;
@@ -1862,7 +2002,8 @@ namespace synchronous_generator
                         catch_stub_exceptions,
                         rethrow_exceptions,
                         enable_yas,
-                        enable_protobuf);
+                        enable_protobuf,
+                        enable_nanopb);
             }
 
             stub("default:");
@@ -2045,7 +2186,8 @@ namespace synchronous_generator
         const class_entity& m_ob,
         writer& header,
         bool enable_yas,
-        bool enable_protobuf)
+        bool enable_protobuf,
+        bool enable_nanopb)
     {
         if (m_ob.is_in_import())
             return;
@@ -2196,6 +2338,11 @@ namespace synchronous_generator
             header("// protobuf serialization methods");
             header("void protobuf_serialise(std::vector<char>& buffer) const;");
             header("void protobuf_deserialise(const std::vector<char>& buffer);");
+        }
+        if (enable_nanopb)
+        {
+            header("void nanopb_serialise(std::vector<char>& buffer) const;");
+            header("void nanopb_deserialise(const std::vector<char>& buffer);");
         }
 
         header("}};");
@@ -2456,7 +2603,8 @@ namespace synchronous_generator
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
         bool enable_yas,
-        bool enable_protobuf)
+        bool enable_protobuf,
+        bool enable_nanopb)
     {
         for (auto& elem : lib.get_elements(entity_type::NAMESPACE_MEMBERS))
         {
@@ -2496,7 +2644,8 @@ namespace synchronous_generator
                     catch_stub_exceptions,
                     rethrow_exceptions,
                     enable_yas,
-                    enable_protobuf);
+                    enable_protobuf,
+                    enable_nanopb);
                 header("}}");
                 proxy("}}");
                 stub("}}");
@@ -2504,7 +2653,7 @@ namespace synchronous_generator
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
                 auto& ent = static_cast<const class_entity&>(*elem);
-                write_struct(ent, header, enable_yas, enable_protobuf);
+                write_struct(ent, header, enable_yas, enable_protobuf, enable_nanopb);
             }
 
             else if (elem->get_entity_type() == entity_type::INTERFACE)
@@ -2512,7 +2661,7 @@ namespace synchronous_generator
                 auto& ent = static_cast<const class_entity&>(*elem);
                 interface_declaration_generator::write_interface(ent, header);
                 write_interface(
-                    from_host, ent, proxy, stub, catch_stub_exceptions, rethrow_exceptions, enable_yas, enable_protobuf);
+                    from_host, ent, proxy, stub, catch_stub_exceptions, rethrow_exceptions, enable_yas, enable_protobuf, enable_nanopb);
             }
             else if (elem->get_entity_type() == entity_type::CONSTEXPR)
             {
@@ -2583,7 +2732,8 @@ namespace synchronous_generator
         const std::vector<std::string>& additional_stub_headers,
         bool include_rpc_headers,
         bool enable_yas,
-        bool enable_protobuf)
+        bool enable_protobuf,
+        bool enable_nanopb)
     {
         writer header(hos);
         writer proxy(pos);
@@ -2688,7 +2838,7 @@ namespace synchronous_generator
         write_namespace_predeclaration(lib, header, proxy, stub);
 
         write_namespace(
-            from_host, lib, prefix, header, proxy, stub, catch_stub_exceptions, rethrow_exceptions, enable_yas, enable_protobuf);
+            from_host, lib, prefix, header, proxy, stub, catch_stub_exceptions, rethrow_exceptions, enable_yas, enable_protobuf, enable_nanopb);
 
         for (auto& ns : namespaces)
         {

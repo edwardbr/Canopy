@@ -23,7 +23,8 @@ namespace rpc
         //yas_text = 4,     //not really needed
         yas_json = 8,       //we may have different json parsers that have a better implementation e.g. glaze
         protocol_buffers = 16,
-        // flat_buffers = 32,
+        nanopb = 32,
+        // flat_buffers = 64,
         // mpi = 64
     };
 

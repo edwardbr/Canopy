@@ -1715,6 +1715,8 @@ namespace protobuf_generator
             if (is_interface)
             {
                 // Interface types need special handling - serialize remote_object to proto message
+                cpp("if ({}.is_set())", param_name);
+                cpp("{{");
                 cpp("auto* proto_{} = __request.mutable_{}();", param_name, param_name);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf;");
@@ -1723,6 +1725,7 @@ namespace protobuf_generator
                     "static_cast<int>(__dz_buf.size())))",
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");
+                cpp("}}");
                 cpp("}}");
             }
             else if (is_pointer)
@@ -1899,6 +1902,8 @@ namespace protobuf_generator
             if (is_interface)
             {
                 // Interface types need special handling - deserialize proto message to remote_object
+                cpp("if (__response.has_{}())", param_name);
+                cpp("{{");
                 cpp("const auto& proto_{} = __response.{}();", param_name, param_name);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf(proto_{}.ByteSizeLong());", param_name);
@@ -1907,6 +1912,11 @@ namespace protobuf_generator
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
                 cpp("{}.protobuf_deserialise(__dz_buf);", param_name);
+                cpp("}}");
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{} = rpc::remote_object();", param_name);
                 cpp("}}");
             }
             else if (is_pointer)
@@ -2089,6 +2099,8 @@ namespace protobuf_generator
             if (is_interface)
             {
                 // Interface types need special handling - deserialize proto message to remote_object
+                cpp("if (__request.has_{}())", param_name);
+                cpp("{{");
                 cpp("const auto& proto_{} = __request.{}();", param_name, param_name);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf(proto_{}.ByteSizeLong());", param_name);
@@ -2097,6 +2109,11 @@ namespace protobuf_generator
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to serialize nested destination_zone\");");
                 cpp("{}.protobuf_deserialise(__dz_buf);", param_name);
+                cpp("}}");
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{} = rpc::remote_object();", param_name);
                 cpp("}}");
             }
             else if (is_pointer)
@@ -2268,6 +2285,8 @@ namespace protobuf_generator
             if (is_interface)
             {
                 // Interface types need special handling - serialize remote_object to proto message
+                cpp("if ({}.is_set())", param_name);
+                cpp("{{");
                 cpp("auto* proto_{} = __response.mutable_{}();", param_name, param_name);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf;");
@@ -2276,6 +2295,7 @@ namespace protobuf_generator
                     "static_cast<int>(__dz_buf.size())))",
                     param_name);
                 cpp("throw std::runtime_error(\"Failed to parse nested destination_zone\");");
+                cpp("}}");
                 cpp("}}");
             }
             else if (is_pointer)

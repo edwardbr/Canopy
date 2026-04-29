@@ -36,7 +36,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
 
     void loaded_library::on_parent_expired()
     {
-        RPC_INFO("[libcoro_spsc_dynamic_dll] parent expired callback received");
+        RPC_DEBUG("parent expired callback received");
         {
             std::lock_guard lock(mutex_);
             expired_ = true;
@@ -68,14 +68,14 @@ namespace rpc::libcoro_spsc_dynamic_dll
 #  endif
         if (!result->lib_handle_)
         {
-            RPC_ERROR("[libcoro_spsc_dynamic_dll] failed to load {}", library_path);
+            RPC_ERROR("failed to load {}", library_path);
             return nullptr;
         }
 
         auto start_fn = reinterpret_cast<dll_start_fn>(load_symbol(result->lib_handle_, "canopy_libcoro_spsc_dll_start"));
         if (!start_fn)
         {
-            RPC_ERROR("[libcoro_spsc_dynamic_dll] canopy_libcoro_spsc_dll_start not found in {}", library_path);
+            RPC_ERROR("canopy_libcoro_spsc_dll_start not found in {}", library_path);
             result->stop();
             return nullptr;
         }
@@ -94,7 +94,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
         start_fn(&params, &start_result);
         if (start_result.error_code != rpc::error::OK() || !start_result.runtime_ctx || !start_result.stop_fn)
         {
-            RPC_ERROR("[libcoro_spsc_dynamic_dll] failed to start {}", library_path);
+            RPC_ERROR("failed to start {}", library_path);
             result->stop();
             return nullptr;
         }
@@ -123,7 +123,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
     {
         if (stop_fn_ && runtime_ctx_)
         {
-            RPC_INFO("[libcoro_spsc_dynamic_dll] stopping runtime");
+            RPC_DEBUG("stopping runtime");
             stop_fn_(runtime_ctx_);
             stop_fn_ = nullptr;
             runtime_ctx_ = nullptr;
@@ -131,7 +131,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
 
         if (lib_handle_)
         {
-            RPC_INFO("[libcoro_spsc_dynamic_dll] unloading library");
+            RPC_DEBUG("unloading library");
 #  if defined(_WIN32)
             FreeLibrary(static_cast<HMODULE>(lib_handle_));
 #  else

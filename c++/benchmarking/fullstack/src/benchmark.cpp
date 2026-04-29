@@ -14,7 +14,12 @@ int main()
     const std::vector<encoding_info> encodings = {
         {rpc::encoding::yas_binary, "yas_binary"},
         {rpc::encoding::yas_compressed_binary, "yas_compressed"},
+#ifdef CANOPY_BUILD_NANOPB
+        {rpc::encoding::nanopb, "nanopb"},
+#endif
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         {rpc::encoding::protocol_buffers, "protocol_buffers"},
+#endif
     };
 
     const std::vector<size_t> blob_sizes = {

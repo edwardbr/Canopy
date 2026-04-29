@@ -209,6 +209,8 @@ cmake --preset Debug -DCANOPY_BUILD_COROUTINE=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_ENCLAVE=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_TEST=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_DEMOS=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_PROTOCOL_BUFFERS=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_NANOPB=ON/OFF
 
 # Debugging
 cmake --preset Debug -DCANOPY_USE_LOGGING=ON/OFF
@@ -230,6 +232,8 @@ option(CANOPY_BUILD_COROUTINE "Enable C++20 coroutine support" OFF)
 option(CANOPY_BUILD_ENCLAVE "Enable SGX enclave support" OFF)
 option(CANOPY_BUILD_TEST "Build tests" ON)
 option(CANOPY_BUILD_DEMOS "Build demos" ON)
+option(CANOPY_BUILD_PROTOCOL_BUFFERS "Include full Google C++ Protocol Buffers support" ON)
+option(CANOPY_BUILD_NANOPB "Include Nanopb protobuf-compatible support" ON)
 option(BUILD_GENERATOR "Build IDL generator" ON)
 
 # Debug options
@@ -251,6 +255,21 @@ option(CANOPY_DEBUG_ALL "Enable all sanitizers" OFF)
 set(SGX_MODE "debug" CACHE STRING "SGX mode: debug or release")
 set(SGX_HW "OFF" CACHE BOOL "Enable SGX hardware (vs simulation)")
 ```
+
+### Protobuf-Compatible Serialization Options
+
+`CANOPY_BUILD_PROTOCOL_BUFFERS` enables the full Google C++ protobuf runtime and generated C++ protobuf API. It is useful for ordinary host processes that need the full protobuf feature set.
+
+`CANOPY_BUILD_NANOPB` enables the Nanopb-backed protobuf-compatible runtime. It uses `.proto` files and protobuf wire bytes, but links the small Nanopb C runtime plus Canopy-generated adapters instead of `protobuf::libprotobuf`. This is intended for constrained-runtime builds.
+
+Typical constrained-runtime configurations use:
+
+```cmake
+CANOPY_BUILD_NANOPB=ON
+CANOPY_BUILD_PROTOCOL_BUFFERS=OFF
+```
+
+Nanopb still needs protobuf tooling at build time so Canopy can compile the generated `.proto` files. That build-time dependency does not imply that generated targets link the full protobuf runtime.
 
 ## 6. Build Targets
 

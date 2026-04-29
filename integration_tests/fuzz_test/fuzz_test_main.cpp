@@ -1879,17 +1879,21 @@ run_autonomous_instruction_test(
 }
 
 #ifdef CANOPY_BUILD_COROUTINE
+CORO_TASK(void)
+run_task_and_mark_complete(
+    coro::task<void> task,
+    std::atomic<bool>& completed)
+{
+    co_await std::move(task);
+    completed.store(true, std::memory_order_release);
+}
+
 void run_detached_and_drain_scheduler(
     const std::shared_ptr<coro::scheduler>& scheduler,
-    std::function<coro::task<void>()> make_task)
+    coro::task<void> task)
 {
     std::atomic<bool> completed = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_task = [make_task = std::move(make_task), &completed]() mutable -> coro::task<void>
-    {
-        co_await make_task();
-        completed.store(true, std::memory_order_release);
-    }();
+    auto wrapper_task = run_task_and_mark_complete(std::move(task), completed);
 
     RPC_ASSERT(scheduler->spawn_detached(std::move(wrapper_task)));
 
@@ -1900,6 +1904,19 @@ void run_detached_and_drain_scheduler(
 
     scheduler->shutdown();
 }
+
+#  ifdef CANOPY_RUST_FUZZ_TEST_DLL_PATH
+CORO_TASK(void)
+run_seed_parity_test_with_setups(
+    cxx_local_child_fuzz_transport_setup& cxx_setup,
+    rust_dynamic_library_fuzz_transport_setup& rust_setup,
+    graph_summary& cxx_summary,
+    graph_summary& rust_summary)
+{
+    cxx_summary = co_await run_autonomous_instruction_summary_with_setup(cxx_setup, 90, 12, 424242);
+    rust_summary = co_await run_autonomous_instruction_summary_with_setup(rust_setup, 90, 12, 424242);
+}
+#  endif
 #endif
 
 #ifdef CANOPY_FUZZ_TEST_GTEST
@@ -1934,10 +1951,7 @@ TYPED_TEST(
     this->transport_setup_.set_scheduler(scheduler);
     auto* transport_setup = &this->transport_setup_;
 
-    run_detached_and_drain_scheduler(
-        scheduler,
-        [transport_setup]() -> coro::task<void>
-        { co_await run_autonomous_instruction_test_with_setup(*transport_setup, 1, 3, 1); });
+    run_detached_and_drain_scheduler(scheduler, run_autonomous_instruction_test_with_setup(*transport_setup, 1, 3, 1));
 #  else
     run_autonomous_instruction_test_with_setup(this->transport_setup_, 1, 3, 1);
 #  endif
@@ -1954,9 +1968,7 @@ TYPED_TEST(
     auto* transport_setup = &this->transport_setup_;
 
     run_detached_and_drain_scheduler(
-        scheduler,
-        [transport_setup]() -> coro::task<void>
-        { co_await run_autonomous_instruction_test_with_setup(*transport_setup, 80, 12, 424242); });
+        scheduler, run_autonomous_instruction_test_with_setup(*transport_setup, 80, 12, 424242));
 #  else
     run_autonomous_instruction_test_with_setup(this->transport_setup_, 80, 12, 424242);
 #  endif
@@ -1979,13 +1991,7 @@ TEST(
     graph_summary cxx_summary;
     graph_summary rust_summary;
     run_detached_and_drain_scheduler(
-        scheduler,
-        [&, cxx_setup_ptr, rust_setup_ptr]() -> coro::task<void>
-        {
-            cxx_summary = co_await run_autonomous_instruction_summary_with_setup(*cxx_setup_ptr, 90, 12, 424242);
-            rust_summary = co_await run_autonomous_instruction_summary_with_setup(*rust_setup_ptr, 90, 12, 424242);
-            co_return;
-        });
+        scheduler, run_seed_parity_test_with_setups(*cxx_setup_ptr, *rust_setup_ptr, cxx_summary, rust_summary));
 #    else
     cxx_local_child_fuzz_transport_setup cxx_setup;
     rust_dynamic_library_fuzz_transport_setup rust_setup;
@@ -2055,10 +2061,7 @@ TYPED_TEST(
     this->transport_setup_.set_scheduler(scheduler);
     auto* transport_setup = &this->transport_setup_;
 
-    run_detached_and_drain_scheduler(
-        scheduler,
-        [transport_setup]() -> coro::task<void>
-        { co_await run_child_status_and_cache_test_with_setup(*transport_setup); });
+    run_detached_and_drain_scheduler(scheduler, run_child_status_and_cache_test_with_setup(*transport_setup));
 #  else
     run_child_status_and_cache_test_with_setup(this->transport_setup_);
 #  endif
@@ -2120,10 +2123,7 @@ TYPED_TEST(
     this->transport_setup_.set_scheduler(scheduler);
     auto* transport_setup = &this->transport_setup_;
 
-    run_detached_and_drain_scheduler(
-        scheduler,
-        [transport_setup]() -> coro::task<void>
-        { co_await run_receive_object_updates_status_test_with_setup(*transport_setup); });
+    run_detached_and_drain_scheduler(scheduler, run_receive_object_updates_status_test_with_setup(*transport_setup));
 #  else
     run_receive_object_updates_status_test_with_setup(this->transport_setup_);
 #  endif
@@ -2195,9 +2195,7 @@ TYPED_TEST(
     auto* transport_setup = &this->transport_setup_;
 
     run_detached_and_drain_scheduler(
-        scheduler,
-        [transport_setup]() -> coro::task<void>
-        { co_await run_execute_instruction_creates_shared_object_test_with_setup(*transport_setup); });
+        scheduler, run_execute_instruction_creates_shared_object_test_with_setup(*transport_setup));
 #  else
     run_execute_instruction_creates_shared_object_test_with_setup(this->transport_setup_);
 #  endif
@@ -2322,9 +2320,7 @@ int main(
                 auto instruction_count_value = instructions;
 
                 run_detached_and_drain_scheduler(
-                    scheduler,
-                    [scheduler, cycle_value, instruction_count_value]() -> coro::task<void>
-                    { co_await run_autonomous_instruction_test(cycle_value, instruction_count_value, scheduler); });
+                    scheduler, run_autonomous_instruction_test(cycle_value, instruction_count_value, scheduler));
 #else
                 // Non-coroutine build - this won't work properly
                 run_autonomous_instruction_test(cycle, instructions);
@@ -2509,9 +2505,7 @@ int replay_test_scenario(const std::string& scenario_file)
         auto random_seed = config.random_seed;
 
         run_detached_and_drain_scheduler(
-            scheduler,
-            [scheduler, test_cycle, instruction_count, random_seed]() -> coro::task<void>
-            { co_await run_autonomous_instruction_test(test_cycle, instruction_count, scheduler, random_seed); });
+            scheduler, run_autonomous_instruction_test(test_cycle, instruction_count, scheduler, random_seed));
 #else
         run_autonomous_instruction_test(config.test_cycle, config.instruction_count, config.random_seed);
 #endif

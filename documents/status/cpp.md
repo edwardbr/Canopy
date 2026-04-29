@@ -6,7 +6,7 @@ Current characteristics:
 
 - supports both blocking and coroutine builds
 - supports the full main transport tree currently present in `c++/transports/`
-- supports YAS and Protocol Buffers
+- supports YAS, full Protocol Buffers, and Nanopb protobuf-compatible serialization
 - remains the implementation that repository-wide architecture and transport
   documentation should treat as authoritative unless explicitly stated
   otherwise

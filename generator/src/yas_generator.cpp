@@ -523,6 +523,7 @@ namespace yas_generator
                 "__yas_mapping);");
             proxy("break;");
             proxy("case rpc::encoding::protocol_buffers:");
+            proxy("case rpc::encoding::nanopb:");
             proxy("default:");
             proxy("return rpc::error::INCOMPATIBLE_SERIALISATION();");
             proxy("break;");
@@ -610,6 +611,7 @@ namespace yas_generator
                 "rpc_data.size()), __yas_mapping);");
             proxy("break;");
             proxy("case rpc::encoding::protocol_buffers:");
+            proxy("case rpc::encoding::nanopb:");
             proxy("default:");
             proxy("RPC_ERROR(\"Proxy deserialisation error - unknown encoding\");");
             proxy("return rpc::error::PROXY_DESERIALISATION_ERROR();");
@@ -710,6 +712,7 @@ namespace yas_generator
                 "__rpc_data.size()), __yas_mapping);");
             stub("break;");
             stub("case rpc::encoding::protocol_buffers:");
+            stub("case rpc::encoding::nanopb:");
             stub("default:");
             stub("return rpc::error::STUB_DESERIALISATION_ERROR();");
             stub("}}");
@@ -809,6 +812,7 @@ namespace yas_generator
                 "__yas_mapping);");
             stub("break;");
             stub("case rpc::encoding::protocol_buffers:");
+            stub("case rpc::encoding::nanopb:");
             stub("default:");
             stub("return rpc::error::INCOMPATIBLE_SERIALISATION();");
             stub("break;");

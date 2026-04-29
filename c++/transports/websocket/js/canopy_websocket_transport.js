@@ -45,8 +45,9 @@
     var MSG_HANDSHAKE_ACK = 4;
     var MSG_HANDSHAKE_COMPLETE = 5;
 
-    // Encoding constant — protocol_buffers = 16
+    // Encoding constants from rpc::encoding.
     var ENCODING_PROTOCOL_BUFFERS = 16;
+    var ENCODING_NANOPB = 32;
 
     function CanopyWebsocketTransport(opts) {
         this._url = opts.url;
@@ -56,6 +57,7 @@
         this._outboundIfaceId = opts.outboundInterfaceId;
         this._clientObjectId = opts.clientObjectId || Long_fromNumber(1, true);
         this._timeoutMs = opts.timeoutMs || 10000;
+        this._encoding = opts.encoding || ENCODING_PROTOCOL_BUFFERS;
         this._onOpen = opts.onOpen || function () { };
         this._onClose = opts.onClose || function () { };
         this._onError = opts.onError || function () { };
@@ -267,7 +269,7 @@
 
             try {
                 var wsReq = self._proto.request.create({
-                    encoding: ENCODING_PROTOCOL_BUFFERS,
+                    encoding: self._encoding,
                     tag: Long_fromNumber(id, true),
                     callerZoneId: self.clientObject || {},
                     destinationZoneId: self.serverObject || {},
@@ -321,6 +323,9 @@
     CanopyWebsocketTransport.prototype.isConnected = function () {
         return this._connected;
     };
+
+    CanopyWebsocketTransport.ENCODING_PROTOCOL_BUFFERS = ENCODING_PROTOCOL_BUFFERS;
+    CanopyWebsocketTransport.ENCODING_NANOPB = ENCODING_NANOPB;
 
     return CanopyWebsocketTransport;
 });

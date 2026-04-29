@@ -5,7 +5,14 @@ All rights reserved.
 
 # Protocol Buffers
 
-Canopy supports Protocol Buffers as a serialization format for cross-language interoperability and standardized binary encoding.
+Canopy supports Protocol Buffers-compatible serialization for cross-language interoperability and standardized binary encoding.
+
+There are two C++ protobuf-compatible backends:
+
+- `protocol_buffers`: the full Google C++ protobuf runtime and generated C++ message API.
+- `nanopb`: a small C runtime with Canopy-generated C++ adapters over Nanopb-generated C structs.
+
+Both paths are intended to encode the same `.proto` schema and wire format. The important distinction is runtime footprint and deployment boundary: full protobuf is useful for ordinary host processes that want the Google C++ API and tooling, while Nanopb is the small-runtime path for environments where linking the full protobuf library is not practical.
 
 ## 1. Overview
 
@@ -22,6 +29,20 @@ Protocol Buffers (protobuf) is a binary serialization format developed by Google
 
 ### CMake Configuration
 
+The full Google C++ protobuf backend is controlled by:
+
+```cmake
+set(CANOPY_BUILD_PROTOCOL_BUFFERS ON)
+```
+
+The Nanopb backend is controlled separately:
+
+```cmake
+set(CANOPY_BUILD_NANOPB ON)
+```
+
+When `protocol_buffers` is requested from `CanopyGenerate()` but `CANOPY_BUILD_PROTOCOL_BUFFERS=OFF`, Canopy may still generate a protobuf-compatible Nanopb implementation if `CANOPY_BUILD_NANOPB=ON`. This gives protobuf-compatible wire bytes without linking the full protobuf runtime into generated targets.
+
 ```cmake
 # In CMakeLists.txt
 CanopyGenerate(
@@ -32,13 +53,13 @@ CanopyGenerate(
     ""
     yas_binary
     yas_json
-    protocol_buffers  # Enable protobuf
+    protocol_buffers  # Request protobuf-compatible schema/wire support
 )
 ```
 
 ### Build Requirements
 
-Ensure protobuf is available by pulling your own copy of protocol buffers or instead use the submodule feature  git submodule init; git submodule update:
+Protobuf-compatible generation needs `protoc` at build time. Canopy can build it from the protobuf submodule when needed. The full Google C++ runtime is only required at runtime when `CANOPY_BUILD_PROTOCOL_BUFFERS=ON`; Nanopb builds still need protobuf tooling to compile `.proto` files, but do not require the full protobuf runtime in the generated target.
 
 ```bash
 # Install protobuf
@@ -191,12 +212,19 @@ yas_json:         1.0 ms (slowest)
 
 ## 8. When to Use Protocol Buffers
 
-### Use Protocol Buffers When
+### Use Full Protocol Buffers When
 
 - Communicating with non-C++ services
 - Schema evolution is important
 - Using established protobuf tooling
 - Interoperating with gRPC services
+- Running in a normal host process where linking the Google C++ protobuf runtime is acceptable
+
+### Use Nanopb When
+
+- You need protobuf-compatible wire bytes but cannot link the full protobuf runtime
+- Runtime footprint and dependency surface matter more than access to the Google C++ generated message API
+- You want one `.proto` compatibility contract across host, JavaScript, and constrained-runtime paths
 
 ### Use YAS Binary When
 
@@ -227,6 +255,7 @@ if (error == rpc::error::INCOMPATIBLE_SERIALISATION())
 
 ## 11. Next Steps
 
+- [Nanopb](nanopb.md) - Current small-runtime protobuf-compatible backend
 - [YAS Serializer](yas-serializer.md) - Native C++ serialization
 - [Error Handling](../08-error-handling.md) - Error code reference
 - [API Reference](../12-api-reference.md) - Complete API

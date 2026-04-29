@@ -44,6 +44,16 @@ namespace scalar_test
     [ description = "Wrapper struct for double roundtrip tests"] struct double_holder
     { double value; };
 
+    enum enum_value : uint8_t
+    {
+        enum_zero = 0,
+        enum_one = 1,
+        enum_two = 2,
+    };
+
+    [ description = "Wrapper struct for enum roundtrip tests"] struct enum_holder
+    { enum_value value; };
+
     // ---- String holder ----
 
     [ description = "Wrapper struct for std::string roundtrip tests"] struct string_holder
@@ -146,6 +156,24 @@ namespace scalar_test
         something_complicated scalar_value;
         std::vector<something_complicated> vector_val;
         std::map<std::string, something_complicated> map_val;
+    };
+
+    [description="Wrapper struct for std::map<std::string, something_complicated> roundtrip tests"]
+    struct string_struct_map_holder
+    {
+        std::map<std::string, something_complicated> map_value;
+    };
+
+    [description="Wrapper struct for std::map<std::string, int32_t> roundtrip tests"]
+    struct string_int_map_holder
+    {
+        std::map<std::string, int32_t> map_value;
+    };
+
+    [description="Wrapper struct for std::map<std::string, std::string> roundtrip tests"]
+    struct string_string_map_holder
+    {
+        std::map<std::string, std::string> map_value;
     };
 
     [description="a simple template"]

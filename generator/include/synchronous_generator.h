@@ -23,5 +23,6 @@ namespace synchronous_generator
         const std::vector<std::string>& additional_stub_headers,
         bool include_rpc_headers,
         bool enable_yas,
-        bool enable_protobuf);
+        bool enable_protobuf,
+        bool enable_nanopb);
 }

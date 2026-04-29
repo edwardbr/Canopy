@@ -220,12 +220,11 @@ namespace rpc::ipc_transport
             {
                 if (!wait_for_child_exit(state->child_pid, status, std::chrono::seconds(5)))
                 {
-                    RPC_WARNING("ipc_transport: child pid={} did not exit cleanly, sending SIGTERM", state->child_pid);
+                    RPC_WARNING("child pid={} did not exit cleanly, sending SIGTERM", state->child_pid);
                     ::kill(state->child_pid, SIGTERM);
                     if (!wait_for_child_exit(state->child_pid, status, std::chrono::seconds(1)))
                     {
-                        RPC_WARNING(
-                            "ipc_transport: child pid={} still alive after SIGTERM, sending SIGKILL", state->child_pid);
+                        RPC_WARNING("child pid={} still alive after SIGTERM, sending SIGKILL", state->child_pid);
                         ::kill(state->child_pid, SIGKILL);
                         child_exited = wait_for_child_exit(state->child_pid, status, std::chrono::seconds(1));
                     }
@@ -237,7 +236,7 @@ namespace rpc::ipc_transport
             }
 
             if (child_exited)
-                RPC_INFO("ipc_transport: child pid={} exited with status={}", state->child_pid, status);
+                RPC_DEBUG("child pid={} exited with status={}", state->child_pid, status);
             state->child_pid = -1;
         }
 
@@ -291,7 +290,7 @@ namespace rpc::ipc_transport
 
         if (!state_->child_reaped.load() && state_->child_pid > 0 && process_is_alive(state_->child_pid))
         {
-            RPC_INFO("ipc_transport: waiting for child pid={} during transport destruction", state_->child_pid);
+            RPC_INFO("waiting for child pid={} during transport destruction", state_->child_pid);
         }
 
         reap_child(state_);

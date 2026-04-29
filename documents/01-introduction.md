@@ -28,7 +28,7 @@ Canopy bridges the gap between local C++ objects and distributed systems by prov
 
 - **Type Safety**: Full C++ type system integration with compile-time verification through IDL-generated code
 - **Transport Independence**: A single API works across multiple transport mechanisms
-- **Format Flexibility**: Support for JSON, binary (YAS), and Protocol Buffers serialization
+- **Format Flexibility**: Support for JSON, binary (YAS), full Protocol Buffers, and Nanopb protobuf-compatible serialization
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
 - **Secure Enclaves**: Native support for Intel SGX secure computation
 
@@ -40,6 +40,8 @@ Implementation note:
   (blocking, Protocol Buffers, local, dynamic-library)
 - the JavaScript implementation is currently a reduced-trust generated client
   layer rather than a full runtime equivalent
+- Nanopb is the protobuf-compatible C++ path for small-runtime builds where
+  the full Google protobuf runtime is too heavy or unsuitable to link
 
 ## How To Think About Canopy
 
