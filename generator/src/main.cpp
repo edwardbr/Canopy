@@ -489,7 +489,8 @@ int main(
 
                 // Append fingerprint data as comments to ensure type changes trigger rebuild
                 // even if the serialization code itself doesn't change
-                protobuf_cpp_stream << "\n// Type Fingerprints - DO NOT EDIT (auto-generated for dependency tracking)\n";
+                protobuf_cpp_stream
+                    << "\n// Type Fingerprints - DO NOT EDIT (auto-generated for dependency tracking)\n";
                 {
                     auto checksums_path_for_embed = output_path / "check_sums";
                     if (std::filesystem::exists(checksums_path_for_embed))

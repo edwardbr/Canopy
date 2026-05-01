@@ -8,7 +8,7 @@
 #include <rpc/internal/serialiser.h>
 
 #ifndef CANOPY_WEBSOCKET_ENCODING
-#define CANOPY_WEBSOCKET_ENCODING CANOPY_DEFAULT_ENCODING
+#  define CANOPY_WEBSOCKET_ENCODING CANOPY_DEFAULT_ENCODING
 #endif
 
 namespace websocket_protocol

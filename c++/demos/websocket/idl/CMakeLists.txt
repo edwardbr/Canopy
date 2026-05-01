@@ -13,12 +13,7 @@ set(demo_idl websocket_demo/websocket_demo.idl)
 set(CANOPY_WEBSOCKET_DEMO_ENCODING
     "AUTO"
     CACHE STRING "Encoding generated and used by the websocket demo")
-set_property(
-  CACHE CANOPY_WEBSOCKET_DEMO_ENCODING
-  PROPERTY STRINGS
-           "AUTO"
-           "NANOPB"
-           "PROTOCOL_BUFFERS")
+set_property(CACHE CANOPY_WEBSOCKET_DEMO_ENCODING PROPERTY STRINGS "AUTO" "NANOPB" "PROTOCOL_BUFFERS")
 
 if(NOT CANOPY_WEBSOCKET_DEMO_ENCODING MATCHES "^(AUTO|NANOPB|PROTOCOL_BUFFERS)$")
   message(WARNING "Invalid CANOPY_WEBSOCKET_DEMO_ENCODING '${CANOPY_WEBSOCKET_DEMO_ENCODING}', defaulting to AUTO")
@@ -65,10 +60,8 @@ endif()
 
 message("CANOPY_WEBSOCKET_DEMO_ENCODING ${CANOPY_WEBSOCKET_DEMO_ENCODING} -> ${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}")
 
-configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js.in"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js"
-  @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js.in"
+               "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js" @ONLY)
 
 CanopyGenerate(
   websocket_demo

@@ -3,8 +3,8 @@
    All rights reserved.
 ]]
 
-#Capture this directory at include time — CMAKE_CURRENT_LIST_DIR inside a function refers to the caller's directory,
-#not the file where the function is defined.
+# Capture this directory at include time — CMAKE_CURRENT_LIST_DIR inside a function refers to the caller's directory,
+# not the file where the function is defined.
 set(_CANOPY_GENERATE_CMAKE_DIR
     "${CMAKE_CURRENT_LIST_DIR}"
     CACHE INTERNAL "")
@@ -34,7 +34,7 @@ function(
       rethrow_stub_exception
       additional_stub_header)
 
-#split out multivalue variables
+  # split out multivalue variables
   cmake_parse_arguments(
     "params"
     "${options}"
@@ -42,8 +42,8 @@ function(
     "${multiValueArgs}"
     ${ARGN})
 
-#Define cache variables for global settings with defaults These allow users to override settings while providing
-#sensible defaults
+  # Define cache variables for global settings with defaults These allow users to override settings while providing
+  # sensible defaults
   if(NOT DEFINED CANOPY_BUILD_ENCLAVE)
     set(CANOPY_BUILD_ENCLAVE
         OFF
@@ -134,25 +134,25 @@ function(
         CACHE STRING "Enclave warning flags that are acceptable")
   endif()
 
-#Extract directory and base filename from IDL path BEFORE converting to absolute idl parameter is like
-#"example_shared/example_shared.idl" or "rpc/rpc_types.idl" or just "example.idl"
+  # Extract directory and base filename from IDL path BEFORE converting to absolute idl parameter is like
+  # "example_shared/example_shared.idl" or "rpc/rpc_types.idl" or just "example.idl"
   get_filename_component(idl_dir ${idl} DIRECTORY)
   get_filename_component(idl_basename ${idl} NAME_WE)
 
-#The subdirectory is extracted from the IDL path If idl has no directory(e.g., "example.idl"), use empty subdirectory
+  # The subdirectory is extracted from the IDL path If idl has no directory(e.g., "example.idl"), use empty subdirectory
   if("${idl_dir}" STREQUAL "")
     set(sub_directory ".")
   else()
     set(sub_directory ${idl_dir})
   endif()
 
-#The base filename comes from the IDL filename(without.idl extension)
+  # The base filename comes from the IDL filename(without.idl extension)
   set(base_filename ${idl_basename})
 
-#Generator receives only the basename The directory will be extracted from the IDL path by the generator
+  # Generator receives only the basename The directory will be extracted from the IDL path by the generator
   set(base_name ${base_filename})
 
-#keep relative path of idl for install, else use only the file name
+  # keep relative path of idl for install, else use only the file name
   cmake_path(IS_RELATIVE idl idl_is_relative)
 
   if(${idl_is_relative})
@@ -167,7 +167,7 @@ function(
     set(idl_relative_dir .)
   endif()
 
-#Construct individual paths for CMake dependency tracking
+  # Construct individual paths for CMake dependency tracking
   set(header_path ${sub_directory}/${base_filename}.h)
   set(proxy_path ${sub_directory}/${base_filename}_proxy.cpp)
   set(stub_path ${sub_directory}/${base_filename}_stub.cpp)
@@ -176,7 +176,7 @@ function(
   set(full_proxy_path ${output_path}/src/${proxy_path})
   set(full_stub_path ${output_path}/src/${stub_path})
   set(full_stub_header_path ${output_path}/include/${stub_header_path})
-#Determine which serialization formats to generate
+  # Determine which serialization formats to generate
   set(generate_yas FALSE)
   set(generate_protobuf FALSE)
   set(generate_nanopb FALSE)
@@ -221,9 +221,8 @@ function(
       message(STATUS "Nanopb generation requested for '${name}', but CANOPY_BUILD_NANOPB is OFF. "
                      "Continuing with the requested YAS format(s) only.")
     else()
-      message(
-        FATAL_ERROR "Nanopb generation was requested for '${name}', but CANOPY_BUILD_NANOPB is OFF "
-                    "and no alternative generated serialization format was requested.")
+      message(FATAL_ERROR "Nanopb generation was requested for '${name}', but CANOPY_BUILD_NANOPB is OFF "
+                          "and no alternative generated serialization format was requested.")
     endif()
   endif()
 
@@ -281,7 +280,7 @@ function(
     message("no_include_rpc_headers ${params_no_include_rpc_headers}")
   endif()
 
-#Use cache variable for generator executable with fallback
+  # Use cache variable for generator executable with fallback
   if(NOT DEFINED CANOPY_IDL_GENERATOR_EXECUTABLE)
     set(CANOPY_IDL_GENERATOR_EXECUTABLE
         "generator"
@@ -327,9 +326,9 @@ function(
     else()
       message("target ${dep}_generate does not exist so skipped")
     endif()
-#when installed(used through a package) idl dependencies can be found through their*(or *_enclave) targets : we
-#know that < package_dir> / ${param_install_dir } / interfaces / include is in the target's include directories, and that
-#the idls themselves are in < package_dir> / ${param_install_dir }
+    # when installed(used through a package) idl dependencies can be found through their*(or *_enclave) targets : we
+    # know that < package_dir> / ${param_install_dir } / interfaces / include is in the target's include directories,
+    # and that the idls themselves are in < package_dir> / ${param_install_dir }
     if(TARGET ${dep})
       get_target_property(include_dirs ${dep} INTERFACE_INCLUDE_DIRECTORIES)
       foreach(include_dir ${include_dirs})
@@ -359,12 +358,12 @@ function(
 
   set(proto_proxy_src "")
   if(generate_protobuf)
-#Keep the placeholder proxy source beside the other generated outputs so all targets refer to a single stable path
-#across source directories.
+    # Keep the placeholder proxy source beside the other generated outputs so all targets refer to a single stable path
+    # across source directories.
     set(proto_proxy_src "${output_path}/src/${sub_directory}/${base_name}_proto_proxy.cpp")
   endif()
 
-#Build the list of output files based on enabled formats
+  # Build the list of output files based on enabled formats
   set(GENERATOR_OUTPUTS ${full_header_path} ${full_proxy_path} ${full_stub_header_path} ${full_stub_path})
 
   if(generate_yas)
@@ -372,8 +371,8 @@ function(
   endif()
 
   if(generate_protobuf OR generate_nanopb)
-#Only the manifest and wrapper C++ files are direct generator outputs.Individual.proto files are listed in
-#manifest.txt and compiled separately.
+    # Only the manifest and wrapper C++ files are direct generator outputs.Individual.proto files are listed in
+    # manifest.txt and compiled separately.
     list(APPEND GENERATOR_OUTPUTS ${full_protobuf_manifest_path})
     if(generate_protobuf)
       list(APPEND GENERATOR_OUTPUTS ${full_protobuf_cpp_path} ${proto_proxy_src})
@@ -390,7 +389,7 @@ function(
 
   set_source_files_properties(${GENERATOR_OUTPUTS} PROPERTIES GENERATED TRUE)
 
-#Build generator command with conditional serialization flags
+  # Build generator command with conditional serialization flags
   set(SERIALIZATION_FLAGS "")
   if(generate_yas)
     set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas)
@@ -403,8 +402,8 @@ function(
     set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --nanopb)
   endif()
 
-#Determine generator dependency for custom command If generator target exists(building from source), depend on the
-#executable file Otherwise use the cached executable path(installed version)
+  # Determine generator dependency for custom command If generator target exists(building from source), depend on the
+  # executable file Otherwise use the cached executable path(installed version)
   set(GENERATOR_DEPENDENCY "")
   if(TARGET generator)
     set(GENERATOR_DEPENDENCY $<TARGET_FILE:generator>)
@@ -443,12 +442,12 @@ function(
 
   add_custom_target(${name}_idl_generate DEPENDS ${GENERATOR_OUTPUTS})
 
-#Ensure generator executable is built before generating IDL
+  # Ensure generator executable is built before generating IDL
   add_dependencies(${name}_idl_generate generator)
 
   set_target_properties(${name}_idl_generate PROPERTIES base_dir ${base_dir})
 
-#Only compile.proto files if protobuf - compatible formats are enabled
+  # Only compile.proto files if protobuf - compatible formats are enabled
   if(generate_protobuf OR generate_nanopb)
     if("${CANOPY_NANOPB_PROTOC_EXECUTABLE}" STREQUAL "" AND TARGET protoc)
       set(CANOPY_NANOPB_PROTOC_EXECUTABLE "$<TARGET_FILE:protoc>")
@@ -456,14 +455,14 @@ function(
 
     set(proto_dir ${output_path}/src/${sub_directory}/protobuf)
     set(PROTO_MANIFEST "${proto_dir}/manifest.txt")
-#Expose proto location so JS consumers(CanopyJavascriptGenerate) can copy.proto files
+    # Expose proto location so JS consumers(CanopyJavascriptGenerate) can copy.proto files
     set_target_properties(${name}_idl_generate PROPERTIES proto_dir "${proto_dir}" proto_src_root "${output_path}/src")
 
-#The stamp file tracks when the internal compilation script has finished
+    # The stamp file tracks when the internal compilation script has finished
     set(proto_stamp_file ${proto_dir}/.proto_compiled)
 
-#Generate a cmake file that lists all the expected.pb.cc files This is created during build after the proto files
-#are compiled
+    # Generate a cmake file that lists all the expected.pb.cc files This is created during build after the proto files
+    # are compiled
     set(proto_sources_cmake ${proto_dir}/generated_sources.cmake)
     set(nanopb_src_root ${output_path}/src/${sub_directory}/nanopb)
     set_target_properties(${name}_idl_generate PROPERTIES nanopb_src_root "${nanopb_src_root}")
@@ -485,10 +484,11 @@ function(
 
     add_custom_command(
       OUTPUT ${proto_stamp_file} ${proto_sources_cmake}
-#Compile the proto files and generate the cmake file with.pb.cc sources
-      COMMAND ${CMAKE_COMMAND} -D PROTOC=$<TARGET_FILE:protoc> -D SUB_DIR=${sub_directory} -D
-              PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D PROTO_SOURCES_CMAKE=${proto_sources_cmake} -P
-              ${_CANOPY_GENERATE_CMAKE_DIR}/compile_protos.cmake
+      # Compile the proto files and generate the cmake file with.pb.cc sources
+      COMMAND
+        ${CMAKE_COMMAND} -D PROTOC=$<TARGET_FILE:protoc> -D SUB_DIR=${sub_directory} -D PROTO_DIR=${proto_dir} -D
+        OUTPUT_DIR=${output_path}/src -D PROTO_SOURCES_CMAKE=${proto_sources_cmake} -P
+        ${_CANOPY_GENERATE_CMAKE_DIR}/compile_protos.cmake
       COMMAND ${CMAKE_COMMAND} -E touch ${proto_stamp_file}
       DEPENDS ${PROTO_MANIFEST} protoc
       COMMENT "Discovering and compiling .proto files for ${name}")
@@ -497,10 +497,10 @@ function(
 
     add_custom_command(
       OUTPUT ${nanopb_stamp_file} ${nanopb_sources_cmake}
-      COMMAND ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D
-              NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D
-              CPP_OUT_DIR=${nanopb_src_root} -D NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -P
-              ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
+      COMMAND
+        ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D
+        PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
+        NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -P ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
       COMMAND ${CMAKE_COMMAND} -E touch ${nanopb_stamp_file}
       DEPENDS ${PROTO_MANIFEST}
       COMMENT "Discovering and compiling Nanopb .proto files for ${name}")
@@ -523,42 +523,42 @@ function(
       endforeach()
     endif()
 
-#Create a placeholder cmake file if it doesn't exist (for configure time)
+    # Create a placeholder cmake file if it doesn't exist (for configure time)
     if(NOT EXISTS ${proto_sources_cmake})
       file(WRITE ${proto_sources_cmake}
            "# Placeholder - will be regenerated at build time\nset(PROTO_PB_SOURCES \"\")\n")
     endif()
 
-#Read the manifest.txt file to determine which.pb.cc files will be generated The manifest.txt is created by the
-#IDL generator, so it exists after code generation
+    # Read the manifest.txt file to determine which.pb.cc files will be generated The manifest.txt is created by the IDL
+    # generator, so it exists after code generation
     set(PROTO_PB_SOURCES "")
     if(EXISTS ${PROTO_MANIFEST})
 
-#Read manifest.txt and compute corresponding.pb.cc filenames
+      # Read manifest.txt and compute corresponding.pb.cc filenames
       file(READ "${PROTO_MANIFEST}" MANIFEST_CONTENT)
       string(REGEX REPLACE "\n" ";" PROTO_FILE_NAMES "${MANIFEST_CONTENT}")
 
       foreach(PROTO_NAME ${PROTO_FILE_NAMES})
         string(STRIP "${PROTO_NAME}" PROTO_NAME)
         if(NOT "${PROTO_NAME}" STREQUAL "")
-#Convert example.proto->example.pb.cc
+          # Convert example.proto->example.pb.cc
           string(REGEX REPLACE "\\.proto$" ".pb.cc" PB_CC_NAME "${PROTO_NAME}")
           message("set(pb_cc_file ${output_path}/src / ${PB_CC_NAME})")
           set(pb_cc_file "${output_path}/src/${PB_CC_NAME}")
           list(APPEND PROTO_PB_SOURCES "${pb_cc_file}")
-#Mark as GENERATED so CMake doesn 't complain that it doesn' t exist yet
+          # Mark as GENERATED so CMake doesn 't complain that it doesn' t exist yet
           set_source_files_properties("${pb_cc_file}" PROPERTIES GENERATED TRUE)
         endif()
       endforeach()
     else()
-#Manifest doesn't exist at configure time (e.g., after deleting build/generated) Use the generated_sources.cmake
-#file which will be populated at build time
+      # Manifest doesn't exist at configure time (e.g., after deleting build/generated) Use the generated_sources.cmake
+      # file which will be populated at build time
       if(EXISTS ${proto_sources_cmake})
         include(${proto_sources_cmake})
       endif()
     endif()
 
-#Mark wrapper files as GENERATED and skip linting because they are emitted by the protobuf generator.
+    # Mark wrapper files as GENERATED and skip linting because they are emitted by the protobuf generator.
     if(generate_protobuf)
       set_source_files_properties("${full_protobuf_cpp_path}" PROPERTIES GENERATED TRUE SKIP_LINTING TRUE)
       set_source_files_properties("${proto_proxy_src}" PROPERTIES GENERATED TRUE SKIP_LINTING TRUE)
@@ -572,8 +572,8 @@ function(
     endif()
 
     if(PROTO_PB_SOURCES)
-#Protobuf's generated sources currently trigger noisy sign-compare warnings in bundled abseil headers under
-#Clang.Suppress that warning for the generated.pb.cc files only so the project logs stay readable.
+      # Protobuf's generated sources currently trigger noisy sign-compare warnings in bundled abseil headers under
+      # Clang.Suppress that warning for the generated.pb.cc files only so the project logs stay readable.
       set_source_files_properties(
         ${PROTO_PB_SOURCES}
         PROPERTIES GENERATED TRUE
@@ -590,7 +590,7 @@ function(
     endif()
 
     if(generate_protobuf)
-#Define the library using the known wrapper, proxy, and all generated.pb.cc files
+      # Define the library using the known wrapper, proxy, and all generated.pb.cc files
       message(
         "    add_library(${name}_protobuf_generated STATIC
       ${full_protobuf_cpp_path}
@@ -600,22 +600,22 @@ function(
 
       add_library(${name}_protobuf_generated STATIC ${full_protobuf_cpp_path} ${proto_proxy_src} ${PROTO_PB_SOURCES})
 
-#Add CANOPY compile definitions to ensure CANOPY_DEFAULT_ENCODING is available
+      # Add CANOPY compile definitions to ensure CANOPY_DEFAULT_ENCODING is available
       target_compile_definitions(${name}_protobuf_generated PRIVATE ${CANOPY_SHARED_DEFINES})
 
-#Make sure the generated protobuf C++ file waits for protobuf compilation
+      # Make sure the generated protobuf C++ file waits for protobuf compilation
       if(EXISTS ${full_protobuf_cpp_path})
         add_dependencies(${name}_protobuf_generated ${name}_proto_compile)
       endif()
 
-#CRITICAL : We tell the library to include the object files found in the manifest This uses a generator expression
-#to pull in the objects compiled by our script
+      # CRITICAL : We tell the library to include the object files found in the manifest This uses a generator
+      # expression to pull in the objects compiled by our script
       target_link_libraries(${name}_protobuf_generated PRIVATE rpc::rpc)
-#Add protobuf include directories for compilation
+      # Add protobuf include directories for compilation
       if(TARGET protobuf::libprotobuf)
         target_link_libraries(${name}_protobuf_generated PRIVATE protobuf::libprotobuf)
       endif()
-#Also add the generated protobuf directory for the.pb.h files
+      # Also add the generated protobuf directory for the.pb.h files
       target_include_directories(${name}_protobuf_generated SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
       add_dependencies(${name}_protobuf_generated ${name}_proto_compile ${name}_idl_generate)
     endif()
@@ -623,9 +623,8 @@ function(
     if(generate_nanopb)
       add_library(${name}_nanopb_generated STATIC ${full_nanopb_cpp_path} ${NANOPB_PB_SOURCES})
       target_compile_definitions(${name}_nanopb_generated PRIVATE ${CANOPY_SHARED_DEFINES})
-      target_include_directories(
-        ${name}_nanopb_generated SYSTEM BEFORE PRIVATE ${nanopb_include_roots} ${output_path}/src ${proto_dir}
-                                                  ${output_path}/src)
+      target_include_directories(${name}_nanopb_generated SYSTEM BEFORE
+                                 PRIVATE ${nanopb_include_roots} ${output_path}/src ${proto_dir} ${output_path}/src)
       if(TARGET canopy_nanopb_runtime)
         target_link_libraries(${name}_nanopb_generated PRIVATE canopy_nanopb_runtime rpc::rpc)
       else()
@@ -635,7 +634,7 @@ function(
     endif()
   endif()
 
-#Build library sources based on enabled formats
+  # Build library sources based on enabled formats
   set(IDL_SOURCES ${full_header_path} ${full_stub_header_path} ${full_stub_path} ${full_proxy_path})
 
   if(generate_yas)
@@ -645,7 +644,7 @@ function(
   if(generate_protobuf)
     list(APPEND IDL_SOURCES ${full_protobuf_cpp_path} ${PROTO_PB_SOURCES})
   endif()
-#Create the host IDL library
+  # Create the host IDL library
   add_library(${name}_idl STATIC ${IDL_SOURCES})
   target_compile_definitions(${name}_idl PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
@@ -663,17 +662,17 @@ function(
 
   target_link_libraries(${name}_idl PUBLIC rpc::rpc ${CANOPY_FMT_LIB} ${CANOPY_CORO_RUNTIME})
 
-#Link YAS if any YAS format is enabled
+  # Link YAS if any YAS format is enabled
   if(generate_yas)
     target_link_libraries(${name}_idl PUBLIC yas_common)
   endif()
 
-#Link protobuf library if building protobuf support
+  # Link protobuf library if building protobuf support
   if(generate_protobuf)
     if(TARGET protobuf::libprotobuf)
       target_link_libraries(${name}_idl PUBLIC protobuf::libprotobuf)
       target_include_directories(${name}_idl SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
-#Link the protobuf generated object library if it exists
+      # Link the protobuf generated object library if it exists
       if(TARGET ${name}_protobuf_generated)
         target_link_libraries(${name}_idl PRIVATE ${name}_protobuf_generated)
       endif()
@@ -719,7 +718,7 @@ function(
   endforeach()
 
   if(CANOPY_BUILD_ENCLAVE)
-#Create the enclave IDL library
+    # Create the enclave IDL library
     add_library(${name}_idl_enclave STATIC ${IDL_SOURCES})
     target_compile_definitions(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
     target_include_directories(${name}_idl_enclave SYSTEM PUBLIC "$<BUILD_INTERFACE:${output_path}>"
@@ -737,17 +736,17 @@ function(
 
     target_link_libraries(${name}_idl_enclave PUBLIC rpc::rpc_enclave ${CANOPY_ENCLAVE_FMT_LIB})
 
-#Link YAS if any YAS format is enabled
+    # Link YAS if any YAS format is enabled
     if(generate_yas)
       target_link_libraries(${name}_idl_enclave PUBLIC yas_common)
     endif()
 
-#Link protobuf library if building protobuf support
+    # Link protobuf library if building protobuf support
     if(generate_protobuf)
       if(TARGET protobuf::libprotobuf)
         target_link_libraries(${name}_idl_enclave PUBLIC protobuf::libprotobuf)
         target_include_directories(${name}_idl_enclave SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
-#Link the protobuf generated object library if it exists
+        # Link the protobuf generated object library if it exists
         if(TARGET ${name}_protobuf_generated)
           target_link_libraries(${name}_idl_enclave PRIVATE ${name}_protobuf_generated)
         endif()
@@ -786,14 +785,14 @@ function(
       message("target ${dep}_generate does not exist so skipped")
     endif()
 
-#Add protobuf compilation dependencies if protobuf is enabled Strip _idl suffix from dependency name to get the
-#actual target name
+    # Add protobuf compilation dependencies if protobuf is enabled Strip _idl suffix from dependency name to get the
+    # actual target name
     string(REGEX REPLACE "_idl$" "" dep_base_name "${dep}")
-#Only add dependency if the dependency target has protobuf enabled too
+    # Only add dependency if the dependency target has protobuf enabled too
     if(generate_protobuf AND TARGET ${dep_base_name}_proto_compile)
-#Make our proto compilation wait for dependency's proto compilation
+      # Make our proto compilation wait for dependency's proto compilation
       add_dependencies(${name}_proto_compile ${dep_base_name}_proto_compile)
-#Make our protobuf C++ compilation wait for dependency's proto compilation
+      # Make our protobuf C++ compilation wait for dependency's proto compilation
       add_dependencies(${name}_protobuf_generated ${dep_base_name}_proto_compile)
     endif()
     if(generate_nanopb AND TARGET ${dep_base_name}_nanopb_compile)

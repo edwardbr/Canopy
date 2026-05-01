@@ -1460,10 +1460,11 @@ namespace nanopb_generator
         }
         else if (is_interface_type(param_type))
         {
+            cpp("rpc::serialization::nanopb::bytes_encode_state {}_addr_state;", field_name);
             cpp("if ({}.is_set())", source_name);
             cpp("{{");
             cpp("const auto& {}_addr_blob = {}.get_address().get_blob();", field_name, source_name);
-            cpp("rpc::serialization::nanopb::bytes_encode_state {}_addr_state {{ {}_addr_blob.data(), "
+            cpp("{}_addr_state = rpc::serialization::nanopb::bytes_encode_state {{ {}_addr_blob.data(), "
                 "{}_addr_blob.size() }};",
                 field_name,
                 field_name,

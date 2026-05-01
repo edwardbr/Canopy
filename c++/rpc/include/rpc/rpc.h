@@ -6,13 +6,6 @@
 
 #include <chrono>
 #include <exception>
-#include <shared_mutex>
-
-namespace rpc
-{
-    using shared_mutex = std::shared_mutex;
-    template<typename Mutex> using shared_lock = std::shared_lock<Mutex>;
-}
 
 #include <rpc/internal/version.h>
 #include <rpc/internal/build_modifiers.h>
@@ -20,6 +13,7 @@ namespace rpc
 #include <rpc/internal/polyfill/int128.h>
 #include <rpc/internal/polyfill/expected.h>
 #include <rpc/internal/polyfill/format.h>
+#include <rpc/internal/polyfill/shared_mutex.h>
 
 // synchronous/coroutine sensitive headers
 #include <rpc/internal/coroutine_support.h>

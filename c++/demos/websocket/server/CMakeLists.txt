@@ -27,8 +27,8 @@ foreach(llama_demo_target IN ITEMS llama common cpp-httplib build_info)
 endforeach()
 
 if(TARGET transport_websocket)
-  target_compile_definitions(
-    transport_websocket PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
+  target_compile_definitions(transport_websocket
+                             PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
 endif()
 
 add_executable(

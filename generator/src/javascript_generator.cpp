@@ -255,7 +255,8 @@ namespace javascript_generator
 
             out << "    " << iface << "_stub.prototype.handlePost = function(proto, interfaceId, methodId, data) {\n";
             out << "        var ifaceId = interfaceId && interfaceId.id ? interfaceId.id : interfaceId;\n";
-            out << "        var matchesInterface = ifaceId && ifaceId.eq ? ifaceId.eq(" << to_upper(iface) << "_ID) : "
+            out << "        var matchesInterface = ifaceId && ifaceId.eq ? ifaceId.eq(" << to_upper(iface)
+                << "_ID) : "
                    "String(ifaceId) === String("
                 << to_upper(iface) << "_ID);\n";
             out << "        if (!matchesInterface) {\n";
