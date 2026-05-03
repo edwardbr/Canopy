@@ -51,9 +51,14 @@ The enclave profile should not include host OS integration:
 
 - no TCP stack
 - no DNS or c-ares
-- no TLS or OpenSSL
+- no host-side libcoro TLS integration or ordinary host OpenSSL dependency
 - no `poll`, fd, socket, or thread-pool dependency
 - no dependency on OCALL-driven logging or RPC
+
+This does not rule out an enclave-owned TLS or RA-TLS stream layer. If TLS is
+used to protect enclave traffic from the host, the TLS implementation, private
+keys, session keys, and decrypted payload bytes must live inside enclave memory
+and use an enclave-safe crypto/TLS library.
 
 The enclave scheduler, event, and task implementation are enclave runtime code.
 Detached task ownership, event wakeup deferral, coroutine-frame destruction, and

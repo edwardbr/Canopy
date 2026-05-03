@@ -15,6 +15,7 @@ security review aid and a checklist for hardening work.
 
 ## Current Documents
 
+- [Security Hardening Roadmap](security-hardening-roadmap.md)
 - [SGX Enclave Threat Model](sgx-threat-model.md)
 - [SGX Runtime Lifecycle Security](sgx-runtime-lifecycle.md)
 - [Untrusted Transport Input](untrusted-transport-input.md)
@@ -35,11 +36,14 @@ security review aid and a checklist for hardening work.
 
 ## Categories To Expand
 
-- remote attestation and key establishment
-- authenticated stream framing
+- DCAP remote attestation and key establishment
+- authenticated stream framing and payload encryption
+- TLS and RA-TLS inside enclave-safe stream layers
 - replay and reordering protection
-- object capability boundaries
-- generated binding validation
+- object capability boundaries and `zone_address` validation tokens
+- generated binding validation and method-level authorisation
+- limited public-client gateway profiles
+- passthrough route authority
 - denial-of-service boundaries and timeouts
 - fuzzing and negative protocol tests
 - enclave zeroisation and fatal shutdown policy

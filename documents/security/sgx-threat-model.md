@@ -31,14 +31,23 @@ The host can:
 SGX protects enclave memory from direct host reads, but it does not make the host
 honest and it does not guarantee availability.
 
+The host zone is therefore an untrusted router. It may be necessary for network
+I/O, queue allocation, scheduling, and future io_uring integration, but enclave
+application payloads, capability validation material, attestation-derived keys,
+and object contents must remain inside the enclave or inside encrypted frames.
+
 ## Security Goals
 
 - Do not disclose enclave secrets to a malicious host transport.
+- Do not disclose application payloads to a host zone that only needs routing
+  information.
 - Do not act on unauthenticated or impossible protocol input.
 - Do not allow a second runtime initialisation inside the same enclave instance.
 - Do not continue executing after fraudulent control-plane input.
 - Do not leak sensitive data through logs or diagnostic paths.
 - Do not treat denial of service as recoverable protocol success.
+- Bind remote peers to verified attestation evidence before trusting them as
+  enclave zones.
 
 ## Non-Goals
 
@@ -106,3 +115,20 @@ Authenticated framing should include:
 
 The authenticated data must prevent replay, reordering, truncation, and
 cross-direction reuse.
+
+Remote attestation is also not implemented. DCAP or EPID mechanics should live
+behind a narrow attestation module that can be used by transport handshakes and
+service policy code. The transport handshake needs the attested peer identity
+and session keys; service policy needs the resulting identity and measurements
+to decide which objects, methods, references, and passthrough routes the peer is
+authorised to use.
+
+TLS or RA-TLS for enclave communication must terminate inside the enclave. A
+host-side TLS wrapper protects network bytes from other machines, but it still
+exposes plaintext to the host and therefore does not protect an enclave from its
+host zone.
+
+The future io_uring-in-enclave design should keep cryptographic framing,
+sequence checks, deserialisation, and capability validation inside the enclave.
+The host can still deny progress, but it should not see anything beyond
+authenticated routing metadata and encrypted payload bytes.
