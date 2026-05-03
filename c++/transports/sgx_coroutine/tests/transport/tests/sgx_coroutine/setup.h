@@ -76,6 +76,8 @@ public:
         RPC_ASSERT(all_transports_expired());
         transports_.clear();
 
+        scheduler->shutdown();
+
         this->io_scheduler_ = nullptr;
         scheduler.reset();
         this->reset_telemetry_for_test();
