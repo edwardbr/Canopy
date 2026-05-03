@@ -1,0 +1,3 @@
+window.CanopyWebsocketDemoConfig = {
+    encoding: @CANOPY_WEBSOCKET_DEMO_ENCODING_JS@,
+};

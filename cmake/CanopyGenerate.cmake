@@ -514,7 +514,8 @@ function(
       COMMAND
         ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D
         PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
-        NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -D NANOPB_AGGREGATE_SOURCE=${nanopb_aggregate_source} -P
+        NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -D NANOPB_AGGREGATE_SOURCE=${nanopb_aggregate_source} -D
+        PROTOBUF_PYTHON_DIR=${CMAKE_SOURCE_DIR}/submodules/protobuf/python -P
         ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
       COMMAND ${CMAKE_COMMAND} -E touch ${nanopb_stamp_file}
       DEPENDS ${PROTO_MANIFEST}

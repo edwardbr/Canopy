@@ -60,7 +60,7 @@ endif()
 
 message("CANOPY_WEBSOCKET_DEMO_ENCODING ${CANOPY_WEBSOCKET_DEMO_ENCODING} -> ${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}")
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js.in"
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/websocket_demo_config.js.in"
                "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js" @ONLY)
 
 CanopyGenerate(
