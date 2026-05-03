@@ -152,6 +152,20 @@ encoding to it.  `rpc::encoding::protocol_buffers` uses Nanopb when full
 protobuf is disabled, and `rpc::encoding::nanopb` uses the full protobuf backend
 when Nanopb is disabled.
 
+The two build options are independent.  `CanopyGenerate(... protocol_buffers
+...)` requests protobuf-compatible schema/wire support for that IDL target.  If
+full protobuf is enabled, Canopy generates the Google C++ protobuf backend; if
+Nanopb is enabled, Canopy generates the Nanopb backend.  Both can be generated
+from the same IDL target.
+
+When only one protobuf-compatible backend is enabled, Canopy maps the other
+encoding to it.  `rpc::encoding::protocol_buffers` uses Nanopb when full
+protobuf is disabled, and `rpc::encoding::nanopb` uses the full protobuf backend
+when Nanopb is disabled.  In SGX enclave targets, full protobuf is stripped from
+the enclave compile definitions, so `protocol_buffers` requests are routed
+through Nanopb even if the host side of the same build still has full protobuf
+enabled.
+
 Nanopb still needs protobuf tooling at build time. That is separate from the runtime dependency of your generated targets.
 
 If an external project builds Canopy-powered DLLs/shared objects and enables full

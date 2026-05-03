@@ -593,7 +593,7 @@ target_compile_options(myplugin PRIVATE
 
 The coroutine variant also uses normal unload semantics.  On Linux it opens the
 DLL with `RTLD_NOW | RTLD_LOCAL`, not `RTLD_NODELETE`.  The design goal is that a
-shared object can shut down cleanly, release its service graph, run
+shared object or enclave can shut down cleanly, release its service graph, run
 module-level cleanup such as protobuf shutdown, and then be unloaded.
 
 As implemented in `transports/libcoro_dll_scheduled_dynamic_library/src/transport.cpp`:

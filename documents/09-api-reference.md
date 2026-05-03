@@ -225,7 +225,7 @@ rpc::local
 rpc::dynamic_library                         // blocking builds
 rpc::libcoro_host_scheduled_dynamic_library  // coroutine builds, host scheduler
 rpc::libcoro_dll_scheduled_dynamic_library   // coroutine builds, DLL scheduler
-rpc::sgx                     // a signed dynamic library 
+rpc::sgx                                     // a signed dynamic library
 
 // Child-process transport and DLL-backed child-process composition
 rpc::ipc_transport           // coroutine builds

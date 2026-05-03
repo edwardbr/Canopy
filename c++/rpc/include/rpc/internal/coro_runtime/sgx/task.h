@@ -6,6 +6,7 @@
 
 #include <coroutine>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <type_traits>
@@ -340,6 +341,95 @@ namespace rpc::coro::sgx
         inline auto promise<void>::get_return_object() noexcept -> task<>
         {
             return task<>{coroutine_handle::from_promise(*this)};
+        }
+
+        class task_self_deleting;
+
+        class promise_self_deleting
+        {
+        public:
+            promise_self_deleting() = default;
+            promise_self_deleting(const promise_self_deleting&) = delete;
+            promise_self_deleting(promise_self_deleting&& other) noexcept
+                : final_suspend_callback_(
+                      std::exchange(
+                          other.final_suspend_callback_,
+                          nullptr))
+            {
+            }
+            auto operator=(const promise_self_deleting&) -> promise_self_deleting& = delete;
+            auto operator=(promise_self_deleting&& other) noexcept -> promise_self_deleting&
+            {
+                if (std::addressof(other) != this)
+                    final_suspend_callback_ = std::exchange(other.final_suspend_callback_, nullptr);
+                return *this;
+            }
+
+            auto get_return_object() noexcept -> task_self_deleting;
+            auto initial_suspend() noexcept -> std::suspend_always { return std::suspend_always{}; }
+            auto final_suspend() noexcept -> std::suspend_never
+            {
+                if (final_suspend_callback_)
+                    final_suspend_callback_();
+                return std::suspend_never{};
+            }
+            auto return_void() noexcept -> void { }
+            auto unhandled_exception() noexcept -> void { }
+            auto on_final_suspend(std::function<void()> callback) noexcept -> void
+            {
+                final_suspend_callback_ = std::move(callback);
+            }
+
+        private:
+            std::function<void()> final_suspend_callback_{nullptr};
+        };
+
+        class task_self_deleting
+        {
+        public:
+            using promise_type = promise_self_deleting;
+            using coroutine_handle = std::coroutine_handle<promise_type>;
+
+            explicit task_self_deleting(promise_type& promise) noexcept
+                : promise_(std::addressof(promise))
+            {
+            }
+            task_self_deleting(const task_self_deleting&) = delete;
+            task_self_deleting(task_self_deleting&& other) noexcept
+                : promise_(
+                      std::exchange(
+                          other.promise_,
+                          nullptr))
+            {
+            }
+            auto operator=(const task_self_deleting&) -> task_self_deleting& = delete;
+            auto operator=(task_self_deleting&& other) noexcept -> task_self_deleting&
+            {
+                if (std::addressof(other) != this)
+                    promise_ = std::exchange(other.promise_, nullptr);
+                return *this;
+            }
+            ~task_self_deleting() = default;
+
+            [[nodiscard]] auto handle() const noexcept -> coroutine_handle
+            {
+                return promise_ ? coroutine_handle::from_promise(*promise_) : coroutine_handle{};
+            }
+            [[nodiscard]] auto promise() noexcept -> promise_type& { return *promise_; }
+
+        private:
+            promise_type* promise_{nullptr};
+        };
+
+        inline auto promise_self_deleting::get_return_object() noexcept -> task_self_deleting
+        {
+            return task_self_deleting{*this};
+        }
+
+        inline auto make_task_self_deleting(task<void> user_task) -> task_self_deleting
+        {
+            co_await user_task;
+            co_return;
         }
     } // namespace detail
 } // namespace rpc::coro::sgx

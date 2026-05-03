@@ -287,6 +287,56 @@
             }
         },
         {
+            "name": "Debug_Coroutine_Fake_SGX",
+            "binaryDir": "build_debug_coroutine_fake_sgx",
+            "inherits": "Debug_Coroutine",
+            "cacheVariables": {
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "CANOPY_SGX_BACKEND": "Fake",
+                "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
+                "CANOPY_BUILD_WEBSOCKET": "ON",
+                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
+                "CANOPY_LOGGING_LEVEL": "4",
+                "SGX_HW": "OFF"
+            }
+        },
+        {
+            "name": "Debug_Coroutine_Fake_SGX_ASAN",
+            "binaryDir": "build_debug_coroutine_fake_sgx_asan",
+            "inherits": "Debug_Coroutine_Fake_SGX",
+            "cacheVariables": {
+                "CANOPY_DEBUG_ADDRESS": "ON",
+                "CANOPY_USE_LOGGING": "OFF",
+                "CANOPY_USE_TELEMETRY": "OFF",
+                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
+                "LIBCORO_ENABLE_ASAN": "ON"
+            }
+        },
+        {
+            "name": "Debug_Coroutine_Fake_SGX_UBSAN",
+            "binaryDir": "build_debug_coroutine_fake_sgx_ubsan",
+            "inherits": "Debug_Coroutine_Fake_SGX",
+            "cacheVariables": {
+                "CANOPY_DEBUG_UNDEFINED": "ON",
+                "CANOPY_USE_LOGGING": "OFF",
+                "CANOPY_USE_TELEMETRY": "OFF",
+                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
+                "LIBCORO_ENABLE_USAN": "ON"
+            }
+        },
+        {
+            "name": "Debug_Coroutine_Fake_SGX_TSAN",
+            "binaryDir": "build_debug_coroutine_fake_sgx_tsan",
+            "inherits": "Debug_Coroutine_Fake_SGX",
+            "cacheVariables": {
+                "CANOPY_DEBUG_THREAD": "ON",
+                "CANOPY_USE_LOGGING": "OFF",
+                "CANOPY_USE_TELEMETRY": "OFF",
+                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
+                "LIBCORO_ENABLE_TSAN": "ON"
+            }
+        },
+        {
             "name": "Release_SGX",
             "inherits": "Release",
             "binaryDir": "build_release_sgx",
@@ -309,6 +359,19 @@
                 "CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES": "OFF",
                 "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
                 "CANOPY_BUILD_DEMOS": "ON",
+                "CANOPY_BUILD_WEBSOCKET": "ON",
+                "SGX_HW": "OFF",
+                "SGX_MODE": "release"
+            }
+        },
+        {
+            "name": "Release_Coroutine_Fake_SGX",
+            "inherits": "Release_Coroutines",
+            "binaryDir": "build_release_coroutine_fake_sgx",
+            "cacheVariables": {
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "CANOPY_SGX_BACKEND": "Fake",
+                "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
                 "CANOPY_BUILD_WEBSOCKET": "ON",
                 "SGX_HW": "OFF",
                 "SGX_MODE": "release"

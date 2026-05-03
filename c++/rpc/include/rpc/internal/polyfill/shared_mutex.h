@@ -7,11 +7,7 @@
 #include <mutex>
 
 #ifdef FOR_SGX
-namespace rpc
-{
-    using shared_mutex = std::mutex;
-    template<typename Mutex> using shared_lock = std::unique_lock<Mutex>;
-}
+#  include <shared_mutex>
 #else
 #  include <shared_mutex>
 

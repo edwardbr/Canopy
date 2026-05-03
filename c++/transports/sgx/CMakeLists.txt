@@ -25,7 +25,7 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
             rpc::rpc
             marshal_test_edl)
   target_compile_options(transport_sgx PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-  target_link_options(transport_sgx PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+  target_link_options(transport_sgx PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
   target_link_directories(transport_sgx PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET transport_sgx PROPERTY COMPILE_PDB_NAME transport_sgx)
 

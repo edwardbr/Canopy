@@ -161,7 +161,7 @@ if(CANOPY_BUILD_COROUTINE)
 endif()
 
 target_compile_options(rpc_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-target_link_options(rpc_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+target_link_options(rpc_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
 target_link_directories(rpc_test PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET rpc_test PROPERTY COMPILE_PDB_NAME rpc_test)
 

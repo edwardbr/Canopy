@@ -1,0 +1,158 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+#pragma once
+
+#include <bits/std_mutex.h>
+#include <bits/unique_lock.h>
+
+#include <cstdint>
+
+namespace std
+{
+    namespace fake_sgx_detail
+    {
+        template<typename... mutex_types> class scoped_lock_storage;
+
+        template<> class scoped_lock_storage<>
+        {
+        public:
+            void lock() noexcept { }
+            void unlock() noexcept { }
+        };
+
+        template<typename first_type, typename... rest_types> class scoped_lock_storage<first_type, rest_types...>
+        {
+        public:
+            explicit scoped_lock_storage(
+                first_type& first,
+                rest_types&... rest) noexcept
+                : first_(first)
+                , rest_(rest...)
+            {
+            }
+
+            void lock()
+            {
+                first_.lock();
+                first_locked_ = true;
+                rest_.lock();
+            }
+
+            void unlock()
+            {
+                rest_.unlock();
+                if (first_locked_)
+                {
+                    first_.unlock();
+                    first_locked_ = false;
+                }
+            }
+
+        private:
+            first_type& first_;
+            scoped_lock_storage<rest_types...> rest_;
+            bool first_locked_ = false;
+        };
+
+        template<typename first_type> class scoped_lock_storage<first_type>
+        {
+        public:
+            explicit scoped_lock_storage(first_type& first) noexcept
+                : first_(first)
+            {
+            }
+
+            void lock()
+            {
+                first_.lock();
+                first_locked_ = true;
+            }
+
+            void unlock()
+            {
+                if (first_locked_)
+                {
+                    first_.unlock();
+                    first_locked_ = false;
+                }
+            }
+
+        private:
+            first_type& first_;
+            bool first_locked_ = false;
+        };
+
+        template<typename first_type, typename second_type> class scoped_lock_storage<first_type, second_type>
+        {
+        public:
+            scoped_lock_storage(
+                first_type& first,
+                second_type& second) noexcept
+                : first_(first)
+                , second_(second)
+            {
+            }
+
+            void lock()
+            {
+                if (reinterpret_cast<std::uintptr_t>(&first_) <= reinterpret_cast<std::uintptr_t>(&second_))
+                {
+                    first_.lock();
+                    second_.lock();
+                    first_then_second_ = true;
+                }
+                else
+                {
+                    second_.lock();
+                    first_.lock();
+                    first_then_second_ = false;
+                }
+                locked_ = true;
+            }
+
+            void unlock()
+            {
+                if (!locked_)
+                    return;
+
+                if (first_then_second_)
+                {
+                    second_.unlock();
+                    first_.unlock();
+                }
+                else
+                {
+                    first_.unlock();
+                    second_.unlock();
+                }
+                locked_ = false;
+            }
+
+        private:
+            first_type& first_;
+            second_type& second_;
+            bool locked_ = false;
+            bool first_then_second_ = true;
+        };
+    }
+
+    template<typename... mutex_types> class scoped_lock
+    {
+    public:
+        explicit scoped_lock(mutex_types&... mutexes)
+            : storage_(mutexes...)
+        {
+            storage_.lock();
+        }
+
+        scoped_lock(const scoped_lock&) = delete;
+        auto operator=(const scoped_lock&) -> scoped_lock& = delete;
+
+        ~scoped_lock() { storage_.unlock(); }
+
+    private:
+        fake_sgx_detail::scoped_lock_storage<mutex_types...> storage_;
+    };
+}

@@ -166,5 +166,15 @@ Clean object reference drain is not a transport failure. Fraudulent lifecycle
 input is different: it should trigger a fatal path, not normal graceful
 transport close.
 
+The runtime should wait for the enclave service shutdown event before returning
+from the runtime entry point. That event is emitted when the service destructor
+runs, after the transport-owned reference graph has drained. Do not replace this
+with an arbitrary idle-drain loop, and do not use `check_is_empty()` as shutdown
+control flow; it is diagnostic only.
+
+Late release cleanup must still pass through the service outbound virtuals
+before reaching the transport. This preserves service-level security hooks for
+destructor-triggered releases that occur during shutdown.
+
 The shutdown sequence itself is described in
 [Zone Shutdown Sequence](../protocol/zone_shutdown_sequence.md).

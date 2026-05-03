@@ -298,6 +298,10 @@ set(CANOPY_BUILD_ENCLAVE_FLAG CANOPY_BUILD_ENCLAVE)
 set(CANOPY_ENCLAVE_FMT_LIB fmt::fmt-header-only)
 set(CANOPY_ENCLAVE_PROTOBUF_TARGET)
 set(CANOPY_SGX_PROTOC_EXECUTABLE)
+set(CANOPY_ENCLAVE_PROTOBUF_DEFINES)
+if(CANOPY_BUILD_NANOPB)
+  list(APPEND CANOPY_ENCLAVE_PROTOBUF_DEFINES CANOPY_BUILD_NANOPB CANOPY_USE_NANOPB_FOR_PROTOCOL_BUFFERS)
+endif()
 
 # ######################################################################################################################
 # Platform-specific SGX configuration
@@ -315,6 +319,10 @@ if(WIN32)
 
   # Shared enclave defines (Windows)
   set(CANOPY_SHARED_ENCLAVE_DEFINES ${CANOPY_SHARED_DEFINES} FOR_SGX ${CANOPY_ENCLAVE_MEMLEAK_DEFINES})
+  list(REMOVE_ITEM CANOPY_SHARED_ENCLAVE_DEFINES CANOPY_BUILD_PROTOCOL_BUFFERS
+       CANOPY_USE_PROTOCOL_BUFFERS_FOR_NANOPB)
+  list(APPEND CANOPY_SHARED_ENCLAVE_DEFINES ${CANOPY_ENCLAVE_PROTOBUF_DEFINES})
+  list(REMOVE_DUPLICATES CANOPY_SHARED_ENCLAVE_DEFINES)
 
   # Enclave compile options (Windows)
   set(CANOPY_SHARED_ENCLAVE_COMPILE_OPTIONS ${CANOPY_SHARED_COMPILE_OPTIONS} /d2FH4- /Qspectre)
@@ -382,6 +390,10 @@ else()
       DISALLOW_BAD_JUMPS
       _LIBCPP_DISABLE_AVAILABILITY
       __THROW=)
+  list(REMOVE_ITEM CANOPY_SHARED_ENCLAVE_DEFINES CANOPY_BUILD_PROTOCOL_BUFFERS
+       CANOPY_USE_PROTOCOL_BUFFERS_FOR_NANOPB)
+  list(APPEND CANOPY_SHARED_ENCLAVE_DEFINES ${CANOPY_ENCLAVE_PROTOBUF_DEFINES})
+  list(REMOVE_DUPLICATES CANOPY_SHARED_ENCLAVE_DEFINES)
 
   if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     list(
@@ -458,17 +470,16 @@ else()
   # FindSGX.cmake.
   find_package(SGX REQUIRED)
 
-  # Update link options with the resolved SGX SDK library path
-  set(CANOPY_LINK_OPTIONS -L${SGX_LIBRARY_PATH} -lsgx_tcrypto ${CANOPY_DEBUG_OPTIONS})
-
-  set(CANOPY_SGX_HOST_EXE_LINK_OPTIONS)
+  # Host-side SGX link options are intentionally kept separate from
+  # CANOPY_LINK_OPTIONS/CANOPY_LINK_EXE_OPTIONS so non-SGX targets do not inherit
+  # SGX SDK libraries just because enclave support is enabled for the build.
+  set(CANOPY_SGX_HOST_LINK_OPTIONS -L${SGX_LIBRARY_PATH})
   if(EXISTS "${SGX_LIBRARY_PATH}/libsgx_dcap_quoteverify.so")
-    list(APPEND CANOPY_SGX_HOST_EXE_LINK_OPTIONS -lsgx_dcap_quoteverify)
+    list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -lsgx_dcap_quoteverify)
   endif()
   if(EXISTS "${SGX_LIBRARY_PATH}/libsgx_dcap_ql.so")
-    list(APPEND CANOPY_SGX_HOST_EXE_LINK_OPTIONS -lsgx_dcap_ql)
+    list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -lsgx_dcap_ql)
   endif()
-  set(CANOPY_LINK_EXE_OPTIONS ${CANOPY_SGX_HOST_EXE_LINK_OPTIONS} ${CANOPY_DEBUG_OPTIONS})
 
   # Check if SGX SDK has debug information
   if(SGX_SDK_CONTAINS_DEBUG_INFORMATION)
@@ -522,7 +533,8 @@ else()
     CANOPY_SGX_HOST_LIBRARIES
     ${SGX_USVC_LIB}
     sgx_capable
-    ${SGX_URTS_LIB})
+    ${SGX_URTS_LIB}
+    ${SGX_TCRYPTO_LIB})
 endif()
 
 # ######################################################################################################################

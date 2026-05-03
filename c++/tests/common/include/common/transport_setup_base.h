@@ -55,6 +55,9 @@ protected:
     std::shared_ptr<rpc::event> make_root_shutdown_event_for_test()
     {
         auto shutdown_event = std::make_shared<rpc::event>(false);
+#  ifdef FOR_SGX
+        shutdown_event->set_scheduler(io_scheduler_.get());
+#  endif
         if (root_service_)
             root_service_->set_shutdown_event(shutdown_event);
         return shutdown_event;

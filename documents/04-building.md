@@ -79,8 +79,10 @@ cmake --list-presets
 | `Release` | Optimized production build |
 | `Debug_SGX` | SGX hardware enclave support (debug) |
 | `Debug_SGX_Sim` | SGX simulation mode (debug) |
+| `Debug_Coroutine_Fake_SGX` | Coroutine SGX transport built against the fake SGX backend for sanitizer/debug testing |
 | `Release_SGX` | SGX hardware release build |
 | `Release_SGX_Sim` | SGX simulation release build |
+| `Release_Coroutine_Fake_SGX` | Optimized coroutine SGX transport built against the fake SGX backend |
 
 ### Local Custom Presets
 
@@ -168,6 +170,36 @@ cmake --build build_debug_sgx
 cmake --build build_debug_sgx_sim
 ```
 
+### Fake SGX Coroutine Build
+
+The fake SGX backend builds the coroutine SGX transport and enclave runtime as
+ordinary shared libraries. It does not provide SGX security. Its purpose is to
+exercise `c++/transports/sgx_coroutine` and the Canopy SGX coroutine/polyfill
+code under normal host debuggers and sanitizers.
+
+```bash
+cmake --preset Debug_Coroutine_Fake_SGX
+cmake --build build_debug_coroutine_fake_sgx --target rpc_test
+```
+
+Use `Release_Coroutine_Fake_SGX` for an optimized fake-backend build. The fake
+backend selects `CANOPY_SGX_BACKEND=Fake`, requires coroutines and Nanopb, and
+keeps full Google protobuf out of enclave targets. It provides only the narrow
+host-side SGX shims needed for testing: enclave create/destroy, ECALL dispatch,
+basic enclave/outside memory checks, and the minimum runtime headers needed when
+Intel's enclave C++ support is unavailable or unsuitable for this path.
+
+Fake SGX tests should exercise the same coroutine SGX runtime shutdown contract
+as SGX simulation: release interface pointers, keep driving the scheduler until
+the service shutdown event fires, then release the scheduler/runtime. The
+shutdown event is the completion signal; `check_is_empty()` is diagnostic, not a
+fixture control-flow mechanism.
+
+The shared typed transport fixtures centralise the host/root-service part of
+that teardown in `transport_setup_base`. SGX coroutine fixtures also wait for
+their created stream transports to release final self-references before dropping
+the fixture scheduler, because stream cleanup may complete on a scheduler worker.
+
 ### Release Build
 
 ```bash
@@ -254,6 +286,7 @@ option(CANOPY_DEBUG_ALL "Enable all sanitizers" OFF)
 # SGX options
 set(SGX_MODE "debug" CACHE STRING "SGX mode: debug or release")
 set(SGX_HW "OFF" CACHE BOOL "Enable SGX hardware (vs simulation)")
+set(CANOPY_SGX_BACKEND "Intel" CACHE STRING "SGX backend: Intel or Fake")
 option(CANOPY_BOOTSTRAP_SGX_SDK "Build and install the Intel SGX SDK from submodule source when missing" OFF)
 option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "Run the Intel SGX SDK preparation step, which updates nested SGX SDK submodules" ON)
 ```
@@ -264,7 +297,24 @@ option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "Run the Intel SGX SDK preparation
 
 `CANOPY_BUILD_NANOPB` enables the Nanopb-backed protobuf-compatible runtime. It uses `.proto` files and protobuf wire bytes, but links the small Nanopb C runtime plus Canopy-generated adapters instead of `protobuf::libprotobuf`. This is the intended protobuf-compatible path for SGX enclave builds.
 
-Typical SGX release-style configurations use:
+These options are independent.  `CanopyGenerate(... protocol_buffers ...)`
+requests protobuf-compatible schema/wire support for an IDL target; CMake then
+generates the full protobuf backend when `CANOPY_BUILD_PROTOCOL_BUFFERS=ON` and
+the Nanopb backend when `CANOPY_BUILD_NANOPB=ON`.  If both are ON, both generated
+backends can coexist and `rpc::encoding::protocol_buffers` and
+`rpc::encoding::nanopb` use their respective backends.
+
+If only one protobuf-compatible backend is enabled, the other encoding is treated
+as an alias.  With `CANOPY_BUILD_PROTOCOL_BUFFERS=OFF` and `CANOPY_BUILD_NANOPB=ON`,
+`rpc::encoding::protocol_buffers` routes through Nanopb.  With
+`CANOPY_BUILD_NANOPB=OFF` and `CANOPY_BUILD_PROTOCOL_BUFFERS=ON`,
+`rpc::encoding::nanopb` routes through the full protobuf backend.
+
+SGX enclave targets never link the full Google C++ protobuf runtime.  When
+`CANOPY_BUILD_ENCLAVE=ON`, host-side targets may still build full protobuf
+support, but enclave compile definitions remove `CANOPY_BUILD_PROTOCOL_BUFFERS`
+and enable the `protocol_buffers` to Nanopb alias.  Typical SGX release-style
+configurations therefore use:
 
 ```cmake
 CANOPY_BUILD_ENCLAVE=ON
@@ -273,6 +323,13 @@ CANOPY_BUILD_PROTOCOL_BUFFERS=OFF
 ```
 
 Nanopb still needs protobuf tooling at build time so Canopy can compile the generated `.proto` files. That build-time dependency does not imply that enclave targets link the full protobuf runtime.
+
+Shared objects that link the full Google C++ protobuf runtime must run module
+cleanup before unload.  The dynamic-library transports provide a required
+shutdown hook for this: `canopy_dll_shutdown` for the non-coroutine C++ and C ABI
+DLL transports, and before the coroutine dynamic-library entry point returns.  These
+hooks call `google::protobuf::ShutdownProtobufLibrary()` only when
+`CANOPY_BUILD_PROTOCOL_BUFFERS` is enabled.
 
 `CANOPY_BOOTSTRAP_SGX_SDK=ON` allows CMake to install the SGX SDK from `submodules/confidential-computing.sgx` when no SDK is already available. `CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES=OFF` keeps bootstrap enabled but skips SGX SDK source preparation when an SDK installer or already-prepared source tree is present, avoiding repeated nested SGX submodule updates after the first preparation.
 
@@ -299,7 +356,8 @@ cmake --build build_debug --target transport_dynamic_library      # Blocking DLL
 cmake --build build_debug --target transport_c_abi                # C ABI DLL transport
 cmake --build build_debug_coroutine --target transport_streaming  # Stream-backed transport
 cmake --build build_debug_coroutine --target transport_ipc_transport
-cmake --build build_debug_coroutine --target transport_libcoro_dynamic_library
+cmake --build build_debug_coroutine --target transport_libcoro_host_scheduled_dynamic_library
+cmake --build build_debug_coroutine --target transport_libcoro_dll_scheduled_dynamic_library
 ```
 
 ### Tests
@@ -389,6 +447,31 @@ export LSAN_OPTIONS="detect_leaks=0"
 - **Issue**: Protobuf's static initialization triggers container-overflow during test discovery
 - **Suppression**: Set `ASAN_OPTIONS=detect_container_overflow=0`
 - **Impact**: Only affects coroutine builds that use protobuf serialization
+
+**SGX simulation builds:**
+- Standard Clang sanitizers apply to the host/non-enclave objects in the SGX
+  simulation build. They do not instrument enclave code as native SGX
+  sanitizers.
+- For focused SGX simulation ASan runs, use
+  `ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0`. The first option
+  avoids the libstdc++/protobuf static-registration container annotation issue;
+  the second avoids LeakSanitizer shutdown hangs seen in SGX simulation tests.
+- UBSan and TSan can still be useful for host-side SGX transport code. Keep
+  console telemetry disabled for TSan unless the race investigation explicitly
+  needs telemetry output.
+
+**Fake SGX coroutine builds:**
+- `Debug_Coroutine_Fake_SGX` is the preferred preset when the goal is to run the
+  coroutine SGX transport/runtime code under ordinary host sanitizers.
+- The fake backend compiles the enclave runtime sources as a normal shared
+  object, so ASan/UBSan/TSan can see more of the code than Intel SGX simulation
+  builds can.
+- TSan fake-backend runs intentionally preserve copied enclave images under
+  `/tmp` instead of removing them in `sgx_destroy_enclave`. The sanitizer
+  symbolizer needs those paths to remain readable for frames from `dlopen`ed
+  fake enclave objects.
+- Treat fake-backend failures as functional or lifetime bugs to investigate, but
+  do not treat fake-backend success as a hardware SGX security validation.
 
 **Microsoft STL Compliance Tests:**
 - **Test**: `Dev10_445289_make_shared` overrides global `operator new`/`delete`

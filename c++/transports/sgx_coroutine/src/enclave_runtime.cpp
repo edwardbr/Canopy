@@ -53,7 +53,7 @@ namespace rpc::sgx::coro::host
             std::atomic<bool> init_called{false};
             std::unique_ptr<std::atomic<bool>[]> admitted_workers;
             uint32_t admitted_worker_slots = 0;
-            bool registered = false;
+            std::atomic<bool> registered{false};
             rpc::connection_handler connection_handler;
             acceptor_factory acceptor_factory;
             common::startup_status* control_status = nullptr;
@@ -67,10 +67,11 @@ namespace rpc::sgx::coro::host
 
         int register_runtime(runtime_state& runtime)
         {
-            if (runtime.registered)
+            bool expected = false;
+            if (!runtime.registered.compare_exchange_strong(
+                    expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
                 return rpc::error::FRAUDULANT_REQUEST();
 
-            runtime.registered = true;
             return rpc::error::OK();
         }
 
@@ -94,13 +95,13 @@ namespace rpc::sgx::coro::host
         auto find_runtime() -> runtime_state*
         {
             auto& runtime = runtime_storage();
-            return runtime.registered ? &runtime : nullptr;
+            return runtime.registered.load(std::memory_order_acquire) ? &runtime : nullptr;
         }
 
         void erase_runtime()
         {
             auto& runtime = runtime_storage();
-            runtime.registered = false;
+            runtime.registered.store(false, std::memory_order_release);
         }
 
         template<typename T> std::vector<char> to_blob(const T& value)
@@ -242,6 +243,13 @@ namespace rpc::sgx::coro::host
             common::startup_store_u32(&status->attached_workers, attached_workers);
         }
 
+        void cpu_relax()
+        {
+#if defined(__x86_64__) || defined(__i386__)
+            __builtin_ia32_pause();
+#endif
+        }
+
         int wait_for_workers(
             runtime_state& runtime,
             uint32_t requested_workers)
@@ -251,12 +259,33 @@ namespace rpc::sgx::coro::host
                 if (runtime.attached_workers.load(std::memory_order_acquire) >= requested_workers)
                     return rpc::error::OK();
 
-#if defined(__x86_64__) || defined(__i386__)
-                __builtin_ia32_pause();
-#endif
+                cpu_relax();
             }
 
             return rpc::error::CALL_CANCELLED();
+        }
+
+        int wait_for_transport_io_loops(
+            runtime_state& runtime,
+            const std::shared_ptr<rpc::stream_transport::transport>& transport,
+            std::chrono::milliseconds timeout)
+        {
+            if (!runtime.scheduler || !transport)
+                return rpc::error::ZONE_NOT_INITIALISED();
+
+            auto deadline = std::chrono::steady_clock::now() + timeout;
+            while (!transport->io_loops_started())
+            {
+                if (shutdown_requested(runtime))
+                    return rpc::error::CALL_CANCELLED();
+                if (std::chrono::steady_clock::now() >= deadline)
+                    return rpc::error::CALL_TIMEOUT();
+
+                runtime.scheduler->process_events();
+                cpu_relax();
+            }
+
+            return rpc::error::OK();
         }
 
         int run_runtime_loop(
@@ -316,10 +345,83 @@ namespace rpc::sgx::coro::host
                 if (runtime.scheduler)
                     runtime.scheduler->process_events();
 
-#if defined(__x86_64__) || defined(__i386__)
-                __builtin_ia32_pause();
-#endif
+                cpu_relax();
             }
+        }
+
+        void drain_ready_scheduler_work(
+            runtime_state& runtime,
+            int idle_target,
+            int max_iterations)
+        {
+            if (!runtime.scheduler)
+                return;
+
+            for (int idle_iterations = 0, total_iterations = 0;
+                idle_iterations < idle_target && total_iterations < max_iterations;
+                ++total_iterations)
+            {
+                if (runtime.scheduler->process_ready_event())
+                    idle_iterations = 0;
+                else
+                {
+                    ++idle_iterations;
+                    cpu_relax();
+                }
+            }
+        }
+
+        void drain_ready_scheduler_work_while_service_lives(
+            runtime_state& runtime,
+            std::weak_ptr<rpc::service>& weak_service,
+            int idle_target,
+            int max_iterations)
+        {
+            if (!runtime.scheduler)
+                return;
+
+            for (int idle_iterations = 0, total_iterations = 0;
+                !weak_service.expired() && idle_iterations < idle_target && total_iterations < max_iterations;
+                ++total_iterations)
+            {
+                if (runtime.scheduler->process_ready_event())
+                    idle_iterations = 0;
+                else
+                {
+                    ++idle_iterations;
+                    cpu_relax();
+                }
+            }
+        }
+
+        void reset_runtime_after_stop(runtime_state& runtime)
+        {
+            if (runtime.scheduler)
+                runtime.scheduler->shutdown();
+            runtime.scheduler.reset();
+            runtime.transport.reset();
+            runtime.log_transport.reset();
+            runtime.enclave_zone = {};
+            runtime.requested_workers.store(0, std::memory_order_release);
+            runtime.attached_workers.store(0, std::memory_order_release);
+            runtime.accepting_workers.store(false, std::memory_order_release);
+            runtime.control_status = nullptr;
+            runtime.admitted_workers.reset();
+            runtime.admitted_worker_slots = 0;
+            erase_runtime();
+            runtime.init_called.store(false, std::memory_order_release);
+        }
+
+        void stop_runtime(
+            runtime_state& runtime,
+            common::startup_status* startup_status,
+            common::startup_state state,
+            int error_code)
+        {
+            runtime.accepting_workers.store(false, std::memory_order_release);
+            set_startup_status(startup_status, state, error_code);
+            wait_for_worker_loops_to_exit(runtime);
+            reset_runtime_after_stop(runtime);
         }
 
     }
@@ -362,22 +464,37 @@ namespace rpc::sgx::coro::host
                 return rpc::error::FRAUDULANT_REQUEST();
 
             if (!validate_ecall_blob(req, req_sz))
+            {
+                runtime.init_called.store(false, std::memory_order_release);
                 return rpc::error::FRAUDULANT_REQUEST();
+            }
 
             protocol::init_request request{};
             auto err
                 = rpc::sgx::coro::host::from_blob(rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz}, request);
             if (err != rpc::error::OK())
+            {
+                runtime.init_called.store(false, std::memory_order_release);
                 return err;
+            }
 
             auto* startup_status = validate_startup_status_pointer(startup_status_pointer);
             if (!startup_status)
+            {
+                runtime.init_called.store(false, std::memory_order_release);
                 return rpc::error::SECURITY_ERROR();
+            }
             if (!rpc::sgx::coro::host::validate_shared_queue_pointer(host_to_enclave_queue)
                 || !rpc::sgx::coro::host::validate_shared_queue_pointer(enclave_to_host_queue))
+            {
+                runtime.init_called.store(false, std::memory_order_release);
                 return rpc::error::SECURITY_ERROR();
+            }
             if (host_to_enclave_queue == enclave_to_host_queue)
+            {
+                runtime.init_called.store(false, std::memory_order_release);
                 return rpc::error::FRAUDULANT_REQUEST();
+            }
 
             if (!runtime.scheduler)
                 runtime.scheduler = ::rpc::coro::make_shared_scheduler();
@@ -390,6 +507,7 @@ namespace rpc::sgx::coro::host
             if (register_error != rpc::error::OK())
             {
                 set_startup_status(startup_status, common::startup_state::failed, register_error);
+                runtime.init_called.store(false, std::memory_order_release);
                 return register_error;
             }
 
@@ -407,12 +525,15 @@ namespace rpc::sgx::coro::host
             runtime.accepting_workers.store(false, std::memory_order_release);
             if (worker_error != rpc::error::OK())
             {
-                set_startup_status(startup_status, common::startup_state::failed, worker_error);
+                stop_runtime(runtime, startup_status, common::startup_state::failed, worker_error);
                 return worker_error;
             }
 
             if (!runtime.acceptor_factory)
+            {
+                stop_runtime(runtime, startup_status, common::startup_state::failed, rpc::error::INCOMPATIBLE_SERVICE());
                 return rpc::error::INCOMPATIBLE_SERVICE();
+            }
 
             auto service = rpc::root_service::create("sgx_coroutine_enclave", request.enclave_zone_id, runtime.scheduler);
 #ifdef CANOPY_USE_TELEMETRY
@@ -434,30 +555,29 @@ namespace rpc::sgx::coro::host
             auto transport = runtime.acceptor_factory("sgx_coroutine_enclave", service, stream);
             if (!transport)
             {
-                set_startup_status(startup_status, common::startup_state::failed, rpc::error::TRANSPORT_ERROR());
+                stop_runtime(runtime, startup_status, common::startup_state::failed, rpc::error::TRANSPORT_ERROR());
                 return rpc::error::TRANSPORT_ERROR();
             }
 
             runtime.transport = transport;
             runtime.log_transport = transport;
+            auto io_loop_error = wait_for_transport_io_loops(runtime, transport, std::chrono::milliseconds{20000});
+            if (io_loop_error != rpc::error::OK())
+            {
+                if (transport->get_status() < rpc::transport_status::DISCONNECTED)
+                    std::static_pointer_cast<rpc::transport>(transport)->set_status(rpc::transport_status::DISCONNECTED);
+                stop_runtime(runtime, startup_status, common::startup_state::failed, io_loop_error);
+                return io_loop_error;
+            }
+
             set_startup_status(startup_status, common::startup_state::runtime_ready, rpc::error::OK());
-
             std::weak_ptr<rpc::service> weak_service = service;
-            for (int warmup_iterations = 0; !transport->io_loops_started() && warmup_iterations < 1000; ++warmup_iterations)
-                runtime.scheduler->process_events();
-
             transport.reset();
             service.reset();
 
             auto loop_error = rpc::sgx::coro::host::run_runtime_loop(runtime, weak_service, service_shutdown_event);
 
-            for (int idle_iterations = 0; idle_iterations < 1000;)
-            {
-                if (runtime.scheduler->process_events() == 0)
-                    ++idle_iterations;
-                else
-                    idle_iterations = 0;
-            }
+            drain_ready_scheduler_work(runtime, 1000, 100000);
 
             if (auto current_transport = runtime.transport.lock();
                 current_transport && current_transport->get_status() < rpc::transport_status::DISCONNECTED)
@@ -465,24 +585,8 @@ namespace rpc::sgx::coro::host
                 signal_peer_closed(static_cast<common::queue_type*>(enclave_to_host_queue));
                 current_transport->set_status(rpc::transport_status::DISCONNECTED);
             }
-            for (int idle_iterations = 0; weak_service.lock() && idle_iterations < 1000;)
-            {
-                if (runtime.scheduler->process_events() == 0)
-                    ++idle_iterations;
-                else
-                    idle_iterations = 0;
-            }
-            runtime.transport.reset();
-            set_startup_status(startup_status, common::startup_state::stopped, loop_error);
-            wait_for_worker_loops_to_exit(runtime);
-            if (runtime.scheduler)
-                runtime.scheduler->shutdown();
-            runtime.scheduler.reset();
-            runtime.control_status = nullptr;
-            runtime.log_transport.reset();
-            runtime.admitted_workers.reset();
-            runtime.admitted_worker_slots = 0;
-            erase_runtime();
+            drain_ready_scheduler_work_while_service_lives(runtime, weak_service, 1000, 100000);
+            stop_runtime(runtime, startup_status, common::startup_state::stopped, loop_error);
 
             return rpc::sgx::coro::host::write_blob_response(
                 protocol::init_response{loop_error, {}}, resp_cap, resp, resp_sz);
@@ -552,8 +656,15 @@ namespace rpc::sgx::coro::host
             const char* str,
             size_t sz)
         {
-            if (auto transport = runtime_storage().log_transport.lock())
+            auto& runtime = runtime_storage();
+            if (shutdown_requested(runtime))
+                return SGX_SUCCESS;
+
+            if (auto transport = runtime.log_transport.lock())
             {
+                if (transport->get_status() != rpc::transport_status::CONNECTED)
+                    return SGX_SUCCESS;
+
                 std::vector<char> payload;
                 if (str && sz > 0)
                     payload.assign(str, str + sz);

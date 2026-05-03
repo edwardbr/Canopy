@@ -9,10 +9,30 @@
 
 namespace
 {
+    void exercise_atomic_smart_ptr_polyfill()
+    {
+        std::atomic<std::shared_ptr<int>> std_ptr;
+        std_ptr.store(nullptr);
+        auto std_loaded = std_ptr.load();
+        (void)std_loaded;
+
+        std::atomic<rpc::shared_ptr<yyy::i_example>> rpc_shared_ptr;
+        rpc_shared_ptr.store(nullptr);
+        auto rpc_shared_loaded = rpc_shared_ptr.load();
+        (void)rpc_shared_loaded;
+
+        std::atomic<rpc::optimistic_ptr<yyy::i_example>> rpc_optimistic_ptr;
+        rpc_optimistic_ptr.store(nullptr);
+        auto rpc_optimistic_loaded = rpc_optimistic_ptr.load();
+        (void)rpc_optimistic_loaded;
+    }
+
     struct connection_factory_registrar
     {
         connection_factory_registrar()
         {
+            exercise_atomic_smart_ptr_polyfill();
+
             rpc::sgx::coro::host::register_connection_factory<yyy::i_host, yyy::i_example>(
                 "marshal_test_coroutine_enclave",
                 [](rpc::shared_ptr<yyy::i_host> host,

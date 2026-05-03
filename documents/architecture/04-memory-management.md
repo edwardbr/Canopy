@@ -519,8 +519,8 @@ single conservative synchronization model.
 
 This is deliberately a correctness baseline. Further exploration:
 
-- Check whether constrained-runtime builds can support a lock-bit, lock-table,
-  or platform-atomic implementation for `rpc::shared_ptr` and
+- Check whether fake-SGX and SGX builds can support a lock-bit, lock-table, or
+  platform-atomic implementation for `rpc::shared_ptr` and
   `rpc::optimistic_ptr`.
 - Preserve the existing API so `member_ptr` and callers do not change.
 - Make `memory_order success` / `memory_order failure` meaningful only when the

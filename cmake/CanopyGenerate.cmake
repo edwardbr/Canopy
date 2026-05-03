@@ -235,7 +235,7 @@ function(
   if(${params_nanopb})
     if(CANOPY_BUILD_NANOPB)
       set(generate_nanopb TRUE)
-    elseif(CANOPY_BUILD_PROTOCOL_BUFFERS)
+    elseif(CANOPY_BUILD_PROTOCOL_BUFFERS AND NOT CANOPY_BUILD_ENCLAVE)
       set(generate_protobuf TRUE)
       message(STATUS "Nanopb generation requested for '${name}', but CANOPY_BUILD_NANOPB is OFF. "
                      "Using the Protocol Buffers backend for rpc::encoding::nanopb.")
@@ -246,6 +246,15 @@ function(
       message(FATAL_ERROR "Nanopb generation was requested for '${name}', but CANOPY_BUILD_NANOPB is OFF "
                           "and no alternative generated serialization format was requested.")
     endif()
+  endif()
+
+  if(CANOPY_BUILD_ENCLAVE
+     AND (params_protocol_buffers OR params_nanopb)
+     AND NOT CANOPY_BUILD_NANOPB)
+    message(
+      FATAL_ERROR
+        "SGX enclave IDL target '${name}' requested protobuf-compatible marshalling, but CANOPY_BUILD_NANOPB is OFF. Full Protocol Buffers are not linked into enclave targets."
+    )
   endif()
 
   if(generate_protobuf OR generate_nanopb)
@@ -473,6 +482,15 @@ function(
   if(generate_protobuf OR generate_nanopb)
     if("${CANOPY_NANOPB_PROTOC_EXECUTABLE}" STREQUAL "" AND TARGET protoc)
       set(CANOPY_NANOPB_PROTOC_EXECUTABLE "$<TARGET_FILE:protoc>")
+    endif()
+    if(generate_protobuf AND NOT TARGET protoc)
+      message(FATAL_ERROR "Protocol Buffers generation for '${name}' requires the bundled protoc target.")
+    endif()
+    if(generate_nanopb AND "${CANOPY_NANOPB_PROTOC_EXECUTABLE}" STREQUAL "")
+      message(
+        FATAL_ERROR
+          "Nanopb generation for '${name}' requires protoc. Set CANOPY_NANOPB_PROTOC_EXECUTABLE or enable CANOPY_BUILD_PROTOCOL_BUFFERS to build the bundled protoc tool."
+      )
     endif()
 
     set(proto_dir ${output_path}/src/${sub_directory}/protobuf)
@@ -814,15 +832,10 @@ function(
       endif()
       add_dependencies(${name}_idl_enclave ${name}_idl_generate ${name}_nanopb_compile)
     elseif(generate_protobuf)
-      if(TARGET protobuf::libprotobuf)
-        target_link_libraries(${name}_idl_enclave PUBLIC protobuf::libprotobuf)
-        target_include_directories(${name}_idl_enclave SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
-        # Link the protobuf generated object library if it exists
-        if(TARGET ${name}_protobuf_generated)
-          target_link_libraries(${name}_idl_enclave PRIVATE ${name}_protobuf_generated)
-        endif()
-      endif()
-      add_dependencies(${name}_idl_enclave ${name}_idl_generate ${name}_proto_compile)
+      message(
+        FATAL_ERROR
+          "Internal configuration error: ${name}_idl_enclave would link full Protocol Buffers. Enable CANOPY_BUILD_NANOPB for enclave protobuf-compatible marshalling."
+      )
     else()
       add_dependencies(${name}_idl_enclave ${name}_idl_generate)
     endif()

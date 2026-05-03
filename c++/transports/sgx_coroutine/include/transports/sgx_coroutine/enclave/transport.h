@@ -41,8 +41,8 @@ namespace rpc::sgx::coro::enclave
         };
 
         std::string enclave_path_;
-        std::unique_ptr<common::queue_type> host_to_enclave_queue_;
-        std::unique_ptr<common::queue_type> enclave_to_host_queue_;
+        std::shared_ptr<common::queue_type> host_to_enclave_queue_;
+        std::shared_ptr<common::queue_type> enclave_to_host_queue_;
         std::shared_ptr<deferred_stream> deferred_stream_;
         std::shared_ptr<streaming::stream> queue_stream_;
         std::shared_ptr<enclave_owner> enclave_owner_;

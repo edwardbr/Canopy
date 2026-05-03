@@ -31,23 +31,61 @@ Security note:
 
 ## Requirements
 
-- Intel SGX SDK
+- Intel SGX SDK for `CANOPY_SGX_BACKEND=Intel`
 - `CANOPY_BUILD_ENCLAVE=ON`
 - `CANOPY_BUILD_NANOPB=ON` for protobuf-compatible enclave serialization
 - Coroutine SGX additionally requires a coroutine build and the SGX simulation or
   hardware preset that enables `c++/transports/sgx_coroutine`
 
-The SGX enclave path should not depend on the full Google C++ protobuf runtime.
-Use `CANOPY_BUILD_PROTOCOL_BUFFERS=OFF` with `CANOPY_BUILD_NANOPB=ON` when you
-need protobuf-compatible wire bytes inside enclaves. Nanopb keeps the `.proto`
-schema contract and protobuf wire format while compiling a much smaller runtime
-with enclave flags.
+The SGX enclave path must not depend on the full Google C++ protobuf runtime.
+Use `CANOPY_BUILD_NANOPB=ON` when you need protobuf-compatible wire bytes inside
+enclaves. Host-side code in the same SGX build may still enable
+`CANOPY_BUILD_PROTOCOL_BUFFERS`, but enclave targets remove the full protobuf
+compile definition and route `rpc::encoding::protocol_buffers` through Nanopb.
+Nanopb keeps the `.proto` schema contract and protobuf wire format while
+compiling a much smaller runtime with enclave flags.
 
-If `CANOPY_BOOTSTRAP_SGX_SDK=ON`, Canopy can install the SDK from
-`submodules/confidential-computing.sgx`. Set
+For the Intel backend, if `CANOPY_BOOTSTRAP_SGX_SDK=ON`, Canopy can install the
+SDK from `submodules/confidential-computing.sgx`. Set
 `CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES=OFF` after the SGX source tree has been
 prepared once, or when an SGX SDK installer already exists, to avoid repeated
 nested SGX submodule updates during configure.
+
+### Fake SGX Backend
+
+`CANOPY_SGX_BACKEND=Fake` is a testing backend for the coroutine SGX transport.
+It builds the same `c++/transports/sgx_coroutine` runtime and transport sources
+as ordinary shared libraries so host debuggers and sanitizers can inspect code
+that native Intel SGX simulation cannot instrument.
+
+The fake backend is not a security boundary and must not be used as evidence of
+SGX isolation. It deliberately provides only the pieces needed to run the
+Canopy-controlled enclave path outside the Intel SDK:
+
+- `sgx_create_enclave` / `sgx_destroy_enclave` wrappers implemented with
+  `dlopen` / `dlclose`
+- generated-EDL-compatible ECALL wrappers for the coroutine enclave entry points
+- scoped inside/outside memory range checks for the Canopy SGX queue and request
+  buffers
+- narrow C++ runtime shims where Intel's enclave headers are unavailable or
+  where the normal host STL would conflict with Canopy's SGX polyfills
+
+The include order intentionally prefers the Canopy SGX polyfills, including the
+SGX coroutine header, before the fake-backend shims. Fake headers should fill
+only the gaps needed to compile and test this path; they should not grow into a
+parallel enclave runtime.
+
+When ThreadSanitizer is enabled, the fake backend preserves copied enclave
+shared objects in `/tmp` instead of removing them in `sgx_destroy_enclave`. TSAN
+reopens the mapped object path while symbolising reports; removing the copied
+image immediately after `dlopen` makes TSAN fail before it can show the
+underlying race report. Non-TSAN fake SGX builds still remove copied enclave
+images during `sgx_destroy_enclave`.
+
+The fake trusted STL shims must preserve the concurrency semantics used by the
+host STL. In particular, the `std::scoped_lock` shim locks two mutexes in a
+stable order so RPC pass-through creation can safely lock transport pairs even
+when different call paths pass the same pair in opposite logical directions.
 
 ## Architecture
 
@@ -129,6 +167,8 @@ The SGX wrapper is responsible for:
 - entering the enclave through the init ECALL and worker ECALLs
 - keeping enclave runtime threads available while coroutine RPC work is pending
 - exposing an SPSC stream to the normal stream transport
+- waiting for the enclave service shutdown event before returning from the
+  runtime entry point
 
 The generic stream transport is responsible for:
 
@@ -161,14 +201,24 @@ Important rules:
   application released its root pointer
 - release messages must be allowed to run inside the enclave so implementation
   destructors can release any host interfaces they hold
+- the child-side transport must outlive the child service so final release and
+  close work can cross the boundary
+- in host/root-service tests, transports and routed work should drain before the
+  root service destructor runs
 - the stream transport and service must stay alive until release call stacks have
   unwound
+- late proxy release cleanup must still go through `service::outbound_release`
+  rather than calling the transport directly, so service overrides can enforce
+  security and policy at the boundary
 - refcount-zero shutdown is a clean disconnect
 - clean disconnect sends the close handshake, not `transport_down`
 - `transport_down` is reserved for real transport failure or unexpected peer
   disappearance
 - worker ECALLs should return only after the service, transport, proxies, stubs,
   pass-throughs, and active release work have drained
+- test fixtures should wait on the service shutdown event as the concrete
+  completion signal; `check_is_empty()` remains diagnostic and should not be
+  used as teardown control flow
 
 See [Zone Shutdown Sequence](../protocol/zone_shutdown_sequence.md) for the
 detailed sequence and checklist.

@@ -1,0 +1,22 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+#pragma once
+
+#include <bits/exception.h>
+
+namespace std
+{
+    using terminate_handler = void (*)();
+
+    void terminate() noexcept __attribute__((__noreturn__));
+
+    int uncaught_exceptions() noexcept;
+
+    class bad_exception : public exception
+    {
+    public:
+        [[nodiscard]] const char* what() const noexcept override { return "std::bad_exception"; }
+    };
+}

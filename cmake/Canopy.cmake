@@ -39,7 +39,17 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_DEBUG_DEFAULT_DESTRUCTOR "Get the generator produce verbose messages" OFF)
   # SGX Enclave support(disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
+  set(CANOPY_SGX_BACKEND
+      "Intel"
+      CACHE STRING "SGX backend to use when CANOPY_BUILD_ENCLAVE=ON")
+  set_property(
+    CACHE CANOPY_SGX_BACKEND
+    PROPERTY STRINGS "Intel" "Fake")
   option(CANOPY_IO_URING_SQPOLL "Use io_uring SQPOLL mode for streaming io_uring TCP streams on Linux" OFF)
+
+  if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_SGX_BACKEND MATCHES "^(Intel|Fake)$")
+    message(FATAL_ERROR "Invalid CANOPY_SGX_BACKEND '${CANOPY_SGX_BACKEND}', expected Intel or Fake")
+  endif()
 
   if(CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_BUILD_COROUTINE)
     message(FATAL_ERROR "CANOPY_BUILD_WEBSOCKET requires CANOPY_BUILD_COROUTINE=ON")
@@ -111,19 +121,13 @@ if(NOT DEPENDENCIES_LOADED)
              "YAS_JSON"
              "YAS_COMPRESSED_BINARY")
 
-  if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_PROTOCOL_BUFFERS)
+  if(CANOPY_BUILD_ENCLAVE
+     AND CANOPY_DEFAULT_ENCODING STREQUAL "PROTOCOL_BUFFERS"
+     AND CANOPY_BUILD_NANOPB)
     message(
-      STATUS "Disabling Protocol Buffers for SGX enclave builds; SGX support currently uses YAS-only marshalling.")
-    set(CANOPY_BUILD_PROTOCOL_BUFFERS
-        OFF
-        CACHE BOOL "Include Protocol Buffers support" FORCE)
-  endif()
-
-  if(CANOPY_BUILD_ENCLAVE AND CANOPY_DEFAULT_ENCODING STREQUAL "PROTOCOL_BUFFERS")
-    message(STATUS "Switching SGX enclave builds to YAS_BINARY default encoding.")
-    set(CANOPY_DEFAULT_ENCODING
-        "YAS_BINARY"
-        CACHE STRING "Default encoding format for RPC serialization" FORCE)
+      STATUS
+        "SGX enclave targets map rpc::encoding::protocol_buffers to rpc::encoding::nanopb; host targets keep their configured protobuf support."
+    )
   endif()
 
   # Validate encoding selection
@@ -190,6 +194,7 @@ if(NOT DEPENDENCIES_LOADED)
   # ####################################################################################################################
   message("CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE}")
   message("CANOPY_BUILD_ENCLAVE ${CANOPY_BUILD_ENCLAVE}")
+  message("CANOPY_SGX_BACKEND ${CANOPY_SGX_BACKEND}")
   message("CANOPY_BUILD_EXE ${CANOPY_BUILD_EXE}")
   message("CANOPY_BUILD_TEST ${CANOPY_BUILD_TEST}")
   message("CANOPY_BUILD_DEMOS ${CANOPY_BUILD_DEMOS}")
@@ -282,7 +287,7 @@ if(NOT DEPENDENCIES_LOADED)
       if(CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_BUILD_NANOPB)
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/protobuf c++/submodules/nanopb)
       endif()
-      if(CANOPY_BUILD_ENCLAVE)
+      if(CANOPY_BUILD_ENCLAVE AND CANOPY_SGX_BACKEND STREQUAL "Intel")
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/confidential-computing.sgx)
       endif()
       if(CANOPY_BUILD_TEST OR CANOPY_BUILD_GTEST)
@@ -526,8 +531,13 @@ if(NOT DEPENDENCIES_LOADED)
   # Include SGX Configuration if Enabled
   # ####################################################################################################################
   if(CANOPY_BUILD_ENCLAVE)
-    set(CANOPY_ENCLAVE_TARGET "SGX")
-    include(${CMAKE_CURRENT_LIST_DIR}/SGX.cmake)
+    if(CANOPY_SGX_BACKEND STREQUAL "Fake")
+      set(CANOPY_ENCLAVE_TARGET "FakeSGX")
+      include(${CMAKE_CURRENT_LIST_DIR}/FakeSGX.cmake)
+    else()
+      set(CANOPY_ENCLAVE_TARGET "SGX")
+      include(${CMAKE_CURRENT_LIST_DIR}/SGX.cmake)
+    endif()
   endif()
 
   # ####################################################################################################################

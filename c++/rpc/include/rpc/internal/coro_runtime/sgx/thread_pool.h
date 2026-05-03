@@ -65,7 +65,6 @@ namespace rpc::coro::sgx
             private_constructor)
             : options_(std::move(opts))
         {
-            owned_tasks_.reserve(256);
             ready_handles_.reserve(256);
         }
 
@@ -91,12 +90,13 @@ namespace rpc::coro::sgx
             if (!task_obj.handle())
                 return false;
 
-            auto handle = task_obj.handle();
-            lock_queue();
-            owned_tasks_.push_back(std::move(task_obj));
-            auto enqueued = enqueue_handle_unlocked(handle);
-            unlock_queue();
-            return enqueued;
+            auto detached_task = detail::make_task_self_deleting(std::move(task_obj));
+            std::coroutine_handle<> handle = detached_task.handle();
+            if (resume(handle))
+                return true;
+
+            handle.destroy();
+            return false;
         }
 
         auto spawn_joinable(task<void>&& task_obj) noexcept -> task<void>
@@ -148,15 +148,10 @@ namespace rpc::coro::sgx
         {
             auto handle = pop_ready_handle();
             if (!handle)
-            {
-                reap_completed_tasks();
                 return false;
-            }
 
             if (!handle.done())
                 handle.resume();
-            if (handle.done())
-                reap_completed_tasks();
             return true;
         }
 
@@ -249,21 +244,8 @@ namespace rpc::coro::sgx
             return handle;
         }
 
-        auto reap_completed_tasks() noexcept -> void
-        {
-            for (auto it = owned_tasks_.begin(); it != owned_tasks_.end();)
-            {
-                auto handle = it->handle();
-                if (!handle || handle.done())
-                    it = owned_tasks_.erase(it);
-                else
-                    ++it;
-            }
-        }
-
         options options_;
         mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
-        std::vector<task<void>> owned_tasks_;
         std::vector<std::coroutine_handle<>> ready_handles_;
         std::atomic<bool> shutdown_{false};
     };

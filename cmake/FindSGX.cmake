@@ -421,7 +421,7 @@ if(SGX_FOUND)
       "SGX"
       ""
       ""
-      "EXTRA_LIBS"
+      "EXTRA_DEPENDS;EXTRA_LIBS"
       ${ARGN})
     get_filename_component(EDL_NAME ${edl} NAME_WE)
     get_filename_component(EDL_ABSPATH ${edl} ABSOLUTE)
@@ -487,6 +487,47 @@ if(SGX_FOUND)
   endfunction()
 
   # build enclave shared library
+  function(_sgx_collect_trusted_targets target output_var)
+    set(collected_targets "${${output_var}}")
+    if(NOT TARGET ${target})
+      set(${output_var}
+          "${collected_targets}"
+          PARENT_SCOPE)
+      return()
+    endif()
+
+    list(FIND collected_targets ${target} target_index)
+    if(NOT target_index EQUAL -1)
+      set(${output_var}
+          "${collected_targets}"
+          PARENT_SCOPE)
+      return()
+    endif()
+    list(APPEND collected_targets ${target})
+
+    get_target_property(link_libraries ${target} LINK_LIBRARIES)
+    if(NOT link_libraries)
+      set(link_libraries)
+    endif()
+
+    get_target_property(interface_link_libraries ${target} INTERFACE_LINK_LIBRARIES)
+    if(NOT interface_link_libraries)
+      set(interface_link_libraries)
+    endif()
+
+    foreach(link_library ${link_libraries} ${interface_link_libraries})
+      if(TARGET ${link_library})
+        set(${output_var} "${collected_targets}")
+        _sgx_collect_trusted_targets(${link_library} ${output_var})
+        set(collected_targets "${${output_var}}")
+      endif()
+    endforeach()
+
+    set(${output_var}
+        "${collected_targets}"
+        PARENT_SCOPE)
+  endfunction()
+
   function(add_enclave_library target)
     set(optionArgs USE_PREFIX REMOVE_INIT_SECTION)
     set(oneValueArgs EDL_IMPL LDSCRIPT)
@@ -543,10 +584,15 @@ if(SGX_FOUND)
       set(TLIB_LIST "")
       set(T_LIST "")
       set(THEADER_LIB_LIST "")
+      set(TRUSTED_TARGET_LIST "")
       foreach(TLIB ${SGX_TRUSTED_LIBS})
         add_dependencies(${target} ${TLIB})
         # Include all target directories
         target_include_directories(${target} PRIVATE $<TARGET_PROPERTY:${TLIB},INCLUDE_DIRECTORIES>)
+        _sgx_collect_trusted_targets(${TLIB} TRUSTED_TARGET_LIST)
+      endforeach()
+
+      foreach(TLIB ${TRUSTED_TARGET_LIST})
         # If TLIB is not an INTERFACE library (i.e. has a target), then adds its target to the library list to be
         # scrippted below.
         string(APPEND TLIB_LIST
@@ -607,7 +653,8 @@ if(SGX_FOUND)
         message(FATAL_ERROR "Private key used to sign enclave is not provided!")
       endif()
     else()
-      if(SGX_MODE STREQUAL "release" AND DEFINED SGX_RELEASE_KEY_DIR AND NOT "${SGX_RELEASE_KEY_DIR}" STREQUAL "")
+      if(SGX_MODE STREQUAL "release" AND DEFINED SGX_RELEASE_KEY_DIR AND NOT "${SGX_RELEASE_KEY_DIR}" STREQUAL ""
+         AND NOT IS_ABSOLUTE ${SGX_KEY})
         set(KEY_ABSPATH ${SGX_RELEASE_KEY_DIR}/${SGX_KEY})
       else()
         get_filename_component(KEY_ABSPATH ${SGX_KEY} ABSOLUTE)

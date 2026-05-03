@@ -55,6 +55,9 @@ public:
         this->local_host_ptr_ = hst;
 
         child_shutdown_event_ = std::make_shared<rpc::event>(false);
+#ifdef FOR_SGX
+        child_shutdown_event_->set_scheduler(this->io_scheduler_.get());
+#endif
 
         auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(

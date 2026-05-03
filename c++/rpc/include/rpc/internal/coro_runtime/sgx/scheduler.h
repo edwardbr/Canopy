@@ -110,7 +110,6 @@ namespace rpc::coro::sgx
             : options_(normalise_options(std::move(opts)))
             , pool_(thread_pool::make_unique(options_.pool))
         {
-            owned_tasks_.reserve(256);
             ready_handles_.reserve(256);
             timer_handles_.reserve(256);
         }
@@ -129,17 +128,21 @@ namespace rpc::coro::sgx
 
         auto process_events() -> std::size_t
         {
-            if (execution_lock_.test_and_set(std::memory_order::acquire))
-                return size();
+            process_ready_event();
+            return size();
+        }
 
-            reap_completed_tasks();
+        auto process_ready_event() -> bool
+        {
+            if (execution_lock_.test_and_set(std::memory_order::acquire))
+                return false;
+
             enqueue_expired_timers();
             auto handle = pop_ready_handle();
             if (!handle)
             {
-                reap_completed_tasks();
                 execution_lock_.clear(std::memory_order::release);
-                return size();
+                return false;
             }
 
             if (options_.execution_strategy == execution_strategy_t::process_tasks_on_thread_pool)
@@ -150,12 +153,10 @@ namespace rpc::coro::sgx
             {
                 if (!handle.done())
                     handle.resume();
-                if (handle.done())
-                    reap_completed_tasks();
             }
 
             execution_lock_.clear(std::memory_order::release);
-            return size();
+            return true;
         }
 
         auto schedule() -> schedule_operation { return schedule_operation{*this}; }
@@ -165,11 +166,16 @@ namespace rpc::coro::sgx
             if (!task_obj.handle())
                 return false;
 
-            auto handle = task_obj.handle();
+            if (options_.execution_strategy == execution_strategy_t::process_tasks_on_thread_pool)
+                return pool_->spawn_detached(std::move(task_obj));
+
+            auto detached_task = detail::make_task_self_deleting(std::move(task_obj));
+            std::coroutine_handle<> handle = detached_task.handle();
             lock_queue();
-            owned_tasks_.push_back(std::move(task_obj));
             auto enqueued = enqueue_handle_unlocked(handle);
             unlock_queue();
+            if (!enqueued)
+                handle.destroy();
             return enqueued;
         }
 
@@ -247,7 +253,6 @@ namespace rpc::coro::sgx
             lock_queue();
             ready_handles_.clear();
             timer_handles_.clear();
-            owned_tasks_.clear();
             unlock_queue();
         }
 
@@ -401,23 +406,10 @@ namespace rpc::coro::sgx
             return handle;
         }
 
-        auto reap_completed_tasks() noexcept -> void
-        {
-            for (auto it = owned_tasks_.begin(); it != owned_tasks_.end();)
-            {
-                auto handle = it->handle();
-                if (!handle || handle.done())
-                    it = owned_tasks_.erase(it);
-                else
-                    ++it;
-            }
-        }
-
         options options_;
         std::unique_ptr<thread_pool> pool_;
         std::atomic_flag execution_lock_ = ATOMIC_FLAG_INIT;
         mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
-        std::vector<task<void>> owned_tasks_;
         std::vector<std::coroutine_handle<>> ready_handles_;
         std::vector<timer_handle> timer_handles_;
         std::atomic<bool> shutdown_{false};

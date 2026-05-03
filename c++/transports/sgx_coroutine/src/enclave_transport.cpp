@@ -175,8 +175,14 @@ namespace rpc::sgx::coro::enclave
     transport::enclave_owner::~enclave_owner()
     {
         if (init_status_)
-            common::startup_store_u32(
-                &init_status_->state, static_cast<std::uint32_t>(common::startup_state::shutting_down));
+        {
+            auto state = static_cast<common::startup_state>(common::startup_load_u32(&init_status_->state));
+            if (state != common::startup_state::failed && state != common::startup_state::stopped)
+            {
+                common::startup_store_u32(
+                    &init_status_->state, static_cast<std::uint32_t>(common::startup_state::shutting_down));
+            }
+        }
 
         if (init_thread_.joinable())
         {
@@ -334,11 +340,11 @@ namespace rpc::sgx::coro::enclave
         auto adjacent_zone_id = zone_result.zone_id;
         set_adjacent_zone_id(adjacent_zone_id);
 
-        host_to_enclave_queue_ = std::make_unique<common::queue_type>();
-        enclave_to_host_queue_ = std::make_unique<common::queue_type>();
+        host_to_enclave_queue_ = std::make_shared<common::queue_type>();
+        enclave_to_host_queue_ = std::make_shared<common::queue_type>();
 
         queue_stream_ = std::make_shared<streaming::spsc_queue::stream>(
-            host_to_enclave_queue_.get(), enclave_to_host_queue_.get(), svc->get_scheduler());
+            host_to_enclave_queue_, enclave_to_host_queue_, svc->get_scheduler());
         deferred_stream_->bind(queue_stream_);
 
         auto owner = std::make_shared<enclave_owner>(eid);

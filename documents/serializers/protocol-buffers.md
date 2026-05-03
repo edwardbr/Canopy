@@ -58,10 +58,15 @@ backends are actually produced:
   stand-in for that IDL target and `rpc::encoding::protocol_buffers` is routed
   through Nanopb
 - if Nanopb is OFF but full protobuf is ON, `rpc::encoding::nanopb` is routed
-  through the full protobuf backend
+  through the full protobuf backend for non-SGX targets
 - if both protobuf-compatible backends are OFF and no other requested encoding
   can satisfy the target, configuration should fail rather than silently linking
   an unwanted runtime
+
+SGX enclave targets are stricter: the full Google C++ protobuf runtime is not
+linked into enclave modules.  Host-side targets in an SGX build may still use
+full protobuf, but enclave targets remove `CANOPY_BUILD_PROTOCOL_BUFFERS` from
+their compile definitions and map `rpc::encoding::protocol_buffers` to Nanopb.
 
 The raw generator flags remain literal: `--protobuf` requests full protobuf
 generation and `--nanopb` requests Nanopb generation.  The policy that maps an

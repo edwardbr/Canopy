@@ -339,6 +339,12 @@ namespace rpc::sgx
         }
 
         auto svc = get_service();
+        if (!svc)
+        {
+            sgx_destroy_enclave(eid_);
+            eid_ = 0;
+            CO_RETURN rpc::connect_result{rpc::error::ZONE_NOT_INITIALISED(), {}};
+        }
 
         // Allocate a zone ID for the DLL zone
         get_new_zone_id_params zone_params;
@@ -346,7 +352,9 @@ namespace rpc::sgx
         auto zone_result = CO_AWAIT svc->get_new_zone_id(std::move(zone_params));
         if (zone_result.error_code != rpc::error::OK())
         {
-            RPC_ERROR("[dynamic_library] get_new_zone_id failed: {}", zone_result.error_code);
+            RPC_ERROR("[sgx] get_new_zone_id failed: {}", zone_result.error_code);
+            sgx_destroy_enclave(eid_);
+            eid_ = 0;
             CO_RETURN rpc::connect_result{zone_result.error_code, {}};
         }
 
@@ -360,6 +368,8 @@ namespace rpc::sgx
             if (ret != rpc::error::OK())
             {
                 sgx_destroy_enclave(eid_);
+                eid_ = 0;
+                svc->remove_transport_if_matches(adjacent_zone_id, this);
                 CO_RETURN rpc::connect_result{ret, {}};
             }
         }
@@ -386,7 +396,8 @@ namespace rpc::sgx
             log_sgx_failure("marshal_test_init_enclave", status);
             unregister_host_transport(eid_);
             sgx_destroy_enclave(eid_);
-            svc->remove_transport(adjacent_zone_id);
+            eid_ = 0;
+            svc->remove_transport_if_matches(adjacent_zone_id, this);
             CO_RETURN rpc::connect_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
 
@@ -407,7 +418,8 @@ namespace rpc::sgx
                 log_sgx_failure("marshal_test_init_enclave", status);
                 unregister_host_transport(eid_);
                 sgx_destroy_enclave(eid_);
-                svc->remove_transport(adjacent_zone_id);
+                eid_ = 0;
+                svc->remove_transport_if_matches(adjacent_zone_id, this);
                 CO_RETURN rpc::connect_result{rpc::error::TRANSPORT_ERROR(), {}};
             }
         }
@@ -416,7 +428,8 @@ namespace rpc::sgx
         {
             unregister_host_transport(eid_);
             sgx_destroy_enclave(eid_);
-            svc->remove_transport(adjacent_zone_id);
+            eid_ = 0;
+            svc->remove_transport_if_matches(adjacent_zone_id, this);
             CO_RETURN rpc::connect_result{err_code, {}};
         }
 
@@ -426,7 +439,8 @@ namespace rpc::sgx
         {
             unregister_host_transport(eid_);
             sgx_destroy_enclave(eid_);
-            svc->remove_transport(adjacent_zone_id);
+            eid_ = 0;
+            svc->remove_transport_if_matches(adjacent_zone_id, this);
             CO_RETURN rpc::connect_result{err_code, {}};
         }
 
