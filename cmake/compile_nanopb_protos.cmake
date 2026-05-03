@@ -44,6 +44,93 @@ file(
 file(READ "${MANIFEST_FILE}" MANIFEST_CONTENT)
 string(REGEX REPLACE "\n" ";" PROTO_FILE_NAMES "${MANIFEST_CONTENT}")
 
+set(PROTOBUF_PYTHONPATH "")
+if(PROTOBUF_PYTHON_SOURCE_DIR AND PROTOBUF_SOURCE_PROTO_DIR)
+  if(NOT PROTOBUF_PYTHON_OUT_DIR)
+    set(PROTOBUF_PYTHON_OUT_DIR "${CPP_OUT_DIR}/.protobuf_python")
+  endif()
+
+  set(PROTOBUF_DESCRIPTOR_PROTO "${PROTOBUF_SOURCE_PROTO_DIR}/google/protobuf/descriptor.proto")
+  set(PROTOBUF_PLUGIN_PROTO "${PROTOBUF_SOURCE_PROTO_DIR}/google/protobuf/compiler/plugin.proto")
+  if(NOT EXISTS "${PROTOBUF_DESCRIPTOR_PROTO}")
+    message(FATAL_ERROR "protobuf descriptor.proto not found: ${PROTOBUF_DESCRIPTOR_PROTO}")
+  endif()
+  if(NOT EXISTS "${PROTOBUF_PLUGIN_PROTO}")
+    message(FATAL_ERROR "protobuf plugin.proto not found: ${PROTOBUF_PLUGIN_PROTO}")
+  endif()
+
+  file(MAKE_DIRECTORY "${PROTOBUF_PYTHON_OUT_DIR}/google/protobuf/compiler")
+  file(MAKE_DIRECTORY "${PROTOBUF_PYTHON_OUT_DIR}/google/protobuf/internal")
+  set(PROTOBUF_NAMESPACE_INIT "from pkgutil import extend_path\n__path__ = extend_path(__path__, __name__)\n")
+  file(WRITE "${PROTOBUF_PYTHON_OUT_DIR}/google/__init__.py" "${PROTOBUF_NAMESPACE_INIT}")
+  file(WRITE "${PROTOBUF_PYTHON_OUT_DIR}/google/protobuf/compiler/__init__.py" "${PROTOBUF_NAMESPACE_INIT}")
+  file(WRITE "${PROTOBUF_PYTHON_OUT_DIR}/google/protobuf/internal/__init__.py" "${PROTOBUF_NAMESPACE_INIT}")
+
+  if(EXISTS "${PROTOBUF_PYTHON_SOURCE_DIR}/google/protobuf/__init__.py")
+    file(READ "${PROTOBUF_PYTHON_SOURCE_DIR}/google/protobuf/__init__.py" PROTOBUF_PACKAGE_INIT)
+  else()
+    set(PROTOBUF_PACKAGE_INIT "")
+  endif()
+  string(APPEND PROTOBUF_PACKAGE_INIT "\n${PROTOBUF_NAMESPACE_INIT}")
+  file(WRITE "${PROTOBUF_PYTHON_OUT_DIR}/google/protobuf/__init__.py" "${PROTOBUF_PACKAGE_INIT}")
+
+  execute_process(
+    COMMAND "${PROTOC}" --python_out=${PROTOBUF_PYTHON_OUT_DIR} -I "${PROTOBUF_SOURCE_PROTO_DIR}"
+            "${PROTOBUF_DESCRIPTOR_PROTO}" "${PROTOBUF_PLUGIN_PROTO}"
+    RESULT_VARIABLE PROTOBUF_PYTHON_RESULT
+    OUTPUT_VARIABLE PROTOBUF_PYTHON_OUTPUT
+    ERROR_VARIABLE PROTOBUF_PYTHON_ERROR)
+
+  if(NOT PROTOBUF_PYTHON_RESULT EQUAL 0)
+    message(
+      FATAL_ERROR "protobuf Python descriptor generation failed:\n${PROTOBUF_PYTHON_OUTPUT}\n${PROTOBUF_PYTHON_ERROR}")
+  endif()
+
+  set(PROTOBUF_EDITION_DEFAULTS_BIN "${PROTOBUF_PYTHON_OUT_DIR}/google/protobuf/internal/python_edition_defaults.binpb")
+  execute_process(
+    COMMAND "${PROTOC}" --edition_defaults_out=${PROTOBUF_EDITION_DEFAULTS_BIN} --edition_defaults_minimum=PROTO2
+            --edition_defaults_maximum=2024 -I "${PROTOBUF_SOURCE_PROTO_DIR}" "${PROTOBUF_DESCRIPTOR_PROTO}"
+    RESULT_VARIABLE PROTOBUF_EDITION_DEFAULTS_RESULT
+    OUTPUT_VARIABLE PROTOBUF_EDITION_DEFAULTS_OUTPUT
+    ERROR_VARIABLE PROTOBUF_EDITION_DEFAULTS_ERROR)
+
+  if(NOT PROTOBUF_EDITION_DEFAULTS_RESULT EQUAL 0)
+    message(
+      FATAL_ERROR
+        "protobuf Python edition defaults generation failed:\n${PROTOBUF_EDITION_DEFAULTS_OUTPUT}\n${PROTOBUF_EDITION_DEFAULTS_ERROR}"
+    )
+  endif()
+
+  file(READ "${PROTOBUF_EDITION_DEFAULTS_BIN}" PROTOBUF_EDITION_DEFAULTS_HEX HEX)
+  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "\\\\x\\1" PROTOBUF_EDITION_DEFAULTS_ESCAPED
+                       "${PROTOBUF_EDITION_DEFAULTS_HEX}")
+  set(PROTOBUF_EDITION_DEFAULTS_TEMPLATE
+      "${PROTOBUF_PYTHON_SOURCE_DIR}/google/protobuf/internal/python_edition_defaults.py.template")
+  if(EXISTS "${PROTOBUF_EDITION_DEFAULTS_TEMPLATE}")
+    file(READ "${PROTOBUF_EDITION_DEFAULTS_TEMPLATE}" PROTOBUF_EDITION_DEFAULTS_PY)
+    string(REPLACE "DEFAULTS_VALUE" "${PROTOBUF_EDITION_DEFAULTS_ESCAPED}" PROTOBUF_EDITION_DEFAULTS_PY
+                   "${PROTOBUF_EDITION_DEFAULTS_PY}")
+  else()
+    set(PROTOBUF_EDITION_DEFAULTS_PY
+        "_PROTOBUF_INTERNAL_PYTHON_EDITION_DEFAULTS = b\"${PROTOBUF_EDITION_DEFAULTS_ESCAPED}\"\n")
+  endif()
+  file(WRITE "${PROTOBUF_PYTHON_OUT_DIR}/google/protobuf/internal/python_edition_defaults.py"
+       "${PROTOBUF_EDITION_DEFAULTS_PY}")
+
+  set(PROTOBUF_PYTHONPATH "${PROTOBUF_PYTHON_OUT_DIR}:${PROTOBUF_PYTHON_SOURCE_DIR}")
+elseif(PROTOBUF_PYTHON_DIR)
+  if(EXISTS "${PROTOBUF_PYTHON_DIR}/google/protobuf/descriptor_pb2.py")
+    set(PROTOBUF_PYTHONPATH "${PROTOBUF_PYTHON_DIR}")
+  else()
+    message(FATAL_ERROR "Incomplete protobuf Python tree '${PROTOBUF_PYTHON_DIR}': descriptor_pb2.py is missing.")
+  endif()
+endif()
+
+set(NANOPB_ENV "PATH=${PROTOC_WRAPPER_DIR}:$ENV{PATH}" "TEMPORARILY_DISABLE_PROTOBUF_VERSION_CHECK=true")
+if(PROTOBUF_PYTHONPATH)
+  list(APPEND NANOPB_ENV "PYTHONPATH=${PROTOBUF_PYTHONPATH}")
+endif()
+
 set(NANOPB_SOURCES "")
 foreach(PROTO_NAME ${PROTO_FILE_NAMES})
   string(STRIP "${PROTO_NAME}" PROTO_NAME)
@@ -53,10 +140,8 @@ foreach(PROTO_NAME ${PROTO_FILE_NAMES})
     list(APPEND NANOPB_SOURCES "${CPP_OUT_DIR}/${PB_C_NAME}")
 
     execute_process(
-      COMMAND
-        ${CMAKE_COMMAND} -E env "PATH=${PROTOC_WRAPPER_DIR}:$ENV{PATH}" "PYTHONPATH=${PROTOBUF_PYTHON_DIR}"
-        "TEMPORARILY_DISABLE_PROTOBUF_VERSION_CHECK=true" "${Python3_EXECUTABLE}" "${NANOPB_GENERATOR}" -D
-        "${CPP_OUT_DIR}" -I "${OUTPUT_DIR}" "${PROTO_FILE}"
+      COMMAND ${CMAKE_COMMAND} -E env ${NANOPB_ENV} "${Python3_EXECUTABLE}" "${NANOPB_GENERATOR}" -D "${CPP_OUT_DIR}" -I
+              "${OUTPUT_DIR}" "${PROTO_FILE}"
       RESULT_VARIABLE NANOPB_RESULT
       OUTPUT_VARIABLE NANOPB_OUTPUT
       ERROR_VARIABLE NANOPB_ERROR)

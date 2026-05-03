@@ -44,6 +44,7 @@ function(
 
   # Define cache variables for global settings with defaults These allow users to override settings while providing
   # sensible defaults
+  get_filename_component(_canopy_source_root "${_CANOPY_GENERATE_CMAKE_DIR}/.." ABSOLUTE)
   if(NOT DEFINED CANOPY_BUILD_ENCLAVE)
     set(CANOPY_BUILD_ENCLAVE
         OFF
@@ -108,6 +109,16 @@ function(
     set(CANOPY_NANOPB_GENERATOR
         "${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/generator/nanopb_generator.py"
         CACHE FILEPATH "Nanopb generator executable")
+  endif()
+  if(NOT DEFINED CANOPY_PROTOBUF_PYTHON_SOURCE_DIR)
+    set(CANOPY_PROTOBUF_PYTHON_SOURCE_DIR
+        "${_canopy_source_root}/submodules/protobuf/python"
+        CACHE PATH "protobuf Python runtime source directory used by Nanopb generator")
+  endif()
+  if(NOT DEFINED CANOPY_PROTOBUF_SOURCE_PROTO_DIR)
+    set(CANOPY_PROTOBUF_SOURCE_PROTO_DIR
+        "${_canopy_source_root}/submodules/protobuf/src"
+        CACHE PATH "protobuf source .proto directory used by Nanopb generator")
   endif()
   if(NOT DEFINED CANOPY_BUILD_NANOPB)
     set(CANOPY_BUILD_NANOPB
@@ -493,6 +504,14 @@ function(
     set(nanopb_stamp_file ${proto_dir}/.nanopb_compiled)
     set(nanopb_sources_cmake ${proto_dir}/generated_nanopb_sources.cmake)
     set(nanopb_aggregate_source ${nanopb_src_root}/${base_filename}_nanopb_sources.c)
+    set(nanopb_compile_dependencies ${PROTO_MANIFEST} ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake)
+    list(
+      APPEND
+      nanopb_compile_dependencies
+      ${CANOPY_PROTOBUF_SOURCE_PROTO_DIR}/google/protobuf/descriptor.proto
+      ${CANOPY_PROTOBUF_SOURCE_PROTO_DIR}/google/protobuf/compiler/plugin.proto
+      ${CANOPY_PROTOBUF_PYTHON_SOURCE_DIR}/google/protobuf/__init__.py
+      ${CANOPY_PROTOBUF_PYTHON_SOURCE_DIR}/google/protobuf/internal/python_edition_defaults.py.template)
 
     if(generate_protobuf)
       add_custom_command(
@@ -515,10 +534,11 @@ function(
         ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D
         PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
         NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -D NANOPB_AGGREGATE_SOURCE=${nanopb_aggregate_source} -D
-        PROTOBUF_PYTHON_DIR=${CMAKE_SOURCE_DIR}/submodules/protobuf/python -P
+        PROTOBUF_PYTHON_SOURCE_DIR=${CANOPY_PROTOBUF_PYTHON_SOURCE_DIR} -D
+        PROTOBUF_SOURCE_PROTO_DIR=${CANOPY_PROTOBUF_SOURCE_PROTO_DIR} -P
         ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
       COMMAND ${CMAKE_COMMAND} -E touch ${nanopb_stamp_file}
-      DEPENDS ${PROTO_MANIFEST}
+      DEPENDS ${nanopb_compile_dependencies}
       COMMENT "Discovering and compiling Nanopb .proto files for ${name}")
 
     add_custom_target(${name}_nanopb_compile DEPENDS ${nanopb_stamp_file})
