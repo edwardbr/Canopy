@@ -17,9 +17,12 @@ small child-process runtimes that exist to support those transports.
 - `dynamic_library/`
   - Blocking in-process DLL transport. The host loads a shared object and talks
     to it through a C ABI.
-- `libcoro_dynamic_library/`
-  - Coroutine in-process DLL transport. Similar purpose to `dynamic_library/`
-    but the ABI is coroutine-oriented.
+- `libcoro_host_scheduled_dynamic_library/`
+  - Coroutine in-process DLL transport using the host scheduler and direct
+    coroutine function pointers.
+- `libcoro_dll_scheduled_dynamic_library/`
+  - Coroutine in-process DLL transport with a DLL-owned scheduler and
+    begin/complete dispatch ABI.
 - `streaming/`
   - Stream-based transport for coroutine builds.
 - `ipc_transport/`
@@ -42,7 +45,8 @@ There are now three distinct concerns which used to be more tightly coupled:
 
 Those are implemented as:
 
-- `dynamic_library/` and `libcoro_dynamic_library/`
+- `dynamic_library/`, `libcoro_host_scheduled_dynamic_library/`, and
+  `libcoro_dll_scheduled_dynamic_library/`
   - DLL loading in the current process
 - `libcoro_spsc_dynamic_dll/`
   - DLL runtime behind an SPSC stream
@@ -63,7 +67,8 @@ These are helper executables, not transports in their own right.
 ## Practical combinations
 
 - In-process DLL zone:
-  - `dynamic_library/` or `libcoro_dynamic_library/`
+  - `dynamic_library/`, `libcoro_host_scheduled_dynamic_library/`, or
+    `libcoro_dll_scheduled_dynamic_library/`
 - Out-of-process DLL zone:
   - `ipc_transport/` + `ipc_child_host_process/` + `libcoro_spsc_dynamic_dll/`
 - Out-of-process direct child service:

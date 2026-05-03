@@ -1615,6 +1615,7 @@ namespace protobuf_generator
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
         const std::string& package_name,
+        const std::string& serialiser_name,
         writer& cpp)
     {
         (void)interface_entity; // unused but kept for consistency with other generators
@@ -1622,7 +1623,7 @@ namespace protobuf_generator
 
         // Generate function signature
         cpp("template<>");
-        cpp("int {}::proxy_serialiser<rpc::serialiser::protocol_buffers>::{}(", interface_name, function_name);
+        cpp("int {}::proxy_serialiser<rpc::serialiser::{}>::{}(", interface_name, serialiser_name, function_name);
         cpp("// Protobuf serialization method");
 
         // Add parameters and track their types
@@ -1802,6 +1803,7 @@ namespace protobuf_generator
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
         const std::string& package_name,
+        const std::string& serialiser_name,
         writer& cpp)
     {
         std::string function_name = function->get_name();
@@ -1823,8 +1825,8 @@ namespace protobuf_generator
 
         // Build deserializer signature with output parameters
         cpp("template<>");
-        std::string signature = "int " + interface_name
-                                + "::proxy_deserialiser<rpc::serialiser::protocol_buffers>::" + function_name + "(";
+        std::string signature = "int " + interface_name + "::proxy_deserialiser<rpc::serialiser::" + serialiser_name
+                                + ">::" + function_name + "(";
 
         bool first_param = true;
         for (const auto& [param_name, param_type] : out_params)
@@ -1988,6 +1990,7 @@ namespace protobuf_generator
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
         const std::string& package_name,
+        const std::string& serialiser_name,
         writer& cpp)
     {
         (void)lib; // used for enum checking
@@ -2011,8 +2014,8 @@ namespace protobuf_generator
 
         // Build stub deserializer signature with input parameters as non-const references
         cpp("template<>");
-        std::string signature
-            = "int " + interface_name + "::stub_deserialiser<rpc::serialiser::protocol_buffers>::" + function_name + "(";
+        std::string signature = "int " + interface_name + "::stub_deserialiser<rpc::serialiser::" + serialiser_name
+                                + ">::" + function_name + "(";
 
         bool first_param = true;
         for (const auto& [param_name, param_type] : in_params)
@@ -2185,6 +2188,7 @@ namespace protobuf_generator
         const std::shared_ptr<function_entity>& function,
         const std::string& interface_name,
         const std::string& package_name,
+        const std::string& serialiser_name,
         writer& cpp)
     {
         (void)lib; // used for enum checking
@@ -2207,8 +2211,8 @@ namespace protobuf_generator
 
         // Build stub serializer signature with output parameters
         cpp("template<>");
-        std::string signature
-            = "int " + interface_name + "::stub_serialiser<rpc::serialiser::protocol_buffers>::" + function_name + "(";
+        std::string signature = "int " + interface_name + "::stub_serialiser<rpc::serialiser::" + serialiser_name
+                                + ">::" + function_name + "(";
 
         bool first_param = true;
         for (const auto& [param_name, param_type] : out_params)
@@ -2383,10 +2387,23 @@ namespace protobuf_generator
         {
             if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
             {
-                write_proxy_protobuf_method(lib, interface_entity, function, interface_name, package_name, cpp);
-                write_proxy_protobuf_deserializer(lib, interface_entity, function, interface_name, package_name, cpp);
-                write_stub_protobuf_deserializer(lib, interface_entity, function, interface_name, package_name, cpp);
-                write_stub_protobuf_serializer(lib, interface_entity, function, interface_name, package_name, cpp);
+                write_proxy_protobuf_method(
+                    lib, interface_entity, function, interface_name, package_name, "protocol_buffers", cpp);
+                write_proxy_protobuf_deserializer(
+                    lib, interface_entity, function, interface_name, package_name, "protocol_buffers", cpp);
+                write_stub_protobuf_deserializer(
+                    lib, interface_entity, function, interface_name, package_name, "protocol_buffers", cpp);
+                write_stub_protobuf_serializer(
+                    lib, interface_entity, function, interface_name, package_name, "protocol_buffers", cpp);
+                cpp("#ifdef CANOPY_USE_PROTOCOL_BUFFERS_FOR_NANOPB");
+                write_proxy_protobuf_method(lib, interface_entity, function, interface_name, package_name, "nanopb", cpp);
+                write_proxy_protobuf_deserializer(
+                    lib, interface_entity, function, interface_name, package_name, "nanopb", cpp);
+                write_stub_protobuf_deserializer(
+                    lib, interface_entity, function, interface_name, package_name, "nanopb", cpp);
+                write_stub_protobuf_serializer(
+                    lib, interface_entity, function, interface_name, package_name, "nanopb", cpp);
+                cpp("#endif");
             }
         }
     }

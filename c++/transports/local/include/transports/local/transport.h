@@ -106,6 +106,7 @@ namespace rpc::local
 
         // Called by parent_transport when child zone disconnects
         void on_child_disconnected();
+        void on_destination_count_zero() override;
 
         CORO_TASK(rpc::connect_result)
         inner_connect(

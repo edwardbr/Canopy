@@ -190,8 +190,8 @@ namespace comprehensive::v1
         fmt::print("Benchmark: 1000 RPC calls per test, middle 80% (drop first/last 10%)\n");
 #ifdef CANOPY_BUILD_COROUTINE
         fmt::print(
-            "Warmup: local=10 calls, libcoro_dll=20 calls, ipc=30 calls, spsc=20 calls, io_uring=100 calls, "
-            "tcp=100 calls (not included in timing)\n");
+            "Warmup: local=10 calls, libcoro_dll=20 calls, libcoro_host=20 calls, ipc=30 calls, spsc=20 calls, "
+            "io_uring=100 calls, tcp=100 calls (not included in timing)\n");
 #else
         fmt::print("Warmup: local=10 calls, dynamic_library=20 calls (not included in timing)\n");
 #endif

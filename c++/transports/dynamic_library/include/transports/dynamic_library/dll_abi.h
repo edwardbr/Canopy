@@ -98,6 +98,12 @@ namespace rpc::dynamic_library
     // ---------------------------------------------------------------------------
     using dll_init_fn = int (*)(dll_init_params* params);
     using dll_destroy_fn = void (*)(void* dll_ctx);
+
+    // Called by the host after dll_destroy and before dlclose/FreeLibrary.
+    // The child context has already gone away, so this hook is only for
+    // module-level runtime cleanup such as protobuf shutdown.
+    using dll_shutdown_fn = void (*)();
+
     using dll_send_fn = int (*)(
         void* dll_ctx,
         rpc::send_params* params,

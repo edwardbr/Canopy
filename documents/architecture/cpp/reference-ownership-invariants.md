@@ -115,6 +115,13 @@ Those are related but not interchangeable.
 
 The runtime must not double-count them or let one silently consume the other.
 
+Service-proxy outbound operations must remain service-mediated. A
+`service_proxy` owns the local service and transport needed for routing, but
+send, post, add-ref, release, and cleanup releases should pass through the
+local service outbound virtuals before crossing the transport boundary. The
+transport owns transport state; `service_proxy` should not mirror transport
+disconnect state with a shadow flag.
+
 ### Invariant 6: Transport Lifetime Is Broader Than Passthrough Lifetime
 
 A transport may carry many independent zone-to-zone relationships.

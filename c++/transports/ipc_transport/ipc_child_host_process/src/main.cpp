@@ -39,16 +39,8 @@ int main(
     if (!loaded)
         return 4;
 
-    // The DLL runtime signals expiry once its transport graph has fully released and the
-    // worker is already unwinding. Taking the normal stop()/join path here has been observed
-    // to stall in dual-isolated teardown, so exit the short-lived helper process immediately.
-    if (loaded->wait_until_expired(std::chrono::seconds(30)))
-        _exit(0);
-
-    // std::cout << "loader: loaded dll zone " << dll_zone.get_subnet() << '\n';
-    // std::cout << "loader: parent expired for dll zone " << dll_zone.get_subnet() << '\n';
+    loaded->wait_until_expired(std::chrono::seconds(30));
     loaded->stop();
-    // std::cout << "loader: stopped dll zone " << dll_zone.get_subnet() << '\n';
 
     rpc::ipc_transport::child_host_bootstrap::unmap_queue_pair(queues);
     return 0;

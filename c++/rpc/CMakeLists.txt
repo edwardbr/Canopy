@@ -78,6 +78,7 @@ add_library(
   include/rpc/internal/marshaller.h
   include/rpc/internal/object_proxy.h
   include/rpc/internal/pass_through.h
+  include/rpc/internal/polyfill/atomic_shared_ptr.h
   include/rpc/internal/serialiser.h
   include/rpc/internal/service_proxy.h
   include/rpc/internal/service.h

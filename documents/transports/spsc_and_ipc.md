@@ -113,6 +113,13 @@ auto initiator_transport =
 The envelope and handshake logic lives in `rpc::stream_transport`; the SPSC
 layer just moves bytes between the two stream endpoints.
 
+`streaming::spsc_queue::stream` does not own the coroutine scheduler. It keeps a
+weak scheduler reference and locks it only while awaiting a yield or retry. The
+owning service or runtime must keep the scheduler alive while stream transports
+are active. This prevents a queue stream that is destroyed by a scheduler worker
+from becoming the final scheduler owner and trying to shut down the worker pool
+from one of its own threads.
+
 This page should therefore be read as streaming-transport guidance for the
 current C++ implementation, not as a statement that every Canopy implementation
 has an SPSC-backed IPC stack.

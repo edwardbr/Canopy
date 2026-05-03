@@ -1,0 +1,21 @@
+#[[
+   Copyright (c) 2026 Edward Boggis-Rolfe
+   All rights reserved.
+]]
+
+# Test DLL for the libcoro_host_scheduled_dynamic_library transport (coroutine builds only). Provides canopy_libcoro_host_scheduled_dll_init wired to
+# marshalled_tests::example.
+
+if(NOT CANOPY_BUILD_COROUTINE)
+  return()
+endif()
+
+canopycreatelibcorohostscheduleddynamiclibrary(
+  canopy_libcoro_host_scheduled_example_dll
+  SOURCES
+  src/canopy_libcoro_host_scheduled_dll_init.cpp
+  LINK_LIBRARIES
+  transport_local
+  common_tests
+  example_idl
+  rpc_log)

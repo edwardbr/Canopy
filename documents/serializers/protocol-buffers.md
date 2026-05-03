@@ -41,7 +41,32 @@ The Nanopb backend is controlled separately:
 set(CANOPY_BUILD_NANOPB ON)
 ```
 
-When `protocol_buffers` is requested from `CanopyGenerate()` but `CANOPY_BUILD_PROTOCOL_BUFFERS=OFF`, Canopy may still generate a protobuf-compatible Nanopb implementation if `CANOPY_BUILD_NANOPB=ON`. This gives protobuf-compatible wire bytes without linking the full protobuf runtime into generated targets.
+`CANOPY_BUILD_PROTOCOL_BUFFERS` and `CANOPY_BUILD_NANOPB` are independent.  They
+can both be enabled, either one can be enabled alone, or both can be disabled if
+the target uses only non-protobuf encodings.
+
+`CanopyGenerate(... protocol_buffers ...)` means "this IDL target requests
+protobuf-compatible schema/wire support".  CMake then decides which generated
+backends are actually produced:
+
+- if `CANOPY_BUILD_PROTOCOL_BUFFERS=ON`, Canopy generates the full Google C++
+  protobuf backend
+- if `CANOPY_BUILD_NANOPB=ON`, Canopy generates the Nanopb backend
+- if both are ON, both generated backends can coexist and each encoding uses its
+  matching backend
+- if full protobuf is OFF but Nanopb is ON, Nanopb is the protobuf-compatible
+  stand-in for that IDL target and `rpc::encoding::protocol_buffers` is routed
+  through Nanopb
+- if Nanopb is OFF but full protobuf is ON, `rpc::encoding::nanopb` is routed
+  through the full protobuf backend
+- if both protobuf-compatible backends are OFF and no other requested encoding
+  can satisfy the target, configuration should fail rather than silently linking
+  an unwanted runtime
+
+The raw generator flags remain literal: `--protobuf` requests full protobuf
+generation and `--nanopb` requests Nanopb generation.  The policy that maps an
+IDL-level `protocol_buffers` request onto one or both backends belongs in
+`CanopyGenerate.cmake`, not in the generator executable.
 
 ```cmake
 # In CMakeLists.txt
@@ -69,6 +94,29 @@ sudo apt install libprotobuf-dev protobuf-compiler
 # On Fedora:
 sudo dnf install protobuf-devel protobuf-compiler
 ```
+
+### Shared Objects and Protobuf Shutdown
+
+The full Google C++ protobuf runtime is not entirely stateless.  Generated
+`*.pb.cc` files and the protobuf library keep module/process static state such
+as default instances and registered cleanup callbacks.
+
+When a DLL or shared object statically links the full protobuf runtime and may be
+unloaded with `dlclose` / `FreeLibrary`, it must call
+`google::protobuf::ShutdownProtobufLibrary()` after all protobuf use has ended
+and before the module is unloaded.
+
+Canopy's dynamic-library helper libraries provide this cleanup point:
+
+- non-coroutine C++ DLLs export the required `canopy_dll_shutdown`
+- non-coroutine language-neutral C ABI DLLs export the required
+  `canopy_dll_shutdown`
+- coroutine DLLs run this cleanup before `canopy_libcoro_dll_scheduled_dll_start` returns
+- coroutine SPSC DLL runtimes run the same cleanup during runtime stop
+
+These hooks call `ShutdownProtobufLibrary()` only when compiled with
+`CANOPY_BUILD_PROTOCOL_BUFFERS`.  Nanopb does not use the Google C++ protobuf
+runtime and does not need this shutdown call.
 
 ## 3. C++ to Protocol Buffers Type Mapping
 

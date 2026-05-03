@@ -22,7 +22,8 @@ implementation.
 - **Local Transport** (`rpc::local`) - In-process parent/child zones
 - **SGX Enclave Transport** - Host/enclave communication
 - **Blocking DLL Transport** (`rpc::dynamic_library`) - In-process DLL child zones in blocking builds
-- **Coroutine DLL Transport** (`rpc::libcoro_dynamic_library`) - In-process DLL child zones in coroutine builds
+- **Host-Scheduled Coroutine DLL Transport** (`rpc::libcoro_host_scheduled_dynamic_library`) - In-process DLL child zones sharing the host scheduler
+- **DLL-Scheduled Coroutine DLL Transport** (`rpc::libcoro_dll_scheduled_dynamic_library`) - In-process DLL child zones with a DLL-owned scheduler
 - Any transport where a parent zone creates and manages a child zone
 
 `rpc::ipc_transport` is intentionally not part of this document. It is a
@@ -179,9 +180,16 @@ Each hierarchical transport implements this pattern:
 - Non-coroutine builds only
 - See `documents/transports/dynamic_library.md`
 
-### Coroutine DLL Transport (`rpc::libcoro_dynamic_library`)
+### Host-Scheduled Coroutine DLL Transport (`rpc::libcoro_host_scheduled_dynamic_library`)
 - Loads a shared object into the current process in coroutine builds
-- Uses coroutine-oriented DLL entry points
+- Uses direct `coro::task` function pointers and the host scheduler
+- Defers `dlclose` until the host scheduler threads that executed DLL code have stopped
+- Preserves the same parent/child lifetime pattern as other hierarchical transports
+
+### DLL-Scheduled Coroutine DLL Transport (`rpc::libcoro_dll_scheduled_dynamic_library`)
+- Loads a shared object into the current process in coroutine builds
+- Uses begin/complete callback entry points and a scheduler owned by the DLL runtime
+- Can shut down its DLL scheduler as part of transport teardown before `dlclose`
 - Preserves the same parent/child lifetime pattern as other hierarchical transports
 - See `documents/transports/dynamic_library.md`
 

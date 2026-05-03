@@ -64,8 +64,8 @@ std::unordered_map<destination_zone, std::weak_ptr<transport>> transports_;
 ```
 
 **Strong References (Keep Transport Alive)**:
-1. **Service Proxies** - Each proxy holds `stdex::member_ptr<transport>` to route calls
-2. **Passthroughs** - Hold `member_ptr` to both forward and reverse transports
+1. **Service Proxies** - Each proxy holds `stdex::member_ptr<service>` and `stdex::member_ptr<transport>` to route calls through the local service and then the transport
+2. **Passthroughs** - Hold strong references to both forward and reverse transports
 3. **Child Services** - Hold `std::shared_ptr<transport>` to parent transport
 4. **Active Stubs** - Transports may hold references to adjacent transports during RPC calls
 

@@ -7,6 +7,7 @@ Use the following split when reading them:
 
 - [Shared Transport View](shared/README.md)
 - [C++ Transport View](cpp/README.md)
+- [Streaming Result Listener](streaming-result-listener.md)
 - [Security Notes](../security/README.md), especially for hostile transports,
   SGX boundaries, IPC, and network input
 

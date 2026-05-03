@@ -120,7 +120,7 @@ class service_proxy
 {
     rpc::zone zone_id_;                      // Local zone
     rpc::destination_zone dest_zone_id_;     // Remote zone (zone-only address)
-    std::shared_ptr<service> service_;       // Local service runtime
+    stdex::member_ptr<service> service_;     // Local service runtime
     stdex::member_ptr<transport> transport_; // Transport to remote zone
 
 };
@@ -129,7 +129,8 @@ class service_proxy
 **Responsibilities**:
 1. **Zone Bridging**: Connects local zone to remote zone
 2. **Object Proxy Management**: Creates and caches `object_proxy` instances
-3. **Transport Access**: Routes calls through transport
+3. **Service-mediated transport access**: Routes outbound work through local
+   `service` virtuals, which then call the transport
 4. **Reference Propagation**: Forwards add_ref/release and related marshaller
    traffic to the remote zone
 
@@ -471,6 +472,7 @@ Proxies hold the transport chain alive through service_proxy:
 class service_proxy
 {
     stdex::member_ptr<transport> transport_;  // Strong reference via member_ptr
+    stdex::member_ptr<service> service_;      // Strong local service reference
 };
 
 class object_proxy
@@ -488,13 +490,19 @@ CORO_TASK(int) object_proxy::send(...)
         CO_RETURN rpc::error::ZONE_NOT_FOUND();
 
     // svc_proxy on stack keeps service_proxy alive
-    // service_proxy keeps transport alive
+    // service_proxy keeps service and transport alive
     // Safe during entire async operation
     CO_RETURN CO_AWAIT svc_proxy->send(...);
 }
 ```
 
 Even if another thread releases the last external reference to the service_proxy during the call, the stack-based `shared_ptr` keeps it alive until the call completes.
+
+Release paths follow the same rule. When an `object_proxy` reaches a zero count
+for a reference kind, `service_proxy` sends the release through the local
+service's outbound virtual, such as `service::outbound_release(...)`, and the
+service calls the transport. This keeps service-level security or policy
+overrides in the path even during destructor-triggered cleanup.
 
 See [Transports and Passthroughs](06-transports-and-passthroughs.md) for transport architecture.
 

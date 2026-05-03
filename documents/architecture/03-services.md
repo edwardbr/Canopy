@@ -397,12 +397,16 @@ class service_proxy
 {
     rpc::zone zone_id_;                      // Local zone
     rpc::destination_zone dest_zone_id_;     // Remote zone
-    std::shared_ptr<service> service_;       // Local service
+    stdex::member_ptr<service> service_;     // Local service
     stdex::member_ptr<transport> transport_; // Transport to remote zone
 };
 ```
 
-Service proxy is the gateway to a remote zone's service.
+Service proxy is the gateway to a remote zone's service. It holds the local
+service and transport through `member_ptr` so multithreaded paths first take a
+stack-local `shared_ptr` before using either object. Outbound send, post,
+add-ref, release, and related cleanup should route through the local service's
+outbound virtuals before reaching the transport.
 
 ## Common Patterns
 

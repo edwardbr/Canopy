@@ -132,6 +132,17 @@
             }
         },
         {
+            "name": "Debug_Coroutine_TSAN",
+            "inherits": "Debug_Coroutine",
+            "binaryDir": "build_debug_coroutine_tsan",
+            "cacheVariables": {
+                "CANOPY_DEBUG_THREAD": "ON",
+                "LIBCORO_ENABLE_TSAN": "ON",
+                "CANOPY_USE_TELEMETRY": "OFF",
+                "CANOPY_USE_CONSOLE_TELEMETRY": "OFF"
+            }
+        },
+        {
             "name": "Debug_Coroutine-GCC",
             "inherits": "Debug_Coroutine",
             "cacheVariables": {

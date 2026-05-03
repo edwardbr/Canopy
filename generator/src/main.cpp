@@ -154,7 +154,7 @@ int main(
         std::filesystem::path mock_path = args::get(mock_path_arg);
         bool enable_yas = args::get(yas_arg);
         bool enable_protobuf = args::get(protobuf_arg);
-        bool enable_nanopb = args::get(nanopb_arg) || enable_protobuf;
+        bool enable_nanopb = args::get(nanopb_arg);
         bool enable_javascript = args::get(javascript_arg);
         bool enable_rust = args::get(rust_arg);
         std::vector<std::string> namespaces = args::get(namespaces_arg);

@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <gtest/gtest.h>
 #include <rpc/rpc.h>
@@ -28,8 +29,8 @@ class passthrough_setup
     rpc::destination_zone reverse_dest_;
 
     bool error_has_occurred_ = false;
-    bool startup_complete_ = false;
-    bool shutdown_complete_ = false;
+    std::atomic_bool startup_complete_ = false;
+    std::atomic_bool shutdown_complete_ = false;
 
 public:
 #ifdef CANOPY_BUILD_COROUTINE
@@ -134,7 +135,7 @@ public:
             forward_transport_, reverse_transport_, service_, forward_dest_, reverse_dest_));
 
         RPC_INFO("passthrough_setup::CoroSetUp - Setup complete");
-        startup_complete_ = true;
+        startup_complete_.store(true);
         CO_RETURN true;
     }
 
@@ -152,7 +153,7 @@ public:
         RPC_INFO("passthrough_setup::set_up - Spawning CoroSetUp");
         RPC_ASSERT(io_scheduler_->spawn_detached(check_for_error(CoroSetUp())));
         RPC_INFO("passthrough_setup::set_up - Processing events until startup complete");
-        while (startup_complete_ == false)
+        while (!startup_complete_.load())
         {
             io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
@@ -164,7 +165,7 @@ public:
 #else
         RPC_INFO("passthrough_setup::set_up - Non-coroutine mode");
         check_for_error(CoroSetUp());
-        ASSERT_EQ(startup_complete_, true);
+        ASSERT_EQ(startup_complete_.load(), true);
 #endif
         RPC_INFO("passthrough_setup::set_up - Checking for errors");
         ASSERT_EQ(error_has_occurred_, false);
@@ -184,7 +185,7 @@ public:
         service_.reset();
         RPC_INFO("passthrough_setup::CoroTearDown - Service reset");
 
-        shutdown_complete_ = true;
+        shutdown_complete_.store(true);
         RPC_INFO("passthrough_setup::CoroTearDown - Complete");
         CO_RETURN;
     }
@@ -193,7 +194,7 @@ public:
     {
 #ifdef CANOPY_BUILD_COROUTINE
         RPC_ASSERT(io_scheduler_->spawn_detached(CoroTearDown()));
-        while (shutdown_complete_ == false)
+        while (!shutdown_complete_.load())
         {
             io_scheduler_->process_events(std::chrono::milliseconds(1));
         }

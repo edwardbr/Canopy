@@ -341,11 +341,12 @@ distributed:
 ```cpp
 class service_proxy
 {
-    stdex::member_ptr<transport> transport_;  // Strong reference
+    stdex::member_ptr<service> service_;      // Strong local service reference
+    stdex::member_ptr<transport> transport_;  // Strong transport reference
 };
 ```
 
-**Why strong?** Service proxies need the transport to route calls. As long as proxy exists, transport must remain valid.
+**Why strong?** Service proxies need both the local service and the transport to route calls. Outbound work goes through the service virtuals before reaching the transport, so both must remain valid while a proxy or object proxy can issue cleanup.
 
 ### 2. Passthroughs Hold Strong References
 
@@ -478,31 +479,54 @@ public:
         └─────────────────┘
 ```
 
-## member_ptr: Thread-Safe Transport References
+## member_ptr: Thread-Safe Service And Transport References
 
-Canopy uses `stdex::member_ptr` for thread-safe transport references:
+Canopy uses `stdex::member_ptr` for thread-safe shared object references in
+multithreaded runtime code, including service and transport members:
 
 ```cpp
 // member_ptr is a thread-safe wrapper around shared_ptr
 class member_ptr<T>
 {
-    std::shared_ptr<T> ptr_;
-    mutable std::shared_mutex mutex_;
+    std::atomic<std::shared_ptr<T>> ptr_;
 
 public:
     std::shared_ptr<T> get_nullable() const
     {
-        std::shared_lock lock(mutex_);
-        return ptr_;
+        return ptr_.load();
     }
 
     void reset(std::shared_ptr<T> ptr)
     {
-        std::unique_lock lock(mutex_);
-        ptr_ = std::move(ptr);
+        ptr_.store(std::move(ptr));
     }
 };
 ```
+
+`rpc::member_ptr<T>` uses the same pattern with
+`std::atomic<rpc::shared_ptr<T>>`. Canopy provides a polyfill for
+`std::atomic<rpc::shared_ptr<T>>` and `std::atomic<rpc::optimistic_ptr<T>>`,
+and a C++17 fallback for `std::atomic<std::shared_ptr<T>>` when the standard
+library does not provide the C++20 specialization.
+
+### Atomic Smart Pointer Follow-Up
+
+The current `atomic_smart_ptr` polyfill is mutex-backed. It accepts
+`std::memory_order` arguments on `load`, `store`, `exchange`, and
+`compare_exchange_*` so code can use the normal `std::atomic` API, but the
+current backend does not interpret those orders individually. The mutex gives a
+single conservative synchronization model.
+
+This is deliberately a correctness baseline. Further exploration:
+
+- Check whether constrained-runtime builds can support a lock-bit, lock-table,
+  or platform-atomic implementation for `rpc::shared_ptr` and
+  `rpc::optimistic_ptr`.
+- Preserve the existing API so `member_ptr` and callers do not change.
+- Make `memory_order success` / `memory_order failure` meaningful only when the
+  backend can provide weaker ordering safely.
+- Keep `is_always_lock_free == false` until there is a proven lock-free
+  implementation for every supported target.
 
 ### Why member_ptr?
 
@@ -584,13 +608,14 @@ Warning: shared_count_ was 0 before decrement
 
 Warning: stub zone_id X has been released but not deregistered
   → Orphaned stub reference
+```
 
 ## Thread Safety
 
 All smart pointer operations are thread-safe:
 
 - **Atomic reference counts**: `std::atomic<int32_t>` for shared/weak/optimistic counts
-- **member_ptr locking**: `shared_mutex` for concurrent access to transports
+- **member_ptr storage**: atomic smart-pointer storage for concurrent access to transports
 - **Control block operations**: Lock-free atomic operations
 
 Multiple threads can:
@@ -608,6 +633,7 @@ Multiple threads can:
 
 **member_ptr**:
 - `c++/rpc/include/rpc/internal/member_ptr.h` - Thread-safe wrapper
+- `c++/rpc/include/rpc/internal/polyfill/atomic_shared_ptr.h` - Atomic smart-pointer polyfill
 
 **Reference Counting**:
 - `c++/rpc/src/object_stub.cpp` - Server-side refcounting

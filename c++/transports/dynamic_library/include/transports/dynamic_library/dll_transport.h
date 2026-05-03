@@ -193,6 +193,8 @@ extern "C"
 {
     CANOPY_DLL_EXPORT void canopy_dll_destroy(void* dll_ctx);
 
+    CANOPY_DLL_EXPORT void canopy_dll_shutdown();
+
     CANOPY_DLL_EXPORT int canopy_dll_send(
         void* dll_ctx,
         rpc::send_params* params,

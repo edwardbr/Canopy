@@ -531,10 +531,14 @@ class service_proxy
 {
     rpc::zone zone_id_;                      // Local zone
     rpc::destination_zone dest_zone_id_;     // Remote zone
-    std::shared_ptr<service> service_;       // Local service
+    stdex::member_ptr<service> service_;     // Local service
     stdex::member_ptr<transport> transport_; // Transport to remote zone
 };
 ```
+
+The service proxy is intentionally service-mediated: it obtains local
+stack-owned copies of the service and transport, then routes outbound work
+through the service's virtual outbound methods before the transport boundary.
 
 ### Stub Architecture
 

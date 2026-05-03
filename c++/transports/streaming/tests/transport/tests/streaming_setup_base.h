@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include <atomic>
+
 #include <common/transport_setup_base.h>
 #include <streaming/listener.h>
 #include <transports/streaming/transport.h>
@@ -14,9 +16,21 @@ class streaming_setup_base
 {
     using base = transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>;
 
-    bool setup_complete_ = false;
+    std::atomic_bool setup_complete_ = false;
 
 protected:
+    static constexpr rpc::stream_transport::stream_transport_options test_transport_options_{
+        .call_timeout = std::chrono::milliseconds{30000},
+        .call_timeout_sweep = std::chrono::milliseconds{1},
+    };
+
+    static rpc::zone make_peer_zone_id()
+    {
+        auto peer_zone_id = rpc::DEFAULT_PREFIX;
+        std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1024);
+        return peer_zone_id;
+    }
+
     std::shared_ptr<rpc::root_service> peer_service_; // NOLINT(misc-non-private-member-variables-in-classes)
 
     // The two sides of the transport: initiator (client) and responder (server/child)
@@ -38,6 +52,24 @@ protected:
                 CO_RETURN rpc::service_connect_result<yyy::i_example>{ret, std::move(example)};
             }
             CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(example)};
+        };
+    }
+
+    template<
+        class Remote,
+        class Local>
+    auto make_test_connection_callback()
+    {
+        auto factory = make_interface_setup_factory();
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+        return [this, factory = std::move(factory)](
+                   const std::string& name,
+                   std::shared_ptr<rpc::service> svc,
+                   std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
+        {
+            this->responder_transport_ = rpc::stream_transport::make_server<Remote, Local>(
+                name, std::move(svc), std::move(stm), factory, test_transport_options_);
+            CO_RETURN;
         };
     }
 
@@ -70,7 +102,7 @@ public:
 
     virtual void set_up()
     {
-        setup_complete_ = false;
+        setup_complete_.store(false);
         this->io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
             coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                 .pool = coro::thread_pool::options{
@@ -81,13 +113,13 @@ public:
         auto setup_task = [this]() -> coro::task<void>
         {
             CO_AWAIT this->check_for_error(CoroSetUp());
-            setup_complete_ = true;
+            setup_complete_.store(true);
             CO_RETURN;
         };
 
         RPC_ASSERT(this->io_scheduler_->spawn_detached(setup_task()));
 
-        while (!setup_complete_)
+        while (!setup_complete_.load())
         {
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
@@ -97,20 +129,20 @@ public:
 
     virtual void tear_down()
     {
-        bool shutdown_complete = false;
+        std::atomic_bool shutdown_complete = false;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto shutdown_task = [&]() -> coro::task<void>
         {
             CO_AWAIT CoroTearDown();
             CO_AWAIT this->io_scheduler_->schedule();
             CO_AWAIT this->io_scheduler_->schedule();
-            shutdown_complete = true;
+            shutdown_complete.store(true);
             CO_RETURN;
         };
 
         RPC_ASSERT(this->io_scheduler_->spawn_detached(shutdown_task()));
 
-        while (!shutdown_complete)
+        while (!shutdown_complete.load())
         {
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
@@ -138,8 +170,18 @@ public:
             ++iteration;
         }
 
+        const int max_drain_iterations = 1000;
+        for (int drain_iteration = 0; drain_iteration < max_drain_iterations && !this->io_scheduler_->empty();
+            ++drain_iteration)
+        {
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+        }
+
         peer_service_.reset();
         this->root_service_.reset();
+        initiator_transport_.reset();
+        responder_transport_.reset();
+        this->io_scheduler_.reset();
         this->reset_telemetry_for_test();
     }
 };

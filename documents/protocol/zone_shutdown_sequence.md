@@ -14,6 +14,13 @@ The remote zone must not be terminated simply because the parent fixture or appl
 
 A clean refcount-zero shutdown is not a transport failure. It must not emit `transport_down`. `transport_down` is reserved for real failure cases where the peer transport has become unreliable and normal release messages cannot be trusted to complete.
 
+Ownership order is part of the shutdown contract. In child-zone transports, the
+child-side transport outlives the child service so it can deliver final release
+and shutdown work. In a root service, transports and routed work should drain
+before the root service destructor runs; the service shutdown event is therefore
+a useful test assertion for "the transport-owned graph has collapsed", not a
+command to force the graph to collapse.
+
 ## Expected Host-To-Child Shutdown
 
 This is the common case where the host owns an `i_example` proxy to an object inside a child zone. The example implementation in the child may also hold an `i_host` proxy back to an object owned by the host.
@@ -131,14 +138,22 @@ The runtime sequence is:
    dynamic library, or enclave may already have destroyed or unmapped its side of
    a queue-backed stream. The close handshake belongs in the send/receive loops
    while the peer stream is still known to be alive.
-9. The service weak reference should expire naturally after:
+9. `service_proxy` release cleanup should still route through the local service
+   outbound virtuals, for example `service::outbound_release(...)`, before it
+   reaches the transport. This keeps service-level policy and security hooks on
+   late destructor-triggered releases.
+10. The service weak reference should expire naturally after:
    - child objects have been destroyed,
    - object proxies have released remote references,
    - service proxies have been destroyed,
    - pass-throughs have been removed,
    - transport activity trackers have released their service references.
-10. Only after the service and transport no longer need to exist should the runtime stop worker loops.
-11. Only after worker loops have returned should the runtime thread or ECALL return to the host.
+11. Only after the service and transport no longer need to exist should the runtime stop worker loops.
+12. Only after worker loops have returned should the runtime thread or ECALL return to the host.
+13. Queue-backed streams may await the scheduler but must not be the scheduler
+    owner. Scheduler lifetime belongs to the service or runtime, otherwise a
+    stream destroyed by a scheduler worker can become the final scheduler owner
+    and deadlock while shutting down the same worker pool.
 
 ## Shutdown Checklist
 
@@ -182,6 +197,13 @@ Use this checklist when investigating a hanging or premature shutdown.
 - Completed coroutine frames were reaped so they did not retain local `rpc::shared_ptr` values.
 - The runtime did not return from the main loop while the service weak pointer was still live because of real object/proxy references.
 - The runtime did not destroy the enclave or unload the DLL while non-zero references remained.
+- Tests that own a root service should continue driving the scheduler until the
+  service shutdown event is observed. Waiting for that concrete event is
+  preferred over arbitrary idle-drain loops or calling `check_is_empty()` as
+  control flow.
+- Fixtures that create stream-backed child transports should keep driving the
+  scheduler until those transports have released their final self-reference
+  before releasing the fixture-owned scheduler.
 
 ### Final State
 

@@ -13,14 +13,23 @@ project(
   LANGUAGES CXX)
 
 include(CanopyCreateDynamicLibrary)
-include(CanopyCreateLibcoroDynamicLibrary)
+include(CanopyCreateLibcoroDllScheduledDynamicLibrary)
+include(CanopyCreateLibcoroHostScheduledDynamicLibrary)
 include(CanopyCreateLibcoroSpscDynamicLibrary)
 
 if(CANOPY_BUILD_COROUTINE)
-  canopycreatelibcorodynamiclibrary(
-    canopy_benchmark_libcoro_dll
+  canopycreatelibcorodllscheduleddynamiclibrary(
+    canopy_benchmark_libcoro_dll_scheduled_dll
     SOURCES
-    src/canopy_libcoro_dll_init.cpp
+    src/canopy_libcoro_dll_scheduled_dll_init.cpp
+    LINK_LIBRARIES
+    comprehensive_idl
+    rpc_log)
+
+  canopycreatelibcorohostscheduleddynamiclibrary(
+    canopy_benchmark_libcoro_host_scheduled_dll
+    SOURCES
+    src/canopy_libcoro_host_scheduled_dll_init.cpp
     LINK_LIBRARIES
     comprehensive_idl
     rpc_log)
@@ -67,7 +76,8 @@ add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmar
 if(CANOPY_BUILD_COROUTINE)
   target_sources(
     benchmark
-    PRIVATE src/benchmark_libcoro_dynamic_library.cpp
+    PRIVATE src/benchmark_libcoro_dll_scheduled_dynamic_library.cpp
+            src/benchmark_libcoro_host_scheduled_dynamic_library.cpp
             src/benchmark_ipc.cpp
             src/benchmark_spsc.cpp
             src/benchmark_tcp.cpp
@@ -77,7 +87,8 @@ target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
 if(CANOPY_BUILD_COROUTINE)
   target_compile_definitions(
     benchmark
-    PRIVATE CANOPY_BENCHMARK_LIBCORO_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_dll>"
+    PRIVATE CANOPY_BENCHMARK_LIBCORO_DLL_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_dll_scheduled_dll>"
+            CANOPY_BENCHMARK_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_host_scheduled_dll>"
             CANOPY_BENCHMARK_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_child_host_process>"
             CANOPY_BENCHMARK_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_spsc_dll>"
             CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_benchmark_ipc_child_process>")
@@ -91,7 +102,8 @@ if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     benchmark
     PUBLIC transport_streaming
-           transport_libcoro_dynamic_library
+           transport_libcoro_dll_scheduled_dynamic_library
+           transport_libcoro_host_scheduled_dynamic_library
            transport_ipc_transport
            streaming_spsc_queue
            streaming_tcp
@@ -107,7 +119,8 @@ set_property(TARGET benchmark PROPERTY COMPILE_PDB_NAME benchmark)
 if(CANOPY_BUILD_COROUTINE)
   add_dependencies(
     benchmark
-    canopy_benchmark_libcoro_dll
+    canopy_benchmark_libcoro_dll_scheduled_dll
+    canopy_benchmark_libcoro_host_scheduled_dll
     canopy_benchmark_libcoro_spsc_dll
     canopy_benchmark_ipc_child_process
     canopy_ipc_child_host_process)

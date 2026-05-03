@@ -63,7 +63,8 @@ The simple flow is:
 2. The `object_proxy` increments the local count for that reference kind.
 3. If the previous local count was non-zero, the operation is complete locally.
 4. If the previous local count was zero, the `object_proxy` calls `service_proxy::sp_add_ref`.
-5. The `service_proxy` sends `add_ref` through its transport.
+5. The `service_proxy` sends `add_ref` through the local service's
+   `outbound_add_ref(...)` virtual, and the service calls the transport.
 6. Intermediate transports and pass-throughs route the request until it reaches the owner zone.
 7. The owner service calls `object_stub::add_ref`.
 8. The stub increments the per-caller-zone count and the global shared or optimistic count.

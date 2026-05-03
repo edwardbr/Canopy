@@ -28,8 +28,10 @@
 
 #pragma once
 
-#include <memory>
 #include <atomic>
+#include <memory>
+
+#include <rpc/internal/member_ptr.h>
 
 namespace rpc
 {
@@ -92,14 +94,14 @@ namespace rpc
         std::atomic<uint64_t> optimistic_count_{0};
 
         // CRITICAL: Strong references to both transports keep routing path alive
-        std::shared_ptr<transport> forward_transport_; // Transport to forward destination
-        std::shared_ptr<transport> reverse_transport_; // Transport to reverse destination
+        stdex::member_ptr<transport> forward_transport_; // Transport to forward destination
+        stdex::member_ptr<transport> reverse_transport_; // Transport to reverse destination
 
         // CRITICAL: Strong reference to service keeps intermediary zone alive
-        std::shared_ptr<service> service_;
+        stdex::member_ptr<service> service_;
 
         // Self-reference prevents deletion during active calls
-        std::shared_ptr<pass_through> self_ref_;
+        stdex::member_ptr<pass_through> self_ref_;
 
         // Bit 63 = SHUTDOWN_BIT (set when disconnecting; rejects new calls atomically).
         // Bits 0..62 = count of active in-flight calls.
@@ -157,8 +159,8 @@ namespace rpc
         uint64_t get_optimistic_count() const { return optimistic_count_.load(std::memory_order_acquire); }
 
         // Access to transports for testing
-        std::shared_ptr<transport> get_forward_transport() const { return forward_transport_; }
-        std::shared_ptr<transport> get_reverse_transport() const { return reverse_transport_; }
+        std::shared_ptr<transport> get_forward_transport() const { return forward_transport_.get_nullable(); }
+        std::shared_ptr<transport> get_reverse_transport() const { return reverse_transport_.get_nullable(); }
 
         destination_zone get_forward_destination() const
         {

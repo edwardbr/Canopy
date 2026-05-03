@@ -17,12 +17,15 @@
 #  include <transports/libcoro_spsc_dynamic_dll/loaded_library.h>
 #  include <transports/libcoro_spsc_dynamic_dll/transport.h>
 
+#  include <atomic>
+
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
 class libcoro_spsc_dll_transport_setup
     : public transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
     rpc::libcoro_spsc_dynamic_dll::queue_pair queues_{};
     std::shared_ptr<rpc::libcoro_spsc_dynamic_dll::loaded_library> loaded_;
+    std::atomic_bool setup_complete_ = false;
     rpc::zone host_zone_ = rpc::DEFAULT_PREFIX;
     rpc::zone dll_zone_ = []
     {
@@ -31,14 +34,14 @@ class libcoro_spsc_dll_transport_setup
         RPC_ASSERT(ok);
         return rpc::zone(address);
     }();
-    std::shared_ptr<rpc::stream_transport::transport> client_transport_;
 
     CORO_TASK(bool) connect_child()
     {
-        client_transport_ = rpc::libcoro_spsc_dynamic_dll::make_client("spsc child", this->root_service_, &queues_);
+        auto client_transport = rpc::libcoro_spsc_dynamic_dll::make_client("spsc child", this->root_service_, &queues_);
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
-            "spsc child", client_transport_, this->local_host_ptr_.lock());
+            "spsc child", client_transport, this->local_host_ptr_.lock());
         this->i_example_ptr_ = std::move(connect_result.output_interface);
+        setup_complete_.store(true);
         CO_RETURN connect_result.error_code == rpc::error::OK();
     }
 
@@ -65,17 +68,17 @@ public:
             &queues_.host_to_dll);
         ASSERT_NE(loaded_, nullptr);
 
+        setup_complete_.store(false);
         RPC_ASSERT(this->io_scheduler_->spawn_detached(this->check_for_error(connect_child())));
-        while (!this->i_example_ptr_ && !this->error_has_occurred_)
+        while (!setup_complete_.load() && !this->error_has_occurred_)
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
         ASSERT_EQ(this->error_has_occurred_, false);
     }
 
     void tear_down()
     {
-        this->i_host_ptr_ = nullptr;
-        this->i_example_ptr_ = nullptr;
-        client_transport_.reset();
+        auto root_shutdown_event = this->make_root_shutdown_event_for_test();
+        this->release_interfaces_and_root_service_for_test(root_shutdown_event);
 
         for (int idle_iterations = 0; idle_iterations < 10;)
         {
@@ -87,12 +90,10 @@ public:
 
         if (loaded_)
         {
-            loaded_->stop();
+            ASSERT_TRUE(loaded_->wait_until_expired(std::chrono::milliseconds{5000}));
             loaded_.reset();
         }
 
-        this->root_service_ = nullptr;
-        current_host_service.reset();
         this->reset_telemetry_for_test();
     }
 };

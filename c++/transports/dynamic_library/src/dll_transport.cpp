@@ -15,6 +15,10 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
+#  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#    include <google/protobuf/stubs/common.h>
+#  endif
+
 namespace rpc::dynamic_library
 {
     // -------------------------------------------------------------------------
@@ -186,6 +190,13 @@ extern "C"
         ctx->transport.reset();
 
         delete ctx;
+    }
+
+    CANOPY_DLL_EXPORT void canopy_dll_shutdown()
+    {
+#  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+        google::protobuf::ShutdownProtobufLibrary();
+#  endif
     }
 
     CANOPY_DLL_EXPORT int canopy_dll_send(

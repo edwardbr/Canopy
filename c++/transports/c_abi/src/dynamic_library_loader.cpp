@@ -9,8 +9,8 @@ namespace rpc::c_abi
 {
     bool dynamic_library_exports::is_complete() const
     {
-        return init && destroy && send && post && try_cast && add_ref && release && object_released && transport_down
-               && get_new_zone_id;
+        return init && destroy && shutdown && send && post && try_cast && add_ref && release && object_released
+               && transport_down && get_new_zone_id;
     }
 
     dynamic_library_loader::~dynamic_library_loader()
@@ -49,6 +49,7 @@ namespace rpc::c_abi
 
         exports_.init = reinterpret_cast<canopy_dll_init_fn>(resolve_symbol("canopy_dll_init"));
         exports_.destroy = reinterpret_cast<canopy_dll_destroy_fn>(resolve_symbol("canopy_dll_destroy"));
+        exports_.shutdown = reinterpret_cast<canopy_dll_shutdown_fn>(resolve_symbol("canopy_dll_shutdown"));
         exports_.send = reinterpret_cast<canopy_dll_send_fn>(resolve_symbol("canopy_dll_send"));
         exports_.post = reinterpret_cast<canopy_dll_post_fn>(resolve_symbol("canopy_dll_post"));
         exports_.try_cast = reinterpret_cast<canopy_dll_try_cast_fn>(resolve_symbol("canopy_dll_try_cast"));
@@ -72,6 +73,9 @@ namespace rpc::c_abi
 
     void dynamic_library_loader::unload()
     {
+        if (exports_.shutdown)
+            exports_.shutdown();
+
         clear();
         if (!handle_)
             return;

@@ -29,6 +29,12 @@ CANOPY_BUILD_PROTOCOL_BUFFERS=ON # Build full Google C++ protobuf support
 CANOPY_BUILD_NANOPB=ON           # Build Nanopb support
 ```
 
+The two options are independent.  Enabling Nanopb does not require enabling the
+full Google C++ protobuf runtime, and enabling full protobuf does not imply that
+Nanopb code is generated.  Both may be enabled when host-side code wants the full
+protobuf API while embedded or constrained-dependency targets also need the smaller
+Nanopb runtime.
+
 `CANOPY_BUILD_NANOPB=ON` still requires protobuf tooling at build time because Canopy emits `.proto` files and Nanopb generation consumes them. That does not mean generated targets link the full protobuf runtime.
 
 For constrained-runtime builds, the intended configuration is:
@@ -56,6 +62,18 @@ CanopyGenerate(
 ```
 
 When an existing target requests `protocol_buffers` but full protobuf support is disabled, Canopy can satisfy the protobuf-compatible request with Nanopb if `CANOPY_BUILD_NANOPB=ON`. This is deliberate so existing protobuf-oriented IDL targets can still build in full-protobuf-free configurations.
+
+The reverse alias is also supported: if `CANOPY_BUILD_NANOPB=OFF` and
+`CANOPY_BUILD_PROTOCOL_BUFFERS=ON`, an `rpc::encoding::nanopb` request is routed
+through the full protobuf backend. When both backends are enabled, no aliasing is
+applied and each encoding uses its matching implementation.
+
+The IDL-level `protocol_buffers` request is handled by CMake policy in
+`CanopyGenerate.cmake`.  The generator executable itself treats `--protobuf` and
+`--nanopb` as literal flags; it no longer turns a protobuf request into an
+implicit Nanopb request.  This keeps full protobuf and Nanopb generation
+separable while still allowing CMake to use Nanopb as the stand-in for protobuf
+wire support when full protobuf is disabled.
 
 Generated Nanopb C++ adapters expose Canopy-facing methods such as:
 

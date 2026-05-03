@@ -139,9 +139,28 @@ Canopy has two protobuf-compatible C++ backends:
 - `CANOPY_BUILD_PROTOCOL_BUFFERS=ON` enables the full Google C++ protobuf runtime.
 - `CANOPY_BUILD_NANOPB=ON` enables the Nanopb-backed runtime.
 
-Both use generated `.proto` schemas and protobuf wire bytes. For normal host processes, full protobuf is appropriate when you need the Google generated C++ API or other full-runtime features. For small-runtime deployments, prefer Nanopb so generated code does not link `protobuf::libprotobuf`.
+Both use generated `.proto` schemas and protobuf wire bytes. For normal host processes, full protobuf is appropriate when you need the Google generated C++ API or other full-runtime features. For small-runtime deployments, prefer Nanopb so generated code does not link `protobuf::libprotobuf` into generated runtime targets.
+
+The two build options are independent.  `CanopyGenerate(... protocol_buffers
+...)` requests protobuf-compatible schema/wire support for that IDL target.  If
+full protobuf is enabled, Canopy generates the Google C++ protobuf backend; if
+Nanopb is enabled, Canopy generates the Nanopb backend.  Both can be generated
+from the same IDL target.
+
+When only one protobuf-compatible backend is enabled, Canopy maps the other
+encoding to it.  `rpc::encoding::protocol_buffers` uses Nanopb when full
+protobuf is disabled, and `rpc::encoding::nanopb` uses the full protobuf backend
+when Nanopb is disabled.
 
 Nanopb still needs protobuf tooling at build time. That is separate from the runtime dependency of your generated targets.
+
+If an external project builds Canopy-powered DLLs/shared objects and enables full
+protobuf, the module must run Canopy's dynamic-library shutdown hook before
+unload.  The built-in DLL helper libraries provide this hook:
+`canopy_dll_shutdown` for the non-coroutine C++ and language-neutral C ABI
+transports, and before the coroutine dynamic-library entry point returns.  Those hooks
+call `google::protobuf::ShutdownProtobufLibrary()` when
+`CANOPY_BUILD_PROTOCOL_BUFFERS` is enabled.
 
 ### Important: `LANGUAGES C CXX`
 

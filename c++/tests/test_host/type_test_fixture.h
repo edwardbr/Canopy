@@ -4,6 +4,7 @@
 #pragma once
 
 #include "gtest/gtest.h"
+#include <atomic>
 #include <mutex>
 #include <set>
 
@@ -167,20 +168,28 @@ void run_coro_test(
 {
     auto& lib = test_fixture.get_lib();
 #ifdef CANOPY_BUILD_COROUTINE
-    bool is_ready = false;
-    // Create a lambda that calls the coroutine function and sets is_ready when done
+    std::atomic_bool is_ready = false;
+    // Create a lambda that calls the coroutine function. The completion flag is
+    // set by the outer task after check_for_error has returned and released the
+    // awaited task frame.
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto wrapper_function = [&]() -> CORO_TASK(bool)
+    auto checked_function = [&]() -> CORO_TASK(bool)
     {
-        auto result = CO_AWAIT coro_function(lib, std::forward<Args>(args)...);
-        is_ready = true; // Set is_ready when coroutine completes
-        CO_RETURN result;
+        CO_RETURN CO_AWAIT coro_function(lib, std::forward<Args>(args)...);
     };
 
-    RPC_ASSERT(lib.get_scheduler()->spawn_detached(lib.check_for_error(wrapper_function())));
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+    auto completion_function = [&]() -> CORO_TASK(void)
+    {
+        CO_AWAIT lib.check_for_error(checked_function());
+        is_ready.store(true);
+        CO_RETURN;
+    };
+
+    RPC_ASSERT(lib.get_scheduler()->spawn_detached(completion_function()));
 
     // Process events until main coroutine completes
-    while (!is_ready)
+    while (!is_ready.load())
     {
         lib.get_scheduler()->process_events(std::chrono::milliseconds(1));
     }

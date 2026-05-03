@@ -16,6 +16,7 @@ sequenceDiagram
     participant Control as Interface control block
     participant ObjectProxy as object_proxy
     participant ServiceProxy as service_proxy
+    participant LocalService as releasing zone service
     participant ClientTransport as releasing zone transport
     participant Passthrough as passthrough chain
     participant OwnerTransport as owner zone transport
@@ -28,7 +29,8 @@ sequenceDiagram
 
     alt local shared count reaches zero
         ObjectProxy->>ServiceProxy: on_object_proxy_released(shared)
-        ServiceProxy->>ClientTransport: release(remote object, shared)
+        ServiceProxy->>LocalService: outbound_release(remote object, shared)
+        LocalService->>ClientTransport: release(remote object, shared)
 
         alt owner object is not directly in this zone
             ClientTransport->>Passthrough: inbound_release / release
@@ -64,18 +66,19 @@ The shared release flow is:
 2. If this was the last active local shared reference in the interface control block, the control block calls `object_proxy::release(false)`.
 3. The `object_proxy` decrements its shared count. If that shared count reaches zero, it asks its `service_proxy` to release the remote object.
 4. The `object_proxy` is deleted only when both its local shared count and local optimistic count are zero.
-5. The `service_proxy` sends a shared release request to its transport.
-6. The transport sends the release to its companion transport over the wire, queue, ecall/ocall bridge, shared library boundary, or other transport-specific mechanism.
-7. If the destination object is not in the current zone, `transport::inbound_release` forwards the release through a `pass_through` until the release reaches the destination zone.
-8. The destination transport sends the release to its local service.
-9. The service sends the release to the `object_stub`.
-10. The `object_stub` decrements the shared count for the caller zone and the global shared count.
-11. If the global shared count drops to zero, the service erases the stub from its registry and calls `dont_keep_alive()` on the stub. That allows the `object_stub` and implementation object to be destroyed once no ordinary local references still hold them.
-12. If other zones, including the owner zone, still have positive shared references, the stub and implementation object stay alive.
-13. When the shared count reaches zero, the service sends `object_released` to each zone that still has positive optimistic references to that object.
-14. Pass-throughs update their own shared reference counts after a successful forwarded shared release. A pass-through can destroy itself only when both its shared and optimistic route counts have reached zero and no call is active.
-15. When the releasing zone has no remaining object proxies for a destination, the `service_proxy` can be destroyed. Its destructor decrements the outbound proxy count on the transport and removes the zone proxy from the service.
-16. Services, transports, and pass-through chains are not deleted by one direct release call. They disappear when their own reference-counted owners have drained: object stubs, service proxies, pass-throughs, incoming stub counts, outgoing proxy counts, and explicit transport ownership.
+5. The `service_proxy` sends a shared release through its local `service` by calling `service::outbound_release(...)`.
+6. The local service calls the transport. Derived services can override `outbound_release(...)` to inject security checks, telemetry, policy, or boundary-specific behavior before the release crosses the transport.
+7. The transport sends the release to its companion transport over the wire, queue, ecall/ocall bridge, shared library boundary, or other transport-specific mechanism.
+8. If the destination object is not in the current zone, `transport::inbound_release` forwards the release through a `pass_through` until the release reaches the destination zone.
+9. The destination transport sends the release to its local service.
+10. The service sends the release to the `object_stub`.
+11. The `object_stub` decrements the shared count for the caller zone and the global shared count.
+12. If the global shared count drops to zero, the service erases the stub from its registry and calls `dont_keep_alive()` on the stub. That allows the `object_stub` and implementation object to be destroyed once no ordinary local references still hold them.
+13. If other zones, including the owner zone, still have positive shared references, the stub and implementation object stay alive.
+14. When the shared count reaches zero, the service sends `object_released` to each zone that still has positive optimistic references to that object.
+15. Pass-throughs update their own shared reference counts after a successful forwarded shared release. A pass-through can destroy itself only when both its shared and optimistic route counts have reached zero and no call is active.
+16. When the releasing zone has no remaining object proxies for a destination, the `service_proxy` can be destroyed. Its destructor decrements the outbound proxy count on the transport and removes the zone proxy from the service.
+17. Services, transports, and pass-through chains are not deleted by one direct release call. They disappear when their own reference-counted owners have drained: object stubs, service proxies, pass-throughs, incoming stub counts, outgoing proxy counts, and explicit transport ownership.
 
 ## Optimistic Pointer Release
 
@@ -85,6 +88,7 @@ sequenceDiagram
     participant Control as Interface control block
     participant ObjectProxy as object_proxy
     participant ServiceProxy as service_proxy
+    participant LocalService as releasing zone service
     participant ClientTransport as releasing zone transport
     participant Passthrough as passthrough chain
     participant OwnerTransport as owner zone transport
@@ -96,7 +100,8 @@ sequenceDiagram
 
     alt local optimistic count reaches zero
         ObjectProxy->>ServiceProxy: on_object_proxy_released(optimistic)
-        ServiceProxy->>ClientTransport: release(remote object, optimistic)
+        ServiceProxy->>LocalService: outbound_release(remote object, optimistic)
+        LocalService->>ClientTransport: release(remote object, optimistic)
 
         alt owner object is not directly in this zone
             ClientTransport->>Passthrough: inbound_release / release
@@ -129,12 +134,13 @@ The optimistic release flow is:
 2. If this was the last active local optimistic reference in the interface control block, the control block calls `object_proxy::release(true)`.
 3. The `object_proxy` decrements its optimistic count. If that optimistic count reaches zero, it asks its `service_proxy` to send an optimistic release.
 4. The `object_proxy` is deleted only when both its local shared and local optimistic counts are zero.
-5. The `service_proxy` sends a release request with the optimistic release option set.
-6. The transport and any pass-throughs route the release to the destination zone in the same way as a shared release.
-7. If the destination service still has the stub, the stub decrements the optimistic count for the caller zone and the global optimistic count.
-8. Optimistic release does not delete the implementation object. Implementation lifetime is driven by shared references.
-9. If the destination service no longer has the stub, `OBJECT_NOT_FOUND` is valid. This can happen after the shared count reached zero and the service already sent `object_released` to optimistic holders.
-10. Pass-through optimistic route counts are decremented on successful optimistic release. They are also decremented when `object_released` is forwarded back to optimistic holders.
+5. The `service_proxy` sends a release request with the optimistic release option set through `service::outbound_release(...)`.
+6. The local service calls the transport after any service override has run.
+7. The transport and any pass-throughs route the release to the destination zone in the same way as a shared release.
+8. If the destination service still has the stub, the stub decrements the optimistic count for the caller zone and the global optimistic count.
+9. Optimistic release does not delete the implementation object. Implementation lifetime is driven by shared references.
+10. If the destination service no longer has the stub, `OBJECT_NOT_FOUND` is valid. This can happen after the shared count reached zero and the service already sent `object_released` to optimistic holders.
+11. Pass-through optimistic route counts are decremented on successful optimistic release. They are also decremented when `object_released` is forwarded back to optimistic holders.
 
 ## Validation Notes
 
@@ -143,6 +149,7 @@ The proposed release sequence is valid as a protocol model with these correction
 - The `object_proxy` sends release per reference kind on a transition to zero for that kind. It is erased from the `service_proxy` map only when both local shared and local optimistic counts are zero.
 - The owner `object_stub` and implementation are released when the shared count reaches zero, not when optimistic references reach zero.
 - `object_released` is a notification from the owner side to zones with remaining optimistic references. It is emitted when the owner shared count reaches zero.
+- `service_proxy` release paths go through the local `service` outbound virtuals. Direct transport calls from `service_proxy` bypass service overrides and should be treated as a bug unless there is an explicit, documented exception.
 - Services and transports are not normally destroyed as a direct synchronous continuation of the release RPC. They are destroyed when their owning counts and containers drain.
 - A `service_proxy` destructor participates in cleanup by decrementing the outbound proxy count and removing the zone proxy. It should not be treated as the sender of the initial release; that happens while the object proxy is being released.
 

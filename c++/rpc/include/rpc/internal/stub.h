@@ -39,6 +39,8 @@
 #include <mutex>
 #include <atomic>
 
+#include <rpc/internal/member_ptr.h>
+
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
 #endif
@@ -93,10 +95,10 @@ namespace rpc
         object id_ = {0};
 
         // Root interface target for this local object
-        rpc::shared_ptr<rpc::casting_interface> target_;
+        const rpc::shared_ptr<rpc::casting_interface> target_;
 
         // Self-reference for shared_from_this pattern
-        std::shared_ptr<object_stub> p_keep_self_alive_;
+        stdex::member_ptr<object_stub> p_keep_self_alive_;
 
         // Global reference counts (sum across all zones)
         std::atomic<uint64_t> shared_count_ = 0;     // RAII references (rpc::shared_ptr)
@@ -108,7 +110,7 @@ namespace rpc
         mutable std::mutex references_mutex_; // Protects both reference maps
 
         // CRITICAL: Strong reference to service keeps service alive while stub exists
-        std::shared_ptr<service> zone_;
+        const std::shared_ptr<service> zone_;
 
     public:
         object_stub(

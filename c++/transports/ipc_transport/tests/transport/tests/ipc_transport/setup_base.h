@@ -16,6 +16,8 @@
 #  include <common/transport_setup_base.h>
 #  include <transports/ipc_transport/transport.h>
 
+#  include <atomic>
+
 #  ifndef CANOPY_TEST_LIBCORO_SPSC_DLL_PATH
 #    error "CANOPY_TEST_LIBCORO_SPSC_DLL_PATH must be defined"
 #  endif
@@ -44,7 +46,7 @@ protected:
     rpc::zone dll_zone_ = make_dll_zone(1);
 
     std::shared_ptr<rpc::ipc_transport::transport> client_transport_;
-    int startup_count_ = 0;
+    std::atomic_int startup_count_ = 0;
 
     static rpc::zone make_dll_zone(uint64_t offset)
     {
@@ -74,7 +76,7 @@ protected:
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
             child_name.c_str(), transport, this->local_host_ptr_.lock());
         example = std::move(connect_result.output_interface);
-        ++startup_count_;
+        startup_count_.fetch_add(1);
         CO_RETURN connect_result.error_code == rpc::error::OK();
     }
 
@@ -131,13 +133,13 @@ public:
 
     void pump_until_startup()
     {
-        while (startup_count_ == 0)
+        while (startup_count_.load() == 0)
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
     }
 
     void pump_until_startup_count(int expected_startup_count)
     {
-        while (startup_count_ < expected_startup_count)
+        while (startup_count_.load() < expected_startup_count)
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
     }
 

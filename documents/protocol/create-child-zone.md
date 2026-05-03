@@ -48,7 +48,7 @@ sequenceDiagram
         ChildTransport-->>RootSvc: remote_object descriptor
         RootSvc->>RootSvc: bind output interface to object_proxy
         RootSvc-->>Client: output interface pointer
-        Note over Client,ChildTransport: Interface pointer owns object_proxy -> service_proxy -> transport.
+        Note over Client,ChildTransport: Interface pointer owns object_proxy -> service_proxy -> service and transport.
     else callable returns no object
         ChildSvc-->>ParentTransport: zero remote_object
         ParentTransport-->>ChildTransport: zero remote_object
@@ -73,7 +73,7 @@ sequenceDiagram
 
 4. The input interface is now valid inside the child zone.
 
-   The supplied interface pointer owns an `object_proxy`. The `object_proxy` owns a `service_proxy`. The `service_proxy` owns a transport `std::shared_ptr`. That chain keeps the transport and the reachable zone state alive while the interface pointer exists.
+   The supplied interface pointer owns an `object_proxy`. The `object_proxy` owns a `service_proxy`. The `service_proxy` owns the local service and transport through member pointers. That chain keeps the service-mediated transport path and the reachable zone state alive while the interface pointer exists.
 
    Because the `add_ref` has already completed for a non-null interface, the callable passed to `create_child_zone` may call that interface immediately.
 
@@ -89,7 +89,7 @@ sequenceDiagram
 
 7. The instantiating client receives the output interface pointer.
 
-   If the returned `remote_object` is non-zero, the client binds it to an interface pointer. That pointer has the same ownership chain as any other remote interface pointer: interface pointer to `object_proxy`, `object_proxy` to `service_proxy`, and `service_proxy` to transport.
+   If the returned `remote_object` is non-zero, the client binds it to an interface pointer. That pointer has the same ownership chain as any other remote interface pointer: interface pointer to `object_proxy`, `object_proxy` to `service_proxy`, and `service_proxy` to service and transport.
 
 ## Lifetime Contract
 
@@ -99,7 +99,7 @@ Child services and transports are not kept alive by arbitrary setup-owned transp
 
 - marshalled interface pointers own object proxies,
 - object proxies own service proxies,
-- service proxies own transports,
+- service proxies own the local service and transports needed to route outbound work,
 - hierarchical child services keep their parent transport while the child zone is alive.
 
 When the final marshalled interface references are released, the corresponding object and transport reference counts should fall to zero and transport shutdown should proceed from those counts.

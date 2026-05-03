@@ -405,6 +405,14 @@ namespace
 {
     constexpr auto call_timeout_ = std::chrono::milliseconds{500};
     constexpr auto call_timeout_sweep = std::chrono::milliseconds{100};
+
+    rpc::stream_transport::stream_transport_options timeout_transport_options()
+    {
+        return rpc::stream_transport::stream_transport_options{
+            .call_timeout = call_timeout_,
+            .call_timeout_sweep = call_timeout_sweep,
+        };
+    }
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -531,7 +539,7 @@ protected:
             "responder",
             std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8090}),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
-                make_hanging_factory(), call_timeout_, call_timeout_sweep));
+                make_hanging_factory(), timeout_transport_options()));
 
         if (!listener_->start_listening(peer_service_))
         {
@@ -550,7 +558,7 @@ protected:
 
         auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
         auto initiator = rpc::stream_transport::make_client(
-            "initiator", root_service_, std::move(tcp_stm), call_timeout_, call_timeout_sweep);
+            "initiator", root_service_, std::move(tcp_stm), timeout_transport_options());
 
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result
@@ -601,13 +609,13 @@ protected:
         auto responder = std::static_pointer_cast<rpc::stream_transport::transport>(
             CO_AWAIT peer_service_->make_acceptor<yyy::i_host, yyy::i_example>(
                 "responder",
-                rpc::stream_transport::transport_factory(std::move(peer_stream), call_timeout_, call_timeout_sweep),
+                rpc::stream_transport::transport_factory(std::move(peer_stream), timeout_transport_options()),
                 make_hanging_factory()));
         CO_AWAIT responder->accept();
 
         auto client_stream = std::make_shared<streaming::spsc_queue::stream>(&send_queue_, &recv_queue_, io_scheduler_);
         auto initiator = rpc::stream_transport::make_client(
-            "initiator", root_service_, std::move(client_stream), call_timeout_, call_timeout_sweep);
+            "initiator", root_service_, std::move(client_stream), timeout_transport_options());
 
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result
@@ -650,7 +658,7 @@ protected:
             "responder",
             std::make_shared<streaming::io_uring::acceptor>(addr, 8091),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
-                make_hanging_factory(), call_timeout_, call_timeout_sweep));
+                make_hanging_factory(), timeout_transport_options()));
 
         if (!listener_->start_listening(peer_service_))
         {
@@ -669,7 +677,7 @@ protected:
 
         auto io_stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
         auto initiator = rpc::stream_transport::make_client(
-            "initiator", root_service_, std::move(io_stm), call_timeout_, call_timeout_sweep);
+            "initiator", root_service_, std::move(io_stm), timeout_transport_options());
 
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result
@@ -746,7 +754,7 @@ protected:
             "responder",
             std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8092}),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
-                make_hanging_factory(), call_timeout_, call_timeout_sweep),
+                make_hanging_factory(), timeout_transport_options()),
             std::move(tls_transformer));
 
         if (!listener_->start_listening(peer_service_))
@@ -781,7 +789,7 @@ protected:
         }
 
         auto initiator
-            = rpc::stream_transport::make_client("initiator", root_service_, tls_stm, call_timeout_, call_timeout_sweep);
+            = rpc::stream_transport::make_client("initiator", root_service_, tls_stm, timeout_transport_options());
 
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result
@@ -836,7 +844,7 @@ protected:
             "responder",
             std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8093}),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
-                make_hanging_factory(), call_timeout_, call_timeout_sweep),
+                make_hanging_factory(), timeout_transport_options()),
             std::move(ws_transformer));
 
         if (!listener_->start_listening(peer_service_))
@@ -857,7 +865,7 @@ protected:
         auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
         auto ws_stm = std::make_shared<ws_client_stream>(tcp_stm);
         auto initiator = rpc::stream_transport::make_client(
-            "initiator", root_service_, std::move(ws_stm), call_timeout_, call_timeout_sweep);
+            "initiator", root_service_, std::move(ws_stm), timeout_transport_options());
 
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result

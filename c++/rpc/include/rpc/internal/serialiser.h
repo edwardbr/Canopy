@@ -83,6 +83,18 @@ namespace rpc
         // etc..
     };
 
+    inline constexpr encoding effective_encoding(encoding enc)
+    {
+#if defined(CANOPY_BUILD_NANOPB) && !defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
+        if (enc == encoding::protocol_buffers)
+            return encoding::nanopb;
+#elif defined(CANOPY_BUILD_PROTOCOL_BUFFERS) && !defined(CANOPY_BUILD_NANOPB)
+        if (enc == encoding::nanopb)
+            return encoding::protocol_buffers;
+#endif
+        return enc;
+    }
+
     // Size calculation functions (declared first for use in serialization)
     template<typename T> uint64_t yas_json_saved_size(const T& obj)
     {
@@ -284,6 +296,7 @@ namespace rpc
         const T& obj,
         encoding enc)
     {
+        enc = effective_encoding(enc);
         if (enc == encoding::yas_json)
             return to_yas_json<OutputBlob>(obj);
         if (enc == encoding::yas_binary)
@@ -306,6 +319,7 @@ namespace rpc
         const T& obj,
         encoding enc)
     {
+        enc = effective_encoding(enc);
         if (enc == encoding::yas_json)
             return yas_json_saved_size(obj);
         if (enc == encoding::yas_binary)
@@ -481,6 +495,7 @@ namespace rpc
         const byte_span& data,
         T& obj)
     {
+        enc = effective_encoding(enc);
         if (enc == encoding::yas_json)
             return from_yas_json(data, obj);
         if (enc == encoding::yas_binary)

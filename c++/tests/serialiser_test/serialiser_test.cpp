@@ -1082,6 +1082,58 @@ TEST_F(
     auto protobuf_result = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_FALSE(protobuf_result.empty());
 #endif
+#ifdef CANOPY_BUILD_NANOPB
+    auto nanopb_result = rpc::serialise(obj, rpc::encoding::nanopb);
+    EXPECT_FALSE(nanopb_result.empty());
+#endif
+}
+
+TEST_F(
+    SerialiserTest,
+    EffectiveEncodingUsesAvailableProtobufBackend)
+{
+#if defined(CANOPY_BUILD_PROTOCOL_BUFFERS) && defined(CANOPY_BUILD_NANOPB)
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::protocol_buffers), rpc::encoding::protocol_buffers);
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::nanopb), rpc::encoding::nanopb);
+#elif defined(CANOPY_BUILD_NANOPB)
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::protocol_buffers), rpc::encoding::nanopb);
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::nanopb), rpc::encoding::nanopb);
+#elif defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::protocol_buffers), rpc::encoding::protocol_buffers);
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::nanopb), rpc::encoding::protocol_buffers);
+#else
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::protocol_buffers), rpc::encoding::protocol_buffers);
+    EXPECT_EQ(rpc::effective_encoding(rpc::encoding::nanopb), rpc::encoding::nanopb);
+#endif
+}
+
+TEST_F(
+    SerialiserTest,
+    ProtobufCompatibleAliasRoundtrip)
+{
+    scalar_test::something_complicated original;
+    original.int_val = 77;
+    original.string_val = "alias_roundtrip";
+
+#if defined(CANOPY_BUILD_NANOPB) && !defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
+    auto serialized = rpc::serialise(original, rpc::encoding::protocol_buffers);
+    rpc::byte_span data_span(serialized);
+    scalar_test::something_complicated deserialized;
+    auto error = rpc::deserialise(rpc::encoding::protocol_buffers, data_span, deserialized);
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(deserialized.int_val, original.int_val);
+    EXPECT_EQ(deserialized.string_val, original.string_val);
+#elif defined(CANOPY_BUILD_PROTOCOL_BUFFERS) && !defined(CANOPY_BUILD_NANOPB)
+    auto serialized = rpc::serialise(original, rpc::encoding::nanopb);
+    rpc::byte_span data_span(serialized);
+    scalar_test::something_complicated deserialized;
+    auto error = rpc::deserialise(rpc::encoding::nanopb, data_span, deserialized);
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(deserialized.int_val, original.int_val);
+    EXPECT_EQ(deserialized.string_val, original.string_val);
+#else
+    GTEST_SKIP() << "Alias roundtrip is only active when exactly one protobuf-compatible backend is enabled.";
+#endif
 }
 
 // Test deserialise function with all encodings using generated structure
@@ -1134,6 +1186,17 @@ TEST_F(
         EXPECT_EQ(deserialized.string_val, obj.string_val);
     }
 #endif
+#ifdef CANOPY_BUILD_NANOPB
+    {
+        auto serialized = rpc::serialise(obj, rpc::encoding::nanopb);
+        rpc::byte_span data_span(serialized);
+        scalar_test::something_complicated deserialized;
+        auto error = rpc::deserialise(rpc::encoding::nanopb, data_span, deserialized);
+        EXPECT_TRUE(error.empty());
+        EXPECT_EQ(deserialized.int_val, obj.int_val);
+        EXPECT_EQ(deserialized.string_val, obj.string_val);
+    }
+#endif
 }
 
 // Test get_saved_size function with all encodings
@@ -1158,6 +1221,10 @@ TEST_F(
     auto protobuf_size = rpc::get_saved_size(obj, rpc::encoding::protocol_buffers);
     EXPECT_GT(protobuf_size, 0u);
 #endif
+#ifdef CANOPY_BUILD_NANOPB
+    auto nanopb_size = rpc::get_saved_size(obj, rpc::encoding::nanopb);
+    EXPECT_GT(nanopb_size, 0u);
+#endif
 
     auto json_result = rpc::serialise(obj, rpc::encoding::yas_json);
     EXPECT_EQ(json_size, json_result.size());
@@ -1168,6 +1235,10 @@ TEST_F(
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
     auto protobuf_result = rpc::serialise(obj, rpc::encoding::protocol_buffers);
     EXPECT_EQ(protobuf_size, protobuf_result.size());
+#endif
+#ifdef CANOPY_BUILD_NANOPB
+    auto nanopb_result = rpc::serialise(obj, rpc::encoding::nanopb);
+    EXPECT_EQ(nanopb_size, nanopb_result.size());
 #endif
 }
 
@@ -1234,6 +1305,9 @@ TEST_F(
         rpc::encoding::yas_compressed_binary,
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
         rpc::encoding::protocol_buffers,
+#endif
+#ifdef CANOPY_BUILD_NANOPB
+        rpc::encoding::nanopb,
 #endif
     };
 

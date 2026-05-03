@@ -22,7 +22,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/CanopyGenerate.cmake")
 foreach(
   _canopy_module
   CanopyCreateDynamicLibrary
-  CanopyCreateLibcoroDynamicLibrary
+  CanopyCreateLibcoroDllScheduledDynamicLibrary
+  CanopyCreateLibcoroHostScheduledDynamicLibrary
   CanopyCreateLibcoroSpscDynamicLibrary)
   set(_canopy_module_file "${CMAKE_CURRENT_LIST_DIR}/${_canopy_module}.cmake")
   if(EXISTS "${_canopy_module_file}")

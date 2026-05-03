@@ -45,7 +45,9 @@ The library exports `canopy_libcoro_spsc_dll_start` and the runtime plumbing.
 
 ## Related transports
 
-- `../libcoro_dynamic_library/`
-  - coroutine DLL loading in the current process
+- `../libcoro_host_scheduled_dynamic_library/`
+  - coroutine DLL loading in the current process using the host scheduler
+- `../libcoro_dll_scheduled_dynamic_library/`
+  - coroutine DLL loading in the current process with a DLL-owned scheduler
 - `../ipc_transport/`
   - process-owning transport and child-process bootstrap

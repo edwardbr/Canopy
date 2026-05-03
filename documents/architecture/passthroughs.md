@@ -52,6 +52,11 @@ class pass_through : public i_marshaller
 };
 ```
 
+A passthrough is valid only when the forward and reverse transports are both
+present, distinct objects, and route to distinct destination zones. Shutdown
+notifications from a local transport must come from one of those two transports;
+anything else is a topology error rather than a normal branch.
+
 ## Relay Operation (options=3)
 
 ### What is options=3?

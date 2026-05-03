@@ -20,6 +20,7 @@ namespace rpc::c_abi
     {
         canopy_dll_init_fn init = nullptr;
         canopy_dll_destroy_fn destroy = nullptr;
+        canopy_dll_shutdown_fn shutdown = nullptr;
         canopy_dll_send_fn send = nullptr;
         canopy_dll_post_fn post = nullptr;
         canopy_dll_try_cast_fn try_cast = nullptr;

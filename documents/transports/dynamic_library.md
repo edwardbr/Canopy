@@ -13,11 +13,16 @@ Scope note:
   details should be read as C++ implementation details unless explicitly stated
   otherwise
 
-Canopy now has four closely related transports and transport-adjacent runtime
+Canopy now has six closely related transports and transport-adjacent runtime
 components for loading child zones from shared objects or child processes:
 
 - `rpc::dynamic_library` for blocking / non-coroutine builds
-- `rpc::libcoro_dynamic_library` for coroutine builds
+- `rpc::c_abi` for blocking / non-coroutine builds that need the
+  language-neutral dynamic-library ABI
+- `rpc::libcoro_host_scheduled_dynamic_library` for coroutine builds where the
+  loaded DLL shares the host scheduler
+- `rpc::libcoro_dll_scheduled_dynamic_library` for coroutine builds where the
+  loaded DLL owns its scheduler
 - `rpc::libcoro_spsc_dynamic_dll` for coroutine builds where the DLL is reached
   over an SPSC stream
 - `rpc::ipc_transport` for coroutine builds where the host spawns and owns a
@@ -25,8 +30,8 @@ components for loading child zones from shared objects or child processes:
 
 These pieces are intentionally separate:
 
-- `dynamic_library` and `libcoro_dynamic_library` load a DLL into the current
-  process
+- `dynamic_library`, `c_abi`, `libcoro_host_scheduled_dynamic_library`, and
+  `libcoro_dll_scheduled_dynamic_library` load a DLL into the current process
 - `libcoro_spsc_dynamic_dll` runs the DLL runtime behind an SPSC stream
 - `ipc_transport` owns a child process and the shared-memory queue pair used to
   talk to it
@@ -56,9 +61,11 @@ same DLL or child-process hosting stack.
 Use one of these when you want a zone boundary without process isolation:
 
 - `rpc::dynamic_library`
-- `rpc::libcoro_dynamic_library`
+- `rpc::c_abi`
+- `rpc::libcoro_host_scheduled_dynamic_library`
+- `rpc::libcoro_dll_scheduled_dynamic_library`
 
-In both cases the host and child zone live in the same operating-system
+In these cases the host and child zone live in the same operating-system
 process, but the child implementation is loaded from a shared object at runtime.
 
 ### Out-of-process DLL loading
@@ -94,7 +101,9 @@ In this mode the child process maps the queue pair and hosts a
 | Variant | Namespace / executable | Build mode | Host-side transport | Child-side runtime |
 |--------|-------------------------|------------|---------------------|--------------------|
 | Blocking DLL | `rpc::dynamic_library` | `CANOPY_BUILD_COROUTINE=OFF` | `transport_dynamic_library` | `transport_dynamic_library_dll` inside the loaded DLL |
-| Coroutine DLL | `rpc::libcoro_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_dynamic_library` | `transport_libcoro_dynamic_library_dll` inside the loaded DLL |
+| Blocking language-neutral DLL | `rpc::c_abi` | `CANOPY_BUILD_COROUTINE=OFF` | `transport_c_abi` | `transport_c_abi_dll` inside the loaded DLL |
+| Host-scheduled coroutine DLL | `rpc::libcoro_host_scheduled_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_host_scheduled_dynamic_library` | `transport_libcoro_host_scheduled_dynamic_library_dll` inside the loaded DLL |
+| DLL-scheduled coroutine DLL | `rpc::libcoro_dll_scheduled_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_dll_scheduled_dynamic_library` | `transport_libcoro_dll_scheduled_dynamic_library_dll` inside the loaded DLL |
 | Coroutine SPSC DLL | `rpc::libcoro_spsc_dynamic_dll` | `CANOPY_BUILD_COROUTINE=ON` | usually reached via `rpc::ipc_transport` | `transport_libcoro_spsc_dll_host` inside the loaded DLL |
 | Process-owned SPSC transport | `rpc::ipc_transport` | `CANOPY_BUILD_COROUTINE=ON` | `transport_ipc_transport` | `ipc_child_host_process` or `ipc_child_process` |
 
@@ -103,7 +112,9 @@ In this mode the child process maps the queue pair and hosts a
 | Variant | Export owned by child | User-implemented entry point |
 |--------|------------------------|-------------------------------|
 | Blocking DLL | `canopy_dll_*` | `canopy_dll_init` |
-| Coroutine DLL | `canopy_libcoro_dll_create` plus `dll_coro_*` callbacks | `canopy_libcoro_dll_init` |
+| Blocking language-neutral DLL | `canopy_dll_*` using `c_abi/dynamic_library/canopy_dynamic_library.h` types | `canopy_dll_init` |
+| Host-scheduled coroutine DLL | `canopy_libcoro_host_scheduled_dll_create` plus direct coroutine function pointers | `canopy_libcoro_host_scheduled_dll_init` |
+| DLL-scheduled coroutine DLL | `canopy_libcoro_dll_scheduled_dll_start` plus begin/complete callbacks | `canopy_libcoro_dll_scheduled_dll_init` |
 | Coroutine SPSC DLL | `canopy_libcoro_spsc_dll_start` | `canopy_libcoro_spsc_dll_init` |
 
 ## Blocking Transport (`rpc::dynamic_library`)
@@ -283,6 +294,31 @@ extern "C" void rpc_log(int level, const char* str, size_t sz)
 }
 ```
 
+### Module Shutdown Hooks
+
+Every dynamic-library ABI now has an explicit module-level shutdown hook.  The
+host calls it after the child context has been destroyed and before
+`dlclose` / `FreeLibrary`:
+
+- `rpc::dynamic_library`: required exported symbol `canopy_dll_shutdown`
+- `rpc::c_abi`: required exported symbol `canopy_dll_shutdown`
+- `rpc::libcoro_dll_scheduled_dynamic_library`: shutdown happens before
+  `canopy_libcoro_dll_scheduled_dll_start` returns
+- `rpc::libcoro_spsc_dynamic_dll`: runtime stop callback performs equivalent
+  module shutdown after the worker thread and scheduler have stopped
+
+The hook is intentionally context-free.  By the time it runs, the child service,
+transport, and exported object graph should already have gone away.  It is for
+module-level runtime cleanup only.
+
+The immediate reason is full Google Protocol Buffers support.  Generated
+`*.pb.cc` files and the protobuf runtime keep process/module static state.  If a
+DLL or shared object statically links protobuf and is unloaded, the module must
+call `google::protobuf::ShutdownProtobufLibrary()` after all protobuf use has
+ended and before the shared object is unloaded.  Canopy's DLL helper libraries do
+this automatically when compiled with `CANOPY_BUILD_PROTOCOL_BUFFERS`; when full
+protobuf is not enabled the shutdown hook is a no-op.
+
 ### Lifetime and dlclose Safety
 
 The shared object is kept loaded for as long as the host holds any proxy
@@ -312,7 +348,8 @@ Sequence for normal shutdown:
   5. Host inbound_transport_down handler runs
   6. Host proxy count drops to zero → on_destination_count_zero()
   7. canopy_dll_destroy called → DLL service/transport torn down
-  8. dlclose called → shared object unloaded
+  8. canopy_dll_shutdown called → module runtime cleanup
+  9. dlclose called → shared object unloaded
 ```
 
 ### Key Characteristics
@@ -325,6 +362,7 @@ Sequence for normal shutdown:
 | Zone type | Hierarchical (parent/child) |
 | DLL author writes | `canopy_dll_init` + `rpc_log` |
 | dlclose timing | Deferred to `on_destination_count_zero` |
+| Module shutdown | Required `canopy_dll_shutdown`, provided by `transport_dynamic_library_dll` |
 | `CONNECTED` set | Inside `inner_connect`, after successful `canopy_dll_init` |
 
 ### Hierarchical Transport Pattern
@@ -359,11 +397,46 @@ stored during `canopy_dll_init`.
 - One DLL instance per `child_transport`; to load the same `.so` multiple
   times create multiple `child_transport` objects
 
-## Coroutine Transport (`rpc::libcoro_dynamic_library`)
+## Blocking C ABI Transport (`rpc::c_abi`)
+
+`rpc::c_abi` is the non-coroutine dynamic-library transport for language-neutral
+shared-object boundaries.  It uses the same high-level parent/child-zone shape as
+`rpc::dynamic_library`, but the ABI structs and function pointer types are
+defined in `c_abi/dynamic_library/canopy_dynamic_library.h` instead of passing
+C++ RPC structs directly across the boundary.
+
+Use this transport when the child may be implemented by C, Rust, or another
+language that can expose a stable C ABI.  The C++ child helper
+`transport_c_abi_dll` provides the same convenience pattern as the C++-specific
+DLL transport: the child author supplies `canopy_dll_init`; the helper library
+supplies the other `canopy_dll_*` entry points, including the required
+`canopy_dll_shutdown` module cleanup hook.
+
+The loader treats `canopy_dll_shutdown` as part of the required ABI.  Missing it
+is a load failure, just like a missing `canopy_dll_send` or
+`canopy_dll_release`.  This is deliberate because the ABI is still internal to
+Canopy and shared objects that may link full protobuf need a reliable cleanup
+point before unload.
+
+## Host-Scheduled Coroutine Transport (`rpc::libcoro_host_scheduled_dynamic_library`)
+
+This transport is the older coroutine DLL shape. It exchanges direct
+`coro::task` function pointers through
+`canopy_libcoro_host_scheduled_dll_create`, and both host-to-DLL and
+DLL-to-host calls run on the host scheduler.
+
+Because DLL coroutine code can execute on host scheduler worker threads,
+`dlclose` is deferred until that scheduler has stopped. This avoids unloading
+code that may still be referenced by thread-local destructors on those worker
+threads. Use this variant to model host-scheduled plugin behaviour; use the
+DLL-scheduled variant when transport teardown itself must stop the scheduler and
+reset DLL-local static state immediately.
+
+## DLL-Scheduled Coroutine Transport (`rpc::libcoro_dll_scheduled_dynamic_library`)
 
 This transport provides the same high-level parent/child-zone behaviour, but
 for coroutine builds.  It lives under
-`transports/libcoro_dynamic_library/` and uses a distinct ABI so a coroutine DLL
+`transports/libcoro_dll_scheduled_dynamic_library/` and uses a distinct ABI so a coroutine DLL
 cannot be mistaken for the blocking variant.
 
 ### Requirements
@@ -379,21 +452,21 @@ Host Process
 ┌───────────────────────────────────────────────────────────────┐
 │  Host Zone                                                    │
 │  ┌─────────────────────────────────────────────────────────┐  │
-│  │ child_transport (transport_libcoro_dynamic_library)     │  │
+│  │ child_transport (transport_libcoro_dll_scheduled_dynamic_library)     │  │
 │  │ - dlopen / LoadLibrary shared object                    │  │
-│  │ - resolves canopy_libcoro_dll_create                    │  │
-│  │ - stores dll_coro_* coroutine fn pointers               │  │
-│  │ - CO_AWAITs returned init_fn                            │  │
+│  │ - starts canopy_libcoro_dll_scheduled_dll_start on an entry thread    │  │
+│  │ - stores DLL begin_* function pointers                  │  │
+│  │ - awaits the DLL ready callback                         │  │
 │  └──────────────────┬──────────────────────────────────────┘  │
-│                     │ plain-C create function + coro fn table │
+│                     │ begin_* functions + completion callbacks│
 │  ───────────────────┼──────────── DLL boundary ─────────────  │
-│                     │ host_coro_* callbacks                   │
+│                     │ host begin_* callbacks                   │
 │  ┌──────────────────┴──────────────────────────────────────┐  │
 │  │ libmyplugin.so                                          │  │
 │  │ ┌────────────────────────────────────────────────────┐  │  │
 │  │ │ parent_transport                                   │  │  │
-│  │ │ - calls host through host_coro_* function pointers │  │  │
-│  │ │ - exposes static_inbound_* as dll_coro_*           │  │  │
+│  │ │ - calls host through host begin_* callbacks        │  │  │
+│  │ │ - exposes DLL begin_* entry points                 │  │  │
 │  │ └────────────────────────────────────────────────────┘  │  │
 │  │ ┌────────────────────────────────────────────────────┐  │  │
 │  │ │ child_service + user implementation               │  │  │
@@ -402,27 +475,29 @@ Host Process
 └───────────────────────────────────────────────────────────────┘
 ```
 
-The host first calls a synchronous exported function,
-`canopy_libcoro_dll_create`, to construct the DLL-side `parent_transport` and
-receive a table of coroutine function pointers.  It then `CO_AWAIT`s the
-returned `init_fn` coroutine, which creates the child zone inside the DLL.
+The host starts one dedicated entry thread for the shared object.  That thread
+loads the library, calls `canopy_libcoro_dll_scheduled_dll_start`, and remains blocked there
+until the DLL-side transport and service graph have shut down.  The DLL start
+function creates the DLL-owned scheduler, runs `canopy_libcoro_dll_scheduled_dll_init`, and
+publishes an opaque runtime handle plus a table of DLL `begin_*` functions via a
+ready callback.
 
 ### Two CMake Targets
 
 | Target | Links into | Purpose |
 |--------|-----------|---------|
-| `transport_libcoro_dynamic_library` | Host executable | Provides coroutine `child_transport`; loads the DLL and routes host-to-DLL calls through `dll_coro_*` |
-| `transport_libcoro_dynamic_library_dll` | Shared object payload | Provides DLL-side transport helpers and ABI types for `canopy_libcoro_dll_create` |
+| `transport_libcoro_dll_scheduled_dynamic_library` | Host executable | Provides coroutine `child_transport`; loads the DLL and routes host-to-DLL calls through DLL `begin_*` functions |
+| `transport_libcoro_dll_scheduled_dynamic_library_dll` | Shared object payload | Provides DLL-side transport helpers and ABI types for `canopy_libcoro_dll_scheduled_dll_start` |
 
 ### Host Side Setup
 
-Create a `rpc::libcoro_dynamic_library::child_transport` and use it with the
+Create a `rpc::libcoro_dll_scheduled_dynamic_library::child_transport` and use it with the
 normal coroutine `connect_to_zone` flow.
 
 ```cpp
-#include <transports/libcoro_dynamic_library/transport.h>
+#include <transports/libcoro_dll_scheduled_dynamic_library/transport.h>
 
-auto child_transport = std::make_shared<rpc::libcoro_dynamic_library::child_transport>(
+auto child_transport = std::make_shared<rpc::libcoro_dll_scheduled_dynamic_library::child_transport>(
     "plugin",
     root_service,
     "/path/to/libmyplugin.so");
@@ -440,32 +515,35 @@ rpc::shared_ptr<yyy::i_example> plugin = std::move(result.output_interface);
 
 `inner_connect` performs two phases:
 
-1. Synchronously load the library and call `canopy_libcoro_dll_create`
-2. `CO_AWAIT` the DLL-provided `init_fn`
+1. Start a DLL entry thread and call `canopy_libcoro_dll_scheduled_dll_start`
+2. Await the ready callback that carries the child descriptor and DLL `begin_*` table
 
-During setup the host also allocates the child zone ID and passes coroutine
-callbacks such as `host_send`, `host_post`, and `host_get_new_zone_id` into the
-DLL.
+During setup the host also allocates the child zone ID and passes non-blocking
+host `begin_*` callbacks such as `host_send`, `host_post`, and
+`host_get_new_zone_id` into the DLL.
 
 ### DLL Side Setup
 
-Link `transport_libcoro_dynamic_library_dll` into your shared object and export
-`canopy_libcoro_dll_create`.  That function creates the DLL-side
-`parent_transport`, returns the host-callable coroutine trampolines, and
-supplies an init coroutine that calls `init_child_zone`.
+Link `transport_libcoro_dll_scheduled_dynamic_library_dll` into your shared object and provide
+`rpc::libcoro_dll_scheduled_dynamic_library::canopy_libcoro_dll_scheduled_dll_init`.  The transport helper
+library exports `canopy_libcoro_dll_scheduled_dll_start` for you.  That start function
+constructs the DLL-side runtime and `parent_transport`, runs the user init
+coroutine on the DLL-owned scheduler, publishes the DLL `begin_*` table to the
+host, and returns only after the DLL-side transport has died and module-level
+cleanup has run.
 
 ```cpp
-#include <transports/libcoro_dynamic_library/dll_transport.h>
+#include <transports/libcoro_dll_scheduled_dynamic_library/dll_transport.h>
 
-static coro::task<rpc::connect_result> do_init(
-    void* ctx,
-    const rpc::connection_settings* settings,
-    std::shared_ptr<coro::scheduler>* scheduler)
+namespace rpc::libcoro_dll_scheduled_dynamic_library
 {
-    return rpc::libcoro_dynamic_library::init_child_zone<yyy::i_host, yyy::i_example>(
+CORO_TASK(rpc::connect_result) canopy_libcoro_dll_scheduled_dll_init(
+    void* ctx,
+    const rpc::connection_settings* settings)
+{
+    return init_child_zone<yyy::i_host, yyy::i_example>(
         ctx,
         settings,
-        scheduler,
         [](rpc::shared_ptr<yyy::i_host> host,
            std::shared_ptr<rpc::child_service> svc)
             -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
@@ -473,39 +551,7 @@ static coro::task<rpc::connect_result> do_init(
             CO_RETURN {rpc::error::OK(), rpc::make_shared<MyExampleImpl>(svc, host)};
         });
 }
-
-extern "C" CANOPY_LIBCORO_DLL_EXPORT
-void canopy_libcoro_dll_create(
-    rpc::libcoro_dynamic_library::dll_create_params* params,
-    rpc::libcoro_dynamic_library::dll_create_result* result)
-{
-    using namespace rpc::libcoro_dynamic_library;
-
-    auto* pt = new parent_transport(
-        params->name,
-        params->dll_zone,
-        params->host_zone,
-        params->host_ctx,
-        params->host_send,
-        params->host_post,
-        params->host_try_cast,
-        params->host_add_ref,
-        params->host_release,
-        params->host_object_released,
-        params->host_transport_down,
-        params->host_get_new_zone_id,
-        params->host_coro_release_parent);
-
-    result->transport_ctx = pt;
-    result->init_fn = &do_init;
-    result->send_fn = &parent_transport::static_inbound_send;
-    result->post_fn = &parent_transport::static_inbound_post;
-    result->try_cast_fn = &parent_transport::static_inbound_try_cast;
-    result->add_ref_fn = &parent_transport::static_inbound_add_ref;
-    result->release_fn = &parent_transport::static_inbound_release;
-    result->object_released_fn = &parent_transport::static_inbound_object_released;
-    result->transport_down_fn = &parent_transport::static_inbound_transport_down;
-}
+} // namespace rpc::libcoro_dll_scheduled_dynamic_library
 ```
 
 ### CMakeLists.txt for the shared object
@@ -514,7 +560,7 @@ void canopy_libcoro_dll_create(
 add_library(myplugin SHARED src/myplugin.cpp src/rpc_log.cpp)
 
 target_link_libraries(myplugin PRIVATE
-    transport_libcoro_dynamic_library_dll
+    transport_libcoro_dll_scheduled_dynamic_library_dll
     rpc::rpc
     yas_common)
 
@@ -525,27 +571,41 @@ target_compile_options(myplugin PRIVATE
 
 ### ABI and Symbol Differences
 
-- The coroutine transport exports `canopy_libcoro_dll_create`, not
+- The coroutine transport exports `canopy_libcoro_dll_scheduled_dll_start`, not
   `canopy_dll_init`
-- Host and DLL exchange `coro::task` function pointers directly
-- No `sync_wait` bridge is needed on either side
-- The separate `canopy_libcoro_dll_*` naming prevents loading a blocking DLL by
+- The DLL author provides `canopy_libcoro_dll_scheduled_dll_init`; the helper library provides
+  `canopy_libcoro_dll_scheduled_dll_start`
+- Host and DLL exchange non-blocking `begin_*` function pointers and completion
+  callbacks
+- The DLL owns the scheduler used for its service graph; the host stores only an
+  opaque runtime handle and exported `begin_*` function pointers
+- Host-to-DLL calls enqueue work on the DLL scheduler and complete through a
+  host-owned callback.  DLL-to-host calls mirror this with host `begin_*`
+  callbacks and DLL-owned completions.
+- The DLL entry thread remains blocked in `canopy_libcoro_dll_scheduled_dll_start` until the
+  DLL-side transport has died, then shuts down the DLL scheduler and returns.
+- The entry thread waits on an internal finish gate rather than scheduler task
+  counts; transport lifetime remains driven by the service graph.
+- The separate `canopy_libcoro_dll_scheduled_dll_*` naming prevents loading a blocking DLL by
   mistake
 
 ### Lifetime and Unload Behaviour
 
-The coroutine variant differs from the blocking transport in one important way:
-on Linux it opens the DLL with `RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE`.
+The coroutine variant also uses normal unload semantics.  On Linux it opens the
+DLL with `RTLD_NOW | RTLD_LOCAL`, not `RTLD_NODELETE`.  The design goal is that a
+shared object can shut down cleanly, release its service graph, run
+module-level cleanup such as protobuf shutdown, and then be unloaded.
 
-`RTLD_NODELETE` is used because coroutine frames originating from the DLL's
-statically linked `librpc.a` may still be scheduled when the last proxy is
-released.  Keeping the code pages mapped allows those frames to complete safely
-even after normal reference-count teardown has run.
-
-As implemented in `transports/libcoro_dynamic_library/src/transport.cpp`:
+As implemented in `transports/libcoro_dll_scheduled_dynamic_library/src/transport.cpp`:
 
 - `on_destination_count_zero()` does not unload the library
-- `child_transport` unloads the DLL only from its destructor
+- `child_transport` unloads the DLL only after joining the DLL entry thread
+- `canopy_libcoro_dll_scheduled_dll_start` returns only after the DLL-side parent transport has
+  died
+- the DLL scheduler and module-level cleanup run before the entry function
+  returns
+- ready/finish handshakes use mutex-backed one-shot state so cross-thread
+  coroutine resumption is explicit to ThreadSanitizer
 - function pointers are nulled before `dlclose` / `FreeLibrary`
 
 ### Key Characteristics
@@ -554,22 +614,23 @@ As implemented in `transports/libcoro_dynamic_library/src/transport.cpp`:
 |----------|-------|
 | Build mode | Coroutine only |
 | Symbol isolation | `RTLD_LOCAL` + `-fvisibility=hidden` |
-| ABI boundary | Plain-C create function plus coroutine fn pointers |
+| ABI boundary | Plain-C start function plus opaque runtime handle, begin functions, and completion callbacks |
 | Zone type | Hierarchical (parent/child) |
-| DLL author writes | `canopy_libcoro_dll_create` |
-| Linux load flags | `RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE` |
-| Host connect flow | Create synchronously, then `CO_AWAIT` init |
+| DLL author writes | `canopy_libcoro_dll_scheduled_dll_init` |
+| Module shutdown | Natural return from `canopy_libcoro_dll_scheduled_dll_start` after the DLL-side transport dies |
+| Linux load flags | `RTLD_NOW | RTLD_LOCAL` |
+| Host connect flow | Start entry thread, then await DLL ready callback |
 
 ### Differences From Blocking Dynamic Library Transport
 
-| Aspect | Blocking `dynamic_library` | Coroutine `libcoro_dynamic_library` |
+| Aspect | Blocking `dynamic_library` | Coroutine `libcoro_dll_scheduled_dynamic_library` |
 |--------|----------------------------|-------------------------------------|
 | Build mode | Non-coroutine only | Coroutine only |
-| Primary entry point | `canopy_dll_init` | `canopy_libcoro_dll_create` |
-| Cross-boundary calls | Plain C function table | `coro::task` function table |
-| Host setup | Load and init inside `inner_connect` | Create synchronously, then `CO_AWAIT` DLL init |
+| Primary entry point | `canopy_dll_init` | `canopy_libcoro_dll_scheduled_dll_start` |
+| Cross-boundary calls | Plain C function table | Non-blocking begin functions plus completion callbacks |
+| Host setup | Load and init inside `inner_connect` | Start DLL entry thread, then await ready callback |
 | DLL unload trigger | Deferred until proxy count reaches zero | Deferred until `child_transport` destruction |
-| Linux unload safety | Normal `dlclose` timing | Uses `RTLD_NODELETE` |
+| Linux unload safety | Normal `dlclose` after `canopy_dll_shutdown` | Normal `dlclose` after `canopy_libcoro_dll_scheduled_dll_start` returns |
 
 ## SPSC DLL Transport (`rpc::libcoro_spsc_dynamic_dll`)
 
@@ -592,6 +653,8 @@ pair already exists and does not spawn processes or create shared-memory files.
 - calls the user-provided `canopy_libcoro_spsc_dll_init(...)`
 - hosts the DLL child zone behind `rpc::stream_transport`
 - notifies the embedding host runtime when the parent transport expires
+- stops the worker thread and scheduler before running module-level cleanup such
+  as protobuf shutdown
 
 ### What It Does Not Do
 
@@ -626,7 +689,8 @@ Separating the transport from the child runtime gives three independent
 building blocks:
 
 - DLL transport without process isolation: `dynamic_library` /
-  `libcoro_dynamic_library`
+  `c_abi` / `libcoro_host_scheduled_dynamic_library` /
+  `libcoro_dll_scheduled_dynamic_library`
 - process isolation plus DLL hosting: `ipc_transport` +
   `ipc_child_host_process` + `libcoro_spsc_dynamic_dll`
 - process isolation plus direct child service hosting: `ipc_transport` +
@@ -645,14 +709,25 @@ On Linux, `rpc::ipc_transport::options::kill_child_on_parent_death` uses
 pipe ensures this contract is armed before the parent returns from transport
 construction.
 
+Clean child-process shutdown should go through ordinary C++ teardown.  The
+`ipc_child_host_process` success path returns normally after the SPSC/DLL runtime
+has stopped; immediate process termination is reserved for setup failures or
+test harness failure paths where normal unwinding is not possible.
+
 ## See Also
 
 - `transports/dynamic_library/include/transports/dynamic_library/dll_abi.h` — C ABI types
 - `transports/dynamic_library/include/transports/dynamic_library/transport.h` — `child_transport`
 - `transports/dynamic_library/include/transports/dynamic_library/dll_transport.h` — `parent_transport`, `init_child_zone`, `dll_context`
-- `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/dll_abi.h` — coroutine DLL ABI types
-- `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/transport.h` — coroutine `child_transport`
-- `transports/libcoro_dynamic_library/include/transports/libcoro_dynamic_library/dll_transport.h` — coroutine `parent_transport`, `init_child_zone`
+- `c_abi/dynamic_library/canopy_dynamic_library.h` — language-neutral dynamic-library ABI
+- `transports/c_abi/include/transports/c_abi/transport.h` — C ABI `child_transport`
+- `transports/c_abi/include/transports/c_abi/dynamic_library_loader.h` — C ABI loader and required entry-point table
+- `transports/libcoro_host_scheduled_dynamic_library/include/transports/libcoro_host_scheduled_dynamic_library/dll_abi.h` — host-scheduled coroutine DLL ABI types
+- `transports/libcoro_host_scheduled_dynamic_library/include/transports/libcoro_host_scheduled_dynamic_library/transport.h` — host-scheduled coroutine `child_transport`
+- `transports/libcoro_host_scheduled_dynamic_library/include/transports/libcoro_host_scheduled_dynamic_library/dll_transport.h` — host-scheduled coroutine `parent_transport`, `init_child_zone`
+- `transports/libcoro_dll_scheduled_dynamic_library/include/transports/libcoro_dll_scheduled_dynamic_library/dll_abi.h` — coroutine DLL ABI types
+- `transports/libcoro_dll_scheduled_dynamic_library/include/transports/libcoro_dll_scheduled_dynamic_library/transport.h` — coroutine `child_transport`
+- `transports/libcoro_dll_scheduled_dynamic_library/include/transports/libcoro_dll_scheduled_dynamic_library/dll_transport.h` — coroutine `parent_transport`, `init_child_zone`
 - `transports/libcoro_spsc_dynamic_dll/include/transports/libcoro_spsc_dynamic_dll/dll_abi.h` — SPSC DLL ABI types and queue-pair definition
 - `transports/libcoro_spsc_dynamic_dll/include/transports/libcoro_spsc_dynamic_dll/dll_transport.h` — `canopy_libcoro_spsc_dll_init` contract
 - `transports/ipc_transport/include/transports/ipc_transport/transport.h` — process-owning transport

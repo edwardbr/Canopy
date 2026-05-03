@@ -6,6 +6,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include "test_host.h"
 #include "test_globals.h"
 #include <gtest/gtest.h>
@@ -19,11 +20,9 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 class inproc_setup
     : public transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-    std::shared_ptr<rpc::child_service> child_service_;
-    std::weak_ptr<rpc::child_service> child_service_weak_;
+    std::shared_ptr<rpc::event> child_shutdown_event_;
 
-    bool startup_complete_ = false;
-    bool shutdown_complete_ = false;
+    std::atomic_bool startup_complete_ = false;
 
 public:
     ~inproc_setup() override = default;
@@ -55,6 +54,8 @@ public:
         rpc::shared_ptr<yyy::i_host> hst(new host());
         this->local_host_ptr_ = hst;
 
+        child_shutdown_event_ = std::make_shared<rpc::event>(false);
+
         auto child_transport = std::make_shared<rpc::local::child_transport>("main child", this->root_service_);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
@@ -62,8 +63,9 @@ public:
                 -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
             {
                 this->i_host_ptr_ = host;
-                child_service_ = child_service_ptr;
-                child_service_weak_ = child_service_ptr;
+#ifdef CANOPY_BUILD_COROUTINE
+                child_service_ptr->set_shutdown_event(child_shutdown_event_);
+#endif
                 auto new_example
                     = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, nullptr));
                 if (this->use_host_in_child_)
@@ -75,7 +77,7 @@ public:
             "main child", child_transport, hst);
         this->i_example_ptr_ = std::move(connect_result.output_interface);
         auto ret = connect_result.error_code;
-        startup_complete_ = true;
+        startup_complete_.store(true);
         if (ret != rpc::error::OK())
         {
             CO_RETURN false;
@@ -93,7 +95,7 @@ public:
                 }}));
 
         RPC_ASSERT(this->io_scheduler_->spawn_detached(check_for_error(CoroSetUp())));
-        while (startup_complete_ == false)
+        while (!startup_complete_.load())
         {
             this->io_scheduler_->process_events(std::chrono::milliseconds(1));
         }
@@ -103,37 +105,32 @@ public:
         }
 #else
         check_for_error(CoroSetUp());
-        ASSERT_EQ(startup_complete_, true);
+        ASSERT_EQ(startup_complete_.load(), true);
 #endif
 
         ASSERT_EQ(this->error_has_occurred_, false);
     }
 
-    CORO_TASK(void) CoroTearDown()
-    {
-        child_service_ = nullptr;
-        this->i_host_ptr_ = nullptr;
-        this->i_example_ptr_ = nullptr;
-        this->root_service_ = nullptr;
-        current_host_service.reset();
-        shutdown_complete_ = true;
-        CO_RETURN;
-    }
-
     virtual void tear_down()
     {
 #ifdef CANOPY_BUILD_COROUTINE
-        RPC_ASSERT(this->io_scheduler_->spawn_detached(CoroTearDown()));
-        while (shutdown_complete_ == false)
+        auto scheduler = this->io_scheduler_;
+        auto root_shutdown_event = this->make_root_shutdown_event_for_test();
+        this->release_interfaces_and_root_service_for_test(root_shutdown_event);
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{5000};
+        while (child_shutdown_event_ && !child_shutdown_event_->is_set() && std::chrono::steady_clock::now() < deadline)
         {
-            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+            scheduler->process_events(std::chrono::milliseconds{1});
         }
-        while (this->io_scheduler_->process_events(std::chrono::milliseconds(1)) > 0)
-        {
-            // Keep processing while there are scheduled tasks
-        }
+
+        this->io_scheduler_ = nullptr;
+        scheduler.reset();
+        RPC_ASSERT(child_shutdown_event_ && child_shutdown_event_->is_set());
+        child_shutdown_event_.reset();
 #else
-        CoroTearDown();
+        this->root_service_ = nullptr;
+        current_host_service.reset();
 #endif
 
         this->reset_telemetry_for_test();

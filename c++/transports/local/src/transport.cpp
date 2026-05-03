@@ -39,8 +39,10 @@ namespace rpc::local
         // Call base class to update status
         rpc::transport::set_status(status);
 
-        // If disconnecting, notify parent zone to break circular reference
-        if (status == rpc::transport_status::DISCONNECTED)
+        // Keep the local link available while DISCONNECTING so final release messages
+        // can still cross the parent/child boundary. Break the circular reference only
+        // once the transport is fully disconnected.
+        if (status >= rpc::transport_status::DISCONNECTED)
         {
             auto parent = parent_.get_nullable();
             if (parent)
@@ -175,6 +177,15 @@ namespace rpc::local
     {
         // Break circular reference when child zone disconnects
         // Safe because stack-based shared_ptr in outbound_* methods keeps parent_transport alive
+        child_.reset();
+    }
+
+    void child_transport::on_destination_count_zero()
+    {
+        auto child = child_.get_nullable();
+        if (child)
+            child->set_status(rpc::transport_status::DISCONNECTED);
+        set_status(rpc::transport_status::DISCONNECTED);
         child_.reset();
     }
 

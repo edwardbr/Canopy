@@ -159,10 +159,10 @@ namespace rpc
         caller_zone caller_zone_id)
     {
         uint64_t count = 0;
+        bool did_release = false;
         if (is_optimistic)
         {
             // Update optimistic reference count for this caller zone
-            bool did_release = false;
             {
                 std::lock_guard<std::mutex> lock(references_mutex_);
                 auto it = optimistic_references_.find(caller_zone_id);
@@ -198,7 +198,6 @@ namespace rpc
         else
         {
             // Update shared reference count for this caller zone
-            bool did_release = false;
             {
                 std::lock_guard<std::mutex> lock(references_mutex_);
                 auto it = shared_references_.find(caller_zone_id);
@@ -239,14 +238,23 @@ namespace rpc
             telemetry_service->on_stub_release({zone_->get_zone_id(), id_, {}, count, {}});
 #endif
         RPC_ASSERT(count != std::numeric_limits<uint64_t>::max());
-        auto transport = zone_->get_transport(caller_zone_id);
-        if (transport)
+        if (did_release)
         {
-            transport->decrement_inbound_stub_count(caller_zone_id);
+            auto transport = zone_->get_transport(caller_zone_id);
+            if (transport)
+            {
+                transport->decrement_inbound_stub_count(caller_zone_id);
+            }
+            else
+            {
+                RPC_ERROR("Failed to find transport to decrement inbound stub count");
+            }
         }
         else
         {
-            RPC_ERROR("Failed to find transport to decrement inbound stub count");
+            RPC_DEBUG(
+                "release: no stub reference consumed for caller_zone={}, leaving inbound transport count unchanged",
+                caller_zone_id.get_subnet());
         }
         return count;
     }

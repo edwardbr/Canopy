@@ -46,6 +46,7 @@
 
 // RPC-aware pointer implementation
 #include <rpc/internal/remote_pointer.h>
+#include <rpc/internal/polyfill/atomic_shared_ptr.h>
 
 // remote proxy of an object
 #include <rpc/internal/object_proxy.h>

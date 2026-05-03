@@ -11,6 +11,7 @@
 #include <atomic>
 #include <functional>
 #include <vector>
+#include <rpc/internal/member_ptr.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
@@ -48,7 +49,10 @@ namespace rpc
 
         const zone zone_id_;
         destination_zone destination_zone_id_;
-        std::shared_ptr<service> service_; // Strong reference to keep service alive while service_proxy exists
+        // Keeps the owning service alive while this proxy is attached to a live transport.
+        // Transport-down cleanup detaches this pointer so stale object proxies cannot keep
+        // the whole service tree alive after the service registry has forgotten this proxy.
+        stdex::member_ptr<service> service_;
 
         // Transport for routing calls to remote zones
         stdex::member_ptr<transport> transport_;
@@ -82,9 +86,6 @@ namespace rpc
         encoding get_encoding() const { return enc_; }
 
         void set_encoding(encoding enc) { enc_ = enc; }
-
-        // Set transport for this service_proxy
-        void set_transport(std::shared_ptr<transport> transport) { transport_ = transport; }
 
         std::shared_ptr<transport> get_transport() const { return transport_.get_nullable(); }
 
@@ -143,7 +144,7 @@ namespace rpc
         destination_zone get_destination_zone_id() const { return destination_zone_id_; }
 
         // the service that this proxy lives in
-        std::shared_ptr<rpc::service> get_operating_zone_service() const { return service_; }
+        std::shared_ptr<rpc::service> get_operating_zone_service() const { return service_.get_nullable(); }
 
         enum class object_proxy_creation_rule
         {

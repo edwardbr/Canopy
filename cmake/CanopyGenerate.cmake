@@ -118,9 +118,16 @@ function(
     if(TARGET protoc)
       set(CANOPY_NANOPB_PROTOC_EXECUTABLE "$<TARGET_FILE:protoc>")
     else()
-      set(CANOPY_NANOPB_PROTOC_EXECUTABLE
-          ""
-          CACHE FILEPATH "protoc executable used by Nanopb generator")
+      find_program(CANOPY_NANOPB_PROTOC_PROGRAM protoc)
+      if(CANOPY_NANOPB_PROTOC_PROGRAM)
+        set(CANOPY_NANOPB_PROTOC_EXECUTABLE
+            "${CANOPY_NANOPB_PROTOC_PROGRAM}"
+            CACHE FILEPATH "protoc executable used by Nanopb generator")
+      else()
+        set(CANOPY_NANOPB_PROTOC_EXECUTABLE
+            ""
+            CACHE FILEPATH "protoc executable used by Nanopb generator")
+      endif()
     endif()
   endif()
   if(NOT DEFINED CANOPY_WARN_OK)
@@ -217,6 +224,10 @@ function(
   if(${params_nanopb})
     if(CANOPY_BUILD_NANOPB)
       set(generate_nanopb TRUE)
+    elseif(CANOPY_BUILD_PROTOCOL_BUFFERS)
+      set(generate_protobuf TRUE)
+      message(STATUS "Nanopb generation requested for '${name}', but CANOPY_BUILD_NANOPB is OFF. "
+                     "Using the Protocol Buffers backend for rpc::encoding::nanopb.")
     elseif(generate_yas)
       message(STATUS "Nanopb generation requested for '${name}', but CANOPY_BUILD_NANOPB is OFF. "
                      "Continuing with the requested YAS format(s) only.")
@@ -481,47 +492,38 @@ function(
     list(REMOVE_DUPLICATES nanopb_include_roots)
     set(nanopb_stamp_file ${proto_dir}/.nanopb_compiled)
     set(nanopb_sources_cmake ${proto_dir}/generated_nanopb_sources.cmake)
+    set(nanopb_aggregate_source ${nanopb_src_root}/${base_filename}_nanopb_sources.c)
+
+    if(generate_protobuf)
+      add_custom_command(
+        OUTPUT ${proto_stamp_file} ${proto_sources_cmake}
+        # Compile the proto files and generate the cmake file with.pb.cc sources
+        COMMAND
+          ${CMAKE_COMMAND} -D PROTOC=$<TARGET_FILE:protoc> -D SUB_DIR=${sub_directory} -D PROTO_DIR=${proto_dir} -D
+          OUTPUT_DIR=${output_path}/src -D PROTO_SOURCES_CMAKE=${proto_sources_cmake} -P
+          ${_CANOPY_GENERATE_CMAKE_DIR}/compile_protos.cmake
+        COMMAND ${CMAKE_COMMAND} -E touch ${proto_stamp_file}
+        DEPENDS ${PROTO_MANIFEST} protoc
+        COMMENT "Discovering and compiling .proto files for ${name}")
+
+      add_custom_target(${name}_proto_compile DEPENDS ${proto_stamp_file})
+    endif()
 
     add_custom_command(
-      OUTPUT ${proto_stamp_file} ${proto_sources_cmake}
-      # Compile the proto files and generate the cmake file with.pb.cc sources
-      COMMAND
-        ${CMAKE_COMMAND} -D PROTOC=$<TARGET_FILE:protoc> -D SUB_DIR=${sub_directory} -D PROTO_DIR=${proto_dir} -D
-        OUTPUT_DIR=${output_path}/src -D PROTO_SOURCES_CMAKE=${proto_sources_cmake} -P
-        ${_CANOPY_GENERATE_CMAKE_DIR}/compile_protos.cmake
-      COMMAND ${CMAKE_COMMAND} -E touch ${proto_stamp_file}
-      DEPENDS ${PROTO_MANIFEST} protoc
-      COMMENT "Discovering and compiling .proto files for ${name}")
-
-    add_custom_target(${name}_proto_compile DEPENDS ${proto_stamp_file})
-
-    add_custom_command(
-      OUTPUT ${nanopb_stamp_file} ${nanopb_sources_cmake}
+      OUTPUT ${nanopb_stamp_file} ${nanopb_sources_cmake} ${nanopb_aggregate_source}
       COMMAND
         ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D
         PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
-        NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -P ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
+        NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -D NANOPB_AGGREGATE_SOURCE=${nanopb_aggregate_source} -P
+        ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
       COMMAND ${CMAKE_COMMAND} -E touch ${nanopb_stamp_file}
       DEPENDS ${PROTO_MANIFEST}
       COMMENT "Discovering and compiling Nanopb .proto files for ${name}")
 
     add_custom_target(${name}_nanopb_compile DEPENDS ${nanopb_stamp_file})
 
-    set(NANOPB_PB_SOURCES)
-    if(EXISTS ${nanopb_sources_cmake})
-      include(${nanopb_sources_cmake})
-    elseif(EXISTS ${PROTO_MANIFEST})
-      file(READ ${PROTO_MANIFEST} PROTO_MANIFEST_CONTENT)
-      string(REGEX REPLACE "\n" ";" PROTO_FILE_NAMES "${PROTO_MANIFEST_CONTENT}")
-      foreach(PROTO_NAME ${PROTO_FILE_NAMES})
-        string(STRIP "${PROTO_NAME}" PROTO_NAME)
-        if(NOT "${PROTO_NAME}" STREQUAL "")
-          string(REGEX REPLACE "\\.proto$" ".pb.c" PB_C_NAME "${PROTO_NAME}")
-          list(APPEND NANOPB_PB_SOURCES "${nanopb_src_root}/${PB_C_NAME}")
-          set_source_files_properties("${nanopb_src_root}/${PB_C_NAME}" PROPERTIES GENERATED TRUE)
-        endif()
-      endforeach()
-    endif()
+    set(NANOPB_PB_SOURCES ${nanopb_aggregate_source})
+    set_source_files_properties(${NANOPB_PB_SOURCES} PROPERTIES GENERATED TRUE)
 
     # Create a placeholder cmake file if it doesn't exist (for configure time)
     if(NOT EXISTS ${proto_sources_cmake})

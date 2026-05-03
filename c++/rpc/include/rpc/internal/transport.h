@@ -187,13 +187,18 @@ namespace rpc
         std::shared_ptr<transport> inner_get_transport_from_passthroughs(destination_zone destination_zone_id) const;
 
         void inner_increment_outbound_proxy_count(destination_zone dest);
-        bool inner_decrement_outbound_proxy_count(destination_zone dest);
+        bool inner_decrement_outbound_proxy_count(
+            destination_zone dest,
+            destination_zone& transport_to_remove);
 
         void inner_increment_inbound_stub_count(caller_zone dest);
-        bool inner_decrement_inbound_stub_count(caller_zone dest);
+        bool inner_decrement_inbound_stub_count(
+            caller_zone dest,
+            destination_zone& transport_to_remove);
         bool inner_decrement_inbound_stub_count_by(
             caller_zone dest,
-            uint64_t count);
+            uint64_t count,
+            destination_zone& transport_to_remove);
 
         /**
          * @brief Called when destination_count_ drops to zero

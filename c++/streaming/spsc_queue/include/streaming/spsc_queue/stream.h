@@ -27,7 +27,17 @@ namespace streaming::spsc_queue
         stream(
             queue_type* send_q,
             queue_type* recv_q,
-            std::shared_ptr<coro::scheduler> scheduler);
+            std::shared_ptr<rpc::coro::scheduler> scheduler);
+
+        // Use this overload when the queues are backing an RPC transport.
+        // Transport pump coroutines can legitimately outlive the scope that
+        // created the streams while service/proxy reference counts unwind, so
+        // queue storage must follow stream lifetime rather than fixture stack
+        // lifetime.
+        stream(
+            std::shared_ptr<queue_type> send_q,
+            std::shared_ptr<queue_type> recv_q,
+            std::shared_ptr<rpc::coro::scheduler> scheduler);
 
         auto receive(
             rpc::mutable_byte_span buffer,
@@ -44,7 +54,9 @@ namespace streaming::spsc_queue
     private:
         queue_type* send_queue_;
         queue_type* recv_queue_;
-        std::shared_ptr<coro::scheduler> scheduler_;
+        std::shared_ptr<queue_type> send_queue_owner_;
+        std::shared_ptr<queue_type> recv_queue_owner_;
+        std::weak_ptr<rpc::coro::scheduler> scheduler_;
         std::vector<uint8_t> leftover_;
         size_t leftover_offset_{0};
         std::atomic<bool> closed_{false};

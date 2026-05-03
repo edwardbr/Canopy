@@ -780,20 +780,21 @@ namespace synchronous_generator
 
             stub("case {}:", function_count);
             stub("{{");
+            stub("auto __rpc_encoding = rpc::effective_encoding(params.encoding_type);");
             std::vector<std::string> unsupported_encoding_checks;
             if (enable_yas)
             {
-                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::yas_binary");
-                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::yas_compressed_binary");
-                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::yas_json");
+                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_binary");
+                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_compressed_binary");
+                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_json");
             }
             if (enable_protobuf)
             {
-                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::protocol_buffers");
+                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::protocol_buffers");
             }
             if (enable_nanopb)
             {
-                unsupported_encoding_checks.emplace_back("params.encoding_type != rpc::encoding::nanopb");
+                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::nanopb");
             }
             if (!unsupported_encoding_checks.empty())
             {
@@ -834,7 +835,7 @@ namespace synchronous_generator
 
             proxy("auto __rpc_op = get_object_proxy();");
             proxy("auto __rpc_sp = __rpc_op->get_service_proxy();");
-            proxy("auto __rpc_encoding = __rpc_sp->get_encoding();");
+            proxy("auto __rpc_encoding = rpc::effective_encoding(__rpc_sp->get_encoding());");
             proxy("auto __rpc_version = __rpc_sp->get_remote_rpc_version();");
             proxy("const auto __rpc_min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);");
             proxy("#ifdef CANOPY_USE_TELEMETRY");
@@ -963,7 +964,7 @@ namespace synchronous_generator
                         }
                         count++;
                     }
-                    proxy.raw("__rpc_in_buf, __rpc_sp->get_encoding());\n");
+                    proxy.raw("__rpc_in_buf, __rpc_encoding);\n");
                 }
                 proxy("break;");
                 proxy("}}");
@@ -1056,7 +1057,7 @@ namespace synchronous_generator
             // Generate stub deserializer
             stub("int __rpc_ret = rpc::error::OK();");
             stub("auto __rpc_in_data = rpc::byte_span(params.in_data.data(), params.in_data.size());");
-            stub("switch(params.encoding_type)");
+            stub("switch(__rpc_encoding)");
             stub("{{");
             if (enable_yas)
             {
@@ -1090,7 +1091,7 @@ namespace synchronous_generator
                         }
                         count++;
                     }
-                    stub.raw("__rpc_in_data, params.encoding_type);\n");
+                    stub.raw("__rpc_in_data, __rpc_encoding);\n");
                 }
                 stub("break;");
                 stub("}}");
@@ -1484,7 +1485,7 @@ namespace synchronous_generator
                                 continue;
                             proxy.raw(output);
                         }
-                        proxy.raw("__rpc_out_buf, __rpc_sp->get_encoding());\n");
+                        proxy.raw("__rpc_out_buf, __rpc_encoding);\n");
                     }
                     proxy("break;");
                     proxy("}}");
@@ -1562,7 +1563,7 @@ namespace synchronous_generator
 
             {
                 // Generate stub serializer
-                stub("switch(params.encoding_type)");
+                stub("switch(__rpc_encoding)");
                 stub("{{");
                 if (enable_yas)
                 {
@@ -1595,7 +1596,7 @@ namespace synchronous_generator
 
                             stub.raw(output);
                         }
-                        stub.raw("__rpc_result.out_buf, params.encoding_type);\n");
+                        stub.raw("__rpc_result.out_buf, __rpc_encoding);\n");
                     }
                     stub("break;");
                     stub("}}");

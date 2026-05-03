@@ -69,17 +69,35 @@ int main()
         }
     }
 #else
-    fmt::print("run_libcoro_dynamic_library_benchmark\n");
+    fmt::print("run_libcoro_dll_scheduled_dynamic_library_benchmark\n");
     for (const auto& enc : encodings)
     {
         for (const auto blob_size : blob_sizes)
         {
             auto scheduler = make_benchmark_scheduler();
-            auto result = coro::sync_wait(run_libcoro_dynamic_library_benchmark(scheduler, enc.enc, blob_size));
+            auto result
+                = coro::sync_wait(run_libcoro_dll_scheduled_dynamic_library_benchmark(scheduler, enc.enc, blob_size));
             if (result.error == rpc::error::OK())
-                print_stats("libcoro_dll", enc.name, blob_size, result.stats);
+                print_stats("libcoro_dll_scheduled", enc.name, blob_size, result.stats);
             else
-                fmt::print("{:>10} | {:>18} | {:>9} | error {}\n", "libcoro_dll", enc.name, blob_size, result.error);
+                fmt::print(
+                    "{:>10} | {:>18} | {:>9} | error {}\n", "libcoro_dll_scheduled", enc.name, blob_size, result.error);
+        }
+    }
+
+    fmt::print("run_libcoro_host_scheduled_dynamic_library_benchmark\n");
+    for (const auto& enc : encodings)
+    {
+        for (const auto blob_size : blob_sizes)
+        {
+            auto scheduler = make_benchmark_scheduler();
+            auto result
+                = coro::sync_wait(run_libcoro_host_scheduled_dynamic_library_benchmark(scheduler, enc.enc, blob_size));
+            if (result.error == rpc::error::OK())
+                print_stats("libcoro_host_scheduled", enc.name, blob_size, result.stats);
+            else
+                fmt::print(
+                    "{:>10} | {:>18} | {:>9} | error {}\n", "libcoro_host_scheduled", enc.name, blob_size, result.error);
         }
     }
 

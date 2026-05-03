@@ -88,6 +88,7 @@ namespace rpc::dynamic_library
 
         dll_init_ = reinterpret_cast<dll_init_fn>(resolve_symbol("canopy_dll_init"));
         dll_destroy_ = reinterpret_cast<dll_destroy_fn>(resolve_symbol("canopy_dll_destroy"));
+        dll_shutdown_ = reinterpret_cast<dll_shutdown_fn>(resolve_symbol("canopy_dll_shutdown"));
         dll_send_ = reinterpret_cast<dll_send_fn>(resolve_symbol("canopy_dll_send"));
         dll_post_ = reinterpret_cast<dll_post_fn>(resolve_symbol("canopy_dll_post"));
         dll_try_cast_ = reinterpret_cast<dll_try_cast_fn>(resolve_symbol("canopy_dll_try_cast"));
@@ -97,8 +98,8 @@ namespace rpc::dynamic_library
         dll_transport_down_ = reinterpret_cast<dll_transport_down_fn>(resolve_symbol("canopy_dll_transport_down"));
         dll_get_new_zone_id_ = reinterpret_cast<dll_get_new_zone_id_fn>(resolve_symbol("canopy_dll_get_new_zone_id"));
 
-        if (!dll_init_ || !dll_destroy_ || !dll_send_ || !dll_post_ || !dll_try_cast_ || !dll_add_ref_ || !dll_release_
-            || !dll_object_released_ || !dll_transport_down_ || !dll_get_new_zone_id_)
+        if (!dll_init_ || !dll_destroy_ || !dll_shutdown_ || !dll_send_ || !dll_post_ || !dll_try_cast_ || !dll_add_ref_
+            || !dll_release_ || !dll_object_released_ || !dll_transport_down_ || !dll_get_new_zone_id_)
         {
             RPC_ERROR("[dynamic_library] one or more canopy_dll_* entry points missing in {}", library_path_);
             unload_library();
@@ -110,9 +111,16 @@ namespace rpc::dynamic_library
 
     void child_transport::unload_library()
     {
+        if (dll_shutdown_)
+        {
+            dll_shutdown_();
+            dll_shutdown_ = nullptr;
+        }
+
         // Null out all pointers before closing so any stale callers fail visibly.
         dll_init_ = nullptr;
         dll_destroy_ = nullptr;
+        dll_shutdown_ = nullptr;
         dll_send_ = nullptr;
         dll_post_ = nullptr;
         dll_try_cast_ = nullptr;

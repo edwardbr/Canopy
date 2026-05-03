@@ -64,12 +64,25 @@ namespace rpc
             rpc::log_record message;
             if (!rpc::from_yas_binary(rpc::byte_span(event.payload), message).empty())
                 return true;
+            if (static_cast<int>(message.level) < CANOPY_LOGGING_LEVEL)
+                return true;
             RPC_LOG_BACKEND(static_cast<int>(message.level), message.message);
 #else
             std::ignore = event;
 #endif
             return true;
         }
+
+#ifdef CANOPY_BUILD_COROUTINE
+        CORO_TASK(void)
+        notify_object_released_on_transport(
+            std::shared_ptr<rpc::transport> transport,
+            rpc::object_released_params params)
+        {
+            CO_AWAIT transport->object_released(std::move(params));
+            CO_RETURN;
+        }
+#endif
 
     }
 
@@ -541,22 +554,33 @@ namespace rpc
             }
             else
             {
-                RPC_WARNING(
+                RPC_ERROR(
                     "service proxy zone_id {}, destination_zone_id {} "
-                    "has not been released in the service suspected unclean shutdown",
+                    "has not been released in the service suspected unclean shutdown; use_count={}, proxies={}",
                     std::to_string(zone_id_),
-                    std::to_string(item.first));
+                    std::to_string(item.first),
+                    item.second.use_count(),
+                    svcproxy->get_proxies().size());
 
                 for (const auto& proxy : svcproxy->get_proxies())
                 {
+                    RPC_ERROR(
+                        " service proxy retained object_proxy {} weak_use_count={}",
+                        std::to_string(proxy.first),
+                        proxy.second.use_count());
                     auto op = proxy.second.lock();
                     if (op)
                     {
-                        RPC_WARNING(" has object_proxy {}", std::to_string(op->get_object_id()));
+                        RPC_ERROR(
+                            " has object_proxy {} shared_count={} optimistic_count={} proxy_count={}",
+                            std::to_string(op->get_object_id()),
+                            op->get_shared_count(),
+                            op->get_optimistic_count(),
+                            op->get_proxy_count());
                     }
                     else
                     {
-                        RPC_WARNING(" has null object_proxy");
+                        RPC_ERROR(" has null object_proxy");
                     }
                     success = false;
                 }
@@ -1162,6 +1186,7 @@ namespace rpc
             } // Release stub_control_ lock before calling object_released
 
             stub->dont_keep_alive();
+            stub.reset();
 
             // Now notify all transports that had optimistic references
             // IMPORTANT: This must be done AFTER releasing stub_control_ mutex to avoid deadlock
@@ -1183,6 +1208,15 @@ namespace rpc
                         or_params.remote_object_id = std::move(*r);
                     }
                     or_params.caller_zone_id = caller_zone_id;
+#ifdef CANOPY_BUILD_COROUTINE
+                    auto async_params = or_params;
+                    if (io_scheduler_
+                        && io_scheduler_->spawn_detached(
+                            notify_object_released_on_transport(transport, std::move(async_params))))
+                    {
+                        continue;
+                    }
+#endif
                     CO_AWAIT transport->object_released(std::move(or_params));
                 }
             }
@@ -1236,7 +1270,7 @@ namespace rpc
                 CO_RETURN standard_result{rpc::error::OBJECT_NOT_FOUND(), {}};
             }
 
-            CO_AWAIT release_local_stub(stub, !!(release_options::optimistic & options), caller_zone_id);
+            CO_AWAIT release_local_stub(std::move(stub), !!(release_options::optimistic & options), caller_zone_id);
         }
 
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -1729,11 +1763,6 @@ namespace rpc
                 auto zit = service_proxies_.find(remote_zone);
                 if (zit != service_proxies_.end())
                 {
-                    auto sp = zit->second.lock();
-                    if (sp)
-                    {
-                        sp->set_transport(nullptr);
-                    }
                     service_proxies_.erase(zit);
                 }
             }

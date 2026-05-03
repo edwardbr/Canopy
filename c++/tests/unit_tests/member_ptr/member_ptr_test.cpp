@@ -16,9 +16,8 @@
 #include "rpc/rpc.h"
 #include "member_ptr_test/member_ptr_test.h"
 
-// Forward declaration for the test interface
-int construction_count = 0;
-int destruction_count = 0;
+std::atomic<int> construction_count{0};
+std::atomic<int> destruction_count{0};
 
 // Test fixture for rpc::member_ptr tests
 class MemberPtrTest : public ::testing::Test
@@ -26,13 +25,13 @@ class MemberPtrTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        construction_count = 0;
-        destruction_count = 0;
+        construction_count.store(0);
+        destruction_count.store(0);
     }
 
     void TearDown() override
     {
-        EXPECT_EQ(construction_count, destruction_count)
+        EXPECT_EQ(construction_count.load(), destruction_count.load())
             << "Memory leak detected: not all test_impl objects were destroyed";
     }
 };
@@ -45,9 +44,9 @@ public:
     test_impl(int val)
         : val_(val)
     {
-        construction_count++;
+        construction_count.fetch_add(1);
     }
-    virtual ~test_impl() { destruction_count++; }
+    virtual ~test_impl() { destruction_count.fetch_add(1); }
 
     CORO_TASK(int) test(int val) override
     {
@@ -466,9 +465,9 @@ struct TestResource
     TestResource(int v = 0)
         : value(v)
     {
-        construction_count++;
+        construction_count.fetch_add(1);
     }
-    ~TestResource() { destruction_count++; }
+    ~TestResource() { destruction_count.fetch_add(1); }
 
     // Disable copy and move to ensure shared_ptr handles ownership correctly
     TestResource(const TestResource&) = delete;

@@ -903,7 +903,7 @@ namespace interface_declaration_generator
                                 output(
                                     "auto __rpc_version = __rpc_sp ? __rpc_sp->get_remote_rpc_version() : "
                                     "rpc::get_version();");
-                                output("auto __rpc_encoding = __rpc_sp->get_encoding();");
+                                output("auto __rpc_encoding = rpc::effective_encoding(__rpc_sp->get_encoding());");
                                 output.print_tabs();
                                 output.raw(
                                     "auto __err = proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::{}(",

@@ -426,6 +426,14 @@ extern "C"
 
     typedef int32_t (*canopy_dll_init_fn)(canopy_dll_init_params* params);
     typedef void (*canopy_dll_destroy_fn)(canopy_child_context child_ctx);
+
+    /*
+     * Called by the parent after `canopy_dll_destroy` and before unloading the
+     * shared object.  The child context has already gone away, so this hook is
+     * only for module-level runtime cleanup.
+     */
+    typedef void (*canopy_dll_shutdown_fn)(void);
+
     typedef int32_t (*canopy_dll_send_fn)(
         canopy_child_context child_ctx,
         const canopy_send_params* params,
@@ -473,6 +481,7 @@ extern "C"
      */
     CANOPY_C_ABI_EXPORT int32_t canopy_dll_init(canopy_dll_init_params* params);
     CANOPY_C_ABI_EXPORT void canopy_dll_destroy(canopy_child_context child_ctx);
+    CANOPY_C_ABI_EXPORT void canopy_dll_shutdown(void);
     CANOPY_C_ABI_EXPORT int32_t canopy_dll_send(
         canopy_child_context child_ctx,
         const canopy_send_params* params,

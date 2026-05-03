@@ -4,19 +4,29 @@
  */
 #pragma once
 
+#include <rpc/rpc.h>
 #include <chrono>
+#include <coroutine>
 #include <functional>
 #include <mutex>
 #include <queue>
 #include <type_traits>
 #include <unordered_map>
-#include <coro/coro.hpp>
-#include <rpc/rpc.h>
+#include <coro/event.hpp>
+#include <coro/task.hpp>
+#include <coro/net/io_status.hpp>
 #include <streaming/stream_transport.h>
 #include <streaming/stream.h>
 
 namespace rpc::stream_transport
 {
+    struct stream_transport_options
+    {
+        std::chrono::milliseconds call_timeout{30000};
+        std::chrono::milliseconds call_timeout_sweep{1000};
+        std::chrono::milliseconds shutdown_timeout{5000};
+    };
+
     class transport : public rpc::transport
     {
     public:
@@ -44,11 +54,99 @@ namespace rpc::stream_transport
 
         struct result_listener
         {
-            coro::event event;
+            struct result
+            {
+                envelope_prefix prefix;
+                envelope_payload payload;
+                int error_code = rpc::error::OK();
+            };
+
+            // One listener is created for each outbound streaming RPC call and is
+            // published in pending_transmits_ before the encoded message is sent.
+            // The receive loop, timeout sweep, and disconnect cleanup can all
+            // complete the listener while the caller is between await_ready() and
+            // await_suspend(). The mutex protects that handoff: without the
+            // recheck in await_suspend(), a completion that arrives in that window
+            // could see no continuation to resume and the caller would sleep
+            // forever.
+            //
+            // A lock-free version should be expressed as a small atomic state
+            // machine, not as a lone atomic<bool>. The states would be:
+            // initial -> waiting(handle) -> complete(result), with a CAS in
+            // await_suspend() and complete(). The result storage would need
+            // release/acquire publication before resuming the continuation.
+            // That is feasible, but this mutex-backed form keeps the correctness
+            // rule local and obvious while the result includes movable payload
+            // state.
+            std::mutex mutex;
+            const std::shared_ptr<coro::scheduler> scheduler;
+            std::coroutine_handle<> continuation;
+            bool done = false;
             envelope_prefix prefix;
             envelope_payload payload;
             int error_code = rpc::error::OK();
-            std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+            std::chrono::steady_clock::time_point start_time{};
+
+            explicit result_listener(std::shared_ptr<coro::scheduler> input_scheduler)
+                : scheduler(std::move(input_scheduler))
+            {
+            }
+
+            void complete(
+                int input_error_code,
+                envelope_prefix input_prefix = {},
+                envelope_payload input_payload = {})
+            {
+                std::coroutine_handle<> resume;
+                {
+                    std::lock_guard lock(mutex);
+                    if (done)
+                        return;
+
+                    error_code = input_error_code;
+                    prefix = std::move(input_prefix);
+                    payload = std::move(input_payload);
+                    done = true;
+                    resume = continuation;
+                }
+
+                if (resume)
+                {
+                    if (!scheduler || !scheduler->resume(resume))
+                        resume.resume();
+                }
+            }
+        };
+
+        struct result_listener_awaitable
+        {
+            std::shared_ptr<result_listener> listener;
+
+            bool await_ready() const
+            {
+                std::lock_guard lock(listener->mutex);
+                return listener->done;
+            }
+
+            bool await_suspend(std::coroutine_handle<> handle)
+            {
+                std::lock_guard lock(listener->mutex);
+                if (listener->done)
+                    return false;
+
+                listener->continuation = handle;
+                return true;
+            }
+
+            result_listener::result await_resume() const
+            {
+                std::lock_guard lock(listener->mutex);
+                return result_listener::result{
+                    .prefix = listener->prefix,
+                    .payload = std::move(listener->payload),
+                    .error_code = listener->error_code,
+                };
+            }
         };
 
         struct activity_tracker;
@@ -94,28 +192,36 @@ namespace rpc::stream_transport
 
         std::atomic<bool> peer_requested_disconnection_ = false;
         std::atomic<bool> pumps_started_ = false;
+        std::atomic<bool> io_loops_started_ = false;
 
         // Two-phase close protocol state
         std::atomic<bool> send_cleanup_done_ = false;
+        std::atomic<bool> clean_disconnect_requested_ = false;
+        std::atomic<bool> disconnect_notification_sent_ = false;
         std::chrono::steady_clock::time_point disconnecting_since_{};
-        static constexpr uint32_t shutdown_timeout_ms_ = 5000;
 
         // Outbound call timeout: calls pending longer than this are failed with CALL_TIMEOUT
         std::chrono::milliseconds call_timeout_;
         // How often the sweep loop checks for timed-out calls
         std::chrono::milliseconds call_timeout_sweep_;
+        std::chrono::milliseconds shutdown_timeout_;
 
         struct activity_tracker
         {
             std::shared_ptr<transport> transport;
             std::shared_ptr<rpc::service> svc; // kept here to keep the service alive
-            ~activity_tracker() { svc->spawn(transport->cleanup(transport, svc)); }
+            std::atomic<int> active_io_loops{2};
+
+            bool io_loop_done() { return active_io_loops.fetch_sub(1, std::memory_order_acq_rel) == 1; }
         };
 
         // Producer/consumer coroutines
         CORO_TASK(void) receive_consumer_loop(std::shared_ptr<activity_tracker> tracker);
         CORO_TASK(void) send_producer_loop(std::shared_ptr<activity_tracker> tracker);
-        CORO_TASK(void) timeout_sweep_loop(std::shared_ptr<activity_tracker> tracker);
+        CORO_TASK(void)
+        timeout_sweep_loop(
+            std::shared_ptr<transport> transport,
+            std::shared_ptr<rpc::service> svc);
         CORO_TASK(bool) flush_send_queue();
 
         // Stub handlers (called when receiving messages)
@@ -151,6 +257,16 @@ namespace rpc::stream_transport
             envelope_payload payload);
         CORO_TASK(void)
         stub_handle_transport_down(
+            std::shared_ptr<activity_tracker> tracker,
+            envelope_prefix prefix,
+            envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_get_new_zone_id(
+            std::shared_ptr<activity_tracker> tracker,
+            envelope_prefix prefix,
+            envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_post_report(
             std::shared_ptr<activity_tracker> tracker,
             envelope_prefix prefix,
             envelope_payload payload);
@@ -224,7 +340,13 @@ namespace rpc::stream_transport
 
             auto sequence_number = ++sequence_number_;
 
-            auto res_payload = std::make_shared<result_listener>();
+            std::shared_ptr<coro::scheduler> scheduler;
+            if (auto svc = get_service(); svc && svc->get_scheduler())
+                scheduler = svc->get_scheduler();
+            auto res_payload = std::make_shared<result_listener>(std::move(scheduler));
+
+            if (call_timeout_.count() > 0 && call_timeout_sweep_.count() > 0)
+                res_payload->start_time = std::chrono::steady_clock::now();
 
             auto remove_pending_result = [this, sequence_number]()
             {
@@ -250,7 +372,7 @@ namespace rpc::stream_transport
             send_payload(
                 protocol_version, message_direction::send, std::forward<SendPayload>(sendPayload), sequence_number);
 
-            CO_AWAIT res_payload->event; // wait for the reply
+            auto result = CO_AWAIT result_listener_awaitable{res_payload};
             remove_pending_result();
 
             RPC_TRACE(
@@ -259,21 +381,21 @@ namespace rpc::stream_transport
                 sequence_number,
                 rpc::id<SendPayload>::get(rpc::get_version()));
 
-            if (res_payload->error_code == rpc::error::OBJECT_GONE())
+            if (result.error_code == rpc::error::OBJECT_GONE())
             {
-                CO_RETURN peer_call_result<ReceivePayload>{res_payload->error_code, {}};
+                CO_RETURN peer_call_result<ReceivePayload>{result.error_code, {}};
             }
-            if (rpc::error::is_critical(res_payload->error_code))
+            if (rpc::error::is_critical(result.error_code))
             {
                 RPC_ERROR(
                     "call_peer returning cancelled error for zone: {} sequence_number: {}",
                     get_service()->get_zone_id().get_subnet(),
                     sequence_number);
-                CO_RETURN peer_call_result<ReceivePayload>{res_payload->error_code, {}};
+                CO_RETURN peer_call_result<ReceivePayload>{result.error_code, {}};
             }
 
             ReceivePayload receive_payload;
-            auto str_err = rpc::from_yas_binary(rpc::byte_span(res_payload->payload.payload), receive_payload);
+            auto str_err = rpc::from_yas_binary(rpc::byte_span(result.payload.payload), receive_payload);
             if (!str_err.empty())
             {
                 RPC_ERROR("failed call_peer send_payload from_yas_binary");
@@ -287,6 +409,12 @@ namespace rpc::stream_transport
         cleanup(
             std::shared_ptr<transport> transport,
             std::shared_ptr<rpc::service> svc);
+        CORO_TASK(void) notify_disconnect_once(const std::shared_ptr<rpc::service>& svc);
+
+        CORO_TASK(void)
+        handle_initial_stub_add_ref(
+            std::shared_ptr<rpc::object_stub> stub,
+            rpc::zone adjacent_zone_id);
 
         template<class T>
         bool run_outgoing_handlers(
@@ -305,16 +433,35 @@ namespace rpc::stream_transport
         }
 
     protected:
+        template<class Payload>
+        int enqueue_one_way_message(
+            uint64_t protocol_version,
+            Payload&& payload,
+            send_priority priority = send_priority::high)
+        {
+            if (get_status() != rpc::transport_status::CONNECTED)
+                return rpc::error::TRANSPORT_ERROR();
+
+            send_payload(protocol_version, message_direction::one_way, std::forward<Payload>(payload), 0, priority);
+            return rpc::error::OK();
+        }
+
+        [[nodiscard]] virtual bool registers_with_service_on_initial_channel_response() const { return true; }
         transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
             connection_handler handler,
-            std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
-            std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000});
+            stream_transport_options options = {});
         void initialise_after_construction();
 
-        void on_destination_count_zero() override { set_status(rpc::transport_status::DISCONNECTING); }
+        void begin_clean_disconnect()
+        {
+            clean_disconnect_requested_.store(true, std::memory_order_release);
+            set_status(rpc::transport_status::DISCONNECTING);
+        }
+
+        void on_destination_count_zero() override { begin_clean_disconnect(); }
 
         void set_status(rpc::transport_status new_status) override;
 
@@ -376,6 +523,7 @@ namespace rpc::stream_transport
 
     public:
         ~transport() override = default;
+        [[nodiscard]] bool io_loops_started() const { return io_loops_started_.load(std::memory_order_acquire); }
 
         void add_custom_message_handler(custom_message_handler handler)
         {
@@ -501,14 +649,15 @@ namespace rpc::stream_transport
         CORO_TASK(standard_result) outbound_release(release_params params) override;
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
+        CORO_TASK(void) outbound_post_report(rpc::telemetry_event event) override;
+        CORO_TASK(new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params) override;
 
         friend std::shared_ptr<transport> make_server(
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
             transport::connection_handler handler,
-            std::chrono::milliseconds call_timeout,
-            std::chrono::milliseconds call_timeout_sweep);
+            stream_transport_options options);
     };
 
     std::shared_ptr<transport> make_server(
@@ -516,8 +665,7 @@ namespace rpc::stream_transport
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         transport::connection_handler handler,
-        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
-        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000});
+        stream_transport_options options = {});
 
     // Server-side: creates a transport that waits for the client's init message.
     // Internally wraps factory with make_new_zone_connection_handler so connection protocol details
@@ -532,41 +680,33 @@ namespace rpc::stream_transport
         std::function<CORO_TASK(rpc::service_connect_result<Local>)(
             rpc::shared_ptr<Remote>,
             std::shared_ptr<rpc::service>)> factory,
-        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
-        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
+        stream_transport_options options = {})
     {
         auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
-        return make_server(
-            std::move(name), std::move(service), std::move(stream), std::move(handler), call_timeout, call_timeout_sweep);
+        return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler), options);
     }
 
     // Returns a transport_factory that creates a streaming server transport wrapping
     // the given stream. Pass the result to service::make_acceptor().
     inline rpc::transport_factory transport_factory(
         std::shared_ptr<streaming::stream> stream,
-        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
-        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
+        stream_transport_options options = {})
     {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [stream = std::move(stream), call_timeout, call_timeout_sweep](
+        return [stream = std::move(stream), options](
                    std::string name,
                    std::shared_ptr<rpc::service> svc,
                    rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-        {
-            CO_RETURN make_server(
-                std::move(name), std::move(svc), stream, std::move(handler), call_timeout, call_timeout_sweep);
-        };
+        { CO_RETURN make_server(std::move(name), std::move(svc), stream, std::move(handler), options); };
     }
 
     inline std::shared_ptr<transport> make_client(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
-        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
-        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
+        stream_transport_options options = {})
     {
-        return make_server(
-            std::move(name), std::move(service), std::move(stream), nullptr, call_timeout, call_timeout_sweep);
+        return make_server(std::move(name), std::move(service), std::move(stream), nullptr, options);
     }
 
     // Produces a connection_callback for use with streaming::listener.
@@ -583,18 +723,18 @@ namespace rpc::stream_transport
         std::function<CORO_TASK(rpc::service_connect_result<Local>)(
             rpc::shared_ptr<Remote>,
             std::shared_ptr<rpc::service>)> factory,
-        std::chrono::milliseconds call_timeout = std::chrono::milliseconds{30000},
-        std::chrono::milliseconds call_timeout_sweep = std::chrono::milliseconds{1000})
+        stream_transport_options options = {})
     {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [fn = std::move(factory), call_timeout, call_timeout_sweep](
+        return [fn = std::move(factory), options](
                    std::string name,
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
-            auto transport = make_server<Remote, Local>(name, svc, std::move(stm), fn, call_timeout, call_timeout_sweep);
+            auto transport = make_server<Remote, Local>(name, svc, std::move(stm), fn, options);
             RPC_DEBUG("New transport connection {}", rpc::to_string(transport->get_adjacent_zone_id()));
             CO_RETURN;
         };
     }
+
 }

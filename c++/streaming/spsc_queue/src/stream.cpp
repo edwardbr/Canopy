@@ -30,9 +30,21 @@ namespace streaming::spsc_queue
     stream::stream(
         queue_type* send_q,
         queue_type* recv_q,
-        std::shared_ptr<coro::scheduler> scheduler)
+        std::shared_ptr<rpc::coro::scheduler> scheduler)
         : send_queue_(send_q)
         , recv_queue_(recv_q)
+        , scheduler_(std::move(scheduler))
+    {
+    }
+
+    stream::stream(
+        std::shared_ptr<queue_type> send_q,
+        std::shared_ptr<queue_type> recv_q,
+        std::shared_ptr<rpc::coro::scheduler> scheduler)
+        : send_queue_(send_q.get())
+        , recv_queue_(recv_q.get())
+        , send_queue_owner_(std::move(send_q))
+        , recv_queue_owner_(std::move(recv_q))
         , scheduler_(std::move(scheduler))
     {
     }
@@ -68,13 +80,18 @@ namespace streaming::spsc_queue
         while (true)
         {
             blob blob;
-            if (recv_queue_->pop(blob))
+            if (recv_queue_ && recv_queue_->pop(blob))
             {
                 uint32_t len = 0;
                 std::memcpy(&len, blob.data(), header_size);
 
                 if (len == 0)
-                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, {}};
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                if (len > max_payload)
+                {
+                    closed_.store(true, std::memory_order_release);
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::message_too_big}, {}};
+                }
 
                 size_t to_copy = std::min(static_cast<size_t>(len), buffer.size());
                 std::memcpy(buffer.data(), blob.data() + header_size, to_copy);
@@ -91,7 +108,10 @@ namespace streaming::spsc_queue
 
             if (single_attempt)
             {
-                co_await scheduler_->schedule();
+                auto scheduler = scheduler_.lock();
+                if (!scheduler)
+                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                co_await scheduler->schedule();
                 co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
             }
 
@@ -99,7 +119,11 @@ namespace streaming::spsc_queue
             if (remaining <= std::chrono::milliseconds{0})
                 co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
 
-            co_await scheduler_->yield_for(std::min(poll_interval, remaining));
+            auto scheduler = scheduler_.lock();
+            if (!scheduler)
+                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+
+            co_await scheduler->yield_for(std::min(poll_interval, remaining));
 
             if (closed_.load(std::memory_order_acquire))
                 co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
@@ -120,10 +144,12 @@ namespace streaming::spsc_queue
             std::memcpy(blob.data(), &len, header_size);
             std::memcpy(blob.data() + header_size, buffer.data(), to_send);
 
-            if (!send_queue_->push(blob))
+            if (!send_queue_ || !send_queue_->push(blob))
             {
-                // Queue full — yield and retry
-                co_await scheduler_->schedule();
+                auto scheduler = scheduler_.lock();
+                if (!scheduler)
+                    co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+                co_await scheduler->schedule();
                 continue;
             }
 

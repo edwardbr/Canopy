@@ -61,7 +61,7 @@ namespace rpc
     service_proxy::~service_proxy()
     {
         // keep service alive while service proxy cleans things up
-        auto service = service_;
+        auto service = get_operating_zone_service();
 
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
@@ -90,7 +90,8 @@ namespace rpc
         }
 
         RPC_ASSERT(proxies_.empty());
-        service->remove_zone_proxy(destination_zone_id_);
+        if (service)
+            service->remove_zone_proxy(destination_zone_id_);
     }
 
     void service_proxy::update_remote_rpc_version(uint64_t version)
@@ -132,6 +133,12 @@ namespace rpc
         {
             CO_RETURN rpc::send_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
         }
+        auto service = get_operating_zone_service();
+        RPC_ASSERT(service);
+        if (!service)
+        {
+            CO_RETURN rpc::send_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
+        }
 
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
@@ -155,7 +162,7 @@ namespace rpc
         params.method_id = method_id;
         params.in_data.assign(in_data.begin(), in_data.end());
         params.request_id = request_id;
-        CO_RETURN CO_AWAIT service_->outbound_send(std::move(params), transport);
+        CO_RETURN CO_AWAIT service->outbound_send(std::move(params), transport);
     }
 
     [[nodiscard]] CORO_TASK(int) service_proxy::post_from_this_zone(
@@ -189,6 +196,12 @@ namespace rpc
         {
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
+        auto service = get_operating_zone_service();
+        RPC_ASSERT(service);
+        if (!service)
+        {
+            CO_RETURN rpc::error::TRANSPORT_ERROR();
+        }
 
         // Call the outbound function on the service to allow derived classes to add extra functionality
         // such as processing back_channel data
@@ -211,7 +224,7 @@ namespace rpc
         params.interface_id = interface_id;
         params.method_id = method_id;
         params.in_data.assign(in_data.begin(), in_data.end());
-        CO_AWAIT service_->outbound_post(std::move(params), transport);
+        CO_AWAIT service->outbound_post(std::move(params), transport);
 
         CO_RETURN rpc::error::OK();
     }
@@ -228,6 +241,12 @@ namespace rpc
 
         auto transport = transport_.get_nullable();
         if (!transport)
+        {
+            CO_RETURN rpc::error::TRANSPORT_ERROR();
+        }
+        auto service = get_operating_zone_service();
+        RPC_ASSERT(service);
+        if (!service)
         {
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
@@ -253,7 +272,7 @@ namespace rpc
             tc_params.caller_zone_id = get_zone_id();
             tc_params.remote_object_id = *dest_with_obj;
             tc_params.interface_id = if_id;
-            auto tc_result = CO_AWAIT service_->outbound_try_cast(std::move(tc_params), transport);
+            auto tc_result = CO_AWAIT service->outbound_try_cast(std::move(tc_params), transport);
             auto ret = tc_result.error_code;
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
@@ -285,6 +304,12 @@ namespace rpc
         {
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
+        auto service = get_operating_zone_service();
+        RPC_ASSERT(service);
+        if (!service)
+        {
+            CO_RETURN rpc::error::TRANSPORT_ERROR();
+        }
 
         auto original_version = version_.load();
         auto version = original_version;
@@ -305,7 +330,7 @@ namespace rpc
             ar_params.requesting_zone_id = requesting_zone_id;
             ar_params.build_out_param_channel = build_out_param_channel;
             ar_params.request_id = request_id;
-            auto ar_result = CO_AWAIT service_->outbound_add_ref(std::move(ar_params), transport);
+            auto ar_result = CO_AWAIT service->outbound_add_ref(std::move(ar_params), transport);
             auto attempt = ar_result.error_code;
             if (attempt != rpc::error::INVALID_VERSION() && attempt != rpc::error::INCOMPATIBLE_SERVICE())
             {
@@ -343,6 +368,12 @@ namespace rpc
         {
             CO_RETURN rpc::error::TRANSPORT_ERROR();
         }
+        auto service = get_operating_zone_service();
+        RPC_ASSERT(service);
+        if (!service)
+        {
+            CO_RETURN rpc::error::TRANSPORT_ERROR();
+        }
 
         auto original_version = version_.load();
         auto version = original_version;
@@ -361,7 +392,7 @@ namespace rpc
             rel_params.remote_object_id = *dest_with_obj;
             rel_params.caller_zone_id = zone_id_;
             rel_params.options = options;
-            auto rel_result = CO_AWAIT service_->outbound_release(std::move(rel_params), transport);
+            auto rel_result = CO_AWAIT service->outbound_release(std::move(rel_params), transport);
             auto ret = rel_result.error_code;
             if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
             {
@@ -397,15 +428,13 @@ namespace rpc
         destination_zone destination_zone_id,
         bool is_optimistic)
     {
-        RPC_DEBUG("send_object_release starting release for object {}", object_id.get_val());
+        RPC_ASSERT(svc);
+        if (!svc)
+            CO_RETURN;
 
         auto caller_id = svc->get_zone_id();
-        // Release our reference to the service, allowing it to be destroyed if no longer needed
-        // if service is released then the last thing standing is the transport which may then tell its counterpart
-        // to begin cleanup too
+        RPC_DEBUG("send_object_release starting release for object {}", object_id.get_val());
 
-        // Call the outbound function on the service to allow derived classes to add extra functionality
-        // such as processing back_channel data
         auto dest_with_obj = destination_zone_id.with_object(object_id);
         if (!dest_with_obj)
             CO_RETURN;
@@ -420,10 +449,7 @@ namespace rpc
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_release(
-                {svc->get_zone_id(),
-                    *dest_with_obj,
-                    svc->get_zone_id(),
-                    is_optimistic ? release_options::optimistic : release_options::normal});
+                {caller_id, *dest_with_obj, caller_id, is_optimistic ? release_options::optimistic : release_options::normal});
         }
 #endif
 
@@ -451,7 +477,6 @@ namespace rpc
         {
             RPC_ERROR("cleanup_after_object release failed: {}", rpc::error::to_string(ret));
         }
-        svc.reset();
         // the transport may now go out of scope and be destroyed here
 
         CO_RETURN;
@@ -474,8 +499,7 @@ namespace rpc
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
-            auto transport = transport_.get_nullable();
-            RPC_ASSERT(transport);
+            RPC_ASSERT(transport_.get_nullable());
             auto release_obj_r = destination_zone_id_.with_object(object_id);
             RPC_ASSERT(release_obj_r.has_value());
             telemetry_service->on_service_proxy_release(
@@ -519,6 +543,12 @@ namespace rpc
         auto version = version_.load();
         auto destination_zone_id = destination_zone_id_;
         auto svc = get_operating_zone_service();
+        RPC_ASSERT(svc);
+        if (!svc)
+        {
+            RPC_ERROR("service_ is null unable to release");
+            return;
+        }
 
 #ifdef CANOPY_BUILD_COROUTINE
         // DO NOT pass service_proxy - it would create circular reference keeping services alive!
@@ -587,7 +617,7 @@ namespace rpc
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             {
                 telemetry_service->message(
-                    {rpc::telemetry::i_telemetry_service::level_enum::info,
+                    {rpc::telemetry::i_telemetry_service::level_enum::debug,
                         "get_or_create_object_proxy calling sp_add_ref with normal options for new object_proxy"});
             }
 #endif

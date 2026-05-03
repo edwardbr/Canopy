@@ -12,10 +12,14 @@ endif()
 if(CANOPY_BUILD_COROUTINE)
   set(STREAMING_TRANSPORT_LIB transport_streaming)
   set(STREAMING_TRANSPORT_TEST_LIB transport_streaming_test)
-  set(LIBCORO_DLL_TRANSPORT_SOURCES type_test_libcoro_dll_suite.cpp)
-  set(LIBCORO_DLL_TRANSPORT_LIB transport_libcoro_dynamic_library)
-  set(LIBCORO_DLL_TRANSPORT_TEST_LIB transport_libcoro_dynamic_library_test)
-  set(LIBCORO_DLL_TEST_TARGET canopy_libcoro_example_dll)
+  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES type_test_libcoro_dll_scheduled_dll_suite.cpp)
+  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_LIB transport_libcoro_dll_scheduled_dynamic_library)
+  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_dll_scheduled_dynamic_library_test)
+  set(LIBCORO_DLL_SCHEDULED_TEST_TARGET canopy_libcoro_dll_scheduled_example_dll)
+  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES type_test_libcoro_host_scheduled_dll_suite.cpp)
+  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB transport_libcoro_host_scheduled_dynamic_library)
+  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_host_scheduled_dynamic_library_test)
+  set(LIBCORO_HOST_SCHEDULED_TEST_TARGET canopy_libcoro_host_scheduled_example_dll)
   set(LIBCORO_IPC_DLL_TRANSPORT_SOURCES type_test_libcoro_ipc_dll_suite.cpp)
   set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_spsc_dll_host)
   set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_spsc_dll_host_test)
@@ -43,8 +47,14 @@ if(C_ABI_DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_C_ABI_DLL_PATH="$<TARGET_FILE:${C_ABI_DLL_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_DLL_TEST_TARGET)
-  list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_LIBCORO_DLL_PATH="$<TARGET_FILE:${LIBCORO_DLL_TEST_TARGET}>")
+if(LIBCORO_DLL_SCHEDULED_TEST_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_LIBCORO_DLL_SCHEDULED_DLL_PATH="$<TARGET_FILE:${LIBCORO_DLL_SCHEDULED_TEST_TARGET}>")
+endif()
+
+if(LIBCORO_HOST_SCHEDULED_TEST_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:${LIBCORO_HOST_SCHEDULED_TEST_TARGET}>")
 endif()
 
 if(LIBCORO_IPC_DLL_TEST_TARGET)
@@ -58,8 +68,8 @@ if(LIBCORO_IPC_DLL_LOADER_TARGET)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  # list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-  # CANOPY_TEST_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_child_process>")
+  # list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
+  # "$<TARGET_FILE:canopy_ipc_child_process>")
 endif()
 
 add_executable(
@@ -69,11 +79,13 @@ add_executable(
   remote_type_test_suite.cpp
   hierachical_transport_tests.cpp
   post_functionality_test_suite.cpp
+  atomic_smart_ptr_tests.cpp
   optimistic_ptr_tests.cpp
   streaming_transport_regression_suite.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${C_ABI_DLL_TRANSPORT_SOURCES}
-  ${LIBCORO_DLL_TRANSPORT_SOURCES}
+  ${LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES}
+  ${LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES}
   ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
 
@@ -103,8 +115,10 @@ target_link_libraries(
          ${DLL_TRANSPORT_TEST_LIB}
          ${C_ABI_DLL_TRANSPORT_LIB}
          ${C_ABI_DLL_TRANSPORT_TEST_LIB}
-         ${LIBCORO_DLL_TRANSPORT_LIB}
-         ${LIBCORO_DLL_TRANSPORT_TEST_LIB}
+         ${LIBCORO_DLL_SCHEDULED_TRANSPORT_LIB}
+         ${LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB}
+         ${LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB}
+         ${LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB}
          ${LIBCORO_IPC_DLL_TRANSPORT_LIB}
          ${LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB}
          ${IPC_TRANSPORT_TEST_LIB}
@@ -153,7 +167,8 @@ if(NOT CANOPY_BUILD_COROUTINE)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  add_dependencies(rpc_test ${LIBCORO_DLL_TEST_TARGET})
+  add_dependencies(rpc_test ${LIBCORO_DLL_SCHEDULED_TEST_TARGET})
+  add_dependencies(rpc_test ${LIBCORO_HOST_SCHEDULED_TEST_TARGET})
   add_dependencies(rpc_test ${LIBCORO_IPC_DLL_TEST_TARGET} ${LIBCORO_IPC_DLL_LOADER_TARGET})
 endif()
 

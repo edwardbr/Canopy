@@ -4,6 +4,10 @@
  */
 #pragma once
 
+#include "test_globals.h"
+
+#include <atomic>
+#include <chrono>
 #include <common/foo_impl.h>
 
 #ifdef CANOPY_USE_TELEMETRY
@@ -27,6 +31,8 @@ protected:
 
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> io_scheduler_; // NOLINT(misc-non-private-member-variables-in-classes)
+    std::atomic_bool teardown_interfaces_released_ = false;
+    std::atomic_bool teardown_root_shutdown_complete_ = false;
 #endif
 
     void start_telemetry_test()
@@ -44,6 +50,53 @@ protected:
         rpc::telemetry::reset_telemetry_for_test(rpc::telemetry::get_telemetry_service());
 #endif
     }
+
+#ifdef CANOPY_BUILD_COROUTINE
+    std::shared_ptr<rpc::event> make_root_shutdown_event_for_test()
+    {
+        auto shutdown_event = std::make_shared<rpc::event>(false);
+        if (root_service_)
+            root_service_->set_shutdown_event(shutdown_event);
+        return shutdown_event;
+    }
+
+    CORO_TASK(void) CoroReleaseInterfacesForTearDown()
+    {
+        i_example_ptr_ = nullptr;
+        i_host_ptr_ = nullptr;
+        teardown_interfaces_released_.store(true);
+        CO_RETURN;
+    }
+
+    CORO_TASK(void) CoroResetRootServiceForTearDown(std::shared_ptr<rpc::event> shutdown_event)
+    {
+        root_service_ = nullptr;
+        current_host_service.reset();
+        if (shutdown_event)
+            CO_AWAIT shutdown_event->wait();
+        teardown_root_shutdown_complete_.store(true);
+        CO_RETURN;
+    }
+
+    void release_interfaces_and_root_service_for_test(const std::shared_ptr<rpc::event>& shutdown_event)
+    {
+        teardown_interfaces_released_.store(false);
+        RPC_ASSERT(io_scheduler_->spawn_detached(CoroReleaseInterfacesForTearDown()));
+        while (!teardown_interfaces_released_.load())
+        {
+            io_scheduler_->process_events(std::chrono::milliseconds(1));
+        }
+
+        teardown_root_shutdown_complete_.store(false);
+        RPC_ASSERT(io_scheduler_->spawn_detached(CoroResetRootServiceForTearDown(shutdown_event)));
+        while (!teardown_root_shutdown_complete_.load())
+        {
+            io_scheduler_->process_events(std::chrono::milliseconds(1));
+        }
+
+        RPC_ASSERT(!shutdown_event || shutdown_event->is_set());
+    }
+#endif
 
 public:
     virtual ~transport_setup_base() = default;

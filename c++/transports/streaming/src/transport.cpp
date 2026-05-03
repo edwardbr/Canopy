@@ -31,15 +31,15 @@ namespace rpc::stream_transport
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         connection_handler handler,
-        std::chrono::milliseconds call_timeout,
-        std::chrono::milliseconds call_timeout_sweep)
+        stream_transport_options options)
         : rpc::transport(
               name,
               service)
         , stream_(std::move(stream))
         , connection_handler_(std::move(handler))
-        , call_timeout_(call_timeout)
-        , call_timeout_sweep_(call_timeout_sweep)
+        , call_timeout_(options.call_timeout)
+        , call_timeout_sweep_(options.call_timeout_sweep)
+        , shutdown_timeout_(options.shutdown_timeout)
     {
     }
 
@@ -55,7 +55,16 @@ namespace rpc::stream_transport
     void transport::set_status(rpc::transport_status new_status)
     {
         auto old_status = get_status();
-        if (old_status != new_status && new_status == rpc::transport_status::DISCONNECTING)
+        if (old_status != new_status)
+        {
+            RPC_DEBUG(
+                "stream transport status zone={} adjacent={} old={} new={}",
+                get_zone_id().get_subnet(),
+                get_adjacent_zone_id().get_subnet(),
+                static_cast<int>(old_status),
+                static_cast<int>(new_status));
+        }
+        if (old_status != new_status && new_status == rpc::transport_status::DISCONNECTING && shutdown_timeout_.count() > 0)
             disconnecting_since_ = std::chrono::steady_clock::now();
         if (new_status != rpc::transport_status::CONNECTED)
         {
@@ -69,11 +78,10 @@ namespace rpc::stream_transport
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
         transport::connection_handler handler,
-        std::chrono::milliseconds call_timeout,
-        std::chrono::milliseconds call_timeout_sweep)
+        stream_transport_options options)
     {
-        auto transport = std::shared_ptr<rpc::stream_transport::transport>(new rpc::stream_transport::transport(
-            name, service, std::move(stream), std::move(handler), call_timeout, call_timeout_sweep));
+        auto transport = std::shared_ptr<rpc::stream_transport::transport>(
+            new rpc::stream_transport::transport(name, service, std::move(stream), std::move(handler), options));
 
         transport->initialise_after_construction();
 
@@ -240,10 +248,10 @@ namespace rpc::stream_transport
         {
             RPC_ERROR("failed addref_receive.err_code");
 #ifdef CANOPY_USE_TELEMETRY
-            if (auto telemetry_service = rpc::get_telemetry_service(); telemetry_service)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
             {
                 auto error_message = std::string("add_ref failed ") + std::to_string(response_data.err_code);
-                telemetry_service->message({static_cast<uint64_t>(rpc::i_telemetry_service::err), error_message});
+                telemetry_service->message({rpc::telemetry::i_telemetry_service::err, error_message.c_str()});
             }
 #endif
             CO_RETURN standard_result{response_data.err_code, std::move(response_data.back_channel)};
@@ -274,14 +282,6 @@ namespace rpc::stream_transport
                 .options = params.options,
                 .back_channel = std::move(params.in_back_channel)},
             0);
-
-        auto count = get_destination_count();
-        RPC_ASSERT(count >= 0);
-        if (count <= 0 && get_status() == rpc::transport_status::CONNECTED)
-        {
-            RPC_DEBUG("destination_count reached 0, triggering graceful shutdown");
-            set_status(rpc::transport_status::DISCONNECTING);
-        }
 
         CO_RETURN standard_result{rpc::error::OK(), {}};
     }
@@ -330,6 +330,31 @@ namespace rpc::stream_transport
             0);
 
         RPC_DEBUG("stream_transport::transport::outbound_transport_down complete zone={}", get_zone_id().get_subnet());
+    }
+
+    CORO_TASK(void)
+    transport::outbound_post_report(rpc::telemetry_event event)
+    {
+        if (get_status() >= rpc::transport_status::DISCONNECTING)
+            CO_RETURN;
+
+        send_payload(rpc::get_version(), message_direction::one_way, std::move(event), 0, send_priority::high);
+        CO_RETURN;
+    }
+
+    CORO_TASK(new_zone_id_result)
+    transport::outbound_get_new_zone_id(get_new_zone_id_params params)
+    {
+        if (get_status() != rpc::transport_status::CONNECTED)
+            CO_RETURN new_zone_id_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
+
+        auto result = CO_AWAIT call_peer<get_new_zone_id_send, get_new_zone_id_receive>(
+            params.protocol_version, get_new_zone_id_send{.back_channel = std::move(params.in_back_channel)});
+        if (result.error_code != rpc::error::OK())
+            CO_RETURN new_zone_id_result{result.error_code, {}, {}};
+
+        CO_RETURN new_zone_id_result{
+            result.payload.err_code, result.payload.zone_id, std::move(result.payload.back_channel)};
     }
 
     CORO_TASK(transport::message_hook_result)
@@ -391,6 +416,16 @@ namespace rpc::stream_transport
             get_service()->spawn(stub_handle_transport_down(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
+        else if (payload.payload_fingerprint == rpc::id<get_new_zone_id_send>::get(prefix.version))
+        {
+            get_service()->spawn(stub_handle_get_new_zone_id(tracker, prefix, std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<rpc::telemetry_event>::get(prefix.version))
+        {
+            get_service()->spawn(stub_handle_post_report(tracker, prefix, std::move(payload)));
+            CO_RETURN true;
+        }
         else if (payload.payload_fingerprint == rpc::id<init_client_initial_channel_response>::get(prefix.version))
         {
             init_client_initial_channel_response early_response;
@@ -401,16 +436,16 @@ namespace rpc::stream_transport
                     "pump: received init_client_initial_channel_response, adjacent_zone={}",
                     early_response.zone_id.get_subnet());
                 set_adjacent_zone_id(early_response.zone_id);
-                get_service()->add_transport(early_response.zone_id, shared_from_this());
+                if (registers_with_service_on_initial_channel_response())
+                    get_service()->add_transport(early_response.zone_id, shared_from_this());
 
                 if (stub_)
                 {
-                    auto ret = CO_AWAIT stub_->add_ref(false, false, early_response.zone_id);
+                    auto stub = std::move(stub_);
                     stub_.reset();
-                    if (ret != rpc::error::OK())
-                    {
-                        set_status(transport_status::DISCONNECTING);
-                    }
+                    auto service = get_service();
+                    if (service)
+                        service->spawn(handle_initial_stub_add_ref(std::move(stub), early_response.zone_id));
                 }
             }
             else
@@ -421,12 +456,22 @@ namespace rpc::stream_transport
         }
         else if (payload.payload_fingerprint == rpc::id<close_connection_send>::get(prefix.version))
         {
+            RPC_DEBUG(
+                "stream dispatch close_connection_send zone={} adjacent={} seq={}",
+                get_zone_id().get_subnet(),
+                get_adjacent_zone_id().get_subnet(),
+                prefix.sequence_number);
             set_status(rpc::transport_status::DISCONNECTING);
             peer_requested_disconnection_ = true;
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<close_connection_ack>::get(prefix.version))
         {
+            RPC_DEBUG(
+                "stream dispatch close_connection_ack zone={} adjacent={} seq={}",
+                get_zone_id().get_subnet(),
+                get_adjacent_zone_id().get_subnet(),
+                prefix.sequence_number);
             set_status(rpc::transport_status::DISCONNECTED);
             CO_RETURN true;
         }
@@ -434,10 +479,23 @@ namespace rpc::stream_transport
         CO_RETURN false;
     }
 
+    CORO_TASK(void)
+    transport::handle_initial_stub_add_ref(
+        std::shared_ptr<rpc::object_stub> stub,
+        rpc::zone adjacent_zone_id)
+    {
+        if (!stub)
+            CO_RETURN;
+
+        auto ret = CO_AWAIT stub->add_ref(false, false, adjacent_zone_id);
+        if (ret != rpc::error::OK())
+            set_status(transport_status::DISCONNECTING);
+        CO_RETURN;
+    }
+
     CORO_TASK(void) transport::pump_send_and_receive()
     {
         auto self = shared_from_this();
-        RPC_DEBUG("pump_send_and_receive zone={}", get_zone_id().get_subnet());
 
         bool expected = false;
         if (!pumps_started_.compare_exchange_strong(expected, true))
@@ -449,11 +507,13 @@ namespace rpc::stream_transport
         auto svc = get_service();
         auto tracker = std::shared_ptr<activity_tracker>(new activity_tracker{
             .transport = std::static_pointer_cast<rpc::stream_transport::transport>(self), .svc = svc});
-        svc->spawn(receive_consumer_loop(tracker));
-        svc->spawn(send_producer_loop(tracker));
-        svc->spawn(timeout_sweep_loop(tracker));
-
-        RPC_DEBUG("pump_send_and_receive: scheduled tasks for zone {}", get_zone_id().get_subnet());
+        auto receive_spawned = svc->spawn(receive_consumer_loop(tracker));
+        auto send_spawned = svc->spawn(send_producer_loop(tracker));
+        io_loops_started_.store(receive_spawned && send_spawned, std::memory_order_release);
+        if (call_timeout_.count() > 0 && call_timeout_sweep_.count() > 0)
+        {
+            svc->spawn(timeout_sweep_loop(std::static_pointer_cast<rpc::stream_transport::transport>(self), svc));
+        }
     }
 
     CORO_TASK(void)
@@ -470,21 +530,20 @@ namespace rpc::stream_transport
         bool receiving_prefix = true;
         rpc::mutable_byte_span remaining;
 
-        RPC_DEBUG("receive_consumer_loop started for zone {}", get_zone_id().get_subnet());
-
         envelope_prefix prefix{};
 
         bool stop_loop = false;
         while (get_status() < rpc::transport_status::DISCONNECTED && !stop_loop)
         {
             if (receiving_prefix && remaining.empty())
+            {
                 remaining = prefix_buf;
+            }
 
-            auto [recv_status, recv_bytes] = CO_AWAIT stream_->receive(remaining, std::chrono::milliseconds(1));
+            auto [recv_status, recv_bytes] = CO_AWAIT stream_->receive(remaining, std::chrono::milliseconds{1});
 
             if (recv_status.is_closed())
             {
-                RPC_DEBUG("receive_consumer_loop: stream closed for zone {}", get_zone_id().get_subnet());
                 break;
             }
 
@@ -504,8 +563,8 @@ namespace rpc::stream_transport
                             break;
                         }
 
-                        auto elapsed = std::chrono::steady_clock::now() - disconnecting_since_;
-                        if (elapsed >= std::chrono::milliseconds(shutdown_timeout_ms_))
+                        if (shutdown_timeout_.count() > 0
+                            && (std::chrono::steady_clock::now() - disconnecting_since_) >= shutdown_timeout_)
                         {
                             RPC_WARNING(
                                 "receive_consumer_loop: responder shutdown timeout for zone {}, forcing DISCONNECTED",
@@ -517,8 +576,8 @@ namespace rpc::stream_transport
                     }
                     else
                     {
-                        auto elapsed = std::chrono::steady_clock::now() - disconnecting_since_;
-                        if (elapsed >= std::chrono::milliseconds(shutdown_timeout_ms_))
+                        if (shutdown_timeout_.count() > 0
+                            && (std::chrono::steady_clock::now() - disconnecting_since_) >= shutdown_timeout_)
                         {
                             RPC_WARNING(
                                 "receive_consumer_loop: initiator shutdown timeout for zone {}, forcing DISCONNECTED",
@@ -570,11 +629,6 @@ namespace rpc::stream_transport
 
             // Full payload received — dispatch
             {
-                RPC_DEBUG(
-                    "receive_consumer_loop: full payload received seq={} bytes={} zone={}",
-                    prefix.sequence_number,
-                    payload_buf.size(),
-                    get_zone_id().get_subnet());
                 envelope_payload payload;
                 auto str_err = rpc::from_yas_binary(rpc::byte_span(payload_buf), payload);
                 if (!str_err.empty())
@@ -614,11 +668,6 @@ namespace rpc::stream_transport
                     {
                         std::scoped_lock lock(pending_transmits_mtx_);
                         auto it = pending_transmits_.find(prefix.sequence_number);
-                        RPC_DEBUG(
-                            "pending_transmits_ zone: {} sequence_number: {} id: {}",
-                            get_zone_id().get_subnet(),
-                            prefix.sequence_number,
-                            payload.payload_fingerprint);
 
                         if (it != pending_transmits_.end())
                         {
@@ -635,17 +684,7 @@ namespace rpc::stream_transport
                     }
 
                     if (result)
-                    {
-                        result->prefix = prefix;
-                        result->payload = std::move(payload);
-                        RPC_DEBUG(
-                            "pump receive prefix.sequence_number {}\n prefix = {}\n payload = {}",
-                            get_zone_id().get_subnet(),
-                            rpc::to_yas_json<std::string>(result->prefix),
-                            rpc::to_yas_json<std::string>(result->payload));
-
-                        result->event.set();
-                    }
+                        result->complete(rpc::error::OK(), prefix, std::move(payload));
                 }
 
                 receiving_prefix = true;
@@ -655,11 +694,11 @@ namespace rpc::stream_transport
 
         if (get_status() < rpc::transport_status::DISCONNECTED)
         {
-            RPC_DEBUG("receive_consumer_loop: forcing DISCONNECTED for zone {}", get_zone_id().get_subnet());
             set_status(rpc::transport_status::DISCONNECTED);
         }
 
-        RPC_DEBUG("receive_consumer_loop exiting for zone {}", get_zone_id().get_subnet());
+        if (tracker->io_loop_done())
+            CO_AWAIT cleanup(tracker->transport, tracker->svc);
         CO_RETURN;
     }
 
@@ -725,8 +764,6 @@ namespace rpc::stream_transport
         auto svc = get_service();
         RPC_ASSERT(svc);
 
-        RPC_DEBUG("send_producer_loop started for zone {}", get_zone_id().get_subnet());
-
         while (get_status() == rpc::transport_status::CONNECTED)
         {
             queued_send_message item;
@@ -753,12 +790,6 @@ namespace rpc::stream_transport
 
             if (had_item)
             {
-                RPC_DEBUG(
-                    "send_producer_loop: sending seq={} direction={} payload_bytes={} zone={}",
-                    item.sequence_number,
-                    static_cast<uint64_t>(item.direction),
-                    item.payload_data.size(),
-                    get_zone_id().get_subnet());
                 auto send_part = [this](const std::vector<uint8_t>& data) -> CORO_TASK(coro::net::io_status)
                 {
                     if (data.empty())
@@ -768,10 +799,8 @@ namespace rpc::stream_transport
                 };
                 auto send_status = CO_AWAIT send_part(item.prefix_data);
                 if (send_status.is_ok())
-                    send_status = CO_AWAIT send_part(item.payload_data);
-                if (send_status.is_ok())
                 {
-                    RPC_DEBUG("send_producer_loop: sent seq={} zone={}", item.sequence_number, get_zone_id().get_subnet());
+                    send_status = CO_AWAIT send_part(item.payload_data);
                 }
                 if (!send_status.is_ok())
                 {
@@ -805,60 +834,68 @@ namespace rpc::stream_transport
                     continue;
                 if (send_queue_ready_.is_set())
                     continue;
-                RPC_DEBUG("send_producer_loop: waiting on send_queue_ready_ zone={}", get_zone_id().get_subnet());
                 CO_AWAIT send_queue_ready_;
-                RPC_DEBUG("send_producer_loop: send_queue_ready_ fired zone={}", get_zone_id().get_subnet());
             }
         }
 
         // Flush any messages queued before DISCONNECTING was set
-        if (get_status() == rpc::transport_status::DISCONNECTED)
+        if (get_status() == rpc::transport_status::DISCONNECTED && send_cleanup_done_.load(std::memory_order_acquire))
         {
-            send_cleanup_done_.store(true, std::memory_order_release);
-            RPC_DEBUG("send_producer_loop exiting after disconnect for zone {}", get_zone_id().get_subnet());
+            if (tracker->io_loop_done())
+                CO_AWAIT cleanup(tracker->transport, tracker->svc);
             CO_RETURN;
         }
 
         if (!(CO_AWAIT flush_send_queue()))
         {
             send_cleanup_done_.store(true, std::memory_order_release);
-            RPC_DEBUG("send_producer_loop aborting cleanup flush for zone {}", get_zone_id().get_subnet());
+            if (tracker->io_loop_done())
+                CO_AWAIT cleanup(tracker->transport, tracker->svc);
             CO_RETURN;
         }
 
-        // Send cleanup notifications — adds stub-release and transport-down messages
-        CO_AWAIT notify_all_destinations_of_disconnect();
+        // A refcount-zero shutdown is a clean close. transport_down is reserved for failed
+        // transports where the peer cannot be trusted to unwind references normally.
+        if (!clean_disconnect_requested_.load(std::memory_order_acquire) && !peer_requested_disconnection_)
+            CO_AWAIT notify_all_destinations_of_disconnect();
 
         if (!peer_requested_disconnection_)
         {
-            RPC_DEBUG("send_producer_loop: sending close_connection_send for zone {}", get_zone_id().get_subnet());
             send_payload_close_connection_send(rpc::get_version(), message_direction::one_way, close_connection_send{}, 0);
         }
 
         if (!(CO_AWAIT flush_send_queue()))
         {
             send_cleanup_done_.store(true, std::memory_order_release);
-            RPC_DEBUG("send_producer_loop aborting final cleanup flush for zone {}", get_zone_id().get_subnet());
+            if (tracker->io_loop_done())
+                CO_AWAIT cleanup(tracker->transport, tracker->svc);
             CO_RETURN;
         }
 
-        RPC_DEBUG("send_producer_loop: cleanup done, signalling receive loop for zone {}", get_zone_id().get_subnet());
         send_cleanup_done_.store(true, std::memory_order_release);
 
-        RPC_DEBUG("send_producer_loop completed for zone {}", get_zone_id().get_subnet());
+        if (tracker->io_loop_done())
+            CO_AWAIT cleanup(tracker->transport, tracker->svc);
         CO_RETURN;
     }
 
     CORO_TASK(void)
-    transport::timeout_sweep_loop(std::shared_ptr<activity_tracker> tracker)
+    transport::timeout_sweep_loop(
+        std::shared_ptr<rpc::stream_transport::transport> transport,
+        std::shared_ptr<rpc::service> svc)
     {
-        auto svc = get_service();
+        (void)transport;
+        if (call_timeout_.count() <= 0 || call_timeout_sweep_.count() <= 0)
+            CO_RETURN;
+
         RPC_ASSERT(svc);
-        auto scheduler = svc->get_scheduler();
 
         while (get_status() < rpc::transport_status::DISCONNECTED)
         {
+            auto scheduler = svc->get_scheduler();
             CO_AWAIT scheduler->schedule_after(call_timeout_sweep_);
+            if (get_status() >= rpc::transport_status::DISCONNECTED)
+                break;
 
             auto now = std::chrono::steady_clock::now();
             std::vector<std::shared_ptr<result_listener>> timed_out;
@@ -885,13 +922,25 @@ namespace rpc::stream_transport
                 }
             }
             for (auto& listener : timed_out)
-            {
-                listener->error_code = rpc::error::CALL_TIMEOUT();
-                listener->event.set();
-            }
+                listener->complete(rpc::error::CALL_TIMEOUT());
         }
 
         CO_RETURN;
+    }
+
+    CORO_TASK(void)
+    transport::notify_disconnect_once(const std::shared_ptr<rpc::service>& svc)
+    {
+        bool expected = false;
+        if (!disconnect_notification_sent_.compare_exchange_strong(
+                expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            CO_RETURN;
+        }
+
+        CO_AWAIT notify_all_destinations_of_disconnect();
+        if (svc && get_adjacent_zone_id().is_set())
+            CO_AWAIT svc->notify_transport_down(shared_from_this(), get_adjacent_zone_id());
     }
 
     CORO_TASK(void)
@@ -900,21 +949,21 @@ namespace rpc::stream_transport
         std::shared_ptr<rpc::service> svc)
     {
         RPC_DEBUG("Both loops completed, finalising transport for zone {}", transport->get_zone_id().get_subnet());
+        CO_AWAIT transport->notify_disconnect_once(svc);
+        std::vector<std::shared_ptr<result_listener>> cancelled;
         {
             std::scoped_lock lock(transport->pending_transmits_mtx_);
             for (auto it : transport->pending_transmits_)
             {
-                it.second->error_code = rpc::error::CALL_CANCELLED();
-                it.second->event.set();
+                cancelled.push_back(std::move(it.second));
             }
             transport->pending_transmits_.clear();
         }
-        if (transport->stream_)
-        {
-            CO_AWAIT transport->stream_->set_closed();
-            transport->stream_.reset();
-        }
+        for (auto& listener : cancelled)
+            listener->complete(rpc::error::CALL_CANCELLED());
+        transport->stream_.reset();
         transport->keep_alive_.reset();
+        RPC_DEBUG("stream transport cleanup completed for zone {}", transport->get_zone_id().get_subnet());
         co_return;
     }
 
@@ -1070,8 +1119,6 @@ namespace rpc::stream_transport
         envelope_prefix prefix,
         envelope_payload payload)
     {
-        RPC_DEBUG("stub_handle_add_ref");
-
         if (get_status() != rpc::transport_status::CONNECTED)
         {
             CO_RETURN;
@@ -1127,7 +1174,6 @@ namespace rpc::stream_transport
             set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
-
         auto rel_result = CO_AWAIT inbound_release(
             rpc::release_params{
                 .protocol_version = prefix.version,
@@ -1142,14 +1188,44 @@ namespace rpc::stream_transport
             RPC_DEBUG("inbound_release error {}", rel_result.error_code);
         }
 
-        auto count = get_destination_count();
-        RPC_ASSERT(count >= 0);
-        if (count <= 0)
-        {
-            RPC_DEBUG("destination_count reached 0, triggering disconnect");
-            set_status(rpc::transport_status::DISCONNECTING);
-        }
         RPC_DEBUG("stub_handle_release complete");
+        CO_RETURN;
+    }
+
+    CORO_TASK(void)
+    transport::stub_handle_get_new_zone_id(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
+    {
+        get_new_zone_id_send request;
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
+        if (!str_err.empty())
+        {
+            RPC_ERROR("failed get_new_zone_id_send from_yas_binary");
+            set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN;
+        }
+
+        auto service = get_service();
+        rpc::new_zone_id_result zone_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
+        if (service)
+        {
+            zone_result = CO_AWAIT service->get_new_zone_id(
+                rpc::get_new_zone_id_params{
+                    .protocol_version = prefix.version,
+                    .in_back_channel = std::move(request.back_channel),
+                });
+        }
+
+        send_payload(
+            prefix.version,
+            message_direction::receive,
+            get_new_zone_id_receive{.err_code = zone_result.error_code,
+                .zone_id = zone_result.zone_id,
+                .back_channel = std::move(zone_result.out_back_channel)},
+            prefix.sequence_number,
+            send_priority::high);
         CO_RETURN;
     }
 
@@ -1212,13 +1288,41 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
+    transport::stub_handle_post_report(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
+    {
+        RPC_DEBUG("stub_handle_post_report");
+
+        if (prefix.direction != message_direction::one_way)
+        {
+            RPC_ERROR("failed rpc::telemetry_event: expected one-way message");
+            set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN;
+        }
+
+        rpc::telemetry_event event;
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), event);
+        if (!str_err.empty())
+        {
+            RPC_ERROR("failed rpc::telemetry_event from_yas_binary");
+            set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN;
+        }
+
+        CO_AWAIT inbound_post_report(std::move(event));
+
+        RPC_DEBUG("stub_handle_post_report complete");
+        CO_RETURN;
+    }
+
+    CORO_TASK(void)
     transport::create_stub(
         std::shared_ptr<activity_tracker>,
         envelope_prefix prefix,
         envelope_payload payload)
     {
-        RPC_DEBUG("create_stub zone: {}", get_zone_id().get_subnet());
-
         init_client_channel_send request;
         auto err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
         if (!err.empty())

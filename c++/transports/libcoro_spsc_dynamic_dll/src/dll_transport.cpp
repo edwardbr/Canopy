@@ -5,6 +5,10 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
+#  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#    include <google/protobuf/stubs/common.h>
+#  endif
+
 #  include <thread>
 #  include <transports/libcoro_spsc_dynamic_dll/dll_transport.h>
 
@@ -42,11 +46,25 @@ namespace rpc::libcoro_spsc_dynamic_dll
             if (accept_err != rpc::error::OK())
                 CO_RETURN;
 
-            while (acceptor->get_status() != rpc::transport_status::DISCONNECTED)
+            for (int i = 0; i < 4; ++i)
                 CO_AWAIT scheduler->schedule();
 
+            std::weak_ptr<rpc::stream_transport::transport> weak_acceptor = acceptor;
+            std::weak_ptr<rpc::service> weak_service = service;
             acceptor.reset();
             service.reset();
+
+            while (true)
+            {
+                auto current_acceptor = weak_acceptor.lock();
+                if (!current_acceptor || current_acceptor->get_status() == rpc::transport_status::DISCONNECTED)
+                    break;
+
+                CO_AWAIT scheduler->schedule();
+            }
+
+            while (weak_service.lock())
+                CO_AWAIT scheduler->schedule();
 
             if (on_parent_expired)
                 on_parent_expired(callback_ctx);
@@ -63,7 +81,16 @@ namespace rpc::libcoro_spsc_dynamic_dll
             if (ctx->worker.joinable())
                 ctx->worker.join();
             if (ctx->scheduler)
+            {
                 ctx->scheduler->shutdown();
+                ctx->scheduler.reset();
+            }
+            ctx->shutdown_event.reset();
+
+#  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+            google::protobuf::ShutdownProtobufLibrary();
+#  endif
+
             delete ctx;
         }
     }

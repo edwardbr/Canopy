@@ -18,8 +18,14 @@ namespace rpc
         , forward_transport_(forward)
         , reverse_transport_(reverse)
         , service_(service)
-        , zone_id_(service->get_zone_id())
+        , zone_id_(service ? service->get_zone_id() : rpc::zone{})
     {
+        RPC_ASSERT(forward);
+        RPC_ASSERT(reverse);
+        RPC_ASSERT(service);
+        RPC_ASSERT(forward != reverse);
+        RPC_ASSERT(forward_dest != reverse_dest);
+
 #ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
@@ -65,11 +71,11 @@ namespace rpc
     {
         if (dest.get_subnet() == forward_destination_.get_subnet())
         {
-            return forward_transport_;
+            return forward_transport_.get_nullable();
         }
         else if (dest.get_subnet() == reverse_destination_.get_subnet())
         {
-            return reverse_transport_;
+            return reverse_transport_.get_nullable();
         }
         return nullptr;
     }
@@ -462,8 +468,11 @@ namespace rpc
     CORO_TASK(void)
     pass_through::post_report(rpc::telemetry_event event)
     {
-        if (service_)
-            CO_AWAIT service_->post_report(std::move(event));
+        auto service = service_.get_nullable();
+        if (service)
+        {
+            CO_AWAIT service->post_report(std::move(event));
+        }
         CO_RETURN;
     }
 
@@ -477,21 +486,26 @@ namespace rpc
     CORO_TASK(void)
     pass_through::local_transport_down(std::shared_ptr<transport> local_transport)
     {
-        if (forward_transport_ != local_transport)
+        auto forward_transport = forward_transport_.get_nullable();
+        auto reverse_transport = reverse_transport_.get_nullable();
+
+        RPC_ASSERT(local_transport == forward_transport || local_transport == reverse_transport);
+
+        if (forward_transport && forward_transport != local_transport)
         {
             transport_down_params fwd_params;
             fwd_params.protocol_version = rpc::get_version();
             fwd_params.destination_zone_id = forward_destination_;
             fwd_params.caller_zone_id = reverse_destination_;
-            CO_AWAIT forward_transport_->transport_down(std::move(fwd_params));
+            CO_AWAIT forward_transport->transport_down(std::move(fwd_params));
         }
-        if (reverse_transport_)
+        if (reverse_transport && reverse_transport != local_transport)
         {
             transport_down_params rev_params;
             rev_params.protocol_version = rpc::get_version();
             rev_params.destination_zone_id = reverse_destination_;
             rev_params.caller_zone_id = forward_destination_;
-            CO_AWAIT reverse_transport_->transport_down(std::move(rev_params));
+            CO_AWAIT reverse_transport->transport_down(std::move(rev_params));
         }
         trigger_self_destruction();
     }
@@ -558,13 +572,15 @@ namespace rpc
 #endif
 
         // Remove this passthrough from both transports so no new calls are routed here.
-        if (forward_transport_)
+        auto forward_transport = forward_transport_.get_nullable();
+        if (forward_transport)
         {
-            forward_transport_->remove_passthrough(forward_destination_, reverse_destination_);
+            forward_transport->remove_passthrough(forward_destination_, reverse_destination_);
         }
-        if (reverse_transport_)
+        auto reverse_transport = reverse_transport_.get_nullable();
+        if (reverse_transport)
         {
-            reverse_transport_->remove_passthrough(reverse_destination_, forward_destination_);
+            reverse_transport->remove_passthrough(reverse_destination_, forward_destination_);
         }
 
         // Release all strong references.

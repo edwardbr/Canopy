@@ -7,6 +7,8 @@
 
 #include <memory>
 
+#include <rpc/internal/polyfill/atomic_shared_ptr.h>
+
 // Forward declaration
 namespace rpc
 {
@@ -16,16 +18,16 @@ namespace rpc
 namespace stdex
 {
     /**
-     * @brief Thread-safe wrapper for std::shared_ptr with internal synchronization
+     * @brief Thread-safe wrapper for std::shared_ptr member storage
      *
-     * member_ptr provides thread-safe access to a shared_ptr by using an internal
-     * shared_mutex (reader-writer lock) to protect all operations. This class is
+     * member_ptr provides thread-safe access to a shared_ptr by using atomic
+     * smart-pointer storage to protect all operations. This class is
      * designed to be used as a member variable in classes that need thread-safe
      * shared pointer semantics without external synchronization.
      *
      * Thread-Safety Guarantees:
-     * - get_nullable(): Multiple threads can read concurrently (shared_lock)
-     * - reset(), assignment operators: Exclusive access (unique_lock)
+     * - get_nullable(): Atomically returns a local shared_ptr copy
+     * - reset(), assignment operators: Atomically replace the stored pointer
      * - All operations are safe to call from multiple threads simultaneously
      *
      * Design Philosophy:
@@ -57,8 +59,7 @@ namespace stdex
     template<typename T> class member_ptr
     {
     private:
-        std::shared_ptr<T> ptr_;
-        mutable rpc::shared_mutex mutex_; // Protects ptr_ access
+        std::atomic<std::shared_ptr<T>> ptr_;
 
     public:
         // Default constructor
@@ -76,16 +77,14 @@ namespace stdex
 
         // Copy constructor - thread-safe
         member_ptr(const member_ptr& other)
+            : ptr_(other.ptr_.load())
         {
-            std::unique_lock lock(other.mutex_);
-            ptr_ = other.ptr_;
         }
 
-        // Move constructor - assumes other is not being accessed
+        // Move constructor - thread-safe
         member_ptr(member_ptr&& other) noexcept
+            : ptr_(other.ptr_.exchange(nullptr))
         {
-            std::unique_lock lock(other.mutex_);
-            ptr_ = std::move(other.ptr_);
         }
 
         // Copy assignment operator - thread-safe
@@ -93,9 +92,7 @@ namespace stdex
         {
             if (this != &other)
             {
-                // Lock both mutexes in consistent order to prevent deadlock
-                std::scoped_lock lock(mutex_, other.mutex_);
-                ptr_ = other.ptr_;
+                ptr_.store(other.ptr_.load());
             }
             return *this;
         }
@@ -105,54 +102,41 @@ namespace stdex
         {
             if (this != &other)
             {
-                // Lock both mutexes in consistent order to prevent deadlock
-                std::scoped_lock lock(mutex_, other.mutex_);
-                ptr_ = std::move(other.ptr_);
+                ptr_.store(other.ptr_.exchange(nullptr));
             }
             return *this;
         }
 
-        // Assignment from shared_ptr - thread-safe (exclusive access)
+        // Assignment from shared_ptr - thread-safe
         member_ptr& operator=(const std::shared_ptr<T>& ptr)
         {
-            std::unique_lock lock(mutex_);
-            ptr_ = ptr;
+            ptr_.store(ptr);
             return *this;
         }
 
         member_ptr& operator=(std::shared_ptr<T>&& ptr)
         {
-            std::unique_lock lock(mutex_);
-            ptr_ = std::move(ptr);
+            ptr_.store(std::move(ptr));
             return *this;
         }
 
         /**
          * @brief Get a thread-safe copy of the shared_ptr
          *
-         * Returns a local copy of the internal shared_ptr under a shared_lock,
-         * allowing multiple threads to call this method concurrently. Once the
-         * copy is obtained, it can be safely used without additional locking.
+         * Returns a local copy of the internal shared_ptr using atomic load.
+         * Once the copy is obtained, it can be safely used without additional
+         * locking.
          *
          * @return std::shared_ptr<T> A copy of the managed pointer (may be nullptr)
          */
-        std::shared_ptr<T> get_nullable() const
-        {
-            rpc::shared_lock<rpc::shared_mutex> lock(mutex_);
-            return ptr_;
-        }
+        std::shared_ptr<T> get_nullable() const { return ptr_.load(); }
 
         /**
          * @brief Reset the pointer to nullptr
          *
-         * Acquires exclusive access (unique_lock) to safely reset the pointer.
-         * This operation blocks all concurrent reads and other writes.
+         * Atomically resets the stored pointer.
          */
-        void reset()
-        {
-            std::unique_lock lock(mutex_);
-            ptr_.reset();
-        }
+        void reset() { ptr_.store(nullptr); }
 
         // Destructor
         ~member_ptr() = default;
@@ -162,16 +146,16 @@ namespace stdex
 namespace rpc
 {
     /**
-     * @brief Thread-safe wrapper for rpc::shared_ptr with internal synchronization
+     * @brief Thread-safe wrapper for rpc::shared_ptr member storage
      *
-     * member_ptr provides thread-safe access to an rpc::shared_ptr by using an internal
-     * shared_mutex (reader-writer lock) to protect all operations. This class is
+     * member_ptr provides thread-safe access to an rpc::shared_ptr by using atomic
+     * smart-pointer storage to protect all operations. This class is
      * designed to be used as a member variable in classes that need thread-safe
      * shared pointer semantics without external synchronization.
      *
      * Thread-Safety Guarantees:
-     * - get_nullable(): Multiple threads can read concurrently (shared_lock)
-     * - reset(), assignment operators: Exclusive access (unique_lock)
+     * - get_nullable(): Atomically returns a local rpc::shared_ptr copy
+     * - reset(), assignment operators: Atomically replace the stored pointer
      * - All operations are safe to call from multiple threads simultaneously
      *
      * Design Philosophy:
@@ -205,8 +189,7 @@ namespace rpc
     template<typename T> class member_ptr
     {
     private:
-        rpc::shared_ptr<T> ptr_;
-        mutable rpc::shared_mutex mutex_; // Protects ptr_ access
+        std::atomic<rpc::shared_ptr<T>> ptr_;
 
     public:
         // Default constructor
@@ -224,16 +207,14 @@ namespace rpc
 
         // Copy constructor - thread-safe
         member_ptr(const member_ptr& other)
+            : ptr_(other.ptr_.load())
         {
-            std::unique_lock lock(other.mutex_);
-            ptr_ = other.ptr_;
         }
 
-        // Move constructor - assumes other is not being accessed
+        // Move constructor - thread-safe
         member_ptr(member_ptr&& other) noexcept
+            : ptr_(other.ptr_.exchange(nullptr))
         {
-            std::unique_lock lock(other.mutex_);
-            ptr_ = std::move(other.ptr_);
         }
 
         // Copy assignment operator - thread-safe
@@ -241,9 +222,7 @@ namespace rpc
         {
             if (this != &other)
             {
-                // Lock both mutexes in consistent order to prevent deadlock
-                std::scoped_lock lock(mutex_, other.mutex_);
-                ptr_ = other.ptr_;
+                ptr_.store(other.ptr_.load());
             }
             return *this;
         }
@@ -253,55 +232,41 @@ namespace rpc
         {
             if (this != &other)
             {
-                // Lock both mutexes in consistent order to prevent deadlock
-                std::scoped_lock lock(mutex_, other.mutex_);
-                ptr_ = std::move(other.ptr_);
+                ptr_.store(other.ptr_.exchange(nullptr));
             }
             return *this;
         }
 
-        // Assignment from shared_ptr - thread-safe (exclusive access)
+        // Assignment from shared_ptr - thread-safe
         member_ptr& operator=(const rpc::shared_ptr<T>& ptr)
         {
-            std::unique_lock lock(mutex_);
-            ptr_ = ptr;
+            ptr_.store(ptr);
             return *this;
         }
 
         member_ptr& operator=(rpc::shared_ptr<T>&& ptr)
         {
-            std::unique_lock lock(mutex_);
-            ptr_ = std::move(ptr);
+            ptr_.store(std::move(ptr));
             return *this;
         }
 
         /**
          * @brief Get a thread-safe copy of the shared_ptr
          *
-         * Returns a local copy of the internal rpc::shared_ptr under a shared_lock,
-         * allowing multiple threads to call this method concurrently. Once the
-         * copy is obtained, it can be safely used without additional locking,
+         * Returns a local copy of the internal rpc::shared_ptr using atomic load.
+         * Once the copy is obtained, it can be safely used without additional locking,
          * with lifetime management handled across RPC zone boundaries.
          *
          * @return rpc::shared_ptr<T> A copy of the managed pointer (may be nullptr)
          */
-        rpc::shared_ptr<T> get_nullable() const
-        {
-            rpc::shared_lock<rpc::shared_mutex> lock(mutex_);
-            return ptr_;
-        }
+        rpc::shared_ptr<T> get_nullable() const { return ptr_.load(); }
 
         /**
          * @brief Reset the pointer to nullptr
          *
-         * Acquires exclusive access (unique_lock) to safely reset the pointer.
-         * This operation blocks all concurrent reads and other writes.
+         * Atomically resets the stored pointer.
          */
-        void reset()
-        {
-            std::unique_lock lock(mutex_);
-            ptr_.reset();
-        }
+        void reset() { ptr_.store(nullptr); }
 
         // Destructor
         ~member_ptr() = default;

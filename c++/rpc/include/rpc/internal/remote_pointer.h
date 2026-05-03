@@ -516,35 +516,22 @@ namespace rpc
                     } while (!weak_count_.compare_exchange_weak(
                         weak_count, weak_count + 1, std::memory_order_acquire, std::memory_order_relaxed));
 
-                    // Control block is now guaranteed alive for the synchronous portion.
-                    // We increment optimistic_count (low 32 bits of combined_count).
+                    // First take a temporary shared reference. If this fails, the object
+                    // is already gone and no optimistic transition should be started.
+                    if (!try_increment_shared())
+                    {
+                        decrement_weak_and_destroy_if_zero();
+                        CO_RETURN error::OBJECT_GONE();
+                    }
+
+                    // Control block is now guaranteed alive and the pointee cannot be
+                    // disposed while the 0->1 optimistic transition is in progress.
                     long prev = combined_count_.fetch_add(1, std::memory_order_relaxed) & 0xFFFFFFFF;
 
                     if (prev == 0)
                     {
                         // First optimistic_ptr: 0→1 transition — must notify remote stub.
                         //
-                        // CRITICAL: Take a temporary shared reference before the CO_AWAIT.
-                        // Without it, the following race exists when called via make_optimistic(weak_ptr):
-                        //   1. We increment optimistic_count (control block opt=1, object_proxy opt=0)
-                        //   2. Coroutine suspends at CO_AWAIT — object_proxy not yet notified
-                        //   3. Another thread releases the last shared_ptr
-                        //   4. decrement_shared_and_dispose_if_zero sees prev_opt=1, defers disposal,
-                        //      but calls object_proxy_release(shared) → object_proxy sees (0,0) → cleanup!
-                        //   5. CO_AWAIT resumes: object_proxy_add_ref(optimistic) arrives after cleanup → ASSERT
-                        //
-                        // The temp shared ref keeps shared_count ≥ 2 while suspended, so no other
-                        // thread's shared release can become the "last" one and fire the object_proxy
-                        // shared notification before the optimistic add_ref has been delivered.
-                        // On both success and error paths we release the temp ref after CO_AWAIT.
-                        if (!try_increment_shared())
-                        {
-                            // Shared is already 0 — object is gone. Roll back optimistic count.
-                            combined_count_.fetch_sub(1, std::memory_order_relaxed);
-                            decrement_weak_and_destroy_if_zero();
-                            CO_RETURN error::OBJECT_GONE();
-                        }
-
                         auto err = CO_AWAIT control_block_call_add_ref(add_ref_options::optimistic);
                         if (err)
                         {
@@ -572,6 +559,7 @@ namespace rpc
                     }
                     else
                     {
+                        decrement_shared_and_dispose_if_zero();
                         // Not the first optimistic_ptr: we pre-emptively incremented weak_count_
                         // Undo that increment since weak_count_ is only for control block lifetime
                         decrement_weak_and_destroy_if_zero();
@@ -3041,48 +3029,25 @@ namespace rpc
         {
             // Remote object: establish optimistic reference (0→1 transition, async!)
 #  ifdef CANOPY_ADD_REF_COUNT_CHECKS
-            // TELEMETRY: Check reference counts BEFORE establishing optimistic reference
+            // TELEMETRY: Check control-block counts BEFORE establishing optimistic reference.
+            // Do not dereference in.ptr_for_lock_ here. make_optimistic(weak_ptr) is allowed
+            // to race the last shared_ptr release; try_increment_optimistic() is the operation
+            // that makes the pointee safe to inspect.
             std::int64_t combined_before = cb->combined_count_.load(std::memory_order_acquire);
             long cb_shared_before = combined_before >> 32;
             long cb_optimistic_before = combined_before & 0xFFFFFFFF;
 
-            // Get object_proxy to check inherited counts (service-level stub counts)
-            auto casting_iface = reinterpret_cast<rpc::casting_interface*>(in.ptr_);
-            auto obj_proxy = casting_iface ? casting_iface->__rpc_get_object_proxy() : nullptr;
-            int inherited_shared_before = 0;
-            int inherited_optimistic_before = 0;
-            if (obj_proxy)
-            {
-                __rpc_internal::__shared_ptr_control_block::get_object_proxy_reference_counts(
-                    obj_proxy, inherited_shared_before, inherited_optimistic_before);
-            }
-
             RPC_DEBUG(
-                "make_optimistic(weak_ptr→optimistic_ptr): BEFORE - control_block(shared={}, optimistic={}), "
-                "object_proxy(inherited_shared={}, inherited_optimistic={})",
+                "make_optimistic(weak_ptr→optimistic_ptr): BEFORE - control_block(shared={}, optimistic={})",
                 cb_shared_before,
-                cb_optimistic_before,
-                inherited_shared_before,
-                inherited_optimistic_before);
+                cb_optimistic_before);
 
-            // Verify both control block counts are either zero or both non-zero
-            if ((cb_shared_before == 0) != (cb_optimistic_before == 0))
+            if (cb_shared_before < 0 || cb_optimistic_before < 0)
             {
                 RPC_ERROR(
-                    "make_optimistic(weak_ptr): Control block reference count mismatch BEFORE - shared={} "
-                    "optimistic={} (should both be 0 or both be non-zero)",
+                    "make_optimistic(weak_ptr): negative control block reference count BEFORE - shared={} optimistic={}",
                     cb_shared_before,
                     cb_optimistic_before);
-            }
-
-            // Verify both inherited counts are either zero or both non-zero
-            if (obj_proxy && (inherited_shared_before == 0) != (inherited_optimistic_before == 0))
-            {
-                RPC_ERROR(
-                    "make_optimistic(weak_ptr): Object proxy inherited count mismatch BEFORE - "
-                    "inherited_shared={} inherited_optimistic={} (should both be 0 or both be non-zero)",
-                    inherited_shared_before,
-                    inherited_optimistic_before);
             }
 #  endif
 
@@ -3097,6 +3062,8 @@ namespace rpc
             std::int64_t combined_after = cb->combined_count_.load(std::memory_order_acquire);
             long cb_shared_after = combined_after >> 32;
             long cb_optimistic_after = combined_after & 0xFFFFFFFF;
+            auto casting_iface = reinterpret_cast<rpc::casting_interface*>(in.ptr_for_lock_);
+            auto obj_proxy = casting_iface ? casting_iface->__rpc_get_object_proxy() : nullptr;
             int inherited_shared_after = 0;
             int inherited_optimistic_after = 0;
             if (obj_proxy)
@@ -3113,22 +3080,19 @@ namespace rpc
                 inherited_shared_after,
                 inherited_optimistic_after);
 
-            // Verify both control block counts are non-zero after increment
-            if (cb_shared_after == 0 || cb_optimistic_after == 0)
+            if (cb_shared_after < 0 || cb_optimistic_after <= 0)
             {
                 RPC_ERROR(
-                    "make_optimistic(weak_ptr): Control block count zero AFTER increment - shared={} "
-                    "optimistic={} (both should be > 0)",
+                    "make_optimistic(weak_ptr): invalid control block reference count AFTER increment - shared={} optimistic={}",
                     cb_shared_after,
                     cb_optimistic_after);
             }
 
-            // Verify both inherited counts are either zero or both non-zero after increment
-            if (obj_proxy && (inherited_shared_after == 0) != (inherited_optimistic_after == 0))
+            if (obj_proxy && inherited_optimistic_after <= 0)
             {
                 RPC_ERROR(
-                    "make_optimistic(weak_ptr): Object proxy inherited count mismatch AFTER - "
-                    "inherited_shared={} inherited_optimistic={} (should both be 0 or both be non-zero)",
+                    "make_optimistic(weak_ptr): invalid object proxy optimistic count AFTER - "
+                    "inherited_shared={} inherited_optimistic={}",
                     inherited_shared_after,
                     inherited_optimistic_after);
             }

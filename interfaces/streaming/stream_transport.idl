@@ -158,6 +158,18 @@ namespace rpc
             std::vector<rpc::back_channel_entry> back_channel;
         };
 
+        struct get_new_zone_id_send
+        {
+            std::vector<rpc::back_channel_entry> back_channel;
+        };
+
+        struct get_new_zone_id_receive
+        {
+            int err_code;
+            rpc::zone zone_id;
+            std::vector<rpc::back_channel_entry> back_channel;
+        };
+
         struct close_connection_send
         {
         };

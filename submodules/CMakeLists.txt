@@ -21,12 +21,26 @@ if(CANOPY_BUILD_NANOPB)
   target_include_directories(
     canopy_nanopb_runtime SYSTEM PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/submodules/nanopb>")
   set_property(TARGET canopy_nanopb_runtime PROPERTY POSITION_INDEPENDENT_CODE ON)
-
 endif()
 
-if(CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_BUILD_NANOPB)
-  # Protocol Buffers - C++ only
-  message("Protocol Buffers - building protoc/protobuf components")
+set(CANOPY_NEED_BUNDLED_PROTOC OFF)
+if(CANOPY_BUILD_NANOPB AND NOT CANOPY_BUILD_PROTOCOL_BUFFERS AND NOT CANOPY_NANOPB_PROTOC_EXECUTABLE)
+  find_program(CANOPY_SYSTEM_PROTOC_EXECUTABLE protoc)
+  if(CANOPY_SYSTEM_PROTOC_EXECUTABLE)
+    set(CANOPY_NANOPB_PROTOC_EXECUTABLE
+        "${CANOPY_SYSTEM_PROTOC_EXECUTABLE}"
+        CACHE FILEPATH "protoc executable used by Nanopb generator" FORCE)
+  else()
+    set(CANOPY_NEED_BUNDLED_PROTOC ON)
+  endif()
+endif()
+
+if(CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_NEED_BUNDLED_PROTOC)
+  if(CANOPY_BUILD_PROTOCOL_BUFFERS)
+    message("Protocol Buffers - building protoc/protobuf components")
+  else()
+    message("Nanopb - no system protoc found; building bundled protoc tool")
+  endif()
   set(protobuf_INSTALL
       OFF
       CACHE BOOL "Install protobuf" FORCE)
@@ -48,5 +62,9 @@ if(CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_BUILD_NANOPB)
   set(protobuf_BUILD_LIBUPB
       ON
       CACHE BOOL "Build libupb (required for protoc)" FORCE)
-  add_subdirectory(protobuf)
+  if(CANOPY_BUILD_PROTOCOL_BUFFERS)
+    add_subdirectory(protobuf)
+  else()
+    add_subdirectory(protobuf EXCLUDE_FROM_ALL)
+  endif()
 endif()

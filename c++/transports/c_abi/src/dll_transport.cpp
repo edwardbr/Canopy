@@ -9,6 +9,10 @@
 
 #  include <cstring>
 
+#  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#    include <google/protobuf/stubs/common.h>
+#  endif
+
 namespace rpc::c_abi
 {
     namespace
@@ -876,6 +880,13 @@ extern "C"
             ctx->transport->set_status(rpc::transport_status::DISCONNECTED);
         ctx->transport.reset();
         delete ctx;
+    }
+
+    CANOPY_C_ABI_EXPORT void canopy_dll_shutdown()
+    {
+#  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+        google::protobuf::ShutdownProtobufLibrary();
+#  endif
     }
 
     CANOPY_C_ABI_EXPORT int32_t canopy_dll_send(

@@ -45,6 +45,7 @@ namespace rpc::dynamic_library
         // All resolved DLL entry points
         dll_init_fn dll_init_ = nullptr;
         dll_destroy_fn dll_destroy_ = nullptr;
+        dll_shutdown_fn dll_shutdown_ = nullptr;
         dll_send_fn dll_send_ = nullptr;
         dll_post_fn dll_post_ = nullptr;
         dll_try_cast_fn dll_try_cast_ = nullptr;
