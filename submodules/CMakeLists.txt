@@ -11,20 +11,19 @@ add_subdirectory(idlparser)
 
 if(CANOPY_BUILD_NANOPB)
   set(CANOPY_NANOPB_RUNTIME_SOURCES
-      ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_common.c
-      ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_decode.c
+      ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_common.c ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_decode.c
       ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_encode.c)
 
-  add_library(
-    canopy_nanopb_runtime STATIC
-    ${CANOPY_NANOPB_RUNTIME_SOURCES})
-  target_include_directories(
-    canopy_nanopb_runtime SYSTEM PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/submodules/nanopb>")
+  add_library(canopy_nanopb_runtime STATIC ${CANOPY_NANOPB_RUNTIME_SOURCES})
+  target_include_directories(canopy_nanopb_runtime SYSTEM
+                             PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/submodules/nanopb>")
   set_property(TARGET canopy_nanopb_runtime PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 
 set(CANOPY_NEED_BUNDLED_PROTOC OFF)
-if(CANOPY_BUILD_NANOPB AND NOT CANOPY_BUILD_PROTOCOL_BUFFERS AND NOT CANOPY_NANOPB_PROTOC_EXECUTABLE)
+if(CANOPY_BUILD_NANOPB
+   AND NOT CANOPY_BUILD_PROTOCOL_BUFFERS
+   AND NOT CANOPY_NANOPB_PROTOC_EXECUTABLE)
   find_program(CANOPY_SYSTEM_PROTOC_EXECUTABLE protoc)
   if(CANOPY_SYSTEM_PROTOC_EXECUTABLE)
     set(CANOPY_NANOPB_PROTOC_EXECUTABLE
