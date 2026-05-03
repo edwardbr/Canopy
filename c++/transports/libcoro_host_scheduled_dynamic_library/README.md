@@ -61,6 +61,11 @@ to unmapped code. This is the core lifecycle difference from
 `libcoro_dll_scheduled_dynamic_library`, whose scheduler is owned by the loaded
 DLL runtime and can be stopped as part of transport shutdown.
 
+Callers that require clean unloads must stop and join the host scheduler before
+dropping the last scheduler reference. The transport keeps itself alive until
+the scheduler expires, then performs `dlclose`; that final close is only safe if
+the scheduler worker threads have already run their DLL-owned TLS destructors.
+
 This means repeated clean reloads on the same still-running host scheduler are
 not the purpose of this variant. Use the DLL-scheduled transport when each
 transport teardown must fully unload the shared object and reset DLL-local

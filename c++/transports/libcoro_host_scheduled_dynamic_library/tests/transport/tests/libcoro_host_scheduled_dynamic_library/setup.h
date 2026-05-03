@@ -88,6 +88,13 @@ public:
         {
         }
 
+        // The host-scheduled DLL executes DLL code on the host scheduler's
+        // worker threads.  Stop those threads before the scheduler shared_ptr
+        // count drops to zero; the transport's self-release waits for scheduler
+        // expiry before dlclose, and dlclose is only safe after the workers have
+        // joined and run their DLL-owned TLS destructors.
+        scheduler->shutdown();
+
         this->io_scheduler_ = nullptr;
         scheduler.reset();
 
