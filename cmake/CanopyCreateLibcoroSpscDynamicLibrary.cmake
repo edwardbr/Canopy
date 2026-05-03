@@ -48,7 +48,9 @@ function(CanopyCreateLibcoroSpscDynamicLibrary target_name)
 
   target_compile_options(
     ${target_name}
-    PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
+    PRIVATE ${CANOPY_COMPILE_OPTIONS}
+            ${CANOPY_WARN_OK}
+            $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
             $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>
             $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
 

@@ -87,11 +87,12 @@ target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
 if(CANOPY_BUILD_COROUTINE)
   target_compile_definitions(
     benchmark
-    PRIVATE CANOPY_BENCHMARK_LIBCORO_DLL_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_dll_scheduled_dll>"
-            CANOPY_BENCHMARK_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_host_scheduled_dll>"
-            CANOPY_BENCHMARK_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_child_host_process>"
-            CANOPY_BENCHMARK_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_spsc_dll>"
-            CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_benchmark_ipc_child_process>")
+    PRIVATE
+      CANOPY_BENCHMARK_LIBCORO_DLL_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_dll_scheduled_dll>"
+      CANOPY_BENCHMARK_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_host_scheduled_dll>"
+      CANOPY_BENCHMARK_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_child_host_process>"
+      CANOPY_BENCHMARK_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_spsc_dll>"
+      CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_benchmark_ipc_child_process>")
 else()
   target_compile_definitions(benchmark PRIVATE CANOPY_BENCHMARK_DLL_PATH="$<TARGET_FILE:canopy_benchmark_dll>")
 endif()

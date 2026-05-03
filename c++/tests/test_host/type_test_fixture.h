@@ -173,10 +173,8 @@ void run_coro_test(
     // set by the outer task after check_for_error has returned and released the
     // awaited task frame.
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-    auto checked_function = [&]() -> CORO_TASK(bool)
-    {
-        CO_RETURN CO_AWAIT coro_function(lib, std::forward<Args>(args)...);
-    };
+    auto checked_function
+        = [&]() -> CORO_TASK(bool) { CO_RETURN CO_AWAIT coro_function(lib, std::forward<Args>(args)...); };
 
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
     auto completion_function = [&]() -> CORO_TASK(void)

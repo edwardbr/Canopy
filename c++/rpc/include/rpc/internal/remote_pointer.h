@@ -3044,10 +3044,7 @@ namespace rpc
 
             if (cb_shared_before < 0 || cb_optimistic_before < 0)
             {
-                RPC_ERROR(
-                    "make_optimistic(weak_ptr): negative control block reference count BEFORE - shared={} optimistic={}",
-                    cb_shared_before,
-                    cb_optimistic_before);
+                RPC_ERROR("make_optimistic(weak_ptr): negative control block reference count BEFORE - shared={} optimistic={}", cb_shared_before, cb_optimistic_before);
             }
 #  endif
 
@@ -3083,7 +3080,8 @@ namespace rpc
             if (cb_shared_after < 0 || cb_optimistic_after <= 0)
             {
                 RPC_ERROR(
-                    "make_optimistic(weak_ptr): invalid control block reference count AFTER increment - shared={} optimistic={}",
+                    "make_optimistic(weak_ptr): invalid control block reference count AFTER increment - shared={} "
+                    "optimistic={}",
                     cb_shared_after,
                     cb_optimistic_after);
             }
