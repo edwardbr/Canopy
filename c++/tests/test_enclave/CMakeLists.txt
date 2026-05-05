@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.24)
 message("marshal_test_enclave")
 
 # ######################################################################################################################
-# marshal_test_enclave
+#marshal_test_enclave
 
 if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
   set(MARSHAL_TEST_TELEMETRY_ENCLAVE_LIBS)
@@ -35,6 +35,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
       transport_sgx_enclave
       transport_local_enclave
       common_enclave
+      io_uring_idl_enclave
       enclave_marshal_test_idl_enclave
       example_import_idl_enclave
       example_idl_enclave
@@ -48,6 +49,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
     marshal_test_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../subcomponents/io_uring/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
@@ -104,6 +106,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
       canopy_coroutine_edl_enclave
       transport_local_enclave
       common_enclave
+      io_uring_idl_enclave
       example_import_idl_enclave
       example_idl_enclave
       example_shared_idl_enclave
@@ -116,6 +119,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
     marshal_test_coroutine_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../subcomponents/io_uring/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx_coroutine/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"

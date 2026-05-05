@@ -15,11 +15,16 @@ namespace rpc::sgx::coro::host
 {
     using acceptor_factory = std::function<std::shared_ptr<rpc::stream_transport::transport>(
         const std::string&, const std::shared_ptr<rpc::root_service>&, std::shared_ptr<streaming::stream>)>;
+    using runtime_cleanup_handler = std::function<void()>;
 
     void register_connection_handler(rpc::connection_handler handler);
     rpc::connection_handler get_connection_handler();
     void register_acceptor_factory(acceptor_factory factory);
     acceptor_factory get_acceptor_factory();
+    // Registers enclave-scoped cleanup work that must run before the final
+    // scheduler drain. This is intended for shared enclave resources such as a
+    // single io_uring controller used by multiple child zones.
+    int register_runtime_cleanup_handler(runtime_cleanup_handler handler);
 
     template<
         class Remote,

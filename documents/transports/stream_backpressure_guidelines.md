@@ -204,6 +204,27 @@ Useful instrumentation points:
 - Wrapper streams should propagate close to the underlying stream as part of
   the same awaited shutdown path.
 
+## io_uring Stream Rules
+
+These rules apply to the SGX io_uring stream work and to any future host-side
+io_uring stream implementation.
+
+- Treat SQ capacity, CQ capacity, registered host buffers, and fixed-file slots
+  as separate bounded resources.
+- A stream should own its descriptor through a small owner/guard abstraction so
+  close happens exactly once.
+- Stream close should cancel or drain only operations owned by that stream.
+- Controller shutdown should cancel or fail all operations and then make future
+  submissions fail quickly.
+- Send must handle partial kernel sends and continue until the caller's span is
+  sent, the stream closes, cancellation is requested, or a deadline expires.
+- Receive timeout must not allow caller buffer reuse while a kernel receive can
+  still complete later.
+- Saturation should park work in bounded pending queues or yield fairly; it
+  should not spin or allocate unbounded staging memory.
+- Telemetry should distinguish temporary saturation, timeout, cancellation,
+  peer close, and controller failure.
+
 ## Review Checklist
 
 Use this checklist when reviewing `spsc_queue`, `tcp`, `io_uring`, WebSocket,
@@ -222,6 +243,8 @@ TLS, or future stream implementations.
 - Are watchdog and timeout settings interpreted separately?
 - Would the implementation behave symmetrically on both ends of a benchmarked
   stream pair?
+- For io_uring streams, can close/cancel happen while send or receive is
+  pending without leaking descriptors, host buffers, or operation records?
 
 ## Applying This Guidance
 

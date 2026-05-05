@@ -18,6 +18,8 @@ if(CANOPY_BUILD_COROUTINE)
   if(CANOPY_BUILD_WEBSOCKET)
     add_subdirectory(subcomponents/http_server)
   endif()
+
+  add_subdirectory(subcomponents/io_uring)
 endif()
 
 if(CANOPY_BUILD_TEST)

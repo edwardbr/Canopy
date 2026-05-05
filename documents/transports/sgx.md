@@ -190,6 +190,12 @@ The queue-backed stream is still host-controlled memory. The enclave must
 validate and eventually authenticate stream input before allowing RPC dispatch.
 See [Untrusted Transport Input](../security/untrusted-transport-input.md).
 
+Future coroutine SGX connectivity should allow enclave-owned stream endpoints to
+use io_uring for accepted and outbound connections without routing ordinary
+payloads through host RPC relay code. See
+[SGX Connectivity And io_uring](../sgx/connectivity/README.md) for the design
+plan.
+
 ### Coroutine Shutdown
 
 Coroutine SGX shutdown follows the same reference protocol as other hierarchical

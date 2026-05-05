@@ -6,6 +6,8 @@
 #include <rpc/rpc.h>
 #include <common/foo_impl.h>
 #include <transports/sgx_coroutine/host/runtime.h>
+#include <io_uring/io_uring.h>
+#include <io_uring/controller.h>
 
 namespace
 {

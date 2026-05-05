@@ -5,7 +5,6 @@
 
 #include <transports/sgx_coroutine/common/startup_status.h>
 #include <transports/sgx_coroutine/common/shared_queue.h>
-#include <transports/sgx_coroutine/common/telemetry.h>
 #include <transports/sgx_coroutine/host/runtime.h>
 #include <edl/canopy_coroutine_enclave.h>
 #include <trusted/canopy_coroutine_enclave_t.h>
@@ -23,6 +22,8 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
+#include <new>
 #include <vector>
 
 #ifdef CANOPY_USE_TELEMETRY
@@ -57,6 +58,9 @@ namespace rpc::sgx::coro::host
             rpc::connection_handler connection_handler;
             acceptor_factory acceptor_factory;
             common::startup_status* control_status = nullptr;
+            std::mutex cleanup_mutex;
+            std::vector<runtime_cleanup_handler> cleanup_handlers;
+            std::atomic<bool> cleanup_requested{false};
         };
 
         auto runtime_storage() -> runtime_state&
@@ -102,6 +106,45 @@ namespace rpc::sgx::coro::host
         {
             auto& runtime = runtime_storage();
             runtime.registered.store(false, std::memory_order_release);
+        }
+
+        void clear_runtime_cleanup_handlers(runtime_state& runtime)
+        {
+            std::lock_guard<std::mutex> lock(runtime.cleanup_mutex);
+            runtime.cleanup_handlers.clear();
+            runtime.cleanup_requested.store(false, std::memory_order_release);
+        }
+
+        void request_runtime_cleanup(runtime_state& runtime)
+        {
+            bool expected = false;
+            if (!runtime.cleanup_requested.compare_exchange_strong(
+                    expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                return;
+            }
+
+            // Runtime cleanup is enclave-scoped rather than zone-scoped. A
+            // single io_uring controller may be shared by many child zones, so
+            // cleanup is requested once before the final scheduler drain and
+            // handlers should avoid being the owner that keeps those resources
+            // alive; they should request shutdown only if the resource is still
+            // live through application, stream, or zone ownership.
+            std::lock_guard<std::mutex> lock(runtime.cleanup_mutex);
+            for (auto& handler : runtime.cleanup_handlers)
+            {
+                if (!handler)
+                    continue;
+
+                try
+                {
+                    handler();
+                }
+                catch (...)
+                {
+                    RPC_WARNING("sgx coroutine runtime cleanup handler threw during shutdown");
+                }
+            }
         }
 
         template<typename T> std::vector<char> to_blob(const T& value)
@@ -314,6 +357,7 @@ namespace rpc::sgx::coro::host
                         service_shutdown_event->set();
                     if (transport && transport->get_status() < rpc::transport_status::DISCONNECTING)
                         transport->set_status(rpc::transport_status::DISCONNECTING);
+                    request_runtime_cleanup(runtime);
                 }
 
                 if (transport_done && service_expired)
@@ -408,6 +452,7 @@ namespace rpc::sgx::coro::host
             runtime.control_status = nullptr;
             runtime.admitted_workers.reset();
             runtime.admitted_worker_slots = 0;
+            clear_runtime_cleanup_handlers(runtime);
             erase_runtime();
             runtime.init_called.store(false, std::memory_order_release);
         }
@@ -420,6 +465,8 @@ namespace rpc::sgx::coro::host
         {
             runtime.accepting_workers.store(false, std::memory_order_release);
             set_startup_status(startup_status, state, error_code);
+            request_runtime_cleanup(runtime);
+            drain_ready_scheduler_work(runtime, 1000, 100000);
             wait_for_worker_loops_to_exit(runtime);
             reset_runtime_after_stop(runtime);
         }
@@ -444,6 +491,41 @@ namespace rpc::sgx::coro::host
     acceptor_factory get_acceptor_factory()
     {
         return runtime_storage().acceptor_factory;
+    }
+
+    int register_runtime_cleanup_handler(runtime_cleanup_handler handler)
+    {
+        if (!handler)
+            return rpc::error::INVALID_DATA();
+
+        auto& runtime = runtime_storage();
+        if (runtime.cleanup_requested.load(std::memory_order_acquire))
+        {
+            handler();
+            return rpc::error::OK();
+        }
+
+        std::lock_guard<std::mutex> lock(runtime.cleanup_mutex);
+        if (runtime.cleanup_requested.load(std::memory_order_acquire))
+        {
+            handler();
+            return rpc::error::OK();
+        }
+
+        try
+        {
+            runtime.cleanup_handlers.push_back(std::move(handler));
+        }
+        catch (const std::bad_alloc&)
+        {
+            return rpc::error::OUT_OF_MEMORY();
+        }
+        catch (...)
+        {
+            return rpc::error::EXCEPTION();
+        }
+
+        return rpc::error::OK();
     }
 
     extern "C"
@@ -577,6 +659,7 @@ namespace rpc::sgx::coro::host
 
             auto loop_error = rpc::sgx::coro::host::run_runtime_loop(runtime, weak_service, service_shutdown_event);
 
+            request_runtime_cleanup(runtime);
             drain_ready_scheduler_work(runtime, 1000, 100000);
 
             if (auto current_transport = runtime.transport.lock();

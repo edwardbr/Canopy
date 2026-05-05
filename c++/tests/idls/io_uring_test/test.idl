@@ -1,0 +1,55 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+// IDL for testing iouring components
+
+namespace io_uring_test
+{
+    struct iouring_noop_measurement
+    {
+        uint64_t no_op_calls;
+        uint64_t no_op_successes;
+        uint64_t no_op_failures;
+        uint64_t submit_attempts;
+        uint64_t submit_backpressure;
+        uint64_t completion_pump_calls;
+        uint64_t completion_entries;
+        uint64_t scheduler_yields;
+        uint64_t local_relax_spins;
+        uint64_t host_wake_calls;
+        uint64_t proactor_pump_starts;
+        uint64_t proactor_pump_iterations;
+        uint64_t proactor_waiter_suspends;
+        uint64_t proactor_resumes;
+        uint64_t proactor_start_failures;
+        uint64_t total_no_op_ticks;
+        uint64_t max_no_op_ticks;
+    };
+
+    interface i_test_uring
+    {
+        int test_noop(bool schedule, uint32_t iterations, bool use_proactor);
+        int self_ping_test();
+        int self_ping_roundtrip_test(uint32_t iterations, uint32_t payload_size);
+        int self_ping_receive_timeout_test();
+        int self_ping_multi_stream_test(uint32_t connection_count, uint32_t iterations, uint32_t payload_size);
+        int direct_descriptor_reuse_test(uint32_t descriptor_count, uint32_t cycles);
+        int close_during_accept_test();
+        int close_during_receive_test();
+        int close_during_send_test();
+        int controller_shutdown_rejects_new_work_test();
+        int controller_shutdown_scheduled_noop_test(uint32_t iterations);
+        int controller_shutdown_pending_accept_test();
+        int controller_shutdown_pending_receive_test();
+        int controller_shutdown_pending_send_test();
+        int get_noop_measurement([out] iouring_noop_measurement & measurement);
+        int peer_to_peer_rpc_test(uint32_t iterations);
+    };
+
+    interface i_peer2peer
+    {
+        int peer_ping(uint32_t value, [out] uint32_t& response);
+    };
+}

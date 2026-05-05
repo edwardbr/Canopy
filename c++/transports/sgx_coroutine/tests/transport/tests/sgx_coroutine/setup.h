@@ -12,10 +12,41 @@
 #  include <common/tests.h>
 #  include <common/transport_setup_base.h>
 #  include <gtest/gtest.h>
+#  include <memory>
+#  include <new>
 #  include <transports/sgx_coroutine/enclave/transport.h>
+#  include <utility>
 #  include <vector>
 
-template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
+namespace sgx_coroutine_setup_detail
+{
+    template<class HostImplementation>
+    rpc::service_connect_result<yyy::i_host> create_host_for_setup(std::shared_ptr<coro::scheduler> scheduler)
+    {
+        if constexpr (requires { HostImplementation::create_for_test(scheduler); })
+        {
+            return HostImplementation::create_for_test(std::move(scheduler));
+        }
+        else
+        {
+            try
+            {
+                rpc::shared_ptr<HostImplementation> host_ptr(new HostImplementation());
+                return {rpc::error::OK(), rpc::static_pointer_cast<yyy::i_host>(host_ptr)};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return {rpc::error::OUT_OF_MEMORY(), {}};
+            }
+            catch (...)
+            {
+                return {rpc::error::EXCEPTION(), {}};
+            }
+        }
+    }
+} // namespace sgx_coroutine_setup_detail
+
+template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone, class HostImplementation = host>
 class sgx_coroutine_setup
     : public transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
@@ -48,7 +79,9 @@ public:
         this->root_service_ = rpc::root_service::create("host", rpc::DEFAULT_PREFIX, this->io_scheduler_);
         current_host_service = this->root_service_;
 
-        this->i_host_ptr_ = rpc::shared_ptr<yyy::i_host>(new host());
+        auto host_result = sgx_coroutine_setup_detail::create_host_for_setup<HostImplementation>(this->io_scheduler_);
+        RPC_ASSERT(host_result.error_code == rpc::error::OK());
+        this->i_host_ptr_ = std::move(host_result.output_interface);
         this->local_host_ptr_ = this->i_host_ptr_;
 
         auto host_ptr = this->use_host_in_child_ ? this->i_host_ptr_ : nullptr;

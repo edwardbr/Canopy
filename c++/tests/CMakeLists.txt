@@ -32,5 +32,10 @@ if(CANOPY_BUILD_ENCLAVE)
   add_subdirectory(test_enclave)
 endif()
 
+if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
+  add_subdirectory(sgx_coroutine_test_enclave)
+  add_subdirectory(sgx_coroutine_test_host)
+endif()
+
 # Add unit tests subdirectory
 add_subdirectory(unit_tests)

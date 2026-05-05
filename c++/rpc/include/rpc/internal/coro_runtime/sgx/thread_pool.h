@@ -8,10 +8,10 @@
 #include <coroutine>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <utility>
-#include <vector>
 
 namespace rpc::coro::sgx
 {
@@ -65,7 +65,6 @@ namespace rpc::coro::sgx
             private_constructor)
             : options_(std::move(opts))
         {
-            ready_handles_.reserve(256);
         }
 
         static auto make_unique() -> std::unique_ptr<thread_pool> { return make_unique(options{}); }
@@ -239,14 +238,14 @@ namespace rpc::coro::sgx
             }
 
             auto handle = ready_handles_.front();
-            ready_handles_.erase(ready_handles_.begin());
+            ready_handles_.pop_front();
             unlock_queue();
             return handle;
         }
 
         options options_;
         mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
-        std::vector<std::coroutine_handle<>> ready_handles_;
+        std::deque<std::coroutine_handle<>> ready_handles_;
         std::atomic<bool> shutdown_{false};
     };
 } // namespace rpc::coro::sgx

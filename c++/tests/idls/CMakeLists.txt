@@ -60,3 +60,15 @@ CanopyGenerate(
   yas_json
   protocol_buffers
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
+
+CanopyGenerate(
+  io_uring_test
+  io_uring_test/test.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  protocol_buffers
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)

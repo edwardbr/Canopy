@@ -10,6 +10,7 @@
 #include <chrono>
 #include <coroutine>
 #include <cstddef>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -44,7 +45,7 @@ namespace rpc::coro::sgx
             auto await_ready() noexcept -> bool { return false; }
             auto await_suspend(std::coroutine_handle<> awaiting_coroutine) noexcept -> bool
             {
-                scheduler_.enqueue_handle(awaiting_coroutine);
+                scheduler_.enqueue_immediate_handle(awaiting_coroutine);
                 return true;
             }
             auto await_resume() noexcept -> void { }
@@ -88,12 +89,14 @@ namespace rpc::coro::sgx
                 std::function<void()> on_io_thread_start_functor = nullptr,
                 std::function<void()> on_io_thread_stop_functor = nullptr,
                 thread_pool::options pool = thread_pool::options{},
-                execution_strategy_t execution_strategy = execution_strategy_t::process_tasks_on_thread_pool)
+                execution_strategy_t execution_strategy = execution_strategy_t::process_tasks_on_thread_pool,
+                bool schedule_immediate_to_thread_pool = true)
                 : thread_count(thread_count)
                 , on_io_thread_start_functor(std::move(on_io_thread_start_functor))
                 , on_io_thread_stop_functor(std::move(on_io_thread_stop_functor))
                 , pool(std::move(pool))
                 , execution_strategy(execution_strategy)
+                , schedule_immediate_to_thread_pool(schedule_immediate_to_thread_pool)
             {
             }
 
@@ -102,6 +105,7 @@ namespace rpc::coro::sgx
             std::function<void()> on_io_thread_stop_functor;
             thread_pool::options pool;
             execution_strategy_t execution_strategy;
+            bool schedule_immediate_to_thread_pool;
         };
 
         explicit scheduler(
@@ -110,7 +114,6 @@ namespace rpc::coro::sgx
             : options_(normalise_options(std::move(opts)))
             , pool_(thread_pool::make_unique(options_.pool))
         {
-            ready_handles_.reserve(256);
             timer_handles_.reserve(256);
         }
 
@@ -308,6 +311,25 @@ namespace rpc::coro::sgx
         }
 
     private:
+        auto enqueue_immediate_handle(std::coroutine_handle<> handle) noexcept -> void
+        {
+            if (!handle || handle.done())
+                return;
+
+            // schedule() is an immediate cooperative yield. The direct-to-pool
+            // path avoids a scheduler-queue hop, but can pass work already
+            // waiting in the scheduler queue. Keep it configurable so fairness
+            // and latency can be measured with the same runtime.
+            if (options_.execution_strategy == execution_strategy_t::process_tasks_on_thread_pool
+                && options_.schedule_immediate_to_thread_pool)
+            {
+                pool_->resume(handle);
+                return;
+            }
+
+            enqueue_handle(handle);
+        }
+
         struct timer_handle
         {
             std::chrono::steady_clock::time_point deadline;
@@ -401,7 +423,7 @@ namespace rpc::coro::sgx
             }
 
             auto handle = ready_handles_.front();
-            ready_handles_.erase(ready_handles_.begin());
+            ready_handles_.pop_front();
             unlock_queue();
             return handle;
         }
@@ -410,7 +432,7 @@ namespace rpc::coro::sgx
         std::unique_ptr<thread_pool> pool_;
         std::atomic_flag execution_lock_ = ATOMIC_FLAG_INIT;
         mutable std::atomic_flag queue_lock_ = ATOMIC_FLAG_INIT;
-        std::vector<std::coroutine_handle<>> ready_handles_;
+        std::deque<std::coroutine_handle<>> ready_handles_;
         std::vector<timer_handle> timer_handles_;
         std::atomic<bool> shutdown_{false};
     };

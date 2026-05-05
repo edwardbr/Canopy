@@ -56,9 +56,13 @@ std::string enclave_path = resolve_enclave_path(
     "./marshal_test_enclave.signed.dll"); // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 std::string coroutine_enclave_path = resolve_enclave_path(
     "./marshal_test_coroutine_enclave.signed.dll"); // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-#else                                               // Linux
+std::string sgx_coroutine_test_enclave_path = resolve_enclave_path(
+    "./sgx_coroutine_test_enclave.signed.dll"); // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+#else                                           // Linux
 std::string enclave_path = resolve_enclave_path(
     "./libmarshal_test_enclave.signed.so"); // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 std::string coroutine_enclave_path = resolve_enclave_path(
     "./libmarshal_test_coroutine_enclave.signed.so"); // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+std::string sgx_coroutine_test_enclave_path = resolve_enclave_path(
+    "./libsgx_coroutine_test_enclave.signed.so"); // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 #endif

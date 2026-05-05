@@ -45,7 +45,16 @@ if(NOT DEPENDENCIES_LOADED)
   set_property(
     CACHE CANOPY_SGX_BACKEND
     PROPERTY STRINGS "Intel" "Fake")
-  option(CANOPY_IO_URING_SQPOLL "Use io_uring SQPOLL mode for streaming io_uring TCP streams on Linux" OFF)
+  option(
+    CANOPY_IO_URING_SQPOLL
+    "Enable io_uring SQPOLL. Required for enclave-owned direct SQE submission; turn OFF only for explicit debugging or unsupported kernels."
+    ON)
+  if(NOT CANOPY_IO_URING_SQPOLL)
+    message(
+      WARNING
+        "CANOPY_IO_URING_SQPOLL is OFF. This disables the intended enclave-owned direct io_uring submission model; use this only for explicit debugging or unsupported kernels."
+    )
+  endif()
 
   if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_SGX_BACKEND MATCHES "^(Intel|Fake)$")
     message(FATAL_ERROR "Invalid CANOPY_SGX_BACKEND '${CANOPY_SGX_BACKEND}', expected Intel or Fake")
@@ -490,6 +499,12 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG)
   endif()
 
+  if(CANOPY_IO_URING_SQPOLL)
+    set(CANOPY_IO_URING_SQPOLL_FLAG CANOPY_IO_URING_SQPOLL)
+  else()
+    set(CANOPY_IO_URING_SQPOLL_FLAG)
+  endif()
+
   set(CANOPY_LOGGING_LEVEL_FLAG CANOPY_LOGGING_LEVEL=${CANOPY_LOGGING_LEVEL})
 
   set(CANOPY_FMT_LIB fmt::fmt-header-only)
@@ -514,6 +529,7 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_USE_TELEMETRY_RAII_LOGGING_FLAG}
       ${CANOPY_BUILD_TEST_FLAG}
       ${CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG}
+      ${CANOPY_IO_URING_SQPOLL_FLAG}
       CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE}
       CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE}
       ${CANOPY_LOGGING_LEVEL_FLAG})

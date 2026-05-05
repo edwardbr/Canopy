@@ -132,3 +132,6 @@ The future io_uring-in-enclave design should keep cryptographic framing,
 sequence checks, deserialisation, and capability validation inside the enclave.
 The host can still deny progress, but it should not see anything beyond
 authenticated routing metadata and encrypted payload bytes.
+
+The io_uring connectivity plan is tracked in
+[SGX Connectivity And io_uring](../sgx/connectivity/README.md).
