@@ -58,11 +58,16 @@ namespace rpc
         // int UNABLE_TO_CREATE_SERVICE_PROXY(); // unable to create service proxy
         int SERVICE_PROXY_LOST_CONNECTION(); // channel is no longer available
         int CALL_CANCELLED();                // Service proxy remote call is cancelled
-        int OBJECT_GONE(); // The service no longer has an object of that id, perhaps an optimistic pointer call attempt is happening
+        int OBJECT_GONE();                   // optimistic pointer target was released by the owning service
         int CALL_TIMEOUT(); // an outbound RPC call received no response within the transport timeout window
         int NOT_IMPLEMENTED(); // operation exists in the interface surface but is not implemented on this platform/path yet
-        int FRAUDULANT_REQUEST(); // request-scoped out-param handoff was used with an invalid request id
-        int MAX();                // the biggest value
+        int FRAUDULANT_REQUEST();  // request-scoped out-param handoff was used with an invalid request id
+        int RESOURCE_CLOSED();     // local resource was closed or is no longer accepting work
+        int OPERATION_CANCELLED(); // local asynchronous operation was cancelled before completion
+        int RESOURCE_EXHAUSTED();  // local resource capacity was exhausted after retry/backpressure handling
+        int PROTOCOL_ERROR();      // peer, transport, or kernel-facing protocol state is inconsistent
+        int NATIVE_IO_ERROR(); // native I/O operation failed; inspect operation-specific native result when available
+        int MAX();             // the biggest value
 
         bool is_error(int err);    // any error listed above that is >= MIN() && <= MAX
         bool is_critical(int err); // any error listed above other than OBJECT_GONE and INVALID_CAST

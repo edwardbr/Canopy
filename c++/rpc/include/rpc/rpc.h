@@ -14,6 +14,7 @@
 #include <rpc/internal/polyfill/expected.h>
 #include <rpc/internal/polyfill/format.h>
 #include <rpc/internal/polyfill/shared_mutex.h>
+#include <rpc/internal/spin_mutex.h>
 
 // synchronous/coroutine sensitive headers
 #include <rpc/internal/coroutine_support.h>

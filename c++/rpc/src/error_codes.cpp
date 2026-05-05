@@ -132,16 +132,36 @@ namespace rpc
         {
             return state().offset_val + (state().offset_val_is_negative ? -26 : 26);
         }
+        [[nodiscard]] int RESOURCE_CLOSED()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -27 : 27);
+        }
+        [[nodiscard]] int OPERATION_CANCELLED()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -28 : 28);
+        }
+        [[nodiscard]] int RESOURCE_EXHAUSTED()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -29 : 29);
+        }
+        [[nodiscard]] int PROTOCOL_ERROR()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -30 : 30);
+        }
+        [[nodiscard]] int NATIVE_IO_ERROR()
+        {
+            return state().offset_val + (state().offset_val_is_negative ? -31 : 31);
+        }
 
         // dont forget to update MIN & MAX if new values
 
         [[nodiscard]] int MIN()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -26 : 1);
+            return state().offset_val + (state().offset_val_is_negative ? -31 : 1);
         }
         [[nodiscard]] int MAX()
         {
-            return state().offset_val + (state().offset_val_is_negative ? -1 : 26);
+            return state().offset_val + (state().offset_val_is_negative ? -1 : 31);
         }
 
         bool is_error(int err)
@@ -271,8 +291,7 @@ namespace rpc
             }
             if (err == OBJECT_GONE())
             {
-                return "The service no longer has an object of that id, perhaps an optimistic pointer call attempt is "
-                       "happining";
+                return "optimistic pointer target was released by the owning service";
             }
             if (err == CALL_TIMEOUT())
             {
@@ -285,6 +304,26 @@ namespace rpc
             if (err == FRAUDULANT_REQUEST())
             {
                 return "fraudulant request";
+            }
+            if (err == RESOURCE_CLOSED())
+            {
+                return "resource closed";
+            }
+            if (err == OPERATION_CANCELLED())
+            {
+                return "operation cancelled";
+            }
+            if (err == RESOURCE_EXHAUSTED())
+            {
+                return "resource exhausted";
+            }
+            if (err == PROTOCOL_ERROR())
+            {
+                return "protocol error";
+            }
+            if (err == NATIVE_IO_ERROR())
+            {
+                return "native I/O error";
             }
             return "invalid error code";
         }

@@ -2095,8 +2095,9 @@ namespace rpc
             ActualPtrType* ptr_to_this_obj) const
         {
             using esft_element = typename shared_ptr<T>::element_type;
-            if (static_cast<const void*>(static_cast<const esft_element*>(ptr_to_this_obj))
-                == static_cast<const void*>(this))
+            const auto* expected_this
+                = static_cast<const enable_shared_from_this<T>*>(static_cast<const esft_element*>(ptr_to_this_obj));
+            if (expected_this == this)
             {
                 if (weak_this_.expired())
                 {

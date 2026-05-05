@@ -503,7 +503,6 @@ function(
     list(REMOVE_DUPLICATES nanopb_include_roots)
     set(nanopb_stamp_file ${proto_dir}/.nanopb_compiled)
     set(nanopb_sources_cmake ${proto_dir}/generated_nanopb_sources.cmake)
-    set(nanopb_aggregate_source ${nanopb_src_root}/${base_filename}_nanopb_sources.c)
     set(nanopb_compile_dependencies ${PROTO_MANIFEST} ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake)
     list(
       APPEND
@@ -528,28 +527,32 @@ function(
       add_custom_target(${name}_proto_compile DEPENDS ${proto_stamp_file})
     endif()
 
-    add_custom_command(
-      OUTPUT ${nanopb_stamp_file} ${nanopb_sources_cmake} ${nanopb_aggregate_source}
-      COMMAND
-        ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D
-        PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
-        NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -D NANOPB_AGGREGATE_SOURCE=${nanopb_aggregate_source} -D
-        PROTOBUF_PYTHON_SOURCE_DIR=${CANOPY_PROTOBUF_PYTHON_SOURCE_DIR} -D
-        PROTOBUF_SOURCE_PROTO_DIR=${CANOPY_PROTOBUF_SOURCE_PROTO_DIR} -P
-        ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
-      COMMAND ${CMAKE_COMMAND} -E touch ${nanopb_stamp_file}
-      DEPENDS ${nanopb_compile_dependencies}
-      COMMENT "Discovering and compiling Nanopb .proto files for ${name}")
+    if(generate_nanopb)
+      add_custom_command(
+        OUTPUT ${nanopb_stamp_file} ${nanopb_sources_cmake}
+        COMMAND
+          ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D
+          NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D PROTO_DIR=${proto_dir} -D
+          OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
+          NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -D
+          PROTOBUF_PYTHON_SOURCE_DIR=${CANOPY_PROTOBUF_PYTHON_SOURCE_DIR} -D
+          PROTOBUF_SOURCE_PROTO_DIR=${CANOPY_PROTOBUF_SOURCE_PROTO_DIR} -P
+          ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake
+        COMMAND ${CMAKE_COMMAND} -E touch ${nanopb_stamp_file}
+        DEPENDS ${nanopb_compile_dependencies}
+        COMMENT "Discovering and compiling Nanopb .proto files for ${name}")
 
-    add_custom_target(${name}_nanopb_compile DEPENDS ${nanopb_stamp_file})
-
-    set(NANOPB_PB_SOURCES ${nanopb_aggregate_source})
-    set_source_files_properties(${NANOPB_PB_SOURCES} PROPERTIES GENERATED TRUE)
+      add_custom_target(${name}_nanopb_compile DEPENDS ${nanopb_stamp_file})
+    endif()
 
     # Create a placeholder cmake file if it doesn't exist (for configure time)
     if(NOT EXISTS ${proto_sources_cmake})
       file(WRITE ${proto_sources_cmake}
            "# Placeholder - will be regenerated at build time\nset(PROTO_PB_SOURCES \"\")\n")
+    endif()
+    if(NOT EXISTS ${nanopb_sources_cmake})
+      file(WRITE ${nanopb_sources_cmake}
+           "# Placeholder - will be regenerated at build time\nset(NANOPB_PB_SOURCES \"\")\n")
     endif()
 
     # Read the manifest.txt file to determine which.pb.cc files will be generated The manifest.txt is created by the IDL
@@ -581,6 +584,31 @@ function(
       endif()
     endif()
 
+    set(NANOPB_PB_SOURCES "")
+    if(generate_nanopb)
+      if(EXISTS ${PROTO_MANIFEST})
+
+        # Match the protobuf path: compute the generated nanopb C sources from manifest.txt at configure time when the
+        # manifest is available, and compile those generated sources directly.
+        file(READ "${PROTO_MANIFEST}" MANIFEST_CONTENT)
+        string(REGEX REPLACE "\n" ";" PROTO_FILE_NAMES "${MANIFEST_CONTENT}")
+
+        foreach(PROTO_NAME ${PROTO_FILE_NAMES})
+          string(STRIP "${PROTO_NAME}" PROTO_NAME)
+          if(NOT "${PROTO_NAME}" STREQUAL "")
+            string(REGEX REPLACE "\\.proto$" ".pb.c" PB_C_NAME "${PROTO_NAME}")
+            set(pb_c_file "${nanopb_src_root}/${PB_C_NAME}")
+            list(APPEND NANOPB_PB_SOURCES "${pb_c_file}")
+            set_source_files_properties("${pb_c_file}" PROPERTIES GENERATED TRUE)
+          endif()
+        endforeach()
+      else()
+        if(EXISTS ${nanopb_sources_cmake})
+          include(${nanopb_sources_cmake})
+        endif()
+      endif()
+    endif()
+
     # Mark wrapper files as GENERATED and skip linting because they are emitted by the protobuf generator.
     if(generate_protobuf)
       set_source_files_properties("${full_protobuf_cpp_path}" PROPERTIES GENERATED TRUE SKIP_LINTING TRUE)
@@ -601,7 +629,8 @@ function(
         ${PROTO_PB_SOURCES}
         PROPERTIES GENERATED TRUE
                    SKIP_LINTING TRUE
-                   COMPILE_OPTIONS "-Wno-sign-compare;-Wno-deprecated-this-capture")
+                   COMPILE_OPTIONS "-Wno-sign-compare;-Wno-deprecated-this-capture"
+                   OBJECT_DEPENDS "${proto_stamp_file}")
     endif()
 
     if(NANOPB_PB_SOURCES)
@@ -609,7 +638,8 @@ function(
         ${NANOPB_PB_SOURCES}
         PROPERTIES GENERATED TRUE
                    SKIP_LINTING TRUE
-                   COMPILE_OPTIONS "-Wno-unused-command-line-argument")
+                   COMPILE_OPTIONS "-Wno-unused-command-line-argument"
+                   OBJECT_DEPENDS "${nanopb_stamp_file}")
     endif()
 
     if(generate_protobuf)

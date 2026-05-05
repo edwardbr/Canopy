@@ -3,7 +3,11 @@
 
 // tls stream implementation using OpenSSL memory BIOs
 #include <streaming/tls/stream.h>
+
 #include <array>
+
+#include <openssl/err.h>
+#include <openssl/ssl.h>
 
 namespace streaming::tls
 {

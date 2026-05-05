@@ -35,7 +35,7 @@ target_link_libraries(
          rpc_log)
 
 if(CANOPY_BUILD_WEBSOCKET)
-  target_link_libraries(streaming_benchmark PUBLIC streaming_websocket)
+  target_link_libraries(streaming_benchmark PUBLIC streaming_websocket wslay)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

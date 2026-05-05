@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include <rpc/rpc.h>
+#include <wslay/wslay.h>
 
 namespace streaming::websocket
 {
@@ -203,7 +204,7 @@ namespace streaming::websocket
     // -----------------------------------------------------------------------
 
     auto stream::send_callback(
-        wslay_event_context_ptr ctx,
+        wslay_event_context* ctx,
         const uint8_t* data,
         size_t len,
         int /*flags*/,
@@ -223,7 +224,7 @@ namespace streaming::websocket
     }
 
     auto stream::recv_callback(
-        wslay_event_context_ptr ctx,
+        wslay_event_context* ctx,
         uint8_t* buf,
         size_t len,
         int /*flags*/,
@@ -245,7 +246,7 @@ namespace streaming::websocket
     }
 
     void stream::on_msg_recv_callback(
-        wslay_event_context_ptr ctx,
+        wslay_event_context* ctx,
         const wslay_event_on_msg_recv_arg* arg,
         void* user_data)
     {

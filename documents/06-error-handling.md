@@ -14,7 +14,8 @@ Scope note:
 - for implementation scope, see [C++ Status](status/cpp.md),
   [Rust Status](status/rust.md), and [JavaScript Status](status/javascript.md)
 
-Canopy provides a comprehensive error handling system with 23 distinct error codes covering memory, transport, serialization, and lifecycle errors.
+Canopy provides a comprehensive error handling system covering memory,
+transport, serialization, resource, native I/O, and lifecycle errors.
 
 For authoritative error code definitions, see
 `c++/rpc/include/rpc/internal/error_codes.h`.
@@ -55,13 +56,14 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | `INVALID_METHOD_ID` | ±6 | Wrong method ordinal |
 | `INVALID_INTERFACE_ID` | ±7 | Interface not implemented |
 | `INVALID_CAST` | ±8 | Unable to cast interface |
+| `PROTOCOL_ERROR` | ±30 | Peer, transport, or kernel-facing protocol state is inconsistent |
 
 ### Transport Errors
 
 | Error Code | Value | Description |
 |------------|-------|-------------|
 | `TRANSPORT_ERROR` | ±5 | Custom transport error |
-| `SERVICE_PROXY_LOST_CONNECTION` | ±20 | Channel unavailable |
+| `SERVICE_PROXY_LOST_CONNECTION` | ±21 | Channel unavailable |
 
 ### Zone Errors
 
@@ -76,7 +78,7 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | Error Code | Value | Description |
 |------------|-------|-------------|
 | `OBJECT_NOT_FOUND` | ±12 | Invalid object ID |
-| `OBJECT_GONE` | ±22 | Object no longer exists |
+| `OBJECT_GONE` | ±23 | Optimistic pointer target object has been released |
 
 ### Version/Compatibility Errors
 
@@ -100,8 +102,14 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | `SECURITY_ERROR` | ±3 | Security-specific issue |
 | `EXCEPTION` | ±14 | Uncaught exception |
 | `REFERENCE_COUNT_ERROR` | ±19 | Ref count issue |
-| `CALL_CANCELLED` | ±21 | Remote call cancelled |
-| `CALL_TIMEOUT` | ±23 | Outbound call timed out waiting for a response |
+| `CALL_CANCELLED` | ±22 | Remote call cancelled |
+| `CALL_TIMEOUT` | ±24 | Outbound call timed out waiting for a response |
+| `NOT_IMPLEMENTED` | ±25 | Interface path exists but is not implemented |
+| `FRAUDULANT_REQUEST` | ±26 | Request-scoped out-param handoff used an invalid request id |
+| `RESOURCE_CLOSED` | ±27 | Local resource was closed or is no longer accepting work |
+| `OPERATION_CANCELLED` | ±28 | Local asynchronous operation was cancelled before completion |
+| `RESOURCE_EXHAUSTED` | ±29 | Local capacity was exhausted after retry/backpressure handling |
+| `NATIVE_IO_ERROR` | ±31 | Native I/O operation failed; inspect operation-specific native result when available |
 
 ## 2. Error Checking Patterns
 
@@ -134,7 +142,7 @@ switch (error)
         std::cerr << "Invalid input\n";
         break;
     case rpc::error::OBJECT_GONE():
-        std::cerr << "Calculator was destroyed\n";
+        std::cerr << "Optimistic target was released\n";
         break;
     default:
         std::cerr << "Unknown error: " << static_cast<int>(error) << "\n";
@@ -306,13 +314,12 @@ switch (status)
 ### Object Gone
 
 ```cpp
-auto error = CO_AWAIT calculator_->add(10, 20, result);
+auto error = CO_AWAIT optimistic_calculator->add(10, 20, result);
 
 if (error == rpc::error::OBJECT_GONE())
 {
-    // Object was destroyed while call was in flight
-    // Create new calculator or reconnect
-    calculator_ = create_new_calculator();
+    // The service released the object targeted by this optimistic pointer.
+    // Re-discover the object or tolerate the independently managed lifetime.
 }
 ```
 
@@ -345,7 +352,7 @@ if (error == rpc::error::INVALID_VERSION())
 ## 9. Best Practices
 
 1. **Always check return values** from RPC calls
-2. **Handle OBJECT_GONE** - object may be destroyed during call
+2. **Handle OBJECT_GONE** - optimistic pointer targets may be released independently
 3. **Use logging** for error context
 4. **Use assertions** for programmer errors
 5. **Transform errors** at appropriate layers

@@ -3,14 +3,18 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <queue>
 #include <string>
+#include <sys/types.h>
 #include <vector>
 
-#include <wslay/wslay.h>
-
 #include <streaming/stream.h>
+
+struct wslay_event_context;
+struct wslay_event_on_msg_recv_arg;
 
 namespace streaming::websocket
 {
@@ -51,24 +55,24 @@ namespace streaming::websocket
         auto flush_outgoing_raw() -> coro::task<bool>;
 
         static auto send_callback(
-            wslay_event_context_ptr ctx,
+            wslay_event_context* ctx,
             const uint8_t* data,
             size_t len,
             int flags,
             void* user_data) -> ssize_t;
         static auto recv_callback(
-            wslay_event_context_ptr ctx,
+            wslay_event_context* ctx,
             uint8_t* buf,
             size_t len,
             int flags,
             void* user_data) -> ssize_t;
         static void on_msg_recv_callback(
-            wslay_event_context_ptr ctx,
+            wslay_event_context* ctx,
             const wslay_event_on_msg_recv_arg* arg,
             void* user_data);
 
         std::shared_ptr<::streaming::stream> underlying_;
-        wslay_event_context_ptr wslay_ctx_{nullptr};
+        wslay_event_context* wslay_ctx_{nullptr};
         std::string raw_recv_buffer_;
         size_t raw_recv_size_{0};
         size_t raw_recv_pos_{0};

@@ -3,16 +3,16 @@
 
 #pragma once
 
-#include <array>
 #include <memory>
 #include <string>
-
-#include <openssl/err.h>
-#include <openssl/ssl.h>
 
 #include <rpc/rpc.h>
 
 #include <streaming/stream.h>
+
+typedef struct bio_st BIO;
+typedef struct ssl_ctx_st SSL_CTX;
+typedef struct ssl_st SSL;
 
 namespace streaming::tls
 {
