@@ -55,8 +55,13 @@ if(CANOPY_BUILD_ENCLAVE)
     PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
   target_link_libraries(
     rpc_enclave
-    PUBLIC ${CANOPY_TELEMETRY_INTERFACE} ${CANOPY_ENCLAVE_TELEMETRY_SERVICE} ${CANOPY_ENCLAVE_FMT_LIB}
+    PUBLIC ${CANOPY_TELEMETRY_INTERFACE}
+           ${CANOPY_ENCLAVE_TELEMETRY_SERVICE}
+           ${CANOPY_ENCLAVE_FMT_LIB}
            rpc_types_idl_enclave
+           noop_idl_enclave
+           logging_idl_enclave
+           ${CANOPY_ENCLAVE_TELEMETRY_TYPES_IDL}
     PRIVATE yas_common)
   target_link_options(rpc_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
 
@@ -110,6 +115,7 @@ target_link_libraries(
   PUBLIC ${CANOPY_TELEMETRY_INTERFACE}
          ${CANOPY_TELEMETRY_SERVICE}
          rpc_types_idl
+         noop_idl
          logging_idl
          ${CANOPY_TELEMETRY_TYPES_IDL}
   PRIVATE yas_common ${CANOPY_LIBRARIES} ${CANOPY_FMT_LIB})

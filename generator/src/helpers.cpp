@@ -12,6 +12,14 @@
 #include "attributes.h"
 #include "type_utils.h"
 
+namespace
+{
+    bool is_rpc_noop_interface_name(const std::string& type_name)
+    {
+        return type_name == "i_noop" || type_name == "rpc::i_noop" || type_name == "::rpc::i_noop";
+    }
+}
+
 std::string get_smart_ptr_type(
     const std::string& type_name,
     bool& is_optimistic)
@@ -82,6 +90,16 @@ bool is_interface_param(
         {
             return true;
         }
+    }
+
+    // rpc::i_noop is Canopy's built-in type-erased interface. Its IDL is
+    // intentionally empty, and the preprocessor can elide that imported
+    // declaration before class lookup sees it. Interface pointer parameters
+    // still need the normal remote_object marshalling path.
+    if (is_rpc_noop_interface_name(encapsulated_type))
+    {
+        obj.reset();
+        return true;
     }
     return false;
 }

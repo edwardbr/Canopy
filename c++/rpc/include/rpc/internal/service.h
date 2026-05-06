@@ -45,6 +45,7 @@ namespace rpc
     class service_proxy;
     class casting_interface;
     class transport;
+    class i_noop;
 
     // The callback type all transports use when a remote zone initiates a connection.
     // connection_settings and remote_object are internal protocol details hidden
@@ -193,74 +194,10 @@ namespace rpc
         std::unordered_map<destination_zone, std::weak_ptr<transport>> transports_;
 
     public:
-        class i_no_op : public rpc::casting_interface
-        {
-        public:
-            static rpc::interface_ordinal get_id(uint64_t rpc_version)
-            {
-#ifdef RPC_V3
-                if (rpc_version >= rpc::VERSION_3)
-                {
-                    /*::rpc::i_no_op{[]noop()}*/
-                    return {9999999999999999999ull};
-                }
-#endif
-                return {0};
-            }
-
-            static std::vector<rpc::function_info> get_function_info() { return {}; }
-            static std::shared_ptr<rpc::local_proxy<i_no_op>> create_local_proxy(const rpc::weak_ptr<i_no_op>&)
-            {
-                return nullptr;
-            }
-
-        virtual ~i_no_op() CANOPY_DEFAULT_DESTRUCTOR
-
-            // ********************* interface methods *********************
-            public :
-            // ********************* compile time polymorphic serialisers *********************
-            // template pure static class for serialising proxy request data to a stub or some other target
-            template<
-                typename __Serialiser,
-                typename... __Args>
-            struct proxy_serialiser
-            {
-            };
-
-            // template pure static class for deserialising data from a proxy or some other target into a
-            // stub
-            template<typename __Serialiser, typename... __Args> struct stub_deserialiser
-            {
-            };
-
-            // the caller to stubs
-            struct stub_caller
-            {
-                static CORO_TASK(rpc::send_result) call(
-                    i_no_op* __rpc_target_,
-                    rpc::send_params params);
-            };
-
-            // template pure static class for serialising reply data from a stub
-            template<typename __Serialiser, typename... __Args> struct stub_serialiser
-            {
-            };
-
-            // template pure static class for a proxy deserialising reply data from a stub
-            template<typename __Serialiser, typename... __Args> struct proxy_deserialiser
-            {
-            };
-
-            // proxy class for serialising requests into a buffer for optional dispatch at a future time
-            template<class Parent, typename ReturnType> class buffered_proxy_serialiser
-            {
-            };
-        };
-
         struct pending_out_param_entry
         {
-            rpc::shared_ptr<i_no_op> shared;
-            rpc::optimistic_ptr<i_no_op> optimistic;
+            rpc::shared_ptr<rpc::i_noop> shared;
+            rpc::optimistic_ptr<rpc::i_noop> optimistic;
         };
 
     private:
@@ -718,16 +655,16 @@ namespace rpc
         int add_pending_out_param(
             uint64_t request_id,
             remote_object remote_object_id,
-            const rpc::shared_ptr<service::i_no_op>& proxy);
+            const rpc::shared_ptr<rpc::i_noop>& proxy);
         int add_pending_out_param(
             uint64_t request_id,
             remote_object remote_object_id,
-            const rpc::optimistic_ptr<service::i_no_op>& proxy);
-        rpc::shared_ptr<rpc::service::i_no_op> find_pending_out_param_shared(
+            const rpc::optimistic_ptr<rpc::i_noop>& proxy);
+        rpc::shared_ptr<rpc::i_noop> find_pending_out_param_shared(
             uint64_t request_id,
             remote_object remote_object_id,
             int& error_code) const;
-        rpc::optimistic_ptr<rpc::service::i_no_op> find_pending_out_param_optimistic(
+        rpc::optimistic_ptr<rpc::i_noop> find_pending_out_param_optimistic(
             uint64_t request_id,
             remote_object remote_object_id,
             int& error_code) const;

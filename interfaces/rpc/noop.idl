@@ -1,0 +1,12 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+namespace rpc
+{
+    // this interface is like IUnknown from the days of COM
+    // its purpose is to type erase an RPC object between zones
+    interface i_noop
+    {};
+}

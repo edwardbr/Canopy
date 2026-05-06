@@ -61,9 +61,6 @@
 // root services allocate new zone ids
 #include <rpc/internal/zone_id_allocator.h>
 
-// the base class that all remoteable objects should inherit from
-#include <rpc/internal/base.h>
-
 // the remote proxy to another zone
 #include <rpc/internal/service_proxy.h>
 
@@ -75,6 +72,12 @@
 
 // services manage the logical zones between which data is marshalled
 #include <rpc/internal/service.h>
+
+// the interface that does nothing but is used for type erasure
+#include <rpc/noop.h>
+
+// the base class that all remoteable objects should inherit from
+#include <rpc/internal/base.h>
 
 // internal plumbing
 #include <rpc/internal/bindings.h>

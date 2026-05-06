@@ -119,7 +119,7 @@ The generic service-object handle interface should move out of
 rpc/include/rpc/handle.h
 ```
 
-The existing `rpc::service::i_no_op` can then move or be replaced by a generic
+The existing `rpc::i_noop` can then move or be replaced by a generic
 handle interface type from that header.
 
 ## Current SGX io_uring Direction

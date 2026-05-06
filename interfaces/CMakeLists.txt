@@ -20,6 +20,17 @@ CanopyGenerate(
   additional_headers stdint.h no_include_rpc_headers ON)
 
 CanopyGenerate(
+  noop
+  rpc/noop.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR})
+
+CanopyGenerate(
   logging
   rpc/logging.idl
   ${CMAKE_CURRENT_SOURCE_DIR}

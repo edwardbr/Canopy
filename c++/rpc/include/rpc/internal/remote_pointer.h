@@ -127,16 +127,24 @@ namespace rpc
     {
 #ifndef TEST_STL_COMPLIANCE
         // Generic check for casting_interface inheritance that handles multiple inheritance
-        template<typename T, typename = void> struct is_casting_interface_derived : std::false_type
+
+        template<typename T, typename = void> struct is_complete : std::false_type
+        {
+        };
+
+        template<typename T> struct is_complete<T, std::void_t<decltype(sizeof(T))>> : std::true_type
+        {
+        };
+
+        template<typename T, bool Complete = is_complete<std::remove_cv_t<T>>::value>
+        struct is_casting_interface_derived_if_complete : std::true_type
         {
         };
 
         template<typename T>
-        struct is_casting_interface_derived<
-            T,
-            std::void_t<std::enable_if_t<
-                std::is_base_of_v<rpc::casting_interface, std::remove_cv_t<T>> || std::is_same_v<std::remove_cv_t<T>, void>>>>
-            : std::true_type
+        struct is_casting_interface_derived_if_complete<T, true>
+            : std::bool_constant<
+                  std::is_same_v<std::remove_cv_t<T>, void> || std::is_base_of_v<rpc::casting_interface, std::remove_cv_t<T>>>
         {
         };
 #endif
@@ -900,8 +908,8 @@ namespace rpc
         {
             using clean_t = std::remove_cv_t<std::remove_reference_t<Candidate>>;
             static_assert(
-                __rpc_internal::is_casting_interface_derived<clean_t>::value,
-                "rpc::shared_ptr can only manage casting_interface-derived types");
+                __rpc_internal::is_casting_interface_derived_if_complete<clean_t>::value,
+                "shared_ptr can only manage casting_interface-derived types");
         }
 #endif
 
@@ -2491,7 +2499,7 @@ namespace rpc
             !std::is_array_v<T>,
             "optimistic_ptr does not support array types");
         static_assert(
-            __rpc_internal::is_casting_interface_derived<T>::value,
+            __rpc_internal::is_casting_interface_derived_if_complete<T>::value,
             "optimistic_ptr can only manage casting_interface-derived types");
 
         // For local objects: local_proxy_holder_ holds the local_proxy (callable target), ptr_ and cb_ are nullptr

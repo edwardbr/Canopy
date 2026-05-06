@@ -9,49 +9,11 @@
 // RPC headers
 #include <rpc/internal/polyfill/format.h>
 #include <rpc/rpc.h>
+
 namespace rpc
 {
     namespace
     {
-        class service_i_no_op_proxy final : public rpc::interface_proxy<rpc::service::i_no_op>
-        {
-            mutable rpc::weak_ptr<service_i_no_op_proxy> weak_this_;
-
-        public:
-            explicit service_i_no_op_proxy(std::shared_ptr<rpc::object_proxy>&& object_proxy)
-                : rpc::interface_proxy<rpc::service::i_no_op>(std::move(object_proxy))
-            {
-            }
-            [[nodiscard]] static rpc::shared_ptr<rpc::service::i_no_op> create(
-                std::shared_ptr<rpc::object_proxy>&& object_proxy)
-            {
-                auto ret = rpc::shared_ptr<service_i_no_op_proxy>(new service_i_no_op_proxy(std::move(object_proxy)));
-                ret->weak_this_ = ret;
-                return rpc::static_pointer_cast<rpc::service::i_no_op>(ret);
-            }
-        };
-
-        class service_i_no_op_optimistic_control_block final
-            : public rpc::__rpc_internal::__shared_ptr_control_block::control_block_base
-        {
-        public:
-            explicit service_i_no_op_optimistic_control_block(service_i_no_op_proxy* p)
-                : control_block_base()
-            {
-                managed_object_ptr_ = static_cast<void*>(p);
-                is_local_ = false;
-                combined_count_.store(1, std::memory_order_relaxed);
-            }
-
-            void dispose_object_actual() override
-            {
-                delete static_cast<service_i_no_op_proxy*>(managed_object_ptr_);
-                managed_object_ptr_ = nullptr;
-            }
-
-            void destroy_self_actual() override { delete this; }
-        };
-
         bool relay_log_event(const rpc::telemetry_event& event)
         {
             if (event.event_type_id != rpc::id<rpc::log_record>::get(rpc::get_version()))
@@ -84,26 +46,6 @@ namespace rpc
         }
 #endif
 
-    }
-
-    template<> void object_proxy::create_interface_proxy<service::i_no_op>(rpc::shared_ptr<service::i_no_op>& iface)
-    {
-        iface = service_i_no_op_proxy::create(shared_from_this());
-    }
-
-    template<>
-    optimistic_ptr<service::i_no_op>::optimistic_ptr(
-        const std::shared_ptr<rpc::object_proxy>& object_proxy,
-        from_object_proxy_tag)
-        : ptr_(nullptr)
-        , cb_(nullptr)
-    {
-        if (!object_proxy)
-            return;
-
-        auto* proxy = new service_i_no_op_proxy(std::shared_ptr<rpc::object_proxy>(object_proxy));
-        ptr_ = proxy;
-        cb_ = new service_i_no_op_optimistic_control_block(proxy);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -149,7 +91,7 @@ namespace rpc
     int service::add_pending_out_param(
         uint64_t request_id,
         remote_object remote_object_id,
-        const rpc::shared_ptr<service::i_no_op>& proxy)
+        const rpc::shared_ptr<rpc::i_noop>& proxy)
     {
         if (request_id == 0)
             return rpc::error::OK();
@@ -183,7 +125,7 @@ namespace rpc
     int service::add_pending_out_param(
         uint64_t request_id,
         remote_object remote_object_id,
-        const rpc::optimistic_ptr<service::i_no_op>& proxy)
+        const rpc::optimistic_ptr<rpc::i_noop>& proxy)
     {
         if (request_id == 0)
             return rpc::error::OK();
@@ -215,7 +157,7 @@ namespace rpc
         return rpc::error::OK();
     }
 
-    rpc::shared_ptr<rpc::service::i_no_op> service::find_pending_out_param_shared(
+    rpc::shared_ptr<rpc::i_noop> service::find_pending_out_param_shared(
         uint64_t request_id,
         remote_object remote_object_id,
         int& error_code) const
@@ -264,7 +206,7 @@ namespace rpc
         return pending_item->second.shared;
     }
 
-    rpc::optimistic_ptr<rpc::service::i_no_op> service::find_pending_out_param_optimistic(
+    rpc::optimistic_ptr<rpc::i_noop> service::find_pending_out_param_optimistic(
         uint64_t request_id,
         remote_object remote_object_id,
         int& error_code) const
@@ -1036,20 +978,20 @@ namespace rpc
 
                     if (optimistic)
                     {
-                        rpc::optimistic_ptr<service::i_no_op> placeholder;
+                        rpc::optimistic_ptr<rpc::i_noop> placeholder;
                         if (existing_iface)
                         {
                             if (object_proxy->get_optimistic_count() > 0)
                             {
                                 placeholder
-                                    = rpc::share_optimistic_from_existing_control_block<service::i_no_op, rpc::casting_interface>(
+                                    = rpc::share_optimistic_from_existing_control_block<rpc::i_noop, rpc::casting_interface>(
                                         existing_iface);
                                 collapse_incoming_remote_ref = true;
                             }
                             else
                             {
-                                placeholder = rpc::adopt_remote_optimistic<service::i_no_op, rpc::casting_interface>(
-                                    existing_iface);
+                                placeholder
+                                    = rpc::adopt_remote_optimistic<rpc::i_noop, rpc::casting_interface>(existing_iface);
                             }
                         }
                         else
@@ -1059,17 +1001,16 @@ namespace rpc
                                 "placeholder",
                                 request_id,
                                 std::to_string(remote_object_id));
-                            placeholder
-                                = rpc::optimistic_ptr<service::i_no_op>(object_proxy, rpc::from_object_proxy_tag{});
+                            placeholder = rpc::optimistic_ptr<rpc::i_noop>(object_proxy, rpc::from_object_proxy_tag{});
                         }
                         pending_result = add_pending_out_param(request_id, remote_object_id, placeholder);
                     }
                     else
                     {
-                        rpc::shared_ptr<service::i_no_op> placeholder;
+                        rpc::shared_ptr<rpc::i_noop> placeholder;
                         if (existing_iface)
                         {
-                            placeholder = rpc::static_pointer_cast<service::i_no_op>(existing_iface);
+                            placeholder = rpc::static_pointer_cast<rpc::i_noop>(existing_iface);
                             collapse_incoming_remote_ref = true;
                         }
                         else
@@ -1079,7 +1020,7 @@ namespace rpc
                                 "placeholder",
                                 request_id,
                                 std::to_string(remote_object_id));
-                            placeholder = rpc::shared_ptr<service::i_no_op>(object_proxy, rpc::from_object_proxy_tag{});
+                            placeholder = rpc::shared_ptr<rpc::i_noop>(object_proxy, rpc::from_object_proxy_tag{});
                         }
                         pending_result = add_pending_out_param(request_id, remote_object_id, placeholder);
                     }

@@ -9,7 +9,7 @@ namespace rpc
 {
     // Base class for all rpc objects it provides essential casting and reflection services
     // derive your class from this class and you will get more features for free when they arrive
-    template<typename Implementation, typename... Interfaces> class base : public Interfaces...
+    template<typename Implementation, typename... Interfaces> class base : public rpc::i_noop, public Interfaces...
     {
         std::weak_ptr<rpc::object_stub> stub_;
 
@@ -24,14 +24,21 @@ namespace rpc
         [[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal interface_id) const override
         {
             const rpc::casting_interface* out = nullptr;
-            (
-                [&]
-                {
-                    if (rpc::match<Interfaces>(interface_id))
-                        out = static_cast<const Interfaces*>(static_cast<const Implementation*>(this));
-                    return out != nullptr;
-                }()
-                || ...);
+            if (rpc::match<rpc::i_noop>(interface_id))
+            {
+                out = static_cast<const rpc::i_noop*>(static_cast<const Implementation*>(this));
+            }
+            else
+            {
+                (
+                    [&]
+                    {
+                        if (rpc::match<Interfaces>(interface_id))
+                            out = static_cast<const Interfaces*>(static_cast<const Implementation*>(this));
+                        return out != nullptr;
+                    }()
+                    || ...);
+            }
             return out;
         }
 
