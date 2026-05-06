@@ -151,9 +151,11 @@ namespace rpc::local
             // as the parent has not got its proxy bound we do not include the output_descr state yet
             auto expected_parent_count = input_descr.get_object_id() != 0 ? 1 : 0;
 
-            // as the child should be fully initialised by this time so we add the output count too
-            auto expected_child_count
-                = expected_parent_count + (child_result.output_descriptor.get_object_id() != 0 ? 1 : 0);
+            // The child entry-point can use the input interface during
+            // construction and then discard it. Once create_child_zone returns,
+            // that proxy may already be released, so only the returned child
+            // interface is required to remain counted on the child transport.
+            auto expected_child_count = child_result.output_descriptor.get_object_id() != 0 ? 1 : 0;
 
             RPC_ASSERT(get_destination_count() >= expected_parent_count);
             RPC_ASSERT(!child_result.child || child_result.child->get_destination_count() >= expected_child_count);
