@@ -5,14 +5,14 @@
 #pragma once
 
 #include <canopy/fake_sgx/canopy_coroutine_startup_status.h>
-#include <edl/canopy_coroutine_enclave.h>
+#include <edl/coroutine_enclave.h>
 #include <sgx_urts.h>
 
 #include <cstddef>
 
 extern "C"
 {
-    sgx_status_t canopy_coroutine_init_enclave(
+    sgx_status_t coroutine_init_enclave(
         sgx_enclave_id_t enclave_id,
         int* retval,
         std::size_t req_sz,
@@ -24,7 +24,7 @@ extern "C"
         char* resp,
         std::size_t* resp_sz);
 
-    sgx_status_t canopy_coroutine_enter_thread(
+    sgx_status_t coroutine_enter_thread(
         sgx_enclave_id_t enclave_id,
         int* retval,
         std::size_t req_sz,

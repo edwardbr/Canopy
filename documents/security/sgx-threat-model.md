@@ -89,7 +89,7 @@ plain untrusted RPC frames.
 
 The coroutine SGX runtime should enforce:
 
-- `canopy_coroutine_init_enclave` is one-shot for the enclave lifetime
+- `coroutine_init_enclave` is one-shot for the enclave lifetime
 - there is only one runtime per enclave
 - worker ECALLs are accepted only while the runtime is requesting workers
 - each worker index is admitted at most once

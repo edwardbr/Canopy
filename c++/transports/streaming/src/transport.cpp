@@ -79,6 +79,8 @@ namespace rpc::stream_transport
         }
         if (old_status != new_status && new_status == rpc::transport_status::DISCONNECTING && shutdown_timeout_.count() > 0)
             disconnecting_since_ = std::chrono::steady_clock::now();
+        if (old_status < rpc::transport_status::DISCONNECTING && new_status >= rpc::transport_status::DISCONNECTING)
+            on_disconnecting();
         if (new_status != rpc::transport_status::CONNECTED)
         {
             send_queue_ready_.set();
@@ -86,7 +88,7 @@ namespace rpc::stream_transport
         rpc::transport::set_status(new_status);
     }
 
-    std::shared_ptr<transport> make_server(
+    std::shared_ptr<transport> create(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
@@ -389,54 +391,57 @@ namespace rpc::stream_transport
         auto& prefix = *context.prefix;
         auto& payload = *context.payload;
         auto tracker = std::move(context.tracker);
+        if (!tracker->svc)
+            CO_RETURN false;
+
         if (payload.payload_fingerprint == rpc::id<init_client_channel_send>::get(prefix.version))
         {
-            get_service()->spawn(create_stub(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(create_stub(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<call_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_send(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_send(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<post_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_post(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_post(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<try_cast_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_try_cast(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_try_cast(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<addref_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_add_ref(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_add_ref(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_release(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_release(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_object_released(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_object_released(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<transport_down_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_transport_down(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_transport_down(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<get_new_zone_id_send>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_get_new_zone_id(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_get_new_zone_id(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<rpc::telemetry_event>::get(prefix.version))
         {
-            get_service()->spawn(stub_handle_post_report(tracker, prefix, std::move(payload)));
+            tracker->svc->spawn(stub_handle_post_report(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<init_client_initial_channel_response>::get(prefix.version))
@@ -450,15 +455,13 @@ namespace rpc::stream_transport
                     early_response.zone_id.get_subnet());
                 set_adjacent_zone_id(early_response.zone_id);
                 if (registers_with_service_on_initial_channel_response())
-                    get_service()->add_transport(early_response.zone_id, shared_from_this());
+                    tracker->svc->add_transport(early_response.zone_id, shared_from_this());
 
                 if (stub_)
                 {
                     auto stub = std::move(stub_);
                     stub_.reset();
-                    auto service = get_service();
-                    if (service)
-                        service->spawn(handle_initial_stub_add_ref(std::move(stub), early_response.zone_id));
+                    tracker->svc->spawn(handle_initial_stub_add_ref(std::move(stub), early_response.zone_id));
                 }
             }
             else
@@ -522,7 +525,6 @@ namespace rpc::stream_transport
             .transport = std::static_pointer_cast<rpc::stream_transport::transport>(self), .svc = svc});
         auto receive_spawned = svc->spawn(receive_consumer_loop(tracker));
         auto send_spawned = svc->spawn(send_producer_loop(tracker));
-        io_loops_started_.store(receive_spawned && send_spawned, std::memory_order_release);
         if (call_timeout_.count() > 0 && call_timeout_sweep_.count() > 0)
         {
             svc->spawn(timeout_sweep_loop(std::static_pointer_cast<rpc::stream_transport::transport>(self), svc));

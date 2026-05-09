@@ -17,7 +17,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <io_uring/io_uring.h>
+#include <edl/coroutine_enclave.h>
 #include <rpc/rpc.h>
 
 #ifdef FOR_SGX

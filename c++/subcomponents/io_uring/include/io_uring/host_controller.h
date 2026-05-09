@@ -9,7 +9,7 @@
 #include <memory>
 #include <mutex>
 
-#include <io_uring/io_uring.h>
+#include <edl/coroutine_enclave.h>
 #include <rpc/rpc.h>
 
 namespace coro
@@ -25,7 +25,7 @@ namespace rpc::io_uring
 #ifdef CANOPY_IO_URING_SQPOLL
         // Enclave users submit SQEs directly and cannot make io_uring_enter()
         // themselves. SQPOLL gives the host a kernel-side submitter thread that
-        // can be woken through i_host_io_uring_control::wake_iouring().
+        // can be woken through i_io_uring_control::wake_iouring().
         bool use_sqpoll{true};
 #else
         // Non-SQPOLL builds are useful for host-only experiments, but the SGX

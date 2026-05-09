@@ -16,7 +16,7 @@
 
 #include <io_uring/detail/operation_engine.h>
 #include <io_uring/types.h>
-#include <io_uring/io_uring.h>
+#include <edl/coroutine_enclave.h>
 #include <rpc/rpc.h>
 
 namespace rpc::io_uring
@@ -26,36 +26,10 @@ namespace rpc::io_uring
     class controller : public std::enable_shared_from_this<controller>
     {
     public:
-        explicit controller(
-            rpc::shared_ptr<i_host_io_uring_control> host_control,
-            rpc::coro::scheduler* scheduler = nullptr);
+        explicit controller(rpc::coro::scheduler* scheduler = nullptr);
+        virtual ~controller() = default;
 
-        template<class HostInterface>
-        static CORO_TASK(std::shared_ptr<controller>) create_from_host(const rpc::shared_ptr<HostInterface>& host)
-        {
-            auto host_control = CO_AWAIT query_host_control(host);
-            if (!host_control)
-            {
-                CO_RETURN{};
-            }
-
-            CO_RETURN std::make_shared<controller>(std::move(host_control));
-        }
-
-        template<class HostInterface>
-        static CORO_TASK(rpc::shared_ptr<i_host_io_uring_control>)
-            query_host_control(const rpc::shared_ptr<HostInterface>& host)
-        {
-            if (!host)
-            {
-                CO_RETURN{};
-            }
-
-            CO_RETURN CO_AWAIT rpc::dynamic_pointer_cast<i_host_io_uring_control>(host);
-        }
-
-        [[nodiscard]] bool has_host_control() const noexcept;
-        [[nodiscard]] rpc::shared_ptr<i_host_io_uring_control> host_control() const;
+        [[nodiscard]] rpc::optimistic_ptr<i_io_uring_control> host_control() const;
 
         void set_wait_strategy(wait_strategy strategy) noexcept;
         [[nodiscard]] wait_strategy get_wait_strategy() const noexcept;
@@ -104,6 +78,10 @@ namespace rpc::io_uring
             std::chrono::milliseconds timeout);
         CORO_TASK(operation_result) cancel_direct(uint32_t descriptor);
         CORO_TASK(operation_result) close_direct(uint32_t descriptor);
+
+    protected:
+        virtual CORO_TASK(int) inner_wake_host_iouring() = 0;
+        virtual CORO_TASK(int) inner_get_iouring_data(rpc::io_uring::data& ring_data) = 0;
 
     private:
         friend class direct_descriptor;
@@ -318,7 +296,6 @@ namespace rpc::io_uring
         CORO_TASK(void) completion_pump_loop(data ring_data);
         CORO_TASK(void) wait_before_next_poll();
 
-        rpc::shared_ptr<i_host_io_uring_control> host_control_;
         data cached_iouring_data_;
         mutable rpc::spin_mutex cache_mutex_;
         bool has_cached_iouring_data_{false};

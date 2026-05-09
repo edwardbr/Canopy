@@ -32,7 +32,7 @@ namespace
 
         auto stream
             = std::make_shared<streaming::spsc_queue::stream>(&queues->dll_to_host, &queues->host_to_dll, scheduler);
-        auto acceptor = rpc::stream_transport::make_server<yyy::i_host, yyy::i_example>(
+        auto acceptor = rpc::stream_transport::create<yyy::i_host, yyy::i_example>(
             "ipc_child_process", service, std::move(stream), &make_example);
         if (!acceptor)
             CO_RETURN 3;

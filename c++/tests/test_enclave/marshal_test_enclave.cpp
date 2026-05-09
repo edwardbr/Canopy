@@ -19,7 +19,6 @@
 #include <edl/enclave_marshal_test.h>
 #include <trusted/enclave_marshal_test_t.h>
 #include <common/foo_impl.h>
-#include <io_uring/controller.h>
 #include <transports/sgx/host_transport.h>
 #include <example/example.h>
 

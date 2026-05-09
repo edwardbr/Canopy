@@ -5,8 +5,8 @@
 
 #include <rpc/rpc.h>
 #include <common/foo_impl.h>
-#include <transports/sgx_coroutine/host/runtime.h>
-#include <io_uring/io_uring.h>
+#include <transports/sgx_coroutine/enclave/runtime.h>
+#include <edl/coroutine_enclave.h>
 #include <io_uring/controller.h>
 
 namespace
@@ -35,7 +35,7 @@ namespace
         {
             exercise_atomic_smart_ptr_polyfill();
 
-            rpc::sgx::coro::host::register_connection_factory<yyy::i_host, yyy::i_example>(
+            rpc::sgx::coro::enclave::register_connection_factory<yyy::i_host, yyy::i_example>(
                 "marshal_test_coroutine_enclave",
                 [](rpc::shared_ptr<yyy::i_host> host,
                     std::shared_ptr<rpc::service> child_service) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)

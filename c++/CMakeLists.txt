@@ -8,7 +8,6 @@ cmake_minimum_required(VERSION 3.24)
 add_subdirectory(submodules)
 add_subdirectory(telemetry)
 add_subdirectory(rpc)
-add_subdirectory(transports)
 add_subdirectory(subcomponents/network_config)
 add_subdirectory(subcomponents/rpc_log)
 add_subdirectory(subcomponents/spsc_queue)
@@ -19,7 +18,18 @@ if(CANOPY_BUILD_COROUTINE)
     add_subdirectory(subcomponents/http_server)
   endif()
 
-  add_subdirectory(subcomponents/io_uring)
+  if(CANOPY_BUILD_ENCLAVE)
+    add_subdirectory(transports/sgx_coroutine/edl)
+    add_subdirectory(subcomponents/io_uring)
+  endif()
+endif()
+
+add_subdirectory(transports)
+
+if(CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_ENCLAVE)
+  # The new io_uring stream adapter depends on the low-level io_uring controller target and optionally on
+  # transport_streaming test helpers, so it is configured after both subcomponents/io_uring and transports.
+  add_subdirectory(streaming/io_uring_new)
 endif()
 
 if(CANOPY_BUILD_TEST)

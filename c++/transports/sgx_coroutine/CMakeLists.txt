@@ -6,20 +6,19 @@
 cmake_minimum_required(VERSION 3.24)
 
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
-  add_subdirectory(edl)
-
-  add_library(transport_sgx_coroutine src/enclave_transport.cpp)
+  add_library(transport_sgx_coroutine host/src/transport.cpp)
 
   target_compile_definitions(transport_sgx_coroutine PRIVATE ${CANOPY_DEFINES} CANOPY_BUILD_ENCLAVE)
-  target_include_directories(
-    transport_sgx_coroutine
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-    PRIVATE ${CANOPY_INCLUDES})
   target_link_libraries(
     transport_sgx_coroutine
-    PUBLIC spsc_queue streaming_spsc_queue transport_streaming
+    PUBLIC transport_sgx_coroutine_host_headers
+           transport_sgx_coroutine_common_headers
+           spsc_queue
+           streaming_spsc_queue
+           transport_streaming
+           canopy_io_uring
     PRIVATE yas_common
-            canopy_coroutine_enclave_idl
+            coroutine_enclave_idl
             rpc_types_idl
             streaming_transport_idl
             streaming
@@ -36,19 +35,21 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     set_target_properties(transport_sgx_coroutine PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
   endif()
 
-  add_library(transport_sgx_coroutine_enclave src/enclave_runtime.cpp)
+  add_library(transport_sgx_coroutine_enclave enclave/src/runtime.cpp enclave/src/host_transport.cpp
+                                              enclave/src/io_uring_controller.cpp enclave/src/service.cpp)
   target_compile_definitions(transport_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_BUILD_ENCLAVE)
   target_compile_options(transport_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
                                                                  ${CANOPY_WARN_OK_ENCLAVE})
-  target_include_directories(
-    transport_sgx_coroutine_enclave
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-    PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+  target_include_directories(transport_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
   target_link_libraries(
     transport_sgx_coroutine_enclave
-    PUBLIC streaming_spsc_queue_enclave transport_streaming_enclave
+    PUBLIC transport_sgx_coroutine_enclave_headers
+           transport_sgx_coroutine_common_headers
+           streaming_spsc_queue_enclave
+           transport_streaming_enclave
+           canopy_io_uring_enclave
     PRIVATE yas_common
-            canopy_coroutine_enclave_idl_enclave
+            coroutine_enclave_idl_enclave
             rpc_types_idl_enclave
             streaming_transport_idl_enclave
             streaming_enclave

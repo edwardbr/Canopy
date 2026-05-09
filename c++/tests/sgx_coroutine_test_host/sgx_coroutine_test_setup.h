@@ -16,7 +16,8 @@
 #include <gtest/gtest.h>
 #include <io_uring_test/test.h>
 #include <rpc/rpc.h>
-#include <transports/sgx_coroutine/enclave/transport.h>
+#include <transports/sgx_coroutine/host/connect.h>
+#include <transports/sgx_coroutine/host/transport.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/telemetry_service_factory.h>
@@ -28,7 +29,8 @@ class sgx_coroutine_test_setup
     std::shared_ptr<coro::scheduler> io_scheduler_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
     rpc::shared_ptr<io_uring_test::i_test_uring> i_test_uring_ptr_;
-    std::vector<std::weak_ptr<rpc::sgx::coro::enclave::transport>> transports_;
+    std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transports_;
+    rpc::io_uring::host_controller::options host_controller_options_;
     std::atomic_bool teardown_interfaces_released_ = false;
     std::atomic_bool teardown_root_shutdown_complete_ = false;
 
@@ -123,16 +125,23 @@ public:
         root_service_ = rpc::root_service::create("sgx coroutine test host", rpc::DEFAULT_PREFIX, io_scheduler_);
         current_host_service = root_service_;
 
-        auto host_result = host_with_io_uring_control::create_for_test(io_scheduler_, host_controller_options);
+        host_controller_options_ = host_controller_options;
+        host_controller_options_.register_fixed_files = true;
+        if (host_controller_options_.fixed_file_count == 0)
+        {
+            host_controller_options_.fixed_file_count = 256;
+        }
+
+        auto host_result = enclave_connection_test_host::create_for_test();
         RPC_ASSERT(host_result.error_code == rpc::error::OK());
         i_host_ptr_ = std::move(host_result.output_interface);
 
         auto host_ptr = i_host_ptr_;
-        auto transport = std::make_shared<rpc::sgx::coro::enclave::transport>(
+        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
             "main child", root_service_, sgx_coroutine_test_enclave_path);
         transports_.push_back(transport);
-        auto result = SYNC_WAIT((root_service_->template connect_to_zone<yyy::i_host, io_uring_test::i_test_uring>(
-            "main child", transport, host_ptr)));
+        auto result = SYNC_WAIT((rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
+            root_service_, "main child", transport, host_ptr, host_controller_options_)));
 
         i_test_uring_ptr_ = std::move(result.output_interface);
         RPC_ASSERT(result.error_code == rpc::error::OK());
@@ -174,12 +183,12 @@ public:
         if (zone_result.error_code != rpc::error::OK())
             CO_RETURN nullptr;
 
-        auto transport = std::make_shared<rpc::sgx::coro::enclave::transport>(
+        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
             "main child", root_service_, sgx_coroutine_test_enclave_path);
         transports_.push_back(transport);
         transport->set_adjacent_zone_id(zone_result.zone_id);
-        auto result = CO_AWAIT root_service_->template connect_to_zone<yyy::i_host, io_uring_test::i_test_uring>(
-            "main child", transport, i_host_ptr_);
+        auto result = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
+            root_service_, "main child", transport, i_host_ptr_, host_controller_options_);
 
         ptr = std::move(result.output_interface);
         if (result.error_code != rpc::error::OK())

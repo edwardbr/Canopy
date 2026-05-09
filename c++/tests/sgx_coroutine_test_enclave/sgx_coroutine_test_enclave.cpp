@@ -8,9 +8,9 @@
 #include <rpc/rpc.h>
 #include <example/example.h>
 #include <io_uring/controller.h>
-#include <io_uring/io_uring.h>
+#include <edl/coroutine_enclave.h>
 #include <io_uring_test/test.h>
-#include <transports/sgx_coroutine/host/runtime.h>
+#include <transports/sgx_coroutine/enclave/runtime.h>
 
 #include <array>
 #include <atomic>
@@ -46,7 +46,7 @@ namespace
         {
             exercise_atomic_smart_ptr_polyfill();
 
-            rpc::sgx::coro::host::register_connection_factory<yyy::i_host, io_uring_test::i_test_uring>(
+            rpc::sgx::coro::enclave::register_connection_factory<yyy::i_host, io_uring_test::i_test_uring>(
                 "sgx_coroutine_test_enclave",
                 [](rpc::shared_ptr<yyy::i_host> host, std::shared_ptr<rpc::service> child_service)
                     -> CORO_TASK(rpc::service_connect_result<io_uring_test::i_test_uring>)
@@ -59,37 +59,24 @@ namespace
                                 rpc::error::INCOMPATIBLE_SERVICE(), {}};
                         }
 
-                        auto scheduler = child_service->get_scheduler();
-                        if (!scheduler)
+                        if (!host)
                         {
                             CO_RETURN rpc::service_connect_result<io_uring_test::i_test_uring>{
                                 rpc::error::INCOMPATIBLE_SERVICE(), {}};
                         }
 
-                        auto host_io_uring
-                            = CO_AWAIT rpc::dynamic_pointer_cast<rpc::io_uring::i_host_io_uring_control>(host);
-                        if (!host_io_uring)
+                        auto enclave_service = std::dynamic_pointer_cast<rpc::enclave_service>(child_service);
+                        if (!enclave_service)
                         {
                             CO_RETURN rpc::service_connect_result<io_uring_test::i_test_uring>{
                                 rpc::error::INCOMPATIBLE_SERVICE(), {}};
                         }
 
-                        // create a controller
-                        std::shared_ptr<rpc::io_uring::controller> controller;
-                        controller
-                            = std::make_shared<rpc::io_uring::controller>(std::move(host_io_uring), scheduler.get());
-
-                        // register cleanup
-                        std::weak_ptr<rpc::io_uring::controller> runtime_controller = controller;
-                        auto err = rpc::sgx::coro::host::register_runtime_cleanup_handler(
-                            [runtime_controller]() noexcept
-                            {
-                                if (auto controller = runtime_controller.lock())
-                                    controller->request_shutdown();
-                            });
-                        if (err != rpc::error::OK())
+                        auto controller = enclave_service->get_io_uring_controller();
+                        if (!controller)
                         {
-                            CO_RETURN rpc::service_connect_result<io_uring_test::i_test_uring>{err, {}};
+                            CO_RETURN rpc::service_connect_result<io_uring_test::i_test_uring>{
+                                rpc::error::INCOMPATIBLE_SERVICE(), {}};
                         }
 
                         rpc::shared_ptr<io_uring_test::i_test_uring> test(

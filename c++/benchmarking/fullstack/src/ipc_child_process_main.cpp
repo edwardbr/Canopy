@@ -32,7 +32,7 @@ namespace
         auto stream
             = std::make_shared<streaming::spsc_queue::stream>(&queues->dll_to_host, &queues->host_to_dll, scheduler);
         auto acceptor
-            = rpc::stream_transport::make_server<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(
+            = rpc::stream_transport::create<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(
                 "benchmark_ipc_child_process", service, std::move(stream), &make_data_processor);
         if (!acceptor)
             CO_RETURN 3;

@@ -20,13 +20,12 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
 
   add_enclave_library(
     sgx_coroutine_test_enclave
-    SRCS
-      end_2_end_setup.cpp
-      end_2_end_setup.h
-      sgx_coroutine_test_enclave.cpp
-      test_uring.cpp
-      test_uring_peer2peer.cpp
-      test_uring.h
+    SRCS end_2_end_setup.cpp
+         end_2_end_setup.h
+         sgx_coroutine_test_enclave.cpp
+         test_uring.cpp
+         test_uring_peer2peer.cpp
+         test_uring.h
     HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB}
     TRUSTED_LIBS
       libcoro_enclave
@@ -37,6 +36,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
       transport_sgx_coroutine_enclave
       ${SGX_COROUTINE_TEST_TELEMETRY_ENCLAVE_LIBS}
       streaming_spsc_queue_enclave
+      streaming_io_uring_new_enclave
       canopy_coroutine_edl_enclave
       transport_local_enclave
       canopy_io_uring_enclave
@@ -50,9 +50,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   target_include_directories(
     sgx_coroutine_test_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
-           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../subcomponents/io_uring/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
-           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx_coroutine/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
            "$<INSTALL_INTERFACE:include/marshalled_tests>"

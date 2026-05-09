@@ -46,22 +46,22 @@ namespace websocket_protocol
             }
         };
 
-        // Server-side make_server: zone factory replaces the raw connection_handler.
+        // Server-side create: zone factory replaces the raw connection_handler.
         template<
             class Remote,
             class Local>
-        static CORO_TASK(std::shared_ptr<transport>) make_server(
+        static CORO_TASK(std::shared_ptr<transport>) create(
             const std::shared_ptr<rpc::service>& service,
             const std::shared_ptr<streaming::stream>& stream,
             std::function<CORO_TASK(rpc::service_connect_result<Local>)(
                 const rpc::shared_ptr<Remote>&,
                 const std::shared_ptr<rpc::service>&)> factory)
         {
-            CO_RETURN CO_AWAIT make_server(
+            CO_RETURN CO_AWAIT create(
                 service, stream, rpc::make_new_zone_connection_handler<Remote, Local>("websocket", std::move(factory)));
         }
 
-        static CORO_TASK(std::shared_ptr<transport>) make_server(
+        static CORO_TASK(std::shared_ptr<transport>) create(
             const std::shared_ptr<rpc::service>& service,
             const std::shared_ptr<streaming::stream>& stream,
             connection_handler&& handler);

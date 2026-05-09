@@ -407,7 +407,7 @@ capability issued by one, not raw public-client routing claims.
 
 Concrete current example: `c++/demos/websocket/server` is a useful demonstration
 of the boundary that needs this profile. It accepts HTTP/WebSocket clients and
-uses `websocket_protocol::transport::make_server` to expose
+uses `websocket_protocol::transport::create` to expose
 `i_calculator` while optionally accepting an `i_context_event` callback sink
 from the browser side. Before treating this as a production-facing pattern, the
 server should be hardened as a public gateway:

@@ -3,12 +3,14 @@
 Status: active plan; the NOP operation-table foundation is implemented, and the
 first direct-descriptor TCP smoke path is implemented for loopback self-ping.
 
-This plan refines the current controller direction in
-`io-uring-controller-plan.md`. The immediate trigger is the scheduled no-op
-stress test: one enclave RPC call can spawn many coroutines that call
-`controller::no_op()` concurrently. That is the right stress
-shape. The controller must therefore stop treating `no_op()` as a single-caller
-helper and grow a real multi-operation completion engine.
+This plan was written against the V1 controller direction in
+`io-uring-controller-plan.md`. The active ownership architecture is now V2 in
+`io-uring-runtime-scheduler-architecture-v2.md`, but the operation-engine
+requirements below still apply to the common `rpc::io_uring::controller`. The
+immediate trigger is the scheduled no-op stress test: one enclave RPC call can
+spawn many coroutines that call `controller::no_op()` concurrently. That is the
+right stress shape. The controller must therefore stop treating `no_op()` as a
+single-caller helper and grow a real multi-operation completion engine.
 
 ## Current Result
 
@@ -120,7 +122,7 @@ The intended layers are:
 
 ```text
 host_controller
-  -> owns host/kernel ring resources and exposes i_host_io_uring_control
+  -> owns host/kernel ring resources and exposes i_io_uring_control
 
 controller
   -> owns validated ring descriptor, SQ submission, CQ dispatch, operation table
@@ -226,7 +228,7 @@ Future host changes are expected for resource brokerage:
 
 Those future host changes should use separate resource-control interfaces, for
 example `i_host_file_control`, rather than expanding
-`i_host_io_uring_control` into a generic host-control interface.
+`i_io_uring_control` into a generic host-control interface.
 
 The host should still create and own the ring. The enclave can submit direct
 SQEs, but it does not own the ring fd, fixed-file table lifetime, or host-side

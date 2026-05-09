@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.24)
 message("marshal_test_enclave")
 
 # ######################################################################################################################
-#marshal_test_enclave
+# marshal_test_enclave
 
 if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
   set(MARSHAL_TEST_TELEMETRY_ENCLAVE_LIBS)
@@ -26,8 +26,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
   add_enclave_library(
     marshal_test_enclave
     SRCS marshal_test_enclave.cpp
-    HEADER_ONLY_LIBS
-      ${CANOPY_ENCLAVE_FMT_LIB}
+    HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB}
     TRUSTED_LIBS
       rpc_enclave
       marshal_test_edl_enclave
@@ -35,7 +34,6 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
       transport_sgx_enclave
       transport_local_enclave
       common_enclave
-      io_uring_idl_enclave
       enclave_marshal_test_idl_enclave
       example_import_idl_enclave
       example_idl_enclave
@@ -49,7 +47,6 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
     marshal_test_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
-           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../subcomponents/io_uring/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
@@ -92,8 +89,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
   add_enclave_library(
     marshal_test_coroutine_enclave
     SRCS marshal_test_coroutine_enclave.cpp
-    HEADER_ONLY_LIBS
-      ${CANOPY_ENCLAVE_FMT_LIB}
+    HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB}
     TRUSTED_LIBS
       libcoro_enclave
       rpc_enclave
@@ -105,8 +101,9 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
       streaming_spsc_queue_enclave
       canopy_coroutine_edl_enclave
       transport_local_enclave
+      canopy_io_uring_enclave
       common_enclave
-      io_uring_idl_enclave
+      coroutine_enclave_idl_enclave
       example_import_idl_enclave
       example_idl_enclave
       example_shared_idl_enclave
@@ -119,9 +116,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
     marshal_test_coroutine_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
-           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../subcomponents/io_uring/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
-           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx_coroutine/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
            "$<INSTALL_INTERFACE:include/marshalled_tests>"

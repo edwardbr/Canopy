@@ -52,7 +52,7 @@ namespace rpc::libcoro_spsc_dynamic_dll
                 CO_RETURN rpc::connection_handler_result{result.error_code, std::move(result.descriptor)};
             });
 
-        CO_RETURN rpc::stream_transport::make_server(name, service, std::move(stream), std::move(handler));
+        CO_RETURN rpc::stream_transport::create(name, service, std::move(stream), std::move(handler));
     }
 
 } // namespace rpc::libcoro_spsc_dynamic_dll

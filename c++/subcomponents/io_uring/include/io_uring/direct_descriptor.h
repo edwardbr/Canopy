@@ -52,4 +52,12 @@ namespace rpc::io_uring
         std::shared_ptr<controller> controller_;
         std::atomic<uint32_t> descriptor_{invalid_descriptor};
     };
+
+    struct direct_descriptor_result
+    {
+        int error_code{rpc::error::OK()};
+        int32_t native_result{0};
+        uint32_t cqe_flags{0};
+        std::shared_ptr<direct_descriptor> descriptor;
+    };
 } // namespace rpc::io_uring

@@ -192,7 +192,6 @@ namespace rpc::stream_transport
 
         std::atomic<bool> peer_requested_disconnection_ = false;
         std::atomic<bool> pumps_started_ = false;
-        std::atomic<bool> io_loops_started_ = false;
 
         // Two-phase close protocol state
         std::atomic<bool> send_cleanup_done_ = false;
@@ -463,6 +462,7 @@ namespace rpc::stream_transport
         void on_destination_count_zero() override { begin_clean_disconnect(); }
 
         void set_status(rpc::transport_status new_status) override;
+        virtual void on_disconnecting() { }
 
         virtual void send_payload_post_send(
             uint64_t protocol_version,
@@ -522,7 +522,6 @@ namespace rpc::stream_transport
 
     public:
         ~transport() override = default;
-        [[nodiscard]] bool io_loops_started() const { return io_loops_started_.load(std::memory_order_acquire); }
 
         void add_custom_message_handler(custom_message_handler handler)
         {
@@ -651,7 +650,7 @@ namespace rpc::stream_transport
         CORO_TASK(void) outbound_post_report(rpc::telemetry_event event) override;
         CORO_TASK(new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params) override;
 
-        friend std::shared_ptr<transport> make_server(
+        friend std::shared_ptr<transport> create(
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
@@ -659,7 +658,7 @@ namespace rpc::stream_transport
             stream_transport_options options);
     };
 
-    std::shared_ptr<transport> make_server(
+    std::shared_ptr<transport> create(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
@@ -672,7 +671,7 @@ namespace rpc::stream_transport
     template<
         class Remote,
         class Local>
-    std::shared_ptr<transport> make_server(
+    std::shared_ptr<transport> create(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
@@ -682,7 +681,7 @@ namespace rpc::stream_transport
         stream_transport_options options = {})
     {
         auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
-        return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler), options);
+        return create(std::move(name), std::move(service), std::move(stream), std::move(handler), options);
     }
 
     // Returns a transport_factory that creates a streaming server transport wrapping
@@ -696,7 +695,7 @@ namespace rpc::stream_transport
                    std::string name,
                    std::shared_ptr<rpc::service> svc,
                    rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-        { CO_RETURN make_server(std::move(name), std::move(svc), stream, std::move(handler), options); };
+        { CO_RETURN create(std::move(name), std::move(svc), stream, std::move(handler), options); };
     }
 
     inline std::shared_ptr<transport> make_client(
@@ -705,7 +704,7 @@ namespace rpc::stream_transport
         std::shared_ptr<streaming::stream> stream,
         stream_transport_options options = {})
     {
-        return make_server(std::move(name), std::move(service), std::move(stream), nullptr, options);
+        return create(std::move(name), std::move(service), std::move(stream), nullptr, options);
     }
 
     // Produces a connection_callback for use with streaming::listener.
@@ -730,7 +729,7 @@ namespace rpc::stream_transport
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
-            auto transport = make_server<Remote, Local>(name, svc, std::move(stm), fn, options);
+            auto transport = create<Remote, Local>(name, svc, std::move(stm), fn, options);
             RPC_DEBUG("New transport connection {}", rpc::to_string(transport->get_adjacent_zone_id()));
             CO_RETURN;
         };

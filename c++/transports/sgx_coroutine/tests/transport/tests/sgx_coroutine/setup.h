@@ -14,7 +14,8 @@
 #  include <gtest/gtest.h>
 #  include <memory>
 #  include <new>
-#  include <transports/sgx_coroutine/enclave/transport.h>
+#  include <transports/sgx_coroutine/host/connect.h>
+#  include <transports/sgx_coroutine/host/transport.h>
 #  include <utility>
 #  include <vector>
 
@@ -50,7 +51,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 class sgx_coroutine_setup
     : public transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-    std::vector<std::weak_ptr<rpc::sgx::coro::enclave::transport>> transports_;
+    std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transports_;
 
     [[nodiscard]] bool all_transports_expired() const
     {
@@ -85,11 +86,11 @@ public:
         this->local_host_ptr_ = this->i_host_ptr_;
 
         auto host_ptr = this->use_host_in_child_ ? this->i_host_ptr_ : nullptr;
-        auto transport = std::make_shared<rpc::sgx::coro::enclave::transport>(
+        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
             "main child", this->root_service_, coroutine_enclave_path);
         transports_.push_back(transport);
-        auto result = SYNC_WAIT((this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
-            "main child", transport, host_ptr)));
+        auto result = SYNC_WAIT((rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+            this->root_service_, "main child", transport, host_ptr)));
 
         this->i_example_ptr_ = std::move(result.output_interface);
         RPC_ASSERT(result.error_code == rpc::error::OK());
@@ -125,12 +126,12 @@ public:
         if (zone_result.error_code != rpc::error::OK())
             CO_RETURN nullptr;
 
-        auto transport = std::make_shared<rpc::sgx::coro::enclave::transport>(
+        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
             "main child", this->root_service_, coroutine_enclave_path);
         transports_.push_back(transport);
         transport->set_adjacent_zone_id(zone_result.zone_id);
-        auto result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
-            "main child", transport, this->use_host_in_child_ ? this->i_host_ptr_ : nullptr);
+        auto result = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+            this->root_service_, "main child", transport, this->use_host_in_child_ ? this->i_host_ptr_ : nullptr);
 
         ptr = std::move(result.output_interface);
         if (result.error_code != rpc::error::OK())

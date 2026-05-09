@@ -6,6 +6,7 @@
 #include "end_2_end_setup.h"
 
 #include <io_uring/tcp.h>
+#include <streaming/io_uring_new/stream.h>
 #include <transports/streaming/transport.h>
 
 #include <atomic>
@@ -47,7 +48,7 @@ namespace io_uring_test_enclave
             CO_RETURN rpc::service_connect_result<io_uring_test::i_peer2peer>{err, endpoint};
         }
 
-        // Adapter used by make_server(). During connect_to_zone the client
+        // Adapter used by create(). During connect_to_zone the client
         // supplies its local endpoint as the server's remote_client. The server
         // endpoint factory can capture that remote endpoint for callbacks.
         struct server_connection_factory
@@ -279,7 +280,8 @@ namespace io_uring_test_enclave
             // This smoke harness accepts exactly one connection. Future tests
             // can reuse end_2_end_setup and vary endpoint behavior without
             // copying the transport bootstrap code.
-            auto accept_result = CO_AWAIT server.acceptor->accept_with_result();
+            auto accept_result
+                = streaming::io_uring_new::make_stream_result(CO_AWAIT server.acceptor->accept_with_result(), port);
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 const auto error_code = accept_result.error_code != rpc::error::OK() ? accept_result.error_code
@@ -290,7 +292,7 @@ namespace io_uring_test_enclave
             // Build the server-side transport. The connection factory receives
             // the client endpoint from the connect_to_zone handshake and creates
             // the server's local endpoint.
-            server.transport = rpc::stream_transport::make_server<io_uring_test::i_peer2peer, io_uring_test::i_peer2peer>(
+            server.transport = rpc::stream_transport::create<io_uring_test::i_peer2peer, io_uring_test::i_peer2peer>(
                 "io_uring_peer_server_transport",
                 server.service,
                 accept_result.connection,
@@ -313,8 +315,8 @@ namespace io_uring_test_enclave
         }
 
         // Client half of the harness. It waits for the server port, connects an
-        // io_uring TCP stream, starts a streaming RPC client transport, and runs
-        // the peer_ping verification loop.
+        // io_uring TCP descriptor, adapts it into a generic stream, starts a
+        // streaming RPC client transport, and runs the peer_ping verification loop.
         CORO_TASK(int)
         run_tcp_client(
             const std::shared_ptr<rpc::io_uring::controller>& controller,
@@ -360,11 +362,12 @@ namespace io_uring_test_enclave
             client.shutdown_event->set_scheduler(scheduler.get());
             client.service->set_shutdown_event(client.shutdown_event);
 
-            // The connector returns a streaming::stream wrapper over an
-            // io_uring direct descriptor. No host RPC relay is involved in the
-            // data path once this stream exists.
+            // The connector returns a direct descriptor. The streaming adapter
+            // below gives the RPC transport a generic byte stream without
+            // putting TCP knowledge into the streaming layer.
             rpc::io_uring::connector connector(controller);
-            auto connect_result = CO_AWAIT connector.connect_loopback_with_result(port);
+            auto connect_result = streaming::io_uring_new::make_stream_result(
+                CO_AWAIT connector.connect_loopback_with_result(port), port);
             if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
             {
                 err = connect_result.error_code != rpc::error::OK() ? connect_result.error_code

@@ -18,14 +18,17 @@ inside the enclave.
 ## Current Direction
 
 The active SGX io_uring direction is documented in
-`io-uring-controller-plan.md`. The next-stage operation engine and file/blob
-resource plan is documented in `io-uring-operation-engine-plan.md`.
+`io-uring-runtime-scheduler-architecture-v2.md`. The original controller plan
+is preserved in `io-uring-controller-plan.md` as deprecated V1 context. The
+next-stage operation engine and file/blob resource plan is documented in
+`io-uring-operation-engine-plan.md`.
 
-In short, the host creates a per-enclave io_uring controller RPC object and
-passes it through the existing `connect_to_zone` input path. The enclave then
-builds an enclave-side controller from that normal RPC capability. This avoids
-changing core RPC object-id semantics or using `canopy_coroutine_startup_status`
-as a general capability channel.
+In short, the V2 direction separates runtime ownership from io_uring ownership.
+The host transport has a one-to-one relationship with an enclave runtime owner.
+The enclave runtime owns a scheduler. An `io_uring_scheduler` may own one
+`rpc::io_uring::controller`, and that controller uses a formal
+`io_uring_handle` abstraction. Enclaves use a proxy-backed handle; host-only
+users can use a direct host implementation over the same controller API.
 
 The reusable host/enclave controller types live under
 `c++/subcomponents/io_uring`. SGX tests may adapt those types onto the existing
@@ -40,9 +43,18 @@ The generic service-object singleton idea is parked separately in
 The current implementation has two smoke-test stages:
 
 - the host owns a per-enclave `host_controller`
-- the enclave receives an RPC object that can be cast to
-  `i_host_io_uring_control`
-- the enclave caches `rpc::io_uring::data` returned by that interface
+- the host sends a bootstrap RPC object that can be cast to
+  `i_io_uring_control`
+- the enclave uses that object only during connection setup, then transfers the
+  user-supplied interface and drops the normal RPC pointer
+- the in-enclave `host_transport` retains one explicit host reference to the
+  `i_io_uring_control` object, stores the remote object descriptor, and releases
+  that reference as part of transport disconnect
+- the enclave-side `rpc::io_uring::controller` does not own a shared or
+  optimistic RPC pointer to `i_io_uring_control`; it asks `host_transport` to
+  perform the narrow serialized `wake_iouring` and `get_iouring_data` calls
+- the enclave caches `rpc::io_uring::data` returned through that transport-owned
+  path
 - `controller::no_op()` writes `IORING_OP_NOP` SQEs directly
   into the shared ring and attributes CQEs by enclave-generated `user_data`
 - `controller` has direct-descriptor TCP helpers for socket,
@@ -134,13 +146,13 @@ The coroutine SGX transport currently has this shape:
 ```text
 host service
   -> rpc::sgx::coro::enclave::transport
-  -> canopy_coroutine_init_enclave / canopy_coroutine_enter_thread
+  -> coroutine_init_enclave / coroutine_enter_thread
   -> host-owned SPSC queues
   -> streaming::spsc_queue::stream
   -> rpc::stream_transport::transport inside the enclave
 ```
 
-`canopy_coroutine_init_enclave` receives:
+`coroutine_init_enclave` receives:
 
 - the encoded init request
 - a host-to-enclave queue pointer
@@ -235,20 +247,38 @@ This keeps two separate use cases:
 
 ## Runtime Initialisation Shape
 
-The current implementation should not extend `canopy_coroutine_init_enclave`.
-The io_uring capability is passed as an ordinary RPC object through the existing
-`connect_to_zone` input path after the normal SGX coroutine connection
+`coroutine_init_enclave` builds the private host/enclave control channel in an
+explicit order:
+
+```text
+SPSC stream
+  -> rpc::enclave_service
+  -> rpc::sgx::coro::enclave::host_transport
+```
+
+The runtime creates one `enclave_service` for the host connection rather than a
+root service. The registered enclave connection handler receives that service
+from the host transport, casts it to `enclave_service`, and completes the
+child-zone wiring against the already-existing host transport.
+
+The io_uring capability is still passed as an ordinary RPC object through the
+existing `connect_to_zone` input path after the normal SGX coroutine connection
 handshake has completed.
 
-That object exposes `i_host_io_uring_control`, from which the enclave can obtain
-a versioned `rpc::io_uring::data` snapshot and request a narrow SQPOLL wakeup. This
-keeps capability exchange inside Canopy's typed RPC path and avoids turning
-`canopy_coroutine_startup_status*` into a second capability protocol.
+That object exposes `i_io_uring_control`, from which the enclave can obtain
+a versioned `rpc::io_uring::data` snapshot and request a narrow SQPOLL wakeup.
+After setup, however, this object is not retained as a normal
+`rpc::shared_ptr` or `rpc::optimistic_ptr` in the enclave. The host transport
+owns the retained host reference and performs the generated YAS request and
+response serialization directly through `outbound_send`.
+
+This keeps capability exchange inside Canopy's typed RPC path and avoids
+turning `canopy_coroutine_startup_status*` into a second capability protocol.
 
 A future raw startup descriptor may still be useful for non-RPC bootstrap, but
 it should be treated as a separate ABI proposal. If such a descriptor is added,
 it must be versioned and should carry the same information currently returned by
-`i_host_io_uring_control`: ring mappings, queue sizes, copied
+`i_io_uring_control`: ring mappings, queue sizes, copied
 `io_uring_params`, fixed-buffer metadata, fixed-file/direct-descriptor metadata,
 operation allowlists, and resource policy. A malformed descriptor should fail
 startup, not fall back to an insecure host relay.
@@ -387,9 +417,15 @@ streams backed by the same controller. Normal stream and descriptor destructors
 therefore hand cleanup work to the controller; the final enclave runtime
 cleanup requests controller shutdown before draining the scheduler one last
 time. By then the only remaining transport should be the special parent-zone
-transport, which is not backed by the io_uring stream. During shutdown the
-controller also releases its host-control RPC pointer so service proxy and
-transport ownership can unwind.
+transport, which is not backed by the io_uring stream.
+
+The host-control lifetime is now owned by that parent-zone `host_transport`.
+During setup it sends an extra add-ref for the remote `i_io_uring_control`
+object and stores the release parameters. When the stream transport enters
+disconnecting, `host_transport::on_disconnecting()` enqueues the final release
+before the stream is torn down. This avoids keeping the controller alive through
+a normal RPC proxy cycle while still keeping the host-side io_uring control
+object alive for controller calls.
 
 The dedicated SGX coroutine io_uring test harness also exercises several
 simultaneous loopback TCP streams over one enclave-side controller. The server

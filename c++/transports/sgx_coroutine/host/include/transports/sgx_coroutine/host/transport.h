@@ -7,8 +7,8 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
-#include <atomic>
 
 #include <rpc/rpc.h>
 #include <transports/streaming/transport.h>
@@ -20,7 +20,7 @@ namespace streaming
     class stream;
 }
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx::coro::host
 {
     class transport : public rpc::stream_transport::transport
     {
@@ -28,15 +28,37 @@ namespace rpc::sgx::coro::enclave
 
         struct enclave_owner
         {
-            explicit enclave_owner(uint64_t eid)
-                : eid_(eid)
+            struct thread_state
+            {
+                explicit thread_state(uint64_t eid)
+                    : eid_(eid)
+                {
+                    init_status_ = std::make_shared<common::startup_status>();
+                    common::initialise_startup_status(*init_status_);
+                }
+
+                uint64_t eid_ = 0;
+                std::vector<std::thread> worker_threads_;
+                std::shared_ptr<common::startup_status> init_status_;
+                // The enclave receives raw queue pointers through the ECALL.
+                // Keep the queue storage tied to the ECALL thread lifetime so
+                // transport destruction cannot unmap it while workers are
+                // still returning from the enclave.
+                std::shared_ptr<common::queue_type> host_to_enclave_queue_;
+                std::shared_ptr<common::queue_type> enclave_to_host_queue_;
+            };
+
+            enclave_owner(
+                uint64_t eid,
+                rpc::coro::scheduler_ptr scheduler)
+                : scheduler_(std::move(scheduler))
+                , state_(std::make_shared<thread_state>(eid))
             {
             }
 
-            uint64_t eid_ = 0;
+            rpc::coro::scheduler_ptr scheduler_;
             std::thread init_thread_;
-            std::vector<std::thread> worker_threads_;
-            std::shared_ptr<common::startup_status> init_status_;
+            std::shared_ptr<thread_state> state_;
             ~enclave_owner();
         };
 
@@ -51,9 +73,6 @@ namespace rpc::sgx::coro::enclave
             std::shared_ptr<rpc::service> service,
             std::string enclave_path,
             std::shared_ptr<deferred_stream> deferred_stream);
-        void start_enclave_init_thread(
-            enclave_owner& owner,
-            std::shared_ptr<std::vector<char>> request_blob);
         void start_worker_thread(
             enclave_owner& owner,
             std::shared_ptr<std::vector<char>> enter_blob);

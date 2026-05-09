@@ -4,9 +4,40 @@
  */
 
 #import "rpc/rpc_types.idl"
+#import "rpc/noop.idl"
+#import "streaming/stream_transport.idl"
 
 namespace rpc
 {
+    namespace sgx
+    {
+        namespace coro
+        {
+            namespace protocol
+            {
+                struct init_request
+                {
+                    rpc::zone host_zone_id;
+                    rpc::zone enclave_zone_id;
+                    rpc::remote_object root_remote_object;
+                };
+
+                struct init_response
+                {
+                    int error_code;
+                    rpc::remote_object root_object_id;
+                };
+
+                struct enter_thread_request
+                {
+                    rpc::zone enclave_zone_id;
+                    uint64_t worker_index;
+                };
+            }
+        }
+
+    }
+
     namespace io_uring
     {
         struct fd_data
@@ -98,8 +129,9 @@ namespace rpc
             fixed_file_data fixed_files;
         };
 
-        interface i_host_io_uring_control
+        interface i_io_uring_control
         {
+            int transfer_encapsulated_interface([out] rpc::shared_ptr<rpc::i_noop>& iface);
             int wake_iouring();
             int get_iouring_data([out] data & ring_data);
         };

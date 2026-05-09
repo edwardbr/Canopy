@@ -1,6 +1,8 @@
-# SGX io_uring Controller Plan
+# SGX io_uring Controller Plan V1
 
-Status: active implementation direction for the SGX io_uring work.
+Status: deprecated. This document records the first working SGX io_uring
+controller direction. The active V2 architecture is now documented in
+`io-uring-runtime-scheduler-architecture-v2.md`.
 
 The next-stage multi-operation completion engine and file/blob resource plan is
 documented in `io-uring-operation-engine-plan.md`.
@@ -10,16 +12,19 @@ for SGX io_uring wakeup and resource discovery. The singleton idea is parked in
 `documents/protocol/service-object-singleton-proposal.md`.
 
 The current plan is to pass an explicit per-enclave RPC object through the
-normal `connect_to_zone` input path. That object can support both the existing
-test host interface and a new io_uring control interface.
+normal `connect_to_zone` input path. That object implements the private
+io_uring control interface and temporarily encapsulates the ordinary host
+interface supplied by application or test code.
 
 ## Current Implementation Snapshot
 
 The current implementation keeps the RPC core unchanged and uses a dedicated
 SGX coroutine io_uring test host/enclave:
 
-- the host test object implements the ordinary test `i_host` interface and
-  `i_host_io_uring_control`
+- the host test object implements the ordinary test `i_host` interface
+- the SGX coroutine host connection helper creates the `i_io_uring_control`
+  adapter internally and transfers the type-erased `i_noop` application
+  interface during enclave bootstrap
 - `host_controller` creates the ring, optional fixed buffers, and a
   fixed-file table for direct descriptors
 - `get_iouring_data()` returns descriptor version 2, including ring mappings,
@@ -62,8 +67,8 @@ The subcomponent should provide:
 
 - `host_controller`: host-side kernel resource owner
 - `controller`: enclave-side helper that owns the RPC pointer
-  to `i_host_io_uring_control`
-- optional thin adapter objects that implement `i_host_io_uring_control` over a
+  to `i_io_uring_control`
+- optional thin adapter objects that implement `i_io_uring_control` over a
   `host_controller`
 
 The current CMake boundary is two static libraries:
@@ -77,7 +82,7 @@ The current CMake boundary is two static libraries:
 
 An application or test host that already has a primary interface such as
 `i_host` can compose `host_controller` and expose
-`i_host_io_uring_control` as an additional RPC interface. That is the adapter
+`i_io_uring_control` as an additional RPC interface. That is the adapter
 shape; the io_uring logic itself remains reusable.
 
 The enclave-side API should hide most low-level io_uring detail behind RAII
@@ -98,7 +103,7 @@ The host-side `host_controller` owns the real host/kernel resources:
 - policy for allowed operations, addresses, file roots, and limits
 - any per-enclave wake capability needed for `IORING_ENTER_SQ_WAKEUP`
 
-The host control interface is named `i_host_io_uring_control` so it does not
+The host control interface is named `i_io_uring_control` so it does not
 become a generic host-control escape hatch.
 
 The host controller should expose a versioned descriptor to the enclave. The
@@ -106,7 +111,7 @@ descriptor should include ring mappings, offsets copied from `io_uring_params`,
 queue depth, setup flags, SQPOLL policy, fixed buffer metadata, fixed
 descriptor metadata, and operation allowlists.
 
-For the first implementation, `i_host_io_uring_control::get_iouring_data`
+For the first implementation, `i_io_uring_control::get_iouring_data`
 returns a flat `rpc::io_uring::data` snapshot copied from
 `host_controller::state` while the controller is open. It deliberately
 does not expose the state object, does not transfer ownership of liburing
@@ -256,17 +261,134 @@ not be part of the normal application contract.
 
 ## Connection Flow
 
-The host creates a per-enclave controller and passes an RPC object supporting
-the required host interfaces through the existing `connect_to_zone` input
-interface.
+The intended public entry points for SGX coroutine enclave connectivity are:
 
-The enclave completes the normal initial `add_ref`/connection flow first. After
-that, enclave code can query the input object for the io_uring control interface
-and construct an `controller`.
+```cpp
+rpc::sgx::coro::host::connect_to_enclave_zone<Remote, Local>(...);
+rpc::sgx::coro::enclave::create_child_enclave_zone<Remote, Local>(...);
+```
+
+The host-side helper is the only place application code should need to know
+that an enclave connection needs an io_uring control object. It takes the
+interface that the host wants to provide to the enclave, creates the host-side
+io_uring controller/control adapter internally, wraps the supplied interface in
+that adapter, and then calls the normal RPC connection path as
+`connect_to_zone<i_io_uring_control, Local>(...)`.
+
+The adapter method that exposes the caller's original interface should be named
+`transfer_encapsulated_interface`, not `get_encapsulated_interface`. The method
+returns the encapsulated object as `rpc::shared_ptr<rpc::i_noop>` and clears the
+adapter's retained copy as part of the same operation. This makes the ownership
+intent explicit: the adapter is a bootstrap envelope, not a long-term owner of
+the application interface.
+
+The enclave-side helper is the only place that should know how to unwrap the
+bootstrap envelope. It receives `i_io_uring_control`, creates or reuses the
+per-runtime `rpc::io_uring::controller`, transfers the encapsulated interface,
+casts it to the requested `Remote` type, and then calls the existing user
+factory unchanged. User factories should continue to receive:
+
+```cpp
+rpc::shared_ptr<Remote>
+std::shared_ptr<rpc::service>
+```
+
+If a factory needs enclave-only functionality, it can cast the service pointer
+to the enclave service type explicitly. The common factory shape stays readable
+and keeps normal application code insulated from the bootstrap protocol.
+
+`INVALID_INTERFACE_ID` is reserved for handshake/template interface-id
+mismatches. If `transfer_encapsulated_interface` succeeds but the returned
+object cannot be cast to `Remote`, the enclave helper should return
+`INVALID_CAST`.
 
 This keeps all capability exchange inside normal RPC object passing. It avoids
-changing the standard connection handshake and avoids using
-`canopy_coroutine_startup_status*` as a second capability protocol.
+changing the standard connection handshake, avoids changing core RPC object-id
+semantics, and avoids using `canopy_coroutine_startup_status*` as a second
+capability protocol.
+
+### SGX Coroutine Source Layout
+
+The SGX coroutine transport should be split by responsibility:
+
+```text
+c++/transports/sgx_coroutine/host/include/...
+c++/transports/sgx_coroutine/host/src/...
+c++/transports/sgx_coroutine/enclave/include/...
+c++/transports/sgx_coroutine/enclave/src/...
+c++/transports/sgx_coroutine/common/include/...
+c++/transports/sgx_coroutine/edl/...
+```
+
+Host-only APIs belong under `rpc::sgx::coro::host`. Enclave-only APIs belong
+under `rpc::sgx::coro::enclave`. Shared protocol and queue helpers stay under
+`rpc::sgx::coro::common` or `rpc::sgx::coro::protocol`.
+
+The existing file name `canopy_coroutine_enclave.idl` is too broad and should
+be renamed to `coroutine_enclave.idl`. The SGX EDL file can keep whatever name
+is easiest for the SGX build, but generated C++ IDL target names should stop
+encoding the old `canopy_` prefix once the rename is complete.
+
+The SGX coroutine transport is enclave-only. If `CANOPY_BUILD_ENCLAVE` is
+false, neither the blocking SGX transport nor the SGX coroutine transport
+should be configured, including fake-SGX builds. The private
+`coroutine_enclave.idl` target is also SGX/enclave-only; non-enclave coroutine
+builds should not learn about or depend on it.
+
+Prefer target usage requirements over repeated include-directory plumbing.
+When a target publicly links another target, it should inherit the generated
+headers, transport headers, and RPC/interface headers through that dependency
+chain. Repeating the same target dependencies or generated include directories
+in consumers is a sign that the provider target is missing public usage
+requirements. Concrete SGX/enclave targets may still need
+`CANOPY_ENCLAVE_LIBCXX_INCLUDES` privately because enclave libc++ headers are
+toolchain inputs rather than Canopy target usage requirements.
+
+### Enclave Service And Runtime Controller
+
+The enclave helper needs a service object that can own or reference
+enclave-only runtime state. That type should be a small
+`rpc::enclave_service` derived from `rpc::child_service`.
+
+Only the SGX coroutine enclave entry-point path should create
+`rpc::enclave_service` initially. Ordinary child zones should keep using the
+existing child-service path until there is a concrete reason to generalize the
+core RPC API.
+
+The first `create_child_enclave_zone` call should create and register the
+per-runtime `rpc::io_uring::controller`. Later child-zone connections in the
+same enclave runtime should reuse that controller while an enclave object still
+owns it. The controller should call the host-control interface through
+`rpc::optimistic_ptr<i_io_uring_control>` so it remains callable without making
+the controller itself an ordinary outgoing shared interface owner.
+
+Because the host-control object still owns the host io_uring resources, the
+enclave service must retain one explicit normal host reference when the
+host-control shared pointer is first received. This is done by sending a normal
+`outbound_add_ref` for that remote object, then converting the controller to
+the optimistic pointer path and letting the original shared pointer release
+normally. When the enclave service/runtime shuts down, the service sends the
+matching `outbound_release` before its local lifetime bookkeeping disappears.
+This keeps the host object alive without changing generic RPC reference-count
+mechanics.
+
+Avoid broad changes in `rpc/` for this work. If the enclave helper needs a
+different child-service construction path, it should keep that logic local to
+the SGX coroutine transport rather than adding a new generic hook to
+`rpc::child_service::create_child_zone`.
+
+### Implementation Priorities
+
+The connection path is performance-sensitive because it is on the way to
+enclave I/O, but it is still setup-time code. Prefer easy-to-read code over
+cleverness:
+
+- use small named helper types instead of dense lambdas where ownership matters
+- comment the lifetime boundaries around the host adapter, transferred
+  interface, runtime controller, and enclave service
+- keep the user-facing factory signature unchanged
+- do not hide important error choices behind generic catch-all helpers
+- keep core RPC changes narrow and mechanical, or avoid them entirely
 
 ## Startup Status Scope
 

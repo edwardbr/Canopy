@@ -3,9 +3,9 @@
  *   All rights reserved.
  */
 
-#include <transports/sgx_coroutine/enclave/transport.h>
+#include <transports/sgx_coroutine/host/transport.h>
 #include <transports/sgx_coroutine/common/startup_status.h>
-#include <edl/canopy_coroutine_enclave.h>
+#include <edl/coroutine_enclave.h>
 #include <untrusted/canopy_coroutine_enclave_u.h>
 #include <transports/streaming/transport.h>
 #include <streaming/stream_transport.h>
@@ -13,13 +13,12 @@
 #include <sgx_urts.h>
 #include <cstring>
 #include <rpc/rpc.h>
-#include <atomic>
 #include <chrono>
 #include <thread>
 #include <tuple>
 #include <utility>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx::coro::host
 {
     namespace
     {
@@ -127,6 +126,25 @@ namespace rpc::sgx::coro::enclave
             common::startup_store_u32(&status->state, static_cast<std::uint32_t>(common::startup_state::failed));
         }
 
+        CORO_TASK(void)
+        join_init_thread_and_destroy_enclave_on_scheduler(
+            rpc::coro::scheduler* scheduler,
+            std::shared_ptr<std::thread> thread,
+            uint64_t eid)
+        {
+            // This task runs on the scheduler, so it must not own a
+            // shared_ptr to that scheduler. Dropping the last scheduler
+            // reference from a scheduler worker would make the scheduler try
+            // to join its own thread during destruction.
+            CO_AWAIT scheduler->schedule();
+
+            if (thread && thread->joinable())
+                thread->join();
+
+            sgx_destroy_enclave(eid);
+            CO_RETURN;
+        }
+
     }
 
     class transport::deferred_stream : public streaming::stream
@@ -174,33 +192,41 @@ namespace rpc::sgx::coro::enclave
 
     transport::enclave_owner::~enclave_owner()
     {
-        if (init_status_)
+        auto state = state_;
+        if (state && state->init_status_)
         {
-            auto state = static_cast<common::startup_state>(common::startup_load_u32(&init_status_->state));
-            if (state != common::startup_state::failed && state != common::startup_state::stopped)
+            auto startup_state = static_cast<common::startup_state>(common::startup_load_u32(&state->init_status_->state));
+            if (startup_state != common::startup_state::failed && startup_state != common::startup_state::stopped)
             {
                 common::startup_store_u32(
-                    &init_status_->state, static_cast<std::uint32_t>(common::startup_state::shutting_down));
+                    &state->init_status_->state, static_cast<std::uint32_t>(common::startup_state::shutting_down));
             }
         }
 
         if (init_thread_.joinable())
         {
-            if (init_thread_.get_id() == std::this_thread::get_id())
-                init_thread_.detach();
-            else
+            auto init_thread = std::make_shared<std::thread>(std::move(init_thread_));
+            if (scheduler_ && !scheduler_->is_shutdown())
             {
-                init_thread_.join();
+                // Joining the init ECALL thread can block briefly, so prefer to
+                // do it as scheduled teardown work while the host scheduler is
+                // still running.
+                auto scheduled = scheduler_->spawn_detached(
+                    join_init_thread_and_destroy_enclave_on_scheduler(scheduler_.get(), init_thread, state->eid_));
+                if (scheduled)
+                    return;
             }
+
+            // If the scheduler has already shut down, the owner is being
+            // destroyed from ordinary host teardown. Join synchronously rather
+            // than detaching the ECALL thread or leaving the enclave loaded.
+            init_thread->join();
+            sgx_destroy_enclave(state->eid_);
+            return;
         }
-        for (auto& worker_thread : worker_threads_)
-        {
-            if (worker_thread.joinable())
-            {
-                worker_thread.join();
-            }
-        }
-        sgx_destroy_enclave(eid_);
+
+        if (state)
+            sgx_destroy_enclave(state->eid_);
     }
 
     transport::transport(
@@ -241,66 +267,25 @@ namespace rpc::sgx::coro::enclave
         enclave_owner& owner,
         std::shared_ptr<std::vector<char>> enter_blob)
     {
-        auto owner_eid = owner.eid_;
-        auto* init_status = owner.init_status_.get();
-        owner.worker_threads_.emplace_back(
+        auto state = owner.state_;
+        auto owner_eid = state->eid_;
+        auto* init_status = state->init_status_.get();
+        state->worker_threads_.emplace_back(
             [owner_eid, enter_blob = std::move(enter_blob), init_status]()
             {
                 int err_code = rpc::error::OK();
-                auto status = canopy_coroutine_enter_thread(owner_eid, &err_code, enter_blob->size(), enter_blob->data());
+                auto status = coroutine_enter_thread(owner_eid, &err_code, enter_blob->size(), enter_blob->data());
 
                 if (status != SGX_SUCCESS)
                 {
-                    RPC_ERROR("canopy_coroutine_enter_thread returned sgx status {}", static_cast<int>(status));
+                    RPC_ERROR("coroutine_enter_thread returned sgx status {}", static_cast<int>(status));
                     fail_startup_status(init_status, rpc::error::TRANSPORT_ERROR());
                     return;
                 }
 
                 if (err_code != rpc::error::OK())
                 {
-                    RPC_ERROR("canopy_coroutine_enter_thread returned {}", err_code);
-                    fail_startup_status(init_status, err_code);
-                }
-            });
-    }
-
-    void transport::start_enclave_init_thread(
-        enclave_owner& owner,
-        std::shared_ptr<std::vector<char>> request_blob)
-    {
-        auto owner_eid = owner.eid_;
-        auto* host_to_enclave_queue = host_to_enclave_queue_.get();
-        auto* enclave_to_host_queue = enclave_to_host_queue_.get();
-        auto* init_status = owner.init_status_.get();
-        owner.init_thread_ = std::thread(
-            [owner_eid, request_blob = std::move(request_blob), host_to_enclave_queue, enclave_to_host_queue, init_status]()
-            {
-                std::vector<char> response_blob(1024);
-                size_t response_size = 0;
-                int err_code = rpc::error::OK();
-
-                auto status = canopy_coroutine_init_enclave(
-                    owner_eid,
-                    &err_code,
-                    request_blob->size(),
-                    request_blob->data(),
-                    host_to_enclave_queue,
-                    enclave_to_host_queue,
-                    reinterpret_cast<canopy_coroutine_startup_status*>(init_status),
-                    response_blob.size(),
-                    response_blob.data(),
-                    &response_size);
-
-                if (status != SGX_SUCCESS)
-                {
-                    RPC_ERROR("canopy_coroutine_init_enclave returned sgx status {}", static_cast<int>(status));
-                    fail_startup_status(init_status, rpc::error::TRANSPORT_ERROR());
-                    return;
-                }
-
-                if (err_code != rpc::error::OK())
-                {
-                    RPC_ERROR("canopy_coroutine_init_enclave returned {}", err_code);
+                    RPC_ERROR("coroutine_enter_thread returned {}", err_code);
                     fail_startup_status(init_status, err_code);
                 }
             });
@@ -311,20 +296,9 @@ namespace rpc::sgx::coro::enclave
         std::shared_ptr<rpc::object_stub> stub,
         rpc::connection_settings input_descr)
     {
-        sgx_launch_token_t token = {0};
-        int updated = 0;
-        sgx_enclave_id_t eid = 0;
-        auto status = sgx_create_enclave(enclave_path_.c_str(), SGX_DEBUG_FLAG, &token, &updated, &eid, nullptr);
-        if (status != SGX_SUCCESS)
-        {
-            RPC_ERROR("sgx_create_enclave returned {}", static_cast<int>(status));
-            CO_RETURN rpc::connect_result{rpc::error::TRANSPORT_ERROR(), {}};
-        }
-
         auto svc = get_service();
         if (!svc)
         {
-            sgx_destroy_enclave(eid);
             CO_RETURN rpc::connect_result{rpc::error::ZONE_NOT_INITIALISED(), {}};
         }
 
@@ -333,7 +307,6 @@ namespace rpc::sgx::coro::enclave
         auto zone_result = CO_AWAIT svc->get_new_zone_id(std::move(zone_params));
         if (zone_result.error_code != rpc::error::OK())
         {
-            sgx_destroy_enclave(eid);
             CO_RETURN rpc::connect_result{zone_result.error_code, {}};
         }
 
@@ -347,18 +320,73 @@ namespace rpc::sgx::coro::enclave
             host_to_enclave_queue_, enclave_to_host_queue_, svc->get_scheduler());
         deferred_stream_->bind(queue_stream_);
 
-        auto owner = std::make_shared<enclave_owner>(eid);
-        owner->init_status_ = std::make_shared<common::startup_status>();
-        common::initialise_startup_status(*owner->init_status_);
-        init_request request{get_zone_id(),
-            adjacent_zone_id,
-            input_descr.remote_object_id.is_set() ? input_descr.remote_object_id : get_zone_id().get_address()};
+        sgx_enclave_id_t eid = 0;
+        // fire up the enclave
+        {
+            sgx_launch_token_t token = {0};
+            int updated = 0;
+            auto status = sgx_create_enclave(enclave_path_.c_str(), SGX_DEBUG_FLAG, &token, &updated, &eid, nullptr);
+            if (status != SGX_SUCCESS)
+            {
+                RPC_ERROR("sgx_create_enclave returned {}", static_cast<int>(status));
+                CO_RETURN rpc::connect_result{rpc::error::TRANSPORT_ERROR(), {}};
+            }
+        }
 
-        auto request_blob = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(request));
-        start_enclave_init_thread(*owner, std::move(request_blob));
+        auto owner = std::make_shared<enclave_owner>(eid, svc->get_scheduler());
+        owner->state_->host_to_enclave_queue_ = host_to_enclave_queue_;
+        owner->state_->enclave_to_host_queue_ = enclave_to_host_queue_;
+
+        // spawn the main thread for this enclave
+        {
+            init_request request{get_zone_id(),
+                adjacent_zone_id,
+                input_descr.remote_object_id.is_set() ? input_descr.remote_object_id : get_zone_id().get_address()};
+            auto request_blob = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(request));
+            auto* host_to_enclave_queue = host_to_enclave_queue_.get();
+            auto* enclave_to_host_queue = enclave_to_host_queue_.get();
+            auto state = owner->state_;
+            owner->init_thread_ = std::thread(
+                [state, request_blob = std::move(request_blob), host_to_enclave_queue, enclave_to_host_queue]()
+                {
+                    auto* init_status = state->init_status_.get();
+                    std::vector<char> response_blob(1024);
+                    size_t response_size = 0;
+                    int err_code = rpc::error::OK();
+
+                    auto status = coroutine_init_enclave(
+                        state->eid_,
+                        &err_code,
+                        request_blob->size(),
+                        request_blob->data(),
+                        host_to_enclave_queue,
+                        enclave_to_host_queue,
+                        reinterpret_cast<canopy_coroutine_startup_status*>(init_status),
+                        response_blob.size(),
+                        response_blob.data(),
+                        &response_size);
+
+                    if (status != SGX_SUCCESS)
+                    {
+                        RPC_ERROR("coroutine_init_enclave returned sgx status {}", static_cast<int>(status));
+                        fail_startup_status(init_status, rpc::error::TRANSPORT_ERROR());
+                    }
+                    else if (err_code != rpc::error::OK())
+                    {
+                        RPC_ERROR("coroutine_init_enclave returned {}", err_code);
+                        fail_startup_status(init_status, err_code);
+                    }
+
+                    for (auto& worker_thread : state->worker_threads_)
+                    {
+                        if (worker_thread.joinable())
+                            worker_thread.join();
+                    }
+                });
+        }
 
         uint32_t requested_workers = 0;
-        auto startup_error = wait_for_worker_request(owner->init_status_, requested_workers);
+        auto startup_error = wait_for_worker_request(owner->state_->init_status_, requested_workers);
         if (startup_error != rpc::error::OK())
         {
             enclave_owner_ = std::move(owner);
@@ -378,8 +406,8 @@ namespace rpc::sgx::coro::enclave
                     worker_index,
                 }));
             start_worker_thread(*owner, std::move(enter_blob));
-            startup_error
-                = wait_for_attached_workers(owner->init_status_, worker_index + 1, std::chrono::milliseconds{20000});
+            startup_error = wait_for_attached_workers(
+                owner->state_->init_status_, worker_index + 1, std::chrono::milliseconds{20000});
             if (startup_error != rpc::error::OK())
             {
                 enclave_owner_ = std::move(owner);
@@ -393,7 +421,7 @@ namespace rpc::sgx::coro::enclave
         }
 
         startup_error = wait_for_startup_status(
-            owner->init_status_, common::startup_state::runtime_ready, std::chrono::milliseconds{20000});
+            owner->state_->init_status_, common::startup_state::runtime_ready, std::chrono::milliseconds{20000});
         if (startup_error != rpc::error::OK())
         {
             enclave_owner_ = std::move(owner);
@@ -407,6 +435,8 @@ namespace rpc::sgx::coro::enclave
 
         enclave_owner_ = std::move(owner);
         initialise_after_construction();
+
+        // now the complex dance of getting the enclave and workers up we now need to use the stream transport to do inner_connect
         auto connect_result
             = CO_AWAIT rpc::stream_transport::transport::inner_connect(std::move(stub), std::move(input_descr));
         if (connect_result.error_code != rpc::error::OK())
@@ -431,9 +461,10 @@ namespace rpc::sgx::coro::enclave
         if (status >= rpc::transport_status::DISCONNECTING)
         {
             if (status >= rpc::transport_status::DISCONNECTED && old_status < rpc::transport_status::DISCONNECTED
-                && enclave_owner_ && enclave_owner_->init_status_)
+                && enclave_owner_ && enclave_owner_->state_ && enclave_owner_->state_->init_status_)
                 common::startup_store_u32(
-                    &enclave_owner_->init_status_->state, static_cast<std::uint32_t>(common::startup_state::shutting_down));
+                    &enclave_owner_->state_->init_status_->state,
+                    static_cast<std::uint32_t>(common::startup_state::shutting_down));
 
             if (queue_stream_ && status >= rpc::transport_status::DISCONNECTED
                 && old_status < rpc::transport_status::DISCONNECTED)

@@ -4,7 +4,7 @@
  */
 
 #include <canopy/fake_sgx/runtime.h>
-#include <edl/canopy_coroutine_enclave.h>
+#include <edl/coroutine_enclave.h>
 #include <transports/sgx_coroutine/common/shared_queue.h>
 #include <transports/sgx_coroutine/common/startup_status.h>
 #include <untrusted/canopy_coroutine_enclave_u.h>
@@ -43,7 +43,7 @@ namespace
 
 extern "C"
 {
-    sgx_status_t canopy_coroutine_init_enclave(
+    sgx_status_t coroutine_init_enclave(
         sgx_enclave_id_t enclave_id,
         int* retval,
         std::size_t req_sz,
@@ -65,7 +65,7 @@ extern "C"
         if (!call.ok())
             return call.status();
 
-        auto* raw_symbol = call.symbol("canopy_coroutine_init_enclave");
+        auto* raw_symbol = call.symbol("coroutine_init_enclave");
         if (!raw_symbol)
             return SGX_ERROR_UNEXPECTED;
 
@@ -100,7 +100,7 @@ extern "C"
         return SGX_SUCCESS;
     }
 
-    sgx_status_t canopy_coroutine_enter_thread(
+    sgx_status_t coroutine_enter_thread(
         sgx_enclave_id_t enclave_id,
         int* retval,
         std::size_t req_sz,
@@ -115,7 +115,7 @@ extern "C"
         if (!call.ok())
             return call.status();
 
-        auto* raw_symbol = call.symbol("canopy_coroutine_enter_thread");
+        auto* raw_symbol = call.symbol("coroutine_enter_thread");
         if (!raw_symbol)
             return SGX_ERROR_UNEXPECTED;
 

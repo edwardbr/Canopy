@@ -80,7 +80,7 @@ and enclave runtimes satisfy. Compatibility tests should cover:
 
 Attack:
 
-- call `canopy_coroutine_init_enclave` a second time
+- call `coroutine_init_enclave` a second time
 - attempt to reuse residual scheduler, service, queue, or object state
 - attempt to bind the enclave to a new host transport after secrets existed
 

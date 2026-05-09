@@ -55,7 +55,7 @@ namespace websocket_protocol
     }
 
     CORO_TASK(std::shared_ptr<transport>)
-    transport::make_server(
+    transport::create(
         const std::shared_ptr<rpc::service>& service,
         const std::shared_ptr<streaming::stream>& stream,
         connection_handler&& handler)

@@ -9,5 +9,5 @@
 #if defined(CANOPY_BUILD_ENCLAVE) && !defined(CANOPY_BUILD_COROUTINE)
 #  include <transports/sgx/transport.h>
 #elif defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)
-#  include <transports/sgx_coroutine/enclave/transport.h>
+#  include <transports/sgx_coroutine/host/transport.h>
 #endif

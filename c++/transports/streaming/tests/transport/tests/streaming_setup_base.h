@@ -67,7 +67,7 @@ protected:
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
-            this->responder_transport_ = rpc::stream_transport::make_server<Remote, Local>(
+            this->responder_transport_ = rpc::stream_transport::create<Remote, Local>(
                 name, std::move(svc), std::move(stm), factory, test_transport_options_);
             CO_RETURN;
         };

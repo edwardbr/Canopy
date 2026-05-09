@@ -12,11 +12,8 @@ namespace rpc::io_uring
 {
     // Binds the enclave-side controller to the host RPC interface and, when
     // available, the scheduler used for cooperative/proactor waits.
-    controller::controller(
-        rpc::shared_ptr<i_host_io_uring_control> host_control,
-        rpc::coro::scheduler* scheduler)
-        : host_control_(std::move(host_control))
-        , scheduler_(scheduler)
+    controller::controller(rpc::coro::scheduler* scheduler)
+        : scheduler_(scheduler)
     {
     }
 
@@ -64,22 +61,6 @@ namespace rpc::io_uring
             proactor_start_failures.load(std::memory_order_relaxed),
             total_no_op_ticks.load(std::memory_order_relaxed),
             max_no_op_ticks.load(std::memory_order_relaxed)};
-    }
-
-    // Reports whether this controller still has the RPC object used for host
-    // wakeups and descriptor discovery.
-    bool controller::has_host_control() const noexcept
-    {
-        std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
-        return static_cast<bool>(host_control_);
-    }
-
-    // Returns the RPC host-control object so higher-level code can inspect or
-    // pass it through without knowing the controller internals.
-    rpc::shared_ptr<i_host_io_uring_control> controller::host_control() const
-    {
-        std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
-        return host_control_;
     }
 
     // Selects how completion waits are driven: cooperative polling by the
@@ -159,14 +140,11 @@ namespace rpc::io_uring
         fail_submission_waiters(error_code);
         fail_host_buffer_waiters(error_code);
         resume_completed_operations(operation_engine_.fail_all_operations(error_code));
-        rpc::shared_ptr<i_host_io_uring_control> host_control_to_release;
         {
             std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
             cached_iouring_data_ = {};
             has_cached_iouring_data_ = false;
-            host_control_to_release.swap(host_control_);
         }
-        host_control_to_release = nullptr;
         completion_pump_active_.store(false, std::memory_order_release);
         lifecycle_state_.store(lifecycle_state::stopped, std::memory_order_release);
     }
@@ -187,14 +165,8 @@ namespace rpc::io_uring
             CO_RETURN err;
         }
 
-        auto host_control_ptr = host_control();
-        if (!host_control_ptr)
-        {
-            CO_RETURN rpc::error::RESOURCE_CLOSED();
-        }
-
         measurements_.host_wake_calls.fetch_add(1, std::memory_order_relaxed);
-        CO_RETURN CO_AWAIT host_control_ptr->wake_iouring();
+        CO_RETURN CO_AWAIT inner_wake_host_iouring();
     }
 
     // Returns the cached io_uring descriptor to callers, fetching it from the
@@ -223,15 +195,8 @@ namespace rpc::io_uring
             CO_RETURN shutdown_err;
         }
 
-        auto host_control_ptr = host_control();
-        if (!host_control_ptr)
-        {
-            clear_iouring_data_cache();
-            CO_RETURN rpc::error::RESOURCE_CLOSED();
-        }
-
         data ring_data;
-        auto err = CO_AWAIT host_control_ptr->get_iouring_data(ring_data);
+        auto err = CO_AWAIT inner_get_iouring_data(ring_data);
         if (err != rpc::error::OK())
         {
             clear_iouring_data_cache();

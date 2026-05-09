@@ -470,7 +470,7 @@ if(SGX_FOUND)
     separate_arguments(INCLUDE_PATHS)
     target_include_directories(
       ${target}
-      PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>"
+      PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>" ${HOST_SGX_INCLUDE_DIRS}
       PRIVATE ${INCLUDE_PATHS})
     target_link_libraries(${target} PRIVATE ${edl_link_libraries} ${SGX_EXTRA_LIBS})
     target_compile_definitions(${target} PRIVATE ${CANOPY_DEFINES})
@@ -653,7 +653,9 @@ if(SGX_FOUND)
         message(FATAL_ERROR "Private key used to sign enclave is not provided!")
       endif()
     else()
-      if(SGX_MODE STREQUAL "release" AND DEFINED SGX_RELEASE_KEY_DIR AND NOT "${SGX_RELEASE_KEY_DIR}" STREQUAL ""
+      if(SGX_MODE STREQUAL "release"
+         AND DEFINED SGX_RELEASE_KEY_DIR
+         AND NOT "${SGX_RELEASE_KEY_DIR}" STREQUAL ""
          AND NOT IS_ABSOLUTE ${SGX_KEY})
         set(KEY_ABSPATH ${SGX_RELEASE_KEY_DIR}/${SGX_KEY})
       else()
@@ -671,6 +673,17 @@ if(SGX_FOUND)
     endif()
 
     get_filename_component(CONFIG_ABSPATH ${SGX_CONFIG} ABSOLUTE)
+    set(SIGN_DEPENDS ${CONFIG_ABSPATH})
+    if(DEFINED KEY_ABSPATH AND NOT "${KEY_ABSPATH}" STREQUAL "")
+      list(APPEND SIGN_DEPENDS ${KEY_ABSPATH})
+    endif()
+
+    # Signing runs as a post-build step on the enclave library. Treat the signing inputs as link dependencies so
+    # config/key changes regenerate the signed enclave instead of leaving an old signed image in the build tree.
+    set_property(
+      TARGET ${target}
+      APPEND
+      PROPERTY LINK_DEPENDS ${SIGN_DEPENDS})
 
     get_target_property(OUTPUT_DIR ${target} LIBRARY_OUTPUT_DIRECTORY)
     set(${target}_sign_OUTPUT_NAME
