@@ -35,6 +35,11 @@ requiring every zone to connect directly to every other zone.
 5. **Active stubs may hold transport references** - Transports can reference adjacent transports during calls
 6. **Transport ref counts track adjacent zones** - External proxy/stub relationships
 7. **One Passthrough exists per zone id pair** - Internal proxy/stub relationships
+8. **Passthrough add-ref must reserve before forwarding** - In coroutine and
+   stream-backed transports, a routed add-ref may suspend while it forwards to
+   another transport. The intermediary passthrough must reserve its own
+   shared/optimistic route count before that suspension point, and roll the
+   reservation back on failure.
 
 ## Part 1: Transports
 
@@ -208,6 +213,35 @@ public:
 ```
 
 **Critical**: Relay operations (options=3) do NOT affect transport ref counts. See Part 2: Passthroughs for details.
+
+### Passthrough Add-Ref Ordering
+
+Passthrough reference counts are separate from adjacent transport reference
+counts, but the ordering between them matters.
+
+For a routed add-ref, the intermediary passthrough must count the routed
+reference before it awaits or otherwise forwards the add-ref to the next
+transport. If this is delayed, a concurrent release can observe the old
+passthrough count, remove the passthrough, and leave the in-flight add-ref with
+no route to complete through.
+
+The expected shape for two shared references to the same remote object through
+one passthrough is:
+
+```text
+add_ref reserves passthrough shared count: 0 -> 1
+add_ref reserves passthrough shared count: 1 -> 2
+release consumes passthrough shared count: 2 -> 1
+release consumes passthrough shared count: 1 -> 0
+```
+
+This bug is easiest to reproduce in stream-backed transports, SGX simulation, or
+fake SGX. Local transports can appear correct simply because the forwarding path
+does not create the same scheduling window.
+
+`inbound_release()` should require an existing passthrough route for routed
+objects. A fallback that sends release through a caller route can hide the
+ordering bug and can recreate routing state after it should have been removed.
 
 ### Transport Lifecycle Management
 
@@ -451,14 +485,19 @@ Passthrough created when:
 **Shared References:**
 - Normal `rpc::shared_ptr` references
 - Tracked in `shared_count_`
-- Incremented by: relay add_ref (options=3)
-- Decremented by: relay release (options=3)
+- Incremented by: routed add-ref operations that establish or extend the
+  passthrough relationship
+- Decremented by: matching routed release operations
 
 **Optimistic References:**
 - `rpc::optimistic_ptr` references
 - Tracked in `optimistic_count_`
-- Incremented by: relay add_ref with optimistic flag
-- Decremented by: relay release with optimistic flag
+- Incremented by: routed optimistic add-ref operations that establish or extend
+  the passthrough relationship
+- Decremented by: matching routed optimistic release operations
+
+`options=3` is the relay setup case, but normal routed add-ref calls through an
+existing passthrough can also reserve passthrough lifetime.
 
 #### Deletion
 
@@ -470,15 +509,21 @@ Passthrough deleted when:
 #### Self-Deletion Logic
 
 ```cpp
-void pass_through::release(...) {
-    uint64_t prev = shared_count_.fetch_sub(1, std::memory_order_acq_rel);
+void pass_through::trigger_self_destruction()
+{
+    uint64_t prev = combined_.fetch_or(SHUTDOWN_BIT, std::memory_order_acq_rel);
+    if (prev & SHUTDOWN_BIT)
+        return;
 
-    if (prev == 1 && optimistic_count_.load() == 0) {
-        // Last reference - schedule self-deletion
-        delete_self();
-    }
+    if ((prev & ~SHUTDOWN_BIT) == 0)
+        do_cleanup();
 }
 ```
+
+Shutdown is intentionally idempotent. Multiple paths may discover that a
+passthrough should die, but only the first caller that sets `SHUTDOWN_BIT`
+starts cleanup. If calls are still active, the final `end_call()` performs the
+cleanup.
 
 ### Routing Logic
 

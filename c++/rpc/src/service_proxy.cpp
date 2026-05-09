@@ -426,14 +426,19 @@ namespace rpc
         std::shared_ptr<rpc::transport> transport,
         uint64_t version,
         destination_zone destination_zone_id,
-        bool is_optimistic)
+        bool is_optimistic,
+        [[maybe_unused]] rpc::transport_keep_alive release_keep_alive)
     {
         RPC_ASSERT(svc);
         if (!svc)
             CO_RETURN;
 
         auto caller_id = svc->get_zone_id();
-        RPC_DEBUG("send_object_release starting release for object {}", object_id.get_val());
+        RPC_DEBUG(
+            "send_object_release starting release caller={}, destination={}, object={}",
+            caller_id.get_subnet(),
+            destination_zone_id.get_subnet(),
+            object_id.get_val());
 
         auto dest_with_obj = destination_zone_id.with_object(object_id);
         if (!dest_with_obj)
@@ -551,14 +556,18 @@ namespace rpc
         }
 
 #ifdef CANOPY_BUILD_COROUTINE
+        rpc::transport_keep_alive release_keep_alive(transport, destination_zone_id);
         // DO NOT pass service_proxy - it would create circular reference keeping services alive!
-        if (!svc->spawn(send_object_release(svc, object_id, transport, version, destination_zone_id, is_optimistic)))
+        if (!svc->spawn(send_object_release(
+                svc, object_id, transport, version, destination_zone_id, is_optimistic, std::move(release_keep_alive))))
         {
             RPC_ERROR("Failed to spawn coroutine to send object release for object {}", object_id.get_val());
             RPC_ASSERT(false);
         }
 #else
-        send_object_release(svc, object_id, transport, version, destination_zone_id, is_optimistic);
+        rpc::transport_keep_alive release_keep_alive(transport, destination_zone_id);
+        send_object_release(
+            svc, object_id, transport, version, destination_zone_id, is_optimistic, std::move(release_keep_alive));
 #endif
     }
 

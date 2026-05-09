@@ -192,17 +192,117 @@ namespace rpc
         std::shared_ptr<rpc::transport> destination_transport;
 
         RPC_DEBUG(
-            "pass_through::add_ref zone={}, fwd={}, rev={}, dest={}, caller={}, options={}, build_dest={}, "
-            "build_caller={}, no_local={}",
+            "pass_through::add_ref zone={}, fwd={}, rev={}, remote_object={}, caller={}, requesting={}, request_id={}, "
+            "options={}, build_dest={}, build_caller={}, no_local={}, shared={}, optimistic={}",
             zone_id_.get_subnet(),
             forward_destination_.get_subnet(),
             reverse_destination_.get_subnet(),
-            remote_object_id.get_subnet(),
+            std::to_string(remote_object_id),
             caller_zone_id.get_subnet(),
+            requesting_zone_id.get_subnet(),
+            params.request_id,
             static_cast<uint64_t>(build_out_param_channel),
             build_dest_channel,
             build_caller_channel,
-            no_local_add_ref);
+            no_local_add_ref,
+            shared_count_.load(std::memory_order_acquire),
+            optimistic_count_.load(std::memory_order_acquire));
+
+        const bool count_passthrough_ref = !(no_local_add_ref && remote_object_id == caller_zone_id);
+        const bool count_optimistic_ref = !!(build_out_param_channel & add_ref_options::optimistic);
+        bool reserved_passthrough_ref = false;
+
+        auto reserve_passthrough_ref = [&]()
+        {
+            if (!count_passthrough_ref)
+            {
+                RPC_DEBUG(
+                    "pass_through::add_ref skipped route count zone={}, remote_object={}, caller={}",
+                    zone_id_.get_subnet(),
+                    std::to_string(remote_object_id),
+                    caller_zone_id.get_subnet());
+                return;
+            }
+
+            reserved_passthrough_ref = true;
+            if (count_optimistic_ref)
+            {
+                [[maybe_unused]] auto prev = optimistic_count_.fetch_add(1, std::memory_order_acq_rel);
+                RPC_DEBUG(
+                    "pass_through::add_ref reserved optimistic route zone={}, remote_object={}, caller={}, prev={}, "
+                    "next={}",
+                    zone_id_.get_subnet(),
+                    std::to_string(remote_object_id),
+                    caller_zone_id.get_subnet(),
+                    prev,
+                    prev + 1);
+            }
+            else
+            {
+                [[maybe_unused]] auto prev = shared_count_.fetch_add(1, std::memory_order_acq_rel);
+                RPC_DEBUG(
+                    "pass_through::add_ref reserved shared route zone={}, remote_object={}, caller={}, prev={}, "
+                    "next={}",
+                    zone_id_.get_subnet(),
+                    std::to_string(remote_object_id),
+                    caller_zone_id.get_subnet(),
+                    prev,
+                    prev + 1);
+            }
+        };
+
+        auto rollback_passthrough_ref = [&]()
+        {
+            if (!reserved_passthrough_ref)
+                return;
+
+            reserved_passthrough_ref = false;
+            bool should_delete = false;
+            if (count_optimistic_ref)
+            {
+                auto prev = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
+                RPC_DEBUG(
+                    "pass_through::add_ref rolled back optimistic route zone={}, remote_object={}, caller={}, prev={}, "
+                    "next={}",
+                    zone_id_.get_subnet(),
+                    std::to_string(remote_object_id),
+                    caller_zone_id.get_subnet(),
+                    prev,
+                    prev ? prev - 1 : 0);
+                if (prev == 1 && shared_count_.load(std::memory_order_acquire) == 0)
+                    should_delete = true;
+            }
+            else
+            {
+                auto prev = shared_count_.fetch_sub(1, std::memory_order_acq_rel);
+                RPC_DEBUG(
+                    "pass_through::add_ref rolled back shared route zone={}, remote_object={}, caller={}, prev={}, "
+                    "next={}",
+                    zone_id_.get_subnet(),
+                    std::to_string(remote_object_id),
+                    caller_zone_id.get_subnet(),
+                    prev,
+                    prev ? prev - 1 : 0);
+                if (prev == 1 && optimistic_count_.load(std::memory_order_acquire) == 0)
+                    should_delete = true;
+            }
+
+            if (should_delete)
+                trigger_self_destruction();
+        };
+
+        // Reserve before begin_call() so a concurrent release cannot observe
+        // zero references while this add_ref is already in progress but has
+        // not yet awaited the destination transport. If begin_call() rejects a
+        // shutting-down passthrough, the reservation is rolled back below.
+        reserve_passthrough_ref();
+
+        if (!begin_call())
+        {
+            rollback_passthrough_ref();
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+        }
+        auto keep_alive = shared_from_this();
 
         // Determine target transport based on destination_zone
         if (build_dest_channel)
@@ -210,11 +310,15 @@ namespace rpc
             destination_transport = get_directional_transport(remote_object_id.as_zone());
             if (!destination_transport)
             {
+                rollback_passthrough_ref();
+                end_call();
                 CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
             }
             // Check transport status before routing
             if (destination_transport->get_status() != transport_status::CONNECTED)
             {
+                rollback_passthrough_ref();
+                end_call();
                 // Transport error - trigger self-deletion
                 trigger_self_destruction();
                 CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
@@ -226,22 +330,20 @@ namespace rpc
             caller_transport = get_directional_transport(caller_zone_id);
             if (!caller_transport)
             {
+                rollback_passthrough_ref();
+                end_call();
                 CO_RETURN standard_result{error::ZONE_NOT_FOUND(), {}};
             }
             // Check transport status before routing
             if (caller_transport->get_status() != transport_status::CONNECTED)
             {
+                rollback_passthrough_ref();
+                end_call();
                 // Transport error - trigger self-deletion
                 trigger_self_destruction();
                 CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
             }
         }
-
-        if (!begin_call())
-        {
-            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
-        }
-        auto keep_alive = shared_from_this();
 
         // We build the result by merging out_back_channels from both calls
         standard_result final_result{error::OK(), {}};
@@ -261,6 +363,7 @@ namespace rpc
 
             if (dest_result.error_code != error::OK())
             {
+                rollback_passthrough_ref();
                 end_call();
                 trigger_self_destruction();
                 CO_RETURN dest_result;
@@ -283,6 +386,7 @@ namespace rpc
 
             if (caller_result.error_code != error::OK())
             {
+                rollback_passthrough_ref();
                 end_call();
                 trigger_self_destruction();
                 CO_RETURN caller_result;
@@ -294,24 +398,16 @@ namespace rpc
                 std::make_move_iterator(caller_result.out_back_channel.end()));
         }
 
-        // Use bitwise AND to check flags, not exact equality
-        // because build_out_param_channel may have additional build flags
-        if (no_local_add_ref && remote_object_id == caller_zone_id)
+        if (count_passthrough_ref && count_optimistic_ref)
         {
-            // this is a passthrough addref and should not be included in either count
-        }
-        else if (!!(build_out_param_channel & add_ref_options::optimistic))
-        {
-            optimistic_count_.fetch_add(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_add_ref(
                     {zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 0, 1});
 #endif
         }
-        else
+        else if (count_passthrough_ref)
         {
-            shared_count_.fetch_add(1, std::memory_order_acq_rel);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_add_ref(
@@ -329,13 +425,16 @@ namespace rpc
         release_options options = params.options;
 
         RPC_DEBUG(
-            "pass_through::release zone={}, fwd={}, rev={}, dest={}, caller={}, options={}",
+            "pass_through::release zone={}, fwd={}, rev={}, remote_object={}, caller={}, options={}, shared={}, "
+            "optimistic={}",
             zone_id_.get_subnet(),
             forward_destination_.get_subnet(),
             reverse_destination_.get_subnet(),
-            params.remote_object_id.get_subnet(),
+            std::to_string(params.remote_object_id),
             params.caller_zone_id.get_subnet(),
-            static_cast<uint64_t>(options));
+            static_cast<uint64_t>(options),
+            shared_count_.load(std::memory_order_acquire),
+            optimistic_count_.load(std::memory_order_acquire));
 
         if (!begin_call())
         {
@@ -377,6 +476,11 @@ namespace rpc
         if (!!(options & release_options::optimistic))
         {
             uint64_t prev = optimistic_count_.fetch_sub(1, std::memory_order_acq_rel);
+            RPC_DEBUG(
+                "pass_through::release counted optimistic route zone={}, prev={}, next={}",
+                zone_id_.get_subnet(),
+                prev,
+                prev ? prev - 1 : 0);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, 0, -1});
@@ -389,6 +493,11 @@ namespace rpc
         else
         {
             uint64_t prev = shared_count_.fetch_sub(1, std::memory_order_acq_rel);
+            RPC_DEBUG(
+                "pass_through::release counted shared route zone={}, prev={}, next={}",
+                zone_id_.get_subnet(),
+                prev,
+                prev ? prev - 1 : 0);
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_release({zone_id_, forward_destination_, reverse_destination_, -1, 0});

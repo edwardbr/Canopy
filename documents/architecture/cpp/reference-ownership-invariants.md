@@ -39,6 +39,13 @@ This applies even if both transitions occur in the same stack or as part of one 
 
 They are temporally close, but semantically separate.
 
+For asynchronous transports, "acquire" means the local ownership fact has been
+recorded before the operation can suspend. A routed passthrough add-ref is not
+established merely because the function has started running; it is established
+when the passthrough has reserved its local shared or optimistic count. If the
+operation later fails while forwarding to another transport, that reservation
+must be rolled back.
+
 ## Isolation Rule
 
 Two distinct relationships must not be merged merely because they happen to involve the same object.
@@ -100,6 +107,8 @@ So:
 - passthrough state is not a substitute for direct ownership state
 - direct ownership teardown must not accidentally destroy a still-needed passthrough join
 - passthrough teardown must only happen once no remaining references in either direction depend on that join
+- passthrough add-ref must reserve the join reference before forwarding work
+  that can suspend
 
 ### Invariant 4: Direct Ownership Must Survive Teardown Of Replaced Links
 
@@ -195,6 +204,32 @@ Required behavior:
 Forbidden behavior:
 
 - letting teardown of intermediate routing destroy the already-established caller-owned relationship
+
+### Example 3: Concurrent Passthrough Add-Ref And Release
+
+```text
+existing:
+  caller A -> destination C through passthrough B, count = 1
+
+concurrent:
+  caller A adds another reference to C through B
+  caller A releases the old reference to C through B
+```
+
+Required behavior:
+
+1. the new routed add-ref reserves the passthrough count: `1 -> 2`
+2. the old release consumes one count: `2 -> 1`
+3. only the final release may remove the passthrough: `1 -> 0`
+
+Forbidden behavior:
+
+- allowing the add-ref to suspend while forwarding downstream before reserving
+  the passthrough count
+- allowing the release to see the old count, remove the passthrough, and leave
+  the in-flight add-ref dependent on a route that no longer exists
+- adding release fallback routing through a caller route to compensate for the
+  missing passthrough
 
 ## Design Preference
 

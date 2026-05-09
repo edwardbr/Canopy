@@ -142,6 +142,21 @@ Behavior that should exist instead:
 - the host-held relationship and the original caller-held relationship remain distinct
 - releasing the original relationship does not consume the surviving host-held route
 
+2026-05-09 follow-up:
+
+- A later SGX/fake-SGX investigation found a related passthrough lifetime race:
+  `pass_through::add_ref` was able to enter and then suspend while forwarding
+  the downstream add-ref before it had reserved the local passthrough count.
+- During that suspension, a release could see the previous count, drop it to
+  zero, and remove the passthrough. When the add-ref resumed, the route it
+  depended on had already been removed.
+- The intended invariant is now that passthrough add-ref reserves the local
+  shared/optimistic count before forwarding to another transport, and rolls that
+  reservation back if setup fails.
+- Do not fix this class of failure by adding a release fallback through the
+  caller route. Such a fallback masks the race and can recreate stale routing
+  state after teardown has legitimately begun.
+
 ## Behaviors To Watch For
 
 ### 6. No Fallback Rebinding Through Caller Route

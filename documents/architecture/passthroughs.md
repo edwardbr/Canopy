@@ -49,6 +49,7 @@ class pass_through : public i_marshaller
 
     std::atomic<uint64_t> shared_count_{0};      // Shared references
     std::atomic<uint64_t> optimistic_count_{0};  // Optimistic references
+    std::atomic<uint64_t> combined_{0};          // Active calls plus shutdown bit
 };
 ```
 
@@ -134,14 +135,56 @@ Passthrough created when:
 **Shared References:**
 - Normal `rpc::shared_ptr` references
 - Tracked in `shared_count_`
-- Incremented by: relay add_ref (options=3)
-- Decremented by: relay release (options=3)
+- Incremented by: a routed add-ref that establishes or extends a live
+  passthrough relationship
+- Decremented by: the corresponding routed release
 
 **Optimistic References:**
 - `rpc::optimistic_ptr` references
 - Tracked in `optimistic_count_`
-- Incremented by: relay add_ref with optimistic flag
-- Decremented by: relay release with optimistic flag
+- Incremented by: a routed optimistic add-ref that establishes or extends a
+  live passthrough relationship
+- Decremented by: the corresponding routed optimistic release
+
+`options=3` is the relay setup case, but it is not the only path through
+`pass_through::add_ref`. A normal routed add-ref through an existing passthrough
+can also reserve passthrough lifetime. The implementation decides whether the
+local passthrough count is needed from the caller, destination, and
+`add_ref_options` combination.
+
+### Add-Ref Reservation Rule
+
+In coroutine and stream transports an add-ref can suspend while it forwards the
+reference operation to the destination transport. The passthrough must therefore
+reserve its own route reference before any awaited forwarding work.
+
+The current C++ implementation reserves the shared or optimistic passthrough
+count before `begin_call()`, then rolls that reservation back if `begin_call()`,
+route lookup, status checks, or downstream add-ref forwarding fail.
+
+This ordering is deliberate. Without it, this race is possible:
+
+1. first add-ref creates the passthrough and sets `shared_count_` to 1
+2. second add-ref enters `pass_through::add_ref` but suspends before incrementing
+   the passthrough count
+3. a release arrives, sees `shared_count_ == 1`, decrements it to zero, and
+   removes the passthrough
+4. the suspended add-ref resumes and tries to use a route that has already been
+   removed
+
+The correct trace for two live shared references is:
+
+```text
+add_ref reserves shared: 0 -> 1
+add_ref reserves shared: 1 -> 2
+release consumes shared: 2 -> 1
+release consumes shared: 1 -> 0
+```
+
+Local/in-process transports may not expose this ordering bug because their
+forwarding path is often effectively synchronous. Streaming, SGX simulation,
+and fake SGX widen the scheduling window and should be used when validating
+passthrough lifetime races.
 
 ### Deletion
 
@@ -152,16 +195,30 @@ Passthrough deleted when:
 
 ### Self-Deletion Logic
 
-```cpp
-void pass_through::release(...) {
-    uint64_t prev = shared_count_.fetch_sub(1, std::memory_order_acq_rel);
+The C++ implementation does not delete directly from the release path. It uses
+an active-call counter and a shutdown bit stored in `combined_`.
 
-    if (prev == 1 && optimistic_count_.load() == 0) {
-        // Last reference - schedule self-deletion
-        delete_self();
-    }
+```cpp
+void pass_through::trigger_self_destruction()
+{
+    uint64_t prev = combined_.fetch_or(SHUTDOWN_BIT, std::memory_order_acq_rel);
+    if (prev & SHUTDOWN_BIT)
+        return; // another caller already started shutdown
+
+    if ((prev & ~SHUTDOWN_BIT) == 0)
+        do_cleanup();
 }
 ```
+
+`trigger_self_destruction()` is intentionally idempotent. Several paths may
+discover shutdown independently, but only the first caller sets `SHUTDOWN_BIT`
+and proceeds. If calls are still active, the last `end_call()` performs
+`do_cleanup()`.
+
+`do_cleanup()` removes the passthrough from both transports and releases the
+strong references to the two transports and the hosting service. It should only
+be reached through the shutdown-bit path; it is not an independent public
+cleanup API.
 
 ## Routing Logic
 
@@ -198,8 +255,9 @@ if (caller == forward_destination_) {
 ### Passthrough Ref Counts
 - Track references between **non-adjacent zones**
 - Routed connections: Zone 3 ↔ Zone 4 (through Zone 2)
-- Incremented by: Relay add_ref (options=3)
-- Decremented by: Relay release (options=3)
+- Incremented by: routed add-ref operations that establish or extend the
+  passthrough relationship
+- Decremented by: matching routed release operations
 
 ### Why Relay Operations Don't Affect Transport Counts
 
@@ -261,6 +319,10 @@ Passthroughs are thread-safe:
 - `std::atomic` for ref counts
 - Transport operations are thread-safe
 - Multiple threads can route through same passthrough concurrently
+- `begin_call()` and `end_call()` protect in-flight routed operations from
+  cleanup
+- `trigger_self_destruction()` is safe to call more than once, but cleanup must
+  still be reached only through that path
 
 ## Performance Considerations
 
@@ -286,16 +348,33 @@ Enable telemetry to see passthroughs:
 ### Common Issues
 
 **Problem**: Passthrough never deleted (leak)
-- **Cause**: Mismatched relay add_ref/release
-- **Fix**: Verify relay operations are balanced (options=3)
+- **Cause**: Mismatched routed add_ref/release
+- **Fix**: Verify each routed ownership acquisition has a matching release
 
 **Problem**: Passthrough ref count negative
 - **Cause**: Release without corresponding add_ref
-- **Fix**: Check relay operation flow, ensure options=3 on both
+- **Fix**: Check routed ownership flow and confirm the releasing relationship
+  was previously acquired
 
 **Problem**: Object not found through passthrough
 - **Cause**: Passthrough routing logic issue
 - **Fix**: Verify forward/reverse destinations match caller/destination zones
+
+**Problem**: Release reports `ZONE_NOT_FOUND` for a routed object
+- **Cause**: The passthrough route has already been removed, or an add-ref was
+  allowed to suspend before reserving the local passthrough count
+- **Fix**: Confirm add-ref reserves the passthrough shared/optimistic count
+  before forwarding to another transport. Do not add release fallback routing
+  through the caller transport; that masks the race and can recreate stale
+  routes.
+
+**Problem**: Failure appears only in SGX or stream-backed tests
+- **Cause**: Stream-backed transports introduce asynchronous scheduling windows
+  that local/in-process tests may not expose
+- **Fix**: Reproduce with fake SGX first for debugger visibility, then confirm
+  with SGX simulation. Run fake SGX and SGX simulation test binaries serially
+  when investigating lifetime bugs, because parallel enclave test processes can
+  interfere through shared temporary/runtime resources.
 
 ## Code References
 
