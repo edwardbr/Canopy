@@ -7,12 +7,12 @@
 #include <cstdint>
 
 #include <io_uring/host_io_uring.h>
-#include <streaming/io_uring_new/acceptor.h>
-#include <streaming/io_uring_new/connector.h>
+#include <streaming/io_uring/acceptor.h>
+#include <streaming/io_uring/connector.h>
 #include <transport/tests/streaming_setup_base.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
-class streaming_new_iouring_setup
+class streaming_io_uring_setup
     : public streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
     using base = streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>;
@@ -53,7 +53,7 @@ protected:
             CO_RETURN false;
         }
 
-        acceptor_ = std::make_shared<streaming::io_uring_new::acceptor>(controller);
+        acceptor_ = std::make_shared<streaming::io_uring::acceptor>(controller);
 
         uint16_t port = 0;
         int last_listen_error = rpc::error::OK();
@@ -69,7 +69,7 @@ protected:
 
         if (port == 0)
         {
-            RPC_ERROR("Failed to start new io_uring listener: {}", last_listen_error);
+            RPC_ERROR("Failed to start io_uring listener: {}", last_listen_error);
             CO_RETURN false;
         }
 
@@ -78,15 +78,15 @@ protected:
 
         if (!this->listener_->start_listening(this->peer_service_))
         {
-            RPC_ERROR("Failed to start new io_uring listener task");
+            RPC_ERROR("Failed to start io_uring listener task");
             CO_RETURN false;
         }
 
-        auto stream_result = CO_AWAIT streaming::io_uring_new::connect_loopback(controller, port);
+        auto stream_result = CO_AWAIT streaming::io_uring::connect_loopback(controller, port);
         if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
         {
             RPC_ERROR(
-                "Failed to connect new io_uring client to server error_code={} native_result={}",
+                "Failed to connect io_uring client to server error_code={} native_result={}",
                 stream_result.error_code,
                 stream_result.native_result);
             CO_RETURN false;
@@ -120,7 +120,7 @@ protected:
     }
 
 public:
-    ~streaming_new_iouring_setup() override = default;
+    ~streaming_io_uring_setup() override = default;
 
     void tear_down() override
     {
@@ -137,5 +137,5 @@ private:
     static constexpr uint16_t last_port_{26064};
 
     std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_scheduler_owner_;
-    std::shared_ptr<streaming::io_uring_new::acceptor> acceptor_;
+    std::shared_ptr<streaming::io_uring::acceptor> acceptor_;
 };

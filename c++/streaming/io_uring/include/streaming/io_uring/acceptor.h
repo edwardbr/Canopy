@@ -11,10 +11,10 @@
 #include <optional>
 
 #include <io_uring/tcp.h>
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 #include <streaming/stream_acceptor.h>
 
-namespace streaming::io_uring_new
+namespace streaming::io_uring
 {
     class acceptor : public streaming::stream_acceptor
     {
@@ -50,4 +50,4 @@ namespace streaming::io_uring_new
         stream::options stream_options_;
         std::atomic<bool> stopping_{false};
     };
-} // namespace streaming::io_uring_new
+} // namespace streaming::io_uring

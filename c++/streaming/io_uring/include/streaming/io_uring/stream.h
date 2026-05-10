@@ -14,7 +14,7 @@
 #include <io_uring/direct_descriptor.h>
 #include <streaming/stream.h>
 
-namespace streaming::io_uring_new
+namespace streaming::io_uring
 {
     class stream : public streaming::stream
     {
@@ -84,4 +84,4 @@ namespace streaming::io_uring_new
         const rpc::io_uring::direct_descriptor_result& result,
         uint16_t peer_port = 0,
         stream::options stream_options = default_stream_options()) noexcept;
-} // namespace streaming::io_uring_new
+} // namespace streaming::io_uring

@@ -52,7 +52,7 @@
 #  include <transport/tests/sgx/setup.h>
 #endif
 #ifdef CANOPY_BUILD_COROUTINE
-#  include <transport/tests/streaming_new_iouring/setup.h>
+#  include <transport/tests/streaming_io_uring/setup.h>
 #  include <transport/tests/streaming_tcp/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
 #endif
@@ -125,14 +125,14 @@ using local_implementations = ::testing::Types<
     streaming_spsc_setup<true, false, true>,
     streaming_spsc_setup<true, true, false>,
     streaming_spsc_setup<true, true, true>,
-    streaming_new_iouring_setup<false, false, false>,
-    streaming_new_iouring_setup<false, false, true>,
-    streaming_new_iouring_setup<false, true, false>,
-    streaming_new_iouring_setup<false, true, true>,
-    streaming_new_iouring_setup<true, false, false>,
-    streaming_new_iouring_setup<true, false, true>,
-    streaming_new_iouring_setup<true, true, false>,
-    streaming_new_iouring_setup<true, true, true>
+    streaming_io_uring_setup<false, false, false>,
+    streaming_io_uring_setup<false, false, true>,
+    streaming_io_uring_setup<false, true, false>,
+    streaming_io_uring_setup<false, true, true>,
+    streaming_io_uring_setup<true, false, false>,
+    streaming_io_uring_setup<true, false, true>,
+    streaming_io_uring_setup<true, true, false>,
+    streaming_io_uring_setup<true, true, true>
 #endif
 
 #if defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)

@@ -39,7 +39,7 @@ scheduler type while runtime teardown can shut the controller down before the
 scheduler.
 
 Fourth slice note: the host-only stream path now has a
-`streaming::io_uring_new::acceptor` adapter around the common
+`streaming::io_uring::acceptor` adapter around the common
 `rpc::io_uring::acceptor`. The typed streaming transport tests, timeout test,
 and benchmark io_uring paths can create the chain explicitly:
 
@@ -48,8 +48,8 @@ rpc::coro::scheduler
   -> rpc::io_uring::io_uring_scheduler
       -> rpc::io_uring::controller
           -> linux_io_uring_handle
-  -> streaming::io_uring_new::acceptor / connector
-  -> streaming::io_uring_new::stream
+  -> streaming::io_uring::acceptor / connector
+  -> streaming::io_uring::stream
   -> rpc::stream_transport
 ```
 
@@ -242,7 +242,7 @@ Current naming to migrate:
 The common io_uring controller has two distinct buffer concepts:
 
 - caller buffers: the per-call `rpc::byte_span` or `rpc::mutable_byte_span`
-  passed to `send`, `receive`, or `streaming::io_uring_new::stream`
+  passed to `send`, `receive`, or `streaming::io_uring::stream`
 - host buffers: fixed-size slots in the io_uring handle's host-visible buffer
   pool, configured by `buffer_count` and `buffer_size`
 
@@ -671,7 +671,7 @@ The exact file names can change, but the responsibility split should not:
 The host stream adapter is now expected to use the shared controller/handle
 path. Keep the public stream layer small and focused:
 
-- `streaming/io_uring_new` is already the best-shaped stream adapter. It wraps
+- `streaming/io_uring` is already the best-shaped stream adapter. It wraps
   `rpc::io_uring::direct_descriptor` and composes with TLS, websocket, and
   stream transports without knowing whether the descriptor is host or enclave
   backed.
@@ -686,7 +686,7 @@ components or tests:
 
 - a host timeout/cancel regression test for receive completion racing a linked
   timeout
-- a host stream composition test around `streaming::io_uring_new::stream`
+- a host stream composition test around `streaming::io_uring::stream`
 - host-only `linux_io_uring_handle` support for non-SQPOLL `io_uring_enter` and
   completion wakeup, if the first host-direct path does not force SQPOLL
 

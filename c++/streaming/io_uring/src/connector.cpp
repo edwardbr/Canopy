@@ -3,13 +3,13 @@
  *   All rights reserved.
  */
 
-#include <streaming/io_uring_new/connector.h>
+#include <streaming/io_uring/connector.h>
 
 #include <io_uring/tcp.h>
 
 #include <utility>
 
-namespace streaming::io_uring_new
+namespace streaming::io_uring
 {
     connector::connector(
         std::shared_ptr<rpc::io_uring::controller> controller,
@@ -35,4 +35,4 @@ namespace streaming::io_uring_new
         connector connection_factory(std::move(controller), stream_options);
         CO_RETURN CO_AWAIT connection_factory.connect_loopback(port);
     }
-} // namespace streaming::io_uring_new
+} // namespace streaming::io_uring

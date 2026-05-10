@@ -9,8 +9,8 @@
 
 #  include "benchmark_data_processor.h"
 #  include <io_uring/host_io_uring.h>
-#  include <streaming/io_uring_new/acceptor.h>
-#  include <streaming/io_uring_new/connector.h>
+#  include <streaming/io_uring/acceptor.h>
+#  include <streaming/io_uring/connector.h>
 #  include <transports/streaming/transport.h>
 
 namespace comprehensive::v1
@@ -80,7 +80,7 @@ namespace comprehensive::v1
             auto shutdown_event = std::make_shared<rpc::event>();
             service->set_shutdown_event(shutdown_event);
 
-            auto acceptor = std::make_shared<streaming::io_uring_new::acceptor>(controller);
+            auto acceptor = std::make_shared<streaming::io_uring::acceptor>(controller);
             auto listen_result = CO_AWAIT acceptor->listen_loopback(port);
             if (listen_result != rpc::error::OK())
             {
@@ -139,7 +139,7 @@ namespace comprehensive::v1
             auto shutdown_event = std::make_shared<rpc::event>();
             client_service->set_shutdown_event(shutdown_event);
 
-            auto stream_result = CO_AWAIT streaming::io_uring_new::connect_loopback(controller, port);
+            auto stream_result = CO_AWAIT streaming::io_uring::connect_loopback(controller, port);
             if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
             {
                 result.error = stream_result.error_code == rpc::error::OK() ? rpc::error::ZONE_NOT_FOUND()

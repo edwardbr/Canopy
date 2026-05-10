@@ -7,7 +7,7 @@
 #include <type_traits>
 
 #include <io_uring/direct_descriptor.h>
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 #include <streaming/stream.h>
 #include <streaming/tls/stream.h>
 #include <streaming/websocket/stream.h>
@@ -15,7 +15,7 @@
 
 static_assert(std::is_base_of_v<
     streaming::stream,
-    streaming::io_uring_new::stream>);
+    streaming::io_uring::stream>);
 
 namespace
 {
@@ -24,7 +24,7 @@ namespace
         std::shared_ptr<rpc::io_uring::controller> controller;
         auto descriptor = std::make_shared<rpc::io_uring::direct_descriptor>(controller, 0);
         std::shared_ptr<streaming::stream> base_stream
-            = std::make_shared<streaming::io_uring_new::stream>(std::move(descriptor), uint16_t{443});
+            = std::make_shared<streaming::io_uring::stream>(std::move(descriptor), uint16_t{443});
 
         // The io_uring stream is just another streaming::stream. TLS,
         // websocket, and streaming transport code should compose with it

@@ -7,8 +7,8 @@
 
 #include <io_uring/host_io_uring.h>
 #include <io_uring/tcp.h>
-#include <streaming/io_uring_new/acceptor.h>
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/acceptor.h>
+#include <streaming/io_uring/stream.h>
 
 namespace stream_bench
 {
@@ -51,7 +51,7 @@ namespace stream_bench
             auto server_fn,
             auto client_fn)
         {
-            auto acceptor = std::make_shared<streaming::io_uring_new::acceptor>(server_controller);
+            auto acceptor = std::make_shared<streaming::io_uring::acceptor>(server_controller);
             if (coro::sync_wait(acceptor->listen_loopback(port)) != rpc::error::OK())
                 return;
             if (!acceptor->init(server_scheduler))
@@ -74,7 +74,7 @@ namespace stream_bench
                         co_await server_ready.wait();
                         rpc::io_uring::connector connector(client_controller);
                         auto connect_result = co_await connector.connect_loopback_with_result(port);
-                        auto stream_result = streaming::io_uring_new::make_stream_result(connect_result, port);
+                        auto stream_result = streaming::io_uring::make_stream_result(connect_result, port);
                         if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
                             co_return;
                         co_await client_fn(std::move(stream_result.connection));

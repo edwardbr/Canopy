@@ -229,7 +229,7 @@ namespace io_uring_test_enclave
                                uint32_t payload_size) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 state->complete(accept_result.error_code);
@@ -298,7 +298,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring_new::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();
@@ -448,7 +448,7 @@ namespace io_uring_test_enclave
                                std::shared_ptr<rpc::service> child_service) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 state->complete(accept_result.error_code);
@@ -475,7 +475,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring_new::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();
@@ -622,8 +622,8 @@ namespace io_uring_test_enclave
                                    uint32_t iterations,
                                    uint32_t payload_size) -> CORO_TASK(void)
             {
-                auto accept_result = streaming::io_uring_new::make_stream_result(
-                    CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                auto accept_result
+                    = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
                 if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
                 {
                     state->complete_task(accept_result.error_code);
@@ -730,7 +730,7 @@ namespace io_uring_test_enclave
                                    uint32_t payload_size) -> CORO_TASK(void)
             {
                 rpc::io_uring::connector connector(std::move(controller));
-                auto connect_result = streaming::io_uring_new::make_stream_result(
+                auto connect_result = streaming::io_uring::make_stream_result(
                     CO_AWAIT connector.connect_loopback_with_result(port), port);
                 if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
                 {
@@ -969,7 +969,7 @@ namespace io_uring_test_enclave
                                std::shared_ptr<accept_close_state> state) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.connection)
             {
                 CO_AWAIT accept_result.connection->set_closed();
@@ -1071,7 +1071,7 @@ namespace io_uring_test_enclave
                                std::shared_ptr<receive_close_state> state) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 state->result.store(accept_result.error_code, std::memory_order_release);
@@ -1092,7 +1092,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring_new::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();
@@ -1227,7 +1227,7 @@ namespace io_uring_test_enclave
                                std::shared_ptr<send_close_state> state) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 state->result.store(accept_result.error_code, std::memory_order_release);
@@ -1248,7 +1248,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring_new::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();
@@ -1511,7 +1511,7 @@ namespace io_uring_test_enclave
                                std::shared_ptr<accept_shutdown_state> state) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             state->result.store(
                 accept_result.error_code == rpc::error::OK() ? rpc::error::INVALID_DATA() : rpc::error::OK(),
                 std::memory_order_release);
@@ -1609,7 +1609,7 @@ namespace io_uring_test_enclave
                                std::shared_ptr<receive_shutdown_state> state) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 state->result.store(accept_result.error_code, std::memory_order_release);
@@ -1630,7 +1630,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring_new::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();
@@ -1761,7 +1761,7 @@ namespace io_uring_test_enclave
                                std::shared_ptr<send_shutdown_state> state) -> CORO_TASK(void)
         {
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 state->result.store(accept_result.error_code, std::memory_order_release);
@@ -1782,7 +1782,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring_new::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();

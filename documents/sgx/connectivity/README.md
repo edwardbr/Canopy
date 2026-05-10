@@ -439,13 +439,13 @@ rpc::io_uring::controller
 rpc::io_uring::direct_descriptor
   represents a descriptor produced by accept/connect/open
 
-streaming::io_uring_new::stream
+streaming::io_uring::stream
   implements streaming::stream using recv/send or read/write on a descriptor
 
-streaming::io_uring_new::acceptor
+streaming::io_uring::acceptor
   submits accept/multishot accept and returns a stream
 
-streaming::io_uring_new::connector
+streaming::io_uring::connector
   submits socket/connect and returns a stream
 
 future file adapter
@@ -461,7 +461,7 @@ host TCP acceptor
 
 host TCP connector
   -> builds socket/connect SQEs
-  -> returns streaming::io_uring_new::stream
+  -> returns streaming::io_uring::stream
 ```
 
 That avoids having `io_uring` exclusively bound to TCP while still letting TCP

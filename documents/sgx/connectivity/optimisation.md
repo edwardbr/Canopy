@@ -15,7 +15,7 @@ questions.
 
 ## Current Baseline
 
-- `streaming::io_uring_new` adapts direct io_uring TCP descriptors into the
+- `streaming::io_uring` adapts direct io_uring TCP descriptors into the
   generic `streaming::stream` interface.
 - Host-only controllers use `use_caller_buffers_for_transfers=true` by default,
   so SEND/RECV SQEs can point directly at the caller's per-transfer span.

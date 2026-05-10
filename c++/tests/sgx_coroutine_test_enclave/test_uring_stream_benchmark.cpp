@@ -6,7 +6,7 @@
 #include "test_uring.h"
 
 #include <io_uring/tcp.h>
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 
 #include <algorithm>
@@ -149,7 +149,7 @@ namespace io_uring_test_enclave
             int err = rpc::error::OK();
 
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 err = accept_result.error_code != rpc::error::OK() ? accept_result.error_code
@@ -245,7 +245,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring_new::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();

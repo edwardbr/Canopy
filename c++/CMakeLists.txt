@@ -28,9 +28,9 @@ endif()
 add_subdirectory(transports)
 
 if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # The new io_uring stream adapter depends on the low-level io_uring controller target and optionally on
+  # The io_uring stream adapter depends on the low-level io_uring controller target and optionally on
   # transport_streaming test helpers, so it is configured after both subcomponents/io_uring and transports.
-  add_subdirectory(streaming/io_uring_new)
+  add_subdirectory(streaming/io_uring)
 endif()
 
 if(CANOPY_BUILD_TEST)

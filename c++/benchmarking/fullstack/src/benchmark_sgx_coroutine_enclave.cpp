@@ -8,7 +8,7 @@
 #include <comprehensive/comprehensive.h>
 #include <io_uring/tcp.h>
 #include <rpc/rpc.h>
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/streaming/transport.h>
 
@@ -301,8 +301,8 @@ namespace comprehensive::v1
             state->acceptor = server.acceptor;
             signal_server_ready(state, server_ready, rpc::error::OK(), selected_port);
 
-            auto accept_result = streaming::io_uring_new::make_stream_result(
-                CO_AWAIT server.acceptor->accept_with_result(), selected_port);
+            auto accept_result
+                = streaming::io_uring::make_stream_result(CO_AWAIT server.acceptor->accept_with_result(), selected_port);
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 const auto error_code = accept_result.error_code != rpc::error::OK() ? accept_result.error_code
@@ -377,8 +377,8 @@ namespace comprehensive::v1
             client.service->set_shutdown_event(client.shutdown_event);
 
             rpc::io_uring::connector connector(controller);
-            auto connect_result = streaming::io_uring_new::make_stream_result(
-                CO_AWAIT connector.connect_loopback_with_result(port), port);
+            auto connect_result
+                = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
             if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
             {
                 err = connect_result.error_code != rpc::error::OK() ? connect_result.error_code
@@ -446,8 +446,8 @@ namespace comprehensive::v1
             controller->set_wait_strategy(rpc::io_uring::wait_strategy::proactor);
 
             rpc::io_uring::connector connector(controller);
-            auto connect_result = streaming::io_uring_new::make_stream_result(
-                CO_AWAIT connector.connect_loopback_with_result(port), port);
+            auto connect_result
+                = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
             if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
             {
                 const auto err = connect_result.error_code != rpc::error::OK() ? connect_result.error_code

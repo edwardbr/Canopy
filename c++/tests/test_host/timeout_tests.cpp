@@ -19,7 +19,7 @@
  *   Transport variants covered:
  *     tcp          — streaming::tcp::stream over TCP loopback (port 8090)
  *     spsc         — streaming::spsc_queue::stream (in-process)
- *     io_uring     — streaming::io_uring_new::stream (Linux, port 8091)
+ *     io_uring     — streaming::io_uring::stream (Linux, port 8091)
  *     tls          — streaming::secure::stream over TCP+SPSC (port 8092)
  *     websocket    — streaming::websocket::stream over TCP (port 8093)
  *                    requires CANOPY_BUILD_WEBSOCKET
@@ -48,8 +48,8 @@
 #  ifdef __linux__
 #    include <io_uring/host_io_uring.h>
 #    include <io_uring/tcp.h>
-#    include <streaming/io_uring_new/acceptor.h>
-#    include <streaming/io_uring_new/stream.h>
+#    include <streaming/io_uring/acceptor.h>
+#    include <streaming/io_uring/stream.h>
 #  endif
 
 #  ifdef CANOPY_BUILD_WEBSOCKET
@@ -680,7 +680,7 @@ protected:
             CO_RETURN false;
         }
 
-        auto acceptor = std::make_shared<streaming::io_uring_new::acceptor>(controller);
+        auto acceptor = std::make_shared<streaming::io_uring::acceptor>(controller);
         auto listen_result = CO_AWAIT acceptor->listen_loopback(8091);
         if (listen_result != rpc::error::OK())
         {
@@ -702,7 +702,7 @@ protected:
 
         rpc::io_uring::connector connector(controller);
         auto descriptor_result = CO_AWAIT connector.connect_loopback_with_result(8091);
-        auto stream_result = streaming::io_uring_new::make_stream_result(descriptor_result, 8091);
+        auto stream_result = streaming::io_uring::make_stream_result(descriptor_result, 8091);
         if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
         {
             RPC_ERROR("timeout_iouring_setup: connect failed");

@@ -9,9 +9,9 @@
 #include <memory>
 
 #include <io_uring/controller.h>
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 
-namespace streaming::io_uring_new
+namespace streaming::io_uring
 {
     class connector
     {
@@ -37,4 +37,4 @@ namespace streaming::io_uring_new
         std::shared_ptr<rpc::io_uring::controller> controller,
         uint16_t port,
         stream::options stream_options = default_stream_options());
-} // namespace streaming::io_uring_new
+} // namespace streaming::io_uring

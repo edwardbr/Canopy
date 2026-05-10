@@ -261,7 +261,7 @@ Apply these rules first to:
 
 - `streaming::spsc_queue::stream`
 - `streaming::tcp::stream`
-- `streaming::io_uring_new::stream`
+- `streaming::io_uring::stream`
 - `streaming::tls::stream`
 - `streaming::websocket::stream`
 - benchmark-local stream wrappers used to exercise those transports

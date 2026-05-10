@@ -47,7 +47,7 @@ if(CANOPY_BUILD_WEBSOCKET)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_libraries(streaming_benchmark PUBLIC streaming_io_uring_new)
+  target_link_libraries(streaming_benchmark PUBLIC streaming_io_uring)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE

@@ -3,7 +3,7 @@
  *   All rights reserved.
  */
 
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 
 #include <io_uring/controller.h>
 
@@ -11,7 +11,7 @@
 #include <new>
 #include <utility>
 
-namespace streaming::io_uring_new
+namespace streaming::io_uring
 {
     namespace
     {
@@ -290,4 +290,4 @@ namespace streaming::io_uring_new
 
         return stream_result{rpc::error::OK(), result.native_result, result.cqe_flags, std::move(connection)};
     }
-} // namespace streaming::io_uring_new
+} // namespace streaming::io_uring

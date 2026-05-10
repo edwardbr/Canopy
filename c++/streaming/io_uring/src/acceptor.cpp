@@ -3,15 +3,15 @@
  *   All rights reserved.
  */
 
-#include <streaming/io_uring_new/acceptor.h>
+#include <streaming/io_uring/acceptor.h>
 
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 
 #include <exception>
 #include <new>
 #include <utility>
 
-namespace streaming::io_uring_new
+namespace streaming::io_uring
 {
     acceptor::acceptor(
         std::shared_ptr<rpc::io_uring::controller> controller,
@@ -27,7 +27,7 @@ namespace streaming::io_uring_new
             }
             catch (const std::bad_alloc&)
             {
-                RPC_ERROR("bad_alloc while creating streaming io_uring_new acceptor");
+                RPC_ERROR("bad_alloc while creating streaming io_uring acceptor");
                 std::terminate();
             }
         }
@@ -85,7 +85,7 @@ namespace streaming::io_uring_new
             }
 
             RPC_ERROR(
-                "io_uring_new::acceptor accept failed error_code={} native_result={}",
+                "io_uring::acceptor accept failed error_code={} native_result={}",
                 stream_result.error_code,
                 stream_result.native_result);
             CO_RETURN std::nullopt;
@@ -126,4 +126,4 @@ namespace streaming::io_uring_new
         }
         CO_RETURN;
     }
-} // namespace streaming::io_uring_new
+} // namespace streaming::io_uring

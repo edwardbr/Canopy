@@ -90,7 +90,7 @@ if(CANOPY_BUILD_COROUTINE)
         transport_sgx_coroutine_enclave
         ${BENCHMARK_SGX_COROUTINE_TELEMETRY_ENCLAVE_LIBS}
         streaming_spsc_queue_enclave
-        streaming_io_uring_new_enclave
+        streaming_io_uring_enclave
         canopy_coroutine_edl_enclave
         transport_local_enclave
         canopy_io_uring_enclave
@@ -167,7 +167,7 @@ if(CANOPY_BUILD_COROUTINE)
            transport_ipc_transport
            streaming_spsc_queue
            streaming_tcp
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring_new>
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
            rpc_log)
   if(CANOPY_BUILD_ENCLAVE)
     target_link_libraries(benchmark PUBLIC transport_sgx_coroutine)

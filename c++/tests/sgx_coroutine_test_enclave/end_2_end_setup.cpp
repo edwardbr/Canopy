@@ -6,7 +6,7 @@
 #include "end_2_end_setup.h"
 
 #include <io_uring/tcp.h>
-#include <streaming/io_uring_new/stream.h>
+#include <streaming/io_uring/stream.h>
 #include <transports/streaming/transport.h>
 
 #include <atomic>
@@ -281,7 +281,7 @@ namespace io_uring_test_enclave
             // can reuse end_2_end_setup and vary endpoint behavior without
             // copying the transport bootstrap code.
             auto accept_result
-                = streaming::io_uring_new::make_stream_result(CO_AWAIT server.acceptor->accept_with_result(), port);
+                = streaming::io_uring::make_stream_result(CO_AWAIT server.acceptor->accept_with_result(), port);
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 const auto error_code = accept_result.error_code != rpc::error::OK() ? accept_result.error_code
@@ -366,8 +366,8 @@ namespace io_uring_test_enclave
             // below gives the RPC transport a generic byte stream without
             // putting TCP knowledge into the streaming layer.
             rpc::io_uring::connector connector(controller);
-            auto connect_result = streaming::io_uring_new::make_stream_result(
-                CO_AWAIT connector.connect_loopback_with_result(port), port);
+            auto connect_result
+                = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
             if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
             {
                 err = connect_result.error_code != rpc::error::OK() ? connect_result.error_code
