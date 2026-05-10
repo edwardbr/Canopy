@@ -175,8 +175,7 @@ function(canopy_bootstrap_sgx_sdk)
 
   if(sgx_sdk_installer_count EQUAL 0)
     set(canopy_sgx_prepared_markers
-        "${sgx_source_dir}/external/ippcp_internal/lib/linux/intel64"
-        "${sgx_source_dir}/external/cbor/sgx_libcbor"
+        "${sgx_source_dir}/external/ippcp_internal/lib/linux/intel64" "${sgx_source_dir}/external/cbor/sgx_libcbor"
         "${sgx_source_dir}/external/protobuf/protobuf_code/third_party/abseil-cpp"
         "${sgx_source_dir}/external/dcap_source/external/jwt-cpp")
     set(canopy_sgx_sources_prepared TRUE)
@@ -202,9 +201,11 @@ function(canopy_bootstrap_sgx_sdk)
       message(STATUS "Skipping Intel SGX SDK source preparation because CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES is OFF "
                      "and the prepared source markers are present.")
     else()
-      message(FATAL_ERROR "CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES is OFF, but no SGX SDK installer exists and "
-                          "the SGX source tree does not look prepared. Enable CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "
-                          "for the first bootstrap, or populate submodules/confidential-computing.sgx manually.")
+      message(
+        FATAL_ERROR
+          "CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES is OFF, but no SGX SDK installer exists and "
+          "the SGX source tree does not look prepared. Enable CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "
+          "for the first bootstrap, or populate submodules/confidential-computing.sgx manually.")
     endif()
 
     execute_process(
@@ -287,6 +288,12 @@ else()
   set(SGX_HW_OR_SIM_DEFINE SGX_SIM)
 endif()
 
+if(${SGX_MODE} STREQUAL "release")
+  set(CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG 0)
+else()
+  set(CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG 1)
+endif()
+
 # ######################################################################################################################
 # Enclave flag for defines
 # ######################################################################################################################
@@ -319,8 +326,7 @@ if(WIN32)
 
   # Shared enclave defines (Windows)
   set(CANOPY_SHARED_ENCLAVE_DEFINES ${CANOPY_SHARED_DEFINES} FOR_SGX ${CANOPY_ENCLAVE_MEMLEAK_DEFINES})
-  list(REMOVE_ITEM CANOPY_SHARED_ENCLAVE_DEFINES CANOPY_BUILD_PROTOCOL_BUFFERS
-       CANOPY_USE_PROTOCOL_BUFFERS_FOR_NANOPB)
+  list(REMOVE_ITEM CANOPY_SHARED_ENCLAVE_DEFINES CANOPY_BUILD_PROTOCOL_BUFFERS CANOPY_USE_PROTOCOL_BUFFERS_FOR_NANOPB)
   list(APPEND CANOPY_SHARED_ENCLAVE_DEFINES ${CANOPY_ENCLAVE_PROTOBUF_DEFINES})
   list(REMOVE_DUPLICATES CANOPY_SHARED_ENCLAVE_DEFINES)
 
@@ -390,8 +396,7 @@ else()
       DISALLOW_BAD_JUMPS
       _LIBCPP_DISABLE_AVAILABILITY
       __THROW=)
-  list(REMOVE_ITEM CANOPY_SHARED_ENCLAVE_DEFINES CANOPY_BUILD_PROTOCOL_BUFFERS
-       CANOPY_USE_PROTOCOL_BUFFERS_FOR_NANOPB)
+  list(REMOVE_ITEM CANOPY_SHARED_ENCLAVE_DEFINES CANOPY_BUILD_PROTOCOL_BUFFERS CANOPY_USE_PROTOCOL_BUFFERS_FOR_NANOPB)
   list(APPEND CANOPY_SHARED_ENCLAVE_DEFINES ${CANOPY_ENCLAVE_PROTOBUF_DEFINES})
   list(REMOVE_DUPLICATES CANOPY_SHARED_ENCLAVE_DEFINES)
 
@@ -470,9 +475,8 @@ else()
   # FindSGX.cmake.
   find_package(SGX REQUIRED)
 
-  # Host-side SGX link options are intentionally kept separate from
-  # CANOPY_LINK_OPTIONS/CANOPY_LINK_EXE_OPTIONS so non-SGX targets do not inherit
-  # SGX SDK libraries just because enclave support is enabled for the build.
+  # Host-side SGX link options are intentionally kept separate from CANOPY_LINK_OPTIONS/CANOPY_LINK_EXE_OPTIONS so
+  # non-SGX targets do not inherit SGX SDK libraries just because enclave support is enabled for the build.
   set(CANOPY_SGX_HOST_LINK_OPTIONS -L${SGX_LIBRARY_PATH})
   if(EXISTS "${SGX_LIBRARY_PATH}/libsgx_dcap_quoteverify.so")
     list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -lsgx_dcap_quoteverify)
@@ -506,8 +510,8 @@ endif()
 # ######################################################################################################################
 set(CANOPY_INCLUDES ${SGX_INCLUDE_DIR})
 
-# Host-side SGX runtime libraries. Keep these separate from CANOPY_LIBRARIES so
-# non-SGX targets in an enclave-enabled build do not inherit SGX link dependencies.
+# Host-side SGX runtime libraries. Keep these separate from CANOPY_LIBRARIES so non-SGX targets in an enclave-enabled
+# build do not inherit SGX link dependencies.
 set(CANOPY_SGX_HOST_LIBRARIES)
 if(WIN32)
   if(${SGX_HW})

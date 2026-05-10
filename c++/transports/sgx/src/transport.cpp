@@ -20,6 +20,10 @@
 #      include <rpc/telemetry/i_telemetry_service.h>
 #    endif
 
+#    ifndef CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG
+#      define CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG SGX_DEBUG_FLAG
+#    endif
+
 namespace rpc::sgx
 {
     namespace
@@ -328,9 +332,11 @@ namespace rpc::sgx
         sgx_launch_token_t token = {0};
         int updated = 0;
 #    ifdef _WIN32
-        auto status = sgx_create_enclavea(enclave_path_.data(), SGX_DEBUG_FLAG, &token, &updated, &eid_, NULL);
+        auto status = sgx_create_enclavea(
+            enclave_path_.data(), CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG, &token, &updated, &eid_, NULL);
 #    else
-        auto status = sgx_create_enclave(enclave_path_.data(), SGX_DEBUG_FLAG, &token, &updated, &eid_, NULL);
+        auto status = sgx_create_enclave(
+            enclave_path_.data(), CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG, &token, &updated, &eid_, NULL);
 #    endif
         if (status)
         {

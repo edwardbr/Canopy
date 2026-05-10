@@ -690,6 +690,15 @@ if(SGX_FOUND)
         ${OUTPUT_DIR}/${OUTPUT_NAME}
         CACHE STRING "signed target file name")
     if(SGX_HW AND SGX_MODE STREQUAL "release")
+      find_program(
+        SGX_OPENSSL_EXECUTABLE
+        NAMES openssl openssl.exe
+        HINTS "${CMAKE_SOURCE_DIR}/3rdparty/bin")
+      if(NOT SGX_OPENSSL_EXECUTABLE)
+        message(FATAL_ERROR "OpenSSL executable is required for SGX hardware release two-step signing.")
+      endif()
+
+      set(PUBLIC_KEY_OUTPUT "$<TARGET_FILE_DIR:${target}>/${target}_public.pem")
       add_custom_command(
         TARGET ${target}
         POST_BUILD
@@ -697,18 +706,18 @@ if(SGX_FOUND)
                 "First step ${SGX_ENCLAVE_SIGNER} signing $<TARGET_FILE:${target}>"
         COMMAND ${SGX_ENCLAVE_SIGNER} gendata -config ${CONFIG_ABSPATH} -enclave "$<TARGET_FILE:${target}>" -out
                 "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex"
+        COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Extracting SGX public signing key"
+        COMMAND ${SGX_OPENSSL_EXECUTABLE} pkey -in ${KEY_ABSPATH} -pubout -out "${PUBLIC_KEY_OUTPUT}"
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Second step openssl signing"
-        COMMAND
-          ${CMAKE_SOURCE_DIR}/3rdparty/bin/openssl.exe dgst -sha256 -out
-          "$<TARGET_FILE_DIR:${target}>/${target}.signed.hex" -sign ${KEY_ABSPATH} -keyform PEM
-          "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex"
+        COMMAND ${SGX_OPENSSL_EXECUTABLE} dgst -sha256 -out "$<TARGET_FILE_DIR:${target}>/${target}.signed.hex" -sign
+                ${KEY_ABSPATH} -keyform PEM "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex"
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Third step ${SGX_ENCLAVE_SIGNER} signing"
         COMMAND
           ${SGX_ENCLAVE_SIGNER} catsig -enclave "$<TARGET_FILE:${target}>" -out
-          "$<TARGET_FILE_DIR:${target}>/${target}.signed.dll" -key $pk -sig
+          "$<TARGET_FILE_DIR:${target}>/${OUTPUT_NAME}" -key "${PUBLIC_KEY_OUTPUT}" -sig
           "$<TARGET_FILE_DIR:${target}>/${target}.signed.hex" -unsigned
-          "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex" -config "${SGX_CONFIG}"
-        COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Signing compelte"
+          "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex" -config ${CONFIG_ABSPATH}
+        COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Signing complete"
         USES_TERMINAL
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     else()
@@ -722,7 +731,9 @@ if(SGX_FOUND)
 
     endif()
 
-    set(CLEAN_FILES "$<TARGET_FILE_DIR:${target}>/${OUTPUT_NAME};$<TARGET_FILE_DIR:${target}>/${target}_hash.hex")
+    set(CLEAN_FILES
+        "$<TARGET_FILE_DIR:${target}>/${OUTPUT_NAME};$<TARGET_FILE_DIR:${target}>/${target}_hash.hex;$<TARGET_FILE_DIR:${target}>/${target}.signed.hex;$<TARGET_FILE_DIR:${target}>/${target}_public.pem"
+    )
     set_property(
       DIRECTORY
       APPEND

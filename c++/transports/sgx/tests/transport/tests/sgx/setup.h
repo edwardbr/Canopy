@@ -8,12 +8,18 @@
 #ifdef CANOPY_BUILD_ENCLAVE
 
 #  include <atomic>
+#  include <filesystem>
+#  include <string>
 #  include "test_host.h"
 #  include "test_globals.h"
 #  include <gtest/gtest.h>
 #  include <common/foo_impl.h>
 #  include <common/tests.h>
 #  include <transports/sgx/transport.h>
+
+#  ifdef CANOPY_TEST_SGX_HARDWARE_RUNTIME
+#    include <sgx_capable.h>
+#  endif
 
 #  ifdef CANOPY_USE_TELEMETRY
 #    include <rpc/telemetry/i_telemetry_service.h>
@@ -32,6 +38,25 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
     bool run_standard_tests_ = RunStandardTests;
 
     bool error_has_occurred_ = false;
+
+    static std::string test_enclave_unavailable_reason()
+    {
+        if (!std::filesystem::exists(enclave_path))
+        {
+            return "SGX test enclave is missing: " + enclave_path;
+        }
+
+#  ifdef CANOPY_TEST_SGX_HARDWARE_RUNTIME
+        int sgx_capable = 0;
+        const auto status = sgx_is_capable(&sgx_capable);
+        if (status != SGX_SUCCESS || sgx_capable == 0)
+        {
+            return "SGX hardware runtime is not available for " + enclave_path;
+        }
+#  endif
+
+        return {};
+    }
 
 public:
     virtual ~sgx_setup() = default;
@@ -61,6 +86,11 @@ public:
 
     virtual void set_up()
     {
+        if (auto unavailable_reason = test_enclave_unavailable_reason(); !unavailable_reason.empty())
+        {
+            GTEST_SKIP() << unavailable_reason;
+        }
+
 #  ifdef CANOPY_USE_TELEMETRY
         auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
         rpc::telemetry::start_telemetry_test(
@@ -79,6 +109,12 @@ public:
             = SYNC_WAIT((root_service_->connect_to_zone<yyy::i_host, yyy::i_example>("main child", transport, host_ptr)));
 
         i_example_ptr_ = std::move(result.output_interface);
+#  ifdef CANOPY_TEST_SGX_HARDWARE_RUNTIME
+        if (result.error_code != rpc::error::OK())
+        {
+            GTEST_SKIP() << "SGX hardware enclave could not be created from " << enclave_path;
+        }
+#  endif
         RPC_ASSERT(result.error_code == rpc::error::OK());
     }
 

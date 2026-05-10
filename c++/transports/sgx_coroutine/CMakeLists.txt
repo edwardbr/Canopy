@@ -8,7 +8,9 @@ cmake_minimum_required(VERSION 3.24)
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   add_library(transport_sgx_coroutine host/src/transport.cpp)
 
-  target_compile_definitions(transport_sgx_coroutine PRIVATE ${CANOPY_DEFINES} CANOPY_BUILD_ENCLAVE)
+  target_compile_definitions(
+    transport_sgx_coroutine PRIVATE ${CANOPY_DEFINES} CANOPY_BUILD_ENCLAVE
+                                    CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG=${CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG})
   target_link_libraries(
     transport_sgx_coroutine
     PUBLIC transport_sgx_coroutine_host_headers

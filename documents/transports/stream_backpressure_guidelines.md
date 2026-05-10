@@ -261,7 +261,7 @@ Apply these rules first to:
 
 - `streaming::spsc_queue::stream`
 - `streaming::tcp::stream`
-- `streaming::io_uring::stream`
+- `streaming::io_uring_new::stream`
 - `streaming::tls::stream`
 - `streaming::websocket::stream`
 - benchmark-local stream wrappers used to exercise those transports
@@ -272,7 +272,7 @@ relevant benchmark or test target rather than relying on this document alone.
 ## Annex: 2026 io_uring Fullstack Investigation
 
 This annex records a concrete debugging session that affected
-`streaming::io_uring::stream`, `rpc::stream_transport::transport`, and the
+the io_uring stream path, `rpc::stream_transport::transport`, and the
 io_uring fullstack benchmark wiring. It is explanatory history, not a source of
 truth. Check the current code before assuming every detail here still applies.
 Current io_uring optimisation notes live in
@@ -294,9 +294,9 @@ several different ways:
 Those symptoms were related, but they did not all have the same immediate
 cause.
 
-### Root Cause 1: io_uring Timed Receive Completion
+### Root Cause 1: Timed Receive Completion
 
-The first real bug was in `streaming::io_uring::stream`.
+The first real bug was in the timed receive path.
 
 The timed receive path used a linked timeout SQE. A timeout CQE could complete
 the waiting receive coroutine before the actual recv CQE or its cancel CQE had

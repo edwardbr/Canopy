@@ -10,7 +10,9 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
   add_subdirectory(edl)
 
   add_library(transport_sgx src/transport.cpp)
-  target_compile_definitions(transport_sgx PRIVATE ${CANOPY_DEFINES} CANOPY_BUILD_ENCLAVE)
+  target_compile_definitions(
+    transport_sgx PRIVATE ${CANOPY_DEFINES} CANOPY_BUILD_ENCLAVE
+                          CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG=${CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG})
   target_include_directories(
     transport_sgx
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"

@@ -55,7 +55,6 @@
 #  include <transport/tests/streaming_new_iouring/setup.h>
 #  include <transport/tests/streaming_tcp/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
-#  include <transport/tests/streaming_iouring/setup.h>
 #endif
 #include "crash_handler.h"
 #include "type_test_fixture.h"
@@ -121,11 +120,6 @@ using remote_implementations = ::testing::Types<
     streaming_new_iouring_setup<true, false, true>,
     streaming_new_iouring_setup<true, true, false>,
     streaming_new_iouring_setup<true, true, true>
-// ,
-// streaming_iouring_setup<true, false, false>,
-// streaming_iouring_setup<true, false, true>,
-// streaming_iouring_setup<true, true, false>,
-// streaming_iouring_setup<true, true, true>
 #endif
 
 #if defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)

@@ -19,6 +19,10 @@
 #include <tuple>
 #include <utility>
 
+#ifndef CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG
+#  define CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG SGX_DEBUG_FLAG
+#endif
+
 namespace rpc::sgx::coro::host
 {
     namespace
@@ -359,7 +363,8 @@ namespace rpc::sgx::coro::host
         {
             sgx_launch_token_t token = {0};
             int updated = 0;
-            auto status = sgx_create_enclave(enclave_path_.c_str(), SGX_DEBUG_FLAG, &token, &updated, &eid, nullptr);
+            auto status = sgx_create_enclave(
+                enclave_path_.c_str(), CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG, &token, &updated, &eid, nullptr);
             if (status != SGX_SUCCESS)
             {
                 RPC_ERROR("sgx_create_enclave returned {}", static_cast<int>(status));

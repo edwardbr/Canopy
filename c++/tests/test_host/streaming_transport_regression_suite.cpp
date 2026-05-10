@@ -14,7 +14,6 @@
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <transport/tests/streaming_tcp/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
-#  include <transport/tests/streaming_iouring/setup.h>
 #endif
 
 #include "type_test_fixture.h"
@@ -24,15 +23,10 @@ using namespace marshalled_tests;
 template<class T> using streaming_transport_regression_test = type_test<T>;
 
 #ifdef CANOPY_BUILD_COROUTINE
-// Keep this suite on the in-process SPSC streaming path for now. TCP and io_uring
-// need separate host-level coverage once their heavier setup/teardown characteristics
-// are accounted for in the test harness.
-using streaming_transport_regression_implementations = ::testing::Types<
-    streaming_tcp_setup<false, false, false>,
-    streaming_spsc_setup<false, false, false>
-    // ,
-    // streaming_iouring_setup<false, false, false>
-    >;
+// Keep this suite on the stable TCP and SPSC streaming paths. The current
+// io_uring stream has dedicated typed transport and composition coverage.
+using streaming_transport_regression_implementations
+    = ::testing::Types<streaming_tcp_setup<false, false, false>, streaming_spsc_setup<false, false, false>>;
 
 TYPED_TEST_SUITE(
     streaming_transport_regression_test,

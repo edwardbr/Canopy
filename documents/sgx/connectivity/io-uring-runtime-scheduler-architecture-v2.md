@@ -55,7 +55,7 @@ rpc::coro::scheduler
 
 This is intentionally direct construction rather than a factory stack. It is
 the first host-only reuse of the common controller path and is the replacement
-direction for the older `streaming/io_uring` benchmark and test wiring.
+direction for the benchmark and transport test wiring.
 
 Terminology note: this document uses `controller` for the common operation
 controller only. Objects that own or adapt kernel/enclave resources should be
@@ -666,32 +666,23 @@ The exact file names can change, but the responsibility split should not:
 - controller owns operations
 - handle owns or adapts ring resources
 
-## Legacy io_uring Stream Review
+## Current Host io_uring Stream Notes
 
-The existing `c++/streaming/io_uring` and `c++/streaming/io_uring_tcp`
-implementations are expected to become superfluous once the shared
-controller/handle path supports host-only streams. Before deletion, preserve
-only the behaviour that is still useful:
+The host stream adapter is now expected to use the shared controller/handle
+path. Keep the public stream layer small and focused:
 
 - `streaming/io_uring_new` is already the best-shaped stream adapter. It wraps
   `rpc::io_uring::direct_descriptor` and composes with TLS, websocket, and
   stream transports without knowing whether the descriptor is host or enclave
   backed.
-- The old `streaming/io_uring` liburing stream has useful timeout association
-  behaviour: linked receive timeouts tag timeout completions separately and
-  translate timeout-vs-close carefully.
-- The old `streaming/io_uring_tcp` raw-syscall stream has useful low-level
-  examples for eventfd registration, linked timeout SQEs, async cancel, and
-  shutdown pumping when not relying purely on SQPOLL.
-- The legacy acceptors contain ordinary nonblocking socket setup
-  (`SO_REUSEADDR`, `FD_CLOEXEC`, `O_NONBLOCK`) that should be kept somewhere in
-  the host TCP construction path if an equivalent helper does not already cover
-  it.
+- TCP setup details such as `SO_REUSEADDR`, `FD_CLOEXEC`, and `O_NONBLOCK`
+  should live in focused host TCP construction helpers.
+- Timeout, cancel, completion wakeup, and shutdown pumping should be tested as
+  controller/handle behaviour instead of being hidden inside stream classes.
 
-Do not copy the old stream implementations into the new handle layer. They mix
-stream lifetime, ring ownership, operation tables, eventfd pumping, socket
-ownership, and scheduler interaction in one class. The reusable pieces should
-be moved as focused behaviour or tests:
+Do not put stream lifetime, ring ownership, operation tables, socket ownership,
+and scheduler interaction into one class. Keep reusable behaviour in focused
+components or tests:
 
 - a host timeout/cancel regression test for receive completion racing a linked
   timeout
@@ -727,12 +718,9 @@ be moved as focused behaviour or tests:
    compile-time `rpc::coro::scheduler` type.
 9. Add host non-enclave construction using the same controller over
    `linux_io_uring_handle`.
-10. Review the existing `c++/streaming/io_uring` and
-    `c++/streaming/io_uring_tcp` implementations for salvageable behavior,
-    tests, or API ideas before deleting them.
-11. Only after the ownership model is clear, integrate io_uring streams into
+10. Only after the ownership model is clear, integrate io_uring streams into
     production transport paths.
-12. Once the host/enclave common controller is working, split the non-SGX
+11. Once the host/enclave common controller is working, split the non-SGX
     io_uring implementation into a branch suitable for merging to `main`, then
     rebase the SGX branch on that shared foundation.
 

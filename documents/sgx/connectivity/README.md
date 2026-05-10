@@ -166,16 +166,10 @@ normal `rpc::stream_transport::transport` over `streaming::spsc_queue::stream`.
 This is good layering for RPC semantics, but the queues are host-controlled and
 the host remains the transport relay.
 
-The current io_uring code is split:
-
-- `c++/streaming/io_uring` is header-only and contains a stream plus a simple
-  acceptor. It is named generically but still assumes socket-style send/recv.
-- `c++/streaming/io_uring_tcp` contains a separate TCP stream and acceptor with
-  its own ring management.
-
-Both are too TCP-shaped for enclave connectivity. They should be refactored
-toward a reusable io_uring engine that can back TCP streams, accepted streams,
-connected streams, and later file streams.
+The current io_uring stream path should remain a thin adapter over the shared
+controller and direct descriptor APIs. TCP details belong in focused connection
+helpers so the same controller can later back accepted streams, connected
+streams, file streams, and enclave-provided descriptors.
 
 ## Non-Negotiable SGX Constraints
 
@@ -439,35 +433,35 @@ stream ids.
 The stream layer should be refactored into a reusable io_uring core:
 
 ```text
-streaming::io_uring::ring
-  owns or borrows ring mappings, operation ids, CQ polling, cancellation
+rpc::io_uring::controller
+  owns operation submission and completion handling
 
-streaming::io_uring::descriptor
-  represents a kernel fd or direct descriptor produced by accept/connect/open
+rpc::io_uring::direct_descriptor
+  represents a descriptor produced by accept/connect/open
 
-streaming::io_uring::descriptor_stream
+streaming::io_uring_new::stream
   implements streaming::stream using recv/send or read/write on a descriptor
 
-streaming::io_uring::acceptor
-  submits accept/multishot accept and returns descriptor_stream
+streaming::io_uring_new::acceptor
+  submits accept/multishot accept and returns a stream
 
-streaming::io_uring::connector
-  submits socket/connect and returns descriptor_stream
+streaming::io_uring_new::connector
+  submits socket/connect and returns a stream
 
-streaming::io_uring::file
+future file adapter
   later: submits open/read/write/close or returns random-access file operations
 ```
 
 TCP-specific code should become thin policy and address conversion:
 
 ```text
-streaming::io_uring_tcp::acceptor
+host TCP acceptor
   -> builds sockaddr policy
-  -> uses streaming::io_uring::acceptor
+  -> uses the shared io_uring accept path
 
-streaming::io_uring_tcp::connector
+host TCP connector
   -> builds socket/connect SQEs
-  -> returns streaming::io_uring::descriptor_stream
+  -> returns streaming::io_uring_new::stream
 ```
 
 That avoids having `io_uring` exclusively bound to TCP while still letting TCP
