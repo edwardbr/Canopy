@@ -4,7 +4,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-set(STREAMING_IO_URING_NEW_SOURCES src/stream.cpp)
+set(STREAMING_IO_URING_NEW_SOURCES src/acceptor.cpp src/connector.cpp src/stream.cpp)
 
 add_library(streaming_io_uring_new STATIC ${STREAMING_IO_URING_NEW_SOURCES})
 target_include_directories(
@@ -21,6 +21,10 @@ target_link_libraries(
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_io_uring_new PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()
+
+if(TARGET transport_streaming_test)
+  target_link_libraries(transport_streaming_test INTERFACE streaming_io_uring_new)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE)

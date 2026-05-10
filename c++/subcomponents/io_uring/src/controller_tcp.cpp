@@ -10,6 +10,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <new>
 #include <utility>
 
 namespace rpc::io_uring
@@ -19,6 +20,9 @@ namespace rpc::io_uring
         static constexpr int32_t socket_family_inet = 2;
         static constexpr uint64_t socket_type_stream = 1;
         static constexpr uint32_t socket_protocol_tcp = 6;
+        static constexpr uint32_t socket_level_tcp = socket_protocol_tcp;
+        static constexpr uint32_t socket_option_tcp_no_delay = 1;
+        static constexpr uint32_t socket_message_dontwait = 0x40;
         static constexpr size_t ipv4_sockaddr_size = 16;
         static constexpr int32_t native_operation_cancelled = ECANCELED;
 #if defined(ETIME)
@@ -44,6 +48,19 @@ namespace rpc::io_uring
             const auto native_error = -native_result;
             return native_error == native_operation_cancelled || native_error == native_timer_expired;
         }
+
+#ifndef FOR_SGX
+        uint64_t user_pointer_value(const void* ptr) noexcept
+        {
+            return static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(ptr));
+        }
+
+        uint32_t clamped_transfer_size(size_t size) noexcept
+        {
+            const auto max_transfer_size = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+            return static_cast<uint32_t>(size > max_transfer_size ? max_transfer_size : size);
+        }
+#endif
     } // namespace
 
     // Creates an IPv4 TCP socket directly into the io_uring fixed-file table.
@@ -135,6 +152,42 @@ namespace rpc::io_uring
             &operation_context);
     }
 
+    // Disables Nagle for a direct TCP descriptor. The descriptor is a fixed-file
+    // table index, so ordinary setsockopt() cannot see it; use the kernel socket
+    // URING_CMD operation and keep the option value in host-visible memory.
+    CORO_TASK(operation_result) controller::set_tcp_no_delay(uint32_t descriptor)
+    {
+        auto option_buffer_result = CO_AWAIT allocate_host_buffer(sizeof(int));
+        if (option_buffer_result.error_code != rpc::error::OK())
+        {
+            CO_RETURN operation_result{option_buffer_result.error_code, 0, 0};
+        }
+
+        const int option_value = 1;
+        std::memcpy(option_buffer_result.buffer->data(), &option_value, sizeof(option_value));
+
+        struct context
+        {
+            uint32_t descriptor;
+            std::shared_ptr<host_buffer> option_buffer;
+        } operation_context{descriptor, std::move(option_buffer_result.buffer)};
+
+        CO_RETURN CO_AWAIT submit_operation(
+            [](detail::sqe_64& sqe, void* data)
+            {
+                auto& operation_context = *static_cast<context*>(data);
+                sqe.opcode = detail::io_uring_op_uring_cmd;
+                sqe.flags = detail::io_uring_sqe_fixed_file;
+                sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                sqe.command.cmd_op = detail::socket_uring_op_setsockopt;
+                sqe.socket_option.level = socket_level_tcp;
+                sqe.socket_option.optname = socket_option_tcp_no_delay;
+                sqe.optlen = sizeof(int);
+                sqe.optval = operation_context.option_buffer->address();
+            },
+            &operation_context);
+    }
+
     // Accepts one inbound connection from a listening direct descriptor and asks
     // the kernel to allocate the accepted socket into the same fixed-file table.
     CORO_TASK(descriptor_result) controller::accept(uint32_t listen_descriptor)
@@ -164,6 +217,16 @@ namespace rpc::io_uring
         if (result.error_code != rpc::error::OK())
         {
             CO_RETURN descriptor_result{result.error_code, 0, result.native_result, result.cqe_flags};
+        }
+
+        auto no_delay_result = CO_AWAIT set_tcp_no_delay(static_cast<uint32_t>(result.native_result));
+        if (no_delay_result.error_code != rpc::error::OK())
+        {
+            RPC_WARNING(
+                "direct io_uring TCP_NODELAY failed for accepted descriptor={} error_code={} native_result={}",
+                result.native_result,
+                no_delay_result.error_code,
+                no_delay_result.native_result);
         }
 
         CO_RETURN descriptor_result{
@@ -213,21 +276,74 @@ namespace rpc::io_uring
                 connect_result.error_code, 0, connect_result.native_result, connect_result.cqe_flags};
         }
 
+        auto no_delay_result = CO_AWAIT set_tcp_no_delay(socket_result.descriptor);
+        if (no_delay_result.error_code != rpc::error::OK())
+        {
+            RPC_WARNING(
+                "direct io_uring TCP_NODELAY failed for connected descriptor={} error_code={} native_result={}",
+                socket_result.descriptor,
+                no_delay_result.error_code,
+                no_delay_result.native_result);
+        }
+
         CO_RETURN descriptor_result{
             rpc::error::OK(), socket_result.descriptor, connect_result.native_result, connect_result.cqe_flags};
     }
 
-    // Copies bytes from enclave memory into a host-registered buffer, then
-    // submits IORING_OP_SEND against a direct TCP descriptor.
+    // Sends bytes from the caller's span. Host-only controllers can submit the
+    // caller pointer directly. Enclave controllers must stage through the host
+    // buffer pool because enclave-private memory is not kernel-visible.
     CORO_TASK(transfer_result)
     controller::send(
         uint32_t descriptor,
         rpc::byte_span buffer)
     {
+        CO_RETURN CO_AWAIT send_with_flags(descriptor, buffer, options_.send_message_flags);
+    }
+
+    CORO_TASK(transfer_result)
+    controller::send_with_flags(
+        uint32_t descriptor,
+        rpc::byte_span buffer,
+        uint32_t msg_flags)
+    {
         if (buffer.empty())
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
         }
+
+#ifndef FOR_SGX
+        if (options_.use_caller_buffers_for_transfers)
+        {
+            const auto transfer_size = clamped_transfer_size(buffer.size());
+            auto transfer_buffer = buffer.subspan(0, transfer_size);
+
+            struct context
+            {
+                uint32_t descriptor;
+                rpc::byte_span buffer;
+                uint32_t msg_flags;
+            } operation_context{descriptor, transfer_buffer, msg_flags};
+
+            auto result = CO_AWAIT submit_operation(
+                [](detail::sqe_64& sqe, void* data)
+                {
+                    auto& operation_context = *static_cast<context*>(data);
+                    sqe.opcode = detail::io_uring_op_send;
+                    sqe.flags = detail::io_uring_sqe_fixed_file;
+                    sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                    sqe.addr = user_pointer_value(operation_context.buffer.data());
+                    sqe.len = static_cast<uint32_t>(operation_context.buffer.size());
+                    sqe.msg_flags = operation_context.msg_flags;
+                },
+                &operation_context);
+
+            CO_RETURN transfer_result{result.error_code,
+                result.native_result > 0 ? static_cast<uint32_t>(result.native_result) : 0U,
+                result.native_result,
+                result.cqe_flags};
+        }
+#endif
 
         auto buffer_result = CO_AWAIT allocate_host_buffer(buffer.size());
         if (buffer_result.error_code != rpc::error::OK())
@@ -239,7 +355,8 @@ namespace rpc::io_uring
         {
             uint32_t descriptor;
             std::shared_ptr<host_buffer> buffer;
-        } operation_context{descriptor, std::move(buffer_result.buffer)};
+            uint32_t msg_flags;
+        } operation_context{descriptor, std::move(buffer_result.buffer), msg_flags};
 
         std::memcpy(operation_context.buffer->data(), buffer.data(), operation_context.buffer->size());
         auto result = CO_AWAIT submit_operation(
@@ -251,7 +368,7 @@ namespace rpc::io_uring
                 sqe.fd = static_cast<int32_t>(operation_context.descriptor);
                 sqe.addr = operation_context.buffer->address();
                 sqe.len = static_cast<uint32_t>(operation_context.buffer->size());
-                sqe.msg_flags = 0;
+                sqe.msg_flags = operation_context.msg_flags;
             },
             &operation_context);
 
@@ -261,17 +378,68 @@ namespace rpc::io_uring
             result.cqe_flags};
     }
 
-    // Submits IORING_OP_RECV into a host-registered buffer, then copies the
-    // completed bytes back into the caller's enclave buffer.
+    // Receives bytes into the caller's span. Host-only controllers can submit
+    // the caller pointer directly. Enclave controllers receive into a host
+    // buffer first, then copy the completed bytes back into enclave memory.
     CORO_TASK(transfer_result)
     controller::receive(
         uint32_t descriptor,
         rpc::mutable_byte_span buffer)
     {
+        CO_RETURN CO_AWAIT receive_with_flags(descriptor, buffer, options_.receive_message_flags);
+    }
+
+    CORO_TASK(transfer_result)
+    controller::receive_nonblocking(
+        uint32_t descriptor,
+        rpc::mutable_byte_span buffer)
+    {
+        CO_RETURN CO_AWAIT receive_with_flags(descriptor, buffer, options_.receive_message_flags | socket_message_dontwait);
+    }
+
+    CORO_TASK(transfer_result)
+    controller::receive_with_flags(
+        uint32_t descriptor,
+        rpc::mutable_byte_span buffer,
+        uint32_t msg_flags)
+    {
         if (buffer.empty())
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
         }
+
+#ifndef FOR_SGX
+        if (options_.use_caller_buffers_for_transfers)
+        {
+            const auto transfer_size = clamped_transfer_size(buffer.size());
+            auto transfer_buffer = buffer.subspan(0, transfer_size);
+
+            struct context
+            {
+                uint32_t descriptor;
+                rpc::mutable_byte_span buffer;
+                uint32_t msg_flags;
+            } operation_context{descriptor, transfer_buffer, msg_flags};
+
+            auto result = CO_AWAIT submit_operation(
+                [](detail::sqe_64& sqe, void* data)
+                {
+                    auto& operation_context = *static_cast<context*>(data);
+                    sqe.opcode = detail::io_uring_op_recv;
+                    sqe.flags = detail::io_uring_sqe_fixed_file;
+                    sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                    sqe.addr = user_pointer_value(operation_context.buffer.data());
+                    sqe.len = static_cast<uint32_t>(operation_context.buffer.size());
+                    sqe.msg_flags = operation_context.msg_flags;
+                },
+                &operation_context);
+
+            CO_RETURN transfer_result{result.error_code,
+                result.native_result > 0 ? static_cast<uint32_t>(result.native_result) : 0U,
+                result.native_result,
+                result.cqe_flags};
+        }
+#endif
 
         auto buffer_result = CO_AWAIT allocate_host_buffer(buffer.size());
         if (buffer_result.error_code != rpc::error::OK())
@@ -283,7 +451,8 @@ namespace rpc::io_uring
         {
             uint32_t descriptor;
             std::shared_ptr<host_buffer> buffer;
-        } operation_context{descriptor, std::move(buffer_result.buffer)};
+            uint32_t msg_flags;
+        } operation_context{descriptor, std::move(buffer_result.buffer), msg_flags};
 
         auto result = CO_AWAIT submit_operation(
             [](detail::sqe_64& sqe, void* data)
@@ -294,7 +463,7 @@ namespace rpc::io_uring
                 sqe.fd = static_cast<int32_t>(operation_context.descriptor);
                 sqe.addr = operation_context.buffer->address();
                 sqe.len = static_cast<uint32_t>(operation_context.buffer->size());
-                sqe.msg_flags = 0;
+                sqe.msg_flags = operation_context.msg_flags;
             },
             &operation_context);
 
@@ -308,7 +477,8 @@ namespace rpc::io_uring
         CO_RETURN transfer_result{result.error_code, bytes_transferred, result.native_result, result.cqe_flags};
     }
 
-    // Receives into a host-registered buffer with a kernel-enforced timeout.
+    // Receives with a kernel-enforced timeout. Enclave controllers stage both
+    // the receive target and timeout structure through host buffers.
     // The RECV SQE is linked to IORING_OP_LINK_TIMEOUT so the kernel cancels
     // the receive if no bytes arrive before the deadline. The timeout structure
     // also lives in a host buffer because the kernel cannot read enclave stack
@@ -328,6 +498,59 @@ namespace rpc::io_uring
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
         }
+
+#ifndef FOR_SGX
+        if (options_.use_caller_buffers_for_transfers)
+        {
+            const auto transfer_size = clamped_transfer_size(buffer.size());
+            auto transfer_buffer = buffer.subspan(0, transfer_size);
+            std::shared_ptr<detail::kernel_timespec> timeout_spec;
+            try
+            {
+                timeout_spec = std::make_shared<detail::kernel_timespec>(make_kernel_timespec(timeout));
+            }
+            catch (const std::bad_alloc&)
+            {
+                RPC_ERROR("bad_alloc while creating direct io_uring receive timeout");
+                std::terminate();
+            }
+
+            struct context
+            {
+                uint32_t descriptor;
+                rpc::mutable_byte_span buffer;
+                std::shared_ptr<detail::kernel_timespec> timeout_spec;
+            } operation_context{descriptor, transfer_buffer, timeout_spec};
+
+            auto result = CO_AWAIT submit_linked_operation(
+                [](detail::sqe_64& recv_sqe, detail::sqe_64& timeout_sqe, void* data)
+                {
+                    auto& operation_context = *static_cast<context*>(data);
+                    recv_sqe.opcode = detail::io_uring_op_recv;
+                    recv_sqe.flags = detail::io_uring_sqe_fixed_file | detail::io_uring_sqe_io_link;
+                    recv_sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                    recv_sqe.addr = user_pointer_value(operation_context.buffer.data());
+                    recv_sqe.len = static_cast<uint32_t>(operation_context.buffer.size());
+                    recv_sqe.msg_flags = 0;
+
+                    timeout_sqe.opcode = detail::io_uring_op_link_timeout;
+                    timeout_sqe.addr = user_pointer_value(operation_context.timeout_spec.get());
+                    timeout_sqe.len = 1;
+                },
+                &operation_context,
+                timeout_spec);
+
+            if (result.error_code != rpc::error::OK() && is_linked_timeout_result(result.native_result))
+            {
+                CO_RETURN transfer_result{rpc::error::CALL_TIMEOUT(), 0, result.native_result, result.cqe_flags};
+            }
+
+            CO_RETURN transfer_result{result.error_code,
+                result.native_result > 0 ? static_cast<uint32_t>(result.native_result) : 0U,
+                result.native_result,
+                result.cqe_flags};
+        }
+#endif
 
         auto buffer_pair_result = CO_AWAIT allocate_host_buffer_pair(buffer.size(), sizeof(detail::kernel_timespec));
         if (buffer_pair_result.error_code != rpc::error::OK())

@@ -21,7 +21,8 @@ The active SGX io_uring direction is documented in
 `io-uring-runtime-scheduler-architecture-v2.md`. The original controller plan
 is preserved in `io-uring-controller-plan.md` as deprecated V1 context. The
 next-stage operation engine and file/blob resource plan is documented in
-`io-uring-operation-engine-plan.md`.
+`io-uring-operation-engine-plan.md`. Performance hypotheses and TCP-specific
+follow-up items are collected in `optimisation.md`.
 
 In short, the V2 direction separates runtime ownership from io_uring ownership.
 The host transport has a one-to-one relationship with an enclave runtime owner.

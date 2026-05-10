@@ -5,6 +5,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <io_uring/controller.h>
 #include <memory>
@@ -25,6 +26,10 @@ namespace rpc::sgx::coro::enclave
 
     void register_acceptor_factory(acceptor_factory factory);
     void mark_runtime_connection_established();
+    uint64_t runtime_ticks_per_millisecond() noexcept;
+    uint64_t read_runtime_tick_counter() noexcept;
+    uint64_t runtime_ticks_to_microseconds(uint64_t ticks) noexcept;
+    uint64_t runtime_ticks_to_nanoseconds(uint64_t ticks) noexcept;
 
     struct runtime_io_uring_controller_result
     {
@@ -52,7 +57,7 @@ namespace rpc::sgx::coro::enclave
     {
         (void)name;
         rpc::remote_object_result result{rpc::error::OK(), {}};
-        if (input_descr.inbound_interface_id != rpc::io_uring::i_io_uring_control::get_id(rpc::get_version()))
+        if (input_descr.inbound_interface_id != rpc::sgx::coro::protocol::i_io_uring_control::get_id(rpc::get_version()))
         {
             RPC_ERROR("create_child_enclave_zone inbound interface id does not match i_io_uring_control");
             result.error_code = rpc::error::INVALID_INTERFACE_ID();
@@ -135,7 +140,8 @@ namespace rpc::sgx::coro::enclave
             CO_RETURN result;
         }
 
-        auto control_query = CO_AWAIT object_proxy->template query_interface<rpc::io_uring::i_io_uring_control>(false);
+        auto control_query
+            = CO_AWAIT object_proxy->template query_interface<rpc::sgx::coro::protocol::i_io_uring_control>(false);
         if (control_query.error_code != rpc::error::OK())
         {
             result.error_code = control_query.error_code;

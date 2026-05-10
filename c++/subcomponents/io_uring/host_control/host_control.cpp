@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <liburing.h>
 #include <linux/io_uring.h>
@@ -94,7 +95,7 @@ namespace rpc::io_uring
         std::shared_ptr<coro::scheduler> scheduler,
         std::shared_ptr<state> state) noexcept
         : options_(controller_options)
-        , scheduler_(std::move(scheduler))
+        , scheduler_(scheduler)
         , state_(std::move(state))
     {
     }
@@ -125,11 +126,8 @@ namespace rpc::io_uring
         }
         catch (const std::bad_alloc&)
         {
-            return rpc::error::OUT_OF_MEMORY();
-        }
-        catch (...)
-        {
-            return rpc::error::EXCEPTION();
+            RPC_ERROR("bad_alloc while creating io_uring host controller state");
+            std::terminate();
         }
 
         io_uring_params params{};
@@ -171,13 +169,8 @@ namespace rpc::io_uring
             }
             catch (const std::bad_alloc&)
             {
-                close_state_now(new_state);
-                return rpc::error::OUT_OF_MEMORY();
-            }
-            catch (...)
-            {
-                close_state_now(new_state);
-                return rpc::error::EXCEPTION();
+                RPC_ERROR("bad_alloc while preparing io_uring registered buffers");
+                std::terminate();
             }
 
             const auto registration_result = io_uring_register_buffers(
@@ -225,13 +218,8 @@ namespace rpc::io_uring
         }
         catch (const std::bad_alloc&)
         {
-            close_state_now(new_state);
-            return rpc::error::OUT_OF_MEMORY();
-        }
-        catch (...)
-        {
-            close_state_now(new_state);
-            return rpc::error::EXCEPTION();
+            RPC_ERROR("bad_alloc while creating io_uring host controller");
+            std::terminate();
         }
 
         return rpc::error::OK();
@@ -359,8 +347,9 @@ namespace rpc::io_uring
         }
 
         auto scheduled_state = state;
-        if (scheduler_ && options_.cleanup_on_scheduler
-            && scheduler_->spawn_detached(close_state_on_scheduler(std::move(scheduled_state))))
+        auto scheduler = scheduler_.lock();
+        if (scheduler && options_.cleanup_on_scheduler
+            && scheduler->spawn_detached(close_state_on_scheduler(std::move(scheduled_state))))
         {
             return;
         }

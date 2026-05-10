@@ -8,9 +8,9 @@
 #ifdef CANOPY_BUILD_COROUTINE
 
 #  include "benchmark_data_processor.h"
-#  include <streaming/io_uring/acceptor.h>
-#  include <streaming/io_uring/stream.h>
-#  include <streaming/listener.h>
+#  include <io_uring/host_io_uring.h>
+#  include <streaming/io_uring_new/acceptor.h>
+#  include <streaming/io_uring_new/connector.h>
 #  include <transports/streaming/transport.h>
 
 namespace comprehensive::v1
@@ -32,9 +32,44 @@ namespace comprehensive::v1
                     {}));
         }
 
+        rpc::io_uring::linux_io_uring_handle::options benchmark_io_uring_options(uint32_t host_buffer_size)
+        {
+            rpc::io_uring::linux_io_uring_handle::options options;
+            options.queue_depth = 256;
+            options.use_sqpoll = true;
+            options.buffer_count = 256;
+            options.buffer_size = host_buffer_size;
+            options.register_buffers = false;
+            options.fixed_file_count = 128;
+            options.register_fixed_files = true;
+            return options;
+        }
+
+        CORO_TASK(void)
+        wait_for_transport_disconnect(
+            std::shared_ptr<coro::scheduler> scheduler,
+            std::shared_ptr<rpc::stream_transport::transport> transport,
+            benchmark_result& result)
+        {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{5000};
+            while (transport && transport->get_status() < rpc::transport_status::DISCONNECTED)
+            {
+                if (std::chrono::steady_clock::now() >= deadline)
+                {
+                    if (result.error == rpc::error::OK())
+                        result.error = rpc::error::CALL_TIMEOUT();
+                    CO_RETURN;
+                }
+
+                CO_AWAIT scheduler->schedule();
+            }
+        }
+
         CORO_TASK(void)
         io_uring_server_task(
             std::shared_ptr<coro::scheduler> scheduler,
+            std::shared_ptr<rpc::io_uring::controller> controller,
+            rpc::io_uring::wait_strategy measured_wait_strategy,
             rpc::event& server_ready,
             const rpc::event& client_finished,
             rpc::encoding enc,
@@ -45,27 +80,42 @@ namespace comprehensive::v1
             auto shutdown_event = std::make_shared<rpc::event>();
             service->set_shutdown_event(shutdown_event);
 
-            canopy::network_config::ip_address addr{};
-            addr[0] = 127;
-            addr[1] = 0;
-            addr[2] = 0;
-            addr[3] = 1;
-            auto io_uring_listener = std::make_shared<streaming::listener>(
-                "io_uring_server_transport",
-                std::make_shared<streaming::io_uring::acceptor>(addr, port),
-                rpc::stream_transport::make_connection_callback<i_data_processor, i_data_processor>(
-                    [](const rpc::shared_ptr<i_data_processor>&,
-                        const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
-                    {
-                        auto local_service = make_benchmark_data_processor();
-                        CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local_service)};
-                    }));
-            auto started = CO_AWAIT io_uring_listener->start_listening_async(service);
+            auto acceptor = std::make_shared<streaming::io_uring_new::acceptor>(controller);
+            auto listen_result = CO_AWAIT acceptor->listen_loopback(port);
+            if (listen_result != rpc::error::OK())
+            {
+                server_ready.set();
+                service.reset();
+                CO_AWAIT shutdown_event->wait();
+                CO_RETURN;
+            }
+
             server_ready.set();
 
+            auto maybe_stream = CO_AWAIT acceptor->accept();
+            if (!maybe_stream)
+            {
+                service.reset();
+                CO_AWAIT shutdown_event->wait();
+                CO_RETURN;
+            }
+
+            auto server_transport = CO_AWAIT service->make_acceptor<i_data_processor, i_data_processor>(
+                "io_uring_server_transport",
+                rpc::stream_transport::transport_factory(std::move(*maybe_stream)),
+                [](const rpc::shared_ptr<i_data_processor>&,
+                    const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
+                {
+                    auto local_service = make_benchmark_data_processor();
+                    CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local_service)};
+                });
+
+            CO_AWAIT server_transport->accept();
+            controller->set_wait_strategy(measured_wait_strategy);
             CO_AWAIT client_finished.wait();
-            CO_AWAIT io_uring_listener->stop_listening();
-            io_uring_listener.reset();
+            server_transport.reset();
+            acceptor->stop();
+            acceptor.reset();
             service.reset();
             CO_AWAIT shutdown_event->wait();
         }
@@ -73,6 +123,8 @@ namespace comprehensive::v1
         CORO_TASK(void)
         io_uring_client_task(
             std::shared_ptr<coro::scheduler> scheduler,
+            std::shared_ptr<rpc::io_uring::controller> controller,
+            rpc::io_uring::wait_strategy measured_wait_strategy,
             const rpc::event& server_ready,
             rpc::event& client_finished,
             rpc::encoding enc,
@@ -87,18 +139,17 @@ namespace comprehensive::v1
             auto shutdown_event = std::make_shared<rpc::event>();
             client_service->set_shutdown_event(shutdown_event);
 
-            coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", port});
-            const auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
-            if (connection_status != coro::net::connect_status::connected)
+            auto stream_result = CO_AWAIT streaming::io_uring_new::connect_loopback(controller, port);
+            if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
             {
-                result.error = rpc::error::ZONE_NOT_FOUND();
+                result.error = stream_result.error_code == rpc::error::OK() ? rpc::error::ZONE_NOT_FOUND()
+                                                                            : stream_result.error_code;
                 client_finished.set();
                 CO_RETURN;
             }
 
-            auto stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
-            auto client_transport
-                = rpc::stream_transport::make_client("io_uring_client_transport", client_service, std::move(stm));
+            auto client_transport = rpc::stream_transport::make_client(
+                "io_uring_client_transport", client_service, std::move(stream_result.connection));
 
             rpc::shared_ptr<i_data_processor> remote_processor;
             rpc::shared_ptr<i_data_processor> not_used;
@@ -121,6 +172,7 @@ namespace comprehensive::v1
                 CO_RETURN;
             }
 
+            controller->set_wait_strategy(measured_wait_strategy);
             const auto payload = make_blob(blob_size);
             std::vector<int64_t> durations_ns;
             result.error = CO_AWAIT run_benchmark_calls(remote_processor, payload, durations_ns, io_uring_warmup_calls);
@@ -128,6 +180,7 @@ namespace comprehensive::v1
                 result.stats = compute_stats(durations_ns);
 
             remote_processor.reset();
+            CO_AWAIT wait_for_transport_disconnect(scheduler, client_transport, result);
             client_finished.set();
             client_transport.reset();
             client_service.reset();
@@ -138,7 +191,9 @@ namespace comprehensive::v1
     benchmark_result run_io_uring_benchmark(
         rpc::encoding enc,
         size_t blob_size,
-        uint16_t port)
+        uint16_t port,
+        bool use_proactor,
+        uint32_t host_buffer_size)
     {
         benchmark_result result{};
 
@@ -146,14 +201,45 @@ namespace comprehensive::v1
         auto scheduler_2 = make_benchmark_scheduler();
         auto weak_scheduler_1 = std::weak_ptr<coro::scheduler>(scheduler_1);
         auto weak_scheduler_2 = std::weak_ptr<coro::scheduler>(scheduler_2);
+        std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_owner_1;
+        std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_owner_2;
+        const auto handle_options = benchmark_io_uring_options(host_buffer_size);
+        const auto setup_controller_options = rpc::io_uring::default_host_controller_options();
+        const auto measured_wait_strategy
+            = use_proactor ? rpc::io_uring::wait_strategy::proactor : rpc::io_uring::wait_strategy::cooperative_poll;
+
+        result.error = rpc::io_uring::create_host_io_uring_scheduler(
+            io_uring_owner_1, handle_options, scheduler_1, setup_controller_options);
+        if (result.error != rpc::error::OK())
+            return result;
+
+        result.error = rpc::io_uring::create_host_io_uring_scheduler(
+            io_uring_owner_2, handle_options, scheduler_2, setup_controller_options);
+        if (result.error != rpc::error::OK())
+            return result;
+
+        auto server_controller = io_uring_owner_1->get_controller();
+        auto client_controller = io_uring_owner_2->get_controller();
+        if (!server_controller || !client_controller)
+        {
+            result.error = rpc::error::RESOURCE_CLOSED();
+            return result;
+        }
+
         rpc::event server_ready;
         rpc::event client_finished;
 
         coro::sync_wait(
             coro::when_all(
-                io_uring_server_task(scheduler_1, server_ready, client_finished, enc, port),
-                io_uring_client_task(scheduler_2, server_ready, client_finished, enc, blob_size, port, result)));
+                io_uring_server_task(
+                    scheduler_1, server_controller, measured_wait_strategy, server_ready, client_finished, enc, port),
+                io_uring_client_task(
+                    scheduler_2, client_controller, measured_wait_strategy, server_ready, client_finished, enc, blob_size, port, result)));
 
+        io_uring_owner_1->shutdown();
+        io_uring_owner_2->shutdown();
+        io_uring_owner_1.reset();
+        io_uring_owner_2.reset();
         scheduler_1.reset();
         scheduler_2.reset();
         wait_for_scheduler_cleanup(weak_scheduler_1);

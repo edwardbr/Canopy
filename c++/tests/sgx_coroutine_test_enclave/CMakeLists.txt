@@ -25,6 +25,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
          sgx_coroutine_test_enclave.cpp
          test_uring.cpp
          test_uring_peer2peer.cpp
+         test_uring_stream_benchmark.cpp
          test_uring.h
     HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB}
     TRUSTED_LIBS

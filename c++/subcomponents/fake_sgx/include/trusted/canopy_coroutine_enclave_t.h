@@ -9,6 +9,7 @@
 #include <sgx_error.h>
 
 #include <cstddef>
+#include <cstdint>
 
 extern "C"
 {
@@ -17,6 +18,7 @@ extern "C"
         const char* req,
         void* host_to_enclave_queue,
         void* enclave_to_host_queue,
+        uint64_t ticks_per_millisecond,
         canopy_coroutine_startup_status* startup_status,
         std::size_t resp_cap,
         char* resp,

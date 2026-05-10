@@ -202,7 +202,7 @@ namespace rpc::telemetry
 {
     namespace
     {
-        constexpr const char* kTitlePrefix = "RPC++ Telemetry Animation";
+        constexpr const char* kTitlePrefix = "Canopy Telemetry Animation";
     }
 
     bool animation_telemetry_service::create(

@@ -153,7 +153,7 @@ if(CANOPY_BUILD_COROUTINE)
            streaming_spsc_queue
            streaming_spsc_wrapping
            streaming_tls
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring_new>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>)
   if(CANOPY_BUILD_WEBSOCKET)
     target_compile_definitions(rpc_test PRIVATE CANOPY_BUILD_WEBSOCKET)
@@ -215,7 +215,7 @@ if(CANOPY_BUILD_COROUTINE)
            streaming_spsc_queue
            streaming_spsc_wrapping
            streaming_tls
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring_new>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>
            args::args
            fmt::fmt-header-only

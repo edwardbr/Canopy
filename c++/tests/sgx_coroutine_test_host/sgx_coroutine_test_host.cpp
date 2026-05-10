@@ -188,6 +188,24 @@ TEST_F(
 
 TEST_F(
     sgx_coroutine_test_host_fixture,
+    stream_benchmark_smoke_test)
+{
+    io_uring_test::stream_benchmark_stats stats;
+    auto err = SYNC_WAIT(setup_.get_test_uring()->stream_benchmark(false, 8, 2, 1024, stats));
+    ASSERT_EQ(err, rpc::error::OK());
+    ASSERT_TRUE(stats.valid);
+    ASSERT_EQ(stats.blob_size, 1024);
+    ASSERT_GT(stats.avg, 0.0);
+
+    err = SYNC_WAIT(setup_.get_test_uring()->stream_benchmark(true, 8, 2, 1024, stats));
+    ASSERT_EQ(err, rpc::error::OK());
+    ASSERT_TRUE(stats.valid);
+    ASSERT_EQ(stats.blob_size, 1024);
+    ASSERT_GT(stats.avg, 0.0);
+}
+
+TEST_F(
+    sgx_coroutine_test_host_fixture,
     close_during_accept_completes)
 {
     auto err = SYNC_WAIT(setup_.get_test_uring()->close_during_accept_test());

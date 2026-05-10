@@ -19,7 +19,7 @@
  *   coro::net::tcp::server classes are only available with coroutines.
  *
  *   Without coroutines, you would need to implement a synchronous TCP
- *   transport wrapper, which is not provided in the base RPC++ library.
+ *   transport wrapper, which is not provided in the base Canopy library.
  *
  *   Build and run:
  *   1. cmake --preset Debug_Coroutine
@@ -286,7 +286,7 @@ int main(
     int argc,
     char* argv[])
 {
-    RPC_INFO("RPC++ Comprehensive Demo - TCP Transport");
+    RPC_INFO("Canopy Comprehensive Demo - TCP Transport");
     RPC_INFO("========================================");
 
     rpc::zone_address server_zone_addr;

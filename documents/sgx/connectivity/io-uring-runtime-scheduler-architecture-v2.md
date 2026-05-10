@@ -21,6 +21,49 @@ also left too many responsibilities mixed together:
 The V2 direction is to separate these concerns so transport/runtime lifetime and
 io_uring/scheduler lifetime are explicit and reusable.
 
+Implementation note: the first V2 slice has introduced the common
+`rpc::io_uring::io_uring_handle` boundary and a transitional
+`rpc::io_uring::linux_io_uring_handle` wrapper. The existing enclave adapter
+still has compatibility names, but the common controller now depends on the
+handle boundary rather than SGX-shaped virtual controller hooks.
+
+Second slice note: the former enclave-named operation table has been renamed to
+`rpc::io_uring::detail::direct_ring_operation_engine`. It is still in the same
+header for now because the submit functions are templated, but the public
+controller surface no longer talks about an enclave operation engine.
+
+Third slice note: `rpc::io_uring::io_uring_scheduler` now exists as the
+composition fallback. It owns the existing `rpc::coro::scheduler` pointer plus
+the runtime controller, so services still receive the unchanged compile-time
+scheduler type while runtime teardown can shut the controller down before the
+scheduler.
+
+Fourth slice note: the host-only stream path now has a
+`streaming::io_uring_new::acceptor` adapter around the common
+`rpc::io_uring::acceptor`. The typed streaming transport tests, timeout test,
+and benchmark io_uring paths can create the chain explicitly:
+
+```text
+rpc::coro::scheduler
+  -> rpc::io_uring::io_uring_scheduler
+      -> rpc::io_uring::controller
+          -> linux_io_uring_handle
+  -> streaming::io_uring_new::acceptor / connector
+  -> streaming::io_uring_new::stream
+  -> rpc::stream_transport
+```
+
+This is intentionally direct construction rather than a factory stack. It is
+the first host-only reuse of the common controller path and is the replacement
+direction for the older `streaming/io_uring` benchmark and test wiring.
+
+Terminology note: this document uses `controller` for the common operation
+controller only. Objects that own or adapt kernel/enclave resources should be
+called handles or services, not controllers. The current implementation still
+has transitional names such as `host_controller` and
+`enclave_io_uring_controller`; those are expected to move toward
+`linux_io_uring_handle` and `enclave_io_uring_handle`.
+
 ## Goals
 
 - Keep the core RPC protocol and object-id semantics unchanged.
@@ -32,6 +75,9 @@ io_uring/scheduler lifetime are explicit and reusable.
   going through the SGX RPC control path.
 - Keep enclave io_uring access behind a formal handle abstraction rather than
   treating `i_io_uring_control` as the controller's conceptual dependency.
+- Allow host-only implementations to use native Linux/liburing structures behind
+  a thin handle, while keeping those structures out of enclave builds and out of
+  the common controller API.
 - Make shutdown deterministic: controller shutdown before scheduler shutdown,
   worker ECALLs returned before enclave destruction, and no late RPC interfaces
   escaping runtime teardown.
@@ -179,6 +225,54 @@ Current implementation note:
 - `host_transport::on_disconnecting()` releases the retained host reference
   before stream cleanup makes the outbound release path unavailable.
 
+Current naming to migrate:
+
+- `rpc::io_uring::host_controller` owns the real Linux ring and associated host
+  buffers/fixed-file table. It is conceptually a host Linux io_uring handle, not
+  the common operation controller.
+- `rpc::sgx::coro::enclave::enclave_io_uring_controller` currently adapts the
+  common controller to the enclave host transport. It is conceptually an enclave
+  io_uring handle.
+- `rpc::sgx::coro::host::detail::enclave_io_uring_control` is a bootstrap RPC
+  service for enclaves. It should remain enclave-specific and should not become
+  the host non-enclave io_uring API.
+
+### Transfer Buffers And Encryption
+
+The common io_uring controller has two distinct buffer concepts:
+
+- caller buffers: the per-call `rpc::byte_span` or `rpc::mutable_byte_span`
+  passed to `send`, `receive`, or `streaming::io_uring_new::stream`
+- host buffers: fixed-size slots in the io_uring handle's host-visible buffer
+  pool, configured by `buffer_count` and `buffer_size`
+
+`use_caller_buffers_for_transfers` means the controller submits caller buffer
+addresses directly to the kernel in SEND/RECV SQEs. That is a host-only
+optimization. In enclave code, caller buffers are enclave-private memory, so
+the kernel cannot safely read or write them. Enclave controllers must leave
+this option disabled and stage transfers through host buffers.
+
+The API is variable-sized at the stream boundary, but the host staging pool is
+fixed-slot. Large transfers are split into chunks by stream and controller
+limits. Encryption framing must therefore be sized around host buffer slots:
+each ciphertext record needs room for payload bytes plus nonce, tag, and any
+padding or record header.
+
+Host-visible buffers may carry encrypted data. They must not carry enclave
+plaintext or unauthenticated capability material. The intended secure shape is:
+
+- plaintext is serialized and encrypted inside the enclave
+- ciphertext is written to a host buffer slot and submitted to io_uring
+- received ciphertext lands in a host buffer slot
+- the enclave copies, authenticates, and decrypts it into enclave memory
+
+Use authenticated encryption or an equivalent MAC. The host owns the memory and
+can modify, reorder, replay, or truncate ciphertext unless the record format
+detects it.
+
+Performance follow-up items for buffer sizing, staging, and TCP behaviour are
+tracked in `optimisation.md`.
+
 ## Scheduler And io_uring Pairing
 
 The target direction is an `io_uring_scheduler`.
@@ -197,10 +291,11 @@ not practical, `io_uring_scheduler` can own the libcoro scheduler internally,
 but the runtime must make that ownership explicit and still pass the normal
 compile-time scheduler type to `rpc::service`.
 
-Initial shape:
+Implemented first shape:
 
 - `io_uring_scheduler` is lifetime-managed by `std::shared_ptr`
-- internally it may own a `std::unique_ptr` to a libcoro scheduler
+- it owns the active `std::shared_ptr<rpc::coro::scheduler>` without changing
+  the pointer shape passed to `rpc::service`
 - it owns one `rpc::io_uring::controller`
 - the controller owns one `io_uring_handle`
 
@@ -209,12 +304,16 @@ Preferred implementation if practical:
 - `io_uring_scheduler` derives from the existing libcoro scheduler type so it
   can be passed anywhere a scheduler is currently expected.
 
-Fallback implementation:
+Current implementation:
 
-- `io_uring_scheduler` contains a libcoro scheduler and forwards the scheduler
-  surface Canopy currently uses.
-- This may be the safer direction if libcoro continues moving toward
-  `std::unique_ptr` lifetime and non-polymorphic ownership.
+- `io_uring_scheduler` is a small composition owner rather than a scheduler
+  subtype.
+- SGX runtime creation makes the chain explicit: create or reuse the scheduler
+  owner, pass the unchanged scheduler pointer to `enclave_service`, and keep the
+  controller inside the scheduler owner.
+- This keeps `rpc::service` and `service::connect_to_zone` free of io_uring
+  special cases while still giving runtime teardown one obvious owner for the
+  controller-before-scheduler shutdown order.
 
 The important invariant is not inheritance. The important invariant is:
 
@@ -263,16 +362,16 @@ Target classes:
 rpc::io_uring::io_uring_handle
     abstract access to ring metadata, wakeup, and lifecycle hooks
 
-rpc::io_uring::io_uring_handle_impl
+rpc::io_uring::linux_io_uring_handle
     host-only implementation that owns the real Linux io_uring resources
 
 rpc::io_uring::host_io_uring_handle
     host-side adapter used when serving an enclave
-    wraps or references io_uring_handle_impl
+    wraps or references linux_io_uring_handle
     exposes the narrow i_io_uring_control RPC surface
 
 rpc::io_uring::enclave_io_uring_handle
-    enclave-side implementation backed by the i_io_uring_control proxy
+    enclave-side implementation backed by the host_transport narrow call path
     retains the host-side RPC lifetime needed for borrowed ring mappings
 ```
 
@@ -280,7 +379,7 @@ The controller then becomes common:
 
 ```text
 rpc::io_uring::controller
-    owns std::unique_ptr<io_uring_handle> or std::shared_ptr<io_uring_handle>
+    owns or strongly references io_uring_handle
     validates/caches descriptor data
     owns operation ids, operation table, SQ/CQ admission, and stream helpers
 ```
@@ -290,7 +389,7 @@ Host non-enclave users should be able to create:
 ```text
 io_uring_scheduler
   -> controller
-      -> io_uring_handle_impl
+      -> linux_io_uring_handle
 ```
 
 SGX enclave users should create:
@@ -306,12 +405,75 @@ The host serving an enclave should create:
 
 ```text
 host_io_uring_handle
-  -> io_uring_handle_impl
+  -> linux_io_uring_handle
   -> i_io_uring_control adapter
 ```
 
 This makes the RPC interface an implementation detail of the enclave handle,
 not the conceptual controller boundary.
+
+The initial handle API should be narrow:
+
+```text
+get_iouring_data(data&)
+    returns the normalized ring descriptor used by the common direct-ring
+    operation engine
+
+notify_submitted(data, sqe_count)
+    lets the environment wake or enter the ring after new SQEs are published
+
+close()
+    releases environment-specific resources
+```
+
+For SGX, `notify_submitted` serializes the wake request through the host
+transport only when the SQPOLL flags require it. For host-only Linux,
+`notify_submitted` may call `io_uring_enter`, SQPOLL wakeup, or do nothing
+depending on ring setup. The controller should not know which environment it is
+using.
+
+Host-only code may use naked Linux/liburing structures inside
+`linux_io_uring_handle`. That is the right place for `::io_uring`,
+`io_uring_params`, registered buffer vectors, and fixed-file registration. The
+common controller should consume the normalized descriptor and handle API so the
+same operation code can run in host and enclave builds.
+
+The abstraction should stay thin. The host-only handle is allowed to be little
+more than RAII around the Linux ring, registration tables, and the specific
+submission notification policy. What it must not do is expose Linux-only types
+through the common controller, because that would make enclave builds and future
+device-backed handles depend on host kernel details.
+
+## Descriptor And Wire-Type Boundary
+
+Host-only io_uring code should not depend on any SGX EDL/IDL generated type.
+The common controller and host-only scheduler path use native C++ descriptor
+types in `io_uring/types.h`.
+
+Those native descriptor types are still deliberately plain and fixed-width:
+
+- use `uint32_t`, `int32_t`, and `uint64_t` fields
+- represent booleans as `uint32_t` flags
+- represent transferred addresses and byte sizes as `uint64_t`
+- do not use `bool`, `size_t`, pointers, references, STL containers, or
+  platform-dependent integer aliases in the descriptor contract
+
+SGX communication has a separate private IDL wire copy under the coroutine SGX
+protocol namespace. The host and enclave convert between native descriptors and
+wire descriptors with explicit field-by-field copy helpers at the SGX boundary.
+Padding and object layout must never become the marshalling path.
+
+Static assertions should guard the assumptions that matter for this temporary
+shared descriptor shape:
+
+- native descriptor sizes match the generated SGX wire descriptor sizes
+- descriptor alignment is compatible with the expected 64-bit fields
+- `sizeof(size_t)` and `sizeof(std::uintptr_t)` are 64-bit in the supported
+  host/enclave build configuration
+
+These assertions catch accidental field drift and host/enclave ABI assumptions,
+but they are not permission to serialize by `memcpy`. The field copy is the
+wire contract; matching sizes are only a build-time sanity check.
 
 ## Lifetime Rules
 
@@ -330,7 +492,7 @@ not the conceptual controller boundary.
 
 - The controller owns or strongly references its handle.
 - The handle remains valid while controller operations are in flight.
-- `io_uring_handle_impl` owns real host kernel resources.
+- `linux_io_uring_handle` owns real host kernel resources.
 - `enclave_io_uring_handle` owns the proxy-backed lifetime needed to keep the
   host implementation alive while enclave operations may still reference mapped
   ring state.
@@ -439,6 +601,10 @@ Rules:
 - Do not add mutexes, status polling, or weak-pointer probing unless the
   ownership boundary requires them. Prefer a clear owner or a single explicit
   callback when one component must notify another.
+- Do not convert allocator `std::bad_alloc` into local RPC error codes in this
+  code. If allocation fails, log the allocation failure and terminate. Keep
+  exception handlers rare and specific; this code should not throw its own
+  exceptions as normal control flow.
 
 ## File And Class Direction
 
@@ -478,14 +644,14 @@ Suggested io_uring layout:
 c++/subcomponents/io_uring/include/io_uring/
   controller.h
   io_uring_handle.h
-  io_uring_handle_impl.h
+  linux_io_uring_handle.h
   host_io_uring_handle.h
   enclave_io_uring_handle.h
   io_uring_scheduler.h
 
 c++/subcomponents/io_uring/src/
   controller_*.cpp
-  io_uring_handle_impl.cpp
+  linux_io_uring_handle.cpp
   host_io_uring_handle.cpp
   enclave_io_uring_handle.cpp
   io_uring_scheduler.cpp
@@ -500,6 +666,39 @@ The exact file names can change, but the responsibility split should not:
 - controller owns operations
 - handle owns or adapts ring resources
 
+## Legacy io_uring Stream Review
+
+The existing `c++/streaming/io_uring` and `c++/streaming/io_uring_tcp`
+implementations are expected to become superfluous once the shared
+controller/handle path supports host-only streams. Before deletion, preserve
+only the behaviour that is still useful:
+
+- `streaming/io_uring_new` is already the best-shaped stream adapter. It wraps
+  `rpc::io_uring::direct_descriptor` and composes with TLS, websocket, and
+  stream transports without knowing whether the descriptor is host or enclave
+  backed.
+- The old `streaming/io_uring` liburing stream has useful timeout association
+  behaviour: linked receive timeouts tag timeout completions separately and
+  translate timeout-vs-close carefully.
+- The old `streaming/io_uring_tcp` raw-syscall stream has useful low-level
+  examples for eventfd registration, linked timeout SQEs, async cancel, and
+  shutdown pumping when not relying purely on SQPOLL.
+- The legacy acceptors contain ordinary nonblocking socket setup
+  (`SO_REUSEADDR`, `FD_CLOEXEC`, `O_NONBLOCK`) that should be kept somewhere in
+  the host TCP construction path if an equivalent helper does not already cover
+  it.
+
+Do not copy the old stream implementations into the new handle layer. They mix
+stream lifetime, ring ownership, operation tables, eventfd pumping, socket
+ownership, and scheduler interaction in one class. The reusable pieces should
+be moved as focused behaviour or tests:
+
+- a host timeout/cancel regression test for receive completion racing a linked
+  timeout
+- a host stream composition test around `streaming::io_uring_new::stream`
+- host-only `linux_io_uring_handle` support for non-SQPOLL `io_uring_enter` and
+  completion wakeup, if the first host-direct path does not force SQPOLL
+
 ## Migration Plan
 
 1. Mark the V1 SGX io_uring controller plan as deprecated and introduce this
@@ -507,24 +706,94 @@ The exact file names can change, but the responsibility split should not:
 2. Stabilise the SGX shutdown sequence around the current failing teardown in
    both SGX simulation and fake SGX: worker loops must stop before runtime state
    and enclave memory are destroyed.
-3. Extract a single host-side `enclave_runtime_owner` and remove duplicate
-   `enclave_owner` logic.
-4. Split enclave runtime implementation into ECALL routing and runtime-instance
-   lifecycle code.
-5. Introduce `io_uring_handle` and move SGX `i_io_uring_control` usage behind
+3. Introduce `io_uring_handle` and move the common controller to depend on that
+   handle instead of virtual SGX-shaped `inner_*` calls. Keep compatibility
+   names while this slice is proven by tests.
+4. Rename or wrap the current `host_controller` as `linux_io_uring_handle`.
+   This object owns the real Linux ring and may keep using native liburing
+   structures internally.
+5. Replace the current enclave controller subclass with
    `enclave_io_uring_handle`. The current interim implementation already
    removes normal RPC pointer ownership from the controller and places retained
    host-control lifetime in `host_transport`.
-6. Move host kernel ownership into `io_uring_handle_impl`.
-7. Adapt the existing controller to depend on `io_uring_handle`.
-8. Introduce `io_uring_scheduler` as a scheduler/controller owner.
-9. Use `io_uring_scheduler` in SGX runtime creation without changing
+6. Rename or split `detail::enclave_io_operation_engine` into a neutral
+   direct-ring operation engine. The first rename is now in place as
+   `detail::direct_ring_operation_engine`; a later cleanup can move the
+   SGX-specific pointer trust checks into a smaller ring-access or memory-policy
+   header if that makes the code easier to read.
+7. Introduce `io_uring_scheduler` as a scheduler/controller owner.
+8. Use `io_uring_scheduler` in SGX runtime creation without changing
    `service::connect_to_zone`; the service should still receive the active
    compile-time `rpc::coro::scheduler` type.
-10. Add host non-enclave construction using the same controller over
-    `io_uring_handle_impl`.
+9. Add host non-enclave construction using the same controller over
+   `linux_io_uring_handle`.
+10. Review the existing `c++/streaming/io_uring` and
+    `c++/streaming/io_uring_tcp` implementations for salvageable behavior,
+    tests, or API ideas before deleting them.
 11. Only after the ownership model is clear, integrate io_uring streams into
     production transport paths.
+12. Once the host/enclave common controller is working, split the non-SGX
+    io_uring implementation into a branch suitable for merging to `main`, then
+    rebase the SGX branch on that shared foundation.
+
+## Benchmark Coverage
+
+The first SGX benchmark should measure enclave-resident io_uring communication,
+not host-to-enclave RPC latency. The host benchmark process should create an
+enclave service, ask it to run the timed work, and then receive raw timing
+samples. Inside the enclave, the benchmark creates a loopback io_uring stream
+server and client on the enclave scheduler/controller pair and runs ordinary
+RPC calls over that stream.
+
+This gives a direct comparison between host-only `io_uring_*` benchmark rows and
+`sgx_io_uring_*` rows while keeping the timed path focused on the io_uring
+stream/RPC mechanics.
+
+The `sgx_io_uring_pair_*` rows extend this comparison by launching two benchmark
+enclave instances. One enclave owns the server scheduler/controller and the
+other owns the client scheduler/controller. This is closer to the host
+`io_uring_*` topology than the single-enclave loopback rows, while still using
+the enclave io_uring control path.
+
+An enclave-to-enclave benchmark is a separate follow-up. That should exercise
+the existing child-to-parent-to-child link so that two enclave child zones
+communicate through their parent, with the same benchmark report shape used for
+host-only and single-enclave rows.
+
+## Deferred Performance Analysis
+
+The new host-only direct io_uring stream is not inherently slow. The raw stream
+tests exercise many direct round trips quickly. The full RPC benchmark can look
+hung because release builds run 1000 measured calls and the current
+RPC-over-io_uring path is dominated by transport-layer behavior, not by the
+basic direct-ring send/receive path.
+
+Items to analyse later, after the lifetime and architecture work is stable:
+
+- `TCP_NODELAY` equivalent for fixed-file direct sockets. Existing TCP streams
+  disable Nagle on ordinary sockets. The direct-descriptor path now applies
+  `TCP_NODELAY` with the socket `URING_CMD` setsockopt operation after connect
+  or accept. Keep this as a measured regression point because the streaming
+  transport's small prefix write followed by a small payload write is very
+  sensitive to delayed-ACK/Nagle behavior.
+- Small-message send coalescing in the streaming transport. This should be
+  considered later, not implemented as an immediate generic transport change.
+  If used, it should be explicit, easy to read, and limited to small
+  prefix+payload messages so large payloads are not copied unnecessarily.
+- Direct socket option support in the io_uring controller. `TCP_NODELAY` is the
+  first narrow operation. If more options are needed, keep them as explicit
+  controller methods unless there is a real repeated pattern worth abstracting.
+- Completion pump scheduling cost. The proactor pump currently makes progress,
+  but it should be measured for per-operation scheduler churn, especially when
+  the streaming transport runs one send and one receive at a time.
+- Buffer movement. The current common controller copies into host buffers before
+  send and copies out after receive. That is appropriate for enclave safety, but
+  host-only paths may eventually use a thinner handle implementation or
+  registered buffers once the abstraction is stable.
+- Benchmark shape. The debug benchmark intentionally uses very few calls and
+  can be distorted by logging. Release benchmark filters are useful for narrow
+  checks, but host-only io_uring performance should be analysed with raw stream
+  tests, RPC transport tests, and the full benchmark separately.
 
 ## Open Design Points
 
@@ -535,9 +804,12 @@ The exact file names can change, but the responsibility split should not:
 - Whether `controller` should own `std::unique_ptr<io_uring_handle>` or
   `std::shared_ptr<io_uring_handle>`. Unique ownership is clearer, but shared
   ownership may be needed for stream objects that outlive setup code.
-- The exact API boundary on `io_uring_handle`: raw descriptor retrieval and
-  wakeup are known requirements; future device backends may need a more general
-  capability/query surface.
+- Whether host-only `linux_io_uring_handle` should initially force SQPOLL so it
+  can reuse the direct-ring operation path immediately, or support non-SQPOLL
+  `io_uring_enter` from the first host implementation slice.
+- The exact API boundary on `io_uring_handle`: normalized descriptor retrieval
+  and submit notification are known requirements; future device backends may
+  need a more general capability/query surface.
 - Whether the final handle abstraction should keep host-control retained
   reference handling in `host_transport`, move it into
   `enclave_io_uring_handle`, or split it so `host_transport` owns wire

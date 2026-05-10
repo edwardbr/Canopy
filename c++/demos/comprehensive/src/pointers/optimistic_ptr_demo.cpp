@@ -17,7 +17,7 @@
  *
  *   IMPORTANT: optimistic_ptr cannot be used in IDL interfaces for cross-zone
  *   communication because it cannot be serialized. It is only for SAME-ZONE
- *   references where both sides understand RPC++ types.
+ *   references where both sides understand Canopy types.
  *
  *   USE CASE: Same-zone callback pattern
  *   ------------------------------------
@@ -287,7 +287,7 @@ namespace comprehensive
 
 int main()
 {
-    RPC_INFO("RPC++ Comprehensive Demo - Optimistic Pointer");
+    RPC_INFO("Canopy Comprehensive Demo - Optimistic Pointer");
     RPC_INFO("=============================================");
     RPC_INFO("Demonstrates rpc::optimistic_ptr for non-RAII references");
     RPC_INFO("");

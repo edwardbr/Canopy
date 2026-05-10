@@ -19,7 +19,7 @@
  *   Transport variants covered:
  *     tcp          — streaming::tcp::stream over TCP loopback (port 8090)
  *     spsc         — streaming::spsc_queue::stream (in-process)
- *     io_uring     — streaming::io_uring::stream (Linux, port 8091)
+ *     io_uring     — streaming::io_uring_new::stream (Linux, port 8091)
  *     tls          — streaming::secure::stream over TCP+SPSC (port 8092)
  *     websocket    — streaming::websocket::stream over TCP (port 8093)
  *                    requires CANOPY_BUILD_WEBSOCKET
@@ -46,8 +46,10 @@
 #  include <transports/streaming/transport.h>
 
 #  ifdef __linux__
-#    include <streaming/io_uring/acceptor.h>
-#    include <streaming/io_uring/stream.h>
+#    include <io_uring/host_io_uring.h>
+#    include <io_uring/tcp.h>
+#    include <streaming/io_uring_new/acceptor.h>
+#    include <streaming/io_uring_new/stream.h>
 #  endif
 
 #  ifdef CANOPY_BUILD_WEBSOCKET
@@ -640,6 +642,19 @@ public:
 #  ifdef __linux__
 class timeout_iouring_setup : public timeout_setup_base
 {
+    static rpc::io_uring::linux_io_uring_handle::options make_io_uring_options()
+    {
+        rpc::io_uring::linux_io_uring_handle::options options;
+        options.queue_depth = 256;
+        options.use_sqpoll = true;
+        options.buffer_count = 256;
+        options.buffer_size = 4096;
+        options.register_buffers = false;
+        options.fixed_file_count = 128;
+        options.register_fixed_files = true;
+        return options;
+    }
+
 protected:
     CORO_TASK(bool) do_coro_setup() override
     {
@@ -650,13 +665,32 @@ protected:
         peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
         root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
-        canopy::network_config::ip_address addr{};
-        addr[0] = 127;
-        addr[3] = 1;
+        auto ret = rpc::io_uring::create_host_io_uring_scheduler(
+            io_uring_scheduler_owner_, make_io_uring_options(), io_scheduler_);
+        if (ret != rpc::error::OK())
+        {
+            RPC_ERROR("timeout_iouring_setup: failed to create io_uring scheduler: {}", ret);
+            CO_RETURN false;
+        }
+
+        auto controller = io_uring_scheduler_owner_->get_controller();
+        if (!controller)
+        {
+            RPC_ERROR("timeout_iouring_setup: missing io_uring controller");
+            CO_RETURN false;
+        }
+
+        auto acceptor = std::make_shared<streaming::io_uring_new::acceptor>(controller);
+        auto listen_result = CO_AWAIT acceptor->listen_loopback(8091);
+        if (listen_result != rpc::error::OK())
+        {
+            RPC_ERROR("timeout_iouring_setup: listen failed: {}", listen_result);
+            CO_RETURN false;
+        }
 
         listener_ = std::make_unique<streaming::listener>(
             "responder",
-            std::make_shared<streaming::io_uring::acceptor>(addr, 8091),
+            std::move(acceptor),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
                 make_hanging_factory(), timeout_transport_options()));
 
@@ -666,18 +700,17 @@ protected:
             CO_RETURN false;
         }
 
-        auto scheduler = root_service_->get_scheduler();
-        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8091});
-        auto conn_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
-        if (conn_status != coro::net::connect_status::connected)
+        rpc::io_uring::connector connector(controller);
+        auto descriptor_result = CO_AWAIT connector.connect_loopback_with_result(8091);
+        auto stream_result = streaming::io_uring_new::make_stream_result(descriptor_result, 8091);
+        if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
         {
             RPC_ERROR("timeout_iouring_setup: connect failed");
             CO_RETURN false;
         }
 
-        auto io_stm = std::make_shared<streaming::io_uring::stream>(std::move(client), scheduler);
         auto initiator = rpc::stream_transport::make_client(
-            "initiator", root_service_, std::move(io_stm), timeout_transport_options());
+            "initiator", root_service_, std::move(stream_result.connection), timeout_transport_options());
 
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result
@@ -703,6 +736,19 @@ protected:
 
 public:
     ~timeout_iouring_setup() override = default;
+
+    void tear_down()
+    {
+        timeout_setup_base::tear_down();
+        if (io_uring_scheduler_owner_)
+        {
+            io_uring_scheduler_owner_->shutdown();
+            io_uring_scheduler_owner_.reset();
+        }
+    }
+
+private:
+    std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_scheduler_owner_;
 };
 #  endif // __linux__
 

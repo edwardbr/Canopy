@@ -10,10 +10,26 @@
 
 namespace rpc::io_uring
 {
-    // Binds the enclave-side controller to the host RPC interface and, when
-    // available, the scheduler used for cooperative/proactor waits.
-    controller::controller(rpc::coro::scheduler* scheduler)
-        : scheduler_(scheduler)
+    // Binds the controller to the environment-specific io_uring handle and,
+    // when available, the scheduler used for cooperative/proactor waits.
+    controller::controller(
+        std::shared_ptr<io_uring_handle> handle,
+        rpc::coro::scheduler* scheduler)
+        : controller(
+              std::move(handle),
+              scheduler,
+              options{})
+    {
+    }
+
+    controller::controller(
+        std::shared_ptr<io_uring_handle> handle,
+        rpc::coro::scheduler* scheduler,
+        options controller_options)
+        : handle_(std::move(handle))
+        , scheduler_(scheduler)
+        , options_(controller_options)
+        , wait_strategy_(controller_options.completion_wait_strategy)
     {
     }
 
@@ -67,6 +83,7 @@ namespace rpc::io_uring
     // waiter itself, or a scheduler-owned proactor pump.
     void controller::set_wait_strategy(wait_strategy strategy) noexcept
     {
+        options_.completion_wait_strategy = strategy;
         wait_strategy_ = strategy;
     }
 
@@ -75,6 +92,11 @@ namespace rpc::io_uring
     wait_strategy controller::get_wait_strategy() const noexcept
     {
         return wait_strategy_;
+    }
+
+    controller::options controller::get_options() const noexcept
+    {
+        return options_;
     }
 
     // Resets counters through the measurement wrapper; callers must ensure no
@@ -115,8 +137,8 @@ namespace rpc::io_uring
     }
 
     // Starts controller shutdown from a non-awaiting context. It fails all
-    // enclave-owned operation records and queued admission waiters; the host
-    // still owns the kernel ring and will release it with the host controller.
+    // controller-owned operation records and queued admission waiters; the
+    // environment handle still owns the ring resources and releases them later.
     void controller::request_shutdown() noexcept
     {
         request_shutdown(rpc::error::OPERATION_CANCELLED());
@@ -159,14 +181,40 @@ namespace rpc::io_uring
     // the ring sets IORING_SQ_NEED_WAKEUP.
     CORO_TASK(int) controller::wake_host_iouring()
     {
+        data ring_data;
+        {
+            std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
+            if (has_cached_iouring_data_)
+                ring_data = cached_iouring_data_;
+        }
+
+        if (!detail::validate_ring_data_for_direct_ring(ring_data) || !detail::has_sqpoll(ring_data)
+            || !detail::sqpoll_needs_wakeup(ring_data))
+        {
+            CO_RETURN rpc::error::OK();
+        }
+
+        CO_RETURN CO_AWAIT notify_submitted(ring_data, 0);
+    }
+
+    CORO_TASK(int)
+    controller::notify_submitted(
+        const data& ring_data,
+        uint32_t sqe_count)
+    {
         auto err = shutdown_error();
         if (err != rpc::error::OK())
         {
             CO_RETURN err;
         }
 
+        if (!handle_)
+        {
+            CO_RETURN rpc::error::RESOURCE_CLOSED();
+        }
+
         measurements_.host_wake_calls.fetch_add(1, std::memory_order_relaxed);
-        CO_RETURN CO_AWAIT inner_wake_host_iouring();
+        CO_RETURN CO_AWAIT handle_->notify_submitted(ring_data, sqe_count);
     }
 
     // Returns the cached io_uring descriptor to callers, fetching it from the
@@ -196,7 +244,13 @@ namespace rpc::io_uring
         }
 
         data ring_data;
-        auto err = CO_AWAIT inner_get_iouring_data(ring_data);
+        if (!handle_)
+        {
+            clear_iouring_data_cache();
+            CO_RETURN rpc::error::RESOURCE_CLOSED();
+        }
+
+        auto err = CO_AWAIT handle_->get_iouring_data(ring_data);
         if (err != rpc::error::OK())
         {
             clear_iouring_data_cache();
@@ -248,7 +302,7 @@ namespace rpc::io_uring
 
     // Accounts for completions drained by an explicit CQ pump and resumes any
     // coroutine waiters that the operation engine detached from its table.
-    void controller::consume_pump_result(detail::enclave_io_completion_pump_result& pump_result) noexcept
+    void controller::consume_pump_result(detail::direct_ring_completion_pump_result& pump_result) noexcept
     {
         record_completion_pump(pump_result.completion_count);
         resume_completed_operations(std::move(pump_result.completed_operations));
@@ -256,16 +310,17 @@ namespace rpc::io_uring
 
     // Accounts for completions opportunistically drained during submission; this
     // lets submitters make progress even when they are the only active pump.
-    void controller::consume_submit_result(detail::enclave_io_submission_result& submit_result) noexcept
+    void controller::consume_submit_result(detail::direct_ring_submission_result& submit_result) noexcept
     {
         record_completion_pump(submit_result.completion_count);
         resume_completed_operations(std::move(submit_result.completed_operations));
     }
 
-    // Resumes coroutines whose CQEs have been matched to enclave-owned operation
-    // records. The linked list is produced while the operation engine lock is
+    // Resumes coroutines whose CQEs have been matched to controller-owned
+    // operation records. The linked list is produced while the operation engine lock is
     // held, then resumed outside that lock by this function.
-    void controller::resume_completed_operations(detail::enclave_io_operation_engine::operation_ptr completed_operations) noexcept
+    void controller::resume_completed_operations(
+        detail::direct_ring_operation_engine::operation_ptr completed_operations) noexcept
     {
         while (completed_operations)
         {
@@ -337,7 +392,7 @@ namespace rpc::io_uring
             || ring_data.fixed_files.fixed_file_count == 0)
         {
             RPC_WARNING(
-                "enclave io_uring direct descriptor table unavailable descriptor_version={} fixed_registered={} "
+                "direct io_uring direct descriptor table unavailable descriptor_version={} fixed_registered={} "
                 "fixed_count={}",
                 ring_data.descriptor_version,
                 ring_data.fixed_files.fixed_files_registered,

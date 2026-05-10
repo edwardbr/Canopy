@@ -11,6 +11,7 @@
 #  include "test_globals.h"
 #  include <common/tests.h>
 #  include <common/transport_setup_base.h>
+#  include <exception>
 #  include <gtest/gtest.h>
 #  include <memory>
 #  include <new>
@@ -37,11 +38,8 @@ namespace sgx_coroutine_setup_detail
             }
             catch (const std::bad_alloc&)
             {
-                return {rpc::error::OUT_OF_MEMORY(), {}};
-            }
-            catch (...)
-            {
-                return {rpc::error::EXCEPTION(), {}};
+                RPC_ERROR("bad_alloc while creating SGX coroutine test host");
+                std::terminate();
             }
         }
     }

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <chrono>
+#include <edl/coroutine_enclave.h>
 #include <functional>
 #include <io_uring/controller.h>
 #include <memory>
@@ -35,7 +36,7 @@ namespace rpc::sgx::coro::enclave
         void set_runtime_destroyed_handler(std::function<void()> handler);
 
         CORO_TASK(int)
-        retain_io_uring_control_reference(const rpc::shared_ptr<rpc::io_uring::i_io_uring_control>& control);
+        retain_io_uring_control_reference(const rpc::shared_ptr<rpc::sgx::coro::protocol::i_io_uring_control>& control);
 
         CORO_TASK(int) wake_host_iouring();
         CORO_TASK(int) get_iouring_data(rpc::io_uring::data& ring_data);

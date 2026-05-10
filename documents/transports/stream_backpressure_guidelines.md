@@ -211,6 +211,15 @@ io_uring stream implementation.
 
 - Treat SQ capacity, CQ capacity, registered host buffers, and fixed-file slots
   as separate bounded resources.
+- Treat caller buffers and host buffers as different resources. Caller buffers
+  are the variable-sized per-transfer spans passed to `send` and `receive`;
+  host buffers are fixed-size io_uring staging slots.
+- `use_caller_buffers_for_transfers` is host-only. Enclave streams must stage
+  through host-visible buffers because enclave-private caller buffers are not
+  kernel-visible.
+- If encrypted framing is added above the stream, host buffers may contain
+  ciphertext records, but record sizing must include authentication tag, nonce,
+  padding, and frame-header overhead.
 - A stream should own its descriptor through a small owner/guard abstraction so
   close happens exactly once.
 - Stream close should cancel or drain only operations owned by that stream.
@@ -266,6 +275,8 @@ This annex records a concrete debugging session that affected
 `streaming::io_uring::stream`, `rpc::stream_transport::transport`, and the
 io_uring fullstack benchmark wiring. It is explanatory history, not a source of
 truth. Check the current code before assuming every detail here still applies.
+Current io_uring optimisation notes live in
+`../sgx/connectivity/optimisation.md`.
 
 ### Observed Symptoms
 

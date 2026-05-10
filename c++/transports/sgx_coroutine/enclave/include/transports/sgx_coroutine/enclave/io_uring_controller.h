@@ -11,6 +11,26 @@ namespace rpc::sgx::coro::enclave
 {
     class host_transport;
 
+    class enclave_io_uring_handle : public rpc::io_uring::io_uring_handle
+    {
+    public:
+        explicit enclave_io_uring_handle(std::weak_ptr<host_transport> host_transport);
+        ~enclave_io_uring_handle() override = default;
+
+        CORO_TASK(int) get_iouring_data(rpc::io_uring::data& ring_data) override;
+        CORO_TASK(int)
+        notify_submitted(
+            const rpc::io_uring::data& ring_data,
+            uint32_t sqe_count) override;
+        void close() noexcept override;
+
+    private:
+        std::weak_ptr<host_transport> host_transport_;
+    };
+
+    // Transitional compatibility wrapper. The common controller now depends on
+    // io_uring_handle; this class keeps existing enclave runtime construction
+    // stable while the naming is migrated.
     class enclave_io_uring_controller : public rpc::io_uring::controller
     {
     public:
@@ -19,11 +39,5 @@ namespace rpc::sgx::coro::enclave
             std::weak_ptr<host_transport> host_transport);
 
         virtual ~enclave_io_uring_controller();
-
-    private:
-        CORO_TASK(int) inner_wake_host_iouring() override;
-        CORO_TASK(int) inner_get_iouring_data(rpc::io_uring::data& ring_data) override;
-
-        std::weak_ptr<host_transport> host_transport_;
     };
 }

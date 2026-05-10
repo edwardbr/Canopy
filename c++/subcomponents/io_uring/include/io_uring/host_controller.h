@@ -9,7 +9,7 @@
 #include <memory>
 #include <mutex>
 
-#include <edl/coroutine_enclave.h>
+#include <io_uring/types.h>
 #include <rpc/rpc.h>
 
 namespace coro
@@ -25,7 +25,7 @@ namespace rpc::io_uring
 #ifdef CANOPY_IO_URING_SQPOLL
         // Enclave users submit SQEs directly and cannot make io_uring_enter()
         // themselves. SQPOLL gives the host a kernel-side submitter thread that
-        // can be woken through i_io_uring_control::wake_iouring().
+        // can be woken through the SGX-private host-control interface.
         bool use_sqpoll{true};
 #else
         // Non-SQPOLL builds are useful for host-only experiments, but the SGX
@@ -95,7 +95,10 @@ namespace rpc::io_uring
         static CORO_TASK(void) close_state_on_scheduler(std::shared_ptr<state> state);
 
         options options_;
-        std::shared_ptr<coro::scheduler> scheduler_;
+        // The controller may outlive the scheduler during transport teardown.
+        // Keep this weak so delayed descriptor cleanup cannot extend the
+        // scheduler lifetime and make benchmark/test shutdown look hung.
+        std::weak_ptr<coro::scheduler> scheduler_;
         std::shared_ptr<state> state_;
         mutable std::mutex mutex_;
     };

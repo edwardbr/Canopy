@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <exception>
 #include <new>
 #include <utility>
 
@@ -47,10 +48,10 @@ namespace rpc::io_uring
         }
 
         const auto ring_data = cached_iouring_data_copy();
-        if (!detail::validate_ring_data_for_direct_submission(ring_data))
+        if (!detail::validate_ring_data_for_direct_ring(ring_data))
         {
             RPC_WARNING(
-                "enclave io_uring operation invalid ring data descriptor_version={} setup_flags={} sq_entries={} "
+                "direct io_uring operation invalid ring data descriptor_version={} setup_flags={} sq_entries={} "
                 "cq_entries={} sq_array_ptr={}",
                 ring_data.descriptor_version,
                 ring_data.setup.setup_flags,
@@ -62,22 +63,19 @@ namespace rpc::io_uring
 
         if (!detail::has_sqpoll(ring_data))
         {
-            RPC_WARNING("enclave io_uring operation requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
+            RPC_WARNING("direct io_uring operation requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
             CO_RETURN operation_result{rpc::error::INCOMPATIBLE_SERVICE(), 0, 0};
         }
 
-        std::shared_ptr<detail::enclave_io_operation> operation;
+        std::shared_ptr<detail::direct_ring_operation> operation;
         try
         {
-            operation = std::make_shared<detail::enclave_io_operation>();
+            operation = std::make_shared<detail::direct_ring_operation>();
         }
         catch (const std::bad_alloc&)
         {
-            CO_RETURN operation_result{rpc::error::OUT_OF_MEMORY(), 0, 0};
-        }
-        catch (...)
-        {
-            CO_RETURN operation_result{rpc::error::EXCEPTION(), 0, 0};
+            RPC_ERROR("bad_alloc while creating direct io_uring operation");
+            std::terminate();
         }
 
         err = CO_AWAIT submit_prepared_operation(ring_data, operation, fill_sqe, context);
@@ -88,11 +86,11 @@ namespace rpc::io_uring
 
         if (detail::sqpoll_needs_wakeup(ring_data))
         {
-            err = CO_AWAIT wake_host_iouring();
+            err = CO_AWAIT notify_submitted(ring_data, 1);
             if (err != rpc::error::OK())
             {
                 resume_completed_operations(operation_engine_.fail_all_operations(err));
-                RPC_WARNING("enclave io_uring operation wake_iouring failed error={}", err);
+                RPC_WARNING("direct io_uring operation wake_iouring failed error={}", err);
                 CO_RETURN operation_result{err, operation->cqe_result, operation->cqe_flags};
             }
         }
@@ -123,10 +121,10 @@ namespace rpc::io_uring
         }
 
         const auto ring_data = cached_iouring_data_copy();
-        if (!detail::validate_ring_data_for_direct_submission(ring_data))
+        if (!detail::validate_ring_data_for_direct_ring(ring_data))
         {
             RPC_WARNING(
-                "enclave io_uring linked operation invalid ring data descriptor_version={} setup_flags={} "
+                "direct io_uring linked operation invalid ring data descriptor_version={} setup_flags={} "
                 "sq_entries={} "
                 "cq_entries={} sq_array_ptr={}",
                 ring_data.descriptor_version,
@@ -139,25 +137,22 @@ namespace rpc::io_uring
 
         if (!detail::has_sqpoll(ring_data))
         {
-            RPC_WARNING("enclave io_uring linked operation requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
+            RPC_WARNING("direct io_uring linked operation requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
             CO_RETURN operation_result{rpc::error::INCOMPATIBLE_SERVICE(), 0, 0};
         }
 
-        std::shared_ptr<detail::enclave_io_operation> primary_operation;
-        std::shared_ptr<detail::enclave_io_operation> linked_operation;
+        std::shared_ptr<detail::direct_ring_operation> primary_operation;
+        std::shared_ptr<detail::direct_ring_operation> linked_operation;
         try
         {
-            primary_operation = std::make_shared<detail::enclave_io_operation>();
-            linked_operation = std::make_shared<detail::enclave_io_operation>();
+            primary_operation = std::make_shared<detail::direct_ring_operation>();
+            linked_operation = std::make_shared<detail::direct_ring_operation>();
             linked_operation->keep_alive = std::move(linked_keep_alive);
         }
         catch (const std::bad_alloc&)
         {
-            CO_RETURN operation_result{rpc::error::OUT_OF_MEMORY(), 0, 0};
-        }
-        catch (...)
-        {
-            CO_RETURN operation_result{rpc::error::EXCEPTION(), 0, 0};
+            RPC_ERROR("bad_alloc while creating linked direct io_uring operations");
+            std::terminate();
         }
 
         err = CO_AWAIT submit_prepared_linked_operation(ring_data, primary_operation, linked_operation, fill_sqes, context);
@@ -168,11 +163,11 @@ namespace rpc::io_uring
 
         if (detail::sqpoll_needs_wakeup(ring_data))
         {
-            err = CO_AWAIT wake_host_iouring();
+            err = CO_AWAIT notify_submitted(ring_data, 2);
             if (err != rpc::error::OK())
             {
                 resume_completed_operations(operation_engine_.fail_all_operations(err));
-                RPC_WARNING("enclave io_uring linked operation wake_iouring failed error={}", err);
+                RPC_WARNING("direct io_uring linked operation wake_iouring failed error={}", err);
                 CO_RETURN operation_result{err, primary_operation->cqe_result, primary_operation->cqe_flags};
             }
         }
@@ -198,7 +193,7 @@ namespace rpc::io_uring
     CORO_TASK(int)
     controller::submit_no_op(
         const data& ring_data,
-        const std::shared_ptr<detail::enclave_io_operation>& operation)
+        const std::shared_ptr<detail::direct_ring_operation>& operation)
     {
         int waiter_error = rpc::error::OK();
         auto waiter = make_submission_waiter(1, waiter_error);
@@ -248,7 +243,7 @@ namespace rpc::io_uring
         }
 
         cancel_submission_waiter(waiter);
-        RPC_WARNING("enclave io_uring no_op timed out waiting for submission capacity");
+        RPC_WARNING("direct io_uring no_op timed out waiting for submission capacity");
         CO_RETURN rpc::error::RESOURCE_EXHAUSTED();
     }
 
@@ -258,7 +253,7 @@ namespace rpc::io_uring
     CORO_TASK(int)
     controller::submit_prepared_operation(
         const data& ring_data,
-        const std::shared_ptr<detail::enclave_io_operation>& operation,
+        const std::shared_ptr<detail::direct_ring_operation>& operation,
         fill_sqe_callback fill_sqe,
         void* context)
     {
@@ -311,7 +306,7 @@ namespace rpc::io_uring
         }
 
         cancel_submission_waiter(waiter);
-        RPC_WARNING("enclave io_uring operation timed out waiting for submission capacity");
+        RPC_WARNING("direct io_uring operation timed out waiting for submission capacity");
         CO_RETURN rpc::error::RESOURCE_EXHAUSTED();
     }
 
@@ -320,8 +315,8 @@ namespace rpc::io_uring
     CORO_TASK(int)
     controller::submit_prepared_linked_operation(
         const data& ring_data,
-        const std::shared_ptr<detail::enclave_io_operation>& primary_operation,
-        const std::shared_ptr<detail::enclave_io_operation>& linked_operation,
+        const std::shared_ptr<detail::direct_ring_operation>& primary_operation,
+        const std::shared_ptr<detail::direct_ring_operation>& linked_operation,
         fill_linked_sqe_callback fill_sqes,
         void* context)
     {
@@ -378,7 +373,7 @@ namespace rpc::io_uring
         }
 
         cancel_submission_waiter(waiter);
-        RPC_WARNING("enclave io_uring linked operation timed out waiting for submission capacity");
+        RPC_WARNING("direct io_uring linked operation timed out waiting for submission capacity");
         CO_RETURN rpc::error::RESOURCE_EXHAUSTED();
     }
 
@@ -401,11 +396,8 @@ namespace rpc::io_uring
         }
         catch (const std::bad_alloc&)
         {
-            error_code = rpc::error::OUT_OF_MEMORY();
-        }
-        catch (...)
-        {
-            error_code = rpc::error::EXCEPTION();
+            RPC_ERROR("bad_alloc while creating direct io_uring submission waiter");
+            std::terminate();
         }
 
         return {};
@@ -447,13 +439,8 @@ namespace rpc::io_uring
             }
             catch (const std::bad_alloc&)
             {
-                waiter->error_code = rpc::error::OUT_OF_MEMORY();
-                return false;
-            }
-            catch (...)
-            {
-                waiter->error_code = rpc::error::EXCEPTION();
-                return false;
+                RPC_ERROR("bad_alloc while queuing direct io_uring submission waiter");
+                std::terminate();
             }
         }
 
@@ -508,7 +495,7 @@ namespace rpc::io_uring
     CORO_TASK(int)
     controller::wait_for_operation(
         const data& ring_data,
-        const std::shared_ptr<detail::enclave_io_operation>& operation)
+        const std::shared_ptr<detail::direct_ring_operation>& operation)
     {
         if (wait_strategy_ == wait_strategy::proactor && scheduler_)
         {
@@ -524,7 +511,7 @@ namespace rpc::io_uring
     CORO_TASK(int)
     controller::wait_for_operation_cooperative(
         const data& ring_data,
-        const std::shared_ptr<detail::enclave_io_operation>& operation)
+        const std::shared_ptr<detail::direct_ring_operation>& operation)
     {
         for (uint32_t attempt = 0; attempt < operation_wait_attempt_limit; ++attempt)
         {
@@ -555,7 +542,7 @@ namespace rpc::io_uring
         }
 
         RPC_WARNING(
-            "enclave io_uring operation timed out user_data={} submitted={}",
+            "direct io_uring operation timed out user_data={} submitted={}",
             operation->user_data,
             operation->submitted.load(std::memory_order_acquire));
         CO_RETURN rpc::error::CALL_TIMEOUT();
@@ -564,7 +551,7 @@ namespace rpc::io_uring
     struct controller::operation_completion_awaiter
     {
         controller& controller;
-        std::shared_ptr<detail::enclave_io_operation> operation;
+        std::shared_ptr<detail::direct_ring_operation> operation;
 
         // Avoids suspension if the operation completed before this awaiter was
         // reached.
@@ -590,7 +577,7 @@ namespace rpc::io_uring
     CORO_TASK(int)
     controller::wait_for_operation_proactor(
         const data& ring_data,
-        const std::shared_ptr<detail::enclave_io_operation>& operation)
+        const std::shared_ptr<detail::direct_ring_operation>& operation)
     {
         if (operation->completed.load(std::memory_order_acquire))
         {

@@ -86,6 +86,9 @@ Mitigation:
 - reject route use after either endpoint is gone
 - authenticate route-building messages and bind them to route epochs
 - keep application payloads encrypted across untrusted passthrough zones
+- when io_uring host buffers are used as staging memory, write only
+  authenticated ciphertext records there; enclave plaintext remains in enclave
+  caller buffers
 
 ### Forged Object-Released
 

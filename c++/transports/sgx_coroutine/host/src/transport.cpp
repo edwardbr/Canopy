@@ -11,6 +11,7 @@
 #include <streaming/stream_transport.h>
 #include <streaming/spsc_queue/stream.h>
 #include <sgx_urts.h>
+#include <cstdint>
 #include <cstring>
 #include <rpc/rpc.h>
 #include <chrono>
@@ -113,6 +114,39 @@ namespace rpc::sgx::coro::host
 
             RPC_ERROR("startup status: timed out waiting for worker attachment");
             return rpc::error::CALL_TIMEOUT();
+        }
+
+        uint64_t read_host_tick_counter() noexcept
+        {
+#if defined(__x86_64__) || defined(__i386__)
+            return __builtin_ia32_rdtsc();
+#else
+            return 0;
+#endif
+        }
+
+        uint64_t calibrate_host_ticks_per_millisecond() noexcept
+        {
+            const auto start_ticks = read_host_tick_counter();
+            const auto start = std::chrono::steady_clock::now();
+            std::this_thread::sleep_for(std::chrono::milliseconds{20});
+            const auto end = std::chrono::steady_clock::now();
+            const auto end_ticks = read_host_tick_counter();
+
+            const auto elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
+            if (end_ticks <= start_ticks || elapsed_ms <= 0.0)
+                return 0;
+
+            return static_cast<uint64_t>(static_cast<double>(end_ticks - start_ticks) / elapsed_ms);
+        }
+
+        uint64_t host_ticks_per_millisecond() noexcept
+        {
+            // SGX enclave timing uses rdtsc, but the enclave runtime cannot
+            // sleep against host wall time cheaply. Calibrate once in the host
+            // transport and pass the value through the enclave bootstrap.
+            static const auto ticks_per_millisecond = calibrate_host_ticks_per_millisecond();
+            return ticks_per_millisecond;
         }
 
         void fail_startup_status(
@@ -345,9 +379,10 @@ namespace rpc::sgx::coro::host
             auto request_blob = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(request));
             auto* host_to_enclave_queue = host_to_enclave_queue_.get();
             auto* enclave_to_host_queue = enclave_to_host_queue_.get();
+            const auto ticks_per_millisecond = host_ticks_per_millisecond();
             auto state = owner->state_;
             owner->init_thread_ = std::thread(
-                [state, request_blob = std::move(request_blob), host_to_enclave_queue, enclave_to_host_queue]()
+                [state, request_blob = std::move(request_blob), host_to_enclave_queue, enclave_to_host_queue, ticks_per_millisecond]()
                 {
                     auto* init_status = state->init_status_.get();
                     std::vector<char> response_blob(1024);
@@ -361,6 +396,7 @@ namespace rpc::sgx::coro::host
                         request_blob->data(),
                         host_to_enclave_queue,
                         enclave_to_host_queue,
+                        ticks_per_millisecond,
                         reinterpret_cast<canopy_coroutine_startup_status*>(init_status),
                         response_blob.size(),
                         response_blob.data(),

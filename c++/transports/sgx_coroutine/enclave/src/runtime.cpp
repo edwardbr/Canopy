@@ -8,6 +8,7 @@
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/sgx_coroutine/enclave/host_transport.h>
 #include <edl/coroutine_enclave.h>
+#include <io_uring/io_uring_scheduler.h>
 #include <trusted/canopy_coroutine_enclave_t.h>
 #include <sgx_error.h>
 #include <sgx_trts.h>
@@ -22,8 +23,8 @@
 #include <transports/streaming/transport.h>
 #include <atomic>
 #include <cstdint>
+#include <exception>
 #include <memory>
-#include <mutex>
 #include <new>
 #include <tuple>
 #include <vector>
@@ -46,6 +47,7 @@ namespace rpc::sgx::coro::enclave
 
         struct runtime_state
         {
+            std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_scheduler;
             std::shared_ptr<::rpc::coro::scheduler> scheduler;
             std::weak_ptr<host_transport> log_transport;
             rpc::zone enclave_zone{};
@@ -58,12 +60,12 @@ namespace rpc::sgx::coro::enclave
             std::atomic<bool> registered{false};
             acceptor_factory acceptor_factory;
             common::startup_status* control_status = nullptr;
-            std::mutex io_uring_controller_mutex;
-            std::weak_ptr<rpc::io_uring::controller> io_uring_controller;
             std::atomic<bool> cleanup_requested{false};
             std::atomic<bool> connection_established{false};
             std::atomic<bool> host_transport_destroyed{false};
             std::atomic<bool> stop_workers{false};
+            std::atomic<uint64_t> ticks_per_millisecond{
+                static_cast<uint64_t>(std::chrono::sgx_rdtsc_ticks_per_millisecond)};
         };
 
         auto runtime_storage() -> runtime_state&
@@ -119,6 +121,16 @@ namespace rpc::sgx::coro::enclave
             runtime.stop_workers.store(false, std::memory_order_release);
         }
 
+        uint64_t fallback_ticks_per_millisecond() noexcept
+        {
+            return static_cast<uint64_t>(std::chrono::sgx_rdtsc_ticks_per_millisecond);
+        }
+
+        uint64_t normalise_ticks_per_millisecond(uint64_t ticks_per_millisecond) noexcept
+        {
+            return ticks_per_millisecond != 0 ? ticks_per_millisecond : fallback_ticks_per_millisecond();
+        }
+
         void request_runtime_cleanup(runtime_state& runtime)
         {
             bool expected = false;
@@ -129,19 +141,10 @@ namespace rpc::sgx::coro::enclave
             }
 
             // Runtime cleanup is enclave-scoped rather than zone-scoped. The
-            // runtime keeps only weak access to the active io_uring controller,
-            // but if an enclave object still owns it then shutdown should stop
-            // pending io_uring work before the transport performs its final
-            // host-control release and disconnects.
-            {
-                std::shared_ptr<rpc::io_uring::controller> controller;
-                {
-                    std::lock_guard<std::mutex> lock(runtime.io_uring_controller_mutex);
-                    controller = runtime.io_uring_controller.lock();
-                }
-                if (controller)
-                    controller->request_shutdown();
-            }
+            // io_uring scheduler owns the runtime controller and shuts it down
+            // before the host transport performs its final host-control release.
+            if (runtime.io_uring_scheduler)
+                runtime.io_uring_scheduler->request_controller_shutdown();
         }
 
         template<typename T> std::vector<char> to_blob(const T& value)
@@ -428,8 +431,11 @@ namespace rpc::sgx::coro::enclave
 
         void reset_runtime_after_stop(runtime_state& runtime)
         {
-            if (runtime.scheduler)
+            if (runtime.io_uring_scheduler)
+                runtime.io_uring_scheduler->shutdown();
+            else if (runtime.scheduler)
                 runtime.scheduler->shutdown();
+            runtime.io_uring_scheduler.reset();
             runtime.scheduler.reset();
             runtime.log_transport.reset();
             runtime.enclave_zone = {};
@@ -437,15 +443,18 @@ namespace rpc::sgx::coro::enclave
             runtime.attached_workers.store(0, std::memory_order_release);
             runtime.accepting_workers.store(false, std::memory_order_release);
             runtime.control_status = nullptr;
-            {
-                std::lock_guard<std::mutex> lock(runtime.io_uring_controller_mutex);
-                runtime.io_uring_controller.reset();
-            }
             runtime.admitted_workers.reset();
             runtime.admitted_worker_slots = 0;
             reset_runtime_cleanup_state(runtime);
             erase_runtime();
             runtime.init_called.store(false, std::memory_order_release);
+        }
+
+        void ensure_runtime_scheduler(runtime_state& runtime)
+        {
+            if (!runtime.io_uring_scheduler)
+                runtime.io_uring_scheduler = rpc::io_uring::io_uring_scheduler::create(runtime.scheduler);
+            runtime.scheduler = runtime.io_uring_scheduler->scheduler();
         }
 
         void stop_runtime(
@@ -485,13 +494,13 @@ namespace rpc::sgx::coro::enclave
             CO_RETURN runtime_io_uring_controller_result{rpc::error::INVALID_DATA(), {}};
 
         auto& runtime = runtime_storage();
+        if (!runtime.io_uring_scheduler)
+            CO_RETURN runtime_io_uring_controller_result{rpc::error::ZONE_NOT_INITIALISED(), {}};
+
+        if (auto controller = runtime.io_uring_scheduler->get_controller())
         {
-            std::lock_guard<std::mutex> lock(runtime.io_uring_controller_mutex);
-            if (auto controller = runtime.io_uring_controller.lock())
-            {
-                result.controller = std::move(controller);
-                CO_RETURN result;
-            }
+            result.controller = std::move(controller);
+            CO_RETURN result;
         }
 
         std::shared_ptr<rpc::io_uring::controller> controller;
@@ -501,20 +510,53 @@ namespace rpc::sgx::coro::enclave
         }
         catch (const std::bad_alloc&)
         {
-            CO_RETURN runtime_io_uring_controller_result{rpc::error::OUT_OF_MEMORY(), {}};
-        }
-        catch (...)
-        {
-            CO_RETURN runtime_io_uring_controller_result{rpc::error::EXCEPTION(), {}};
+            RPC_ERROR("bad_alloc while creating enclave io_uring controller");
+            std::terminate();
         }
 
-        {
-            std::lock_guard<std::mutex> lock(runtime.io_uring_controller_mutex);
-            runtime.io_uring_controller = controller;
-        }
+        runtime.io_uring_scheduler->set_controller(controller);
 
         result.controller = std::move(controller);
         CO_RETURN result;
+    }
+
+    uint64_t runtime_ticks_per_millisecond() noexcept
+    {
+        auto& runtime = runtime_storage();
+        return normalise_ticks_per_millisecond(runtime.ticks_per_millisecond.load(std::memory_order_acquire));
+    }
+
+    uint64_t read_runtime_tick_counter() noexcept
+    {
+#if defined(__x86_64__) || defined(__i386__)
+        return __builtin_ia32_rdtsc();
+#else
+        return 0;
+#endif
+    }
+
+    uint64_t runtime_ticks_to_microseconds(uint64_t ticks) noexcept
+    {
+        const auto ticks_per_millisecond = runtime_ticks_per_millisecond();
+        if (ticks == 0 || ticks_per_millisecond == 0)
+            return 0;
+
+        // Keep conversion out of benchmark code so logging and tests use
+        // the same enclave runtime calibration.
+        const auto converted = ((ticks / ticks_per_millisecond) * 1000ULL)
+                               + (((ticks % ticks_per_millisecond) * 1000ULL) / ticks_per_millisecond);
+        return converted == 0 ? 1 : converted;
+    }
+
+    uint64_t runtime_ticks_to_nanoseconds(uint64_t ticks) noexcept
+    {
+        const auto ticks_per_millisecond = runtime_ticks_per_millisecond();
+        if (ticks == 0 || ticks_per_millisecond == 0)
+            return 0;
+
+        const auto converted = ((ticks / ticks_per_millisecond) * 1000000ULL)
+                               + (((ticks % ticks_per_millisecond) * 1000000ULL) / ticks_per_millisecond);
+        return converted == 0 ? 1 : converted;
     }
 
     extern "C"
@@ -524,6 +566,7 @@ namespace rpc::sgx::coro::enclave
             const char* req,
             void* host_to_enclave_queue,
             void* enclave_to_host_queue,
+            uint64_t ticks_per_millisecond,
             canopy_coroutine_startup_status* startup_status_pointer,
             size_t resp_cap,
             char* resp,
@@ -567,8 +610,9 @@ namespace rpc::sgx::coro::enclave
                 return rpc::error::FRAUDULANT_REQUEST();
             }
 
-            if (!runtime.scheduler)
-                runtime.scheduler = ::rpc::coro::make_shared_scheduler();
+            ensure_runtime_scheduler(runtime);
+            runtime.ticks_per_millisecond.store(
+                normalise_ticks_per_millisecond(ticks_per_millisecond), std::memory_order_release);
 #ifdef CANOPY_USE_TELEMETRY
             rpc::telemetry::create_coro_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
 #endif
@@ -614,13 +658,8 @@ namespace rpc::sgx::coro::enclave
             }
             catch (const std::bad_alloc&)
             {
-                stop_runtime(runtime, startup_status, common::startup_state::failed, rpc::error::OUT_OF_MEMORY());
-                return rpc::error::OUT_OF_MEMORY();
-            }
-            catch (...)
-            {
-                stop_runtime(runtime, startup_status, common::startup_state::failed, rpc::error::EXCEPTION());
-                return rpc::error::EXCEPTION();
+                RPC_ERROR("bad_alloc while creating enclave service");
+                std::terminate();
             }
             // auto service_shutdown_event = std::make_shared<rpc::event>(false);
             // service_shutdown_event->set_scheduler(runtime.scheduler.get());

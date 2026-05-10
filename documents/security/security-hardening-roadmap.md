@@ -516,6 +516,16 @@ owns the io_uring submission/completion logic, the host may still control kernel
 progress and availability, but the enclave can keep parsing, encryption,
 sequence checks, and capability validation inside the trust boundary.
 
+For io_uring transfers, distinguish caller buffers from host buffers. Caller
+buffers are the per-call spans supplied by the stream or RPC layer; inside an
+enclave these are enclave-private and cannot be submitted directly to the
+kernel. Host buffers are fixed-size host-visible slots owned by the io_uring
+handle and can be used for kernel SEND/RECV operations. Those host buffers may
+hold ciphertext, but plaintext must be encrypted and authenticated before it is
+copied there. Record sizing must include encryption overhead such as nonce,
+tag, padding, and any frame header because large logical messages may be split
+across multiple fixed-size host buffer slots.
+
 ## Denial Of Service
 
 Attack:

@@ -36,24 +36,25 @@ namespace comprehensive::v1
         if (samples_ns.size() < (trim_each_side * 2))
             return stats;
 
+        std::vector<int64_t> sorted(samples_ns.begin(), samples_ns.end());
+        std::sort(sorted.begin(), sorted.end());
+
         const size_t begin = trim_each_side;
         const size_t end = samples_ns.size() - trim_each_side;
-        std::vector<int64_t> mid(
-            samples_ns.begin() + static_cast<long>(begin), samples_ns.begin() + static_cast<long>(end));
-
-        std::sort(mid.begin(), mid.end());
-        const size_t mid_count = mid.size();
+        const size_t mid_count = end - begin;
         if (mid_count == 0)
             return stats;
 
-        const auto sum = std::accumulate(mid.begin(), mid.end(), int64_t{0});
+        const auto mid_begin = sorted.begin() + static_cast<long>(begin);
+        const auto mid_end = sorted.begin() + static_cast<long>(end);
+        const auto sum = std::accumulate(mid_begin, mid_end, int64_t{0});
         constexpr double ns_to_us = 1.0 / 1000.0;
         stats.avg_us = (static_cast<double>(sum) / static_cast<double>(mid_count)) * ns_to_us;
-        stats.min_us = static_cast<double>(mid.front()) * ns_to_us;
-        stats.max_us = static_cast<double>(mid.back()) * ns_to_us;
-        stats.p50_us = static_cast<double>(mid[(mid_count * 50) / 100]) * ns_to_us;
-        stats.p90_us = static_cast<double>(mid[(mid_count * 90) / 100]) * ns_to_us;
-        stats.p95_us = static_cast<double>(mid[(mid_count * 95) / 100]) * ns_to_us;
+        stats.min_us = static_cast<double>(*mid_begin) * ns_to_us;
+        stats.max_us = static_cast<double>(*(mid_end - 1)) * ns_to_us;
+        stats.p50_us = static_cast<double>(*(mid_begin + static_cast<long>((mid_count * 50) / 100))) * ns_to_us;
+        stats.p90_us = static_cast<double>(*(mid_begin + static_cast<long>((mid_count * 90) / 100))) * ns_to_us;
+        stats.p95_us = static_cast<double>(*(mid_begin + static_cast<long>((mid_count * 95) / 100))) * ns_to_us;
         return stats;
     }
 
@@ -187,13 +188,30 @@ namespace comprehensive::v1
 
     void print_header()
     {
-        fmt::print("Benchmark: 1000 RPC calls per test, middle 80% (drop first/last 10%)\n");
+        fmt::print(
+            "Benchmark: {} RPC calls per test, sorted middle {} samples (drop fastest/slowest {} each)\n",
+            call_count,
+            call_count - (trim_each_side * 2),
+            trim_each_side);
 #ifdef CANOPY_BUILD_COROUTINE
         fmt::print(
-            "Warmup: local=10 calls, libcoro_dll=20 calls, libcoro_host=20 calls, ipc=30 calls, spsc=20 calls, "
-            "io_uring=100 calls, tcp=100 calls (not included in timing)\n");
+            "Warmup: local={} calls, libcoro_dll={} calls, libcoro_host={} calls, ipc={} calls, spsc={} calls, "
+            "io_uring={} calls, tcp={} calls, sgx_io_uring={} calls, sgx_io_uring_pair={} calls "
+            "(not included in timing)\n",
+            local_warmup_calls,
+            dll_warmup_calls,
+            dll_warmup_calls,
+            ipc_warmup_calls,
+            spsc_warmup_calls,
+            io_uring_warmup_calls,
+            tcp_warmup_calls,
+            io_uring_warmup_calls,
+            io_uring_warmup_calls);
 #else
-        fmt::print("Warmup: local=10 calls, dynamic_library=20 calls (not included in timing)\n");
+        fmt::print(
+            "Warmup: local={} calls, dynamic_library={} calls (not included in timing)\n",
+            local_warmup_calls,
+            dll_warmup_calls);
 #endif
         fmt::print("Note: Timings are sampled in nanoseconds and displayed in microseconds\n");
         fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");

@@ -51,9 +51,26 @@ namespace streaming::io_uring_new
     stream::stream(
         std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
         uint16_t peer_port) noexcept
+        : stream(
+              std::move(descriptor),
+              peer_port,
+              options{})
+    {
+    }
+
+    stream::stream(
+        std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
+        uint16_t peer_port,
+        options stream_options) noexcept
         : descriptor_(std::move(descriptor))
         , peer_port_(peer_port)
+        , options_(stream_options)
     {
+    }
+
+    stream::options default_stream_options() noexcept
+    {
+        return {};
     }
 
     auto stream::receive(
@@ -102,7 +119,26 @@ namespace streaming::io_uring_new
                 }
             }
 
-            auto result = co_await controller->receive(descriptor_index, buffer, operation_timeout);
+            auto transfer_buffer = buffer;
+            if (options_.max_transfer_size > 0 && transfer_buffer.size() > options_.max_transfer_size)
+            {
+                transfer_buffer = transfer_buffer.subspan(0, options_.max_transfer_size);
+            }
+
+            rpc::io_uring::transfer_result result;
+            if (use_deadline && options_.timeout_strategy == receive_timeout_strategy::nonblocking_poll)
+            {
+                result = co_await controller->receive_nonblocking(descriptor_index, transfer_buffer);
+                if (result.error_code != rpc::error::OK() && is_retryable_native_result(result.native_result))
+                {
+                    co_return std::pair{timeout_status(), rpc::mutable_byte_span{}};
+                }
+            }
+            else
+            {
+                result = co_await controller->receive(descriptor_index, transfer_buffer, operation_timeout);
+            }
+
             if (result.error_code == rpc::error::CALL_TIMEOUT())
             {
                 if (closed_.load(std::memory_order_acquire) || !descriptor->is_open())
@@ -132,7 +168,7 @@ namespace streaming::io_uring_new
                 co_return std::pair{closed_status(), rpc::mutable_byte_span{}};
             }
 
-            co_return std::pair{ok_status(), buffer.subspan(0, result.bytes_transferred)};
+            co_return std::pair{ok_status(), transfer_buffer.subspan(0, result.bytes_transferred)};
         }
     }
 
@@ -154,7 +190,13 @@ namespace streaming::io_uring_new
                 co_return closed_status();
             }
 
-            auto result = co_await controller->send(descriptor_index, buffer);
+            auto transfer_buffer = buffer;
+            if (options_.max_transfer_size > 0 && transfer_buffer.size() > options_.max_transfer_size)
+            {
+                transfer_buffer = transfer_buffer.subspan(0, options_.max_transfer_size);
+            }
+
+            auto result = co_await controller->send(descriptor_index, transfer_buffer);
             if (result.error_code != rpc::error::OK())
             {
                 if (is_retryable_native_result(result.native_result))
@@ -212,7 +254,8 @@ namespace streaming::io_uring_new
 
     std::shared_ptr<streaming::stream> make_stream(
         std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
-        uint16_t peer_port) noexcept
+        uint16_t peer_port,
+        stream::options stream_options) noexcept
     {
         if (!descriptor)
         {
@@ -221,7 +264,7 @@ namespace streaming::io_uring_new
 
         try
         {
-            return std::make_shared<stream>(std::move(descriptor), peer_port);
+            return std::make_shared<stream>(std::move(descriptor), peer_port, stream_options);
         }
         catch (...)
         {
@@ -231,14 +274,15 @@ namespace streaming::io_uring_new
 
     stream_result make_stream_result(
         const rpc::io_uring::direct_descriptor_result& result,
-        uint16_t peer_port) noexcept
+        uint16_t peer_port,
+        stream::options stream_options) noexcept
     {
         if (result.error_code != rpc::error::OK() || !result.descriptor)
         {
             return stream_result{result.error_code, result.native_result, result.cqe_flags, {}};
         }
 
-        auto connection = make_stream(result.descriptor, peer_port);
+        auto connection = make_stream(result.descriptor, peer_port, stream_options);
         if (!connection)
         {
             return stream_result{rpc::error::OUT_OF_MEMORY(), result.native_result, result.cqe_flags, {}};

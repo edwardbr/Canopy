@@ -28,6 +28,19 @@ namespace io_uring_test
         uint64_t max_no_op_ticks;
     };
 
+    struct stream_benchmark_stats
+    {
+        double avg;
+        double min_value;
+        double max_value;
+        double p50;
+        double p90;
+        double p95;
+        uint64_t blob_size;
+        uint32_t samples;
+        bool valid;
+    };
+
     interface i_test_uring
     {
         int test_noop(bool schedule, uint32_t iterations, bool use_proactor);
@@ -46,6 +59,12 @@ namespace io_uring_test
         int controller_shutdown_pending_send_test();
         int get_noop_measurement([out] iouring_noop_measurement & measurement);
         int peer_to_peer_rpc_test(uint32_t iterations);
+        int stream_benchmark(
+            bool send_reply,
+            uint32_t iterations,
+            uint32_t warmup,
+            uint32_t payload_size,
+            [out] stream_benchmark_stats& stats);
     };
 
     interface i_peer2peer

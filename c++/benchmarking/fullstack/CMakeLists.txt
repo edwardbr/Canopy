@@ -62,6 +62,56 @@ if(CANOPY_BUILD_COROUTINE)
   target_compile_options(canopy_benchmark_ipc_child_process PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(canopy_benchmark_ipc_child_process PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET canopy_benchmark_ipc_child_process PROPERTY COMPILE_PDB_NAME canopy_benchmark_ipc_child_process)
+
+  if(CANOPY_BUILD_ENCLAVE)
+    set(BENCHMARK_SGX_COROUTINE_TELEMETRY_ENCLAVE_LIBS)
+    if(CANOPY_USE_TELEMETRY)
+      list(APPEND BENCHMARK_SGX_COROUTINE_TELEMETRY_ENCLAVE_LIBS rpc_telemetry_enclave)
+    endif()
+
+    set(BENCHMARK_SGX_COROUTINE_PROTOBUF_ENCLAVE_LIBS)
+    if(TARGET canopy_nanopb_runtime_enclave)
+      list(APPEND BENCHMARK_SGX_COROUTINE_PROTOBUF_ENCLAVE_LIBS canopy_nanopb_runtime_enclave)
+    endif()
+    if(TARGET rpc_types_idl_enclave AND (CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_BUILD_NANOPB))
+      list(APPEND BENCHMARK_SGX_COROUTINE_PROTOBUF_ENCLAVE_LIBS rpc_types_idl_enclave)
+    endif()
+
+    add_enclave_library(
+      canopy_benchmark_sgx_coroutine_enclave
+      SRCS src/benchmark_sgx_coroutine_enclave.cpp
+      HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB}
+      TRUSTED_LIBS
+        libcoro_enclave
+        rpc_enclave
+        streaming_enclave
+        transport_streaming_enclave
+        streaming_transport_idl_enclave
+        transport_sgx_coroutine_enclave
+        ${BENCHMARK_SGX_COROUTINE_TELEMETRY_ENCLAVE_LIBS}
+        streaming_spsc_queue_enclave
+        streaming_io_uring_new_enclave
+        canopy_coroutine_edl_enclave
+        transport_local_enclave
+        canopy_io_uring_enclave
+        comprehensive_idl_enclave
+        yas_common
+        ${BENCHMARK_SGX_COROUTINE_PROTOBUF_ENCLAVE_LIBS}
+        ${SGX_ENCLAVE_LIBS})
+
+    target_compile_definitions(canopy_benchmark_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
+    target_include_directories(canopy_benchmark_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+    target_compile_options(canopy_benchmark_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
+                                                                          ${CANOPY_WARN_OK_ENCLAVE})
+    target_link_options(canopy_benchmark_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
+    set_property(TARGET canopy_benchmark_sgx_coroutine_enclave PROPERTY COMPILE_PDB_NAME
+                                                                        canopy_benchmark_sgx_coroutine_enclave)
+
+    enclave_sign(
+      canopy_benchmark_sgx_coroutine_enclave
+      KEY ../../tests/test_enclave/marshal_test_enclave_private.pem
+      CONFIG benchmark_sgx_coroutine_enclave.config.${SGX_MODE}.xml)
+  endif()
 else()
   canopycreatedynamiclibrary(
     canopy_benchmark_dll
@@ -82,6 +132,9 @@ if(CANOPY_BUILD_COROUTINE)
             src/benchmark_spsc.cpp
             src/benchmark_tcp.cpp
             src/benchmark_io_uring.cpp)
+  if(CANOPY_BUILD_ENCLAVE)
+    target_sources(benchmark PRIVATE src/benchmark_sgx_coroutine.cpp)
+  endif()
 endif()
 target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
 if(CANOPY_BUILD_COROUTINE)
@@ -93,6 +146,12 @@ if(CANOPY_BUILD_COROUTINE)
       CANOPY_BENCHMARK_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_child_host_process>"
       CANOPY_BENCHMARK_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_spsc_dll>"
       CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_benchmark_ipc_child_process>")
+  if(CANOPY_BUILD_ENCLAVE)
+    target_compile_definitions(
+      benchmark
+      PRIVATE CANOPY_BENCHMARK_SGX_COROUTINE
+              CANOPY_BENCHMARK_SGX_COROUTINE_ENCLAVE_PATH="${canopy_benchmark_sgx_coroutine_enclave_sign_OUTPUT_NAME}")
+  endif()
 else()
   target_compile_definitions(benchmark PRIVATE CANOPY_BENCHMARK_DLL_PATH="$<TARGET_FILE:canopy_benchmark_dll>")
 endif()
@@ -108,8 +167,11 @@ if(CANOPY_BUILD_COROUTINE)
            transport_ipc_transport
            streaming_spsc_queue
            streaming_tcp
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring_new>
            rpc_log)
+  if(CANOPY_BUILD_ENCLAVE)
+    target_link_libraries(benchmark PUBLIC transport_sgx_coroutine)
+  endif()
 else()
   target_link_libraries(benchmark PUBLIC transport_dynamic_library rpc_log)
 endif()
@@ -125,6 +187,9 @@ if(CANOPY_BUILD_COROUTINE)
     canopy_benchmark_libcoro_spsc_dll
     canopy_benchmark_ipc_child_process
     canopy_ipc_child_host_process)
+  if(CANOPY_BUILD_ENCLAVE)
+    add_dependencies(benchmark canopy_benchmark_sgx_coroutine_enclave)
+  endif()
 else()
   add_dependencies(benchmark canopy_benchmark_dll)
 endif()

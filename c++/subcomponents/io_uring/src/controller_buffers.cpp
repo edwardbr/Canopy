@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <exception>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -21,7 +22,7 @@ namespace rpc::io_uring
         static constexpr size_t ipv4_sockaddr_size = 16;
         static constexpr uint32_t host_buffer_wait_attempt_limit = 4'000'000;
 
-        struct enclave_ipv4_sockaddr
+        struct direct_ipv4_sockaddr
         {
             uint16_t family{socket_family_inet};
             uint16_t port_be{0};
@@ -29,7 +30,7 @@ namespace rpc::io_uring
             uint8_t zero[8]{};
         };
 
-        static_assert(sizeof(enclave_ipv4_sockaddr) == ipv4_sockaddr_size);
+        static_assert(sizeof(direct_ipv4_sockaddr) == ipv4_sockaddr_size);
 
         // Converts the test loopback port into the network byte order expected
         // by the kernel sockaddr structure.
@@ -111,7 +112,7 @@ namespace rpc::io_uring
             return rpc::error::PROTOCOL_ERROR();
         }
 
-        if (!detail::is_accessible_outside_enclave_pointer(buffers.buffer_region_ptr, expected_region_size))
+        if (!detail::is_accessible_ring_pointer(buffers.buffer_region_ptr, expected_region_size))
         {
             return rpc::error::PROTOCOL_ERROR();
         }
@@ -122,11 +123,8 @@ namespace rpc::io_uring
         }
         catch (const std::bad_alloc&)
         {
-            return rpc::error::OUT_OF_MEMORY();
-        }
-        catch (...)
-        {
-            return rpc::error::EXCEPTION();
+            RPC_ERROR("bad_alloc while sizing direct io_uring host buffer slots");
+            std::terminate();
         }
 
         buffer_region_ptr_ = buffers.buffer_region_ptr;
@@ -153,11 +151,8 @@ namespace rpc::io_uring
         }
         catch (const std::bad_alloc&)
         {
-            error_code = rpc::error::OUT_OF_MEMORY();
-        }
-        catch (...)
-        {
-            error_code = rpc::error::EXCEPTION();
+            RPC_ERROR("bad_alloc while creating direct io_uring host buffer waiter");
+            std::terminate();
         }
 
         return {};
@@ -352,31 +347,34 @@ namespace rpc::io_uring
             return {rpc::error::INVALID_DATA(), {}, {}};
         }
 
-        std::unique_ptr<host_buffer> first_guard(new (std::nothrow) host_buffer(
-            this, first_reservation.slot, first_reservation.generation, first_reservation.data, first_reservation.size));
-        if (!first_guard)
+        std::unique_ptr<host_buffer> first_guard;
+        try
         {
-            release_host_buffer(first_reservation.slot, first_reservation.generation);
-            if (required_buffer_count == 2)
-            {
-                release_host_buffer(second_reservation.slot, second_reservation.generation);
-            }
-            return {rpc::error::OUT_OF_MEMORY(), {}, {}};
+            first_guard = std::unique_ptr<host_buffer>(new host_buffer(
+                this, first_reservation.slot, first_reservation.generation, first_reservation.data, first_reservation.size));
+        }
+        catch (const std::bad_alloc&)
+        {
+            RPC_ERROR("bad_alloc while creating direct io_uring host buffer");
+            std::terminate();
         }
 
         std::unique_ptr<host_buffer> second_guard;
         if (required_buffer_count == 2)
         {
-            second_guard = std::unique_ptr<host_buffer>(new (std::nothrow) host_buffer(
-                this,
-                second_reservation.slot,
-                second_reservation.generation,
-                second_reservation.data,
-                second_reservation.size));
-            if (!second_guard)
+            try
             {
-                release_host_buffer(second_reservation.slot, second_reservation.generation);
-                return {rpc::error::OUT_OF_MEMORY(), {}, {}};
+                second_guard = std::unique_ptr<host_buffer>(new host_buffer(
+                    this,
+                    second_reservation.slot,
+                    second_reservation.generation,
+                    second_reservation.data,
+                    second_reservation.size));
+            }
+            catch (const std::bad_alloc&)
+            {
+                RPC_ERROR("bad_alloc while creating second direct io_uring host buffer");
+                std::terminate();
             }
         }
 
@@ -387,11 +385,8 @@ namespace rpc::io_uring
         }
         catch (const std::bad_alloc&)
         {
-            return {rpc::error::OUT_OF_MEMORY(), {}, {}};
-        }
-        catch (...)
-        {
-            return {rpc::error::EXCEPTION(), {}, {}};
+            RPC_ERROR("bad_alloc while creating direct io_uring host buffer shared pointer");
+            std::terminate();
         }
 
         std::shared_ptr<host_buffer> second_buffer;
@@ -403,13 +398,8 @@ namespace rpc::io_uring
             }
             catch (const std::bad_alloc&)
             {
-                first_buffer.reset();
-                return {rpc::error::OUT_OF_MEMORY(), {}, {}};
-            }
-            catch (...)
-            {
-                first_buffer.reset();
-                return {rpc::error::EXCEPTION(), {}, {}};
+                RPC_ERROR("bad_alloc while creating second direct io_uring host buffer shared pointer");
+                std::terminate();
             }
         }
 
@@ -515,11 +505,8 @@ namespace rpc::io_uring
                             }
                             catch (const std::bad_alloc&)
                             {
-                                CO_RETURN host_buffer_pair_allocation_result{rpc::error::OUT_OF_MEMORY(), {}, {}};
-                            }
-                            catch (...)
-                            {
-                                CO_RETURN host_buffer_pair_allocation_result{rpc::error::EXCEPTION(), {}, {}};
+                                RPC_ERROR("bad_alloc while queuing direct io_uring host buffer waiter");
+                                std::terminate();
                             }
 
                             grant_next_host_buffer_waiter_locked();
@@ -614,13 +601,13 @@ namespace rpc::io_uring
     CORO_TASK(controller::host_buffer_allocation_result)
     controller::make_loopback_address_buffer(uint16_t port)
     {
-        auto allocation = CO_AWAIT allocate_host_buffer(sizeof(enclave_ipv4_sockaddr));
+        auto allocation = CO_AWAIT allocate_host_buffer(sizeof(direct_ipv4_sockaddr));
         if (allocation.error_code != rpc::error::OK())
         {
             CO_RETURN allocation;
         }
 
-        enclave_ipv4_sockaddr address{};
+        direct_ipv4_sockaddr address{};
         address.port_be = host_to_network_u16(port);
         std::memcpy(allocation.buffer->data(), &address, sizeof(address));
         CO_RETURN allocation;

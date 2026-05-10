@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <new>
 #include <utility>
@@ -44,24 +45,14 @@ namespace rpc::io_uring
                 CO_RETURN socket_result.error_code;
             }
 
-            auto allocation_error = rpc::error::OK();
             try
             {
                 listen_descriptor_ = std::make_shared<direct_descriptor>(controller_, socket_result.descriptor);
             }
             catch (const std::bad_alloc&)
             {
-                allocation_error = rpc::error::OUT_OF_MEMORY();
-            }
-            catch (...)
-            {
-                allocation_error = rpc::error::EXCEPTION();
-            }
-
-            if (allocation_error != rpc::error::OK() || !listen_descriptor_)
-            {
-                CO_AWAIT controller_->close_direct(socket_result.descriptor);
-                CO_RETURN allocation_error != rpc::error::OK() ? allocation_error : rpc::error::OUT_OF_MEMORY();
+                RPC_ERROR("bad_alloc while creating direct io_uring listen descriptor");
+                std::terminate();
             }
 
             port_ = port;
@@ -99,28 +90,14 @@ namespace rpc::io_uring
             }
 
             std::shared_ptr<direct_descriptor> accepted_descriptor;
-            auto allocation_error = rpc::error::OK();
             try
             {
                 accepted_descriptor = std::make_shared<direct_descriptor>(controller_, accept_result.descriptor);
             }
             catch (const std::bad_alloc&)
             {
-                allocation_error = rpc::error::OUT_OF_MEMORY();
-            }
-            catch (...)
-            {
-                allocation_error = rpc::error::EXCEPTION();
-            }
-
-            if (allocation_error != rpc::error::OK() || !accepted_descriptor)
-            {
-                CO_AWAIT controller_->close_direct(accept_result.descriptor);
-                CO_RETURN direct_descriptor_result{
-                    allocation_error != rpc::error::OK() ? allocation_error : rpc::error::OUT_OF_MEMORY(),
-                    accept_result.native_result,
-                    accept_result.cqe_flags,
-                    {}};
+                RPC_ERROR("bad_alloc while creating accepted direct io_uring descriptor");
+                std::terminate();
             }
 
             CO_RETURN direct_descriptor_result{
@@ -181,28 +158,14 @@ namespace rpc::io_uring
             }
 
             std::shared_ptr<direct_descriptor> descriptor;
-            auto allocation_error = rpc::error::OK();
             try
             {
                 descriptor = std::make_shared<direct_descriptor>(controller_, connect_result.descriptor);
             }
             catch (const std::bad_alloc&)
             {
-                allocation_error = rpc::error::OUT_OF_MEMORY();
-            }
-            catch (...)
-            {
-                allocation_error = rpc::error::EXCEPTION();
-            }
-
-            if (allocation_error != rpc::error::OK() || !descriptor)
-            {
-                CO_AWAIT controller_->close_direct(connect_result.descriptor);
-                CO_RETURN direct_descriptor_result{
-                    allocation_error != rpc::error::OK() ? allocation_error : rpc::error::OUT_OF_MEMORY(),
-                    connect_result.native_result,
-                    connect_result.cqe_flags,
-                    {}};
+                RPC_ERROR("bad_alloc while creating connected direct io_uring descriptor");
+                std::terminate();
             }
 
             CO_RETURN direct_descriptor_result{

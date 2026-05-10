@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -17,7 +18,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <edl/coroutine_enclave.h>
+#include <io_uring/types.h>
 #include <rpc/rpc.h>
 
 #ifdef FOR_SGX
@@ -26,9 +27,22 @@
 
 namespace rpc::io_uring::detail
 {
-    // The enclave cannot include or trust liburing's host-side view of the ring.
-    // These layout mirrors are the fixed kernel ABI sizes that the enclave needs
-    // when it writes SQEs and copies CQEs out of host/kernel memory.
+    struct command_op_fields
+    {
+        uint32_t cmd_op{0};
+        uint32_t pad{0};
+    };
+
+    struct socket_option_name_fields
+    {
+        uint32_t level{0};
+        uint32_t optname{0};
+    };
+
+    // The direct-ring controller writes SQEs and drains CQEs through a normalized
+    // descriptor that may come from host Linux or from an enclave bridge. Keep
+    // the fixed kernel ABI layout here instead of exposing liburing types through
+    // the common controller surface.
     struct sqe_64
     {
         uint8_t opcode{0};
@@ -39,11 +53,13 @@ namespace rpc::io_uring::detail
         {
             uint64_t off;
             uint64_t addr2;
+            command_op_fields command;
         };
         union
         {
             uint64_t addr;
             uint64_t splice_off_in;
+            socket_option_name_fields socket_option;
         };
         uint32_t len{0};
         union
@@ -68,6 +84,7 @@ namespace rpc::io_uring::detail
             int32_t splice_fd_in;
             uint32_t file_index;
             uint32_t addr_len;
+            uint32_t optlen;
         };
         union
         {
@@ -93,6 +110,8 @@ namespace rpc::io_uring::detail
     static_assert(sizeof(sqe_64) == 64);
     static_assert(sizeof(cqe_16) == 16);
     static_assert(sizeof(kernel_timespec) == 16);
+    static_assert(sizeof(command_op_fields) == sizeof(uint64_t));
+    static_assert(sizeof(socket_option_name_fields) == sizeof(uint64_t));
 
     template<class T> static T* ring_pointer(uint64_t address) noexcept
     {
@@ -128,7 +147,7 @@ namespace rpc::io_uring::detail
         return true;
     }
 
-    static inline bool is_accessible_outside_enclave_pointer(
+    static inline bool is_accessible_ring_pointer(
         uint64_t address,
         size_t size) noexcept
     {
@@ -159,6 +178,7 @@ namespace rpc::io_uring::detail
     static constexpr uint8_t io_uring_op_send = 26;
     static constexpr uint8_t io_uring_op_recv = 27;
     static constexpr uint8_t io_uring_op_socket = 45;
+    static constexpr uint8_t io_uring_op_uring_cmd = 46;
     static constexpr uint8_t io_uring_op_bind = 56;
     static constexpr uint8_t io_uring_op_listen = 57;
     static constexpr uint8_t io_uring_sqe_fixed_file = 1U << 0;
@@ -167,6 +187,7 @@ namespace rpc::io_uring::detail
     static constexpr uint32_t io_uring_async_cancel_all = 1U << 0;
     static constexpr uint32_t io_uring_async_cancel_fd = 1U << 1;
     static constexpr uint32_t io_uring_async_cancel_fd_fixed = 1U << 3;
+    static constexpr uint32_t socket_uring_op_setsockopt = 3;
     static constexpr uint32_t io_uring_sq_need_wakeup = 1U << 0;
     static constexpr uint32_t io_uring_setup_sqpoll = 1U << 1;
     static constexpr uint32_t io_uring_setup_no_sqarray = 1U << 16;
@@ -187,7 +208,7 @@ namespace rpc::io_uring::detail
         return (load_ring_u32_acquire(sq_flags) & io_uring_sq_need_wakeup) != 0;
     }
 
-    static inline bool validate_ring_data_for_direct_submission(const data& ring_data) noexcept
+    static inline bool validate_ring_data_for_direct_ring(const data& ring_data) noexcept
     {
         const auto& sq = ring_data.submission_queue;
         const auto& cq = ring_data.completion_queue;
@@ -209,27 +230,27 @@ namespace rpc::io_uring::detail
             return false;
         }
 
-        return is_accessible_outside_enclave_pointer(sq.sq_head_ptr, sizeof(uint32_t))
-               && is_accessible_outside_enclave_pointer(sq.sq_tail_ptr, sizeof(uint32_t))
-               && is_accessible_outside_enclave_pointer(sq.sq_flags_ptr, sizeof(uint32_t))
-               && (!uses_sq_array || is_accessible_outside_enclave_pointer(sq.sq_array_ptr, sq_array_size))
-               && is_accessible_outside_enclave_pointer(sq.sqes_ptr, sqes_size)
-               && is_accessible_outside_enclave_pointer(cq.cq_head_ptr, sizeof(uint32_t))
-               && is_accessible_outside_enclave_pointer(cq.cq_tail_ptr, sizeof(uint32_t))
-               && is_accessible_outside_enclave_pointer(cq.cqes_ptr, cqes_size);
+        return is_accessible_ring_pointer(sq.sq_head_ptr, sizeof(uint32_t))
+               && is_accessible_ring_pointer(sq.sq_tail_ptr, sizeof(uint32_t))
+               && is_accessible_ring_pointer(sq.sq_flags_ptr, sizeof(uint32_t))
+               && (!uses_sq_array || is_accessible_ring_pointer(sq.sq_array_ptr, sq_array_size))
+               && is_accessible_ring_pointer(sq.sqes_ptr, sqes_size)
+               && is_accessible_ring_pointer(cq.cq_head_ptr, sizeof(uint32_t))
+               && is_accessible_ring_pointer(cq.cq_tail_ptr, sizeof(uint32_t))
+               && is_accessible_ring_pointer(cq.cqes_ptr, cqes_size);
     }
 
-    // Enclave-owned state for one submitted operation.
+    // Controller-owned state for one submitted operation.
     //
     // user_data is the only value written into the untrusted SQE. CQ dispatch
-    // copies the CQE into enclave memory, finds this operation by user_data, and
-    // then publishes completion with release ordering.
-    struct enclave_io_operation
+    // copies the CQE into controller-owned memory, finds this operation by
+    // user_data, and then publishes completion with release ordering.
+    struct direct_ring_operation
     {
         std::atomic<bool> submitted{false};
         std::atomic<bool> completed{false};
         std::coroutine_handle<> waiter{};
-        std::shared_ptr<enclave_io_operation> next_completed;
+        std::shared_ptr<direct_ring_operation> next_completed;
         std::shared_ptr<void> keep_alive;
         uint64_t user_data{0};
         int32_t cqe_result{0};
@@ -237,27 +258,27 @@ namespace rpc::io_uring::detail
         int error_code{rpc::error::OK()};
     };
 
-    struct enclave_io_submission_result
+    struct direct_ring_submission_result
     {
         int error_code{rpc::error::OK()};
         bool submitted{false};
         uint32_t completion_count{0};
-        std::shared_ptr<enclave_io_operation> completed_operations;
+        std::shared_ptr<direct_ring_operation> completed_operations;
     };
 
-    struct enclave_io_completion_pump_result
+    struct direct_ring_completion_pump_result
     {
         int error_code{rpc::error::OK()};
         uint32_t completion_count{0};
-        std::shared_ptr<enclave_io_operation> completed_operations;
+        std::shared_ptr<direct_ring_operation> completed_operations;
     };
 
-    class enclave_io_operation_engine
+    class direct_ring_operation_engine
     {
     public:
-        using operation_ptr = std::shared_ptr<enclave_io_operation>;
+        using operation_ptr = std::shared_ptr<direct_ring_operation>;
 
-        enclave_io_submission_result try_submit_no_op(
+        direct_ring_submission_result try_submit_no_op(
             const data& ring_data,
             const operation_ptr& operation)
         {
@@ -265,7 +286,7 @@ namespace rpc::io_uring::detail
         }
 
         template<class FillSqe>
-        enclave_io_submission_result try_submit(
+        direct_ring_submission_result try_submit(
             const data& ring_data,
             const operation_ptr& operation,
             FillSqe&& fill_sqe)
@@ -312,25 +333,14 @@ namespace rpc::io_uring::detail
             }
             catch (const std::bad_alloc&)
             {
-                return {rpc::error::OUT_OF_MEMORY(), false, completion_count, std::move(completed_operations_)};
-            }
-            catch (...)
-            {
-                return {rpc::error::EXCEPTION(), false, completion_count, std::move(completed_operations_)};
+                RPC_ERROR("bad_alloc while registering direct io_uring operation");
+                std::terminate();
             }
 
             const auto sq_index = tail & sq.sq_ring_mask;
             auto& sqe = sqes[sq_index];
             std::memset(&sqe, 0, sizeof(sqe));
-            try
-            {
-                std::forward<FillSqe>(fill_sqe)(sqe);
-            }
-            catch (...)
-            {
-                operations_.erase(user_data);
-                return {rpc::error::EXCEPTION(), false, completion_count, std::move(completed_operations_)};
-            }
+            std::forward<FillSqe>(fill_sqe)(sqe);
 
             sqe.user_data = user_data;
             if (!has_no_sqarray(ring_data))
@@ -347,7 +357,7 @@ namespace rpc::io_uring::detail
         }
 
         template<class FillSqes>
-        enclave_io_submission_result try_submit_linked(
+        direct_ring_submission_result try_submit_linked(
             const data& ring_data,
             const operation_ptr& primary_operation,
             const operation_ptr& linked_operation,
@@ -395,15 +405,8 @@ namespace rpc::io_uring::detail
             }
             catch (const std::bad_alloc&)
             {
-                operations_.erase(primary_user_data);
-                operations_.erase(linked_user_data);
-                return {rpc::error::OUT_OF_MEMORY(), false, completion_count, std::move(completed_operations_)};
-            }
-            catch (...)
-            {
-                operations_.erase(primary_user_data);
-                operations_.erase(linked_user_data);
-                return {rpc::error::EXCEPTION(), false, completion_count, std::move(completed_operations_)};
+                RPC_ERROR("bad_alloc while registering linked direct io_uring operations");
+                std::terminate();
             }
 
             const auto primary_sq_index = tail & sq.sq_ring_mask;
@@ -412,16 +415,7 @@ namespace rpc::io_uring::detail
             auto& linked_sqe = sqes[linked_sq_index];
             std::memset(&primary_sqe, 0, sizeof(primary_sqe));
             std::memset(&linked_sqe, 0, sizeof(linked_sqe));
-            try
-            {
-                std::forward<FillSqes>(fill_sqes)(primary_sqe, linked_sqe);
-            }
-            catch (...)
-            {
-                operations_.erase(primary_user_data);
-                operations_.erase(linked_user_data);
-                return {rpc::error::EXCEPTION(), false, completion_count, std::move(completed_operations_)};
-            }
+            std::forward<FillSqes>(fill_sqes)(primary_sqe, linked_sqe);
 
             primary_sqe.user_data = primary_user_data;
             linked_sqe.user_data = linked_user_data;
@@ -439,7 +433,7 @@ namespace rpc::io_uring::detail
             return {rpc::error::OK(), true, completion_count, std::move(completed_operations_)};
         }
 
-        enclave_io_completion_pump_result pump_completions(const data& ring_data) noexcept
+        direct_ring_completion_pump_result pump_completions(const data& ring_data) noexcept
         {
             std::lock_guard<rpc::spin_mutex> lock(mutex_);
             if (controller_error_ != rpc::error::OK())
@@ -451,7 +445,7 @@ namespace rpc::io_uring::detail
             return {controller_error_, completion_count, std::move(completed_operations_)};
         }
 
-        std::shared_ptr<enclave_io_operation> fail_all_operations(int error_code) noexcept
+        std::shared_ptr<direct_ring_operation> fail_all_operations(int error_code) noexcept
         {
             std::lock_guard<rpc::spin_mutex> lock(mutex_);
             fail_all_operations_locked(error_code);
@@ -515,14 +509,15 @@ namespace rpc::io_uring::detail
             uint32_t completion_count = 0;
             while (head != tail)
             {
-                // CQ memory is untrusted. Copy the entry into enclave-owned
-                // stack memory before looking at user_data or result fields.
+                // CQ memory may be shared with another trust domain. Copy the
+                // entry into controller-owned stack memory before looking at
+                // user_data or result fields.
                 const auto cqe = cqes[head & cq.cq_ring_mask];
                 auto op = operations_.find(cqe.user_data);
                 if (op == operations_.end())
                 {
                     RPC_WARNING(
-                        "enclave io_uring unknown completion user_data={} cqe_res={} cq_head={} cq_tail={}",
+                        "direct io_uring unknown completion user_data={} cqe_res={} cq_head={} cq_tail={}",
                         cqe.user_data,
                         cqe.res,
                         head,
@@ -545,7 +540,7 @@ namespace rpc::io_uring::detail
             }
 
             // Publish CQ consumption after all copied completions have been
-            // routed to enclave-owned operation state.
+            // routed to controller-owned operation state.
             store_ring_u32_release(cq_head, head);
             return completion_count;
         }

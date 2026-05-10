@@ -56,6 +56,13 @@ namespace io_uring_test_enclave
         CORO_TASK(int) controller_shutdown_pending_send_test() override;
         CORO_TASK(int) get_noop_measurement(io_uring_test::iouring_noop_measurement& measurement) override;
         CORO_TASK(int) peer_to_peer_rpc_test(uint32_t iterations) override;
+        CORO_TASK(int)
+        stream_benchmark(
+            bool send_reply,
+            uint32_t iterations,
+            uint32_t warmup,
+            uint32_t payload_size,
+            io_uring_test::stream_benchmark_stats& stats) override;
 
     private:
         static io_uring_test::iouring_noop_measurement to_test_measurement(

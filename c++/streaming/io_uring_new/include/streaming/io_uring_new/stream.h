@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -18,12 +19,31 @@ namespace streaming::io_uring_new
     class stream : public streaming::stream
     {
     public:
+        enum class receive_timeout_strategy : uint8_t
+        {
+            linked_timeout,
+            nonblocking_poll
+        };
+
+        struct options
+        {
+            // Zero means ask the controller to transfer as much as the caller
+            // requested. The controller may still cap this to its host buffer
+            // slot size. Non-zero gives experiments a simple stream-level cap.
+            size_t max_transfer_size{0};
+            receive_timeout_strategy timeout_strategy{receive_timeout_strategy::linked_timeout};
+        };
+
         // Adapts an io_uring direct descriptor into the generic streaming API.
         // The descriptor may come from any future byte-oriented io_uring
         // resource; this class deliberately does not know which.
         explicit stream(
             std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
             uint16_t peer_port = 0) noexcept;
+        stream(
+            std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
+            uint16_t peer_port,
+            options stream_options) noexcept;
 
         auto receive(
             rpc::mutable_byte_span buffer,
@@ -41,8 +61,11 @@ namespace streaming::io_uring_new
     private:
         std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor_;
         uint16_t peer_port_{0};
+        options options_;
         std::atomic<bool> closed_{false};
     };
+
+    [[nodiscard]] stream::options default_stream_options() noexcept;
 
     struct stream_result
     {
@@ -54,9 +77,11 @@ namespace streaming::io_uring_new
 
     [[nodiscard]] std::shared_ptr<streaming::stream> make_stream(
         std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
-        uint16_t peer_port = 0) noexcept;
+        uint16_t peer_port = 0,
+        stream::options stream_options = default_stream_options()) noexcept;
 
     [[nodiscard]] stream_result make_stream_result(
         const rpc::io_uring::direct_descriptor_result& result,
-        uint16_t peer_port = 0) noexcept;
+        uint16_t peer_port = 0,
+        stream::options stream_options = default_stream_options()) noexcept;
 } // namespace streaming::io_uring_new

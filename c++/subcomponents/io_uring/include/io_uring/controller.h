@@ -15,8 +15,8 @@
 #include <vector>
 
 #include <io_uring/detail/operation_engine.h>
+#include <io_uring/io_uring_handle.h>
 #include <io_uring/types.h>
-#include <edl/coroutine_enclave.h>
 #include <rpc/rpc.h>
 
 namespace rpc::io_uring
@@ -26,13 +26,37 @@ namespace rpc::io_uring
     class controller : public std::enable_shared_from_this<controller>
     {
     public:
-        explicit controller(rpc::coro::scheduler* scheduler = nullptr);
-        virtual ~controller() = default;
+        struct options
+        {
+            // Cooperative polling keeps all waiting in the caller coroutine.
+            // Proactor mode uses the scheduler to run a shared completion pump.
+            wait_strategy completion_wait_strategy{wait_strategy::cooperative_poll};
+            // Linux MSG_* bits applied to direct TCP send/receive SQEs. Keep
+            // these zero unless a caller deliberately wants socket-level
+            // experiments without changing the stream or transport layers.
+            uint32_t send_message_flags{0};
+            uint32_t receive_message_flags{0};
+            // Host-only optimization: submit the caller's per-transfer
+            // byte_span/mutable_byte_span address directly in SEND/RECV SQEs.
+            // Enclave controllers must leave this disabled because those
+            // caller buffers are enclave-private memory and are not
+            // kernel-visible. The fallback path stages bytes through the
+            // controller's host buffer pool.
+            bool use_caller_buffers_for_transfers{false};
+        };
 
-        [[nodiscard]] rpc::optimistic_ptr<i_io_uring_control> host_control() const;
+        explicit controller(
+            std::shared_ptr<io_uring_handle> handle = {},
+            rpc::coro::scheduler* scheduler = nullptr);
+        controller(
+            std::shared_ptr<io_uring_handle> handle,
+            rpc::coro::scheduler* scheduler,
+            options controller_options);
+        virtual ~controller() = default;
 
         void set_wait_strategy(wait_strategy strategy) noexcept;
         [[nodiscard]] wait_strategy get_wait_strategy() const noexcept;
+        [[nodiscard]] options get_options() const noexcept;
 
         // Only reset measurements when the caller knows no operations from the
         // previous sample are still in flight.
@@ -45,6 +69,10 @@ namespace rpc::io_uring
         [[nodiscard]] bool is_shutdown_requested() const noexcept;
 
         CORO_TASK(int) wake_host_iouring();
+        CORO_TASK(int)
+        notify_submitted(
+            const data& ring_data,
+            uint32_t sqe_count);
         CORO_TASK(int) get_iouring_data(data& ring_data);
         CORO_TASK(int) refresh_iouring_data();
         void clear_iouring_data_cache() noexcept;
@@ -72,16 +100,16 @@ namespace rpc::io_uring
             uint32_t descriptor,
             rpc::mutable_byte_span buffer);
         CORO_TASK(transfer_result)
+        receive_nonblocking(
+            uint32_t descriptor,
+            rpc::mutable_byte_span buffer);
+        CORO_TASK(transfer_result)
         receive(
             uint32_t descriptor,
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout);
         CORO_TASK(operation_result) cancel_direct(uint32_t descriptor);
         CORO_TASK(operation_result) close_direct(uint32_t descriptor);
-
-    protected:
-        virtual CORO_TASK(int) inner_wake_host_iouring() = 0;
-        virtual CORO_TASK(int) inner_get_iouring_data(rpc::io_uring::data& ring_data) = 0;
 
     private:
         friend class direct_descriptor;
@@ -200,12 +228,13 @@ namespace rpc::io_uring
 
         [[nodiscard]] int shutdown_error() const noexcept;
         [[nodiscard]] bool can_accept_work() const noexcept;
+        CORO_TASK(operation_result) set_tcp_no_delay(uint32_t descriptor);
         void fail_host_buffer_waiters(int error_code) noexcept;
         void fail_submission_waiters(int error_code) noexcept;
         void record_completion_pump(uint32_t completion_count) noexcept;
-        void consume_pump_result(detail::enclave_io_completion_pump_result& pump_result) noexcept;
-        void consume_submit_result(detail::enclave_io_submission_result& submit_result) noexcept;
-        void resume_completed_operations(detail::enclave_io_operation_engine::operation_ptr completed_operations) noexcept;
+        void consume_pump_result(detail::direct_ring_completion_pump_result& pump_result) noexcept;
+        void consume_submit_result(detail::direct_ring_submission_result& submit_result) noexcept;
+        void resume_completed_operations(detail::direct_ring_operation_engine::operation_ptr completed_operations) noexcept;
         void record_no_op_complete(
             uint64_t start_ticks,
             int err) noexcept;
@@ -246,6 +275,16 @@ namespace rpc::io_uring
             uint32_t slot,
             uint64_t generation) noexcept;
         CORO_TASK(host_buffer_allocation_result) make_loopback_address_buffer(uint16_t port);
+        CORO_TASK(transfer_result)
+        send_with_flags(
+            uint32_t descriptor,
+            rpc::byte_span buffer,
+            uint32_t msg_flags);
+        CORO_TASK(transfer_result)
+        receive_with_flags(
+            uint32_t descriptor,
+            rpc::mutable_byte_span buffer,
+            uint32_t msg_flags);
 
         CORO_TASK(operation_result)
         submit_operation(
@@ -259,18 +298,18 @@ namespace rpc::io_uring
         CORO_TASK(int)
         submit_no_op(
             const data& ring_data,
-            const std::shared_ptr<detail::enclave_io_operation>& operation);
+            const std::shared_ptr<detail::direct_ring_operation>& operation);
         CORO_TASK(int)
         submit_prepared_operation(
             const data& ring_data,
-            const std::shared_ptr<detail::enclave_io_operation>& operation,
+            const std::shared_ptr<detail::direct_ring_operation>& operation,
             fill_sqe_callback fill_sqe,
             void* context);
         CORO_TASK(int)
         submit_prepared_linked_operation(
             const data& ring_data,
-            const std::shared_ptr<detail::enclave_io_operation>& primary_operation,
-            const std::shared_ptr<detail::enclave_io_operation>& linked_operation,
+            const std::shared_ptr<detail::direct_ring_operation>& primary_operation,
+            const std::shared_ptr<detail::direct_ring_operation>& linked_operation,
             fill_linked_sqe_callback fill_sqes,
             void* context);
         [[nodiscard]] std::shared_ptr<submission_waiter> make_submission_waiter(
@@ -283,15 +322,15 @@ namespace rpc::io_uring
         CORO_TASK(int)
         wait_for_operation(
             const data& ring_data,
-            const std::shared_ptr<detail::enclave_io_operation>& operation);
+            const std::shared_ptr<detail::direct_ring_operation>& operation);
         CORO_TASK(int)
         wait_for_operation_cooperative(
             const data& ring_data,
-            const std::shared_ptr<detail::enclave_io_operation>& operation);
+            const std::shared_ptr<detail::direct_ring_operation>& operation);
         CORO_TASK(int)
         wait_for_operation_proactor(
             const data& ring_data,
-            const std::shared_ptr<detail::enclave_io_operation>& operation);
+            const std::shared_ptr<detail::direct_ring_operation>& operation);
         bool request_completion_pump(const data& ring_data) noexcept;
         CORO_TASK(void) completion_pump_loop(data ring_data);
         CORO_TASK(void) wait_before_next_poll();
@@ -299,8 +338,10 @@ namespace rpc::io_uring
         data cached_iouring_data_;
         mutable rpc::spin_mutex cache_mutex_;
         bool has_cached_iouring_data_{false};
-        detail::enclave_io_operation_engine operation_engine_;
+        std::shared_ptr<io_uring_handle> handle_;
+        detail::direct_ring_operation_engine operation_engine_;
         rpc::coro::scheduler* scheduler_{nullptr};
+        options options_;
         wait_strategy wait_strategy_{wait_strategy::cooperative_poll};
         std::atomic<lifecycle_state> lifecycle_state_{lifecycle_state::running};
         std::atomic<int> shutdown_error_code_{rpc::error::OK()};

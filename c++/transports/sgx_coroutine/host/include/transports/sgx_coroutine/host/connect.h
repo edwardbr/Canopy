@@ -6,7 +6,9 @@
 
 #include <io_uring/host_controller.h>
 #include <rpc/rpc.h>
+#include <transports/sgx_coroutine/common/io_uring_data_conversion.h>
 
+#include <exception>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -16,7 +18,8 @@ namespace rpc::sgx::coro::host
 {
     namespace detail
     {
-        class enclave_io_uring_control : public rpc::base<enclave_io_uring_control, rpc::io_uring::i_io_uring_control>
+        class enclave_io_uring_control
+            : public rpc::base<enclave_io_uring_control, rpc::sgx::coro::protocol::i_io_uring_control>
         {
         public:
             enclave_io_uring_control(
@@ -50,13 +53,17 @@ namespace rpc::sgx::coro::host
                 CO_RETURN controller_->wake_iouring();
             }
 
-            CORO_TASK(int) get_iouring_data(rpc::io_uring::data& ring_data) override
+            CORO_TASK(int) get_iouring_data(rpc::sgx::coro::protocol::io_uring_data& ring_data) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!controller_)
                     CO_RETURN rpc::error::RESOURCE_CLOSED();
 
-                CO_RETURN controller_->get_iouring_data(ring_data);
+                rpc::io_uring::data native_data;
+                auto err = controller_->get_iouring_data(native_data);
+                if (err == rpc::error::OK())
+                    rpc::sgx::coro::protocol::copy_to_wire(native_data, ring_data);
+                CO_RETURN err;
             }
 
         private:
@@ -104,24 +111,19 @@ namespace rpc::sgx::coro::host
             CO_RETURN result;
         }
 
-        rpc::shared_ptr<rpc::io_uring::i_io_uring_control> control;
+        rpc::shared_ptr<rpc::sgx::coro::protocol::i_io_uring_control> control;
         try
         {
-            control = rpc::shared_ptr<rpc::io_uring::i_io_uring_control>(
+            control = rpc::shared_ptr<rpc::sgx::coro::protocol::i_io_uring_control>(
                 new detail::enclave_io_uring_control(std::move(controller), std::move(erased_interface)));
         }
         catch (const std::bad_alloc&)
         {
-            result.error_code = rpc::error::OUT_OF_MEMORY();
-            CO_RETURN result;
-        }
-        catch (...)
-        {
-            result.error_code = rpc::error::EXCEPTION();
-            CO_RETURN result;
+            RPC_ERROR("bad_alloc while creating enclave io_uring control interface");
+            std::terminate();
         }
 
-        CO_RETURN CO_AWAIT service->template connect_to_zone<rpc::io_uring::i_io_uring_control, Local>(
+        CO_RETURN CO_AWAIT service->template connect_to_zone<rpc::sgx::coro::protocol::i_io_uring_control, Local>(
             name, std::move(enclave_transport), std::move(control));
     }
 }

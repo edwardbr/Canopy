@@ -699,7 +699,7 @@ int main(
     int argc,
     char** argv)
 {
-    std::cout << "RPC++ Serialisation Benchmark\n";
+    std::cout << "Canopy Serialisation Benchmark\n";
     std::cout << "=============================\n\n";
 
     if (argc > 1 && std::string(argv[1]) == "--permutations")

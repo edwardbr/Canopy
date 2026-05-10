@@ -1,6 +1,6 @@
 /*
  *   Comprehensive Demo IDL
- *   Demonstrates all major RPC++ features
+ *   Demonstrates all major Canopy features
  */
 
 namespace comprehensive
@@ -37,6 +37,38 @@ namespace comprehensive
 
             [description="Echo back binary data"]
             int echo_binary([in] const std::vector<uint8_t>& data, [out] std::vector<uint8_t>& response);
+        };
+
+        // Host-controlled benchmark runner whose timed work happens inside an enclave.
+        interface i_enclave_io_uring_benchmark
+        {
+            [description="Run a loopback RPC benchmark over enclave io_uring streams"]
+            int run_io_uring_rpc(
+                uint64_t encoding,
+                uint64_t blob_size,
+                uint32_t iterations,
+                uint32_t warmup_iterations,
+                bool use_proactor,
+                [out] std::vector<uint64_t>& durations_ns);
+
+            [description="Start an enclave io_uring RPC server for a separate enclave client"]
+            int start_io_uring_rpc_server(
+                uint64_t encoding,
+                bool use_proactor,
+                [out] uint32_t& port);
+
+            [description="Run an enclave io_uring RPC client against a separate enclave server"]
+            int run_io_uring_rpc_client(
+                uint64_t encoding,
+                uint64_t blob_size,
+                uint32_t iterations,
+                uint32_t warmup_iterations,
+                bool use_proactor,
+                uint32_t port,
+                [out] std::vector<uint64_t>& durations_ns);
+
+            [description="Stop the enclave io_uring RPC server"]
+            int stop_io_uring_rpc_server();
         };
 
         // Callback interface for optimistic pointer demos

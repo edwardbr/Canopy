@@ -6,6 +6,7 @@
 #include <io_uring/controller.h>
 
 #include <atomic>
+#include <exception>
 #include <new>
 
 namespace rpc::io_uring
@@ -50,9 +51,10 @@ namespace rpc::io_uring
         }
     } // namespace
 
-    // Submits a single IORING_OP_NOP from inside the enclave. This is the
-    // simplest end-to-end proof that the enclave can validate ring data, publish
-    // an SQE, optionally wake SQPOLL, and observe a matching CQE.
+    // Submits a single IORING_OP_NOP through the direct-ring path. This is the
+    // simplest end-to-end proof that the controller can validate ring data,
+    // publish an SQE, optionally wake the environment, and observe a matching
+    // CQE.
     CORO_TASK(int) controller::no_op()
     {
         measurements_.no_op_calls.fetch_add(1, std::memory_order_relaxed);
@@ -65,10 +67,10 @@ namespace rpc::io_uring
         }
 
         const auto ring_data = cached_iouring_data_copy();
-        if (!detail::validate_ring_data_for_direct_submission(ring_data))
+        if (!detail::validate_ring_data_for_direct_ring(ring_data))
         {
             RPC_WARNING(
-                "enclave io_uring no_op invalid ring data descriptor_version={} setup_flags={} sq_entries={} "
+                "direct io_uring no_op invalid ring data descriptor_version={} setup_flags={} sq_entries={} "
                 "cq_entries={} sq_array_ptr={}",
                 ring_data.descriptor_version,
                 ring_data.setup.setup_flags,
@@ -81,26 +83,21 @@ namespace rpc::io_uring
 
         if (!detail::has_sqpoll(ring_data))
         {
-            RPC_WARNING("enclave io_uring no_op requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
+            RPC_WARNING("direct io_uring no_op requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
             record_no_op_complete(0, rpc::error::INCOMPATIBLE_SERVICE());
             CO_RETURN rpc::error::INCOMPATIBLE_SERVICE();
         }
 
         const auto start_ticks = read_tick_counter();
-        std::shared_ptr<detail::enclave_io_operation> operation;
+        std::shared_ptr<detail::direct_ring_operation> operation;
         try
         {
-            operation = std::make_shared<detail::enclave_io_operation>();
+            operation = std::make_shared<detail::direct_ring_operation>();
         }
         catch (const std::bad_alloc&)
         {
-            record_no_op_complete(start_ticks, rpc::error::OUT_OF_MEMORY());
-            CO_RETURN rpc::error::OUT_OF_MEMORY();
-        }
-        catch (...)
-        {
-            record_no_op_complete(start_ticks, rpc::error::EXCEPTION());
-            CO_RETURN rpc::error::EXCEPTION();
+            RPC_ERROR("bad_alloc while creating direct io_uring no_op");
+            std::terminate();
         }
 
         err = CO_AWAIT submit_no_op(ring_data, operation);
@@ -113,14 +110,14 @@ namespace rpc::io_uring
         // SQPOLL only needs an io_uring_enter(...SQ_WAKEUP) call when the
         // kernel sets IORING_SQ_NEED_WAKEUP. Calling back to the host for
         // every SQE works for a single smoke test, but it makes bursts of
-        // enclave submissions spend most of their time marshalling wake RPCs.
+        // direct-ring submissions spend most of their time marshalling wake RPCs.
         if (detail::sqpoll_needs_wakeup(ring_data))
         {
-            err = CO_AWAIT wake_host_iouring();
+            err = CO_AWAIT notify_submitted(ring_data, 1);
             if (err != rpc::error::OK())
             {
                 resume_completed_operations(operation_engine_.fail_all_operations(err));
-                RPC_WARNING("enclave io_uring no_op wake_iouring failed error={}", err);
+                RPC_WARNING("direct io_uring no_op wake_iouring failed error={}", err);
                 record_no_op_complete(start_ticks, err);
                 CO_RETURN err;
             }

@@ -110,7 +110,21 @@ namespace comprehensive::v1
     benchmark_result run_io_uring_benchmark(
         rpc::encoding enc,
         size_t blob_size,
-        uint16_t port);
+        uint16_t port,
+        bool use_proactor = true,
+        uint32_t host_buffer_size = 4096);
+#  ifdef CANOPY_BENCHMARK_SGX_COROUTINE
+    benchmark_result run_sgx_coroutine_io_uring_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        bool use_proactor = true,
+        uint32_t host_buffer_size = 4096);
+    benchmark_result run_sgx_coroutine_io_uring_pair_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        bool use_proactor = true,
+        uint32_t host_buffer_size = 4096);
+#  endif
 #else
     CORO_TASK(benchmark_result)
     run_local_benchmark(
