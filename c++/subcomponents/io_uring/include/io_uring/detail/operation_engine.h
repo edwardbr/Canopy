@@ -174,7 +174,11 @@ namespace rpc::io_uring::detail
     static constexpr uint8_t io_uring_op_async_cancel = 14;
     static constexpr uint8_t io_uring_op_link_timeout = 15;
     static constexpr uint8_t io_uring_op_connect = 16;
+    static constexpr uint8_t io_uring_op_openat = 18;
     static constexpr uint8_t io_uring_op_close = 19;
+    static constexpr uint8_t io_uring_op_statx = 21;
+    static constexpr uint8_t io_uring_op_read = 22;
+    static constexpr uint8_t io_uring_op_write = 23;
     static constexpr uint8_t io_uring_op_send = 26;
     static constexpr uint8_t io_uring_op_recv = 27;
     static constexpr uint8_t io_uring_op_socket = 45;

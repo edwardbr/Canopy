@@ -37,5 +37,9 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   add_subdirectory(sgx_coroutine_test_host)
 endif()
 
+if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../subcomponents/file_system/tests file_system_tests)
+endif()
+
 # Add unit tests subdirectory
 add_subdirectory(unit_tests)

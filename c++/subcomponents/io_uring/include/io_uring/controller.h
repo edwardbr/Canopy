@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -79,6 +80,22 @@ namespace rpc::io_uring
         [[nodiscard]] const data* cached_iouring_data() const noexcept;
 
         CORO_TASK(int) no_op();
+
+        CORO_TASK(descriptor_result)
+        open_file(
+            std::string path,
+            uint32_t open_flags,
+            uint32_t mode);
+        CORO_TASK(transfer_result)
+        read_at(
+            uint32_t descriptor,
+            rpc::mutable_byte_span buffer,
+            uint64_t offset);
+        CORO_TASK(transfer_result)
+        write_at(
+            uint32_t descriptor,
+            rpc::byte_span buffer,
+            uint64_t offset);
 
         CORO_TASK(descriptor_result) create_tcp_socket();
         CORO_TASK(operation_result)

@@ -109,9 +109,14 @@ function(canopy_bootstrap_sgx_sdk)
     LIST_DIRECTORIES true
     RELATIVE "${sgx_source_dir}"
     "${sgx_source_dir}/*")
+  list(REMOVE_ITEM sgx_source_entries ".git")
   list(LENGTH sgx_source_entries sgx_source_entry_count)
   if(sgx_source_entry_count EQUAL 0)
     message(FATAL_ERROR "submodules/confidential-computing.sgx exists but is empty. "
+                        "Populate the submodule before enclave builds.")
+  endif()
+  if(NOT EXISTS "${sgx_source_dir}/Makefile")
+    message(FATAL_ERROR "submodules/confidential-computing.sgx does not contain the expected Intel SGX SDK Makefile. "
                         "Populate the submodule before enclave builds.")
   endif()
 
@@ -189,7 +194,7 @@ function(canopy_bootstrap_sgx_sdk)
       message(STATUS "Bootstrapping Intel SGX SDK from submodules/confidential-computing.sgx")
       execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
-                "CXXFLAGS=-std=gnu++17" "${CANOPY_MAKE_EXECUTABLE}" preparation
+                "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}" preparation
         WORKING_DIRECTORY "${sgx_source_dir}"
         RESULT_VARIABLE sgx_sdk_prep_result)
 
@@ -210,7 +215,8 @@ function(canopy_bootstrap_sgx_sdk)
 
     execute_process(
       COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
-              "CXXFLAGS=-std=gnu++17" "${CANOPY_MAKE_EXECUTABLE}" sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
+              "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}"
+              sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
       WORKING_DIRECTORY "${sgx_source_dir}"
       RESULT_VARIABLE sgx_sdk_build_result)
 

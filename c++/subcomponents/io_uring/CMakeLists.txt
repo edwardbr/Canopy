@@ -9,6 +9,7 @@ set(CANOPY_IO_URING_ENCLAVE_SOURCES
     src/direct_descriptor.cpp
     src/controller_core.cpp
     src/controller_buffers.cpp
+    src/controller_file.cpp
     src/controller_noop.cpp
     src/controller_submission.cpp
     src/controller_tcp.cpp
