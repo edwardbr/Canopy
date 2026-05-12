@@ -4,6 +4,7 @@
 #include "http_client_connection.h"
 
 #include <csignal>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -18,6 +19,20 @@
 
 namespace
 {
+    volatile std::sig_atomic_t g_stop_requested = 0;
+
+    void on_signal(int signal_number)
+    {
+        if (g_stop_requested != 0)
+            std::_Exit(128 + signal_number);
+        g_stop_requested = 1;
+    }
+
+    auto stop_requested() -> bool
+    {
+        return g_stop_requested != 0;
+    }
+
     struct augmented_cli
     {
         int argc = 0;
@@ -121,7 +136,8 @@ auto run_http_server(
         co_return CO_AWAIT connection.handle();
     };
 
-    CO_AWAIT canopy::http_server::run_server(bind_address, port, scheduler, std::move(stream_handler), tls_ctx);
+    CO_AWAIT canopy::http_server::run_server(
+        bind_address, port, scheduler, std::move(stream_handler), tls_ctx, [] { return stop_requested(); });
     co_return;
 }
 
@@ -171,6 +187,8 @@ auto main(
     else
         listen_ep.port = 8888; // addr = {} = 0.0.0.0, family = ipv4
 
+    std::signal(SIGINT, on_signal);
+    std::signal(SIGTERM, on_signal);
     const auto cert_path = args::get(cert_file);
     const auto key_path = args::get(key_file);
     std::shared_ptr<streaming::tls::context> tls_ctx;
@@ -204,4 +222,7 @@ auto main(
     auto bind_address = coro::net::ip_address::from_string(listen_ep.to_string(), domain);
 
     coro::sync_wait(coro::when_all(run_http_server(scheduler, bind_address, listen_ep.port, root_service, tls_ctx)));
+    root_service.reset();
+    scheduler->shutdown();
+    return 0;
 }

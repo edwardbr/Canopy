@@ -3,6 +3,8 @@
 
 #include <canopy/http_server/http_acceptor.h>
 
+#include <chrono>
+
 #include <streaming/tcp/stream.h>
 
 namespace canopy::http_server
@@ -53,7 +55,8 @@ namespace canopy::http_server
         uint16_t port,
         std::shared_ptr<coro::scheduler> scheduler,
         accepted_stream_handler stream_handler,
-        std::shared_ptr<streaming::tls::context> tls_context) -> coro::task<void>
+        std::shared_ptr<streaming::tls::context> tls_context,
+        stop_requested should_stop) -> coro::task<void>
     {
         co_await scheduler->schedule();
         coro::net::tcp::server server{scheduler, coro::net::socket_address{bind_address, port}};
@@ -67,9 +70,12 @@ namespace canopy::http_server
             RPC_INFO("WebSocket server listening on port {}", port);
         }
 
-        while (true)
+        while (!should_stop || !should_stop())
         {
-            auto client = co_await server.accept();
+            auto client = co_await server.accept(std::chrono::milliseconds{200});
+            if (should_stop && should_stop())
+                break;
+
             if (client)
             {
                 RPC_INFO("New client connected");
@@ -83,11 +89,19 @@ namespace canopy::http_server
                     scheduler->spawn_detached(handle_client(std::move(*client), scheduler, stream_handler));
                 }
             }
-            else if (!client.error().is_timeout())
+            else if (client.error().is_timeout())
+            {
+                continue;
+            }
+            else
             {
                 RPC_ERROR("Server accept error, exiting");
                 co_return;
             }
         }
+
+        server.shutdown();
+        RPC_INFO("WebSocket server stopping");
+        co_return;
     }
 } // namespace canopy::http_server
