@@ -57,6 +57,15 @@ This is intentionally direct construction rather than a factory stack. It is
 the first host-only reuse of the common controller path and is the replacement
 direction for the benchmark and transport test wiring.
 
+Listening-mode follow-up: work out the best long-term strategy for listeners
+and accept loops. A `CALL_TIMEOUT` from an accept operation should mean "retry
+accepting on the listening socket", not "retry a failed already-accepted client
+connection". Idle listeners currently work best with the proactor-style
+completion pump because cooperative polling has a finite guard timeout; decide
+whether listeners should use proactor mode, linked timeouts, explicit
+cancellation, a dedicated listener pump, or a different policy across host and
+enclave builds.
+
 Terminology note: this document uses `controller` for the common operation
 controller only. Objects that own or adapt kernel/enclave resources should be
 called handles or services, not controllers. The current implementation still
@@ -327,6 +336,46 @@ io_uring_scheduler
 The controller may later be folded into the scheduler implementation, but the
 first refactor should keep it as a distinct object so the existing operation
 engine can be reused.
+
+## SGX Scheduler Idle Policy
+
+The current enclave websocket server path more or less works and is fast when
+there is work to do. The observed idle CPU burn should therefore be treated as
+a scheduler/runtime idle-policy problem, not as a websocket-specific problem.
+Websocket and TLS streams may expose the symptom because they create long-lived
+send/receive pumps, but the fix belongs at the SGX coroutine scheduler,
+transport pump, and runtime ownership boundaries.
+
+SGX does not provide a true in-enclave OS sleep primitive. A thread that really
+yields the CPU has to leave the enclave. SDK synchronization primitives such as
+SGX mutexes and condition variables are useful, but when they truly block they
+ultimately use the SGX untrusted-event OCALL path. A custom `ocall_sleep` or
+host `usleep` wrapper should therefore not be hidden inside websocket, TLS, or
+stream code as a local workaround.
+
+The near-term plan is deliberately smaller than a host-driven pump rewrite:
+
+- Keep the current persistent master ECALL model while it is proving the fast
+  path.
+- Keep worker ECALLs as scheduler execution capacity, but avoid having all
+  workers spin when the runtime is underutilised.
+- Add an adaptive scheduler idle policy: short `_mm_pause` spinning for very
+  brief waits, then an explicit configurable park/yield strategy for longer
+  idle periods.
+- Make the spin budget and worker count measurable runtime configuration, not
+  websocket-specific constants.
+- Reduce stream transport idle polling so receive pumps do not immediately
+  reschedule themselves forever when no bytes are available.
+- Treat any OCALL-backed sleep or SGX SDK blocking wait as an explicit scheduler
+  policy choice, used only after the spin budget and never as an accidental
+  dependency of stream or websocket code.
+
+The larger host-driven bounded ECALL pump remains a later scheduler redesign.
+That model would let the host own idle waiting with `io_uring` and enter the
+enclave only to drain bounded runtime work. It touches ECALL routing, queue
+readiness, stream pump wakeups, shutdown, fake SGX, and real SGX, so it should
+not be mixed into the immediate websocket/TLS branch unless that branch becomes
+the SGX scheduler redesign branch.
 
 ## Cardinality
 
@@ -690,6 +739,187 @@ components or tests:
 - host-only `linux_io_uring_handle` support for non-SQPOLL `io_uring_enter` and
   completion wakeup, if the first host-direct path does not force SQPOLL
 
+## Secure Stream Backend And Resource Loading Plan
+
+The current `streaming/tls` implementation should be parked as the
+OpenSSL/SGXSSL implementation. The active replacement direction is a parallel
+`streaming/mbedtls` implementation that can be used by:
+
+- real SGX coroutine builds
+- fake SGX coroutine builds
+- the ordinary host-only websocket demo
+
+This backend must not be SGX-only. Fake SGX and the host websocket demo are
+required compatibility targets so the same TLS stream shape can be debugged
+without depending on Intel SGX simulation fidelity.
+
+### CMake Dependency Policy
+
+Mbed TLS should be carried as a normal Canopy submodule at
+`c++/submodules/mbedtls`. CMake should load it only when a build actually needs
+the Mbed TLS backend:
+
+- `CANOPY_SECURE_STREAM_BACKEND=MBEDTLS` is the default and selects the Mbed
+  TLS secure stream direction.
+- `CANOPY_SECURE_STREAM_BACKEND=OPENSSL` keeps the existing OpenSSL/SGXSSL
+  stream available as an explicit compatibility backend.
+- `CANOPY_BUILD_MBEDTLS=ON` builds the bundled submodule and exposes Canopy
+  wrapper targets for crypto, X.509, and TLS.
+- CMake should configure Mbed TLS as a static, embedded dependency: no programs,
+  no tests, no install/export side effects, no forced pthread linkage, and no
+  generated-file regeneration.
+- The submodule should be pinned to an official Mbed TLS release tag rather than
+  a development branch. The release tag carries the generated source files, so
+  Canopy should configure Mbed TLS with generated-file regeneration disabled and
+  without requiring Python package dependencies to build the library.
+- Real SGX, fake SGX, and host-only websocket demo presets should be able to
+  opt into the same dependency path instead of having separate TLS dependency
+  wiring.
+
+The Mbed TLS submodule is the dependency source for the new stream backend. The
+small Mbed TLS-derived CMAC fragment in Intel's DCAP/driver tree is not a
+general TLS, X.509, or ECDSA dependency and should not be treated as one.
+
+### Secure Stream API And Peer Verification Policy
+
+The backend-neutral include `streaming/core/include/streaming/secure_stream.h`
+selects either `streaming::mbedtls` or `streaming::tls` and exposes the same
+public shape:
+
+- `streaming::secure::context` for server-side TLS state
+- `streaming::secure::client_context` for client-side TLS state
+- `streaming::secure::pem_credentials`
+- `streaming::secure::server_context_options`
+- `streaming::secure::client_context_options`
+- `streaming::secure::peer_verification`
+
+Server peer verification is constructor policy, not a hard-coded backend
+decision:
+
+```cpp
+streaming::secure::pem_credentials credentials;
+credentials.certificate = certificate_pem;
+credentials.private_key = private_key_pem;
+credentials.trust_anchor = peer_ca_pem;
+
+auto tls_context = std::make_shared<streaming::secure::context>(
+    credentials,
+    streaming::secure::server_context_options{
+        .verify_peer = streaming::secure::peer_verification::required});
+```
+
+The policy modes are:
+
+- `none`: do not request or verify a peer/client certificate. This is the normal
+  browser-facing websocket-server mode.
+- `optional`: request a peer certificate, allow the peer to omit it, but reject
+  the connection if the peer presents a certificate that does not verify.
+- `required`: require the peer to present a certificate and require that
+  certificate to verify.
+
+`trust_anchor` means the PEM CA/certificate material used to validate the peer's
+certificate chain. It is not the server certificate and it is not the private
+key. A server context that selects `optional` or `required` peer verification
+must be constructed with a trust anchor. Peer-to-peer transport and future
+RA-TLS modes should normally use `required`; `optional` is mainly useful for
+transitional listeners that accept ordinary browser/web clients and also inspect
+authenticated peers when a certificate is supplied.
+
+Both backends should preserve the same semantics. OpenSSL already treats
+`SSL_VERIFY_PEER` without `SSL_VERIFY_FAIL_IF_NO_PEER_CERT` as optional
+verification. Mbed TLS needs explicit post-handshake verification for the
+`optional` case so that an absent peer certificate is accepted but a presented
+untrusted certificate is not silently accepted.
+
+Client contexts keep the older boolean-style policy for now:
+
+```cpp
+auto client_context = std::make_shared<streaming::secure::client_context>(
+    trust_anchor_pem,
+    streaming::secure::client_context_options{.verify_peer = true});
+```
+
+Future RA-TLS support should extend the policy surface rather than bake
+attestation checks into websocket or transport code. The natural extension point
+is a verifier/policy object associated with the context constructor. That policy
+can combine ordinary chain validation with quote, measurement, signer, TCB,
+debug-mode, and collateral checks.
+
+### File System Boundary
+
+The TLS stream should consume files and resource bytes through the Canopy
+`file_system` interfaces, not by calling POSIX file APIs directly. The important
+contract is the `file_system` interface, not the current implementation behind
+it.
+
+The current manager implementation is backed by the common io_uring controller.
+That is useful for host files and enclave-owned io_uring access, but it should
+not become the only resource model. The same interface should also allow:
+
+- io_uring-backed files
+- local statically linked data compiled into the binary or enclave
+- packaged demo resources such as websocket `www` files
+- future collateral or certificate stores that are not ordinary host files
+
+Certificate chains, private keys, trust anchors, demo static content, and
+attestation collateral should therefore cross into the stream/TLS layer as bytes
+read from an `i_manager`-style provider. A backend that needs a PEM certificate
+or key should ask the provider for the bytes and pass them to Mbed TLS memory
+parsers. It should not assume a filesystem path is meaningful inside real SGX,
+fake SGX, or embedded-resource builds.
+
+This also leaves room for a `static_resource_file_system` implementation that
+serves read-only files from compiled data while keeping the websocket demo and
+TLS backend on the same API as the io_uring-backed manager.
+
+### TLS Stream Concurrency Contract
+
+The streaming transport has independent send and receive pumps. Any TLS stream
+implementation used under it must therefore be full-duplex safe or internally
+serialized. For Mbed TLS, the preferred shape is still an actor/lane per TLS
+connection instance: one lane owns the TLS context state for that connection and
+serializes calls that mutate it, while the transport may continue to expose
+split send and receive pumps above the stream boundary.
+
+The lane should be per TLS connection, not per global library. Shared
+configuration objects may be reused where the library permits it, but mutable
+per-connection state belongs to one stream actor. If a future SGX Mbed TLS
+configuration needs global serialization for platform hooks, that should live
+behind a small runtime module rather than inside the transport pumps.
+
+The Mbed TLS stream must not share mutable RNG or `mbedtls_ssl_config` state
+between connections. SGX builds deliberately avoid external pthread activity in
+the TLS layer, so relying on Mbed TLS internal threading guards is the wrong
+default. Each stream instance should own its per-connection `mbedtls_ssl_config`
+and RNG state. Shared context objects should hold reusable parsed credentials
+and immutable policy only.
+
+### DCAP And Hybrid Crypto Boundary
+
+Mbed TLS is the preferred day-to-day TLS and crypto backend for coroutine-friendly
+streaming, but DCAP quote verification should remain a byte-boundary hybrid
+until the QVL path is deliberately ported and validated. Intel QVL/QvE code is
+OpenSSL/SGXSSL-shaped today, especially around X.509/CRL parsing and custom SGX
+certificate extensions.
+
+The handoff between Mbed TLS and OpenSSL/SGXSSL should stay at serialized data
+boundaries:
+
+- quote bytes
+- PEM or DER certificates
+- JSON collateral
+- raw public keys and signatures
+
+Do not share library-owned objects such as `SSL*`, `SSL_CTX*`, `EVP_PKEY*`, or
+`mbedtls_x509_crt` across the boundary.
+
+DCAP integration is a separate design track from this branch. This branch should
+keep the streaming/RPC work focused on the secure stream backend, resource
+loading, fake SGX compatibility, and host websocket demo coverage. Remote
+attestation, quote verification policy, QvE/QVL integration, and collateral
+refresh should be documented and integrated deliberately in a later branch once
+the runtime boundary is understood.
+
 ## Migration Plan
 
 1. Mark the V1 SGX io_uring controller plan as deprecated and introduce this
@@ -720,7 +950,19 @@ components or tests:
    `linux_io_uring_handle`.
 10. Only after the ownership model is clear, integrate io_uring streams into
     production transport paths.
-11. Once the host/enclave common controller is working, split the non-SGX
+11. Make Mbed TLS the default secure stream backend, with `streaming/mbedtls`
+    beside the existing `streaming/tls` OpenSSL/SGXSSL implementation. Prove it
+    in real SGX, fake SGX, and the host-only websocket demo.
+12. Add file-system-backed resource loading to the TLS stream so credentials,
+    trust anchors, static demo data, and future collateral can come from either
+    the io_uring-backed file manager or a local statically linked resource
+    provider.
+13. Add the contained SGX scheduler idle-policy work before attempting a full
+    host-driven pump rewrite: remove accidental sleep wrappers from stream or
+    websocket code, add a measured spin/park policy to the scheduler/runtime,
+    reduce receive-pump idle rescheduling, and verify idle CPU in real SGX,
+    fake SGX, and the host-only websocket demo.
+14. Once the host/enclave common controller is working, split the non-SGX
     io_uring implementation into a branch suitable for merging to `main`, then
     rebase the SGX branch on that shared foundation.
 

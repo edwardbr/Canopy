@@ -76,6 +76,26 @@ When it is probably not the right tool:
   - [Rust](documents/status/rust.md)
   - [JavaScript](documents/status/javascript.md)
 
+## SGX Enclave TLS
+
+SGX enclave TLS uses Intel SGXSSL inside the enclave. The SGX coroutine presets
+bootstrap the SGX SDK from `submodules/confidential-computing.sgx` when needed,
+and enclave TLS builds also prepare Intel SGXSSL from
+`submodules/confidential-computing.sgx/external/sgxssl` when
+`CANOPY_BOOTSTRAP_SGXSSL=ON` (the default).
+
+The first build that needs runnable enclave TLS may require `wget`, `unzip`,
+`perl`, `make`, `gcc`, `g++`, `sha256sum`, and network access. The SGXSSL
+preparation script downloads checksum-verified source archives for Intel SGXSSL
+and OpenSSL into the active build directory, then builds local enclave static
+libraries there. To use a prebuilt SGXSSL instead, configure
+`CANOPY_SGXSSL_LIB_DIR`, `CANOPY_SGXSSL_INCLUDE_DIR`, and
+`CANOPY_SGX_OPENSSL_INCLUDE_DIR`.
+
+The Intel attested-TLS quote/certificate sample is hardware SGX-FLC only and is
+not supported by SGX simulation mode. Canopy's simulation builds can still build
+plain in-enclave TLS around PEM credentials for development.
+
 ---
 
 ## Why Canopy?

@@ -193,10 +193,59 @@ RA-TLS policy needs to be explicit:
 - how the attested identity maps to Canopy zone identity and authorisation
 - how sessions are resumed, rotated, or rejected after enclave restart
 
+The secure stream constructor policy is the first non-attested version of that
+shape. Server contexts support `peer_verification::none`, `optional`, and
+`required`:
+
+- browser-facing websocket servers normally use `none`
+- peer-to-peer and RA-TLS-capable listeners should use `required` once the peer
+  identity is expected
+- `optional` is for transitional listeners: no certificate is accepted, but a
+  presented certificate must verify
+
+The `trust_anchor` in TLS credentials is the peer-validation root material. It
+must be supplied when a server context enables `optional` or `required` peer
+verification. It is not a substitute for RA-TLS measurement or collateral
+policy; it is only the certificate-chain trust input that later RA-TLS policy
+can combine with quote verification.
+
 RA-TLS does not remove the need for Canopy capability checks. It authenticates
 the peer endpoint and can prove that the endpoint is an expected enclave build;
 it does not by itself decide which object references, methods, passthrough
 routes, or `add_ref`/`release` operations that peer is allowed to use.
+
+## Deferred SGX Web Services Security Concerns
+
+The current SGX websocket and mbedTLS work is a functional stepping stone. The
+following concerns are intentionally deferred to the next security branch or
+sprint and should be resolved before treating the enclave web service path as a
+production security boundary:
+
+- TLS identity is not enclave identity until it is bound to RA-TLS or DCAP
+  evidence. Normal TLS proves key possession only; it does not prove the peer
+  measurement, signer, product id, security version, debug policy, or TCB state.
+- Host-backed file-system data is untrusted. Path traversal checks protect the
+  host file namespace shape, but they do not make file contents, directory
+  listings, timestamps, or I/O errors trustworthy. Security-sensitive static
+  data needs embedding, sealing, measurement, signatures, or another integrity
+  check.
+- TLS private keys must not be provisioned through ordinary host files for
+  production SGX deployments. Production keys should be generated inside the
+  enclave or delivered over an attested provisioning channel, then sealed if
+  persistence is required.
+- Certificate validity checks that depend on host-supplied time are weak under
+  the SGX threat model. Production policy needs freshness from attestation
+  nonces, verifier policy, trusted collateral validation, or another trusted
+  time/freshness source.
+- HTTP, websocket, TLS, stream, and scheduler paths need explicit resource
+  limits: header bytes, body bytes, websocket frame/message bytes, connection
+  counts, handshake timeouts, queued coroutine counts, and file read sizes.
+- SGX side channels remain in scope. Enclave memory protection does not hide
+  timing, access patterns, page faults, traffic shape, queue pressure, or
+  availability from the host.
+- Production logging must avoid leaking keys, decrypted payloads, attestation
+  material, peer identifiers, capability material, or other security-sensitive
+  data to host-visible logs.
 
 ## Invalid Serialisation Formats
 
