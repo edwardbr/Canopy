@@ -6,9 +6,12 @@
 
 #include <array>
 #include <limits>
+#include <utility>
 
 #include <openssl/err.h>
+#include <openssl/pem.h>
 #include <openssl/ssl.h>
+#include <openssl/x509_vfy.h>
 
 namespace streaming::tls
 {
@@ -29,49 +32,261 @@ namespace streaming::tls
         return size <= static_cast<size_t>(std::numeric_limits<int>::max());
     }
 
-    // TLS context implementation
-    context::context(
-        const std::string& cert_file,
-        const std::string& key_file)
+    static auto create_server_context() -> SSL_CTX*
     {
-        ctx_ = SSL_CTX_new(TLS_server_method());
-        if (!ctx_)
+        auto* ctx = SSL_CTX_new(TLS_server_method());
+        if (!ctx)
         {
             RPC_ERROR("Failed to create SSL context");
             log_ssl_errors();
-            return;
+            return nullptr;
         }
 
-        SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
+        SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+        return ctx;
+    }
 
-        if (SSL_CTX_use_certificate_file(ctx_, cert_file.c_str(), SSL_FILETYPE_PEM) <= 0)
+    static auto verify_mode(peer_verification mode) -> int
+    {
+        switch (mode)
+        {
+        case peer_verification::none:
+            return SSL_VERIFY_NONE;
+        case peer_verification::optional:
+            return SSL_VERIFY_PEER;
+        case peer_verification::required:
+            return SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
+        }
+        return SSL_VERIFY_NONE;
+    }
+
+    static auto release_context_on_error(SSL_CTX*& ctx) -> void
+    {
+        if (ctx)
+        {
+            SSL_CTX_free(ctx);
+            ctx = nullptr;
+        }
+    }
+
+    static auto load_file_credentials(
+        SSL_CTX*& ctx,
+        const std::string& cert_file,
+        const std::string& key_file) -> bool
+    {
+        if (SSL_CTX_use_certificate_file(ctx, cert_file.c_str(), SSL_FILETYPE_PEM) <= 0)
         {
             RPC_ERROR("Failed to load certificate: {}", cert_file);
             log_ssl_errors();
-            SSL_CTX_free(ctx_);
-            ctx_ = nullptr;
-            return;
+            release_context_on_error(ctx);
+            return false;
         }
 
-        if (SSL_CTX_use_PrivateKey_file(ctx_, key_file.c_str(), SSL_FILETYPE_PEM) <= 0)
+        if (SSL_CTX_use_PrivateKey_file(ctx, key_file.c_str(), SSL_FILETYPE_PEM) <= 0)
         {
             RPC_ERROR("Failed to load private key: {}", key_file);
             log_ssl_errors();
-            SSL_CTX_free(ctx_);
-            ctx_ = nullptr;
-            return;
+            release_context_on_error(ctx);
+            return false;
         }
 
-        if (!SSL_CTX_check_private_key(ctx_))
+        return true;
+    }
+
+    static auto load_pem_credentials(
+        SSL_CTX*& ctx,
+        const pem_credentials& credentials) -> bool
+    {
+        if (!fits_openssl_int(credentials.certificate.size()) || !fits_openssl_int(credentials.private_key.size()))
+        {
+            RPC_ERROR("TLS PEM credential is too large");
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        BIO* cert_bio = BIO_new_mem_buf(credentials.certificate.data(), static_cast<int>(credentials.certificate.size()));
+        if (!cert_bio)
+        {
+            RPC_ERROR("Failed to create certificate memory BIO");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        X509* cert = PEM_read_bio_X509(cert_bio, nullptr, nullptr, nullptr);
+        BIO_free(cert_bio);
+        if (!cert)
+        {
+            RPC_ERROR("Failed to parse PEM certificate");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        const int cert_result = SSL_CTX_use_certificate(ctx, cert);
+        X509_free(cert);
+        if (cert_result <= 0)
+        {
+            RPC_ERROR("Failed to apply PEM certificate");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        BIO* key_bio = BIO_new_mem_buf(credentials.private_key.data(), static_cast<int>(credentials.private_key.size()));
+        if (!key_bio)
+        {
+            RPC_ERROR("Failed to create private key memory BIO");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        EVP_PKEY* private_key = PEM_read_bio_PrivateKey(key_bio, nullptr, nullptr, nullptr);
+        BIO_free(key_bio);
+        if (!private_key)
+        {
+            RPC_ERROR("Failed to parse PEM private key");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        const int key_result = SSL_CTX_use_PrivateKey(ctx, private_key);
+        EVP_PKEY_free(private_key);
+        if (key_result <= 0)
+        {
+            RPC_ERROR("Failed to apply PEM private key");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        return true;
+    }
+
+    static auto load_trust_anchor_pem(
+        SSL_CTX*& ctx,
+        const std::string& trust_anchor) -> bool
+    {
+        if (trust_anchor.empty())
+            return true;
+        if (!fits_openssl_int(trust_anchor.size()))
+        {
+            RPC_ERROR("TLS trust anchor PEM is too large");
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        BIO* ca_bio = BIO_new_mem_buf(trust_anchor.data(), static_cast<int>(trust_anchor.size()));
+        if (!ca_bio)
+        {
+            RPC_ERROR("Failed to create trust anchor memory BIO");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        auto* store = SSL_CTX_get_cert_store(ctx);
+        bool loaded_any = false;
+        while (true)
+        {
+            X509* cert = PEM_read_bio_X509(ca_bio, nullptr, nullptr, nullptr);
+            if (!cert)
+                break;
+
+            if (X509_STORE_add_cert(store, cert) != 1)
+            {
+                X509_free(cert);
+                BIO_free(ca_bio);
+                RPC_ERROR("Failed to add trust anchor certificate");
+                log_ssl_errors();
+                release_context_on_error(ctx);
+                return false;
+            }
+            X509_free(cert);
+            loaded_any = true;
+        }
+
+        BIO_free(ca_bio);
+        if (!loaded_any)
+        {
+            RPC_ERROR("Failed to parse trust anchor PEM");
+            log_ssl_errors();
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        ERR_clear_error();
+        return true;
+    }
+
+    static auto configure_server_peer_verification(
+        SSL_CTX*& ctx,
+        const pem_credentials& credentials,
+        server_context_options options) -> bool
+    {
+        if (options.verify_peer != peer_verification::none && credentials.trust_anchor.empty())
+        {
+            RPC_ERROR("TLS server peer verification requires a trust anchor");
+            release_context_on_error(ctx);
+            return false;
+        }
+
+        if (!load_trust_anchor_pem(ctx, credentials.trust_anchor))
+            return false;
+
+        SSL_CTX_set_verify(ctx, verify_mode(options.verify_peer), nullptr);
+        return true;
+    }
+
+    static auto verify_private_key(SSL_CTX*& ctx) -> bool
+    {
+        if (!SSL_CTX_check_private_key(ctx))
         {
             RPC_ERROR("Private key does not match certificate");
             log_ssl_errors();
-            SSL_CTX_free(ctx_);
-            ctx_ = nullptr;
-            return;
+            release_context_on_error(ctx);
+            return false;
         }
 
+        return true;
+    }
+
+    // TLS context implementation
+    context::context(
+        const std::string& cert_file,
+        const std::string& key_file,
+        server_context_options options)
+    {
+        ctx_ = create_server_context();
+        if (!ctx_)
+            return;
+
+        if (!load_file_credentials(ctx_, cert_file, key_file) || !verify_private_key(ctx_))
+            return;
+
+        pem_credentials credentials;
+        if (!configure_server_peer_verification(ctx_, credentials, options))
+            return;
+
         RPC_DEBUG("TLS context initialized with certificate: {}", cert_file);
+    }
+
+    context::context(
+        const pem_credentials& credentials,
+        server_context_options options)
+    {
+        ctx_ = create_server_context();
+        if (!ctx_)
+            return;
+
+        if (!load_pem_credentials(ctx_, credentials) || !verify_private_key(ctx_))
+            return;
+        if (!configure_server_peer_verification(ctx_, credentials, options))
+            return;
+
+        RPC_DEBUG("TLS context initialized from PEM credentials");
     }
 
     context::~context()
@@ -84,6 +299,11 @@ namespace streaming::tls
 
     // TLS client context implementation
     client_context::client_context(bool verify_peer)
+        : client_context(client_context_options{.verify_peer = verify_peer})
+    {
+    }
+
+    client_context::client_context(client_context_options options)
     {
         ctx_ = SSL_CTX_new(TLS_client_method());
         if (!ctx_)
@@ -95,10 +315,30 @@ namespace streaming::tls
 
         SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
 
-        if (!verify_peer)
-            SSL_CTX_set_verify(ctx_, SSL_VERIFY_NONE, nullptr);
+        SSL_CTX_set_verify(ctx_, options.verify_peer ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, nullptr);
 
-        RPC_DEBUG("TLS client context initialized (verify_peer={})", verify_peer);
+        RPC_DEBUG("TLS client context initialized (verify_peer={})", options.verify_peer);
+    }
+
+    client_context::client_context(
+        std::string trust_anchor,
+        bool verify_peer)
+        : client_context(
+              std::move(trust_anchor),
+              client_context_options{.verify_peer = verify_peer})
+    {
+    }
+
+    client_context::client_context(
+        std::string trust_anchor,
+        client_context_options options)
+        : client_context(options)
+    {
+        if (!ctx_ || trust_anchor.empty())
+            return;
+
+        if (!load_trust_anchor_pem(ctx_, trust_anchor))
+            return;
     }
 
     client_context::~client_context()

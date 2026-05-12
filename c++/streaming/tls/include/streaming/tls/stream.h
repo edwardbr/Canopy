@@ -16,12 +16,42 @@ typedef struct ssl_st SSL;
 
 namespace streaming::tls
 {
+    enum class peer_verification
+    {
+        none,
+        optional,
+        required
+    };
+
+    struct server_context_options
+    {
+        // Browser-facing servers usually leave this at none. Peer-to-peer and
+        // RA-TLS modes can require a verified peer certificate.
+        peer_verification verify_peer{peer_verification::none};
+    };
+
+    struct client_context_options
+    {
+        bool verify_peer{false};
+    };
+
+    struct pem_credentials
+    {
+        std::string certificate;
+        std::string private_key;
+        std::string trust_anchor;
+    };
+
     class context
     {
     public:
         context(
             const std::string& cert_file,
-            const std::string& key_file);
+            const std::string& key_file,
+            server_context_options options = {});
+        explicit context(
+            const pem_credentials& credentials,
+            server_context_options options = {});
         ~context();
 
         context(const context&) = delete;
@@ -38,6 +68,13 @@ namespace streaming::tls
     {
     public:
         explicit client_context(bool verify_peer = false);
+        explicit client_context(client_context_options options);
+        client_context(
+            std::string trust_anchor,
+            bool verify_peer);
+        client_context(
+            std::string trust_anchor,
+            client_context_options options);
         ~client_context();
 
         client_context(const client_context&) = delete;
