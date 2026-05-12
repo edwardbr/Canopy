@@ -5,6 +5,7 @@
 #include <streaming/tls/stream.h>
 
 #include <array>
+#include <limits>
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
@@ -21,6 +22,11 @@ namespace streaming::tls
             ERR_error_string_n(err, buf, sizeof(buf));
             RPC_ERROR("OpenSSL: {}", buf);
         }
+    }
+
+    static auto fits_openssl_int(size_t size) -> bool
+    {
+        return size <= static_cast<size_t>(std::numeric_limits<int>::max());
     }
 
     // TLS context implementation
@@ -165,7 +171,13 @@ namespace streaming::tls
         std::array<char, 4096> buf;
         auto [status, span] = co_await underlying_->receive(rpc::mutable_byte_span{buf.data(), buf.size()}, timeout);
         if (status.is_ok() && !span.empty())
-            BIO_write(rbio_, span.data(), static_cast<int>(span.size()));
+        {
+            if (!fits_openssl_int(span.size()))
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL};
+            const auto written = BIO_write(rbio_, span.data(), static_cast<int>(span.size()));
+            if (written != static_cast<int>(span.size()))
+                co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL};
+        }
         co_return status;
     }
 
@@ -308,6 +320,8 @@ namespace streaming::tls
     {
         if (!ssl_ || !handshake_complete_ || closed_)
             co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+        if (!fits_openssl_int(buffer.size()))
+            co_return {coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL}, {}};
 
         while (true)
         {
@@ -344,6 +358,8 @@ namespace streaming::tls
     {
         if (!ssl_ || !handshake_complete_ || closed_)
             co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+        if (!fits_openssl_int(buffer.size()))
+            co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL};
 
         int bytes_written = SSL_write(ssl_, buffer.data(), static_cast<int>(buffer.size()));
         if (bytes_written <= 0)
