@@ -28,6 +28,7 @@ namespace rpc::sgx::coro::enclave
     void mark_runtime_connection_established();
     uint64_t runtime_ticks_per_millisecond() noexcept;
     uint64_t read_runtime_tick_counter() noexcept;
+    uint64_t runtime_unix_epoch_milliseconds() noexcept;
     uint64_t runtime_ticks_to_microseconds(uint64_t ticks) noexcept;
     uint64_t runtime_ticks_to_nanoseconds(uint64_t ticks) noexcept;
 

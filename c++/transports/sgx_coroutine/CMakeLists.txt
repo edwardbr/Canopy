@@ -37,6 +37,21 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     set_target_properties(transport_sgx_coroutine PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
   endif()
 
+  add_library(transport_sgx_coroutine_sgxssl_time_enclave STATIC enclave/src/sgxssl_time.cpp)
+  target_compile_definitions(transport_sgx_coroutine_sgxssl_time_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES}
+                                                                                 CANOPY_BUILD_ENCLAVE)
+  target_compile_options(transport_sgx_coroutine_sgxssl_time_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
+                                                                             ${CANOPY_WARN_OK_ENCLAVE})
+  target_include_directories(transport_sgx_coroutine_sgxssl_time_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+  target_link_libraries(
+    transport_sgx_coroutine_sgxssl_time_enclave
+    PUBLIC transport_sgx_coroutine_enclave_headers
+    PRIVATE rpc::rpc_enclave)
+  target_link_options(transport_sgx_coroutine_sgxssl_time_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
+  set_property(TARGET transport_sgx_coroutine_sgxssl_time_enclave PROPERTY CANOPY_SGX_WHOLE_ARCHIVE TRUE)
+  set_property(TARGET transport_sgx_coroutine_sgxssl_time_enclave PROPERTY COMPILE_PDB_NAME
+                                                                           transport_sgx_coroutine_sgxssl_time_enclave)
+
   add_library(transport_sgx_coroutine_enclave enclave/src/runtime.cpp enclave/src/host_transport.cpp
                                               enclave/src/io_uring_controller.cpp enclave/src/service.cpp)
   target_compile_definitions(transport_sgx_coroutine_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_BUILD_ENCLAVE)
@@ -58,6 +73,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
             spsc_queue
             libcoro_enclave
             rpc::rpc_enclave
+            transport_sgx_coroutine_sgxssl_time_enclave
             canopy_coroutine_edl_enclave)
   if(CANOPY_USE_TELEMETRY)
     target_link_libraries(transport_sgx_coroutine_enclave PRIVATE rpc::rpc_telemetry_enclave)

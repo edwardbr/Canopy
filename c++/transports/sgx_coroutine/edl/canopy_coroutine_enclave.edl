@@ -24,6 +24,7 @@ enclave
             [user_check] void* host_to_enclave_queue,
             [user_check] void* enclave_to_host_queue,
             uint64_t ticks_per_millisecond,
+            uint64_t initial_unix_epoch_milliseconds,
             [user_check] struct canopy_coroutine_startup_status* startup_status,
             size_t resp_cap,
             [ out, size = resp_cap ] char* resp,

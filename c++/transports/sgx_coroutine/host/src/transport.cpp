@@ -153,6 +153,13 @@ namespace rpc::sgx::coro::host
             return ticks_per_millisecond;
         }
 
+        uint64_t host_unix_epoch_milliseconds() noexcept
+        {
+            const auto now = std::chrono::system_clock::now();
+            return static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
+        }
+
         void fail_startup_status(
             common::startup_status* status,
             int error_code)
@@ -393,6 +400,7 @@ namespace rpc::sgx::coro::host
                     std::vector<char> response_blob(1024);
                     size_t response_size = 0;
                     int err_code = rpc::error::OK();
+                    const auto initial_unix_epoch_milliseconds = host_unix_epoch_milliseconds();
 
                     auto status = coroutine_init_enclave(
                         state->eid_,
@@ -402,6 +410,7 @@ namespace rpc::sgx::coro::host
                         host_to_enclave_queue,
                         enclave_to_host_queue,
                         ticks_per_millisecond,
+                        initial_unix_epoch_milliseconds,
                         reinterpret_cast<canopy_coroutine_startup_status*>(init_status),
                         response_blob.size(),
                         response_blob.data(),

@@ -66,6 +66,8 @@ namespace rpc::sgx::coro::enclave
             std::atomic<bool> stop_workers{false};
             std::atomic<uint64_t> ticks_per_millisecond{
                 static_cast<uint64_t>(std::chrono::sgx_rdtsc_ticks_per_millisecond)};
+            std::atomic<uint64_t> initial_unix_epoch_milliseconds{0};
+            std::atomic<uint64_t> initial_tick_counter{0};
         };
 
         auto runtime_storage() -> runtime_state&
@@ -442,6 +444,8 @@ namespace rpc::sgx::coro::enclave
             runtime.requested_workers.store(0, std::memory_order_release);
             runtime.attached_workers.store(0, std::memory_order_release);
             runtime.accepting_workers.store(false, std::memory_order_release);
+            runtime.initial_unix_epoch_milliseconds.store(0, std::memory_order_release);
+            runtime.initial_tick_counter.store(0, std::memory_order_release);
             runtime.control_status = nullptr;
             runtime.admitted_workers.reset();
             runtime.admitted_worker_slots = 0;
@@ -535,6 +539,20 @@ namespace rpc::sgx::coro::enclave
 #endif
     }
 
+    uint64_t runtime_unix_epoch_milliseconds() noexcept
+    {
+        auto& runtime = runtime_storage();
+        const auto initial_time = runtime.initial_unix_epoch_milliseconds.load(std::memory_order_acquire);
+        const auto initial_ticks = runtime.initial_tick_counter.load(std::memory_order_acquire);
+        const auto current_ticks = read_runtime_tick_counter();
+        const auto ticks_per_millisecond = runtime_ticks_per_millisecond();
+
+        if (initial_time == 0 || current_ticks <= initial_ticks || ticks_per_millisecond == 0)
+            return initial_time;
+
+        return initial_time + ((current_ticks - initial_ticks) / ticks_per_millisecond);
+    }
+
     uint64_t runtime_ticks_to_microseconds(uint64_t ticks) noexcept
     {
         const auto ticks_per_millisecond = runtime_ticks_per_millisecond();
@@ -567,6 +585,7 @@ namespace rpc::sgx::coro::enclave
             void* host_to_enclave_queue,
             void* enclave_to_host_queue,
             uint64_t ticks_per_millisecond,
+            uint64_t initial_unix_epoch_milliseconds,
             canopy_coroutine_startup_status* startup_status_pointer,
             size_t resp_cap,
             char* resp,
@@ -613,6 +632,8 @@ namespace rpc::sgx::coro::enclave
             ensure_runtime_scheduler(runtime);
             runtime.ticks_per_millisecond.store(
                 normalise_ticks_per_millisecond(ticks_per_millisecond), std::memory_order_release);
+            runtime.initial_tick_counter.store(read_runtime_tick_counter(), std::memory_order_release);
+            runtime.initial_unix_epoch_milliseconds.store(initial_unix_epoch_milliseconds, std::memory_order_release);
 #ifdef CANOPY_USE_TELEMETRY
             rpc::telemetry::create_coro_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
 #endif
