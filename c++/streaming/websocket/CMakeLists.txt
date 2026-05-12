@@ -33,9 +33,14 @@ if(CANOPY_BUILD_ENCLAVE)
   target_compile_options(streaming_websocket_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
                                                             ${CANOPY_WARN_OK_ENCLAVE})
   target_link_options(streaming_websocket_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
-  target_link_libraries(streaming_websocket_enclave PUBLIC streaming_enclave PRIVATE rpc::rpc_enclave libcoro_enclave)
+  target_link_libraries(
+    streaming_websocket_enclave
+    PUBLIC streaming_enclave
+    PRIVATE wslay_enclave
+            rpc::rpc_enclave
+            libcoro_enclave)
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(streaming_websocket_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
   endif()
-  message(STATUS "streaming_websocket_enclave configured for compile-fit")
+  message(STATUS "streaming_websocket_enclave configured")
 endif()
