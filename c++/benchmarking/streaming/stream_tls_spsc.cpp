@@ -6,7 +6,7 @@
 #include "benchmark_common.h"
 
 #include <streaming/spsc_queue/stream.h>
-#include <streaming/tls/stream.h>
+#include <streaming/secure_stream.h>
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -121,8 +121,8 @@ namespace stream_bench
             std::shared_ptr<streaming::stream>& tls_a,
             std::shared_ptr<streaming::stream>& tls_b)
         {
-            auto server_context = std::make_shared<streaming::tls::context>(cert.cert_path, cert.key_path);
-            auto client_context = std::make_shared<streaming::tls::client_context>(false);
+            auto server_context = std::make_shared<streaming::secure::context>(cert.cert_path, cert.key_path);
+            auto client_context = std::make_shared<streaming::secure::client_context>(false);
             if (!server_context->is_valid() || !client_context->is_valid())
                 return false;
 
@@ -131,14 +131,14 @@ namespace stream_bench
                     scheduler_a->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::tls::stream>(raw_a, server_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(raw_a, server_context);
                             if (co_await stream->handshake())
                                 tls_a = stream;
                         }()),
                     scheduler_b->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::tls::stream>(raw_b, client_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(raw_b, client_context);
                             if (co_await stream->client_handshake())
                                 tls_b = stream;
                         }())));

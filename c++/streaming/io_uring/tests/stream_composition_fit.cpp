@@ -9,7 +9,7 @@
 #include <io_uring/direct_descriptor.h>
 #include <streaming/io_uring/stream.h>
 #include <streaming/stream.h>
-#include <streaming/tls/stream.h>
+#include <streaming/secure_stream.h>
 #include <streaming/websocket/stream.h>
 #include <transports/streaming/transport.h>
 
@@ -30,9 +30,9 @@ namespace
         // websocket, and streaming transport code should compose with it
         // without requiring the stream adapter to know whether the underlying
         // descriptor is socket-backed, file-backed, or something else.
-        std::shared_ptr<streaming::tls::client_context> tls_client_context;
+        std::shared_ptr<streaming::secure::client_context> tls_client_context;
         [[maybe_unused]] std::shared_ptr<streaming::stream> tls_stream
-            = std::make_shared<streaming::tls::stream>(base_stream, tls_client_context);
+            = std::make_shared<streaming::secure::stream>(base_stream, tls_client_context);
         [[maybe_unused]] std::shared_ptr<streaming::stream> websocket_stream
             = std::make_shared<streaming::websocket::stream>(base_stream);
         [[maybe_unused]] std::shared_ptr<rpc::stream_transport::transport> transport;
