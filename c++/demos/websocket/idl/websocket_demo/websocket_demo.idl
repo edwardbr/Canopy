@@ -27,5 +27,11 @@ namespace websocket_demo
             // int get_piece([out] std::string& piece, [out] bool& complete);
             int set_callback(const rpc::shared_ptr<i_context_event>& event);
         };
+
+        interface i_enclave_websocket_server
+        {
+            int listen(uint16_t port, const std::string& certificate_pem, const std::string& private_key_pem);
+            int stop();
+        };
     }
 }

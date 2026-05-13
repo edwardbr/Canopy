@@ -5,8 +5,6 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-include(CanopyJavascriptGenerate)
-
 set(transport_js "${CANOPY_CPP_SOURCE_DIR}/transports/websocket/js/canopy_websocket_transport.js")
 set(demo_idl websocket_demo/websocket_demo.idl)
 
@@ -59,6 +57,8 @@ elseif(CANOPY_WEBSOCKET_DEMO_ENCODING STREQUAL "PROTOCOL_BUFFERS")
 endif()
 
 message("CANOPY_WEBSOCKET_DEMO_ENCODING ${CANOPY_WEBSOCKET_DEMO_ENCODING} -> ${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}")
+
+include(CanopyJavascriptGenerate)
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/websocket_demo_config.js.in"
                "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js" @ONLY)
