@@ -13,13 +13,31 @@ namespace websocket_demo
 {
     namespace v1
     {
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
         http_client_connection::http_client_connection(
             std::shared_ptr<streaming::stream> stream,
             std::shared_ptr<websocket_service> service,
             file_system_manager file_system_manager,
             std::string static_root_path)
+            : http_client_connection(
+                  std::move(stream),
+                  service,
+                  [service] { return service ? service->get_demo_instance() : nullptr; },
+                  std::move(file_system_manager),
+                  std::move(static_root_path))
+        {
+        }
+#endif
+
+        http_client_connection::http_client_connection(
+            std::shared_ptr<streaming::stream> stream,
+            std::shared_ptr<rpc::service> service,
+            calculator_factory factory,
+            file_system_manager file_system_manager,
+            std::string static_root_path)
             : stream_(std::move(stream))
             , service_(std::move(service))
+            , calculator_factory_(std::move(factory))
             , file_system_manager_(std::move(file_system_manager))
             , static_root_path_(std::move(static_root_path))
         {
@@ -45,24 +63,15 @@ namespace websocket_demo
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 = [webpage_delivery](
                       const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
-            {
-                // handle web page delivery
-                CO_RETURN CO_AWAIT webpage_delivery->handle(request);
-            };
-            handlers.rest_handler = [this](const canopy::http_server::request& request)
-            {
-                // handle REST delivery
-                return handle_rest_request(request);
-            };
+            { CO_RETURN CO_AWAIT webpage_delivery->handle(request); };
+            handlers.rest_handler
+                = [this](const canopy::http_server::request& request) { return handle_rest_request(request); };
             handlers.websocket_upgrade_handler
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 = [this](
                       const canopy::http_server::request& request,
                       std::shared_ptr<streaming::stream> websocket_stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-            {
-                // handle web socket delivery
-                CO_RETURN CO_AWAIT handle_websocket_upgrade(request, websocket_stream);
-            };
+            { CO_RETURN CO_AWAIT handle_websocket_upgrade(request, websocket_stream); };
 
             canopy::http_server::client_connection connection(stream_, std::move(handlers));
             CO_RETURN CO_AWAIT connection.handle();

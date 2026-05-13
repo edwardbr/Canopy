@@ -153,6 +153,54 @@ namespace
             = std::make_shared<rpc::io_uring::controller>(std::move(handle), scheduler.get(), controller_options);
         return rpc::file_system::create_factory(std::move(controller));
     }
+
+    struct tls_credentials_result
+    {
+        int error_code{rpc::error::OK()};
+        streaming::secure::pem_credentials credentials;
+    };
+
+    auto bytes_to_string(const std::vector<uint8_t>& data) -> std::string
+    {
+        return std::string(reinterpret_cast<const char*>(data.data()), data.size());
+    }
+
+    auto load_tls_credentials(
+        rpc::shared_ptr<rpc::file_system::i_manager> file_system_manager,
+        const std::string& cert_path,
+        const std::string& key_path) -> coro::task<tls_credentials_result>
+    {
+        if (!file_system_manager || cert_path.empty() || key_path.empty())
+        {
+            CO_RETURN tls_credentials_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        std::vector<uint8_t> certificate;
+        auto error_code = CO_AWAIT file_system_manager->read_file(cert_path, certificate);
+        if (error_code != rpc::error::OK())
+        {
+            RPC_ERROR("failed to read TLS certificate {} error={}", cert_path, error_code);
+            CO_RETURN tls_credentials_result{error_code, {}};
+        }
+
+        std::vector<uint8_t> private_key;
+        error_code = CO_AWAIT file_system_manager->read_file(key_path, private_key);
+        if (error_code != rpc::error::OK())
+        {
+            RPC_ERROR("failed to read TLS private key {} error={}", key_path, error_code);
+            CO_RETURN tls_credentials_result{error_code, {}};
+        }
+
+        if (certificate.empty() || private_key.empty())
+        {
+            CO_RETURN tls_credentials_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        tls_credentials_result result;
+        result.credentials.certificate = bytes_to_string(certificate);
+        result.credentials.private_key = bytes_to_string(private_key);
+        CO_RETURN result;
+    }
 }
 
 auto run_http_server(
@@ -220,7 +268,7 @@ auto main(
 
     cfg.log_values();
 
-    // Resolve the listen endpoint.  Default: bind on 0.0.0.0:8888.
+    // Resolve the listen endpoint. Default: bind on 0.0.0.0:8888.
     canopy::network_config::tcp_endpoint listen_ep;
     if (const auto* p = cfg.first_listen())
         listen_ep = *p;
@@ -229,6 +277,8 @@ auto main(
 
     std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
+    std::signal(SIGPIPE, SIG_IGN);
+
     const auto cert_path = args::get(cert_file);
     const auto key_path = args::get(key_file);
     const auto static_root_path = args::get(static_root);
@@ -238,13 +288,29 @@ auto main(
         return 1;
     }
 
+    auto scheduler = make_scheduler();
+    auto file_system_manager = create_static_file_manager(scheduler);
+    if (!file_system_manager)
+    {
+        scheduler->shutdown();
+        return 1;
+    }
+
     std::shared_ptr<streaming::secure::context> tls_ctx;
     if (!cert_path.empty() && !key_path.empty())
     {
-        tls_ctx = std::make_shared<streaming::secure::context>(cert_path, key_path);
+        auto credentials = coro::sync_wait(load_tls_credentials(file_system_manager, cert_path, key_path));
+        if (credentials.error_code != rpc::error::OK())
+        {
+            scheduler->shutdown();
+            return 1;
+        }
+
+        tls_ctx = std::make_shared<streaming::secure::context>(credentials.credentials);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Failed to initialize TLS context, exiting");
+            scheduler->shutdown();
             return 1;
         }
         RPC_INFO("TLS enabled with certificate: {}", cert_path);
@@ -252,15 +318,6 @@ auto main(
     else if (!cert_path.empty() || !key_path.empty())
     {
         RPC_ERROR("Both --cert and --key must be provided for TLS");
-        return 1;
-    }
-
-    std::signal(SIGPIPE, SIG_IGN);
-
-    auto scheduler = make_scheduler();
-    auto file_system_manager = create_static_file_manager(scheduler);
-    if (!file_system_manager)
-    {
         scheduler->shutdown();
         return 1;
     }

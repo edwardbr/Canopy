@@ -3,11 +3,16 @@
 
 #include <rpc/rpc.h>
 
-#include "secret_llama/secret_llama.h"
-#include "llama_server_engine.h"
+#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#  include "calculator_demo.h"
+#else
+#  include "secret_llama/secret_llama.h"
+#  include "llama_server_engine.h"
+#endif
 
 #include "demo_zone.h"
 
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
 namespace secret_llama
 {
     inline namespace v1_0
@@ -16,11 +21,13 @@ namespace secret_llama
         error_types create_llama_cpp(std::shared_ptr<secret_llama::v1_0::llm_engine>& engine);
     }
 }
+#endif
 
 namespace websocket_demo
 {
     namespace v1
     {
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
         rpc::shared_ptr<i_calculator> create_websocket_demo_instance(
             const std::shared_ptr<secret_llama::v1_0::llm_engine>& engine,
             const std::shared_ptr<secret_llama::v1_0::loaded_model>& loaded_model,
@@ -78,11 +85,12 @@ namespace websocket_demo
             }
             return loaded_model_;
         }
+#endif
 
         websocket_service::websocket_service(
             std::string name,
             rpc::zone zone_id,
-            std::shared_ptr<coro::scheduler> scheduler)
+            std::shared_ptr<rpc::coro::scheduler> scheduler)
             : rpc::root_service(
                   name.data(),
                   zone_id,
@@ -93,7 +101,7 @@ namespace websocket_demo
         websocket_service::websocket_service(
             std::string name,
             const rpc::service_config& config,
-            std::shared_ptr<coro::scheduler> scheduler)
+            std::shared_ptr<rpc::coro::scheduler> scheduler)
             : rpc::root_service(
                   name.data(),
                   config,
@@ -105,7 +113,12 @@ namespace websocket_demo
         {
             if (!demo_.lock())
             {
-#ifdef _DEBUG
+#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+                auto demo = create_calculator_demo_instance();
+                demo_ = demo;
+                return demo;
+#else
+#  ifdef _DEBUG
                 llama_log_set(
                     [](enum ggml_log_level level, const char* text, void* /* user_data */)
                     {
@@ -139,11 +152,12 @@ namespace websocket_demo
                         }
                     },
                     nullptr);
-#endif
+#  endif
 
                 auto demo = create_websocket_demo_instance(get_llama_cpp(), get_loaded_model(), shared_from_this());
                 demo_ = demo;
                 return demo;
+#endif
             }
             return nullptr;
         }

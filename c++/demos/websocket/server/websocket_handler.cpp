@@ -15,16 +15,18 @@ namespace websocket_demo
             const canopy::http_server::request& parsed_request,
             std::shared_ptr<streaming::stream> stream)
         {
+            auto calculator_factory = calculator_factory_;
             auto transpt
                 = CO_AWAIT websocket_protocol::transport::create<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                     service_,
                     stream,
-                    [](const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
+                    [calculator_factory](
+                        const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
                         const std::shared_ptr<rpc::service>& svc)
                         -> CORO_TASK(rpc::service_connect_result<websocket_demo::v1::i_calculator>)
                     {
-                        auto wsrvc = std::static_pointer_cast<websocket_service>(svc);
-                        auto local = wsrvc->get_demo_instance();
+                        std::ignore = svc;
+                        auto local = calculator_factory ? calculator_factory() : nullptr;
                         if (!local)
                         {
                             CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{

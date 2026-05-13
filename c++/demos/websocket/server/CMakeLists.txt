@@ -3,7 +3,25 @@
 cmake_minimum_required(VERSION 3.12)
 project(websocket_server)
 
-find_package(OpenSSL)
+if(NOT TARGET canopy_file_system)
+  message(STATUS "websocket_server disabled because canopy_file_system is unavailable")
+  return()
+endif()
+
+set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET)
+if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+  if(NOT TARGET streaming_mbedtls)
+    message(FATAL_ERROR "websocket_server requires streaming_mbedtls when CANOPY_SECURE_STREAM_BACKEND=MBEDTLS")
+  endif()
+  set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET streaming_mbedtls)
+elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+  if(NOT TARGET streaming_tls)
+    message(FATAL_ERROR "websocket_server requires streaming_tls when CANOPY_SECURE_STREAM_BACKEND=OPENSSL")
+  endif()
+  set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET streaming_tls)
+else()
+  message(FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND=${CANOPY_SECURE_STREAM_BACKEND}")
+endif()
 
 set(LLAMA_ALL_WARNINGS
     OFF
@@ -52,7 +70,7 @@ target_include_directories(
 target_link_libraries(
   websocket_server
   PUBLIC streaming
-         streaming_tls
+         ${WEBSOCKET_DEMO_SECURE_STREAM_TARGET}
          transport_streaming
          streaming_transport_idl
          transport_websocket

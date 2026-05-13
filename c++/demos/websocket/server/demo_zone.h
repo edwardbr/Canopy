@@ -18,11 +18,11 @@ namespace websocket_demo
             websocket_service(
                 std::string name,
                 rpc::zone zone_id,
-                std::shared_ptr<coro::scheduler> scheduler);
+                std::shared_ptr<rpc::coro::scheduler> scheduler);
             websocket_service(
                 std::string name,
                 const rpc::service_config& config,
-                std::shared_ptr<coro::scheduler> scheduler);
+                std::shared_ptr<rpc::coro::scheduler> scheduler);
 
             ~websocket_service() override CANOPY_DEFAULT_DESTRUCTOR;
 
