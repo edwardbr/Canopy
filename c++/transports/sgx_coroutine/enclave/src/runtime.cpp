@@ -22,10 +22,14 @@
 #include <streaming/spsc_queue/stream.h>
 #include <transports/streaming/transport.h>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <memory>
 #include <new>
+#if defined(CANOPY_FAKE_SGX)
+#  include <unistd.h>
+#endif
 #include <tuple>
 #include <vector>
 
@@ -41,15 +45,29 @@ namespace rpc
 
 namespace rpc::sgx::coro::enclave
 {
+    uint64_t read_runtime_tick_counter() noexcept;
+
     namespace
     {
         namespace protocol = rpc::sgx::coro::protocol;
 
         struct runtime_state
         {
+            // Execution resources created by the init ECALL and owned until
+            // the master ECALL tears the enclave runtime down.
             std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_scheduler;
             std::shared_ptr<::rpc::coro::scheduler> scheduler;
-            std::weak_ptr<host_transport> log_transport;
+
+            // The enclave-side transport back to the host. This is kept weak
+            // so runtime_state cannot keep the RPC graph alive by itself. The
+            // pointer is published once per runtime generation; shutdown only
+            // clears the ready flag so late logging observes best-effort
+            // availability without mutating the weak_ptr during teardown.
+            std::weak_ptr<host_transport> parent_transport;
+            std::atomic<bool> parent_transport_ready{false};
+
+            // Bootstrap identity and worker admission state shared between the
+            // master init ECALL and worker ECALLs.
             rpc::zone enclave_zone{};
             std::atomic<uint32_t> requested_workers{0};
             std::atomic<uint32_t> attached_workers{0};
@@ -59,15 +77,26 @@ namespace rpc::sgx::coro::enclave
             uint32_t admitted_worker_slots = 0;
             std::atomic<bool> registered{false};
             acceptor_factory acceptor_factory;
-            common::startup_status* control_status = nullptr;
+
+            // Host-owned startup words. They are not enclave-owned storage;
+            // they are validated once during init and then used only for
+            // low-level state publication.
+            protocol::startup_state* startup_state = nullptr;
+            error_code* startup_error_code = nullptr;
+
+            // Runtime lifetime flags. The host asks for shutdown by changing
+            // startup_state. Internal cleanup state prevents duplicate
+            // controller shutdown and tracks when the parent transport has
+            // released its final strong reference.
             std::atomic<bool> cleanup_requested{false};
             std::atomic<bool> connection_established{false};
             std::atomic<bool> host_transport_destroyed{false};
             std::atomic<bool> stop_workers{false};
-            std::atomic<uint64_t> ticks_per_millisecond{
-                static_cast<uint64_t>(std::chrono::sgx_rdtsc_ticks_per_millisecond)};
-            std::atomic<uint64_t> initial_unix_epoch_milliseconds{0};
-            std::atomic<uint64_t> initial_tick_counter{0};
+
+            // The SGX chrono polyfill owns wall-clock calibration. The init
+            // ECALL seeds it with an untrusted host bootstrap value; a later
+            // attested time synchronisation path can replace that calibration
+            // without changing runtime_state layout.
         };
 
         auto runtime_storage() -> runtime_state&
@@ -91,6 +120,18 @@ namespace rpc::sgx::coro::enclave
             std::size_t alignment)
         {
             return reinterpret_cast<std::uintptr_t>(pointer) % alignment == 0;
+        }
+
+        void* pointer_from_request_address(uint64_t address) noexcept
+        {
+            return reinterpret_cast<void*>(static_cast<std::uintptr_t>(address));
+        }
+
+        rpc::encoding normalise_request_encoding(uint64_t request_encoding) noexcept
+        {
+            if (request_encoding == 0)
+                return rpc::encoding::yas_binary;
+            return static_cast<rpc::encoding>(request_encoding);
         }
 
         bool validate_ecall_blob(
@@ -123,16 +164,6 @@ namespace rpc::sgx::coro::enclave
             runtime.stop_workers.store(false, std::memory_order_release);
         }
 
-        uint64_t fallback_ticks_per_millisecond() noexcept
-        {
-            return static_cast<uint64_t>(std::chrono::sgx_rdtsc_ticks_per_millisecond);
-        }
-
-        uint64_t normalise_ticks_per_millisecond(uint64_t ticks_per_millisecond) noexcept
-        {
-            return ticks_per_millisecond != 0 ? ticks_per_millisecond : fallback_ticks_per_millisecond();
-        }
-
         void request_runtime_cleanup(runtime_state& runtime)
         {
             bool expected = false;
@@ -149,13 +180,8 @@ namespace rpc::sgx::coro::enclave
                 runtime.io_uring_scheduler->request_controller_shutdown();
         }
 
-        template<typename T> std::vector<char> to_blob(const T& value)
-        {
-            return rpc::to_yas_binary<std::vector<char>>(value);
-        }
-
         template<typename T>
-        int from_blob(
+        int decode_yas_blob(
             rpc::byte_span buffer,
             T& value)
         {
@@ -165,26 +191,6 @@ namespace rpc::sgx::coro::enclave
                 RPC_ERROR("sgx_coroutine decode failed: {}", err);
                 return rpc::error::INVALID_DATA();
             }
-            return rpc::error::OK();
-        }
-
-        template<typename T>
-        int write_blob_response(
-            const T& value,
-            size_t output_capacity,
-            char* output_buffer,
-            size_t* output_size)
-        {
-            if (!output_size)
-                return rpc::error::INVALID_DATA();
-
-            auto blob = to_blob(value);
-            *output_size = blob.size();
-            if (*output_size > output_capacity)
-                return rpc::error::NEED_MORE_MEMORY();
-
-            if (output_buffer && !blob.empty())
-                std::memcpy(output_buffer, blob.data(), blob.size());
             return rpc::error::OK();
         }
 
@@ -199,31 +205,107 @@ namespace rpc::sgx::coro::enclave
             return sgx_is_outside_enclave(queue_ptr, sizeof(common::queue_type)) != 0;
         }
 
-        auto validate_startup_status_pointer(canopy_coroutine_startup_status* pointer) -> common::startup_status*
+        template<typename T> auto validate_outside_word_pointer(T* pointer) -> T*
         {
             if (!pointer)
                 return nullptr;
 
-            if (!is_aligned(pointer, alignof(common::startup_status)))
+            if (!is_aligned(pointer, alignof(T)))
                 return nullptr;
 
-            if (sgx_is_outside_enclave(pointer, sizeof(common::startup_status)) == 0)
+            if (sgx_is_outside_enclave(pointer, sizeof(T)) == 0)
                 return nullptr;
 
-            if (common::startup_load_u32(&pointer->abi_version) != common::startup_status_abi_version)
-                return nullptr;
+            return pointer;
+        }
 
-            return reinterpret_cast<common::startup_status*>(pointer);
+        struct validated_init_request
+        {
+            protocol::init_request request{};
+            common::queue_type* host_to_enclave_queue = nullptr;
+            common::queue_type* enclave_to_host_queue = nullptr;
+            protocol::startup_state* startup_state = nullptr;
+            error_code* startup_error_code = nullptr;
+            int error_code = rpc::error::OK();
+
+            [[nodiscard]] auto has_startup_status() const noexcept -> bool
+            {
+                return startup_state && startup_error_code;
+            }
+
+            [[nodiscard]] auto ok() const noexcept -> bool { return error_code == rpc::error::OK(); }
+        };
+
+        int decode_init_request_blob(
+            uint64_t request_encoding,
+            uint64_t request_type_id,
+            const char* req,
+            size_t req_sz,
+            protocol::init_request& request)
+        {
+            // request_type_id is the schema fingerprint. request_encoding is
+            // the byte format. Keeping them separate lets the ECALL ABI stay
+            // stable while future init payloads move to another encoding.
+            if (request_type_id != rpc::id<protocol::init_request>::get(rpc::get_version()))
+                return rpc::error::INVALID_DATA();
+
+            auto decode_error = rpc::deserialise(
+                normalise_request_encoding(request_encoding),
+                rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz},
+                request);
+            if (!decode_error.empty())
+            {
+                RPC_ERROR("sgx_coroutine init decode failed: {}", decode_error);
+                return rpc::error::INVALID_DATA();
+            }
+
+            return rpc::error::OK();
+        }
+
+        auto validate_init_request_memory(const protocol::init_request& request) -> validated_init_request
+        {
+            validated_init_request result{};
+            result.request = request;
+            result.host_to_enclave_queue
+                = static_cast<common::queue_type*>(pointer_from_request_address(request.host_to_enclave_queue_ptr));
+            result.enclave_to_host_queue
+                = static_cast<common::queue_type*>(pointer_from_request_address(request.enclave_to_host_queue_ptr));
+            result.startup_state = validate_outside_word_pointer(request.state);
+            result.startup_error_code = validate_outside_word_pointer(request.error);
+
+            // Without valid startup words there is nowhere safe to publish a
+            // failure state. The host will time out, which is preferable to
+            // writing to untrusted memory that has not been validated.
+            if (!result.has_startup_status())
+            {
+                result.error_code = rpc::error::INVALID_DATA();
+                return result;
+            }
+
+            if (!validate_shared_queue_pointer(result.host_to_enclave_queue)
+                || !validate_shared_queue_pointer(result.enclave_to_host_queue))
+            {
+                result.error_code = rpc::error::SECURITY_ERROR();
+                return result;
+            }
+
+            if (result.host_to_enclave_queue == result.enclave_to_host_queue)
+            {
+                result.error_code = rpc::error::FRAUDULANT_REQUEST();
+                return result;
+            }
+
+            return result;
         }
 
         bool shutdown_requested(runtime_state& runtime)
         {
-            auto* status = runtime.control_status;
-            if (!status)
+            auto* startup_state = runtime.startup_state;
+            if (!startup_state)
                 return false;
 
-            auto state = static_cast<common::startup_state>(common::startup_load_u32(&status->state));
-            return state == common::startup_state::shutting_down || state == common::startup_state::stopped;
+            auto state = common::startup_load_state(startup_state);
+            return state == protocol::startup_state::shutting_down || state == protocol::startup_state::stopped;
         }
 
         bool runtime_stopped(runtime_state& runtime)
@@ -231,49 +313,44 @@ namespace rpc::sgx::coro::enclave
             if (runtime.stop_workers.load(std::memory_order_acquire))
                 return true;
 
-            auto* status = runtime.control_status;
-            if (!status)
+            auto* startup_state = runtime.startup_state;
+            if (!startup_state)
                 return true;
 
-            auto state = static_cast<common::startup_state>(common::startup_load_u32(&status->state));
-            return state == common::startup_state::failed || state == common::startup_state::shutting_down
-                   || state == common::startup_state::stopped;
+            auto state = common::startup_load_state(startup_state);
+            return state == protocol::startup_state::failed || state == protocol::startup_state::shutting_down
+                   || state == protocol::startup_state::stopped;
         }
 
         void set_startup_status(
-            common::startup_status* status,
-            common::startup_state state,
+            protocol::startup_state* startup_state,
+            error_code* startup_error_code,
+            protocol::startup_state state,
             int error_code)
         {
-            if (!status)
+            if (!startup_state || !startup_error_code)
                 return;
 
-            common::startup_store_i32(&status->error_code, error_code);
-            common::startup_store_u32(&status->state, static_cast<std::uint32_t>(state));
+            common::startup_store_error(startup_error_code, error_code);
+            common::startup_store_state(startup_state, state);
         }
 
         void set_worker_request(
-            common::startup_status* status,
-            uint32_t requested_workers,
-            uint32_t attached_workers)
+            protocol::startup_state* startup_state,
+            error_code* startup_error_code)
         {
-            if (!status)
-                return;
-
-            common::startup_store_u32(&status->requested_workers, requested_workers);
-            common::startup_store_u32(&status->attached_workers, attached_workers);
-            common::startup_store_i32(&status->error_code, rpc::error::OK());
-            common::startup_store_u32(&status->state, static_cast<std::uint32_t>(common::startup_state::workers_requested));
+            set_startup_status(
+                startup_state, startup_error_code, protocol::startup_state::workers_requested, rpc::error::OK());
         }
 
-        void set_attached_workers(
-            common::startup_status* status,
-            uint32_t attached_workers)
+        int reject_worker_entry(runtime_state& runtime)
         {
-            if (!status)
-                return;
-
-            common::startup_store_u32(&status->attached_workers, attached_workers);
+            set_startup_status(
+                runtime.startup_state,
+                runtime.startup_error_code,
+                protocol::startup_state::failed,
+                rpc::error::FRAUDULANT_REQUEST());
+            return rpc::error::FRAUDULANT_REQUEST();
         }
 
         void cpu_relax()
@@ -281,6 +358,49 @@ namespace rpc::sgx::coro::enclave
 #if defined(__x86_64__) || defined(__i386__)
             __builtin_ia32_pause();
 #endif
+        }
+
+        std::shared_ptr<host_transport> load_parent_transport(runtime_state& runtime)
+        {
+            if (!runtime.parent_transport_ready.load(std::memory_order_acquire))
+                return {};
+
+            return runtime.parent_transport.lock();
+        }
+
+        void publish_parent_transport(
+            runtime_state& runtime,
+            const std::shared_ptr<host_transport>& transport)
+        {
+            runtime.parent_transport = transport;
+            runtime.parent_transport_ready.store(true, std::memory_order_release);
+        }
+
+        void unpublish_parent_transport(runtime_state& runtime)
+        {
+            runtime.parent_transport_ready.store(false, std::memory_order_release);
+        }
+
+        int idle_sleep(std::chrono::milliseconds duration)
+        {
+            if (duration <= std::chrono::milliseconds{0})
+            {
+                cpu_relax();
+                return rpc::error::OK();
+            }
+
+#if defined(CANOPY_FAKE_SGX)
+            if (::usleep(static_cast<useconds_t>(duration.count() * 1000)) != 0)
+                return rpc::error::TRANSPORT_ERROR();
+#else
+            const auto count = duration.count();
+            const auto milliseconds
+                = static_cast<uint32_t>(count > static_cast<decltype(count)>(UINT32_MAX) ? UINT32_MAX : count);
+            auto status = canopy_sgx_sleep_ms(milliseconds);
+            if (status != SGX_SUCCESS)
+                return rpc::error::TRANSPORT_ERROR();
+#endif
+            return rpc::error::OK();
         }
 
         int wait_for_workers(
@@ -292,38 +412,16 @@ namespace rpc::sgx::coro::enclave
                 if (runtime.attached_workers.load(std::memory_order_acquire) >= requested_workers)
                     return rpc::error::OK();
 
-                cpu_relax();
+                auto sleep_error = idle_sleep(std::chrono::milliseconds{1});
+                if (sleep_error != rpc::error::OK())
+                    return sleep_error;
             }
 
             return rpc::error::CALL_CANCELLED();
         }
 
-        // int wait_for_transport_io_loops(
-        //     runtime_state& runtime,
-        //     const std::shared_ptr<host_transport>& transport,
-        //     std::chrono::milliseconds timeout)
-        // {
-        //     if (!runtime.scheduler || !transport)
-        //         return rpc::error::ZONE_NOT_INITIALISED();
-
-        //     auto deadline = std::chrono::steady_clock::now() + timeout;
-        //     while (!transport->io_loops_started())
-        //     {
-        //         if (shutdown_requested(runtime))
-        //             return rpc::error::CALL_CANCELLED();
-        //         if (std::chrono::steady_clock::now() >= deadline)
-        //             return rpc::error::CALL_TIMEOUT();
-
-        //         runtime.scheduler->process_events();
-        //         cpu_relax();
-        //     }
-
-        //     return rpc::error::OK();
-        // }
-
         void drain_ready_scheduler_work(
             runtime_state& runtime,
-            int idle_target,
             int max_iterations);
 
         bool host_transport_released(
@@ -339,21 +437,26 @@ namespace rpc::sgx::coro::enclave
             return weak_transport.expired();
         }
 
-        void drain_until_host_transport_released(
+        int drain_until_host_transport_released(
             runtime_state& runtime,
             const std::weak_ptr<host_transport>& weak_transport)
         {
             if (!runtime.scheduler)
-                return;
+                return rpc::error::OK();
 
             // The runtime must stay alive until the host-facing transport has
             // actually been destroyed. Service teardown can be the last owner
             // of the transport, so this wait belongs after service.reset().
             while (!host_transport_released(runtime, weak_transport))
             {
-                runtime.scheduler->process_events();
-                cpu_relax();
+                if (!runtime.scheduler->process_ready_event())
+                {
+                    auto sleep_error = idle_sleep(std::chrono::milliseconds{1});
+                    if (sleep_error != rpc::error::OK())
+                        return sleep_error;
+                }
             }
+            return rpc::error::OK();
         }
 
         int run_runtime_loop(
@@ -371,8 +474,12 @@ namespace rpc::sgx::coro::enclave
                 if (host_transport_destroyed || shutdown_requested(runtime))
                     break;
 
-                auto processed = runtime.scheduler->process_events();
-                (void)processed;
+                if (!runtime.scheduler->process_ready_event())
+                {
+                    auto sleep_error = idle_sleep(std::chrono::milliseconds{1});
+                    if (sleep_error != rpc::error::OK())
+                        return sleep_error;
+                }
             }
             return rpc::error::OK();
         }
@@ -389,64 +496,63 @@ namespace rpc::sgx::coro::enclave
             return rpc::error::OK();
         }
 
-        void wait_for_worker_loops_to_exit(runtime_state& runtime)
+        int wait_for_worker_loops_to_exit(runtime_state& runtime)
         {
             while (runtime.attached_workers.load(std::memory_order_acquire) > 0)
             {
-                if (runtime.scheduler)
-                    runtime.scheduler->process_events();
+                if (runtime.scheduler && runtime.scheduler->process_ready_event())
+                    continue;
 
-                cpu_relax();
+                auto sleep_error = idle_sleep(std::chrono::milliseconds{1});
+                if (sleep_error != rpc::error::OK())
+                    return sleep_error;
             }
+            return rpc::error::OK();
         }
 
-        void stop_worker_loops(runtime_state& runtime)
+        int stop_worker_loops(runtime_state& runtime)
         {
             // The master ECALL owns runtime teardown. Once service and
             // transport cleanup has drained, ask worker ECALLs to leave the
             // scheduler before runtime state is reset.
             runtime.stop_workers.store(true, std::memory_order_release);
-            wait_for_worker_loops_to_exit(runtime);
+            return wait_for_worker_loops_to_exit(runtime);
         }
 
         void drain_ready_scheduler_work(
             runtime_state& runtime,
-            int idle_target,
             int max_iterations)
         {
             if (!runtime.scheduler)
                 return;
 
-            for (int idle_iterations = 0, total_iterations = 0;
-                idle_iterations < idle_target && total_iterations < max_iterations;
-                ++total_iterations)
+            for (int total_iterations = 0; total_iterations < max_iterations; ++total_iterations)
             {
-                if (runtime.scheduler->process_ready_event())
-                    idle_iterations = 0;
-                else
-                {
-                    ++idle_iterations;
-                    cpu_relax();
-                }
+                if (!runtime.scheduler->process_ready_event())
+                    return;
             }
         }
 
         void reset_runtime_after_stop(runtime_state& runtime)
         {
+            // This is the only place that clears runtime_state back to its
+            // reusable baseline. It runs after parent transport cleanup and
+            // worker exit so no later ECALL should observe partially reset
+            // scheduler or startup pointers.
+            unpublish_parent_transport(runtime);
             if (runtime.io_uring_scheduler)
                 runtime.io_uring_scheduler->shutdown();
             else if (runtime.scheduler)
                 runtime.scheduler->shutdown();
             runtime.io_uring_scheduler.reset();
             runtime.scheduler.reset();
-            runtime.log_transport.reset();
             runtime.enclave_zone = {};
             runtime.requested_workers.store(0, std::memory_order_release);
             runtime.attached_workers.store(0, std::memory_order_release);
             runtime.accepting_workers.store(false, std::memory_order_release);
-            runtime.initial_unix_epoch_milliseconds.store(0, std::memory_order_release);
-            runtime.initial_tick_counter.store(0, std::memory_order_release);
-            runtime.control_status = nullptr;
+            std::chrono::sgx_reset_system_clock();
+            runtime.startup_state = nullptr;
+            runtime.startup_error_code = nullptr;
             runtime.admitted_workers.reset();
             runtime.admitted_worker_slots = 0;
             reset_runtime_cleanup_state(runtime);
@@ -454,24 +560,114 @@ namespace rpc::sgx::coro::enclave
             runtime.init_called.store(false, std::memory_order_release);
         }
 
-        void ensure_runtime_scheduler(runtime_state& runtime)
+        void ensure_runtime_scheduler(
+            runtime_state& runtime,
+            uint32_t worker_thread_count)
         {
+            if (!runtime.scheduler)
+            {
+                auto execution_strategy = worker_thread_count == 0
+                                              ? ::rpc::coro::sgx::execution_strategy_t::process_tasks_inline
+                                              : ::rpc::coro::sgx::execution_strategy_t::process_tasks_on_thread_pool;
+                auto scheduler_options = ::rpc::coro::sgx::scheduler::options{worker_thread_count,
+                    nullptr,
+                    nullptr,
+                    ::rpc::coro::sgx::thread_pool::options{worker_thread_count},
+                    execution_strategy,
+                    worker_thread_count != 0};
+                runtime.scheduler = ::rpc::coro::make_shared_scheduler(std::move(scheduler_options));
+            }
             if (!runtime.io_uring_scheduler)
                 runtime.io_uring_scheduler = rpc::io_uring::io_uring_scheduler::create(runtime.scheduler);
             runtime.scheduler = runtime.io_uring_scheduler->scheduler();
         }
 
+        int initialise_runtime_from_request(
+            runtime_state& runtime,
+            const validated_init_request& init)
+        {
+            ensure_runtime_scheduler(runtime, init.request.worker_thread_count);
+            std::chrono::sgx_seed_system_clock_from_untrusted_host(
+                init.request.initial_unix_epoch_milliseconds, read_runtime_tick_counter(), init.request.ticks_per_millisecond);
+#ifdef CANOPY_USE_TELEMETRY
+            rpc::telemetry::create_coro_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
+#endif
+            runtime.enclave_zone = init.request.enclave_zone_id;
+            runtime.startup_state = init.startup_state;
+            runtime.startup_error_code = init.startup_error_code;
+            return rpc::sgx::coro::enclave::register_runtime(runtime);
+        }
+
+        void prepare_worker_admission(
+            runtime_state& runtime,
+            uint32_t requested_workers)
+        {
+            runtime.admitted_workers = std::make_unique<std::atomic<bool>[]>(requested_workers);
+            runtime.admitted_worker_slots = requested_workers;
+            for (uint32_t worker_index = 0; worker_index < requested_workers; ++worker_index)
+                runtime.admitted_workers[worker_index].store(false, std::memory_order_relaxed);
+            runtime.requested_workers.store(requested_workers, std::memory_order_release);
+            runtime.attached_workers.store(0, std::memory_order_release);
+            runtime.accepting_workers.store(true, std::memory_order_release);
+        }
+
+        auto create_enclave_service(
+            const validated_init_request& init,
+            const std::shared_ptr<rpc::coro::scheduler>& scheduler) -> std::shared_ptr<rpc::enclave_service>
+        {
+            try
+            {
+                return std::make_shared<rpc::enclave_service>(
+                    "sgx_coroutine_enclave", init.request.enclave_zone_id, init.request.host_zone_id, scheduler);
+            }
+            catch (const std::bad_alloc&)
+            {
+                RPC_ERROR("bad_alloc while creating enclave service");
+                std::terminate();
+            }
+            return {};
+        }
+
+        auto create_parent_host_transport(
+            runtime_state& runtime,
+            const validated_init_request& init,
+            const std::shared_ptr<rpc::enclave_service>& service) -> std::shared_ptr<host_transport>
+        {
+            auto stream = std::make_shared<streaming::spsc_queue::stream>(
+                init.enclave_to_host_queue, init.host_to_enclave_queue, runtime.scheduler);
+
+            rpc::stream_transport::stream_transport_options transport_options{
+                .call_timeout = std::chrono::milliseconds{0},
+                .call_timeout_sweep = std::chrono::milliseconds{0},
+            };
+            auto transport = host_transport::create(
+                "sgx_coroutine_enclave", service, std::move(stream), runtime.acceptor_factory, transport_options);
+            if (!transport)
+                return {};
+
+            service->set_parent_transport(transport);
+            transport->set_runtime_destroyed_handler(
+                [&runtime]() { runtime.host_transport_destroyed.store(true, std::memory_order_release); });
+            return transport;
+        }
+
         void stop_runtime(
             runtime_state& runtime,
-            common::startup_status* startup_status,
-            common::startup_state state,
+            protocol::startup_state* startup_state,
+            error_code* startup_error_code,
+            protocol::startup_state state,
             int error_code)
         {
+            // Stop is intentionally ordered: cancel controller-owned io_uring
+            // work, drain ready cleanup continuations without fixed idle
+            // sleeps, release worker ECALLs, then publish terminal host-visible
+            // state before clearing runtime storage.
             runtime.accepting_workers.store(false, std::memory_order_release);
-            set_startup_status(startup_status, state, error_code);
             request_runtime_cleanup(runtime);
-            drain_ready_scheduler_work(runtime, 1000, 100000);
-            stop_worker_loops(runtime);
+            drain_ready_scheduler_work(runtime, 100000);
+            const auto worker_stop_error = stop_worker_loops(runtime);
+            const auto final_error = error_code != rpc::error::OK() ? error_code : worker_stop_error;
+            set_startup_status(startup_state, startup_error_code, state, final_error);
             reset_runtime_after_stop(runtime);
         }
 
@@ -526,31 +722,17 @@ namespace rpc::sgx::coro::enclave
 
     uint64_t runtime_ticks_per_millisecond() noexcept
     {
-        auto& runtime = runtime_storage();
-        return normalise_ticks_per_millisecond(runtime.ticks_per_millisecond.load(std::memory_order_acquire));
+        return std::chrono::sgx_clock_ticks_per_millisecond();
     }
 
     uint64_t read_runtime_tick_counter() noexcept
     {
-#if defined(__x86_64__) || defined(__i386__)
-        return __builtin_ia32_rdtsc();
-#else
-        return 0;
-#endif
+        return static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
     }
 
     uint64_t runtime_unix_epoch_milliseconds() noexcept
     {
-        auto& runtime = runtime_storage();
-        const auto initial_time = runtime.initial_unix_epoch_milliseconds.load(std::memory_order_acquire);
-        const auto initial_ticks = runtime.initial_tick_counter.load(std::memory_order_acquire);
-        const auto current_ticks = read_runtime_tick_counter();
-        const auto ticks_per_millisecond = runtime_ticks_per_millisecond();
-
-        if (initial_time == 0 || current_ticks <= initial_ticks || ticks_per_millisecond == 0)
-            return initial_time;
-
-        return initial_time + ((current_ticks - initial_ticks) / ticks_per_millisecond);
+        return static_cast<uint64_t>(std::chrono::system_clock::now().time_since_epoch().count());
     }
 
     uint64_t runtime_ticks_to_microseconds(uint64_t ticks) noexcept
@@ -579,183 +761,151 @@ namespace rpc::sgx::coro::enclave
 
     extern "C"
     {
-        int coroutine_init_enclave(
+        // Master ECALL for the enclave RPC runtime. The host enters this once
+        // per enclave instance and the call intentionally remains active until
+        // transport shutdown. While it is active it owns:
+        // - validating host-owned queue/startup pointers;
+        // - creating the coroutine scheduler and parent host_transport;
+        // - publishing startup transitions for the host;
+        // - pumping inline scheduler work when no worker threads are used;
+        // - coordinating final cleanup before the enclave can be destroyed.
+        void coroutine_init_enclave(
             size_t req_sz,
             const char* req,
-            void* host_to_enclave_queue,
-            void* enclave_to_host_queue,
-            uint64_t ticks_per_millisecond,
-            uint64_t initial_unix_epoch_milliseconds,
-            canopy_coroutine_startup_status* startup_status_pointer,
-            size_t resp_cap,
-            char* resp,
-            size_t* resp_sz)
+            uint64_t request_encoding,
+            uint64_t request_type_id)
         {
             bool expected = false;
             auto& runtime = runtime_storage();
             if (!runtime.init_called.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
-                return rpc::error::FRAUDULANT_REQUEST();
+                return;
 
             if (!validate_ecall_blob(req, req_sz))
             {
                 runtime.init_called.store(false, std::memory_order_release);
-                return rpc::error::FRAUDULANT_REQUEST();
+                return;
             }
 
+            // Phase 1: decode the stable ECALL payload and validate every
+            // host pointer before the enclave stores or dereferences it.
             protocol::init_request request{};
-            auto err = rpc::sgx::coro::enclave::from_blob(
-                rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz}, request);
-            if (err != rpc::error::OK())
+            auto decode_error = decode_init_request_blob(request_encoding, request_type_id, req, req_sz, request);
+            if (decode_error != rpc::error::OK())
             {
                 runtime.init_called.store(false, std::memory_order_release);
-                return err;
+                return;
             }
 
-            auto* startup_status = validate_startup_status_pointer(startup_status_pointer);
-            if (!startup_status)
+            auto init = validate_init_request_memory(request);
+            if (!init.ok())
             {
+                if (init.has_startup_status())
+                    set_startup_status(
+                        init.startup_state, init.startup_error_code, protocol::startup_state::failed, init.error_code);
                 runtime.init_called.store(false, std::memory_order_release);
-                return rpc::error::SECURITY_ERROR();
-            }
-            if (!rpc::sgx::coro::enclave::validate_shared_queue_pointer(host_to_enclave_queue)
-                || !rpc::sgx::coro::enclave::validate_shared_queue_pointer(enclave_to_host_queue))
-            {
-                runtime.init_called.store(false, std::memory_order_release);
-                return rpc::error::SECURITY_ERROR();
-            }
-            if (host_to_enclave_queue == enclave_to_host_queue)
-            {
-                runtime.init_called.store(false, std::memory_order_release);
-                return rpc::error::FRAUDULANT_REQUEST();
+                return;
             }
 
-            ensure_runtime_scheduler(runtime);
-            runtime.ticks_per_millisecond.store(
-                normalise_ticks_per_millisecond(ticks_per_millisecond), std::memory_order_release);
-            runtime.initial_tick_counter.store(read_runtime_tick_counter(), std::memory_order_release);
-            runtime.initial_unix_epoch_milliseconds.store(initial_unix_epoch_milliseconds, std::memory_order_release);
-#ifdef CANOPY_USE_TELEMETRY
-            rpc::telemetry::create_coro_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
-#endif
-            runtime.enclave_zone = request.enclave_zone_id;
-            runtime.control_status = startup_status;
-            auto register_error = rpc::sgx::coro::enclave::register_runtime(runtime);
+            auto* startup_state = init.startup_state;
+            auto* startup_error_code = init.startup_error_code;
+
+            // Phase 2: publish runtime identity. From this point worker ECALLs
+            // can find the runtime, but they are not admitted until
+            // accepting_workers is set below.
+            auto register_error = initialise_runtime_from_request(runtime, init);
             if (register_error != rpc::error::OK())
             {
-                set_startup_status(startup_status, common::startup_state::failed, register_error);
+                set_startup_status(startup_state, startup_error_code, protocol::startup_state::failed, register_error);
                 runtime.init_called.store(false, std::memory_order_release);
-                return register_error;
+                return;
             }
 
-            const auto requested_workers = static_cast<uint32_t>(runtime.scheduler->worker_count());
-            runtime.admitted_workers = std::make_unique<std::atomic<bool>[]>(requested_workers);
-            runtime.admitted_worker_slots = requested_workers;
-            for (uint32_t worker_index = 0; worker_index < requested_workers; ++worker_index)
-                runtime.admitted_workers[worker_index].store(false, std::memory_order_relaxed);
-            runtime.requested_workers.store(requested_workers, std::memory_order_release);
-            runtime.attached_workers.store(0, std::memory_order_release);
-            runtime.accepting_workers.store(true, std::memory_order_release);
-            set_worker_request(startup_status, requested_workers, 0);
+            // Phase 3: ask the host to enter the worker ECALLs. A zero-worker
+            // runtime runs inline on the master ECALL and this wait completes
+            // immediately.
+            const auto requested_workers = init.request.worker_thread_count;
+            prepare_worker_admission(runtime, requested_workers);
+            set_worker_request(startup_state, startup_error_code);
 
             auto worker_error = wait_for_workers(runtime, requested_workers);
             runtime.accepting_workers.store(false, std::memory_order_release);
             if (worker_error != rpc::error::OK())
             {
-                stop_runtime(runtime, startup_status, common::startup_state::failed, worker_error);
-                return worker_error;
+                stop_runtime(runtime, startup_state, startup_error_code, protocol::startup_state::failed, worker_error);
+                return;
             }
 
+            // Phase 4: build the enclave-side RPC graph. The host_transport is
+            // the enclave's parent transport: it carries traffic back over the
+            // host-owned SPSC queues supplied in init_request.
             if (!runtime.acceptor_factory)
             {
-                stop_runtime(runtime, startup_status, common::startup_state::failed, rpc::error::INCOMPATIBLE_SERVICE());
-                return rpc::error::INCOMPATIBLE_SERVICE();
+                stop_runtime(
+                    runtime,
+                    startup_state,
+                    startup_error_code,
+                    protocol::startup_state::failed,
+                    rpc::error::INCOMPATIBLE_SERVICE());
+                return;
             }
 
-            std::shared_ptr<rpc::enclave_service> service;
-            try
-            {
-                service = std::make_shared<rpc::enclave_service>(
-                    "sgx_coroutine_enclave", request.enclave_zone_id, request.host_zone_id, runtime.scheduler);
-            }
-            catch (const std::bad_alloc&)
-            {
-                RPC_ERROR("bad_alloc while creating enclave service");
-                std::terminate();
-            }
-            // auto service_shutdown_event = std::make_shared<rpc::event>(false);
-            // service_shutdown_event->set_scheduler(runtime.scheduler.get());
-            // service->set_shutdown_event(service_shutdown_event);
-
-            auto stream = std::make_shared<streaming::spsc_queue::stream>(
-                static_cast<common::queue_type*>(enclave_to_host_queue),
-                static_cast<common::queue_type*>(host_to_enclave_queue),
-                runtime.scheduler);
-
-            rpc::stream_transport::stream_transport_options transport_options{
-                .call_timeout = std::chrono::milliseconds{0},
-                .call_timeout_sweep = std::chrono::milliseconds{0},
-            };
-            auto host_runtime_transport = host_transport::create(
-                "sgx_coroutine_enclave", service, std::move(stream), runtime.acceptor_factory, transport_options);
+            auto service = create_enclave_service(init, runtime.scheduler);
+            auto host_runtime_transport = create_parent_host_transport(runtime, init, service);
             if (!host_runtime_transport)
             {
-                stop_runtime(runtime, startup_status, common::startup_state::failed, rpc::error::TRANSPORT_ERROR());
-                return rpc::error::TRANSPORT_ERROR();
+                stop_runtime(
+                    runtime, startup_state, startup_error_code, protocol::startup_state::failed, rpc::error::TRANSPORT_ERROR());
+                return;
             }
-            service->set_parent_transport(host_runtime_transport);
-            host_runtime_transport->set_runtime_destroyed_handler(
-                [&runtime
-                    // , service_shutdown_event
-            ]()
-                {
-                    runtime.host_transport_destroyed.store(true, std::memory_order_release);
-                    // service_shutdown_event->set();
-                });
 
-            runtime.log_transport = host_runtime_transport;
-            // auto io_loop_error
-            //     = wait_for_transport_io_loops(runtime, host_runtime_transport, std::chrono::milliseconds{20000});
-            // if (io_loop_error != rpc::error::OK())
-            // {
-            //     // the transport may be trashed so stop all threads and trash this enclave
-            //     //  if (host_runtime_transport->get_status() < rpc::transport_status::DISCONNECTED)
-            //     //      host_runtime_transport->set_status(rpc::transport_status::DISCONNECTED);
-            //     stop_runtime(runtime, startup_status, common::startup_state::failed, io_loop_error);
-            //     return io_loop_error;
-            // }
+            publish_parent_transport(runtime, host_runtime_transport);
+            set_startup_status(startup_state, startup_error_code, protocol::startup_state::runtime_ready, rpc::error::OK());
 
-            set_startup_status(startup_status, common::startup_state::runtime_ready, rpc::error::OK());
-
+            // Phase 5: drive the scheduler from the master ECALL. The initial
+            // loop lets the host-side connect handshake complete before this
+            // function drops its strong transport reference. After that, normal
+            // runtime progress continues until the host requests shutdown or
+            // the parent transport is destroyed.
             std::weak_ptr<host_transport> weak_transport = host_runtime_transport;
             host_runtime_transport.reset();
             while (!runtime.connection_established.load(std::memory_order_acquire)
                    && !runtime.host_transport_destroyed.load(std::memory_order_acquire) && !shutdown_requested(runtime))
             {
-                runtime.scheduler->process_events();
-                cpu_relax();
+                if (!runtime.scheduler->process_ready_event())
+                {
+                    auto sleep_error = idle_sleep(std::chrono::milliseconds{1});
+                    if (sleep_error != rpc::error::OK())
+                    {
+                        stop_runtime(
+                            runtime, startup_state, startup_error_code, protocol::startup_state::failed, sleep_error);
+                        return;
+                    }
+                }
             }
             service.reset();
-            auto loop_error = rpc::sgx::coro::enclave::run_runtime_loop(
-                runtime, weak_transport
-                // , service_shutdown_event
-            );
+            auto loop_error = rpc::sgx::coro::enclave::run_runtime_loop(runtime, weak_transport);
 
+            // Phase 6: cleanup happens on the master ECALL. Worker ECALLs are
+            // asked to leave only after parent transport cleanup has had a
+            // chance to schedule its final work.
             request_runtime_cleanup(runtime);
-            drain_ready_scheduler_work(runtime, 1000, 100000);
+            drain_ready_scheduler_work(runtime, 100000);
 
             // The host owns the SPSC queues passed through the ECALL. Once the
             // host-facing transport is disconnecting, the enclave must let the
             // stream protocol drain normally instead of touching those raw queue
             // pointers during late teardown.
-            drain_ready_scheduler_work(runtime, 1000, 100000);
-            drain_ready_scheduler_work(runtime, 1000, 100000);
-            drain_until_host_transport_released(runtime, weak_transport);
-            stop_runtime(runtime, startup_status, common::startup_state::stopped, loop_error);
-
-            return rpc::sgx::coro::enclave::write_blob_response(
-                protocol::init_response{loop_error, {}}, resp_cap, resp, resp_sz);
+            auto drain_error = drain_until_host_transport_released(runtime, weak_transport);
+            if (loop_error == rpc::error::OK())
+                loop_error = drain_error;
+            stop_runtime(runtime, startup_state, startup_error_code, protocol::startup_state::stopped, loop_error);
         }
 
+        // Worker ECALL. The host starts one of these per requested worker
+        // thread after the master ECALL publishes workers_requested. Each
+        // worker is admitted exactly once by index, then runs the scheduler's
+        // worker loop until the master ECALL asks workers to stop during
+        // cleanup.
         int coroutine_enter_thread(
             size_t req_sz,
             const char* req)
@@ -764,7 +914,7 @@ namespace rpc::sgx::coro::enclave
                 return rpc::error::FRAUDULANT_REQUEST();
 
             protocol::enter_thread_request request{};
-            auto err = rpc::sgx::coro::enclave::from_blob(
+            auto err = rpc::sgx::coro::enclave::decode_yas_blob(
                 rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz}, request);
             if (err != rpc::error::OK())
                 return err;
@@ -774,58 +924,44 @@ namespace rpc::sgx::coro::enclave
                 return rpc::error::FRAUDULANT_REQUEST();
             auto& runtime = *runtime_ptr;
             if (!runtime.scheduler)
-            {
-                set_startup_status(runtime.control_status, common::startup_state::failed, rpc::error::FRAUDULANT_REQUEST());
-                return rpc::error::FRAUDULANT_REQUEST();
-            }
+                return reject_worker_entry(runtime);
 
             if (request.enclave_zone_id != runtime.enclave_zone)
-            {
-                set_startup_status(runtime.control_status, common::startup_state::failed, rpc::error::FRAUDULANT_REQUEST());
-                return rpc::error::FRAUDULANT_REQUEST();
-            }
+                return reject_worker_entry(runtime);
 
             if (!runtime.accepting_workers.load(std::memory_order_acquire))
-            {
-                set_startup_status(runtime.control_status, common::startup_state::failed, rpc::error::FRAUDULANT_REQUEST());
-                return rpc::error::FRAUDULANT_REQUEST();
-            }
+                return reject_worker_entry(runtime);
 
             auto requested = runtime.requested_workers.load(std::memory_order_acquire);
             if (request.worker_index >= requested || request.worker_index >= runtime.admitted_worker_slots
                 || !runtime.admitted_workers)
-            {
-                set_startup_status(runtime.control_status, common::startup_state::failed, rpc::error::FRAUDULANT_REQUEST());
-                return rpc::error::FRAUDULANT_REQUEST();
-            }
+                return reject_worker_entry(runtime);
 
             bool expected = false;
             if (!runtime.admitted_workers[request.worker_index].compare_exchange_strong(
                     expected, true, std::memory_order_acq_rel))
-            {
-                set_startup_status(runtime.control_status, common::startup_state::failed, rpc::error::FRAUDULANT_REQUEST());
-                return rpc::error::FRAUDULANT_REQUEST();
-            }
+                return reject_worker_entry(runtime);
 
-            auto new_attached = runtime.attached_workers.fetch_add(1, std::memory_order_acq_rel) + 1;
-            set_attached_workers(runtime.control_status, new_attached);
+            runtime.attached_workers.fetch_add(1, std::memory_order_acq_rel);
 
             auto worker_error = rpc::sgx::coro::enclave::run_worker_loop(runtime, request.worker_index);
-            auto remaining = runtime.attached_workers.fetch_sub(1, std::memory_order_acq_rel) - 1;
-            set_attached_workers(runtime.control_status, remaining);
+            runtime.attached_workers.fetch_sub(1, std::memory_order_acq_rel);
             return worker_error;
         }
 
+        // Logging OCALL entry point used by enclave logging macros. It is
+        // deliberately best-effort: shutdown must not block because a late log
+        // record cannot be delivered. The parent transport weak_ptr is
+        // published once for a runtime generation; the ready flag prevents
+        // logging from touching it before publication or after shutdown starts.
         sgx_status_t rpc_log(
             int level,
             const char* str,
             size_t sz)
         {
             auto& runtime = runtime_storage();
-            if (shutdown_requested(runtime))
-                return SGX_SUCCESS;
 
-            if (auto transport = runtime.log_transport.lock())
+            if (auto transport = load_parent_transport(runtime))
             {
                 if (transport->get_status() != rpc::transport_status::CONNECTED)
                     return SGX_SUCCESS;

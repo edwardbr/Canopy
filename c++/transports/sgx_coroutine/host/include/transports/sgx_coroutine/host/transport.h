@@ -4,11 +4,13 @@
  */
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+#include <cstdint>
 
 #include <rpc/rpc.h>
 #include <transports/streaming/transport.h>
@@ -33,13 +35,13 @@ namespace rpc::sgx::coro::host
                 explicit thread_state(uint64_t eid)
                     : eid_(eid)
                 {
-                    init_status_ = std::make_shared<common::startup_status>();
-                    common::initialise_startup_status(*init_status_);
+                    common::initialise_startup_status(startup_state_, startup_error_code_);
                 }
 
                 uint64_t eid_ = 0;
                 std::vector<std::thread> worker_threads_;
-                std::shared_ptr<common::startup_status> init_status_;
+                rpc::sgx::coro::protocol::startup_state startup_state_{};
+                error_code startup_error_code_{};
                 // The enclave receives raw queue pointers through the ECALL.
                 // Keep the queue storage tied to the ECALL thread lifetime so
                 // transport destruction cannot unmap it while workers are
@@ -48,25 +50,29 @@ namespace rpc::sgx::coro::host
                 std::shared_ptr<common::queue_type> enclave_to_host_queue_;
             };
 
-            enclave_owner(
-                uint64_t eid,
-                rpc::coro::scheduler_ptr scheduler)
-                : scheduler_(std::move(scheduler))
-                , state_(std::make_shared<thread_state>(eid))
+            explicit enclave_owner(uint64_t eid)
+                : state_(std::make_shared<thread_state>(eid))
             {
             }
 
-            rpc::coro::scheduler_ptr scheduler_;
             std::thread init_thread_;
             std::shared_ptr<thread_state> state_;
             ~enclave_owner();
+
+            void request_shutdown() const;
+            static bool is_current_thread(const std::thread& thread) noexcept;
+            static void join_or_detach_if_current(std::thread& thread);
+            static void join_worker_threads(const std::shared_ptr<thread_state>& state);
+            static void cleanup_threads_and_destroy_enclave(
+                std::shared_ptr<thread_state> state,
+                std::thread init_thread);
         };
 
         std::string enclave_path_;
         std::shared_ptr<common::queue_type> host_to_enclave_queue_;
         std::shared_ptr<common::queue_type> enclave_to_host_queue_;
         std::shared_ptr<deferred_stream> deferred_stream_;
-        std::shared_ptr<streaming::stream> queue_stream_;
+        std::shared_ptr<streaming::spsc_queue::stream> queue_stream_;
         std::shared_ptr<enclave_owner> enclave_owner_;
         transport(
             std::string name,
@@ -76,6 +82,10 @@ namespace rpc::sgx::coro::host
         void start_worker_thread(
             enclave_owner& owner,
             std::shared_ptr<std::vector<char>> enter_blob);
+        void begin_enclave_shutdown_once() noexcept;
+        static void destroy_enclave_owner_async(
+            std::shared_ptr<enclave_owner> owner,
+            rpc::coro::scheduler_ptr scheduler) noexcept;
 
     protected:
         void on_destination_count_zero() override;
@@ -86,7 +96,7 @@ namespace rpc::sgx::coro::host
             std::shared_ptr<rpc::service> service,
             std::string enclave_path);
 
-        ~transport() override = default;
+        ~transport() override;
 
         CORO_TASK(rpc::connect_result)
         inner_connect(
@@ -98,5 +108,10 @@ namespace rpc::sgx::coro::host
         void set_status(rpc::transport_status status) override;
 
         const std::string& get_enclave_path() const { return enclave_path_; }
+        void set_enclave_worker_thread_count(uint32_t worker_thread_count);
+
+    private:
+        std::atomic<bool> enclave_shutdown_started_{false};
+        std::atomic<uint32_t> enclave_worker_thread_count_{0};
     };
 }

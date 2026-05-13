@@ -11,10 +11,10 @@
 #  include "test_globals.h"
 #  include <common/tests.h>
 #  include <common/transport_setup_base.h>
-#  include <exception>
+#  include <atomic>
+#  include <chrono>
 #  include <gtest/gtest.h>
 #  include <memory>
-#  include <new>
 #  include <transports/sgx_coroutine/host/connect.h>
 #  include <transports/sgx_coroutine/host/transport.h>
 #  include <utility>
@@ -22,6 +22,35 @@
 
 namespace sgx_coroutine_setup_detail
 {
+    template<
+        class Result,
+        class Awaitable>
+    Result run_on_manual_scheduler(
+        const std::shared_ptr<coro::scheduler>& scheduler,
+        Awaitable&& awaitable,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds{20000})
+    {
+        Result result{};
+        result.error_code = rpc::error::CALL_TIMEOUT();
+        std::atomic<bool> done{false};
+
+        auto runner = [task = std::forward<Awaitable>(awaitable), &result, &done]() mutable -> CORO_TASK(void)
+        {
+            result = CO_AWAIT task;
+            done.store(true, std::memory_order_release);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler && scheduler->spawn_detached(runner()));
+
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (!done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        RPC_ASSERT(done.load(std::memory_order_acquire));
+        return result;
+    }
+
     template<class HostImplementation>
     rpc::service_connect_result<yyy::i_host> create_host_for_setup(std::shared_ptr<coro::scheduler> scheduler)
     {
@@ -31,16 +60,8 @@ namespace sgx_coroutine_setup_detail
         }
         else
         {
-            try
-            {
-                rpc::shared_ptr<HostImplementation> host_ptr(new HostImplementation());
-                return {rpc::error::OK(), rpc::static_pointer_cast<yyy::i_host>(host_ptr)};
-            }
-            catch (const std::bad_alloc&)
-            {
-                RPC_ERROR("bad_alloc while creating SGX coroutine test host");
-                std::terminate();
-            }
+            rpc::shared_ptr<HostImplementation> host_ptr(new HostImplementation());
+            return {rpc::error::OK(), rpc::static_pointer_cast<yyy::i_host>(host_ptr)};
         }
     }
 } // namespace sgx_coroutine_setup_detail
@@ -87,8 +108,10 @@ public:
         auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
             "main child", this->root_service_, coroutine_enclave_path);
         transports_.push_back(transport);
-        auto result = SYNC_WAIT((rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
-            this->root_service_, "main child", transport, host_ptr)));
+        auto result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::service_connect_result<yyy::i_example>>(
+            this->io_scheduler_,
+            rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+                this->root_service_, "main child", transport, host_ptr));
 
         this->i_example_ptr_ = std::move(result.output_interface);
         RPC_ASSERT(result.error_code == rpc::error::OK());

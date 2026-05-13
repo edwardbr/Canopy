@@ -15,6 +15,8 @@
 #include <cstring>
 #include <rpc/rpc.h>
 #include <chrono>
+#include <new>
+#include <system_error>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -23,101 +25,68 @@
 #  define CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG SGX_DEBUG_FLAG
 #endif
 
+extern "C" void canopy_sgx_sleep_ms(uint32_t milliseconds)
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds{milliseconds});
+}
+
 namespace rpc::sgx::coro::host
 {
     namespace
     {
         using namespace rpc::sgx::coro::protocol;
 
-        void signal_peer_closed(common::queue_type* send_queue)
+        bool signal_peer_closed(common::queue_type* send_queue)
         {
             if (!send_queue)
-                return;
+                return false;
 
             streaming::spsc_queue::blob close_blob{};
-            for (size_t attempt = 0; attempt < 10000; ++attempt)
-            {
-                if (send_queue->push(close_blob))
-                    break;
-                std::this_thread::yield();
-            }
+            return send_queue->push(close_blob);
         }
 
-        template<typename T>
-        int from_blob(
-            rpc::byte_span buffer,
-            T& value)
+        bool startup_state_matches(
+            startup_state state,
+            startup_state expected_state) noexcept
         {
-            auto err = rpc::from_yas_binary(buffer, value);
-            if (!err.empty())
-            {
-                RPC_ERROR("sgx_coroutine decode failed: {}", err);
-                return rpc::error::INVALID_DATA();
-            }
-            return rpc::error::OK();
+            if (state == expected_state)
+                return true;
+
+            return expected_state == startup_state::workers_requested && state == startup_state::runtime_ready;
         }
 
-        int wait_for_startup_status(
-            const std::shared_ptr<common::startup_status>& status,
-            common::startup_state expected_state,
+        CORO_TASK(int)
+        wait_for_startup_status(
+            rpc::coro::scheduler_ptr scheduler,
+            const startup_state* startup_state_word,
+            const error_code* startup_error_code,
+            startup_state expected_state,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
         {
-            if (!status)
-                return rpc::error::INVALID_DATA();
+            if (!startup_state_word || !startup_error_code)
+                CO_RETURN rpc::error::INVALID_DATA();
+            if (!scheduler)
+                CO_RETURN rpc::error::TRANSPORT_ERROR();
 
             auto deadline = std::chrono::steady_clock::now() + timeout;
             while (std::chrono::steady_clock::now() < deadline)
             {
-                auto state = static_cast<common::startup_state>(common::startup_load_u32(&status->state));
-                if (state == expected_state)
-                    return rpc::error::OK();
+                auto state = common::startup_load_state(startup_state_word);
+                if (startup_state_matches(state, expected_state))
+                    CO_RETURN rpc::error::OK();
 
-                if (state == common::startup_state::failed)
-                    return common::startup_load_i32(&status->error_code);
+                if (state == startup_state::failed)
+                    CO_RETURN common::startup_load_error(startup_error_code);
 
-                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+                // This is host-side enclave bootstrap, before the stream pumps
+                // are established. It must be driven by the service scheduler;
+                // tests with manual schedulers must not wrap this connect path
+                // in sync_wait() without also pumping scheduler events.
+                CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{1});
             }
 
             RPC_ERROR("startup status: timed out waiting for readiness");
-            return rpc::error::CALL_TIMEOUT();
-        }
-
-        int wait_for_worker_request(
-            const std::shared_ptr<common::startup_status>& status,
-            uint32_t& requested_workers,
-            std::chrono::milliseconds timeout = std::chrono::milliseconds{20000})
-        {
-            auto err = wait_for_startup_status(status, common::startup_state::workers_requested, timeout);
-            if (err != rpc::error::OK())
-                return err;
-
-            requested_workers = common::startup_load_u32(&status->requested_workers);
-            return rpc::error::OK();
-        }
-
-        int wait_for_attached_workers(
-            const std::shared_ptr<common::startup_status>& status,
-            uint32_t expected_workers,
-            std::chrono::milliseconds timeout = std::chrono::milliseconds{20000})
-        {
-            if (!status)
-                return rpc::error::INVALID_DATA();
-
-            auto deadline = std::chrono::steady_clock::now() + timeout;
-            while (std::chrono::steady_clock::now() < deadline)
-            {
-                auto state = static_cast<common::startup_state>(common::startup_load_u32(&status->state));
-                if (state == common::startup_state::failed)
-                    return common::startup_load_i32(&status->error_code);
-
-                if (common::startup_load_u32(&status->attached_workers) >= expected_workers)
-                    return rpc::error::OK();
-
-                std::this_thread::sleep_for(std::chrono::milliseconds{1});
-            }
-
-            RPC_ERROR("startup status: timed out waiting for worker attachment");
-            return rpc::error::CALL_TIMEOUT();
+            CO_RETURN rpc::error::CALL_TIMEOUT();
         }
 
         uint64_t read_host_tick_counter() noexcept
@@ -153,6 +122,12 @@ namespace rpc::sgx::coro::host
             return ticks_per_millisecond;
         }
 
+        uint64_t host_pointer_address(const void* pointer) noexcept
+        {
+            static_assert(sizeof(std::uintptr_t) <= sizeof(uint64_t));
+            return static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(pointer));
+        }
+
         uint64_t host_unix_epoch_milliseconds() noexcept
         {
             const auto now = std::chrono::system_clock::now();
@@ -161,33 +136,15 @@ namespace rpc::sgx::coro::host
         }
 
         void fail_startup_status(
-            common::startup_status* status,
+            startup_state* startup_state_word,
+            error_code* startup_error_code,
             int error_code)
         {
-            if (!status)
+            if (!startup_state_word || !startup_error_code)
                 return;
 
-            common::startup_store_i32(&status->error_code, error_code);
-            common::startup_store_u32(&status->state, static_cast<std::uint32_t>(common::startup_state::failed));
-        }
-
-        CORO_TASK(void)
-        join_init_thread_and_destroy_enclave_on_scheduler(
-            rpc::coro::scheduler* scheduler,
-            std::shared_ptr<std::thread> thread,
-            uint64_t eid)
-        {
-            // This task runs on the scheduler, so it must not own a
-            // shared_ptr to that scheduler. Dropping the last scheduler
-            // reference from a scheduler worker would make the scheduler try
-            // to join its own thread during destruction.
-            CO_AWAIT scheduler->schedule();
-
-            if (thread && thread->joinable())
-                thread->join();
-
-            sgx_destroy_enclave(eid);
-            CO_RETURN;
+            common::startup_store_error(startup_error_code, error_code);
+            common::startup_store_state(startup_state_word, startup_state::failed);
         }
 
     }
@@ -235,43 +192,80 @@ namespace rpc::sgx::coro::host
         std::shared_ptr<streaming::stream> stream_;
     };
 
-    transport::enclave_owner::~enclave_owner()
+    void transport::enclave_owner::request_shutdown() const
     {
         auto state = state_;
-        if (state && state->init_status_)
+        if (state)
         {
-            auto startup_state = static_cast<common::startup_state>(common::startup_load_u32(&state->init_status_->state));
-            if (startup_state != common::startup_state::failed && startup_state != common::startup_state::stopped)
-            {
-                common::startup_store_u32(
-                    &state->init_status_->state, static_cast<std::uint32_t>(common::startup_state::shutting_down));
-            }
+            auto current_state = common::startup_load_state(&state->startup_state_);
+            if (current_state != startup_state::failed && current_state != startup_state::stopped)
+                common::startup_store_state(&state->startup_state_, startup_state::shutting_down);
         }
+    }
 
-        if (init_thread_.joinable())
+    bool transport::enclave_owner::is_current_thread(const std::thread& thread) noexcept
+    {
+        return thread.joinable() && thread.get_id() == std::this_thread::get_id();
+    }
+
+    void transport::enclave_owner::join_or_detach_if_current(std::thread& thread)
+    {
+        if (!thread.joinable())
+            return;
+
+        if (is_current_thread(thread))
         {
-            auto init_thread = std::make_shared<std::thread>(std::move(init_thread_));
-            if (scheduler_ && !scheduler_->is_shutdown())
-            {
-                // Joining the init ECALL thread can block briefly, so prefer to
-                // do it as scheduled teardown work while the host scheduler is
-                // still running.
-                auto scheduled = scheduler_->spawn_detached(
-                    join_init_thread_and_destroy_enclave_on_scheduler(scheduler_.get(), init_thread, state->eid_));
-                if (scheduled)
-                    return;
-            }
-
-            // If the scheduler has already shut down, the owner is being
-            // destroyed from ordinary host teardown. Join synchronously rather
-            // than detaching the ECALL thread or leaving the enclave loaded.
-            init_thread->join();
-            sgx_destroy_enclave(state->eid_);
+            thread.detach();
             return;
         }
 
-        if (state)
+        thread.join();
+    }
+
+    void transport::enclave_owner::join_worker_threads(const std::shared_ptr<thread_state>& state)
+    {
+        if (!state)
+            return;
+
+        for (auto& worker_thread : state->worker_threads_)
+            join_or_detach_if_current(worker_thread);
+    }
+
+    void transport::enclave_owner::cleanup_threads_and_destroy_enclave(
+        std::shared_ptr<thread_state> state,
+        std::thread init_thread)
+    {
+        join_or_detach_if_current(init_thread);
+        join_worker_threads(state);
+
+        if (state && state->eid_ != 0)
+        {
             sgx_destroy_enclave(state->eid_);
+            state->eid_ = 0;
+        }
+    }
+
+    transport::enclave_owner::~enclave_owner()
+    {
+        request_shutdown();
+
+        auto state = state_;
+        if (!state)
+            return;
+
+        if (init_thread_.joinable())
+        {
+            auto init_thread = std::move(init_thread_);
+            cleanup_threads_and_destroy_enclave(std::move(state), std::move(init_thread));
+            return;
+        }
+
+        join_worker_threads(state);
+        if (state->eid_ != 0)
+        {
+            sgx_destroy_enclave(state->eid_);
+            state->eid_ = 0;
+        }
     }
 
     transport::transport(
@@ -303,9 +297,115 @@ namespace rpc::sgx::coro::host
     {
     }
 
+    transport::~transport()
+    {
+        // Most paths request disconnect before the transport graph releases its
+        // final reference. This safety net must not join ECALL threads from a
+        // destructor; it only requests shutdown and hands ownership to an async
+        // cleanup thread.
+        begin_enclave_shutdown_once();
+    }
+
     void transport::on_destination_count_zero()
     {
         begin_clean_disconnect();
+    }
+
+    void transport::set_enclave_worker_thread_count(uint32_t worker_thread_count)
+    {
+        enclave_worker_thread_count_.store(worker_thread_count, std::memory_order_release);
+    }
+
+    void transport::destroy_enclave_owner_async(
+        std::shared_ptr<enclave_owner> owner,
+        rpc::coro::scheduler_ptr scheduler) noexcept
+    {
+        if (!owner)
+            return;
+
+        if (scheduler)
+        {
+            auto destroy_owner = [](std::shared_ptr<enclave_owner> owner_to_destroy) -> CORO_TASK(void)
+            {
+                // Dropping this final owner reference joins ECALL threads and
+                // calls sgx_destroy_enclave(). Schedule it off the caller so a
+                // transport status change or destructor never performs that
+                // blocking work inline.
+                owner_to_destroy.reset();
+                CO_RETURN;
+            };
+
+            try
+            {
+                auto owner_for_scheduler = owner;
+                if (scheduler->spawn_detached(destroy_owner(std::move(owner_for_scheduler))))
+                    return;
+            }
+            catch (const std::bad_alloc&)
+            {
+                RPC_ERROR("bad_alloc while scheduling SGX enclave teardown");
+                std::terminate();
+            }
+        }
+
+        try
+        {
+            auto owner_for_thread = owner;
+            std::thread(
+                [owner = std::move(owner_for_thread)]() mutable
+                {
+                    // Destroying the owner joins ECALL threads and calls
+                    // sgx_destroy_enclave(). That can legitimately block, so keep
+                    // it off the stream pump/status caller whenever thread
+                    // creation succeeds.
+                    owner.reset();
+                })
+                .detach();
+            return;
+        }
+        catch (const std::bad_alloc&)
+        {
+            RPC_ERROR("bad_alloc while starting SGX enclave teardown thread");
+            std::terminate();
+        }
+        catch (const std::system_error& ex)
+        {
+            RPC_WARNING("failed to start SGX enclave teardown thread: {}", ex.what());
+            std::terminate();
+        }
+    }
+
+    void transport::begin_enclave_shutdown_once() noexcept
+    {
+        bool expected = false;
+        if (!enclave_shutdown_started_.compare_exchange_strong(
+                expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return;
+        }
+
+        auto owner_to_stop = std::move(enclave_owner_);
+        auto queue_stream = queue_stream_;
+        auto host_to_enclave_queue = host_to_enclave_queue_;
+        rpc::coro::scheduler_ptr scheduler;
+        if (auto service = get_service())
+            scheduler = service->get_scheduler();
+
+        if (owner_to_stop)
+            owner_to_stop->request_shutdown();
+
+        if (queue_stream)
+        {
+            if (!signal_peer_closed(host_to_enclave_queue.get()))
+                RPC_WARNING("failed to enqueue SGX coroutine peer-close marker during shutdown");
+            queue_stream->close_now();
+        }
+
+        queue_stream_.reset();
+        host_to_enclave_queue_.reset();
+        enclave_to_host_queue_.reset();
+
+        destroy_enclave_owner_async(std::move(owner_to_stop), std::move(scheduler));
     }
 
     void transport::start_worker_thread(
@@ -314,9 +414,10 @@ namespace rpc::sgx::coro::host
     {
         auto state = owner.state_;
         auto owner_eid = state->eid_;
-        auto* init_status = state->init_status_.get();
+        auto* startup_state_word = &state->startup_state_;
+        auto* startup_error_code = &state->startup_error_code_;
         state->worker_threads_.emplace_back(
-            [owner_eid, enter_blob = std::move(enter_blob), init_status]()
+            [owner_eid, enter_blob = std::move(enter_blob), startup_state_word, startup_error_code]()
             {
                 int err_code = rpc::error::OK();
                 auto status = coroutine_enter_thread(owner_eid, &err_code, enter_blob->size(), enter_blob->data());
@@ -324,14 +425,14 @@ namespace rpc::sgx::coro::host
                 if (status != SGX_SUCCESS)
                 {
                     RPC_ERROR("coroutine_enter_thread returned sgx status {}", static_cast<int>(status));
-                    fail_startup_status(init_status, rpc::error::TRANSPORT_ERROR());
+                    fail_startup_status(startup_state_word, startup_error_code, rpc::error::TRANSPORT_ERROR());
                     return;
                 }
 
                 if (err_code != rpc::error::OK())
                 {
                     RPC_ERROR("coroutine_enter_thread returned {}", err_code);
-                    fail_startup_status(init_status, err_code);
+                    fail_startup_status(startup_state_word, startup_error_code, err_code);
                 }
             });
     }
@@ -379,76 +480,77 @@ namespace rpc::sgx::coro::host
             }
         }
 
-        auto owner = std::make_shared<enclave_owner>(eid, svc->get_scheduler());
+        std::shared_ptr<enclave_owner> owner;
+        try
+        {
+            owner = std::make_shared<enclave_owner>(eid);
+        }
+        catch (const std::bad_alloc&)
+        {
+            RPC_ERROR("bad_alloc while creating SGX enclave owner");
+            std::terminate();
+        }
         owner->state_->host_to_enclave_queue_ = host_to_enclave_queue_;
         owner->state_->enclave_to_host_queue_ = enclave_to_host_queue_;
 
         // spawn the main thread for this enclave
+        const auto worker_thread_count = enclave_worker_thread_count_.load(std::memory_order_acquire);
         {
-            init_request request{get_zone_id(),
-                adjacent_zone_id,
-                input_descr.remote_object_id.is_set() ? input_descr.remote_object_id : get_zone_id().get_address()};
-            auto request_blob = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(request));
             auto* host_to_enclave_queue = host_to_enclave_queue_.get();
             auto* enclave_to_host_queue = enclave_to_host_queue_.get();
-            const auto ticks_per_millisecond = host_ticks_per_millisecond();
             auto state = owner->state_;
+            // These host-provided clock values are bootstrap hints only. They
+            // must not be treated as trusted time for certificate validation,
+            // attestation decisions, or other enclave security policy.
+            init_request request{get_zone_id(),
+                adjacent_zone_id,
+                input_descr.remote_object_id.is_set() ? input_descr.remote_object_id : get_zone_id().get_address(),
+                worker_thread_count,
+                host_pointer_address(host_to_enclave_queue),
+                host_pointer_address(enclave_to_host_queue),
+                &state->startup_state_,
+                &state->startup_error_code_,
+                host_ticks_per_millisecond(),
+                host_unix_epoch_milliseconds()};
+            const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
+            constexpr auto request_encoding = rpc::encoding::yas_binary;
+            constexpr auto request_encoding_value = static_cast<uint64_t>(request_encoding);
+            auto request_blob
+                = std::make_shared<std::vector<char>>(rpc::serialise<std::vector<char>>(request, request_encoding));
             owner->init_thread_ = std::thread(
-                [state, request_blob = std::move(request_blob), host_to_enclave_queue, enclave_to_host_queue, ticks_per_millisecond]()
+                [state, request_blob = std::move(request_blob), request_type_id]()
                 {
-                    auto* init_status = state->init_status_.get();
-                    std::vector<char> response_blob(1024);
-                    size_t response_size = 0;
-                    int err_code = rpc::error::OK();
-                    const auto initial_unix_epoch_milliseconds = host_unix_epoch_milliseconds();
-
                     auto status = coroutine_init_enclave(
-                        state->eid_,
-                        &err_code,
-                        request_blob->size(),
-                        request_blob->data(),
-                        host_to_enclave_queue,
-                        enclave_to_host_queue,
-                        ticks_per_millisecond,
-                        initial_unix_epoch_milliseconds,
-                        reinterpret_cast<canopy_coroutine_startup_status*>(init_status),
-                        response_blob.size(),
-                        response_blob.data(),
-                        &response_size);
+                        state->eid_, request_blob->size(), request_blob->data(), request_encoding_value, request_type_id);
 
                     if (status != SGX_SUCCESS)
                     {
                         RPC_ERROR("coroutine_init_enclave returned sgx status {}", static_cast<int>(status));
-                        fail_startup_status(init_status, rpc::error::TRANSPORT_ERROR());
-                    }
-                    else if (err_code != rpc::error::OK())
-                    {
-                        RPC_ERROR("coroutine_init_enclave returned {}", err_code);
-                        fail_startup_status(init_status, err_code);
+                        fail_startup_status(
+                            &state->startup_state_, &state->startup_error_code_, rpc::error::TRANSPORT_ERROR());
                     }
 
-                    for (auto& worker_thread : state->worker_threads_)
-                    {
-                        if (worker_thread.joinable())
-                            worker_thread.join();
-                    }
+                    // The owner teardown joins worker ECALL threads after the
+                    // init ECALL has returned. Joining them here can create a
+                    // join cycle if teardown is itself triggered from a worker
+                    // or scheduler thread.
                 });
         }
 
-        uint32_t requested_workers = 0;
-        auto startup_error = wait_for_worker_request(owner->state_->init_status_, requested_workers);
+        auto startup_error = CO_AWAIT wait_for_startup_status(
+            svc->get_scheduler(),
+            &owner->state_->startup_state_,
+            &owner->state_->startup_error_code_,
+            startup_state::workers_requested,
+            std::chrono::milliseconds{20000});
         if (startup_error != rpc::error::OK())
         {
             enclave_owner_ = std::move(owner);
             set_status(rpc::transport_status::DISCONNECTING);
-            enclave_owner_.reset();
-            queue_stream_.reset();
-            host_to_enclave_queue_.reset();
-            enclave_to_host_queue_.reset();
             CO_RETURN rpc::connect_result{startup_error, {}};
         }
 
-        for (uint32_t worker_index = 0; worker_index < requested_workers; ++worker_index)
+        for (uint32_t worker_index = 0; worker_index < worker_thread_count; ++worker_index)
         {
             auto enter_blob
                 = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(enter_thread_request{
@@ -456,46 +558,31 @@ namespace rpc::sgx::coro::host
                     worker_index,
                 }));
             start_worker_thread(*owner, std::move(enter_blob));
-            startup_error = wait_for_attached_workers(
-                owner->state_->init_status_, worker_index + 1, std::chrono::milliseconds{20000});
-            if (startup_error != rpc::error::OK())
-            {
-                enclave_owner_ = std::move(owner);
-                set_status(rpc::transport_status::DISCONNECTING);
-                enclave_owner_.reset();
-                queue_stream_.reset();
-                host_to_enclave_queue_.reset();
-                enclave_to_host_queue_.reset();
-                CO_RETURN rpc::connect_result{startup_error, {}};
-            }
         }
 
-        startup_error = wait_for_startup_status(
-            owner->state_->init_status_, common::startup_state::runtime_ready, std::chrono::milliseconds{20000});
+        startup_error = CO_AWAIT wait_for_startup_status(
+            svc->get_scheduler(),
+            &owner->state_->startup_state_,
+            &owner->state_->startup_error_code_,
+            startup_state::runtime_ready,
+            std::chrono::milliseconds{20000});
         if (startup_error != rpc::error::OK())
         {
             enclave_owner_ = std::move(owner);
             set_status(rpc::transport_status::DISCONNECTING);
-            enclave_owner_.reset();
-            queue_stream_.reset();
-            host_to_enclave_queue_.reset();
-            enclave_to_host_queue_.reset();
             CO_RETURN rpc::connect_result{startup_error, {}};
         }
 
         enclave_owner_ = std::move(owner);
         initialise_after_construction();
 
-        // now the complex dance of getting the enclave and workers up we now need to use the stream transport to do inner_connect
+        // Once the enclave runtime is live, complete the normal stream transport
+        // handshake over the host/enclave SPSC queues.
         auto connect_result
             = CO_AWAIT rpc::stream_transport::transport::inner_connect(std::move(stub), std::move(input_descr));
         if (connect_result.error_code != rpc::error::OK())
         {
             set_status(rpc::transport_status::DISCONNECTING);
-            enclave_owner_.reset();
-            queue_stream_.reset();
-            host_to_enclave_queue_.reset();
-            enclave_to_host_queue_.reset();
             CO_RETURN connect_result;
         }
 
@@ -505,24 +592,10 @@ namespace rpc::sgx::coro::host
 
     void transport::set_status(rpc::transport_status status)
     {
-        auto old_status = get_status();
         rpc::stream_transport::transport::set_status(status);
 
         if (status >= rpc::transport_status::DISCONNECTING)
-        {
-            if (status >= rpc::transport_status::DISCONNECTED && old_status < rpc::transport_status::DISCONNECTED
-                && enclave_owner_ && enclave_owner_->state_ && enclave_owner_->state_->init_status_)
-                common::startup_store_u32(
-                    &enclave_owner_->state_->init_status_->state,
-                    static_cast<std::uint32_t>(common::startup_state::shutting_down));
-
-            if (queue_stream_ && status >= rpc::transport_status::DISCONNECTED
-                && old_status < rpc::transport_status::DISCONNECTED)
-            {
-                signal_peer_closed(host_to_enclave_queue_.get());
-                rpc::coro::sync_wait(queue_stream_->set_closed());
-            }
-        }
+            begin_enclave_shutdown_once();
     }
 
 }

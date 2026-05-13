@@ -164,9 +164,14 @@ namespace streaming::spsc_queue
         return closed_.load(std::memory_order_acquire);
     }
 
-    auto stream::set_closed() -> coro::task<void>
+    void stream::close_now() noexcept
     {
         closed_.store(true, std::memory_order_release);
+    }
+
+    auto stream::set_closed() -> coro::task<void>
+    {
+        close_now();
         co_return;
     }
 

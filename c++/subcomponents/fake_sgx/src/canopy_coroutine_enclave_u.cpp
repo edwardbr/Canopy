@@ -5,42 +5,58 @@
 
 #include <canopy/fake_sgx/runtime.h>
 #include <edl/coroutine_enclave.h>
+#include <rpc/rpc.h>
 #include <transports/sgx_coroutine/common/shared_queue.h>
 #include <transports/sgx_coroutine/common/startup_status.h>
 #include <untrusted/canopy_coroutine_enclave_u.h>
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <vector>
+#include <memory>
 
 namespace
 {
-    using trusted_init_fn = int (*)(
+    using trusted_init_fn = void (*)(
         std::size_t,
         const char*,
-        void*,
-        void*,
         uint64_t,
-        uint64_t,
-        canopy_coroutine_startup_status*,
-        std::size_t,
-        char*,
-        std::size_t*);
+        uint64_t);
 
     using trusted_enter_thread_fn = int (*)(
         std::size_t,
         const char*);
 
+    struct ecall_byte_buffer
+    {
+        std::unique_ptr<char[]> bytes;
+        std::size_t size = 0;
+
+        [[nodiscard]] auto data() noexcept -> char* { return bytes.get(); }
+        [[nodiscard]] auto data() const noexcept -> const char* { return bytes.get(); }
+        [[nodiscard]] auto empty() const noexcept -> bool { return size == 0; }
+    };
+
     auto copy_to_enclave_buffer(
         const char* data,
-        std::size_t size) -> std::vector<char>
+        std::size_t size) -> ecall_byte_buffer
     {
-        std::vector<char> result(size);
+        ecall_byte_buffer result{size > 0 ? std::make_unique<char[]>(size) : nullptr, size};
         if (data && size > 0)
             std::memcpy(result.data(), data, size);
         return result;
+    }
+
+    void* pointer_from_request_address(uint64_t address) noexcept
+    {
+        return reinterpret_cast<void*>(static_cast<std::uintptr_t>(address));
+    }
+
+    rpc::encoding normalise_request_encoding(uint64_t request_encoding) noexcept
+    {
+        if (request_encoding == 0)
+            return rpc::encoding::yas_binary;
+        return static_cast<rpc::encoding>(request_encoding);
     }
 }
 
@@ -48,23 +64,13 @@ extern "C"
 {
     sgx_status_t coroutine_init_enclave(
         sgx_enclave_id_t enclave_id,
-        int* retval,
         std::size_t req_sz,
         const char* req,
-        void* host_to_enclave_queue,
-        void* enclave_to_host_queue,
-        uint64_t ticks_per_millisecond,
-        uint64_t initial_unix_epoch_milliseconds,
-        canopy_coroutine_startup_status* startup_status,
-        std::size_t resp_cap,
-        char* resp,
-        std::size_t* resp_sz)
+        uint64_t request_encoding,
+        uint64_t request_type_id)
     {
-        if (!retval || (!req && req_sz > 0) || (!resp && resp_cap > 0) || !resp_sz)
+        if (!req && req_sz > 0)
             return SGX_ERROR_INVALID_PARAMETER;
-
-        *retval = 0;
-        *resp_sz = 0;
 
         canopy::fake_sgx::scoped_enclave_call call(enclave_id);
         if (!call.ok())
@@ -76,34 +82,32 @@ extern "C"
 
         auto* trusted_init = reinterpret_cast<trusted_init_fn>(raw_symbol);
         auto enclave_req = copy_to_enclave_buffer(req, req_sz);
-        std::vector<char> enclave_resp(resp_cap);
-        std::size_t enclave_resp_sz = 0;
 
-        call.add_inside(enclave_req.data(), enclave_req.size());
-        call.add_inside(enclave_resp.data(), enclave_resp.size());
-        call.add_inside(&enclave_resp_sz, sizeof(enclave_resp_sz));
-        call.add_outside(host_to_enclave_queue, sizeof(rpc::sgx::coro::common::queue_type));
-        call.add_outside(enclave_to_host_queue, sizeof(rpc::sgx::coro::common::queue_type));
-        call.add_outside(startup_status, sizeof(rpc::sgx::coro::common::startup_status));
+        call.add_inside(enclave_req.data(), enclave_req.size);
+        if (request_type_id == rpc::id<rpc::sgx::coro::protocol::init_request>::get(rpc::get_version()))
+        {
+            rpc::sgx::coro::protocol::init_request init_request{};
+            auto decode_error = rpc::deserialise(
+                normalise_request_encoding(request_encoding),
+                rpc::byte_span{reinterpret_cast<const uint8_t*>(enclave_req.data()), enclave_req.size},
+                init_request);
+            if (decode_error.empty())
+            {
+                call.add_outside(
+                    pointer_from_request_address(init_request.host_to_enclave_queue_ptr),
+                    sizeof(rpc::sgx::coro::common::queue_type));
+                call.add_outside(
+                    pointer_from_request_address(init_request.enclave_to_host_queue_ptr),
+                    sizeof(rpc::sgx::coro::common::queue_type));
+                if (init_request.state)
+                    call.add_outside(init_request.state, sizeof(*init_request.state));
+                if (init_request.error)
+                    call.add_outside(init_request.error, sizeof(*init_request.error));
+            }
+        }
 
-        *retval = trusted_init(
-            enclave_req.size(),
-            enclave_req.empty() ? nullptr : enclave_req.data(),
-            host_to_enclave_queue,
-            enclave_to_host_queue,
-            ticks_per_millisecond,
-            initial_unix_epoch_milliseconds,
-            startup_status,
-            enclave_resp.size(),
-            enclave_resp.empty() ? nullptr : enclave_resp.data(),
-            &enclave_resp_sz);
-
-        *resp_sz = enclave_resp_sz;
-        if (enclave_resp_sz > resp_cap)
-            return SGX_SUCCESS;
-
-        if (resp && enclave_resp_sz > 0)
-            std::memcpy(resp, enclave_resp.data(), enclave_resp_sz);
+        trusted_init(
+            enclave_req.size, enclave_req.empty() ? nullptr : enclave_req.data(), request_encoding, request_type_id);
         return SGX_SUCCESS;
     }
 
@@ -128,9 +132,9 @@ extern "C"
 
         auto* trusted_enter_thread = reinterpret_cast<trusted_enter_thread_fn>(raw_symbol);
         auto enclave_req = copy_to_enclave_buffer(req, req_sz);
-        call.add_inside(enclave_req.data(), enclave_req.size());
+        call.add_inside(enclave_req.data(), enclave_req.size);
 
-        *retval = trusted_enter_thread(enclave_req.size(), enclave_req.empty() ? nullptr : enclave_req.data());
+        *retval = trusted_enter_thread(enclave_req.size, enclave_req.empty() ? nullptr : enclave_req.data());
         return SGX_SUCCESS;
     }
 }

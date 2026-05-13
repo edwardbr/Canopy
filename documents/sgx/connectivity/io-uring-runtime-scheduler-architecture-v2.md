@@ -38,6 +38,15 @@ the runtime controller, so services still receive the unchanged compile-time
 scheduler type while runtime teardown can shut the controller down before the
 scheduler.
 
+Runtime-state note: the current enclave runtime still stores both
+`io_uring_scheduler` and the plain `rpc::coro::scheduler` pointer. That should
+be treated as transitional convenience, not the target ownership model. The
+target is a runtime context/store that owns scheduler execution, io_uring
+controller state, clock calibration, RNG, keystore/certificate stores, and other
+runtime services behind a clear service-accessible boundary. `rpc::service`
+should be able to get required runtime facilities without individual transport
+classes reaching back into a large ad hoc `runtime_state`.
+
 Fourth slice note: the host-only stream path now has a
 `streaming::io_uring::acceptor` adapter around the common
 `rpc::io_uring::acceptor`. The typed streaming transport tests, timeout test,
@@ -324,6 +333,14 @@ Current implementation:
   special cases while still giving runtime teardown one obvious owner for the
   controller-before-scheduler shutdown order.
 
+Current smell to remove later: the SGX runtime state caches both
+`io_uring_scheduler` and the plain scheduler pointer. The plain pointer is used
+widely by service, stream, worker-loop, and drain code, while
+`io_uring_scheduler` owns the controller shutdown order. This is understandable
+during the transition, but the target should be a runtime context object that
+owns the scheduler/controller pair and exposes the active scheduler through a
+single clear accessor rather than duplicated strong references.
+
 The important invariant is not inheritance. The important invariant is:
 
 ```text
@@ -370,12 +387,86 @@ The near-term plan is deliberately smaller than a host-driven pump rewrite:
   policy choice, used only after the spin budget and never as an accidental
   dependency of stream or websocket code.
 
+The runtime sleep helper must return an error when the underlying sleep/yield
+bridge fails. Error codes from `canopy_sgx_sleep_ms`, fake-SGX `usleep`, or any
+future parking primitive must not be ignored. A failed sleep bridge is a runtime
+or transport error, not an invitation to silently call `_mm_pause` and keep
+going. `_mm_pause` remains appropriate for zero-duration or short spin-budget
+waits where no host sleep was attempted.
+
 The larger host-driven bounded ECALL pump remains a later scheduler redesign.
 That model would let the host own idle waiting with `io_uring` and enter the
 enclave only to drain bounded runtime work. It touches ECALL routing, queue
 readiness, stream pump wakeups, shutdown, fake SGX, and real SGX, so it should
 not be mixed into the immediate websocket/TLS branch unless that branch becomes
 the SGX scheduler redesign branch.
+
+Host-side coroutine waits should use the host scheduler rather than
+`std::this_thread::sleep_for` when the surrounding operation is itself a
+coroutine. Enclave startup readiness is one example: polling the shared startup
+state can be implemented as a coroutine that awaits `scheduler->schedule_after`.
+Tests that configure the scheduler in manual mode must then drive scheduler
+events while waiting for connect to finish. Wrapping such a connect coroutine in
+plain `sync_wait()` is wrong unless something else is pumping the scheduler,
+because the scheduled sleep can suspend forever with no event loop owner.
+
+## Runtime Clock And Time Discipline
+
+SGX runtime time is split by semantics:
+
+- `std::chrono::steady_clock` is a monotonic tick clock. It is suitable for
+  measuring elapsed runtime time, scheduler timeouts, and benchmark deltas. It
+  should not be "set" and it should not be treated as wall-clock time.
+- `std::chrono::system_clock` is a calibrated wall-clock approximation. It is
+  seeded during runtime init today, but that seed is explicitly untrusted host
+  bootstrap data. It exists for compatibility paths such as SGXSSL certificate
+  time checks until an attested time synchronisation path is introduced.
+
+The SGX chrono polyfill should stay as STL-shaped as practical: clock types
+should expose `rep`, `period`, `duration`, `time_point`, `is_steady`, and
+`now()`. Because the SGX `<chrono>` polyfill can be included while SGX libc++ is
+still defining `<atomic>`, it must not depend on `std::atomic`. Low-level
+fixed-width helpers such as `sgx_atomic_load_u64` and `sgx_atomic_store_u64`
+are acceptable inside that header, matching the existing startup-status helper
+style.
+
+The current init ECALL may call a bootstrap helper such as:
+
+```text
+sgx_seed_system_clock_from_untrusted_host(
+    initial_unix_epoch_milliseconds,
+    initial_tick_counter,
+    ticks_per_millisecond)
+```
+
+That name is deliberate. It must not imply trusted time. The later DCAP/RA time
+track should update the same clock through an attested-time-specific helper,
+for example:
+
+```text
+sgx_set_system_clock_from_attested_time_service(...)
+```
+
+The clock discipline invariant is:
+
+```text
+published system_clock time must never move backwards
+```
+
+When attested time is ahead of the current published time, the runtime may step
+the clock forward by resetting the base epoch/tick pair. When attested time is
+behind the current published time, the runtime must not step backwards. It
+should keep the current published timestamp as the new base and slew slowly
+towards attested time by using a slower-than-real tick rate. In the current
+calibration model, "slower than real time" means increasing
+`ticks_per_millisecond`. Once attested time has caught up, the runtime can
+return to the normal calibrated rate.
+
+Integer conversion from ticks to milliseconds truncates fractional milliseconds.
+That read-time rounding error is below one millisecond and does not accumulate
+when each read is computed from the current base tick. It does not guarantee
+unique timestamps, however. If uniqueness matters for logs, audit records, or
+RPC messages, the timestamp needs a sequence number or counter component.
 
 ## Cardinality
 
@@ -559,6 +650,33 @@ wire contract; matching sizes are only a build-time sanity check.
 - The host transport may observe runtime state through weak pointers,
   callbacks, or status notifications, but it should not repeatedly probe and
   micromanage runtime internals.
+- Runtime-owned weak pointers should not grow defensive locking unless they are
+  actually mutated after publication. The parent host transport pointer is a
+  weak, best-effort logging route: publish it once, publish readiness with an
+  atomic flag, and clear only the readiness flag during teardown. Do not reset
+  the weak pointer during shutdown just to make it look empty; it does not keep
+  the transport alive, and `lock()` naturally returns empty once the transport
+  has expired.
+- Late enclave logging is best-effort. It may use the published parent
+  transport while the ready flag is set, but shutdown must not block or add
+  spinlocks simply to deliver a final log record.
+- Host-side SGX transport destruction must not join ECALL threads or call
+  `sgx_destroy_enclave` inline. The transport should request runtime shutdown,
+  close/wake the host-to-enclave queue path without awaiting a coroutine, and
+  move the runtime owner into an asynchronous teardown path.
+- The asynchronous teardown path should prefer the service scheduler when one
+  is available. The cleanup task owns the final runtime owner reference; dropping
+  that reference joins ECALL threads and destroys the enclave off the status or
+  destructor caller. This assumes the scheduler runs spawned work on worker
+  capacity rather than resuming it inline on the caller.
+- If scheduler teardown cannot be scheduled, a short-lived host teardown thread
+  is an acceptable fallback. If that fallback cannot be started, log the failure
+  and terminate rather than blocking a destructor/status caller or hiding the
+  problem behind a process-lifetime leak.
+- Shutdown ownership transfer should be expressed with `std::move` at the call
+  site. Avoid helper APIs that take a mutable `shared_ptr&` and clear it as a
+  side effect; the code should make it obvious which component owns the runtime
+  after shutdown starts.
 
 ### Runtime And io_uring
 
@@ -654,6 +772,10 @@ Rules:
   code. If allocation fails, log the allocation failure and terminate. Keep
   exception handlers rare and specific; this code should not throw its own
   exceptions as normal control flow.
+- Do not hide intentional leaks with unused allocations or `[[maybe_unused]]`.
+  If a resource cannot be handed to an asynchronous owner and inline cleanup
+  would violate the lifetime contract, log and terminate rather than keeping a
+  silent process-lifetime reference.
 
 ## File And Class Direction
 
@@ -962,7 +1084,16 @@ the runtime boundary is understood.
     websocket code, add a measured spin/park policy to the scheduler/runtime,
     reduce receive-pump idle rescheduling, and verify idle CPU in real SGX,
     fake SGX, and the host-only websocket demo.
-14. Once the host/enclave common controller is working, split the non-SGX
+14. Introduce the runtime context/store boundary before adding more runtime
+    services. Scheduler/controller, clock calibration, RNG, keystore,
+    certificate stores, and future attestation collateral should be reached
+    through this boundary instead of by growing `runtime_state` and transport
+    classes directly.
+15. Add the attested-time clock discipline path: keep the untrusted host
+    bootstrap clearly named, add an attested-time-service update path, and
+    enforce non-decreasing published `system_clock` time by slewing rather than
+    stepping backwards.
+16. Once the host/enclave common controller is working, split the non-SGX
     io_uring implementation into a branch suitable for merging to `main`, then
     rebase the SGX branch on that shared foundation.
 

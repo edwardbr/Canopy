@@ -9,12 +9,49 @@
 #endif
 
 #include <cstdint>
+#include <ratio>
 
 namespace std::chrono
 {
     inline constexpr long long sgx_rdtsc_ticks_per_millisecond = 3000000;
+    inline constexpr long long sgx_rdtsc_ticks_per_second = sgx_rdtsc_ticks_per_millisecond * 1000;
+    enum class sgx_system_clock_source : uint32_t
+    {
+        unset = 0,
+        untrusted_host_bootstrap = 1,
+        attested_time_service = 2
+    };
 
-    template<typename rep_type, typename period_type = void> class duration
+    inline uint64_t sgx_system_clock_initial_unix_epoch_milliseconds = 0;
+    inline uint64_t sgx_system_clock_initial_tick_counter = 0;
+    inline uint64_t sgx_system_clock_ticks_per_millisecond = static_cast<uint64_t>(sgx_rdtsc_ticks_per_millisecond);
+    inline uint32_t sgx_system_clock_source_value = static_cast<uint32_t>(sgx_system_clock_source::unset);
+
+    inline uint64_t sgx_atomic_load_u64(const uint64_t* value) noexcept
+    {
+        return __atomic_load_n(value, __ATOMIC_ACQUIRE);
+    }
+
+    inline uint32_t sgx_atomic_load_u32(const uint32_t* value) noexcept
+    {
+        return __atomic_load_n(value, __ATOMIC_ACQUIRE);
+    }
+
+    inline void sgx_atomic_store_u64(
+        uint64_t* value,
+        uint64_t new_value) noexcept
+    {
+        __atomic_store_n(value, new_value, __ATOMIC_RELEASE);
+    }
+
+    inline void sgx_atomic_store_u32(
+        uint32_t* value,
+        uint32_t new_value) noexcept
+    {
+        __atomic_store_n(value, new_value, __ATOMIC_RELEASE);
+    }
+
+    template<typename rep_type, typename period_type = std::ratio<1>> class duration
     {
     public:
         using rep = rep_type;
@@ -32,7 +69,10 @@ namespace std::chrono
         rep_type rep_{};
     };
 
-    using milliseconds = duration<long long, void>;
+    using nanoseconds = duration<long long, std::nano>;
+    using microseconds = duration<long long, std::micro>;
+    using milliseconds = duration<long long, std::milli>;
+    using seconds = duration<long long>;
 
     template<
         typename to_duration,
@@ -43,124 +83,421 @@ namespace std::chrono
             rep_type,
             period_type> value)
     {
-        return to_duration(static_cast<typename to_duration::rep>(value.count()));
+        using conversion = std::ratio_divide<period_type, typename to_duration::period>;
+        return to_duration(static_cast<typename to_duration::rep>((value.count() * conversion::num) / conversion::den));
+    }
+
+    template<
+        typename rep_type,
+        typename period_type>
+    inline constexpr auto operator+(
+        duration<
+            rep_type,
+            period_type> lhs,
+        duration<
+            rep_type,
+            period_type> rhs)
+    {
+        return duration<rep_type, period_type>{lhs.count() + rhs.count()};
+    }
+
+    template<
+        typename rep_type,
+        typename period_type>
+    inline constexpr auto operator-(
+        duration<
+            rep_type,
+            period_type> lhs,
+        duration<
+            rep_type,
+            period_type> rhs)
+    {
+        return duration<rep_type, period_type>{lhs.count() - rhs.count()};
+    }
+
+    template<
+        typename lhs_rep_type,
+        typename lhs_period_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr bool operator==(
+        duration<
+            lhs_rep_type,
+            lhs_period_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
+    {
+        return lhs.count() == duration_cast<duration<lhs_rep_type, lhs_period_type>>(rhs).count();
+    }
+
+    template<
+        typename lhs_rep_type,
+        typename lhs_period_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr bool operator!=(
+        duration<
+            lhs_rep_type,
+            lhs_period_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
+    {
+        return !(lhs == rhs);
+    }
+
+    template<
+        typename lhs_rep_type,
+        typename lhs_period_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr bool operator<(
+        duration<
+            lhs_rep_type,
+            lhs_period_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
+    {
+        return lhs.count() < duration_cast<duration<lhs_rep_type, lhs_period_type>>(rhs).count();
+    }
+
+    template<
+        typename lhs_rep_type,
+        typename lhs_period_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr bool operator<=(
+        duration<
+            lhs_rep_type,
+            lhs_period_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
+    {
+        return !(rhs < lhs);
+    }
+
+    template<
+        typename lhs_rep_type,
+        typename lhs_period_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr bool operator>(
+        duration<
+            lhs_rep_type,
+            lhs_period_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
+    {
+        return rhs < lhs;
+    }
+
+    template<
+        typename lhs_rep_type,
+        typename lhs_period_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr bool operator>=(
+        duration<
+            lhs_rep_type,
+            lhs_period_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
+    {
+        return !(lhs < rhs);
+    }
+
+    template<typename clock_type, typename duration_type = typename clock_type::duration> class time_point
+    {
+    public:
+        using clock = clock_type;
+        using duration = duration_type;
+        using rep = typename duration::rep;
+        using period = typename duration::period;
+
+        constexpr time_point() = default;
+        constexpr explicit time_point(duration_type duration)
+            : duration_(duration)
+        {
+        }
+
+        [[nodiscard]] constexpr duration_type time_since_epoch() const { return duration_; }
+
+    private:
+        duration_type duration_{};
+    };
+
+    inline uint64_t sgx_read_tick_counter() noexcept
+    {
+#if defined(__x86_64__) || defined(__i386__)
+        return __builtin_ia32_rdtsc();
+#else
+        return 0;
+#endif
+    }
+
+    inline uint64_t sgx_normalise_ticks_per_millisecond(uint64_t ticks_per_millisecond) noexcept
+    {
+        return ticks_per_millisecond != 0 ? ticks_per_millisecond : static_cast<uint64_t>(sgx_rdtsc_ticks_per_millisecond);
+    }
+
+    inline uint64_t sgx_clock_ticks_per_millisecond() noexcept
+    {
+        return sgx_normalise_ticks_per_millisecond(sgx_atomic_load_u64(&sgx_system_clock_ticks_per_millisecond));
+    }
+
+    inline void sgx_set_system_clock(
+        uint64_t initial_unix_epoch_milliseconds,
+        uint64_t initial_tick_counter,
+        uint64_t ticks_per_millisecond,
+        sgx_system_clock_source source) noexcept
+    {
+        sgx_atomic_store_u64(
+            &sgx_system_clock_ticks_per_millisecond, sgx_normalise_ticks_per_millisecond(ticks_per_millisecond));
+        sgx_atomic_store_u64(&sgx_system_clock_initial_tick_counter, initial_tick_counter);
+        sgx_atomic_store_u64(&sgx_system_clock_initial_unix_epoch_milliseconds, initial_unix_epoch_milliseconds);
+        sgx_atomic_store_u32(&sgx_system_clock_source_value, static_cast<uint32_t>(source));
+    }
+
+    inline void sgx_seed_system_clock_from_untrusted_host(
+        uint64_t initial_unix_epoch_milliseconds,
+        uint64_t initial_tick_counter,
+        uint64_t ticks_per_millisecond) noexcept
+    {
+        sgx_set_system_clock(
+            initial_unix_epoch_milliseconds,
+            initial_tick_counter,
+            ticks_per_millisecond,
+            sgx_system_clock_source::untrusted_host_bootstrap);
+    }
+
+    inline void sgx_set_system_clock_from_attested_time_service(
+        uint64_t initial_unix_epoch_milliseconds,
+        uint64_t initial_tick_counter,
+        uint64_t ticks_per_millisecond) noexcept
+    {
+        sgx_set_system_clock(
+            initial_unix_epoch_milliseconds,
+            initial_tick_counter,
+            ticks_per_millisecond,
+            sgx_system_clock_source::attested_time_service);
+    }
+
+    inline sgx_system_clock_source sgx_get_system_clock_source() noexcept
+    {
+        return static_cast<sgx_system_clock_source>(sgx_atomic_load_u32(&sgx_system_clock_source_value));
+    }
+
+    inline void sgx_reset_system_clock() noexcept
+    {
+        sgx_atomic_store_u64(&sgx_system_clock_initial_unix_epoch_milliseconds, 0);
+        sgx_atomic_store_u64(&sgx_system_clock_initial_tick_counter, 0);
+        sgx_atomic_store_u64(
+            &sgx_system_clock_ticks_per_millisecond, static_cast<uint64_t>(sgx_rdtsc_ticks_per_millisecond));
+        sgx_atomic_store_u32(&sgx_system_clock_source_value, static_cast<uint32_t>(sgx_system_clock_source::unset));
+    }
+
+    inline uint64_t sgx_unix_epoch_milliseconds() noexcept
+    {
+        const auto initial_time = sgx_atomic_load_u64(&sgx_system_clock_initial_unix_epoch_milliseconds);
+        const auto initial_ticks = sgx_atomic_load_u64(&sgx_system_clock_initial_tick_counter);
+        const auto current_ticks = sgx_read_tick_counter();
+        const auto ticks_per_millisecond = sgx_clock_ticks_per_millisecond();
+
+        if (initial_time == 0 || current_ticks <= initial_ticks || ticks_per_millisecond == 0)
+            return initial_time;
+
+        return initial_time + ((current_ticks - initial_ticks) / ticks_per_millisecond);
     }
 
     struct steady_clock
     {
-        struct time_point
-        {
-            long long ticks{};
-        };
+        using rep = long long;
+        using period = std::ratio<1, sgx_rdtsc_ticks_per_second>;
+        using duration = std::chrono::duration<rep, period>;
+        using time_point = std::chrono::time_point<steady_clock>;
+
+        static constexpr bool is_steady = true;
 
         // SGX simulation builds use this only for polling and timeout-disabled
         // paths. There is no trusted wall clock here; use the CPU counter as a
-        // monotonic ordering source, not as a real millisecond clock.
+        // monotonic ordering source, not as a trusted wall-clock source.
+        static time_point now() noexcept { return time_point{duration{static_cast<rep>(sgx_read_tick_counter())}}; }
+    };
+
+    struct system_clock
+    {
+        using rep = long long;
+        using period = std::milli;
+        using duration = std::chrono::duration<rep, period>;
+        using time_point = std::chrono::time_point<system_clock>;
+
+        static constexpr bool is_steady = false;
+
+        // The init ECALL may seed this with an untrusted host bootstrap value.
+        // Production enclave time should later be replaced by an attested time
+        // service calibration. This clock intentionally reports the current
+        // calibration without implying that the source is trusted.
         static time_point now() noexcept
         {
-#if defined(__x86_64__) || defined(__i386__)
-            return time_point{static_cast<long long>(__builtin_ia32_rdtsc())};
-#else
-            return time_point{0};
-#endif
+            return time_point{duration{static_cast<rep>(sgx_unix_epoch_milliseconds())}};
         }
     };
 
-    inline constexpr bool operator==(
-        milliseconds lhs,
-        milliseconds rhs)
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr auto operator+(
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
     {
-        return lhs.count() == rhs.count();
+        return time_point<clock_type, lhs_duration_type>{lhs.time_since_epoch() + duration_cast<lhs_duration_type>(rhs)};
     }
 
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr auto operator+(
+        duration<
+            rhs_rep_type,
+            rhs_period_type> lhs,
+        time_point<
+            clock_type,
+            lhs_duration_type> rhs)
+    {
+        return rhs + lhs;
+    }
+
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_rep_type,
+        typename rhs_period_type>
+    inline constexpr auto operator-(
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        duration<
+            rhs_rep_type,
+            rhs_period_type> rhs)
+    {
+        return time_point<clock_type, lhs_duration_type>{lhs.time_since_epoch() - duration_cast<lhs_duration_type>(rhs)};
+    }
+
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_duration_type>
+    inline constexpr auto operator-(
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        time_point<
+            clock_type,
+            rhs_duration_type> rhs)
+    {
+        return lhs.time_since_epoch() - duration_cast<lhs_duration_type>(rhs.time_since_epoch());
+    }
+
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_duration_type>
+    inline constexpr bool operator==(
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        time_point<
+            clock_type,
+            rhs_duration_type> rhs)
+    {
+        return lhs.time_since_epoch() == rhs.time_since_epoch();
+    }
+
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_duration_type>
     inline constexpr bool operator!=(
-        milliseconds lhs,
-        milliseconds rhs)
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        time_point<
+            clock_type,
+            rhs_duration_type> rhs)
     {
         return !(lhs == rhs);
     }
 
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_duration_type>
     inline constexpr bool operator<(
-        milliseconds lhs,
-        milliseconds rhs)
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        time_point<
+            clock_type,
+            rhs_duration_type> rhs)
     {
-        return lhs.count() < rhs.count();
+        return lhs.time_since_epoch() < rhs.time_since_epoch();
     }
 
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_duration_type>
     inline constexpr bool operator<=(
-        milliseconds lhs,
-        milliseconds rhs)
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        time_point<
+            clock_type,
+            rhs_duration_type> rhs)
     {
-        return lhs.count() <= rhs.count();
+        return !(rhs < lhs);
     }
 
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_duration_type>
     inline constexpr bool operator>(
-        milliseconds lhs,
-        milliseconds rhs)
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        time_point<
+            clock_type,
+            rhs_duration_type> rhs)
     {
-        return lhs.count() > rhs.count();
+        return rhs < lhs;
     }
 
+    template<
+        typename clock_type,
+        typename lhs_duration_type,
+        typename rhs_duration_type>
     inline constexpr bool operator>=(
-        milliseconds lhs,
-        milliseconds rhs)
+        time_point<
+            clock_type,
+            lhs_duration_type> lhs,
+        time_point<
+            clock_type,
+            rhs_duration_type> rhs)
     {
-        return lhs.count() >= rhs.count();
-    }
-
-    inline constexpr milliseconds operator-(
-        steady_clock::time_point lhs,
-        steady_clock::time_point rhs)
-    {
-        return milliseconds{(lhs.ticks - rhs.ticks) / sgx_rdtsc_ticks_per_millisecond};
-    }
-
-    inline constexpr steady_clock::time_point operator+(
-        steady_clock::time_point lhs,
-        milliseconds rhs)
-    {
-        return steady_clock::time_point{lhs.ticks + (rhs.count() * sgx_rdtsc_ticks_per_millisecond)};
-    }
-
-    inline constexpr bool operator==(
-        steady_clock::time_point lhs,
-        steady_clock::time_point rhs)
-    {
-        return lhs.ticks == rhs.ticks;
-    }
-
-    inline constexpr bool operator!=(
-        steady_clock::time_point lhs,
-        steady_clock::time_point rhs)
-    {
-        return !(lhs == rhs);
-    }
-
-    inline constexpr bool operator<(
-        steady_clock::time_point lhs,
-        steady_clock::time_point rhs)
-    {
-        return lhs.ticks < rhs.ticks;
-    }
-
-    inline constexpr bool operator<=(
-        steady_clock::time_point lhs,
-        steady_clock::time_point rhs)
-    {
-        return lhs.ticks <= rhs.ticks;
-    }
-
-    inline constexpr bool operator>(
-        steady_clock::time_point lhs,
-        steady_clock::time_point rhs)
-    {
-        return lhs.ticks > rhs.ticks;
-    }
-
-    inline constexpr bool operator>=(
-        steady_clock::time_point lhs,
-        steady_clock::time_point rhs)
-    {
-        return lhs.ticks >= rhs.ticks;
+        return !(lhs < rhs);
     }
 }
