@@ -582,6 +582,7 @@ if(SGX_FOUND)
       endif()
 
       set(TLIB_LIST "")
+      set(WHOLE_ARCHIVE_TLIB_LIST "")
       set(T_LIST "")
       set(THEADER_LIB_LIST "")
       set(TRUSTED_TARGET_LIST "")
@@ -595,8 +596,14 @@ if(SGX_FOUND)
       foreach(TLIB ${TRUSTED_TARGET_LIST})
         # If TLIB is not an INTERFACE library (i.e. has a target), then adds its target to the library list to be
         # scrippted below.
-        string(APPEND TLIB_LIST
-               "$<$<NOT:$<STREQUAL:$<TARGET_PROPERTY:${TLIB},TYPE>,INTERFACE_LIBRARY>>:$<TARGET_FILE:${TLIB}> >")
+        get_target_property(TLIB_WHOLE_ARCHIVE ${TLIB} CANOPY_SGX_WHOLE_ARCHIVE)
+        if(TLIB_WHOLE_ARCHIVE)
+          string(APPEND WHOLE_ARCHIVE_TLIB_LIST
+                 "$<$<NOT:$<STREQUAL:$<TARGET_PROPERTY:${TLIB},TYPE>,INTERFACE_LIBRARY>>:$<TARGET_FILE:${TLIB}> >")
+        else()
+          string(APPEND TLIB_LIST
+                 "$<$<NOT:$<STREQUAL:$<TARGET_PROPERTY:${TLIB},TYPE>,INTERFACE_LIBRARY>>:$<TARGET_FILE:${TLIB}> >")
+        endif()
       endforeach()
 
       target_compile_definitions(${target} PRIVATE ${CANOPY_ENCLAVE_DEFINES})
@@ -605,7 +612,7 @@ if(SGX_FOUND)
       set(SGX_LINKER_FLAGS
           "${SGX_COMMON_CFLAGS} \
             -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L${SGX_LIBRARY_PATH} \
-            -Wl,--whole-archive -l${SGX_TRTS_LIB} -Wl,--no-whole-archive \
+            -Wl,--whole-archive ${WHOLE_ARCHIVE_TLIB_LIST} -l${SGX_TRTS_LIB} -Wl,--no-whole-archive \
             -Wl,--start-group ${TLIB_LIST} -lsgx_tstdc -lsgx_tcxx -lsgx_tkey_exchange -lsgx_tcrypto -l${SGX_TSVC_LIB} -Wl,--end-group \
             -Wl,-Bstatic -Wl,-Bsymbolic \
             -Wl,-eenclave_entry,--export-dynamic \

@@ -20,7 +20,7 @@
  *     tcp          — streaming::tcp::stream over TCP loopback (port 8090)
  *     spsc         — streaming::spsc_queue::stream (in-process)
  *     io_uring     — streaming::io_uring::stream (Linux, port 8091)
- *     tls          — streaming::secure::stream over TCP+SPSC (port 8092)
+ *     tls          — selected secure stream backend over TCP+SPSC (port 8092)
  *     websocket    — streaming::websocket::stream over TCP (port 8093)
  *                    requires CANOPY_BUILD_WEBSOCKET
  */
@@ -57,88 +57,21 @@
 #    include <wslay/wslay.h>
 #  endif
 
-// TLS cert generation
-#  include <openssl/evp.h>
-#  include <openssl/pem.h>
-#  include <openssl/x509.h>
-#  include <cstdio>
-
 using namespace marshalled_tests;
 
 // ---------------------------------------------------------------------------
 // TLS certificate helper
 // ---------------------------------------------------------------------------
 
+#  ifndef CANOPY_TIMEOUT_TEST_CERT_DIR
+#    error "CANOPY_TIMEOUT_TEST_CERT_DIR must point at the timeout_test certificate fixtures"
+#  endif
+
 namespace
 {
-    static bool generate_test_tls_cert(
-        const std::string& cert_path,
-        const std::string& key_path)
+    static auto timeout_test_cert_dir() -> std::filesystem::path
     {
-        if (std::filesystem::exists(cert_path) && std::filesystem::exists(key_path))
-            return true;
-
-        EVP_PKEY* pkey = nullptr;
-        {
-            EVP_PKEY_CTX* kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-            if (!kctx)
-                return false;
-            EVP_PKEY_keygen_init(kctx);
-            EVP_PKEY_CTX_set_rsa_keygen_bits(kctx, 2048);
-            EVP_PKEY_keygen(kctx, &pkey);
-            EVP_PKEY_CTX_free(kctx);
-        }
-        if (!pkey)
-            return false;
-
-        X509* x509 = X509_new();
-        if (!x509)
-        {
-            EVP_PKEY_free(pkey);
-            return false;
-        }
-
-        ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
-        X509_gmtime_adj(X509_get_notBefore(x509), 0);
-        X509_gmtime_adj(X509_get_notAfter(x509), 10L * 365 * 24 * 60 * 60);
-        X509_set_pubkey(x509, pkey);
-
-        X509_NAME* name = X509_get_subject_name(x509);
-        X509_NAME_add_entry_by_txt(
-            name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("timeout_test"), -1, -1, 0);
-        X509_set_issuer_name(x509, name);
-        X509_sign(x509, pkey, EVP_sha256());
-
-        FILE* cf = fopen(cert_path.c_str(), "wb");
-        if (!cf)
-        {
-            X509_free(x509);
-            EVP_PKEY_free(pkey);
-            return false;
-        }
-        PEM_write_X509(cf, x509);
-        fclose(cf);
-
-        FILE* kf = fopen(key_path.c_str(), "wb");
-        if (!kf)
-        {
-            X509_free(x509);
-            EVP_PKEY_free(pkey);
-            return false;
-        }
-        PEM_write_PrivateKey(kf, pkey, nullptr, nullptr, 0, nullptr, nullptr);
-        fclose(kf);
-
-        X509_free(x509);
-        EVP_PKEY_free(pkey);
-        return true;
-    }
-
-    static std::string test_cert_dir()
-    {
-        auto dir = std::filesystem::temp_directory_path() / "canopy_timeout_tests";
-        std::filesystem::create_directories(dir);
-        return dir.string();
+        return std::filesystem::path(CANOPY_TIMEOUT_TEST_CERT_DIR);
     }
 } // namespace
 
@@ -768,16 +701,16 @@ protected:
         peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
         root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
-        auto cert_dir = test_cert_dir();
-        auto cert_path = cert_dir + "/cert.pem";
-        auto key_path = cert_dir + "/key.pem";
-        if (!generate_test_tls_cert(cert_path, key_path))
+        const auto cert_dir = timeout_test_cert_dir();
+        const auto cert_path = cert_dir / "server.crt";
+        const auto key_path = cert_dir / "server.key";
+        if (!std::filesystem::exists(cert_path) || !std::filesystem::exists(key_path))
         {
-            RPC_ERROR("timeout_tls_setup: failed to generate TLS cert");
+            RPC_ERROR("timeout_tls_setup: missing TLS fixture credentials in {}", cert_dir.string());
             CO_RETURN false;
         }
 
-        auto tls_ctx = std::make_shared<streaming::secure::context>(cert_path, key_path);
+        auto tls_ctx = std::make_shared<streaming::secure::context>(cert_path.string(), key_path.string());
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("timeout_tls_setup: TLS context init failed");

@@ -5,6 +5,7 @@
 #include <streaming/tls/stream.h>
 
 #include <array>
+#include <chrono>
 #include <limits>
 #include <utility>
 
@@ -15,21 +16,38 @@
 
 namespace streaming::tls
 {
-    // Drain the OpenSSL error queue and emit each entry via RPC_ERROR.
-    static void log_ssl_errors()
+    // A zero receive timeout is a poll for the current stream implementations,
+    // not a blocking wait. Use a bounded wait during handshakes so the peer's
+    // coroutine/proxy loops get scheduled without returning to a 1ms busy poll.
+    static constexpr auto handshake_receive_timeout = std::chrono::milliseconds{1000};
+
+    static auto is_peer_certificate_alert(unsigned long error) -> bool
+    {
+        const auto reason = ERR_GET_REASON(error);
+        return reason == SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN || reason == SSL_R_TLSV1_ALERT_UNKNOWN_CA
+               || reason == SSL_R_SSLV3_ALERT_BAD_CERTIFICATE || reason == SSL_R_TLSV1_ALERT_ACCESS_DENIED;
+    }
+
+    // Drain the OpenSSL error queue and emit each entry via telemetry.
+    static auto log_ssl_errors(bool peer_certificate_alerts_are_warnings = false) -> bool
     {
         char buf[256];
+        bool saw_peer_certificate_alert = false;
         unsigned long err = 0;
         while ((err = ERR_get_error()) != 0)
         {
             ERR_error_string_n(err, buf, sizeof(buf));
-            RPC_ERROR("OpenSSL: {}", buf);
+            if (peer_certificate_alerts_are_warnings && is_peer_certificate_alert(err))
+            {
+                saw_peer_certificate_alert = true;
+                RPC_WARNING("OpenSSL peer certificate alert: {}", buf);
+            }
+            else
+            {
+                RPC_ERROR("OpenSSL: {}", buf);
+            }
         }
-    }
-
-    static auto fits_openssl_int(size_t size) -> bool
-    {
-        return size <= static_cast<size_t>(std::numeric_limits<int>::max());
+        return saw_peer_certificate_alert;
     }
 
     static auto create_server_context() -> SSL_CTX*
@@ -58,6 +76,11 @@ namespace streaming::tls
             return SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
         }
         return SSL_VERIFY_NONE;
+    }
+
+    static auto fits_openssl_int(size_t size) -> bool
+    {
+        return size <= static_cast<size_t>(std::numeric_limits<int>::max());
     }
 
     static auto release_context_on_error(SSL_CTX*& ctx) -> void
@@ -97,7 +120,8 @@ namespace streaming::tls
         SSL_CTX*& ctx,
         const pem_credentials& credentials) -> bool
     {
-        if (!fits_openssl_int(credentials.certificate.size()) || !fits_openssl_int(credentials.private_key.size()))
+        if (credentials.certificate.size() > static_cast<size_t>(std::numeric_limits<int>::max())
+            || credentials.private_key.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
         {
             RPC_ERROR("TLS PEM credential is too large");
             release_context_on_error(ctx);
@@ -171,7 +195,7 @@ namespace streaming::tls
     {
         if (trust_anchor.empty())
             return true;
-        if (!fits_openssl_int(trust_anchor.size()))
+        if (trust_anchor.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
         {
             RPC_ERROR("TLS trust anchor PEM is too large");
             release_context_on_error(ctx);
@@ -467,19 +491,13 @@ namespace streaming::tls
             int ssl_error = SSL_get_error(ssl_, result);
             if (ssl_error == SSL_ERROR_WANT_READ)
             {
-                // Need more bytes from the peer. Retry until data arrives or the peer
-                // closes — underlying streams (SPSC etc.) may return timeout when
-                // temporarily empty, so loop on timeout rather than treating it as an error.
-                while (true)
-                {
-                    auto feed_status = co_await feed_rbio(std::chrono::milliseconds{1});
-                    if (feed_status.is_ok())
-                        break; // data fed — let SSL have another go
-                    if (feed_status.is_timeout())
-                        continue; // SPSC queue temporarily empty — spin
-                    RPC_WARNING("TLS handshake: peer closed or error while reading");
-                    co_return false;
-                }
+                auto feed_status = co_await feed_rbio(handshake_receive_timeout);
+                if (feed_status.is_ok())
+                    continue; // data fed; let SSL have another go
+                if (feed_status.is_timeout())
+                    RPC_WARNING("TLS handshake: underlying stream timed out while waiting for peer data");
+                RPC_WARNING("TLS handshake: peer closed or error while reading");
+                co_return false;
             }
             else if (ssl_error == SSL_ERROR_WANT_WRITE)
             {
@@ -487,8 +505,15 @@ namespace streaming::tls
             }
             else
             {
-                RPC_WARNING("TLS handshake rejected by peer (ssl_error={})", ssl_error);
-                log_ssl_errors();
+                const bool peer_certificate_alert = log_ssl_errors(true);
+                if (peer_certificate_alert)
+                {
+                    RPC_WARNING("TLS handshake rejected by peer certificate validation (ssl_error={})", ssl_error);
+                }
+                else
+                {
+                    RPC_WARNING("TLS handshake rejected by peer (ssl_error={})", ssl_error);
+                }
                 co_return false;
             }
         }
@@ -523,16 +548,13 @@ namespace streaming::tls
             int ssl_error = SSL_get_error(ssl_, result);
             if (ssl_error == SSL_ERROR_WANT_READ)
             {
-                while (true)
-                {
-                    auto feed_status = co_await feed_rbio(std::chrono::milliseconds{1});
-                    if (feed_status.is_ok())
-                        break;
-                    if (feed_status.is_timeout())
-                        continue;
-                    RPC_WARNING("TLS client handshake: peer closed or error while reading");
-                    co_return false;
-                }
+                auto feed_status = co_await feed_rbio(handshake_receive_timeout);
+                if (feed_status.is_ok())
+                    continue;
+                if (feed_status.is_timeout())
+                    RPC_WARNING("TLS client handshake: underlying stream timed out while waiting for peer data");
+                RPC_WARNING("TLS client handshake: peer closed or error while reading");
+                co_return false;
             }
             else if (ssl_error == SSL_ERROR_WANT_WRITE)
             {

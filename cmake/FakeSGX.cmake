@@ -61,6 +61,24 @@ set(CANOPY_ENCLAVE_LIBCXX_INCLUDES ${CANOPY_ENCLAVE_POLYFILL_INCLUDES} ${CANOPY_
 set(CANOPY_INCLUDES ${SGX_INCLUDE_DIR})
 set(CANOPY_SGX_HOST_LINK_OPTIONS)
 
+function(canopy_configure_sgxssl_for_enclave)
+  # Fake SGX does not need Intel SGXSSL to exercise the enclave runtime. Keep
+  # the command available so SGXSSL consumers can share one CMake path, but do
+  # not pretend the real SGXSSL trusted archives are present.
+  set(CANOPY_SGXSSL_HEADERS_READY
+      FALSE
+      PARENT_SCOPE)
+  set(CANOPY_SGXSSL_IMPL_LIBS_FOUND
+      FALSE
+      PARENT_SCOPE)
+  set(CANOPY_SGXSSL_ENCLAVE_LINK_LIBRARIES
+      ""
+      PARENT_SCOPE)
+  set(CANOPY_STREAMING_TLS_ENCLAVE_HAS_SGXSSL_IMPL
+      FALSE
+      CACHE INTERNAL "True when streaming_tls_enclave links SGXSSL implementation archives" FORCE)
+endfunction()
+
 add_library(canopy_fake_sgx_runtime SHARED "${CANOPY_FAKE_SGX_ROOT}/src/fake_sgx.cpp")
 target_compile_definitions(canopy_fake_sgx_runtime PRIVATE ${CANOPY_DEFINES})
 target_include_directories(canopy_fake_sgx_runtime PUBLIC "$<BUILD_INTERFACE:${CANOPY_FAKE_SGX_INCLUDE_DIR}>")

@@ -17,6 +17,11 @@ endif()
 if(CANOPY_BUILD_COROUTINE)
   set(STREAMING_TRANSPORT_LIB transport_streaming)
   set(STREAMING_TRANSPORT_TEST_LIB transport_streaming_test)
+  if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+    set(STREAMING_SECURE_STREAM_LIB streaming_mbedtls)
+  else()
+    set(STREAMING_SECURE_STREAM_LIB streaming_tls)
+  endif()
   set(LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES type_test_libcoro_dll_scheduled_dll_suite.cpp)
   set(LIBCORO_DLL_SCHEDULED_TRANSPORT_LIB transport_libcoro_dll_scheduled_dynamic_library)
   set(LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_dll_scheduled_dynamic_library_test)
@@ -156,7 +161,7 @@ if(CANOPY_BUILD_COROUTINE)
            streaming_tcp
            streaming_spsc_queue
            streaming_spsc_wrapping
-           streaming_tls
+           ${STREAMING_SECURE_STREAM_LIB}
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>)
   if(CANOPY_BUILD_WEBSOCKET)
@@ -198,7 +203,10 @@ endif()
 
 if(CANOPY_BUILD_COROUTINE)
   add_executable(timeout_test timeout_tests.cpp)
-  target_compile_definitions(timeout_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
+  target_compile_definitions(
+    timeout_test
+    PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS}
+            CANOPY_TIMEOUT_TEST_CERT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/certs")
   target_include_directories(
     timeout_test
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
@@ -221,7 +229,7 @@ if(CANOPY_BUILD_COROUTINE)
            streaming_tcp
            streaming_spsc_queue
            streaming_spsc_wrapping
-           streaming_tls
+           ${STREAMING_SECURE_STREAM_LIB}
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>
            args::args
