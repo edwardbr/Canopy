@@ -66,3 +66,8 @@
 [submodule "c++/submodules/nanopb"]
 	path = c++/submodules/nanopb
 	url = https://github.com/nanopb/nanopb.git
+[submodule "c++/submodules/mbedtls"]
+	path = c++/submodules/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git
+	update = none
+	shallow = true

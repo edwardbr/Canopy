@@ -96,11 +96,12 @@ if(CANOPY_BUILD_COROUTINE)
   if(CANOPY_BUILD_ENCLAVE)
     add_library(libcoro_enclave INTERFACE)
     target_compile_features(libcoro_enclave INTERFACE cxx_std_20)
+    # Compatibility target for older enclave target link lines. Enclave code should
+    # consume the RPC-owned coroutine runtime/polyfill headers rather than libcoro.
     target_include_directories(
       libcoro_enclave
-      INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/libcoro/include
-                ${CMAKE_CURRENT_BINARY_DIR}/libcoro/include
-                ${CMAKE_SOURCE_DIR}/c++/rpc/include)
+      INTERFACE ${CMAKE_SOURCE_DIR}/c++/rpc/include
+                ${CMAKE_SOURCE_DIR}/c++/rpc/include/rpc/internal/polyfill/sgx)
   endif()
 
   if(CANOPY_BUILD_WEBSOCKET)
@@ -208,4 +209,153 @@ if(CANOPY_BUILD_COROUTINE)
     # /usr/local/cuda/bin/nvcc) set(CMAKE_CUDA_FLAGS "-allow-unsupported-compiler")
     add_subdirectory(llama.cpp)
   endif()
+endif()
+
+if(CANOPY_BUILD_MBEDTLS)
+  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/mbedtls/CMakeLists.txt")
+    message(
+      FATAL_ERROR
+        "Mbed TLS support is enabled, but c++/submodules/mbedtls is not initialised. Run:\n"
+        "  git submodule update --init --recursive c++/submodules/mbedtls\n"
+        "or reconfigure with -DCANOPY_BUILD_MBEDTLS=OFF / -DCANOPY_SECURE_STREAM_BACKEND=OPENSSL.")
+  endif()
+
+  set(MBEDTLS_TARGET_PREFIX
+      "canopy_external_"
+      CACHE STRING "Prefix Mbed TLS targets when built by Canopy" FORCE)
+  set(ENABLE_PROGRAMS
+      OFF
+      CACHE BOOL "Do not build Mbed TLS programs inside Canopy" FORCE)
+  set(ENABLE_TESTING
+      OFF
+      CACHE BOOL "Do not build Mbed TLS tests inside Canopy" FORCE)
+  set(USE_STATIC_MBEDTLS_LIBRARY
+      ON
+      CACHE BOOL "Build Mbed TLS static libraries for Canopy" FORCE)
+  set(USE_SHARED_MBEDTLS_LIBRARY
+      OFF
+      CACHE BOOL "Do not build Mbed TLS shared libraries for Canopy" FORCE)
+  set(DISABLE_PACKAGE_CONFIG_AND_INSTALL
+      ON
+      CACHE BOOL "Do not install Mbed TLS package metadata from the Canopy build" FORCE)
+  set(MBEDTLS_FATAL_WARNINGS
+      OFF
+      CACHE BOOL "Do not treat external Mbed TLS warnings as fatal in Canopy" FORCE)
+  set(LINK_WITH_PTHREAD
+      OFF
+      CACHE BOOL "Do not force pthread linkage from Mbed TLS" FORCE)
+  set(GEN_FILES
+      OFF
+      CACHE BOOL "Use generated files from the pinned Mbed TLS release tag" FORCE)
+
+  add_subdirectory(mbedtls)
+
+  foreach(_canopy_mbedtls_target
+          canopy_external_mbedtls
+          canopy_external_mbedx509
+          canopy_external_tfpsacrypto
+          canopy_external_mbedcrypto
+          mbedtls
+          mbedx509
+          tfpsacrypto
+          mbedcrypto)
+    if(TARGET ${_canopy_mbedtls_target})
+      set_target_properties(${_canopy_mbedtls_target} PROPERTIES C_CLANG_TIDY "")
+    endif()
+  endforeach()
+
+  set(_canopy_mbedtls_tls_target)
+  foreach(_canopy_mbedtls_candidate canopy_external_mbedtls mbedtls)
+    if(TARGET ${_canopy_mbedtls_candidate})
+      set(_canopy_mbedtls_tls_target ${_canopy_mbedtls_candidate})
+      break()
+    endif()
+  endforeach()
+
+  set(_canopy_mbedtls_x509_target)
+  foreach(_canopy_mbedtls_candidate canopy_external_mbedx509 mbedx509)
+    if(TARGET ${_canopy_mbedtls_candidate})
+      set(_canopy_mbedtls_x509_target ${_canopy_mbedtls_candidate})
+      break()
+    endif()
+  endforeach()
+
+  set(_canopy_mbedtls_crypto_target)
+  foreach(_canopy_mbedtls_candidate canopy_external_tfpsacrypto canopy_external_mbedcrypto tfpsacrypto mbedcrypto)
+    if(TARGET ${_canopy_mbedtls_candidate})
+      set(_canopy_mbedtls_crypto_target ${_canopy_mbedtls_candidate})
+      break()
+    endif()
+  endforeach()
+
+  if(NOT _canopy_mbedtls_tls_target OR NOT _canopy_mbedtls_x509_target OR NOT _canopy_mbedtls_crypto_target)
+    message(FATAL_ERROR "Mbed TLS submodule did not provide the expected TLS, X.509, and crypto CMake targets.")
+  endif()
+
+  add_library(canopy_mbedtls_crypto INTERFACE)
+  target_link_libraries(canopy_mbedtls_crypto INTERFACE ${_canopy_mbedtls_crypto_target})
+
+  add_library(canopy_mbedtls_x509 INTERFACE)
+  target_link_libraries(canopy_mbedtls_x509 INTERFACE ${_canopy_mbedtls_x509_target} canopy_mbedtls_crypto)
+
+  add_library(canopy_mbedtls_tls INTERFACE)
+  target_link_libraries(canopy_mbedtls_tls INTERFACE ${_canopy_mbedtls_tls_target} canopy_mbedtls_x509)
+
+  if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_SGX_BACKEND STREQUAL "Fake")
+    function(canopy_add_mbedtls_enclave_archive target source_target)
+      get_target_property(_canopy_mbedtls_sources ${source_target} SOURCES)
+      get_target_property(_canopy_mbedtls_source_dir ${source_target} SOURCE_DIR)
+      if(NOT _canopy_mbedtls_sources OR NOT _canopy_mbedtls_source_dir)
+        message(FATAL_ERROR "${source_target} does not expose sources for enclave Mbed TLS build")
+      endif()
+
+      set(_canopy_mbedtls_enclave_sources)
+      foreach(_canopy_mbedtls_source ${_canopy_mbedtls_sources})
+        if(IS_ABSOLUTE "${_canopy_mbedtls_source}")
+          list(APPEND _canopy_mbedtls_enclave_sources "${_canopy_mbedtls_source}")
+        else()
+          list(APPEND _canopy_mbedtls_enclave_sources "${_canopy_mbedtls_source_dir}/${_canopy_mbedtls_source}")
+        endif()
+      endforeach()
+
+      add_library(${target} STATIC ${_canopy_mbedtls_enclave_sources})
+      target_include_directories(
+        ${target}
+        PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/mbedtls/include>"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/mbedtls/library"
+                "${CMAKE_SOURCE_DIR}/c++/streaming/mbedtls/include"
+                ${CANOPY_ENCLAVE_LIBC_INCLUDES})
+      target_compile_definitions(
+        ${target}
+        PUBLIC MBEDTLS_USER_CONFIG_FILE="streaming/mbedtls/sgx_config.h"
+        PRIVATE ${CANOPY_ENCLAVE_DEFINES})
+      target_compile_options(
+        ${target}
+        PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
+                $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-unused-command-line-argument>
+                $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-missing-declarations>
+                $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-documentation>
+                $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-unreachable-code>)
+      target_link_options(${target} PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
+    endfunction()
+
+    canopy_add_mbedtls_enclave_archive(canopy_external_mbedcrypto_enclave ${_canopy_mbedtls_crypto_target})
+    canopy_add_mbedtls_enclave_archive(canopy_external_mbedx509_enclave ${_canopy_mbedtls_x509_target})
+    canopy_add_mbedtls_enclave_archive(canopy_external_mbedtls_enclave ${_canopy_mbedtls_tls_target})
+    target_link_libraries(canopy_external_mbedx509_enclave PUBLIC canopy_external_mbedcrypto_enclave)
+    target_link_libraries(canopy_external_mbedtls_enclave PUBLIC canopy_external_mbedx509_enclave)
+
+    add_library(canopy_mbedtls_crypto_enclave INTERFACE)
+    target_link_libraries(canopy_mbedtls_crypto_enclave INTERFACE canopy_external_mbedcrypto_enclave)
+
+    add_library(canopy_mbedtls_x509_enclave INTERFACE)
+    target_link_libraries(canopy_mbedtls_x509_enclave INTERFACE canopy_external_mbedx509_enclave canopy_mbedtls_crypto_enclave)
+
+    add_library(canopy_mbedtls_tls_enclave INTERFACE)
+    target_link_libraries(canopy_mbedtls_tls_enclave INTERFACE canopy_external_mbedtls_enclave canopy_mbedtls_x509_enclave)
+
+    message(STATUS "Mbed TLS enclave targets configured")
+  endif()
+
+  message(STATUS "Mbed TLS configured from c++/submodules/mbedtls")
 endif()

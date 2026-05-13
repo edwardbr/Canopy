@@ -881,8 +881,11 @@ Mbed TLS should be carried as a normal Canopy submodule at
 `c++/submodules/mbedtls`. CMake should load it only when a build actually needs
 the Mbed TLS backend:
 
-- `CANOPY_SECURE_STREAM_BACKEND=MBEDTLS` is the default and selects the Mbed
-  TLS secure stream direction.
+- `CANOPY_SECURE_STREAM_BACKEND=OPENSSL` remains the compatibility default until
+  the Mbed TLS path has been proven in the important SGX, fake SGX, and host
+  websocket presets.
+- `CANOPY_SECURE_STREAM_BACKEND=MBEDTLS` selects the Mbed TLS secure stream
+  direction and should enable the bundled dependency path.
 - `CANOPY_SECURE_STREAM_BACKEND=OPENSSL` keeps the existing OpenSSL/SGXSSL
   stream available as an explicit compatibility backend.
 - `CANOPY_BUILD_MBEDTLS=ON` builds the bundled submodule and exposes Canopy
@@ -901,6 +904,13 @@ the Mbed TLS backend:
 The Mbed TLS submodule is the dependency source for the new stream backend. The
 small Mbed TLS-derived CMAC fragment in Intel's DCAP/driver tree is not a
 general TLS, X.509, or ECDSA dependency and should not be treated as one.
+
+Enclave streaming targets should not gain a dependency on full upstream libcoro
+as part of this work. Host streaming targets may still link libcoro, but SGX and
+fake SGX targets should resolve the small `coro::*` compatibility surface through
+RPC-owned polyfill headers. `libcoro_enclave` can remain as a compatibility CMake
+target only if it exposes the RPC runtime/polyfill include paths rather than
+`c++/submodules/libcoro/include`.
 
 ### Secure Stream API And Peer Verification Policy
 
@@ -1072,9 +1082,10 @@ the runtime boundary is understood.
    `linux_io_uring_handle`.
 10. Only after the ownership model is clear, integrate io_uring streams into
     production transport paths.
-11. Make Mbed TLS the default secure stream backend, with `streaming/mbedtls`
-    beside the existing `streaming/tls` OpenSSL/SGXSSL implementation. Prove it
-    in real SGX, fake SGX, and the host-only websocket demo.
+11. Add the Mbed TLS secure stream backend beside the existing `streaming/tls`
+    OpenSSL/SGXSSL implementation without silently changing existing presets.
+    Make it the default only after it has been proven in real SGX, fake SGX, and
+    the host-only websocket demo.
 12. Add file-system-backed resource loading to the TLS stream so credentials,
     trust anchors, static demo data, and future collateral can come from either
     the io_uring-backed file manager or a local statically linked resource

@@ -506,9 +506,6 @@ else()
   set(CANOPY_ENCLAVE_LIBC_INCLUDES ${SGX_INCLUDE_DIR} ${SGX_TLIBC_INCLUDE_DIR})
   set(CANOPY_ENCLAVE_LIBCXX_INCLUDES ${CANOPY_ENCLAVE_POLYFILL_INCLUDES} ${CANOPY_ENCLAVE_LIBC_INCLUDES}
                                      ${SGX_LIBCXX_INCLUDE_DIR} ${SGX_LIBSTDCXX_INCLUDE_DIR})
-  if(CANOPY_BUILD_COROUTINE)
-    list(APPEND CANOPY_ENCLAVE_LIBCXX_INCLUDES ${CMAKE_SOURCE_DIR}/c++/submodules/libcoro/include)
-  endif()
 endif()
 
 # ######################################################################################################################

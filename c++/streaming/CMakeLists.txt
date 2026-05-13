@@ -7,7 +7,12 @@ cmake_minimum_required(VERSION 3.24)
 
 add_subdirectory(core)
 add_subdirectory(tcp)
-add_subdirectory(tls)
+if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+  add_subdirectory(tls)
+endif()
+if(CANOPY_BUILD_MBEDTLS AND TARGET canopy_mbedtls_tls)
+  add_subdirectory(mbedtls)
+endif()
 add_subdirectory(spsc_queue)
 add_subdirectory(spsc_wrapping)
 

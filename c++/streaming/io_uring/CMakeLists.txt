@@ -39,7 +39,7 @@ if(CANOPY_BUILD_ENCLAVE)
   target_link_libraries(
     streaming_io_uring_enclave
     PUBLIC streaming_enclave canopy_io_uring_enclave
-    PRIVATE rpc_enclave libcoro_enclave)
+    PRIVATE rpc_enclave)
 
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(streaming_io_uring_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")

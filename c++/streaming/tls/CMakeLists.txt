@@ -116,7 +116,7 @@ if(CANOPY_BUILD_ENCLAVE)
     target_link_libraries(
       streaming_tls_enclave
       PUBLIC streaming_enclave
-      PRIVATE rpc::rpc_enclave libcoro_enclave)
+      PRIVATE rpc::rpc_enclave)
 
     if(EXISTS "${CANOPY_SGX_TLS_LIB_DIR}/libsgx_ttls.a" AND EXISTS "${CANOPY_SGX_TLS_LIB_DIR}/libsgx_tcrypto.a")
       target_link_libraries(streaming_tls_enclave PRIVATE "${CANOPY_SGX_TLS_LIB_DIR}/libsgx_ttls.a"

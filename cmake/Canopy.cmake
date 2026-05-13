@@ -64,6 +64,27 @@ if(NOT DEPENDENCIES_LOADED)
     message(FATAL_ERROR "CANOPY_BUILD_WEBSOCKET requires CANOPY_BUILD_COROUTINE=ON")
   endif()
 
+  set(CANOPY_SECURE_STREAM_BACKEND
+      "OPENSSL"
+      CACHE STRING "Secure stream backend used by streaming TLS-style adapters")
+  set_property(CACHE CANOPY_SECURE_STREAM_BACKEND PROPERTY STRINGS "OPENSSL" "MBEDTLS")
+  if(NOT CANOPY_SECURE_STREAM_BACKEND MATCHES "^(OPENSSL|MBEDTLS)$")
+    message(
+      FATAL_ERROR "Invalid CANOPY_SECURE_STREAM_BACKEND '${CANOPY_SECURE_STREAM_BACKEND}', expected OPENSSL or MBEDTLS")
+  endif()
+
+  set(CANOPY_BUILD_MBEDTLS_DEFAULT OFF)
+  if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+    set(CANOPY_BUILD_MBEDTLS_DEFAULT ON)
+  endif()
+  option(CANOPY_BUILD_MBEDTLS "Build bundled Mbed TLS support from c++/submodules/mbedtls"
+         ${CANOPY_BUILD_MBEDTLS_DEFAULT})
+  if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS" AND NOT CANOPY_BUILD_MBEDTLS)
+    set(CANOPY_BUILD_MBEDTLS
+        ON
+        CACHE BOOL "Build bundled Mbed TLS support from c++/submodules/mbedtls" FORCE)
+  endif()
+
   # ####################################################################################################################
   # Debug Options
   # ####################################################################################################################
@@ -211,6 +232,8 @@ if(NOT DEPENDENCIES_LOADED)
   message("CANOPY_BUILD_NANOPB ${CANOPY_BUILD_NANOPB}")
   message("CANOPY_BUILD_WEBSOCKET ${CANOPY_BUILD_WEBSOCKET}")
   message("CANOPY_BUILD_COROUTINE ${CANOPY_BUILD_COROUTINE}")
+  message("CANOPY_SECURE_STREAM_BACKEND ${CANOPY_SECURE_STREAM_BACKEND}")
+  message("CANOPY_BUILD_MBEDTLS ${CANOPY_BUILD_MBEDTLS}")
   message("CMAKE_VERBOSE_MAKEFILE ${CMAKE_VERBOSE_MAKEFILE}")
   message("CMAKE_RULE_MESSAGES ${CMAKE_RULE_MESSAGES}")
   message("CANOPY_ENABLE_CLANG_TIDY ${CANOPY_ENABLE_CLANG_TIDY}")
@@ -305,12 +328,16 @@ if(NOT DEPENDENCIES_LOADED)
       if(CANOPY_BUILD_WEBSOCKET)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/wslay c++/submodules/llhttp)
       endif()
+      if(CANOPY_BUILD_MBEDTLS)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/mbedtls)
+      endif()
       if(CANOPY_BUILD_DEMOS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/llama.cpp)
       endif()
 
       set(CANOPY_FULL_HISTORY_SUBMODULES c++/submodules/yas c++/submodules/fmt submodules/idlparser c++/submodules/args)
       set(CANOPY_BRANCH_PINNED_SUBMODULES submodules/confidential-computing.sgx)
+      set(CANOPY_RECURSIVE_SUBMODULES c++/submodules/mbedtls)
 
       function(canopy_submodule_is_populated submodule_path out_var)
         set(submodule_root "${CMAKE_CURRENT_LIST_DIR}/../${submodule_path}")
@@ -391,6 +418,13 @@ if(NOT DEPENDENCIES_LOADED)
             message(STATUS "Submodule update: ${CANOPY_SUBMODULE_PATH}")
             execute_process(
               COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout -- ${CANOPY_SUBMODULE_PATH}
+              WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+              RESULT_VARIABLE GIT_SUBMOD_RESULT)
+          elseif(CANOPY_SUBMODULE_PATH IN_LIST CANOPY_RECURSIVE_SUBMODULES)
+            message(STATUS "Submodule update (recursive shallow): ${CANOPY_SUBMODULE_PATH}")
+            execute_process(
+              COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --recursive --depth 1 --
+                      ${CANOPY_SUBMODULE_PATH}
               WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
               RESULT_VARIABLE GIT_SUBMOD_RESULT)
           else()
@@ -505,6 +539,12 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_IO_URING_SQPOLL_FLAG)
   endif()
 
+  if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+    set(CANOPY_SECURE_STREAM_BACKEND_FLAG CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
+  else()
+    set(CANOPY_SECURE_STREAM_BACKEND_FLAG CANOPY_SECURE_STREAM_BACKEND_OPENSSL)
+  endif()
+
   set(CANOPY_LOGGING_LEVEL_FLAG CANOPY_LOGGING_LEVEL=${CANOPY_LOGGING_LEVEL})
 
   set(CANOPY_FMT_LIB fmt::fmt-header-only)
@@ -530,6 +570,7 @@ if(NOT DEPENDENCIES_LOADED)
       ${CANOPY_BUILD_TEST_FLAG}
       ${CANOPY_DEBUG_DEFAULT_DESTRUCTOR_FLAG}
       ${CANOPY_IO_URING_SQPOLL_FLAG}
+      ${CANOPY_SECURE_STREAM_BACKEND_FLAG}
       CANOPY_OUT_BUFFER_SIZE=${CANOPY_OUT_BUFFER_SIZE}
       CANOPY_DEFAULT_ENCODING=${CANOPY_DEFAULT_ENCODING_VALUE}
       ${CANOPY_LOGGING_LEVEL_FLAG})

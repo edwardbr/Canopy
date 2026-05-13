@@ -48,7 +48,6 @@ if(CANOPY_BUILD_COROUTINE)
       transport_streaming_enclave
       PUBLIC streaming_transport_idl_enclave
       PRIVATE streaming_enclave
-              libcoro_enclave
               yas_common
               rpc_types_idl_enclave
               rpc::rpc_enclave)

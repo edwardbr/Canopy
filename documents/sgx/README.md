@@ -12,11 +12,13 @@ transport implementation.
 
 ## Enclave TLS
 
-Canopy has two secure stream backends. The default direction is the bundled
-Mbed TLS backend selected by `CANOPY_SECURE_STREAM_BACKEND=MBEDTLS`. The older
-OpenSSL-compatible backend remains available as
+Canopy has two secure stream backends. The current compatibility default remains
 `CANOPY_SECURE_STREAM_BACKEND=OPENSSL`; inside Intel SGX that backend depends on
-SGXSSL rather than the host OpenSSL libraries.
+SGXSSL rather than the host OpenSSL libraries. The bundled Mbed TLS backend is
+available as an opt-in backend with `CANOPY_BUILD_MBEDTLS=ON` or by selecting
+`CANOPY_SECURE_STREAM_BACKEND=MBEDTLS`. This keeps existing presets stable while
+the Mbed TLS stream is proven in real SGX, fake SGX, and host-only websocket
+demos.
 
 The OpenSSL/SGXSSL backend uses the TLS-enabled SGXSSL layout produced by
 `submodules/confidential-computing.sgx/external/sgxssl/prepare_sgxssl.sh`:
@@ -47,3 +49,17 @@ listeners normally use `peer_verification::none`; peer-to-peer and future RA-TLS
 listeners should use `peer_verification::required` with an explicit
 `trust_anchor`. `peer_verification::optional` accepts clients without a
 certificate but rejects clients that present an untrusted certificate.
+
+## Enclave Coroutine Boundary
+
+Host coroutine builds still use upstream libcoro. Enclave builds should not pull
+the full libcoro header surface or its host-oriented dependencies into trusted
+code. The enclave include path therefore resolves the small `coro::*` subset
+needed by Canopy through RPC-owned SGX polyfill headers, currently including
+`task`, `event`, `expected`, `mutex`, `net::io_status`, and the minimal
+`concepts::awaitable` traits used by `sync_wait`.
+
+`libcoro_enclave` is kept as a compatibility CMake target, but it must not expose
+`c++/submodules/libcoro/include` to enclave targets. New enclave code should use
+`rpc::coro::*` aliases where possible and treat direct `coro::*` names as public
+compatibility shims for existing streaming APIs.

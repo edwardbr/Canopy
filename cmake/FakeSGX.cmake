@@ -56,7 +56,7 @@ set(CANOPY_WARN_OK_ENCLAVE ${CANOPY_WARN_OK} "SHELL:-Wno-variadic-macros")
 
 set(CANOPY_ENCLAVE_POLYFILL_INCLUDES ${CMAKE_SOURCE_DIR}/c++/rpc/include/rpc/internal/polyfill/sgx)
 set(CANOPY_ENCLAVE_LIBCXX_INCLUDES ${CANOPY_ENCLAVE_POLYFILL_INCLUDES} ${CANOPY_FAKE_SGX_TRUSTED_INCLUDE_DIR}
-                                   ${CANOPY_FAKE_SGX_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/c++/submodules/libcoro/include)
+                                   ${CANOPY_FAKE_SGX_INCLUDE_DIR})
 
 set(CANOPY_INCLUDES ${SGX_INCLUDE_DIR})
 set(CANOPY_SGX_HOST_LINK_OPTIONS)

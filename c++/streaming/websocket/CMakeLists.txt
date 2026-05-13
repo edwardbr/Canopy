@@ -37,8 +37,7 @@ if(CANOPY_BUILD_ENCLAVE)
     streaming_websocket_enclave
     PUBLIC streaming_enclave
     PRIVATE wslay_enclave
-            rpc::rpc_enclave
-            libcoro_enclave)
+            rpc::rpc_enclave)
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(streaming_websocket_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
   endif()

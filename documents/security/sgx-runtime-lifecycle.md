@@ -43,9 +43,17 @@ rather than a full libcoro port. It should expose only the subset Canopy needs:
 
 - `coro::task`
 - `coro::event`
+- `coro::expected`
+- `coro::mutex`
+- `coro::net::io_status`
+- minimal `coro::concepts::awaitable` traits
 - a minimal scheduler or executor model suitable for ECALL-driven workers
 - small helpers such as `when_all` or `when_any` only when Canopy code directly
   requires them
+
+The SGX build resolves this compatibility surface through
+`rpc/internal/polyfill/sgx/coro`. Those headers are compatibility shims over the
+RPC-owned SGX coroutine runtime, not a full copy of upstream libcoro.
 
 The enclave profile should not include host OS integration:
 
