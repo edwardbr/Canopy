@@ -21,6 +21,7 @@ extern "C"
         void* host_to_enclave_queue,
         void* enclave_to_host_queue,
         uint64_t ticks_per_millisecond,
+        uint64_t initial_unix_epoch_milliseconds,
         canopy_coroutine_startup_status* startup_status,
         std::size_t resp_cap,
         char* resp,

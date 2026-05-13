@@ -15,6 +15,7 @@
 #include <exception>
 #include <filesystem>
 #include <mutex>
+#include <random>
 #include <string>
 #include <system_error>
 #include <unordered_map>
@@ -333,5 +334,33 @@ extern "C"
         std::size_t size)
     {
         return canopy::fake_sgx::is_registered_range(address, size, canopy::fake_sgx::memory_kind::outside) ? 1 : 0;
+    }
+
+    sgx_status_t sgx_read_rand(
+        unsigned char* rand,
+        std::size_t length_in_bytes)
+    {
+        if (!rand && length_in_bytes != 0)
+            return SGX_ERROR_INVALID_PARAMETER;
+
+        try
+        {
+            std::random_device device;
+            size_t written = 0;
+            while (written < length_in_bytes)
+            {
+                auto value = device();
+                for (size_t index = 0; index < sizeof(value) && written < length_in_bytes; ++index)
+                {
+                    rand[written++] = static_cast<unsigned char>((value >> (index * 8U)) & 0xffU);
+                }
+            }
+        }
+        catch (...)
+        {
+            return SGX_ERROR_UNEXPECTED;
+        }
+
+        return SGX_SUCCESS;
     }
 }
