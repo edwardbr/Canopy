@@ -9,8 +9,8 @@
 
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
-#include <streaming/stream.h>
 #include <streaming/secure_stream.h>
+#include <streaming/stream.h>
 #include <transports/streaming/transport.h>
 
 namespace canopy::http_server

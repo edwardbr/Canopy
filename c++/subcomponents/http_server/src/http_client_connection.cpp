@@ -4,14 +4,21 @@
 #include <canopy/http_server/http_client_connection.h>
 
 #include <algorithm>
+#include <array>
 
 #include <fmt/format.h>
 #include <llhttp.h>
-#include <openssl/bio.h>
-#include <openssl/buffer.h>
-#include <openssl/evp.h>
-#include <openssl/sha.h>
 #include <streaming/websocket/stream.h>
+
+#if defined(CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
+#  include <mbedtls/base64.h>
+#  include <mbedtls/sha1.h>
+#elif defined(CANOPY_SECURE_STREAM_BACKEND_OPENSSL)
+#  include <openssl/bio.h>
+#  include <openssl/buffer.h>
+#  include <openssl/evp.h>
+#  include <openssl/sha.h>
+#endif
 
 namespace canopy::http_server
 {
@@ -21,6 +28,34 @@ namespace canopy::http_server
         {
             std::string combined = std::string(client_key) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
+#if defined(CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
+            std::array<unsigned char, 20> hash{};
+            if (mbedtls_sha1(reinterpret_cast<const unsigned char*>(combined.data()), combined.size(), hash.data()) != 0)
+            {
+                RPC_ERROR("Failed to calculate WebSocket accept SHA-1 hash");
+                return {};
+            }
+
+            size_t encoded_length = 0;
+            auto encode_result = mbedtls_base64_encode(nullptr, 0, &encoded_length, hash.data(), hash.size());
+            if (encode_result != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL || encoded_length == 0)
+            {
+                RPC_ERROR("Failed to size WebSocket accept base64 buffer");
+                return {};
+            }
+
+            std::string result(encoded_length, '\0');
+            encode_result = mbedtls_base64_encode(
+                reinterpret_cast<unsigned char*>(result.data()), result.size(), &encoded_length, hash.data(), hash.size());
+            if (encode_result != 0)
+            {
+                RPC_ERROR("Failed to encode WebSocket accept hash");
+                return {};
+            }
+
+            result.resize(encoded_length);
+            return result;
+#elif defined(CANOPY_SECURE_STREAM_BACKEND_OPENSSL)
             unsigned char hash[SHA_DIGEST_LENGTH];
             SHA1(reinterpret_cast<const unsigned char*>(combined.c_str()), combined.size(), hash);
 
@@ -38,6 +73,9 @@ namespace canopy::http_server
             std::string result(buffer_ptr->data, buffer_ptr->length);
             BIO_free_all(bio);
             return result;
+#else
+#  error "Select exactly one secure stream backend"
+#endif
         }
 
         auto default_is_rest_request(const request& request) -> bool
@@ -201,7 +239,7 @@ namespace canopy::http_server
         CO_RETURN make_text_response(404, "Not Found");
     }
 
-    auto client_connection::handle_websocket_upgrade(const request& request) -> coro::task<std::shared_ptr<rpc::transport>>
+    auto client_connection::handle_websocket_upgrade(const request& request) -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
         auto key_it = request.headers.find("Sec-WebSocket-Key");
         if (key_it == request.headers.end())
@@ -233,7 +271,7 @@ namespace canopy::http_server
         co_return CO_AWAIT handlers_.websocket_upgrade_handler(request, ws_stream);
     }
 
-    auto client_connection::handle() -> coro::task<std::shared_ptr<rpc::transport>>
+    auto client_connection::handle() -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
         std::string receive_buffer(8192, '\0');
         std::string pending_input;
@@ -269,7 +307,17 @@ namespace canopy::http_server
                             rpc::mutable_byte_span{receive_buffer.data(), receive_buffer.size()});
                         if (!read_status.is_ok() || read_span.empty())
                         {
-                            RPC_ERROR("Failed to read HTTP request");
+                            if (read_status.is_closed() || read_span.empty())
+                            {
+                                RPC_INFO("HTTP client closed the connection before sending another request");
+                            }
+                            else
+                            {
+                                RPC_WARNING(
+                                    "failed to read HTTP request: status={} native_code={}",
+                                    read_status.message(),
+                                    read_status.native_code);
+                            }
                             co_return nullptr;
                         }
 
