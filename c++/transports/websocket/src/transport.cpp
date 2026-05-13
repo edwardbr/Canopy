@@ -15,6 +15,8 @@ namespace websocket_protocol
 {
     namespace
     {
+        constexpr auto idle_retry_delay = std::chrono::milliseconds{25};
+
         constexpr rpc::encoding websocket_encoding()
         {
             return CANOPY_WEBSOCKET_ENCODING;
@@ -110,10 +112,16 @@ namespace websocket_protocol
         rpc::mutable_byte_span received_span;
         while (get_status() < rpc::transport_status::DISCONNECTED)
         {
-            auto [status, span] = co_await stream_->receive(buf, std::chrono::milliseconds{5});
+            auto [status, span] = co_await stream_->receive(buf);
 
             if (!is_valid(status))
             {
+                if (status.is_timeout())
+                {
+                    if (auto scheduler = svc->get_scheduler())
+                        CO_AWAIT scheduler->schedule_after(idle_retry_delay);
+                    continue;
+                }
                 co_return;
             }
 
@@ -218,7 +226,7 @@ namespace websocket_protocol
         // Main envelope dispatch loop
         while (get_status() < rpc::transport_status::DISCONNECTED)
         {
-            auto [recv_status, recv_span] = CO_AWAIT stream_->receive(buf, std::chrono::milliseconds{5});
+            auto [recv_status, recv_span] = CO_AWAIT stream_->receive(buf);
             if (!recv_span.empty())
             {
                 websocket_protocol::v1::envelope env;
@@ -233,6 +241,12 @@ namespace websocket_protocol
 
             if (!is_valid(recv_status))
             {
+                if (recv_status.is_timeout())
+                {
+                    if (auto scheduler = svc->get_scheduler())
+                        CO_AWAIT scheduler->schedule_after(idle_retry_delay);
+                    continue;
+                }
                 break;
             }
         }

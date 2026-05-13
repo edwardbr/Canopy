@@ -240,6 +240,10 @@ production security boundary:
 - HTTP, websocket, TLS, stream, and scheduler paths need explicit resource
   limits: header bytes, body bytes, websocket frame/message bytes, connection
   counts, handshake timeouts, queued coroutine counts, and file read sizes.
+- WebSocket transports should grow protocol-level ping/pong liveness handling.
+  Server-side protocol pings let browser clients respond automatically with
+  pongs, help detect half-open connections, and give the transport a clean
+  deadline for closing idle or unresponsive peers.
 - SGX side channels remain in scope. Enclave memory protection does not hide
   timing, access patterns, page faults, traffic shape, queue pressure, or
   availability from the host.
