@@ -5,8 +5,10 @@
 #pragma once
 
 #include <optional>
+#include <string>
 
 #include <canopy/http_server/http_client_connection.h>
+#include <file_system/file_system.h>
 #include <memory>
 
 #include <streaming/stream.h>
@@ -21,9 +23,13 @@ namespace websocket_demo
         class http_client_connection
         {
         public:
+            using file_system_manager = rpc::shared_ptr<rpc::file_system::i_manager>;
+
             explicit http_client_connection(
                 std::shared_ptr<streaming::stream> stream,
-                std::shared_ptr<websocket_service> service);
+                std::shared_ptr<websocket_service> service,
+                file_system_manager file_system_manager,
+                std::string static_root_path);
 
             CORO_TASK(std::shared_ptr<rpc::transport>) handle();
 
@@ -53,6 +59,8 @@ namespace websocket_demo
 
             std::shared_ptr<streaming::stream> stream_;
             std::shared_ptr<websocket_service> service_;
+            file_system_manager file_system_manager_;
+            std::string static_root_path_;
         };
     }
 }

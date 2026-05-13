@@ -179,7 +179,7 @@ namespace canopy::http_server
         return build_http_response(handshake, false);
     }
 
-    auto client_connection::dispatch_request(const request& request) const -> std::optional<response>
+    auto client_connection::dispatch_request(const request& request) const -> CORO_TASK(std::optional<response>)
     {
         const auto is_rest_request
             = handlers_.is_rest_request ? handlers_.is_rest_request(request) : default_is_rest_request(request);
@@ -188,17 +188,17 @@ namespace canopy::http_server
         {
             if (handlers_.rest_handler)
             {
-                return handlers_.rest_handler(request);
+                CO_RETURN handlers_.rest_handler(request);
             }
-            return make_text_response(404, "Not Found");
+            CO_RETURN make_text_response(404, "Not Found");
         }
 
         if (handlers_.webpage_handler)
         {
-            return handlers_.webpage_handler(request);
+            CO_RETURN CO_AWAIT handlers_.webpage_handler(request);
         }
 
-        return make_text_response(404, "Not Found");
+        CO_RETURN make_text_response(404, "Not Found");
     }
 
     auto client_connection::handle_websocket_upgrade(const request& request) -> coro::task<std::shared_ptr<rpc::transport>>
@@ -331,7 +331,8 @@ namespace canopy::http_server
                 const auto path = request_path(ctx.parsed_request.url);
                 RPC_INFO("HTTP {} request for: {}", ctx.parsed_request.method, path);
 
-                auto response = dispatch_request(ctx.parsed_request).value_or(make_text_response(404, "Not Found"));
+                auto response
+                    = (CO_AWAIT dispatch_request(ctx.parsed_request)).value_or(make_text_response(404, "Not Found"));
                 auto wire_response = build_http_response(response, ctx.parsed_request.keep_alive);
 
                 auto send_status = co_await stream_->send(rpc::byte_span{wire_response});

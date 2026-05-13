@@ -41,7 +41,8 @@ add_executable(
   demo_zone.cpp
   llama_server_engine.cpp)
 
-target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES})
+target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES}
+                                                    CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
 
 target_include_directories(
   websocket_server
@@ -60,6 +61,7 @@ target_link_libraries(
          llama
          common
          rpc
+         canopy_file_system
          canopy_http_server
          canopy_network_config
          ${CANOPY_LIBRARIES}

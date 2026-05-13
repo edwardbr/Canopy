@@ -3,7 +3,9 @@
 
 #include "http_client_connection.h"
 
-#include <filesystem>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <canopy/http_server/static_webpage_delivery.h>
 
@@ -13,9 +15,13 @@ namespace websocket_demo
     {
         http_client_connection::http_client_connection(
             std::shared_ptr<streaming::stream> stream,
-            std::shared_ptr<websocket_service> service)
+            std::shared_ptr<websocket_service> service,
+            file_system_manager file_system_manager,
+            std::string static_root_path)
             : stream_(std::move(stream))
             , service_(std::move(service))
+            , file_system_manager_(std::move(file_system_manager))
+            , static_root_path_(std::move(static_root_path))
         {
         }
 
@@ -23,13 +29,25 @@ namespace websocket_demo
         http_client_connection::handle()
         {
             auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
-                std::filesystem::path(__FILE__).parent_path() / "www");
+                static_root_path_,
+                [file_system_manager = file_system_manager_](
+                    std::string file_path, std::vector<uint8_t>& data) -> CORO_TASK(int)
+                {
+                    if (!file_system_manager)
+                    {
+                        CO_RETURN rpc::error::INVALID_DATA();
+                    }
+                    CO_RETURN CO_AWAIT file_system_manager->read_file(std::move(file_path), data);
+                });
 
             canopy::http_server::handler_set handlers;
-            handlers.webpage_handler = [webpage_delivery](const canopy::http_server::request& request)
+            handlers.webpage_handler
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
+                = [webpage_delivery](
+                      const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
             {
                 // handle web page delivery
-                return webpage_delivery->handle(request);
+                CO_RETURN CO_AWAIT webpage_delivery->handle(request);
             };
             handlers.rest_handler = [this](const canopy::http_server::request& request)
             {

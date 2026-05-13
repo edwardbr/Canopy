@@ -14,8 +14,14 @@
 #include <canopy/network_config/network_args.h>
 #include <canopy/http_server/http_acceptor.h>
 #include <coro/coro.hpp>
+#include <file_system/file_system_manager.h>
+#include <io_uring/linux_io_uring_handle.h>
 #include <rpc/rpc.h>
 #include <streaming/secure_stream.h>
+
+#ifndef CANOPY_WEBSOCKET_DEMO_STATIC_ROOT
+#  define CANOPY_WEBSOCKET_DEMO_STATIC_ROOT "www"
+#endif
 
 namespace
 {
@@ -119,6 +125,34 @@ namespace
                 .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
             }));
     }
+
+    auto create_static_file_manager(std::shared_ptr<coro::scheduler> scheduler)
+        -> rpc::shared_ptr<rpc::file_system::i_manager>
+    {
+        rpc::io_uring::linux_io_uring_handle::options handle_options;
+        handle_options.queue_depth = 256;
+        handle_options.buffer_count = 64;
+        handle_options.buffer_size = 64U * 1024U;
+        handle_options.register_fixed_files = true;
+        handle_options.fixed_file_count = 256;
+        handle_options.use_sqpoll = true;
+
+        std::shared_ptr<rpc::io_uring::linux_io_uring_handle> handle;
+        auto error = rpc::io_uring::linux_io_uring_handle::create(handle, handle_options, scheduler);
+        if (error != rpc::error::OK())
+        {
+            RPC_ERROR("failed to create websocket static file io_uring handle error={}", error);
+            return {};
+        }
+
+        rpc::io_uring::controller::options controller_options;
+        controller_options.completion_wait_strategy = rpc::io_uring::wait_strategy::proactor;
+        controller_options.use_caller_buffers_for_transfers = true;
+
+        auto controller
+            = std::make_shared<rpc::io_uring::controller>(std::move(handle), scheduler.get(), controller_options);
+        return rpc::file_system::create_factory(std::move(controller));
+    }
 }
 
 auto run_http_server(
@@ -126,13 +160,17 @@ auto run_http_server(
     coro::net::ip_address bind_address,
     uint16_t port,
     std::shared_ptr<websocket_demo::v1::websocket_service> service,
+    rpc::shared_ptr<rpc::file_system::i_manager> file_system_manager,
+    std::string static_root_path,
     std::shared_ptr<streaming::secure::context> tls_ctx) -> coro::task<void>
 {
     auto stream_handler
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        = [service](std::shared_ptr<streaming::stream> stream) -> coro::task<std::shared_ptr<rpc::transport>>
+        = [service, file_system_manager, static_root_path = std::move(static_root_path)](
+              std::shared_ptr<streaming::stream> stream) -> coro::task<std::shared_ptr<rpc::transport>>
     {
-        websocket_demo::v1::http_client_connection connection(std::move(stream), service);
+        websocket_demo::v1::http_client_connection connection(
+            std::move(stream), service, file_system_manager, static_root_path);
         co_return CO_AWAIT connection.handle();
     };
 
@@ -150,6 +188,8 @@ auto main(
     auto net = canopy::network_config::add_network_args(parser);
     args::ValueFlag<std::string> cert_file(parser, "file", "Path to TLS certificate file (PEM format)", {"cert"}, "");
     args::ValueFlag<std::string> key_file(parser, "file", "Path to TLS private key file (PEM format)", {"key"}, "");
+    args::ValueFlag<std::string> static_root(
+        parser, "path", "Path to static websocket demo files", {"static-root"}, CANOPY_WEBSOCKET_DEMO_STATIC_ROOT);
     auto cli = add_default_network_args(argc, argv);
 
     try
@@ -191,6 +231,13 @@ auto main(
     std::signal(SIGTERM, on_signal);
     const auto cert_path = args::get(cert_file);
     const auto key_path = args::get(key_file);
+    const auto static_root_path = args::get(static_root);
+    if (static_root_path.empty())
+    {
+        RPC_ERROR("--static-root must not be empty");
+        return 1;
+    }
+
     std::shared_ptr<streaming::secure::context> tls_ctx;
     if (!cert_path.empty() && !key_path.empty())
     {
@@ -211,6 +258,12 @@ auto main(
     std::signal(SIGPIPE, SIG_IGN);
 
     auto scheduler = make_scheduler();
+    auto file_system_manager = create_static_file_manager(scheduler);
+    if (!file_system_manager)
+    {
+        scheduler->shutdown();
+        return 1;
+    }
 
     auto address = canopy::network_config::get_zone_address(cfg);
     std::ignore = address.set_subnet(1);
@@ -221,7 +274,9 @@ auto main(
                                                                                             : coro::net::domain_t::ipv4;
     auto bind_address = coro::net::ip_address::from_string(listen_ep.to_string(), domain);
 
-    coro::sync_wait(coro::when_all(run_http_server(scheduler, bind_address, listen_ep.port, root_service, tls_ctx)));
+    coro::sync_wait(
+        coro::when_all(run_http_server(
+            scheduler, bind_address, listen_ep.port, root_service, file_system_manager, static_root_path, tls_ctx)));
     root_service.reset();
     scheduler->shutdown();
     return 0;

@@ -37,13 +37,14 @@ namespace canopy::http_server
     };
 
     using request_handler = std::function<std::optional<response>(const request&)>;
+    using coroutine_request_handler = std::function<CORO_TASK(std::optional<response>)(const request&)>;
     using websocket_handler
         = std::function<coro::task<std::shared_ptr<rpc::transport>>(const request&, std::shared_ptr<streaming::stream>)>;
     using rest_request_selector = std::function<bool(const request&)>;
 
     struct handler_set
     {
-        request_handler webpage_handler;
+        coroutine_request_handler webpage_handler;
         request_handler rest_handler;
         websocket_handler websocket_upgrade_handler;
         rest_request_selector is_rest_request;
@@ -98,7 +99,7 @@ namespace canopy::http_server
             bool keep_alive) -> std::string;
         static auto build_websocket_handshake_response(const std::string& accept_key) -> std::string;
 
-        [[nodiscard]] auto dispatch_request(const request& request) const -> std::optional<response>;
+        [[nodiscard]] auto dispatch_request(const request& request) const -> CORO_TASK(std::optional<response>);
         auto handle_websocket_upgrade(const request& request) -> coro::task<std::shared_ptr<rpc::transport>>;
 
         std::shared_ptr<streaming::stream> stream_;
