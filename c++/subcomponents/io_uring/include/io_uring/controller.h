@@ -98,6 +98,7 @@ namespace rpc::io_uring
             uint64_t offset);
 
         CORO_TASK(descriptor_result) create_tcp_socket();
+        CORO_TASK(operation_result) set_socket_reuse_addr(uint32_t descriptor);
         CORO_TASK(operation_result)
         bind_tcp_ipv4_loopback(
             uint32_t descriptor,

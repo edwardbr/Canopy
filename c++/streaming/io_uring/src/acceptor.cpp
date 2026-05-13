@@ -84,6 +84,11 @@ namespace streaming::io_uring
                 CO_RETURN std::nullopt;
             }
 
+            if (stream_result.error_code == rpc::error::CALL_TIMEOUT())
+            {
+                continue;
+            }
+
             RPC_ERROR(
                 "io_uring::acceptor accept failed error_code={} native_result={}",
                 stream_result.error_code,

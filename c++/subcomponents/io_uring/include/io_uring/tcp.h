@@ -56,6 +56,13 @@ namespace rpc::io_uring
             }
 
             port_ = port;
+            auto reuse_result = CO_AWAIT controller_->set_socket_reuse_addr(listen_descriptor_->get());
+            if (reuse_result.error_code != rpc::error::OK())
+            {
+                CO_AWAIT close();
+                CO_RETURN reuse_result.error_code;
+            }
+
             auto bind_result = CO_AWAIT controller_->bind_tcp_ipv4_loopback(listen_descriptor_->get(), port);
             if (bind_result.error_code != rpc::error::OK())
             {

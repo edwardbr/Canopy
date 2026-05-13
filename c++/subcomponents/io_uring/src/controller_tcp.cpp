@@ -20,7 +20,9 @@ namespace rpc::io_uring
         static constexpr int32_t socket_family_inet = 2;
         static constexpr uint64_t socket_type_stream = 1;
         static constexpr uint32_t socket_protocol_tcp = 6;
+        static constexpr uint32_t socket_level_socket = 1;
         static constexpr uint32_t socket_level_tcp = socket_protocol_tcp;
+        static constexpr uint32_t socket_option_reuse_addr = 2;
         static constexpr uint32_t socket_option_tcp_no_delay = 1;
         static constexpr uint32_t socket_message_dontwait = 0x40;
         static constexpr size_t ipv4_sockaddr_size = 16;
@@ -93,6 +95,42 @@ namespace rpc::io_uring
 
         CO_RETURN descriptor_result{
             rpc::error::OK(), static_cast<uint32_t>(result.native_result), result.native_result, result.cqe_flags};
+    }
+
+    // Allows an io_uring direct TCP listener to re-bind a recently used local
+    // address. The socket is only available as a fixed-file index, so issue
+    // SO_REUSEADDR through SOCKET_URING_OP_SETSOCKOPT before bind().
+    CORO_TASK(operation_result) controller::set_socket_reuse_addr(uint32_t descriptor)
+    {
+        auto option_buffer_result = CO_AWAIT allocate_host_buffer(sizeof(int));
+        if (option_buffer_result.error_code != rpc::error::OK())
+        {
+            CO_RETURN operation_result{option_buffer_result.error_code, 0, 0};
+        }
+
+        const int option_value = 1;
+        std::memcpy(option_buffer_result.buffer->data(), &option_value, sizeof(option_value));
+
+        struct context
+        {
+            uint32_t descriptor;
+            std::shared_ptr<host_buffer> option_buffer;
+        } operation_context{descriptor, std::move(option_buffer_result.buffer)};
+
+        CO_RETURN CO_AWAIT submit_operation(
+            [](detail::sqe_64& sqe, void* data)
+            {
+                auto& operation_context = *static_cast<context*>(data);
+                sqe.opcode = detail::io_uring_op_uring_cmd;
+                sqe.flags = detail::io_uring_sqe_fixed_file;
+                sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                sqe.command.cmd_op = detail::socket_uring_op_setsockopt;
+                sqe.socket_option.level = socket_level_socket;
+                sqe.socket_option.optname = socket_option_reuse_addr;
+                sqe.optlen = sizeof(int);
+                sqe.optval = operation_context.option_buffer->address();
+            },
+            &operation_context);
     }
 
     // Binds a direct TCP socket to 127.0.0.1:port. The sockaddr must live in a
