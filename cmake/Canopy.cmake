@@ -314,6 +314,8 @@ if(NOT DEPENDENCIES_LOADED)
           RELATIVE "${submodule_root}"
           "${submodule_root}/*")
 
+        list(REMOVE_ITEM submodule_entries ".git")
+
         list(LENGTH submodule_entries submodule_entry_count)
         if(submodule_entry_count EQUAL 0)
           set(${out_var}
@@ -342,10 +344,36 @@ if(NOT DEPENDENCIES_LOADED)
           if(CANOPY_SUBMODULE_PATH IN_LIST CANOPY_BRANCH_PINNED_SUBMODULES)
             message(STATUS "Submodule update (tracked branch): ${CANOPY_SUBMODULE_PATH}")
             execute_process(
-              COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --depth 1 --remote --
-                      ${CANOPY_SUBMODULE_PATH}
+              COMMAND ${GIT_EXECUTABLE} submodule update --init --checkout --depth 1 -- ${CANOPY_SUBMODULE_PATH}
               WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
               RESULT_VARIABLE GIT_SUBMOD_RESULT)
+            if(GIT_SUBMOD_RESULT EQUAL "0")
+              set(CANOPY_SUBMODULE_BRANCH "")
+              execute_process(
+                COMMAND ${GIT_EXECUTABLE} config -f .gitmodules --get
+                        submodule.${CANOPY_SUBMODULE_PATH}.branch
+                WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+                OUTPUT_VARIABLE CANOPY_SUBMODULE_BRANCH
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE GIT_SUBMOD_RESULT)
+            endif()
+            if(GIT_SUBMOD_RESULT EQUAL "0" AND NOT CANOPY_SUBMODULE_BRANCH)
+              message(FATAL_ERROR "Branch-pinned submodule ${CANOPY_SUBMODULE_PATH} has no branch in .gitmodules")
+            endif()
+            if(GIT_SUBMOD_RESULT EQUAL "0" AND CANOPY_SUBMODULE_BRANCH)
+              execute_process(
+                COMMAND ${GIT_EXECUTABLE} -C ${CANOPY_SUBMODULE_PATH} fetch --depth 1 origin
+                        ${CANOPY_SUBMODULE_BRANCH}:refs/remotes/origin/${CANOPY_SUBMODULE_BRANCH}
+                WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+                RESULT_VARIABLE GIT_SUBMOD_RESULT)
+            endif()
+            if(GIT_SUBMOD_RESULT EQUAL "0" AND CANOPY_SUBMODULE_BRANCH)
+              execute_process(
+                COMMAND ${GIT_EXECUTABLE} -C ${CANOPY_SUBMODULE_PATH} checkout --force -B
+                        ${CANOPY_SUBMODULE_BRANCH} refs/remotes/origin/${CANOPY_SUBMODULE_BRANCH}
+                WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
+                RESULT_VARIABLE GIT_SUBMOD_RESULT)
+            endif()
           elseif(CANOPY_SUBMODULE_PATH IN_LIST CANOPY_FULL_HISTORY_SUBMODULES)
             message(STATUS "Submodule update: ${CANOPY_SUBMODULE_PATH}")
             execute_process(
