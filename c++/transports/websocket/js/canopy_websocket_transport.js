@@ -17,12 +17,14 @@
  *         onOpen(transport),
  *         onClose(code, reason),
  *         onError(err),
+ *         onText(text),          // optional raw text-frame handler for non-RPC websocket tests
  *     });
  *     await transport.connect();
  *     transport.serverObject  // zone_address_args for RPC calls
  *     transport.clientObject  // zone_address_args assigned by server
  *
  *     transport.call(interfaceId, methodId, requestBytes) → Promise<responseBytes>
+ *     transport.sendText(text)  // send a raw text frame without using the RPC envelope
  *     transport.registerStub(stub)  // stub.handlePost(proto, ifaceId, methodId, data)
  *     transport.disconnect()
  *     transport.isConnected()
@@ -61,6 +63,7 @@
         this._onOpen = opts.onOpen || function () { };
         this._onClose = opts.onClose || function () { };
         this._onError = opts.onError || function () { };
+        this._onText = opts.onText || function () { };
 
         this._ws = null;
         this._connected = false;
@@ -122,6 +125,11 @@
             };
 
             ws.onmessage = function (event) {
+                if (typeof event.data === 'string') {
+                    self._onText(event.data);
+                    return;
+                }
+
                 var bytes = new Uint8Array(event.data);
                 var env;
                 try {
@@ -195,6 +203,11 @@
     // ---------------------------------------------------------------------------
     CanopyWebsocketTransport.prototype._onMessage = function (event) {
         var self = this;
+        if (typeof event.data === 'string') {
+            self._onText(event.data);
+            return;
+        }
+
         var bytes = new Uint8Array(event.data);
         var env;
         try {
@@ -242,6 +255,18 @@
         } else {
             console.warn('[Canopy] Unexpected message type after handshake:', msgType);
         }
+    };
+
+    // ---------------------------------------------------------------------------
+    // sendText() — sends a raw text frame on the same websocket.
+    // Text frames intentionally bypass the Canopy RPC envelope so the demo can
+    // exercise basic websocket framing independently from RPC dispatch.
+    // ---------------------------------------------------------------------------
+    CanopyWebsocketTransport.prototype.sendText = function (text) {
+        if (!this._connected || !this._ws) {
+            throw new Error('[Canopy] Not connected');
+        }
+        this._ws.send(String(text));
     };
 
     // ---------------------------------------------------------------------------

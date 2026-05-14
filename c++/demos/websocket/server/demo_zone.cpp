@@ -3,9 +3,7 @@
 
 #include <rpc/rpc.h>
 
-#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-#  include "calculator_demo.h"
-#else
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
 #  include "secret_llama/secret_llama.h"
 #  include "llama_server_engine.h"
 #endif
@@ -32,7 +30,11 @@ namespace websocket_demo
             const std::shared_ptr<secret_llama::v1_0::llm_engine>& engine,
             const std::shared_ptr<secret_llama::v1_0::loaded_model>& loaded_model,
             std::shared_ptr<rpc::service> service_);
+#else
+        rpc::shared_ptr<i_calculator> create_websocket_demo_instance();
+#endif
 
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
         static std::shared_ptr<secret_llama::v1_0::llm_engine> get_llama_cpp()
         {
             // yuck running out of time
@@ -114,7 +116,7 @@ namespace websocket_demo
             if (!demo_.lock())
             {
 #ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-                auto demo = create_calculator_demo_instance();
+                auto demo = create_websocket_demo_instance();
                 demo_ = demo;
                 return demo;
 #else

@@ -51,7 +51,11 @@ function formatTime() {
 function addMessage(type, text) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
-    messageDiv.innerHTML = `<span class="timestamp">[${formatTime()}]</span>${text}`;
+    const timestamp = document.createElement('span');
+    timestamp.className = 'timestamp';
+    timestamp.textContent = `[${formatTime()}]`;
+    messageDiv.appendChild(timestamp);
+    messageDiv.appendChild(document.createTextNode(text));
     messagesEl.appendChild(messageDiv);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -185,6 +189,11 @@ function connect() {
         onError: function(err) {
             addMessage('error', 'WebSocket error occurred');
             console.error('WebSocket error:', err);
+        },
+        onText: function(text) {
+            addMessage('received', `← Echo: ${text}`);
+            receivedCount++;
+            updateStats();
         }
     });
 
@@ -203,7 +212,27 @@ function disconnect() {
 }
 
 function sendMessage() {
-    addMessage('error', 'Echo mode requires a raw WebSocket (not available with RPC transport)');
+    const message = messageInput.value;
+
+    if (!message) {
+        return;
+    }
+
+    if (!transport || !transport.isConnected()) {
+        addMessage('error', 'Not connected');
+        return;
+    }
+
+    try {
+        transport.sendText(message);
+        addMessage('sent', `→ Echo: ${message}`);
+        sentCount++;
+        updateStats();
+        messageInput.value = '';
+    } catch (err) {
+        addMessage('error', `Echo send failed: ${err.message}`);
+        console.error('Echo error:', err);
+    }
 }
 
 async function calculate() {
