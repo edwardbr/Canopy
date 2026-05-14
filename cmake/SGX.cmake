@@ -214,9 +214,10 @@ function(canopy_bootstrap_sgx_sdk)
     endif()
 
     execute_process(
-      COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
-              "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}"
-              sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
+      COMMAND
+        "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
+        "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}"
+        sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
       WORKING_DIRECTORY "${sgx_source_dir}"
       RESULT_VARIABLE sgx_sdk_build_result)
 
@@ -467,8 +468,8 @@ function(canopy_configure_sgxssl_for_enclave)
     endforeach()
   endif()
 
-  # Header readiness and implementation readiness are deliberately separate. Fake SGX and compile-fit configurations
-  # can build enclave code against headers without pretending that the final SGXSSL archives are available.
+  # Header readiness and implementation readiness are deliberately separate. Fake SGX and compile-fit configurations can
+  # build enclave code against headers without pretending that the final SGXSSL archives are available.
   set(_canopy_sgxssl_headers_ready FALSE)
   if(EXISTS "${CANOPY_SGXSSL_INCLUDE_DIR}/tsgxsslio.h" AND EXISTS "${CANOPY_SGX_OPENSSL_INCLUDE_DIR}/openssl/ssl.h")
     set(_canopy_sgxssl_headers_ready TRUE)
@@ -532,7 +533,8 @@ function(canopy_configure_sgxssl_for_enclave)
         COMMAND "${CMAKE_COMMAND}" -E chdir "${_canopy_sgxssl_openssl_build_dir}" "${CANOPY_MAKE_EXECUTABLE}" libssl.a
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_canopy_sgxssl_openssl_build_dir}/libssl.a"
                 "${_canopy_sgxssl_ssl_lib}"
-        DEPENDS "${CANOPY_SGXSSL_ROOT_DIR}/prepare_sgxssl.sh" "${CMAKE_SOURCE_DIR}/cmake/CanopyPatchSGXSSLBootstrap.cmake"
+        DEPENDS "${CANOPY_SGXSSL_ROOT_DIR}/prepare_sgxssl.sh"
+                "${CMAKE_SOURCE_DIR}/cmake/CanopyPatchSGXSSLBootstrap.cmake"
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
         COMMENT "Preparing ${_canopy_sgxssl_archive_config} TLS-capable SGXSSL for enclave OpenSSL support"
         VERBATIM)
