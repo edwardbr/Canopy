@@ -18,6 +18,7 @@ security review aid and a checklist for hardening work.
 - [Security Hardening Roadmap](security-hardening-roadmap.md)
 - [SGX Enclave Threat Model](sgx-threat-model.md)
 - [SGX Runtime Lifecycle Security](sgx-runtime-lifecycle.md)
+- [Attestation And Protected RPC](attestation/overview.md)
 - [Untrusted Transport Input](untrusted-transport-input.md)
 - [Reference Protocol Security](reference-protocol-security.md)
 - [Telemetry And Logging Security](telemetry-and-logging.md)
@@ -36,7 +37,8 @@ security review aid and a checklist for hardening work.
 
 ## Categories To Expand
 
-- DCAP remote attestation and key establishment
+- backend-neutral attestation and key establishment, including fake
+  development, SGX local, EPID/IAS legacy, and DCAP/ECDSA paths
 - authenticated stream framing and payload encryption
 - TLS and RA-TLS inside enclave-safe stream layers
 - replay and reordering protection
