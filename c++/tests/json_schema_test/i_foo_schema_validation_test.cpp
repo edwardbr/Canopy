@@ -145,6 +145,13 @@ TEST(
                     reinterpret_cast<uint64_t>(&val), buffer, rpc::encoding::yas_json);
                 serialization_success = (err == 0);
             }
+            else if (func_info.name == "do_enum_ptr_in")
+            {
+                auto val = xxx::pointer_serialisation_state::pointer_serialisation_pending;
+                auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::do_enum_ptr_in(
+                    reinterpret_cast<uint64_t>(&val), buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
             else if (func_info.name == "do_something_out_val")
             {
                 auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::do_something_out_val(
@@ -160,6 +167,12 @@ TEST(
             else if (func_info.name == "do_something_out_ptr_ptr")
             {
                 auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::do_something_out_ptr_ptr(
+                    buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "do_enum_ptr_out")
+            {
+                auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::do_enum_ptr_out(
                     buffer, rpc::encoding::yas_json);
                 serialization_success = (err == 0);
             }
@@ -496,6 +509,13 @@ TEST(
                 int out_val = create_dummy_value<int>();
                 auto err = xxx::i_foo::stub_serialiser<rpc::serialiser::yas, rpc::encoding>::do_something_out_ptr_ptr(
                     out_val, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "do_enum_ptr_out")
+            {
+                auto out_val = xxx::pointer_serialisation_state::pointer_serialisation_ready;
+                auto err = xxx::i_foo::stub_serialiser<rpc::serialiser::yas, rpc::encoding>::do_enum_ptr_out(
+                    reinterpret_cast<uint64_t>(&out_val), buffer, rpc::encoding::yas_json);
                 serialization_success = (err == 0);
             }
             else if (func_info.name == "do_something_in_out_ref")

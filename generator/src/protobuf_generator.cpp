@@ -1436,6 +1436,29 @@ namespace protobuf_generator
         return primitives.find(cleaned_type) != primitives.end();
     }
 
+    bool is_pointer_type(const std::string& type_str)
+    {
+        return type_str.find('*') != std::string::npos;
+    }
+
+    std::string pointer_cast_type(const std::string& type_str)
+    {
+        std::string cleaned = type_str;
+        while (!cleaned.empty() && cleaned.front() == ' ')
+            cleaned.erase(0, 1);
+        while (!cleaned.empty() && cleaned.back() == ' ')
+            cleaned.pop_back();
+
+        while (!cleaned.empty() && cleaned.back() == '&')
+        {
+            cleaned.pop_back();
+            while (!cleaned.empty() && cleaned.back() == ' ')
+                cleaned.pop_back();
+        }
+
+        return cleaned;
+    }
+
     // Helper to check if type is protobuf-serializable as primitive/simple type
     bool is_byte_vector_type(const std::string& type_str)
     {
@@ -2596,7 +2619,16 @@ namespace protobuf_generator
                 std::string field_type = func_entity->get_return_type();
                 std::string member_name = func_entity->get_name();
 
-                if (is_primitive_type(field_type) || field_type == "std::string")
+                if (is_pointer_type(field_type))
+                {
+                    cpp("{}{}.set_{}(static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>({}.{})));",
+                        indent,
+                        proto_var,
+                        field_name,
+                        cpp_var,
+                        member_name);
+                }
+                else if (is_primitive_type(field_type) || field_type == "std::string")
                 {
                     cpp("{}{}.set_{}({}.{});", indent, proto_var, field_name, cpp_var, member_name);
                 }
@@ -2647,7 +2679,17 @@ namespace protobuf_generator
                 std::string field_type = func_entity->get_return_type();
                 std::string member_name = func_entity->get_name();
 
-                if (is_primitive_type(field_type) || field_type == "std::string")
+                if (is_pointer_type(field_type))
+                {
+                    cpp("{}{}.{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>({}.{}()));",
+                        indent,
+                        cpp_var,
+                        member_name,
+                        pointer_cast_type(field_type),
+                        proto_var,
+                        field_name);
+                }
+                else if (is_primitive_type(field_type) || field_type == "std::string")
                 {
                     cpp("{}{}.{} = {}.{}();", indent, cpp_var, member_name, proto_var, field_name);
                 }
@@ -2731,8 +2773,12 @@ namespace protobuf_generator
                 std::string member_name = func_entity->get_name();
 
                 // Handle different type categories
-                if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
-                    || field_type == "int128_t")
+                if (is_pointer_type(field_type))
+                {
+                    cpp("msg.set_{}(static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>({})));", field_name, member_name);
+                }
+                else if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
+                         || field_type == "int128_t")
                 {
                     // Serialize 128-bit integer into a uint128 message (lo = bits 0-63, hi = bits 64-127).
                     cpp("msg.mutable_{}()->set_lo(static_cast<uint64_t>({}));", field_name, member_name);
@@ -2969,8 +3015,15 @@ namespace protobuf_generator
                 std::string member_name = func_entity->get_name();
 
                 // Handle different type categories
-                if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
-                    || field_type == "int128_t")
+                if (is_pointer_type(field_type))
+                {
+                    cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>(msg.{}()));",
+                        member_name,
+                        pointer_cast_type(field_type),
+                        field_name);
+                }
+                else if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
+                         || field_type == "int128_t")
                 {
                     // Deserialize 128-bit integer from a uint128 message (lo = bits 0-63, hi = bits 64-127).
                     cpp("{} = (static_cast<unsigned __int128>(msg.{}().hi()) << 64)"
@@ -3393,6 +3446,7 @@ namespace protobuf_generator
         }
 
         cpp("#include <google/protobuf/message.h>");
+        cpp("#include <cstdint>");
         cpp("#include <rpc/rpc.h>");
         cpp("#include <rpc/serialization/protobuf/protobuf.h>");
         cpp("#include \"{}\"", header_filename.string());

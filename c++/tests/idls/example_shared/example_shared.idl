@@ -24,6 +24,19 @@ namespace xxx
         std::map<std::string, something_complicated> map_val;
     };
 
+    enum pointer_serialisation_state
+    {
+        pointer_serialisation_pending = 0,
+        pointer_serialisation_ready = 1,
+    };
+
+    [status=production]
+    struct pointer_serialisation_fixture
+    {
+        pointer_serialisation_state* state = 0;
+        error_code* error = 0;
+    };
+
     [status=production]
     template<typename T>
     struct typed_payload
@@ -45,9 +58,11 @@ namespace xxx
         error_code do_something_in_ref(                                [in]            const   int                         &   val); // marshal by value - implicitly const
         error_code do_something_in_move_ref(                           [in]                    int                         &&  val); // marshal by value - implicitly const
         error_code do_something_in_ptr(                                [in]            const   int                         *   val); // marshal by pointer, should note be from another address space
+        error_code do_enum_ptr_in(                                     [in]                    pointer_serialisation_state *   val); // marshal enum pointer as an address token
         error_code do_something_out_val(                               [out]                   int                         &   val); // marshal by value
         error_code do_something_out_ptr_ref(                           [out]                   int                         *&  val); // marshal by ref pointer can be null, should note be from another address space
         error_code do_something_out_ptr_ptr(                           [out]                   int                         **  val); // marshal by pointer pointer can be null, should note be from another address space
+        error_code do_enum_ptr_out(                                    [out]                   pointer_serialisation_state **  val); // marshal enum pointer pointer as an address token
         error_code do_something_in_out_ref(                            [in, out]               int                         &   val); // marshal by value
 
         error_code give_something_complicated_val(                     [in]                    something_complicated           val);

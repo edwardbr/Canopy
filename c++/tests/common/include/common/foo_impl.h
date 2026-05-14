@@ -142,6 +142,11 @@ namespace marshalled_tests
             RPC_DEBUG("got {}", *val);
             CO_RETURN rpc::error::OK();
         }
+        CORO_TASK(error_code) do_enum_ptr_in(xxx::pointer_serialisation_state* val) override
+        {
+            std::ignore = val;
+            CO_RETURN rpc::error::OK();
+        }
         CORO_TASK(error_code) do_something_out_val(int& val) override
         {
             val = 33;
@@ -155,6 +160,11 @@ namespace marshalled_tests
         CORO_TASK(error_code) do_something_out_ptr_ptr(int** val) override
         {
             *val = new int(33);
+            CO_RETURN rpc::error::OK();
+        }
+        CORO_TASK(error_code) do_enum_ptr_out(xxx::pointer_serialisation_state** val) override
+        {
+            *val = new xxx::pointer_serialisation_state(xxx::pointer_serialisation_state::pointer_serialisation_ready);
             CO_RETURN rpc::error::OK();
         }
         CORO_TASK(error_code) do_something_in_out_ref(int& val) override

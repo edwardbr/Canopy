@@ -46,6 +46,20 @@ namespace synchronous_generator
         {FLD(macro) "RPC_V2", FLD(symbol) "rpc::VERSION_2", FLD(value) 2},
     };
 
+    bool is_serialized_pointer_field(const function_entity& field)
+    {
+        const auto type = field.get_return_type();
+        return is_pointer(type) || is_pointer_reference(type) || is_pointer_to_pointer(type);
+    }
+
+    std::string pointer_cast_type(std::string type)
+    {
+        std::string modifiers;
+        generator::strip_reference_modifiers(type, modifiers);
+        modifiers.erase(std::remove(modifiers.begin(), modifiers.end(), '&'), modifiers.end());
+        return type + modifiers;
+    }
+
     enum print_type
     {
         PROXY_PREPARE_IN,
@@ -2305,6 +2319,20 @@ namespace synchronous_generator
             }
             if (has_fields)
             {
+                for (auto& field : m_ob.get_functions())
+                {
+                    if (field->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                        continue;
+
+                    auto* function_variable = static_cast<const function_entity*>(field.get());
+                    if (function_variable->is_static() || !is_serialized_pointer_field(*function_variable))
+                        continue;
+
+                    header(
+                        "auto __yas_{0}_address = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>({0}));",
+                        field->get_name());
+                }
+
                 header("YAS_WARNINGS_PUSH");
                 header("ar & YAS_OBJECT_NVP(\"{}\"", m_ob.get_name());
 
@@ -2321,12 +2349,32 @@ namespace synchronous_generator
                             {
                                 continue;
                             }
+                            if (is_serialized_pointer_field(*function_variable))
+                            {
+                                header("  ,(\"{0}\", __yas_{0}_address)", field->get_name());
+                                continue;
+                            }
                         }
                         header("  ,(\"{0}\", {0})", field->get_name());
                     }
                 }
                 header(");");
                 header("YAS_WARNINGS_POP");
+
+                for (auto& field : m_ob.get_functions())
+                {
+                    if (field->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                        continue;
+
+                    auto* function_variable = static_cast<const function_entity*>(field.get());
+                    if (function_variable->is_static() || !is_serialized_pointer_field(*function_variable))
+                        continue;
+
+                    header(
+                        "{0} = reinterpret_cast<{1}>(static_cast<std::uintptr_t>(__yas_{0}_address));",
+                        field->get_name(),
+                        pointer_cast_type(function_variable->get_return_type()));
+                }
             }
 
             header("}}");
@@ -2763,6 +2811,7 @@ namespace synchronous_generator
         header("#include <unordered_set>");
         header("#include <string>");
         header("#include <array>");
+        header("#include <cstdint>");
 
         if (include_rpc_headers)
         {

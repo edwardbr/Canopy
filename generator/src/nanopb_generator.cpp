@@ -78,6 +78,24 @@ namespace nanopb_generator
         return type.find('*') != std::string::npos;
     }
 
+    std::string pointer_cast_type(const std::string& type)
+    {
+        std::string cleaned = type;
+        while (!cleaned.empty() && cleaned.front() == ' ')
+            cleaned.erase(0, 1);
+        while (!cleaned.empty() && cleaned.back() == ' ')
+            cleaned.pop_back();
+
+        while (!cleaned.empty() && cleaned.back() == '&')
+        {
+            cleaned.pop_back();
+            while (!cleaned.empty() && cleaned.back() == ' ')
+                cleaned.pop_back();
+        }
+
+        return cleaned;
+    }
+
     bool is_sequence_type(const std::string& type)
     {
         std::string prefix;
@@ -603,7 +621,17 @@ namespace nanopb_generator
         const std::string& state_prefix,
         writer& cpp)
     {
-        if (is_enum_type(lib, member_type))
+        if (is_pointer_type(member_type))
+        {
+            cpp("{}.{} = static_cast<decltype({}.{})>(reinterpret_cast<std::uintptr_t>({}.{}));",
+                target_expr,
+                member_name,
+                target_expr,
+                member_name,
+                source_expr,
+                member_name);
+        }
+        else if (is_enum_type(lib, member_type))
         {
             cpp("{}.{} = static_cast<decltype({}.{})>(static_cast<std::underlying_type_t<{}>>({}.{}));",
                 target_expr,
@@ -939,7 +967,16 @@ namespace nanopb_generator
                 member_type = substitute_single_template_parameter(struct_entity, concrete_template_param, member_type);
             const auto current_prefix = state_prefix + "_" + member_name;
 
-            if (is_enum_type(lib, member_type))
+            if (is_pointer_type(member_type))
+            {
+                cpp("{}.{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>({}.{}));",
+                    target_expr,
+                    member_name,
+                    pointer_cast_type(member_type),
+                    source_expr,
+                    member_name);
+            }
+            else if (is_enum_type(lib, member_type))
             {
                 cpp("{}.{} = static_cast<{}>(static_cast<std::underlying_type_t<{}>>({}.{}));",
                     target_expr,
@@ -1118,7 +1155,14 @@ namespace nanopb_generator
             const auto member_type
                 = substitute_single_template_parameter(template_entity, inst.template_param, field->get_return_type());
 
-            if (is_enum_type(lib, member_type))
+            if (is_pointer_type(member_type))
+            {
+                cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>(msg.{}));",
+                    member_name,
+                    pointer_cast_type(member_type),
+                    field_name);
+            }
+            else if (is_enum_type(lib, member_type))
             {
                 cpp("{} = static_cast<{}>(static_cast<std::underlying_type_t<{}>>(msg.{}));",
                     member_name,
@@ -1271,7 +1315,14 @@ namespace nanopb_generator
             const auto field_name = proto_generator::sanitize_field_name(member_name);
             const auto member_type = field->get_return_type();
 
-            if (is_enum_type(lib, member_type))
+            if (is_pointer_type(member_type))
+            {
+                cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>(msg.{}));",
+                    member_name,
+                    pointer_cast_type(member_type),
+                    field_name);
+            }
+            else if (is_enum_type(lib, member_type))
             {
                 cpp("{} = static_cast<{}>(static_cast<std::underlying_type_t<{}>>(msg.{}));",
                     member_name,
@@ -1915,6 +1966,7 @@ namespace nanopb_generator
         cpp("#include <rpc/serialization/nanopb/nanopb.h>");
         cpp("#include \"{}\"", header_filename.generic_string());
         cpp("#include \"{}\"", nanopb_include_path.generic_string());
+        cpp("#include <cstdint>");
         cpp("#include <type_traits>");
         for (const auto& header : additional_stub_headers)
             cpp("#include \"{}\"", header);

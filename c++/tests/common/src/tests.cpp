@@ -33,6 +33,10 @@ namespace marshalled_tests
             CORO_ASSERT_EQ(CO_AWAIT foo.do_something_in_ptr(&val), rpc::error::OK());
         }
         {
+            auto val = xxx::pointer_serialisation_state::pointer_serialisation_pending;
+            CORO_ASSERT_EQ(CO_AWAIT foo.do_enum_ptr_in(&val), rpc::error::OK());
+        }
+        {
             int val = 0;
             CORO_ASSERT_EQ(CO_AWAIT foo.do_something_out_val(val), rpc::error::OK());
         }
@@ -46,6 +50,12 @@ namespace marshalled_tests
         {
             int* val = nullptr;
             CORO_ASSERT_EQ(CO_AWAIT foo.do_something_out_ptr_ptr(&val), rpc::error::OK());
+            delete val;
+        }
+        if (!enclave)
+        {
+            xxx::pointer_serialisation_state* val = nullptr;
+            CORO_ASSERT_EQ(CO_AWAIT foo.do_enum_ptr_out(&val), rpc::error::OK());
             delete val;
         }
         {
