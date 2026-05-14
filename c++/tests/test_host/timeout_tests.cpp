@@ -20,7 +20,7 @@
  *     tcp          — streaming::tcp::stream over TCP loopback (port 8090)
  *     spsc         — streaming::spsc_queue::stream (in-process)
  *     io_uring     — streaming::io_uring::stream (Linux, port 8091)
- *     tls          — streaming::tls::stream over TCP+SPSC (port 8092)
+ *     tls          — streaming::secure::stream over TCP+SPSC (port 8092)
  *     websocket    — streaming::websocket::stream over TCP (port 8093)
  *                    requires CANOPY_BUILD_WEBSOCKET
  */
@@ -42,7 +42,7 @@
 #  include <streaming/spsc_wrapping/stream.h>
 #  include <streaming/tcp/acceptor.h>
 #  include <streaming/tcp/stream.h>
-#  include <streaming/tls/stream.h>
+#  include <streaming/secure_stream.h>
 #  include <transports/streaming/transport.h>
 
 #  ifdef __linux__
@@ -731,7 +731,7 @@ protected:
             CO_RETURN false;
         }
 
-        auto tls_ctx = std::make_shared<streaming::tls::context>(cert_path, key_path);
+        auto tls_ctx = std::make_shared<streaming::secure::context>(cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("timeout_tls_setup: TLS context init failed");
@@ -744,7 +744,7 @@ protected:
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
             auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, io_sched);
-            auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_ctx);
+            auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx);
             if (!CO_AWAIT tls_stm->handshake())
                 CO_RETURN std::nullopt;
             CO_RETURN tls_stm;
@@ -775,13 +775,13 @@ protected:
         auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
         auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
 
-        auto tls_client_ctx = std::make_shared<streaming::tls::client_context>(/*verify_peer=*/false);
+        auto tls_client_ctx = std::make_shared<streaming::secure::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
         {
             RPC_ERROR("timeout_tls_setup: TLS client context failed");
             CO_RETURN false;
         }
-        auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_client_ctx);
+        auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_client_ctx);
         if (!CO_AWAIT tls_stm->client_handshake())
         {
             RPC_ERROR("timeout_tls_setup: TLS handshake failed");

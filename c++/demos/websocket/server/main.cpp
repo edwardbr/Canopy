@@ -15,7 +15,7 @@
 #include <canopy/http_server/http_acceptor.h>
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
-#include <streaming/tls/stream.h>
+#include <streaming/secure_stream.h>
 
 namespace
 {
@@ -126,7 +126,7 @@ auto run_http_server(
     coro::net::ip_address bind_address,
     uint16_t port,
     std::shared_ptr<websocket_demo::v1::websocket_service> service,
-    std::shared_ptr<streaming::tls::context> tls_ctx) -> coro::task<void>
+    std::shared_ptr<streaming::secure::context> tls_ctx) -> coro::task<void>
 {
     auto stream_handler
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
@@ -191,10 +191,10 @@ auto main(
     std::signal(SIGTERM, on_signal);
     const auto cert_path = args::get(cert_file);
     const auto key_path = args::get(key_file);
-    std::shared_ptr<streaming::tls::context> tls_ctx;
+    std::shared_ptr<streaming::secure::context> tls_ctx;
     if (!cert_path.empty() && !key_path.empty())
     {
-        tls_ctx = std::make_shared<streaming::tls::context>(cert_path, key_path);
+        tls_ctx = std::make_shared<streaming::secure::context>(cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Failed to initialize TLS context, exiting");

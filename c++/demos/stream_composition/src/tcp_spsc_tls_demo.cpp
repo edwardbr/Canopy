@@ -44,7 +44,7 @@
 #include <streaming/spsc_wrapping/stream.h>
 #include <streaming/tcp/acceptor.h>
 #include <streaming/tcp/stream.h>
-#include <streaming/tls/stream.h>
+#include <streaming/secure_stream.h>
 #include <transports/streaming/transport.h>
 
 #include <canopy/network_config/network_args.h>
@@ -153,7 +153,7 @@ namespace stream_composition
         service->set_shutdown_event(shutdown_event);
         service->set_default_encoding(rpc::encoding::yas_binary);
 
-        auto tls_ctx = std::make_shared<streaming::tls::context>(cert_path, key_path);
+        auto tls_ctx = std::make_shared<streaming::secure::context>(cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Server: TLS context init failed");
@@ -172,7 +172,7 @@ namespace stream_composition
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
             auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
-            auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_ctx);
+            auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx);
             if (!CO_AWAIT tls_stm->handshake())
                 CO_RETURN std::nullopt;
             CO_RETURN tls_stm;
@@ -250,7 +250,7 @@ namespace stream_composition
         auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
         auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
 
-        auto tls_client_ctx = std::make_shared<streaming::tls::client_context>(/*verify_peer=*/false);
+        auto tls_client_ctx = std::make_shared<streaming::secure::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
         {
             RPC_ERROR("Client: TLS client context init failed");
@@ -258,7 +258,7 @@ namespace stream_composition
             client_finished.set();
             CO_RETURN;
         }
-        auto tls_stm = std::make_shared<streaming::tls::stream>(spsc_stm, tls_client_ctx);
+        auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_client_ctx);
 
         if (!CO_AWAIT tls_stm->client_handshake())
         {
