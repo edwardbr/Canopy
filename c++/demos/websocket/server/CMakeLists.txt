@@ -123,9 +123,10 @@ if(CANOPY_BUILD_ENCLAVE
 
   add_library(websocket_demo_enclave_compile_fit STATIC ${WEBSOCKET_DEMO_ENCLAVE_SRCS})
   target_compile_definitions(
-    websocket_demo_enclave_compile_fit PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-                                               CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}
-                                               CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
+    websocket_demo_enclave_compile_fit
+    PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+            CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}
+            CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
   target_include_directories(websocket_demo_enclave_compile_fit PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
                                                                         ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
   target_compile_options(websocket_demo_enclave_compile_fit PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
@@ -187,9 +188,10 @@ if(CANOPY_BUILD_ENCLAVE
         ${SGX_ENCLAVE_LIBS})
 
     target_compile_definitions(
-      websocket_demo_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-                                     CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}
-                                     CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
+      websocket_demo_enclave
+      PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+              CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}
+              CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
     target_include_directories(websocket_demo_enclave PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
                                                               ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
     target_compile_options(websocket_demo_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})

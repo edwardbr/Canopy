@@ -25,19 +25,16 @@ if(CANOPY_BUILD_ENCLAVE)
   target_include_directories(
     streaming_websocket_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
-    PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES}
-            "${CMAKE_SOURCE_DIR}/c++/submodules/wslay/lib/includes"
-            "${CMAKE_BINARY_DIR}/c++/submodules/wslay/lib/includes"
-            "${CMAKE_BINARY_DIR}/c++/submodules/wslay/lib")
+    PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES} "${CMAKE_SOURCE_DIR}/c++/submodules/wslay/lib/includes"
+            "${CMAKE_BINARY_DIR}/c++/submodules/wslay/lib/includes" "${CMAKE_BINARY_DIR}/c++/submodules/wslay/lib")
   target_compile_definitions(streaming_websocket_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
   target_compile_options(streaming_websocket_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
-                                                            ${CANOPY_WARN_OK_ENCLAVE})
+                                                             ${CANOPY_WARN_OK_ENCLAVE})
   target_link_options(streaming_websocket_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
   target_link_libraries(
     streaming_websocket_enclave
     PUBLIC streaming_enclave
-    PRIVATE wslay_enclave
-            rpc::rpc_enclave)
+    PRIVATE wslay_enclave rpc::rpc_enclave)
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(streaming_websocket_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
   endif()

@@ -35,8 +35,7 @@ if(CANOPY_BUILD_ENCLAVE AND STREAMING_MBEDTLS_ENCLAVE_CRYPTO_LIB)
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
     PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
   target_compile_definitions(streaming_mbedtls_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-  target_compile_options(streaming_mbedtls_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
-                                                           ${CANOPY_WARN_OK_ENCLAVE})
+  target_compile_options(streaming_mbedtls_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
   target_link_options(streaming_mbedtls_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
   target_link_libraries(
     streaming_mbedtls_enclave

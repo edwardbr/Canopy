@@ -47,10 +47,7 @@ if(CANOPY_BUILD_COROUTINE)
     target_link_libraries(
       transport_streaming_enclave
       PUBLIC streaming_transport_idl_enclave
-      PRIVATE streaming_enclave
-              yas_common
-              rpc_types_idl_enclave
-              rpc::rpc_enclave)
+      PRIVATE streaming_enclave yas_common rpc_types_idl_enclave rpc::rpc_enclave)
 
     target_compile_options(transport_streaming_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
                                                                ${CANOPY_WARN_OK_ENCLAVE})

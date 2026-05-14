@@ -62,9 +62,8 @@ set(CANOPY_INCLUDES ${SGX_INCLUDE_DIR})
 set(CANOPY_SGX_HOST_LINK_OPTIONS)
 
 function(canopy_configure_sgxssl_for_enclave)
-  # Fake SGX does not need Intel SGXSSL to exercise the enclave runtime. Keep
-  # the command available so SGXSSL consumers can share one CMake path, but do
-  # not pretend the real SGXSSL trusted archives are present.
+  # Fake SGX does not need Intel SGXSSL to exercise the enclave runtime. Keep the command available so SGXSSL consumers
+  # can share one CMake path, but do not pretend the real SGXSSL trusted archives are present.
   set(CANOPY_SGXSSL_HEADERS_READY
       FALSE
       PARENT_SCOPE)

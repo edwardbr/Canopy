@@ -42,9 +42,7 @@ if(NOT DEPENDENCIES_LOADED)
   set(CANOPY_SGX_BACKEND
       "Intel"
       CACHE STRING "SGX backend to use when CANOPY_BUILD_ENCLAVE=ON")
-  set_property(
-    CACHE CANOPY_SGX_BACKEND
-    PROPERTY STRINGS "Intel" "Fake")
+  set_property(CACHE CANOPY_SGX_BACKEND PROPERTY STRINGS "Intel" "Fake")
   option(
     CANOPY_IO_URING_SQPOLL
     "Enable io_uring SQPOLL. Required for enclave-owned direct SQE submission; turn OFF only for explicit debugging or unsupported kernels."

@@ -22,8 +22,7 @@ add_library(canopy_file_system STATIC src/file_system_manager.cpp)
 target_include_directories(
   canopy_file_system
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
-         "$<INSTALL_INTERFACE:include>"
+         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(canopy_file_system PRIVATE ${CANOPY_DEFINES})
@@ -44,15 +43,15 @@ if(CANOPY_BUILD_ENCLAVE)
   target_include_directories(
     canopy_file_system_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
-           "$<INSTALL_INTERFACE:include>"
+           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>" "$<INSTALL_INTERFACE:include>"
     PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
 
   target_compile_definitions(canopy_file_system_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
   target_compile_options(canopy_file_system_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
   target_link_options(canopy_file_system_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
 
-  target_link_libraries(canopy_file_system_enclave PUBLIC file_system_idl_enclave canopy_io_uring_enclave rpc::rpc_enclave)
+  target_link_libraries(canopy_file_system_enclave PUBLIC file_system_idl_enclave canopy_io_uring_enclave
+                                                          rpc::rpc_enclave)
 
   set_property(TARGET canopy_file_system_enclave PROPERTY COMPILE_PDB_NAME canopy_file_system_enclave)
 

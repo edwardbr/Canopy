@@ -34,12 +34,8 @@ if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
            rpc_log)
 
   if(CANOPY_BUILD_ENCLAVE)
-    target_link_libraries(
-      file_system_test_host
-      PUBLIC transport_sgx_coroutine
-             transport_sgx_coroutine_test
-             canopy_coroutine_edl
-             ${CANOPY_SGX_HOST_LIBRARIES})
+    target_link_libraries(file_system_test_host PUBLIC transport_sgx_coroutine transport_sgx_coroutine_test
+                                                       canopy_coroutine_edl ${CANOPY_SGX_HOST_LIBRARIES})
     target_link_directories(file_system_test_host PUBLIC ${SGX_LIBRARY_PATH})
     add_dependencies(file_system_test_host file_system_test_enclave)
   endif()

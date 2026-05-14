@@ -6,8 +6,7 @@ cmake_minimum_required(VERSION 3.24)
 
 find_package(OpenSSL REQUIRED)
 
-# Host OpenSSL backend. The SGXSSL handling below only exists to make the
-# same source compile and link inside enclaves.
+# Host OpenSSL backend. The SGXSSL handling below only exists to make the same source compile and link inside enclaves.
 add_library(streaming_tls STATIC src/stream.cpp)
 target_include_directories(
   streaming_tls
@@ -28,9 +27,8 @@ if(CANOPY_BUILD_ENCLAVE)
   canopy_configure_sgxssl_for_enclave()
 
   if(CANOPY_SGXSSL_HEADERS_READY)
-    # Build the enclave variant from the same implementation file. OPENSSL_NO_STDIO
-    # keeps OpenSSL away from host stdio APIs, and tsgxsslio.h supplies SGXSSL's
-    # enclave-compatible BIO hooks for real SGX builds.
+    # Build the enclave variant from the same implementation file. OPENSSL_NO_STDIO keeps OpenSSL away from host stdio
+    # APIs, and tsgxsslio.h supplies SGXSSL's enclave-compatible BIO hooks for real SGX builds.
     add_library(streaming_tls_enclave STATIC src/stream.cpp)
     target_include_directories(
       streaming_tls_enclave
@@ -48,9 +46,7 @@ if(CANOPY_BUILD_ENCLAVE)
       PRIVATE rpc::rpc_enclave)
 
     if(CANOPY_SGXSSL_IMPL_LIBS_FOUND)
-      target_link_libraries(
-        streaming_tls_enclave
-        PRIVATE ${CANOPY_SGXSSL_ENCLAVE_LINK_LIBRARIES})
+      target_link_libraries(streaming_tls_enclave PRIVATE ${CANOPY_SGXSSL_ENCLAVE_LINK_LIBRARIES})
       if(TARGET canopy_prepare_sgxssl)
         add_dependencies(streaming_tls_enclave canopy_prepare_sgxssl)
       endif()
@@ -59,9 +55,8 @@ if(CANOPY_BUILD_ENCLAVE)
     endif()
 
     if(NOT CANOPY_SGXSSL_IMPL_LIBS_FOUND)
-      # Expected for fake SGX and for developer machines that only need compile
-      # coverage. Consumers that require real enclave TLS should check
-      # CANOPY_STREAMING_TLS_ENCLAVE_HAS_SGXSSL_IMPL before relying on final link.
+      # Expected for fake SGX and for developer machines that only need compile coverage. Consumers that require real
+      # enclave TLS should check CANOPY_STREAMING_TLS_ENCLAVE_HAS_SGXSSL_IMPL before relying on final link.
       message(
         STATUS "streaming_tls_enclave configured for compile-fit only: SGXSSL OpenSSL implementation archives "
                "for ${CANOPY_SGXSSL_ARCHIVE_CONFIG} builds were not found. Expected "
