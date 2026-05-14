@@ -35,6 +35,14 @@ namespace streaming::spsc_wrapping
         state_->scheduler->spawn_detached(send_proxy_loop(state_));
     }
 
+    stream::~stream()
+    {
+        // The proxy loops only own proxy_state, not this stream object. If a
+        // caller drops the wrapper without awaiting set_closed(), stop the
+        // detached loops so scheduler shutdown is not held open forever.
+        request_stop();
+    }
+
     void stream::request_stop() const
     {
         if (!state_)

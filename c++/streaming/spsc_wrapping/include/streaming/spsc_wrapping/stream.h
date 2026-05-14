@@ -18,7 +18,7 @@ namespace streaming::spsc_wrapping
         static auto create(
             std::shared_ptr<::streaming::stream> underlying,
             std::shared_ptr<coro::scheduler> scheduler) -> std::shared_ptr<stream>;
-        ~stream() override = default;
+        ~stream() override;
 
         auto receive(
             rpc::mutable_byte_span buffer,
