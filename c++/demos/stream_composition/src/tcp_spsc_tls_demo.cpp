@@ -14,7 +14,7 @@
  *       [SPSC buffering layer]
  *           ↕  spsc_wrapping_stream  (internal SPSC queues; no external pump)
  *       [TLS encryption]
- *           ↕  tls_stream
+ *           ↕  secure_stream          (OpenSSL or mbedTLS, selected by CMake)
  *       [streaming_transport / RPC layer]
  *           ↕
  *       [i_echo interface]
@@ -49,83 +49,45 @@
 
 #include <canopy/network_config/network_args.h>
 
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
-
-#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string_view>
 
 // ---------------------------------------------------------------------------
-// Test certificate generation
+// Test certificate preparation
 // ---------------------------------------------------------------------------
 
-// Writes a self-signed RSA-2048 certificate and private key to the given
-// paths using the OpenSSL API.  Used only for demo / testing purposes.
-static bool generate_demo_cert(
+#ifndef DEMO_CERT_FIXTURE_DIR
+#  error "DEMO_CERT_FIXTURE_DIR must point at the stream-composition-local TLS certificate fixtures"
+#endif
+
+// Copies the demo-local fixture certificate into the binary tree. The secure stream backend remains selected by CMake;
+// this helper just avoids requiring OpenSSL in this demo executable solely to generate test credentials.
+static bool prepare_demo_cert(
     const std::string& cert_path,
     const std::string& key_path)
 {
     if (std::filesystem::exists(cert_path) && std::filesystem::exists(key_path))
-        return true; // already generated
+        return true;
 
-    EVP_PKEY* pkey = nullptr;
-    {
-        EVP_PKEY_CTX* kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-        if (!kctx)
-            return false;
-        EVP_PKEY_keygen_init(kctx);
-        EVP_PKEY_CTX_set_rsa_keygen_bits(kctx, 2048);
-        EVP_PKEY_keygen(kctx, &pkey);
-        EVP_PKEY_CTX_free(kctx);
-    }
-    if (!pkey)
+    std::error_code error;
+    std::filesystem::create_directories(std::filesystem::path(cert_path).parent_path(), error);
+    if (error)
         return false;
 
-    X509* x509 = X509_new();
-    if (!x509)
-    {
-        EVP_PKEY_free(pkey);
+    const auto fixture_dir = std::filesystem::path(DEMO_CERT_FIXTURE_DIR);
+    std::filesystem::copy_file(
+        fixture_dir / "server.crt", cert_path, std::filesystem::copy_options::overwrite_existing, error);
+    if (error)
         return false;
-    }
 
-    ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
-    X509_gmtime_adj(X509_get_notBefore(x509), 0);
-    X509_gmtime_adj(X509_get_notAfter(x509), 10L * 365 * 24 * 60 * 60);
-    X509_set_pubkey(x509, pkey);
-
-    X509_NAME* name = X509_get_subject_name(x509);
-    X509_NAME_add_entry_by_txt(
-        name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("stream_composition_demo"), -1, -1, 0);
-    X509_set_issuer_name(x509, name);
-    X509_sign(x509, pkey, EVP_sha256());
-
-    FILE* cf = fopen(cert_path.c_str(), "wb");
-    if (!cf)
-    {
-        X509_free(x509);
-        EVP_PKEY_free(pkey);
+    std::filesystem::copy_file(
+        fixture_dir / "server.key", key_path, std::filesystem::copy_options::overwrite_existing, error);
+    if (error)
         return false;
-    }
-    PEM_write_X509(cf, x509);
-    fclose(cf);
 
-    FILE* kf = fopen(key_path.c_str(), "wb");
-    if (!kf)
-    {
-        X509_free(x509);
-        EVP_PKEY_free(pkey);
-        return false;
-    }
-    PEM_write_PrivateKey(kf, pkey, nullptr, nullptr, 0, nullptr, nullptr);
-    fclose(kf);
-
-    X509_free(x509);
-    EVP_PKEY_free(pkey);
-    RPC_INFO("Generated demo TLS certificate: {}", cert_path);
+    RPC_INFO("Prepared demo TLS certificate: {}", cert_path);
     return true;
 }
 
@@ -466,14 +428,14 @@ int main(
             canopy::network_config::ipv4_to_ip_address("127.0.0.1", connect_ep.addr);
     }
 
-    // Generate (or reuse) a self-signed TLS certificate for the demo server.
+    // Prepare (or reuse) a self-signed TLS certificate for the demo server.
     std::string cert_dir = std::string(DEMO_CERT_DIR);
     std::string cert_path = cert_dir + "/cert.pem";
     std::string key_path = cert_dir + "/key.pem";
 
-    if (!generate_demo_cert(cert_path, key_path))
+    if (!prepare_demo_cert(cert_path, key_path))
     {
-        RPC_ERROR("Failed to generate demo TLS certificate in: {}", cert_dir);
+        RPC_ERROR("Failed to prepare demo TLS certificate in: {}", cert_dir);
         return 1;
     }
 

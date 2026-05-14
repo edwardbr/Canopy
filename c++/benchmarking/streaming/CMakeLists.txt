@@ -11,7 +11,17 @@ project(
   VERSION 1.0.0
   LANGUAGES CXX)
 
-find_package(OpenSSL REQUIRED)
+if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+  set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET streaming_mbedtls)
+elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+  set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET streaming_tls)
+else()
+  message(FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND for streaming_benchmark: ${CANOPY_SECURE_STREAM_BACKEND}")
+endif()
+
+if(NOT TARGET ${STREAMING_BENCHMARK_SECURE_STREAM_TARGET})
+  message(FATAL_ERROR "streaming_benchmark requires ${STREAMING_BENCHMARK_SECURE_STREAM_TARGET}; check CANOPY_SECURE_STREAM_BACKEND")
+endif()
 
 add_executable(
   streaming_benchmark
@@ -24,7 +34,12 @@ add_executable(
   stream_tls_spsc.cpp
   stream_websocket_spsc.cpp
   stream_tls_websocket_spsc.cpp)
-target_compile_definitions(streaming_benchmark PRIVATE ${CANOPY_DEFINES})
+target_compile_definitions(
+  streaming_benchmark
+  PRIVATE ${CANOPY_DEFINES}
+          # Local fixture credentials keep the benchmark independent of demos and avoid using OpenSSL just to generate
+          # throwaway certificates when the selected secure-stream backend is mbedTLS.
+          CANOPY_STREAMING_BENCHMARK_CERT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/certs")
 if(CANOPY_BUILD_WEBSOCKET)
   target_compile_definitions(streaming_benchmark PRIVATE CANOPY_BUILD_WEBSOCKET)
 endif()
@@ -33,11 +48,9 @@ target_link_libraries(
   streaming_benchmark
   PUBLIC streaming
          streaming_tcp
-         streaming_tls
+         ${STREAMING_BENCHMARK_SECURE_STREAM_TARGET}
          streaming_spsc_queue
          rpc
-         OpenSSL::SSL
-         OpenSSL::Crypto
          fmt::fmt-header-only
          ${CANOPY_LIBRARIES}
          rpc_log)

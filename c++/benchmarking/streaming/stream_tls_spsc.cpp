@@ -4,98 +4,15 @@
  */
 
 #include "benchmark_common.h"
+#include "benchmark_tls_fixture.h"
 
 #include <streaming/spsc_queue/stream.h>
 #include <streaming/secure_stream.h>
-
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/rsa.h>
-#include <openssl/x509.h>
-
-#include <cstdio>
-#include <unistd.h>
 
 namespace stream_bench
 {
     namespace
     {
-        struct temp_cert_pair
-        {
-            std::string cert_path;
-            std::string key_path;
-            bool valid = false;
-
-            temp_cert_pair()
-            {
-                EVP_PKEY_CTX* key_context = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-                if (!key_context)
-                    return;
-
-                EVP_PKEY* private_key = nullptr;
-                if (EVP_PKEY_keygen_init(key_context) <= 0 || EVP_PKEY_CTX_set_rsa_keygen_bits(key_context, 2048) <= 0
-                    || EVP_PKEY_keygen(key_context, &private_key) <= 0)
-                {
-                    EVP_PKEY_CTX_free(key_context);
-                    return;
-                }
-                EVP_PKEY_CTX_free(key_context);
-
-                X509* certificate = X509_new();
-                X509_set_version(certificate, 2);
-                ASN1_INTEGER_set(X509_get_serialNumber(certificate), 1);
-                X509_gmtime_adj(X509_getm_notBefore(certificate), 0);
-                X509_gmtime_adj(X509_getm_notAfter(certificate), 86400L);
-                X509_set_pubkey(certificate, private_key);
-                X509_NAME* name = X509_get_subject_name(certificate);
-                X509_NAME_add_entry_by_txt(
-                    name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("canopy-bench"), -1, -1, 0);
-                X509_set_issuer_name(certificate, name);
-                X509_sign(certificate, private_key, EVP_sha256());
-
-                char cert_template[] = "/tmp/canopy_bench_cert_XXXXXX.pem";
-                char key_template[] = "/tmp/canopy_bench_key_XXXXXX.pem";
-                int cert_fd = mkstemps(cert_template, 4);
-                int key_fd = mkstemps(key_template, 4);
-                if (cert_fd < 0 || key_fd < 0)
-                {
-                    X509_free(certificate);
-                    EVP_PKEY_free(private_key);
-                    if (cert_fd >= 0)
-                        close(cert_fd);
-                    if (key_fd >= 0)
-                        close(key_fd);
-                    return;
-                }
-
-                FILE* cert_file = fdopen(cert_fd, "w");
-                FILE* key_file = fdopen(key_fd, "w");
-                PEM_write_X509(cert_file, certificate);
-                PEM_write_PrivateKey(key_file, private_key, nullptr, nullptr, 0, nullptr, nullptr);
-                fclose(cert_file);
-                fclose(key_file);
-
-                X509_free(certificate);
-                EVP_PKEY_free(private_key);
-
-                cert_path = cert_template;
-                key_path = key_template;
-                valid = true;
-            }
-
-            ~temp_cert_pair()
-            {
-                if (!valid)
-                    return;
-
-                std::remove(cert_path.c_str());
-                std::remove(key_path.c_str());
-            }
-
-            temp_cert_pair(const temp_cert_pair&) = delete;
-            auto operator=(const temp_cert_pair&) -> temp_cert_pair& = delete;
-        };
-
         struct spsc_pipe
         {
             streaming::spsc_queue::queue_type q_a_to_b;
@@ -113,7 +30,7 @@ namespace stream_bench
         };
 
         bool make_tls_pair(
-            const temp_cert_pair& cert,
+            const tls_fixture_cert_pair& cert,
             const std::shared_ptr<streaming::stream>& raw_a,
             const std::shared_ptr<streaming::stream>& raw_b,
             const std::shared_ptr<coro::scheduler>& scheduler_a,
@@ -153,7 +70,7 @@ namespace stream_bench
             bench_stats& unidirectional,
             bench_stats& send_reply)
         {
-            temp_cert_pair cert;
+            tls_fixture_cert_pair cert;
             if (!cert.valid)
                 return;
 
@@ -176,7 +93,7 @@ namespace stream_bench
             stress_stats& send,
             stress_stats& recv)
         {
-            temp_cert_pair cert;
+            tls_fixture_cert_pair cert;
             if (!cert.valid)
                 return;
 
