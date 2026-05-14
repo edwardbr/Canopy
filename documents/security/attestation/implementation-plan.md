@@ -39,6 +39,101 @@ This plan implements:
 If a phase below conflicts with one of those documents, the documents are
 authoritative and the plan must be amended.
 
+## Implementation Checkpoint - 2026-05-15
+
+The current tree contains a first no-SGX proof of concept. It is a vertical
+development slice across the fake backend, an attestation stream decorator, and
+normal RPC traffic over that decorator. It is **not** completion of Phase 1 or
+Phase 2 as written below, because it intentionally does not yet implement the
+L4 attestation service, session cache, key derivation, counters, or the L7
+protected RPC envelope.
+
+### Implemented
+
+- `c++/security/attestation/` now builds a `security_attestation` target with
+  backend-neutral passive types and a development fake backend:
+  - `include/security/attestation/types.h`
+  - `include/security/attestation/fake_backend.h`
+  - `src/fake_backend.cpp`
+- The fake backend produces CMW-like fake Evidence using
+  `media_type == "application/canopy-fake-evidence"` and
+  `content_format == "canopy.fake.v1"`.
+- Fake Evidence verification checks:
+  - policy permission for development Evidence;
+  - required backend id;
+  - minimum security level;
+  - backend id;
+  - attested enclave id and zone id;
+  - transcript id;
+  - nonce;
+  - fake development signature.
+- `c++/streaming/attestation/` now builds a `streaming_attestation` target:
+  - `include/streaming/attestation/stream.h`
+  - `src/stream.cpp`
+- `streaming::attestation::stream` wraps a generic
+  `std::shared_ptr<streaming::stream>`. In production-shaped direct paths this
+  can wrap a secure stream; the current tests wrap SPSC streams so the POC can
+  run without TLS, SGX, or DCAP.
+- The current development handshake uses four in-tunnel frame kinds:
+  - `client_hello_attest`
+  - `server_hello_attest`
+  - `evidence`
+  - `evidence_verdict`
+- The handshake supports both:
+  - mutual fake attestation;
+  - an unattested client verifying an attested server.
+- `streaming::attestation::stream` exposes a `security_context()` after the
+  handshake and delegates normal `send` / `receive` to the wrapped stream.
+- Raw stream POC coverage exists in
+  `c++/streaming/attestation/tests/attestation_stream_test.cpp`.
+- RPC-level POC coverage exists in
+  `c++/tests/test_host/attested_streaming_transport_poc_suite.cpp`.
+  It proves that generated RPC traffic can run over `rpc::stream_transport`
+  after the attestation stream handshake in two cases:
+  - mutually attested SPSC peer services;
+  - unattested client to attested server.
+
+### Verified
+
+- `cmake --preset Debug_Coroutine`
+- `cmake --build build_debug_coroutine --target rpc_test attestation_stream_test`
+- `build_debug_coroutine/output/attestation_stream_test`
+- `build_debug_coroutine/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/* --gtest_brief=1`
+- `ctest --test-dir build_debug_coroutine -R attested_streaming_transport_poc_test --output-on-failure`
+- `ctest --test-dir build_debug_coroutine -R attestation_stream_test --output-on-failure`
+- `cmake --build build_debug --target security_attestation`
+
+### Not Yet Implemented
+
+- `CANOPY_ATTESTATION_BACKEND` build selection.
+- Separate `cmw.h`, `backend.h`, `policy.h`, and `security_context.h` header
+  split. The current POC keeps these passive types together in `types.h`.
+- `null_backend`.
+- CMW / attestation context IDL additions.
+- `attestation_service`.
+- Enclave-pair session cache.
+- Session key derivation.
+- Monotonic end-to-end counters.
+- AES-GCM or any other protected payload encryption.
+- L7 protected RPC envelope integration with `outbound_send`,
+  `outbound_post`, `add_ref`, `release`, `try_cast`, `object_released`, or
+  `transport_down`.
+- Publishing the stream `security_context` into `rpc::service` or
+  `rpc::stream_transport`.
+- TLS exporter binding. The current development binding is transcript id,
+  identity, role, and nonce based.
+- `sgx_ttls`, DCAP, local SGX attestation, EPID, TDX, SEV-SNP, or
+  TrustZone/PSA backends.
+
+### Current Best Next Step
+
+The next implementation slice should introduce the L4 attestation service as
+the owner of backend selection and session state, then make
+`streaming::attestation::stream` call that service instead of talking to the
+backend directly. Once the stream publishes a service-owned session handle and
+`security_context`, the protected RPC envelope can be added behind a feature
+flag without tying the envelope code to any particular backend or carrier.
+
 ## Architectural Layers
 
 The implementation is split into eight components with narrow contracts.

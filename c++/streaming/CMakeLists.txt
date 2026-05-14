@@ -15,6 +15,7 @@ if(CANOPY_BUILD_MBEDTLS AND TARGET canopy_mbedtls_tls)
 endif()
 add_subdirectory(spsc_queue)
 add_subdirectory(spsc_wrapping)
+add_subdirectory(attestation)
 
 if(CANOPY_BUILD_WEBSOCKET)
   add_subdirectory(websocket)

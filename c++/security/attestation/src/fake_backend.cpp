@@ -1,0 +1,317 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#include <security/attestation/fake_backend.h>
+
+#include <algorithm>
+#include <cstring>
+#include <sstream>
+#include <utility>
+
+namespace canopy::security::attestation
+{
+    namespace
+    {
+        struct fake_evidence
+        {
+            std::string backend_id;
+            std::string enclave_id;
+            std::string zone_id;
+            uint64_t transcript_id{0};
+            std::vector<uint8_t> nonce;
+            uint64_t signature{0};
+        };
+
+        auto append_u32(
+            std::vector<uint8_t>& out,
+            uint32_t value) -> void
+        {
+            for (unsigned shift = 0; shift < 32; shift += 8)
+                out.push_back(static_cast<uint8_t>((value >> shift) & 0xffU));
+        }
+
+        auto append_u64(
+            std::vector<uint8_t>& out,
+            uint64_t value) -> void
+        {
+            for (unsigned shift = 0; shift < 64; shift += 8)
+                out.push_back(static_cast<uint8_t>((value >> shift) & 0xffU));
+        }
+
+        auto append_bytes(
+            std::vector<uint8_t>& out,
+            const std::vector<uint8_t>& bytes) -> void
+        {
+            append_u32(out, static_cast<uint32_t>(bytes.size()));
+            out.insert(out.end(), bytes.begin(), bytes.end());
+        }
+
+        auto append_string(
+            std::vector<uint8_t>& out,
+            const std::string& value) -> void
+        {
+            append_u32(out, static_cast<uint32_t>(value.size()));
+            out.insert(out.end(), value.begin(), value.end());
+        }
+
+        auto read_u32(
+            const std::vector<uint8_t>& in,
+            size_t& offset,
+            uint32_t& value) -> bool
+        {
+            if (offset + sizeof(uint32_t) > in.size())
+                return false;
+            value = 0;
+            for (unsigned shift = 0; shift < 32; shift += 8)
+                value |= static_cast<uint32_t>(in[offset++]) << shift;
+            return true;
+        }
+
+        auto read_u64(
+            const std::vector<uint8_t>& in,
+            size_t& offset,
+            uint64_t& value) -> bool
+        {
+            if (offset + sizeof(uint64_t) > in.size())
+                return false;
+            value = 0;
+            for (unsigned shift = 0; shift < 64; shift += 8)
+                value |= static_cast<uint64_t>(in[offset++]) << shift;
+            return true;
+        }
+
+        auto read_bytes(
+            const std::vector<uint8_t>& in,
+            size_t& offset,
+            std::vector<uint8_t>& value) -> bool
+        {
+            uint32_t size = 0;
+            if (!read_u32(in, offset, size))
+                return false;
+            if (offset + size > in.size())
+                return false;
+            value.assign(
+                in.begin() + static_cast<std::ptrdiff_t>(offset), in.begin() + static_cast<std::ptrdiff_t>(offset + size));
+            offset += size;
+            return true;
+        }
+
+        auto read_string(
+            const std::vector<uint8_t>& in,
+            size_t& offset,
+            std::string& value) -> bool
+        {
+            std::vector<uint8_t> bytes;
+            if (!read_bytes(in, offset, bytes))
+                return false;
+            value.assign(bytes.begin(), bytes.end());
+            return true;
+        }
+
+        auto fnv1a_update(
+            uint64_t hash,
+            const uint8_t* data,
+            size_t size) -> uint64_t
+        {
+            constexpr uint64_t prime = 1099511628211ULL;
+            for (size_t i = 0; i < size; ++i)
+            {
+                hash ^= data[i];
+                hash *= prime;
+            }
+            return hash;
+        }
+
+        auto fnv1a_update(
+            uint64_t hash,
+            const std::string& value) -> uint64_t
+        {
+            return fnv1a_update(hash, reinterpret_cast<const uint8_t*>(value.data()), value.size());
+        }
+
+        auto fnv1a_update(
+            uint64_t hash,
+            const std::vector<uint8_t>& value) -> uint64_t
+        {
+            return fnv1a_update(hash, value.data(), value.size());
+        }
+
+        auto fake_signature(
+            const fake_evidence& evidence,
+            const std::string& development_key) -> uint64_t
+        {
+            uint64_t hash = 1469598103934665603ULL;
+            hash = fnv1a_update(hash, development_key);
+            hash = fnv1a_update(hash, evidence.backend_id);
+            hash = fnv1a_update(hash, evidence.enclave_id);
+            hash = fnv1a_update(hash, evidence.zone_id);
+            hash = fnv1a_update(
+                hash, reinterpret_cast<const uint8_t*>(&evidence.transcript_id), sizeof(evidence.transcript_id));
+            hash = fnv1a_update(hash, evidence.nonce);
+            return hash;
+        }
+
+        auto serialise_fake_evidence(const fake_evidence& evidence) -> std::vector<uint8_t>
+        {
+            std::vector<uint8_t> out;
+            append_string(out, evidence.backend_id);
+            append_string(out, evidence.enclave_id);
+            append_string(out, evidence.zone_id);
+            append_u64(out, evidence.transcript_id);
+            append_bytes(out, evidence.nonce);
+            append_u64(out, evidence.signature);
+            return out;
+        }
+
+        auto parse_fake_evidence(
+            const std::vector<uint8_t>& payload,
+            fake_evidence& evidence) -> bool
+        {
+            size_t offset = 0;
+            if (!read_string(payload, offset, evidence.backend_id))
+                return false;
+            if (!read_string(payload, offset, evidence.enclave_id))
+                return false;
+            if (!read_string(payload, offset, evidence.zone_id))
+                return false;
+            if (!read_u64(payload, offset, evidence.transcript_id))
+                return false;
+            if (!read_bytes(payload, offset, evidence.nonce))
+                return false;
+            if (!read_u64(payload, offset, evidence.signature))
+                return false;
+            return offset == payload.size();
+        }
+
+        auto reject(std::string reason) -> attestation_verdict
+        {
+            attestation_verdict verdict;
+            verdict.accepted = false;
+            verdict.reason = std::move(reason);
+            return verdict;
+        }
+    } // namespace
+
+    auto security_level_rank(security_level level) noexcept -> int
+    {
+        switch (level)
+        {
+        case security_level::none:
+            return 0;
+        case security_level::development:
+            return 1;
+        case security_level::simulation:
+            return 2;
+        case security_level::hardware_legacy:
+            return 3;
+        case security_level::hardware:
+            return 4;
+        }
+        return 0;
+    }
+
+    auto security_level_name(security_level level) noexcept -> const char*
+    {
+        switch (level)
+        {
+        case security_level::none:
+            return "none";
+        case security_level::development:
+            return "development";
+        case security_level::simulation:
+            return "simulation";
+        case security_level::hardware_legacy:
+            return "hardware_legacy";
+        case security_level::hardware:
+            return "hardware";
+        }
+        return "none";
+    }
+
+    auto make_session_id(
+        const identity& local,
+        const identity& peer,
+        uint64_t transcript_id) -> std::string
+    {
+        auto left = local.enclave_id + "/" + local.zone_id;
+        auto right = peer.enclave_id + "/" + peer.zone_id;
+        if (right < left)
+            std::swap(left, right);
+
+        std::ostringstream out;
+        out << "fake-session:" << left << ":" << right << ":" << transcript_id;
+        return out.str();
+    }
+
+    fake_backend::fake_backend(std::string development_key)
+        : development_key_(std::move(development_key))
+    {
+    }
+
+    auto fake_backend::backend_id() const -> std::string
+    {
+        return fake_backend_id;
+    }
+
+    auto fake_backend::level() const -> security_level
+    {
+        return security_level::development;
+    }
+
+    auto fake_backend::produce_evidence(const evidence_binding& binding) const -> cmw
+    {
+        fake_evidence evidence;
+        evidence.backend_id = fake_backend_id;
+        evidence.enclave_id = binding.subject.enclave_id;
+        evidence.zone_id = binding.subject.zone_id;
+        evidence.transcript_id = binding.transcript_id;
+        evidence.nonce = binding.nonce;
+        evidence.signature = fake_signature(evidence, development_key_);
+
+        cmw result;
+        result.media_type = fake_evidence_media_type;
+        result.content_format = "canopy.fake.v1";
+        result.payload = serialise_fake_evidence(evidence);
+        return result;
+    }
+
+    auto fake_backend::verify_evidence(
+        const cmw& evidence,
+        const evidence_binding& expected_binding,
+        const attestation_policy& policy) const -> attestation_verdict
+    {
+        if (evidence.media_type != fake_evidence_media_type)
+            return reject("unsupported fake evidence media type");
+        if (!policy.allow_development_evidence)
+            return reject("development evidence is not allowed by policy");
+        if (!policy.required_backend_id.empty() && policy.required_backend_id != fake_backend_id)
+            return reject("policy requires a different backend");
+        if (security_level_rank(level()) < security_level_rank(policy.minimum_security_level))
+            return reject("fake evidence does not meet the minimum security level");
+
+        fake_evidence parsed;
+        if (!parse_fake_evidence(evidence.payload, parsed))
+            return reject("malformed fake evidence");
+        if (parsed.backend_id != fake_backend_id)
+            return reject("fake evidence backend id mismatch");
+        if (parsed.enclave_id != expected_binding.subject.enclave_id || parsed.zone_id != expected_binding.subject.zone_id)
+            return reject("fake evidence identity mismatch");
+        if (parsed.transcript_id != expected_binding.transcript_id)
+            return reject("fake evidence transcript mismatch");
+        if (parsed.nonce != expected_binding.nonce)
+            return reject("fake evidence nonce mismatch");
+        if (parsed.signature != fake_signature(parsed, development_key_))
+            return reject("fake evidence signature mismatch");
+
+        attestation_verdict verdict;
+        verdict.accepted = true;
+        verdict.reason = "fake evidence accepted";
+        verdict.backend_id = fake_backend_id;
+        verdict.level = level();
+        verdict.peer_identity.enclave_id = parsed.enclave_id;
+        verdict.peer_identity.zone_id = parsed.zone_id;
+        return verdict;
+    }
+} // namespace canopy::security::attestation

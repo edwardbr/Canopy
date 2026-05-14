@@ -1,0 +1,95 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#pragma once
+
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace canopy::security::attestation
+{
+    enum class security_level
+    {
+        none,
+        development,
+        simulation,
+        hardware_legacy,
+        hardware
+    };
+
+    struct cmw
+    {
+        std::string media_type;
+        std::string content_format;
+        std::vector<uint8_t> payload;
+    };
+
+    struct identity
+    {
+        std::string enclave_id;
+        std::string zone_id;
+    };
+
+    struct evidence_binding
+    {
+        identity subject;
+        uint64_t transcript_id{0};
+        std::vector<uint8_t> nonce;
+    };
+
+    struct attestation_policy
+    {
+        bool send_local_evidence{true};
+        bool require_peer_evidence{true};
+        bool allow_development_evidence{true};
+        security_level minimum_security_level{security_level::development};
+        std::string required_backend_id;
+    };
+
+    struct attestation_verdict
+    {
+        bool accepted{false};
+        std::string reason;
+        std::string backend_id;
+        security_level level{security_level::none};
+        identity peer_identity;
+    };
+
+    struct security_context
+    {
+        bool established{false};
+        bool local_evidence_sent{false};
+        bool peer_attested{false};
+        identity local_identity;
+        identity peer_identity;
+        std::string backend_id;
+        security_level level{security_level::none};
+        std::string session_id;
+        uint64_t transcript_id{0};
+    };
+
+    class attestation_backend
+    {
+    public:
+        virtual ~attestation_backend() = default;
+
+        [[nodiscard]] virtual auto backend_id() const -> std::string = 0;
+        [[nodiscard]] virtual auto level() const -> security_level = 0;
+        [[nodiscard]] virtual auto produce_evidence(const evidence_binding& binding) const -> cmw = 0;
+        [[nodiscard]] virtual auto verify_evidence(
+            const cmw& evidence,
+            const evidence_binding& expected_binding,
+            const attestation_policy& policy) const -> attestation_verdict = 0;
+    };
+
+    [[nodiscard]] auto security_level_rank(security_level level) noexcept -> int;
+    [[nodiscard]] auto security_level_name(security_level level) noexcept -> const char*;
+    [[nodiscard]] auto make_session_id(
+        const identity& local,
+        const identity& peer,
+        uint64_t transcript_id) -> std::string;
+} // namespace canopy::security::attestation

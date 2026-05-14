@@ -84,6 +84,7 @@ endif()
 if(CANOPY_BUILD_COROUTINE)
   # list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
   # "$<TARGET_FILE:canopy_ipc_child_process>")
+  list(APPEND COROUTINE_TESTS attested_streaming_transport_poc_suite.cpp)
 endif()
 
 add_executable(
@@ -158,9 +159,11 @@ if(CANOPY_BUILD_COROUTINE)
     rpc_test
     PUBLIC transport_ipc_transport
            streaming
+           streaming_attestation
            streaming_tcp
            streaming_spsc_queue
            streaming_spsc_wrapping
+           canopy::security_attestation
            ${STREAMING_SECURE_STREAM_LIB}
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>)
