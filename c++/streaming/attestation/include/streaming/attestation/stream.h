@@ -10,7 +10,7 @@
 
 #include <coro/task.hpp>
 
-#include <security/attestation/types.h>
+#include <security/attestation/service.h>
 #include <streaming/stream.h>
 
 namespace streaming::attestation
@@ -23,9 +23,7 @@ namespace streaming::attestation
 
     struct stream_options
     {
-        canopy::security::attestation::identity local_identity;
-        canopy::security::attestation::attestation_policy policy;
-        std::shared_ptr<canopy::security::attestation::attestation_backend> backend;
+        std::shared_ptr<canopy::security::attestation::attestation_service> service;
         uint64_t transcript_id{1};
         std::chrono::milliseconds handshake_timeout{std::chrono::milliseconds{5000}};
     };

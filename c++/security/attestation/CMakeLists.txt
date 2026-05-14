@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-add_library(security_attestation STATIC src/fake_backend.cpp)
+add_library(security_attestation STATIC src/fake_backend.cpp src/service.cpp)
 add_library(canopy::security_attestation ALIAS security_attestation)
 
 target_include_directories(

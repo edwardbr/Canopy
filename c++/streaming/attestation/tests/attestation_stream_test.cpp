@@ -23,6 +23,8 @@ using namespace std::chrono_literals;
 namespace
 {
     using canopy::security::attestation::attestation_policy;
+    using canopy::security::attestation::attestation_service;
+    using canopy::security::attestation::attestation_service_options;
     using canopy::security::attestation::fake_backend;
     using canopy::security::attestation::identity;
     using streaming::attestation::stream_options;
@@ -53,21 +55,28 @@ namespace
         return pair;
     }
 
-    auto make_options(
+    auto make_service(
         std::string enclave_id,
         std::string zone_id,
         bool send_evidence,
-        bool require_peer_evidence) -> stream_options
+        bool require_peer_evidence) -> std::shared_ptr<attestation_service>
     {
-        stream_options options;
+        attestation_service_options options;
         options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
         options.backend = std::make_shared<fake_backend>();
-        options.transcript_id = 42;
         options.policy = attestation_policy{};
         options.policy.send_local_evidence = send_evidence;
         options.policy.require_peer_evidence = require_peer_evidence;
         options.policy.allow_development_evidence = true;
         options.policy.required_backend_id = canopy::security::attestation::fake_backend_id;
+        return std::make_shared<attestation_service>(std::move(options));
+    }
+
+    auto make_options(std::shared_ptr<attestation_service> service) -> stream_options
+    {
+        stream_options options;
+        options.service = std::move(service);
+        options.transcript_id = 42;
         options.handshake_timeout = 2s;
         return options;
     }
@@ -97,10 +106,10 @@ TEST(
     auto scheduler = make_scheduler();
     auto pair = make_stream_pair(scheduler);
 
-    auto server_a
-        = std::make_shared<streaming::attestation::stream>(pair.a, make_options("enclave-a", "zone-a", true, true));
-    auto server_b
-        = std::make_shared<streaming::attestation::stream>(pair.b, make_options("enclave-b", "zone-b", true, true));
+    auto server_a_service = make_service("enclave-a", "zone-a", true, true);
+    auto server_b_service = make_service("enclave-b", "zone-b", true, true);
+    auto server_a = std::make_shared<streaming::attestation::stream>(pair.a, make_options(server_a_service));
+    auto server_b = std::make_shared<streaming::attestation::stream>(pair.b, make_options(server_b_service));
 
     bool a_ok = false;
     bool b_ok = false;
@@ -127,6 +136,10 @@ TEST(
     EXPECT_EQ(a_context.backend_id, "fake");
     EXPECT_EQ(b_context.backend_id, "fake");
     EXPECT_EQ(a_context.session_id, b_context.session_id);
+    EXPECT_EQ(server_a_service->session_count(), 1U);
+    EXPECT_EQ(server_b_service->session_count(), 1U);
+    EXPECT_TRUE(server_a_service->find_session(a_context.session_id).has_value());
+    EXPECT_TRUE(server_b_service->find_session(b_context.session_id).has_value());
 
     auto received = coro::sync_wait(send_string(server_a, server_b, "attested server to server"));
     EXPECT_EQ(received, "attested server to server");
@@ -143,10 +156,10 @@ TEST(
     auto scheduler = make_scheduler();
     auto pair = make_stream_pair(scheduler);
 
-    auto client = std::make_shared<streaming::attestation::stream>(
-        pair.a, make_options("client-process", "client-zone", false, true));
-    auto server = std::make_shared<streaming::attestation::stream>(
-        pair.b, make_options("server-enclave", "server-zone", true, false));
+    auto client_service = make_service("client-process", "client-zone", false, true);
+    auto server_service = make_service("server-enclave", "server-zone", true, false);
+    auto client = std::make_shared<streaming::attestation::stream>(pair.a, make_options(client_service));
+    auto server = std::make_shared<streaming::attestation::stream>(pair.b, make_options(server_service));
 
     bool client_ok = false;
     bool server_ok = false;
@@ -170,6 +183,10 @@ TEST(
     EXPECT_EQ(server_context.peer_identity.enclave_id, "client-process");
     EXPECT_EQ(client_context.backend_id, "fake");
     EXPECT_EQ(server_context.backend_id, "fake");
+    EXPECT_EQ(client_service->session_count(), 1U);
+    EXPECT_EQ(server_service->session_count(), 1U);
+    EXPECT_TRUE(client_service->find_session(client_context.session_id).has_value());
+    EXPECT_TRUE(server_service->find_session(server_context.session_id).has_value());
 
     auto received = coro::sync_wait(send_string(client, server, "unattested client request"));
     EXPECT_EQ(received, "unattested client request");

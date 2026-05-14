@@ -42,10 +42,10 @@ authoritative and the plan must be amended.
 ## Implementation Checkpoint - 2026-05-15
 
 The current tree contains a first no-SGX proof of concept. It is a vertical
-development slice across the fake backend, an attestation stream decorator, and
-normal RPC traffic over that decorator. It is **not** completion of Phase 1 or
-Phase 2 as written below, because it intentionally does not yet implement the
-L4 attestation service, session cache, key derivation, counters, or the L7
+development slice across the fake backend, a first L4 `attestation_service`,
+an attestation stream decorator, and normal RPC traffic over that decorator. It
+is **not** completion of Phase 1 or Phase 2 as written below, because it
+intentionally does not yet implement key derivation, counters, or the L7
 protected RPC envelope.
 
 ### Implemented
@@ -54,7 +54,9 @@ protected RPC envelope.
   backend-neutral passive types and a development fake backend:
   - `include/security/attestation/types.h`
   - `include/security/attestation/fake_backend.h`
+  - `include/security/attestation/service.h`
   - `src/fake_backend.cpp`
+  - `src/service.cpp`
 - The fake backend produces CMW-like fake Evidence using
   `media_type == "application/canopy-fake-evidence"` and
   `content_format == "canopy.fake.v1"`.
@@ -74,6 +76,14 @@ protected RPC envelope.
   `std::shared_ptr<streaming::stream>`. In production-shaped direct paths this
   can wrap a secure stream; the current tests wrap SPSC streams so the POC can
   run without TLS, SGX, or DCAP.
+- `streaming::attestation::stream` now calls `attestation_service` for local
+  Evidence production, peer Evidence verification, policy checks, and session
+  creation. It no longer talks directly to an attestation backend.
+- The first `attestation_service` owns:
+  - local enclave and zone identity;
+  - local attestation policy;
+  - selected backend;
+  - established `security_context` records keyed by session id.
 - The current development handshake uses four in-tunnel frame kinds:
   - `client_hello_attest`
   - `server_hello_attest`
@@ -83,7 +93,8 @@ protected RPC envelope.
   - mutual fake attestation;
   - an unattested client verifying an attested server.
 - `streaming::attestation::stream` exposes a `security_context()` after the
-  handshake and delegates normal `send` / `receive` to the wrapped stream.
+  handshake and delegates normal `send` / `receive` to the wrapped stream. The
+  `security_context` is now created and cached by `attestation_service`.
 - Raw stream POC coverage exists in
   `c++/streaming/attestation/tests/attestation_stream_test.cpp`.
 - RPC-level POC coverage exists in
@@ -110,8 +121,8 @@ protected RPC envelope.
   split. The current POC keeps these passive types together in `types.h`.
 - `null_backend`.
 - CMW / attestation context IDL additions.
-- `attestation_service`.
-- Enclave-pair session cache.
+- Backend selection beyond explicit construction of one service with one
+  backend.
 - Session key derivation.
 - Monotonic end-to-end counters.
 - AES-GCM or any other protected payload encryption.
@@ -127,12 +138,12 @@ protected RPC envelope.
 
 ### Current Best Next Step
 
-The next implementation slice should introduce the L4 attestation service as
-the owner of backend selection and session state, then make
-`streaming::attestation::stream` call that service instead of talking to the
-backend directly. Once the stream publishes a service-owned session handle and
-`security_context`, the protected RPC envelope can be added behind a feature
-flag without tying the envelope code to any particular backend or carrier.
+The next implementation slice should publish the service-owned
+`security_context` into `rpc::stream_transport` / `rpc::service`, so application
+code and later L7 envelope code can look up the attested peer for a caller zone.
+After that, add session key derivation and monotonic counters inside
+`attestation_service`; the protected RPC envelope can then be introduced behind
+a feature flag without tying envelope code to any particular backend or carrier.
 
 ## Architectural Layers
 

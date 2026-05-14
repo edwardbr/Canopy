@@ -22,6 +22,8 @@
 namespace
 {
     using canopy::security::attestation::attestation_policy;
+    using canopy::security::attestation::attestation_service;
+    using canopy::security::attestation::attestation_service_options;
     using canopy::security::attestation::fake_backend;
     using canopy::security::attestation::fake_backend_id;
     using canopy::security::attestation::identity;
@@ -34,27 +36,36 @@ namespace
         std::shared_ptr<streaming::spsc_queue::queue_type> receive_spsc_queue_;
         std::shared_ptr<streaming::attestation::stream> initiator_stream_;
         std::shared_ptr<streaming::attestation::stream> responder_stream_;
+        std::shared_ptr<attestation_service> initiator_attestation_service_;
+        std::shared_ptr<attestation_service> responder_attestation_service_;
         bool initiator_sends_evidence_{true};
         bool initiator_requires_peer_evidence_{true};
         bool responder_sends_evidence_{true};
         bool responder_requires_peer_evidence_{true};
 
-        static auto make_options(
+        static auto make_attestation_service(
             std::shared_ptr<fake_backend> backend,
             std::string enclave_id,
             std::string zone_id,
             bool send_evidence,
-            bool require_peer_evidence) -> stream_options
+            bool require_peer_evidence) -> std::shared_ptr<attestation_service>
         {
-            stream_options options;
+            attestation_service_options options;
             options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
             options.backend = std::move(backend);
-            options.transcript_id = 1001;
             options.policy = attestation_policy{};
             options.policy.send_local_evidence = send_evidence;
             options.policy.require_peer_evidence = require_peer_evidence;
             options.policy.allow_development_evidence = true;
             options.policy.required_backend_id = fake_backend_id;
+            return std::make_shared<attestation_service>(std::move(options));
+        }
+
+        static auto make_options(std::shared_ptr<attestation_service> service) -> stream_options
+        {
+            stream_options options;
+            options.service = std::move(service);
+            options.transcript_id = 1001;
             options.handshake_timeout = std::chrono::milliseconds{2000};
             return options;
         }
@@ -89,14 +100,15 @@ namespace
             auto responder_raw
                 = std::make_shared<streaming::spsc_queue::stream>(receive_spsc_queue_, send_spsc_queue_, io_scheduler_);
 
+            initiator_attestation_service_ = make_attestation_service(
+                backend, "initiator-enclave", "initiator-zone", initiator_sends_evidence_, initiator_requires_peer_evidence_);
+            responder_attestation_service_ = make_attestation_service(
+                backend, "responder-enclave", "responder-zone", responder_sends_evidence_, responder_requires_peer_evidence_);
+
             initiator_stream_ = std::make_shared<streaming::attestation::stream>(
-                std::move(initiator_raw),
-                make_options(
-                    backend, "initiator-enclave", "initiator-zone", initiator_sends_evidence_, initiator_requires_peer_evidence_));
+                std::move(initiator_raw), make_options(initiator_attestation_service_));
             responder_stream_ = std::make_shared<streaming::attestation::stream>(
-                std::move(responder_raw),
-                make_options(
-                    backend, "responder-enclave", "responder-zone", responder_sends_evidence_, responder_requires_peer_evidence_));
+                std::move(responder_raw), make_options(responder_attestation_service_));
 
             bool initiator_handshake_complete = false;
             bool responder_handshake_complete = false;
@@ -160,6 +172,14 @@ namespace
         {
             return responder_requires_peer_evidence_;
         }
+        [[nodiscard]] auto initiator_session_count() const -> size_t
+        {
+            return initiator_attestation_service_ ? initiator_attestation_service_->session_count() : 0;
+        }
+        [[nodiscard]] auto responder_session_count() const -> size_t
+        {
+            return responder_attestation_service_ ? responder_attestation_service_->session_count() : 0;
+        }
     };
 
     class mutually_attested_streaming_spsc_setup final : public attested_streaming_spsc_setup_base
@@ -215,6 +235,8 @@ template<class T> CORO_TASK(bool) coro_rpc_round_trip_over_attested_stream(T& li
     CORO_ASSERT_EQ(responder_context.peer_identity.enclave_id, std::string{"initiator-enclave"});
     CORO_ASSERT_EQ(initiator_context.backend_id, std::string{fake_backend_id});
     CORO_ASSERT_EQ(responder_context.backend_id, std::string{fake_backend_id});
+    CORO_ASSERT_EQ(lib.initiator_session_count(), 1U);
+    CORO_ASSERT_EQ(lib.responder_session_count(), 1U);
 
     int result = 0;
     CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->add(20, 22, result), rpc::error::OK());

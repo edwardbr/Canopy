@@ -18,6 +18,7 @@ namespace streaming::attestation
     namespace
     {
         using canopy::security::attestation::cmw;
+        using canopy::security::attestation::establish_session_params;
         using canopy::security::attestation::evidence_binding;
         using canopy::security::attestation::identity;
 
@@ -431,11 +432,14 @@ namespace streaming::attestation
 
         auto send_hello(handshake_role role) -> coro::task<coro::net::io_status>
         {
+            if (!options.service)
+                co_return protocol_status();
+
             hello_payload hello;
-            hello.local_identity = options.local_identity;
-            hello.backend_id = options.backend ? options.backend->backend_id() : "";
-            hello.will_send_evidence = options.policy.send_local_evidence;
-            hello.requires_peer_evidence = options.policy.require_peer_evidence;
+            hello.local_identity = options.service->local_identity();
+            hello.backend_id = options.service->backend_id();
+            hello.will_send_evidence = options.service->should_send_local_evidence();
+            hello.requires_peer_evidence = options.service->requires_peer_evidence();
 
             frame value;
             value.kind = role == handshake_role::client ? frame_kind::client_hello_attest : frame_kind::server_hello_attest;
@@ -446,20 +450,23 @@ namespace streaming::attestation
 
         auto send_evidence(handshake_role role) -> coro::task<coro::net::io_status>
         {
-            if (!options.policy.send_local_evidence)
-                co_return ok_status();
-            if (!options.backend)
+            if (!options.service)
                 co_return protocol_status();
+            if (!options.service->should_send_local_evidence())
+                co_return ok_status();
 
-            evidence_binding binding;
-            binding.subject = options.local_identity;
-            binding.transcript_id = options.transcript_id;
-            binding.nonce = make_nonce(options.transcript_id, options.local_identity, role);
+            auto evidence = options.service->produce_evidence(
+                options.transcript_id, make_nonce(options.transcript_id, options.service->local_identity(), role));
+            if (!evidence.accepted)
+            {
+                RPC_WARNING("Attestation service failed to produce local evidence: {}", evidence.reason);
+                co_return protocol_status();
+            }
 
             frame value;
             value.kind = frame_kind::evidence;
             value.transcript_id = options.transcript_id;
-            value.body = options.backend->produce_evidence(binding);
+            value.body = std::move(evidence.evidence);
             context.local_evidence_sent = true;
             co_return co_await send_frame(value);
         }
@@ -504,7 +511,7 @@ namespace streaming::attestation
             context.peer_identity = peer_hello.local_identity;
             if (!peer_hello.will_send_evidence)
             {
-                if (options.policy.require_peer_evidence)
+                if (!options.service || options.service->requires_peer_evidence())
                 {
                     reason = "peer did not send required attestation evidence";
                     co_return false;
@@ -513,9 +520,9 @@ namespace streaming::attestation
                 co_return true;
             }
 
-            if (!options.backend)
+            if (!options.service)
             {
-                reason = "no attestation backend configured";
+                reason = "no attestation service configured";
                 co_return false;
             }
 
@@ -539,7 +546,7 @@ namespace streaming::attestation
                 peer_hello.local_identity,
                 local_role == handshake_role::client ? handshake_role::server : handshake_role::client);
 
-            auto verdict = options.backend->verify_evidence(value.body, binding, options.policy);
+            auto verdict = options.service->verify_peer_evidence(value.body, std::move(binding));
             if (!verdict.accepted)
             {
                 reason = verdict.reason;
@@ -587,11 +594,11 @@ namespace streaming::attestation
         {
             if (complete)
                 co_return true;
-            if (!underlying || underlying->is_closed())
+            if (!underlying || underlying->is_closed() || !options.service)
                 co_return false;
 
             context = {};
-            context.local_identity = options.local_identity;
+            context.local_identity = options.service->local_identity();
             context.transcript_id = options.transcript_id;
 
             auto status = co_await send_hello(role);
@@ -622,14 +629,14 @@ namespace streaming::attestation
                 co_return false;
             }
 
-            context.established = true;
-            context.session_id = canopy::security::attestation::make_session_id(
-                context.local_identity, context.peer_identity, context.transcript_id);
-            if (!context.peer_attested && context.backend_id.empty() && options.backend)
-            {
-                context.backend_id = options.backend->backend_id();
-                context.level = options.backend->level();
-            }
+            establish_session_params session_params;
+            session_params.peer_identity = context.peer_identity;
+            session_params.transcript_id = context.transcript_id;
+            session_params.local_evidence_sent = context.local_evidence_sent;
+            session_params.peer_attested = context.peer_attested;
+            session_params.verified_backend_id = context.backend_id;
+            session_params.verified_level = context.level;
+            context = options.service->establish_session(session_params);
             complete = true;
             co_return true;
         }
