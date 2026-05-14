@@ -531,9 +531,8 @@ function(
       add_custom_command(
         OUTPUT ${nanopb_stamp_file} ${nanopb_sources_cmake}
         COMMAND
-          ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D
-          NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR} -D PROTO_DIR=${proto_dir} -D
-          OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
+          ${CMAKE_COMMAND} -D PROTOC=${CANOPY_NANOPB_PROTOC_EXECUTABLE} -D NANOPB_GENERATOR=${CANOPY_NANOPB_GENERATOR}
+          -D PROTO_DIR=${proto_dir} -D OUTPUT_DIR=${output_path}/src -D CPP_OUT_DIR=${nanopb_src_root} -D
           NANOPB_SOURCES_CMAKE=${nanopb_sources_cmake} -D
           PROTOBUF_PYTHON_SOURCE_DIR=${CANOPY_PROTOBUF_PYTHON_SOURCE_DIR} -D
           PROTOBUF_SOURCE_PROTO_DIR=${CANOPY_PROTOBUF_SOURCE_PROTO_DIR} -P

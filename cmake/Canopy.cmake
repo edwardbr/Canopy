@@ -350,8 +350,7 @@ if(NOT DEPENDENCIES_LOADED)
             if(GIT_SUBMOD_RESULT EQUAL "0")
               set(CANOPY_SUBMODULE_BRANCH "")
               execute_process(
-                COMMAND ${GIT_EXECUTABLE} config -f .gitmodules --get
-                        submodule.${CANOPY_SUBMODULE_PATH}.branch
+                COMMAND ${GIT_EXECUTABLE} config -f .gitmodules --get submodule.${CANOPY_SUBMODULE_PATH}.branch
                 WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
                 OUTPUT_VARIABLE CANOPY_SUBMODULE_BRANCH
                 OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -369,8 +368,8 @@ if(NOT DEPENDENCIES_LOADED)
             endif()
             if(GIT_SUBMOD_RESULT EQUAL "0" AND CANOPY_SUBMODULE_BRANCH)
               execute_process(
-                COMMAND ${GIT_EXECUTABLE} -C ${CANOPY_SUBMODULE_PATH} checkout --force -B
-                        ${CANOPY_SUBMODULE_BRANCH} refs/remotes/origin/${CANOPY_SUBMODULE_BRANCH}
+                COMMAND ${GIT_EXECUTABLE} -C ${CANOPY_SUBMODULE_PATH} checkout --force -B ${CANOPY_SUBMODULE_BRANCH}
+                        refs/remotes/origin/${CANOPY_SUBMODULE_BRANCH}
                 WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/.."
                 RESULT_VARIABLE GIT_SUBMOD_RESULT)
             endif()

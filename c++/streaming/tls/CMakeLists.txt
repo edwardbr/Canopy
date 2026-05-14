@@ -17,10 +17,7 @@ target_link_options(streaming_tls PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   streaming_tls
   PUBLIC streaming
-  PRIVATE OpenSSL::Crypto
-          OpenSSL::SSL
-          rpc
-          libcoro)
+  PRIVATE OpenSSL::Crypto OpenSSL::SSL rpc libcoro)
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_tls PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
