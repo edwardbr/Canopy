@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -24,6 +25,11 @@ namespace websocket_demo
 {
     namespace v1
     {
+        // In-enclave video effect bitmask (matches i_calculator::
+        // set_video_effects). Browser toggles these live.
+        constexpr uint32_t effect_genie = 1u;  // genie sprite overlay
+        constexpr uint32_t effect_invert = 2u; // invert luma (photo-negative)
+
         // Per-connection video processing with a single-slot "latest frame
         // wins" mailbox.
         //
@@ -66,9 +72,14 @@ namespace websocket_demo
             vpx_codec_enc_cfg_t encoder_cfg_{};
             int64_t encode_pts_ = 0;
 
+            // Effect bitmask, set live from the browser via set_effects().
+            // atomic: written on the RPC-dispatch path, read on the worker.
+            std::atomic<uint32_t> effects_{effect_genie};
+
             bool ensure_decoder();
             bool ensure_encoder(unsigned int width, unsigned int height);
-            static void transform_frame(vpx_image_t* img);
+            void transform_frame(vpx_image_t* img);
+            static void invert_luma(vpx_image_t* img);
 
             // Heavy path: decode -> transform -> encode -> co_await push.
             CORO_TASK(void)
@@ -86,6 +97,7 @@ namespace websocket_demo
 
             int set_sink(const rpc::shared_ptr<i_context_event>& sink);
             void set_scheduler(const std::shared_ptr<coro::scheduler>& scheduler);
+            void set_effects(uint32_t effects);
 
             CORO_TASK(int)
             forward_frame(

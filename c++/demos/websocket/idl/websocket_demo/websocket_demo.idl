@@ -43,6 +43,11 @@ namespace websocket_demo
             // generator. The egress side rides on i_context_event::push_frame
             // registered via the existing set_callback handshake.
             [post] int push_video_frame(uint64_t seq, uint64_t pts_us, uint32_t flags, const std::vector<uint8_t>& payload);
+
+            // Live control of the in-enclave video effects. Regular (non-post)
+            // call so the browser gets confirmation. `effects` is a bitmask:
+            // bit 0 = genie sprite overlay, bit 1 = invert luma.
+            int set_video_effects(uint32_t effects);
         };
 
         interface i_enclave_websocket_server

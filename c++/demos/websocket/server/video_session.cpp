@@ -3,6 +3,8 @@
 
 #include "video_session.h"
 
+#include "genie_sprite.h"
+
 #include <utility>
 
 #include <vpx/vp8cx.h>
@@ -40,6 +42,11 @@ namespace websocket_demo
             // The scheduler, never the service — see the header note on the
             // service -> demo -> video_session reference cycle.
             scheduler_ = scheduler;
+        }
+
+        void video_session::set_effects(uint32_t effects)
+        {
+            effects_.store(effects, std::memory_order_relaxed);
         }
 
         bool video_session::ensure_decoder()
@@ -92,11 +99,11 @@ namespace websocket_demo
             return true;
         }
 
-        // Phase 2 transform: invert the luma plane. Produces an unmistakable
-        // photo-negative so the round-trip through the enclave codec is
-        // visually obvious. Later phases replace this with sprite compositing
-        // and face-anchored genie rendering on the same decoded frame.
-        void video_session::transform_frame(vpx_image_t* img)
+        // The in-enclave processing seam. Phase 2 proved the codec loop with a
+        // luma invert; Phase 3 composites a fixed-position genie sprite over
+        // the otherwise-unmodified frame. Phase 4 will anchor the sprite to a
+        // detected face; that change stays entirely inside this seam.
+        void video_session::invert_luma(vpx_image_t* img)
         {
             unsigned char* y = img->planes[VPX_PLANE_Y];
             const int stride = img->stride[VPX_PLANE_Y];
@@ -108,6 +115,18 @@ namespace websocket_demo
                 for (unsigned int col = 0; col < w; ++col)
                     line[col] = static_cast<unsigned char>(255 - line[col]);
             }
+        }
+
+        void video_session::transform_frame(vpx_image_t* img)
+        {
+            const uint32_t fx = effects_.load(std::memory_order_relaxed);
+            // Invert first, then composite the genie on top so the sprite
+            // always renders with correct colours regardless of the invert
+            // toggle.
+            if (fx & effect_invert)
+                invert_luma(img);
+            if (fx & effect_genie)
+                composite_genie_sprite(img);
         }
 
         CORO_TASK(void)

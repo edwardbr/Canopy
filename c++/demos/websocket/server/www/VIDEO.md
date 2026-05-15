@@ -5,12 +5,13 @@ A fourth mode in the websocket demo alongside Echo / Calculator / Chat.
 **Phase 1 (complete):** `[post]` fire-and-forget pipe proven end-to-end with
 real video bytes browser → enclave → browser.
 
-**Phase 2 (complete):** the enclave genuinely processes frames. libvpx is
-vendored; `video_session` VP8-decodes each inbound chunk, applies a visible
-transform (luma invert → photo-negative), VP8 re-encodes, and pushes it back.
-Includes the latency/smoothness work (all-keyframe, frame-drop, a
-latest-frame-wins worker, Release build). Next is Phase 3 (genie sprite) — see
-Roadmap.
+**Phases 2–3 (complete):** the enclave genuinely processes frames. libvpx
+(pinned submodule) VP8-decodes each chunk; `transform_frame` applies a
+fixed-position procedural genie sprite and/or a luma invert, **toggled live
+from the browser** via `set_video_effects`; then VP8 re-encodes and pushes
+back. Includes the latency/smoothness work (all-keyframe, frame-drop,
+latest-frame-wins worker, Release build). Next is Phase 4 (face detection +
+SGX port) — see Roadmap.
 
 Branch: `sgx_iouring_video_genie` (forked from `sgx_iouring`).
 
@@ -155,7 +156,8 @@ Two fixes were required and both are general improvements, not video-specific:
 ### Browser (`server/www/`)
 
 * `index.html` — Video radio + two-pane panel (local preview / enclave output)
-  + Start/Stop + a sent/received/dropped counter.
+  + Start/Stop + **Genie / Invert** effect checkboxes + a
+  sent/received/dropped counter.
 * `client.js` — WebCodecs VP8 pipeline. One `i_context_event_stub` handles
   both `piece` (chat) and `push_frame` (video). VP8 chosen because every
   modern Chromium ships a software VP8 codec with no platform dependency.
@@ -221,14 +223,27 @@ pinned submodule; VP8 decode → luma-invert → VP8 encode in `video_session`,
 with the latest-frame-wins worker, all-keyframe streaming, and Release build
 for throughput. Proven end-to-end at ~½ s, snappy.
 
-Phase 3 — static genie sprite composited at a fixed canvas position; still no
-detection.
+Phase 3 — **static genie sprite at a fixed position (done).** Procedural
+RGBA genie+lamp placeholder (`genie_sprite.{h,cpp}`), alpha-composited onto
+the decoded I420 frame (RGB→YUV 4:2:0) in the `transform_frame` seam. Sprite
+is drawn in code (no asset file) to stay deterministic for the SGX
+reproducible build.
+
+Phase 3.1 — **live effect toggles (done).** `i_calculator::set_video_effects(
+uint32_t)` (regular RPC, scalar bitmask — no marshalling issues) drives a
+`std::atomic<uint32_t>` in `video_session`, read by `transform_frame`.
+Browser has **Genie** and **Invert** checkboxes; toggled live, synced on
+connect. Invert is applied before the genie composite so the sprite always
+renders with correct colours. (Future per-stream controls — sprite
+position/scale, effect intensity — extend the same bitmask/channel.)
 
 Phase 4 — face detection (BlazeFace or a small ONNX model; candidate runtime
 `onnxruntime` minimal build or `ggml`), sprite anchored to detected
-landmarks. **Also the SGX/libvpx port**: build libvpx with the enclave
-toolchain and make it a reproducible/deterministic build so MRENCLAVE is
-stable (the pinned shallow submodule is the groundwork for this).
+landmarks instead of the fixed corner — drops into the same
+`transform_frame`/compositor seam. **Also the SGX/libvpx port**: build libvpx
+with the enclave toolchain and make it a reproducible/deterministic build so
+MRENCLAVE is stable (the pinned shallow submodule is the groundwork for
+this).
 
 Phase 5 — smoke-from-lamp particle animation resolving into the genie head at
 the detected face position.

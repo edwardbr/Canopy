@@ -185,6 +185,12 @@ namespace websocket_demo
             {
                 CO_RETURN CO_AWAIT video_.forward_frame(seq, pts_us, flags, payload);
             }
+
+            CORO_TASK(int) set_video_effects(uint32_t effects) override
+            {
+                video_.set_effects(effects);
+                CO_RETURN rpc::error::OK();
+            }
         };
 
 #ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY

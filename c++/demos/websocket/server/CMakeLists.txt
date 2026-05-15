@@ -62,6 +62,7 @@ add_executable(
   websocket_handler.cpp
   demo_zone.cpp
   video_session.cpp
+  genie_sprite.cpp
   llama_server_engine.cpp)
 
 target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES}
@@ -127,7 +128,8 @@ if(CANOPY_BUILD_ENCLAVE
       http_client_connection.cpp
       rest_handler.cpp
       websocket_handler.cpp
-      video_session.cpp)
+      video_session.cpp
+      genie_sprite.cpp)
 
   add_library(websocket_demo_enclave_compile_fit STATIC ${WEBSOCKET_DEMO_ENCLAVE_SRCS})
   target_compile_definitions(

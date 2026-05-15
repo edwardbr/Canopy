@@ -39,6 +39,24 @@ const videoRemoteCtx = videoRemote.getContext('2d');
 const videoStartBtn = document.getElementById('videoStartBtn');
 const videoStopBtn = document.getElementById('videoStopBtn');
 const videoStatsEl = document.getElementById('videoStats');
+const videoEffectGenie = document.getElementById('videoEffectGenie');
+const videoEffectInvert = document.getElementById('videoEffectInvert');
+
+// Must match i_calculator::set_video_effects / video_session.h.
+const EFFECT_GENIE = 1;
+const EFFECT_INVERT = 2;
+
+async function sendVideoEffects() {
+    if (!calc) return;
+    let mask = 0;
+    if (videoEffectGenie.checked) mask |= EFFECT_GENIE;
+    if (videoEffectInvert.checked) mask |= EFFECT_INVERT;
+    try {
+        await calc.set_video_effects(mask);
+    } catch (err) {
+        console.warn('set_video_effects failed:', err);
+    }
+}
 
 // Calculator elements
 const firstValueInput = document.getElementById('firstValue');
@@ -118,6 +136,8 @@ function setUIConnected(connected) {
     // Video controls
     videoStartBtn.disabled = !connected || videoState.active;
     videoStopBtn.disabled = !connected || !videoState.active;
+    videoEffectGenie.disabled = !connected;
+    videoEffectInvert.disabled = !connected;
 }
 
 // Mode switching
@@ -195,6 +215,8 @@ function connect() {
             connectTime = Date.now();
             uptimeInterval = setInterval(updateUptime, 1000);
             addMessage('system', '✓ Connected and ready');
+            // Sync the enclave to the current toggle state on connect.
+            sendVideoEffects();
         },
         onClose: function(code, reason) {
             calc = null;
@@ -635,6 +657,8 @@ sendChatBtn.addEventListener('click', sendChatMessage);
 clearBtn.addEventListener('click', clearMessages);
 videoStartBtn.addEventListener('click', startVideo);
 videoStopBtn.addEventListener('click', stopVideo);
+videoEffectGenie.addEventListener('change', sendVideoEffects);
+videoEffectInvert.addEventListener('change', sendVideoEffects);
 
 messageInput.addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
