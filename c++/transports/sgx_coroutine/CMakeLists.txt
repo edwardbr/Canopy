@@ -37,6 +37,29 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     set_target_properties(transport_sgx_coroutine PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
   endif()
 
+  add_library(transport_sgx_coroutine_enclave_service_host_test STATIC enclave/src/service.cpp)
+  target_compile_definitions(transport_sgx_coroutine_enclave_service_host_test PRIVATE ${CANOPY_DEFINES}
+                                                                                       CANOPY_BUILD_ENCLAVE)
+  target_compile_options(transport_sgx_coroutine_enclave_service_host_test PRIVATE ${CANOPY_COMPILE_OPTIONS}
+                                                                                   ${CANOPY_WARN_OK})
+  target_include_directories(transport_sgx_coroutine_enclave_service_host_test PRIVATE ${CANOPY_INCLUDES})
+  target_link_libraries(
+    transport_sgx_coroutine_enclave_service_host_test
+    PUBLIC transport_sgx_coroutine_enclave_headers
+    PRIVATE canopy::security_attestation
+            canopy_io_uring
+            streaming
+            transport_streaming
+            rpc::rpc)
+  target_link_options(transport_sgx_coroutine_enclave_service_host_test PRIVATE ${CANOPY_LINK_OPTIONS})
+  set_property(TARGET transport_sgx_coroutine_enclave_service_host_test
+               PROPERTY COMPILE_PDB_NAME transport_sgx_coroutine_enclave_service_host_test)
+
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(transport_sgx_coroutine_enclave_service_host_test PROPERTIES CXX_CLANG_TIDY
+                                                                                      "${CLANG_TIDY_COMMAND}")
+  endif()
+
   add_library(transport_sgx_coroutine_sgxssl_time_enclave STATIC enclave/src/sgxssl_time.cpp)
   target_compile_definitions(transport_sgx_coroutine_sgxssl_time_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES}
                                                                                  CANOPY_BUILD_ENCLAVE)

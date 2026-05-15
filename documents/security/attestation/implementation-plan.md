@@ -47,12 +47,13 @@ fake backend, a first L4 `attestation_service`, an attestation stream
 decorator, normal RPC traffic over that decorator, AES-GCM envelope helpers,
 `rpc::enclave_service` send/post hooks, and the first route-state gate for
 `add_ref`. It now also has the first generated-IDL service-level route
-attestation handshake payload carried by `i_marshaller::handshake()`. It is
-**not** completion of Phase 1 or Phase 2 as written below,
+attestation handshake payload carried by `i_marshaller::handshake()` and
+SGX-sim host integration coverage that drives that handshake through a real
+transport from an unknown-route `add_ref`. It is **not** completion of Phase 1
+or Phase 2 as written below,
 because the protected envelope still needs a generated-RPC runtime test through
-`rpc::enclave_service`, build-time backend selection, direct route-handshake
-integration coverage through transport/add_ref, and protected encrypted forms
-for the remaining marshaller methods.
+`rpc::enclave_service`, build-time backend selection, and protected encrypted
+forms for the remaining marshaller methods.
 
 ### Implemented
 
@@ -223,6 +224,14 @@ for the remaining marshaller methods.
   after the attestation stream handshake in two cases:
   - mutually attested SPSC peer services;
   - unattested client to attested server.
+- Service-level route-attestation integration coverage also exists in
+  `c++/tests/test_host/attested_streaming_transport_poc_suite.cpp`. It builds
+  two `rpc::enclave_service` instances, drives an unknown-route `add_ref`
+  through `rpc::stream_transport`, and proves that:
+  - mutual fake Evidence marks both route-state maps `attested` with
+    established security contexts;
+  - an explicitly permitted no-Evidence client marks the responder route
+    `unattested_allowed` while the client still verifies the attested server.
 
 ### Verified
 
@@ -267,6 +276,10 @@ for the remaining marshaller methods.
 - `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
 - `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_list_tests`
 - `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
+- `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 
 ### Not Yet Implemented
 
@@ -281,9 +294,6 @@ for the remaining marshaller methods.
   backend.
 - Generated-RPC runtime coverage for protected `send`/`post` through
   `rpc::enclave_service`.
-- Direct integration coverage proving that an unknown `add_ref` route drives
-  the new service-level `i_marshaller::handshake()` payload through a transport
-  and updates both enclave-service route-state maps.
 - Encrypted protected payloads for `add_ref`, `release`, `try_cast`,
   `object_released`, or `transport_down`. `add_ref` currently has an opt-in
   route-state gate and typed payload carrier fields, but not encrypted
@@ -296,11 +306,9 @@ for the remaining marshaller methods.
 
 ### Current Best Next Step
 
-The next implementation slice should add direct integration coverage for the
-new service-level `handshake()` path, ideally by driving an unknown-route
-`add_ref` through a real transport and asserting that both route-state maps are
-updated correctly. After that, add generated-RPC runtime coverage that drives
-protected `send`/`post` through `rpc::enclave_service` and extend
+The next implementation slice should add generated-RPC runtime coverage that
+drives protected `send`/`post` through `rpc::enclave_service`, rather than only
+through direct protected-envelope helper tests. After that, extend
 reference-control protection in this order: encrypted `add_ref`, attested
 `release`, then `try_cast` / `object_released`.
 

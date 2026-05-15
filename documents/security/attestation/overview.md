@@ -11,10 +11,11 @@ Design and implementation-tracking document. The current repository has a
 development fake-attestation backend, an attestation stream decorator, an
 enclave-service protected `send`/`post` envelope, route-state storage, and an
 opt-in `add_ref` route-attestation gate backed by the first service-level
-`i_marshaller::handshake()` payload. It does not yet have real SGX/DCAP
-evidence production, direct transport/add_ref integration coverage for the new
-service-level handshake, or protected encrypted carriers for every marshaller
-method.
+`i_marshaller::handshake()` payload. SGX-sim host tests now drive an
+unknown-route `add_ref` through `rpc::stream_transport` and verify the
+service-level handshake updates both enclave-service route-state maps. The
+repository does not yet have real SGX/DCAP evidence production or protected
+encrypted carriers for every marshaller method.
 
 This section describes the intended security model for enclave-to-enclave
 Canopy RPC:

@@ -12,6 +12,7 @@ endif()
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   set(SGX_COROUTINE_TRANSPORT_LIB transport_sgx_coroutine)
   set(SGX_COROUTINE_TRANSPORT_TEST_LIB transport_sgx_coroutine_test)
+  set(SGX_COROUTINE_ENCLAVE_SERVICE_HOST_TEST_LIB transport_sgx_coroutine_enclave_service_host_test)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
@@ -140,6 +141,7 @@ target_link_libraries(
          ${SGX_TRANSPORT_TEST_LIB}
          ${SGX_COROUTINE_TRANSPORT_LIB}
          ${SGX_COROUTINE_TRANSPORT_TEST_LIB}
+         ${SGX_COROUTINE_ENCLAVE_SERVICE_HOST_TEST_LIB}
          ${STREAMING_TRANSPORT_LIB}
          ${STREAMING_TRANSPORT_TEST_LIB}
          yas_common

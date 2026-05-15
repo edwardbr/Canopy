@@ -131,10 +131,13 @@ unattested, failed, or marked as handshaking, and unknown routes trigger the
 route-addressed `handshake()` path before failing closed. That handshake now
 has generated RPC/YAS request and response payloads for fake Evidence,
 backend-neutral identity, transcript id, nonce, backend id, security level,
-and a structured accept/reject verdict. The `add_ref` and `release` parameter
-structs now include `payload_type_id` and `payload` fields for the future
-encrypted reference-control carrier, but those fields are not yet interpreted
-as a protected payload.
+and a structured accept/reject verdict. SGX-sim host integration tests now
+drive this path through `rpc::stream_transport` from an unknown-route
+`add_ref`, including both mutual fake attestation and explicitly permitted
+unattested-client policy. The `add_ref` and `release` parameter structs now
+include `payload_type_id` and `payload` fields for the future encrypted
+reference-control carrier, but those fields are not yet interpreted as a
+protected payload.
 
 ## Plaintext Payload
 
