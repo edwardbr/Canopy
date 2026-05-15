@@ -71,11 +71,17 @@ namespace rpc
             -> std::shared_ptr<canopy::security::attestation::attestation_service>;
         void set_protected_rpc_enabled(bool enabled);
         [[nodiscard]] bool protected_rpc_enabled() const;
+        void set_add_ref_attestation_required(bool required);
+        [[nodiscard]] bool add_ref_attestation_required() const;
+        void set_route_unattested_allowed(
+            rpc::destination_zone route_zone_id,
+            bool allowed);
 
         void add_parent_zone_proxy(const std::shared_ptr<rpc::service_proxy>& proxy) { add_zone_proxy(proxy); }
 
         CORO_TASK(send_result) send(send_params params) override;
         CORO_TASK(void) post(post_params params) override;
+        CORO_TASK(standard_result) add_ref(add_ref_params params) override;
         CORO_TASK(send_result)
         outbound_send(
             send_params params,
@@ -84,18 +90,27 @@ namespace rpc
         outbound_post(
             post_params params,
             std::shared_ptr<transport> transport) override;
+        CORO_TASK(standard_result)
+        outbound_add_ref(
+            add_ref_params params,
+            std::shared_ptr<transport> transport) override;
 
     private:
         [[nodiscard]] auto find_security_context_for_protected_call(
             rpc::caller_zone caller_zone_id,
             rpc::destination_zone destination_zone_id) const
             -> std::optional<canopy::security::attestation::security_context>;
+        CORO_TASK(standard_result)
+        ensure_add_ref_route_allowed(
+            rpc::destination_zone route_zone_id,
+            const char* operation);
 
         mutable std::mutex controller_mutex_;
         std::shared_ptr<rpc::io_uring::controller> io_uring_controller_;
 
         mutable std::mutex security_context_mutex_;
         std::unordered_map<rpc::destination_zone, canopy::security::attestation::route_attestation_state> attestation_route_states_;
+        bool add_ref_attestation_required_{false};
 
         mutable std::mutex attestation_service_mutex_;
         std::shared_ptr<canopy::security::attestation::attestation_service> attestation_service_;

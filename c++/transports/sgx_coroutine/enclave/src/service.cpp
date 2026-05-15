@@ -128,6 +128,114 @@ namespace rpc
         return protected_rpc_enabled_;
     }
 
+    void enclave_service::set_add_ref_attestation_required(bool required)
+    {
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        add_ref_attestation_required_ = required;
+    }
+
+    bool enclave_service::add_ref_attestation_required() const
+    {
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        return add_ref_attestation_required_;
+    }
+
+    void enclave_service::set_route_unattested_allowed(
+        rpc::destination_zone route_zone_id,
+        bool allowed)
+    {
+        if (!route_zone_id.is_set())
+            return;
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(route_zone_id);
+        if (allowed)
+        {
+            canopy::security::attestation::route_attestation_state state;
+            state.status = canopy::security::attestation::route_attestation_status::unattested_allowed;
+            attestation_route_states_[route_zone_id] = std::move(state);
+            return;
+        }
+
+        if (item != attestation_route_states_.end()
+            && item->second.status == canopy::security::attestation::route_attestation_status::unattested_allowed)
+        {
+            attestation_route_states_.erase(item);
+        }
+    }
+
+    CORO_TASK(standard_result)
+    enclave_service::ensure_add_ref_route_allowed(
+        rpc::destination_zone route_zone_id,
+        const char* operation)
+    {
+        if (!add_ref_attestation_required())
+            CO_RETURN standard_result{rpc::error::OK(), {}};
+        if (!route_zone_id.is_set())
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+        if (route_zone_id == get_zone_id())
+            CO_RETURN standard_result{rpc::error::OK(), {}};
+
+        auto state = get_attestation_route_state(route_zone_id);
+        if (state.status == canopy::security::attestation::route_attestation_status::attested && state.context
+            && state.context->established)
+        {
+            CO_RETURN standard_result{rpc::error::OK(), {}};
+        }
+        if (state.status == canopy::security::attestation::route_attestation_status::unattested_allowed)
+            CO_RETURN standard_result{rpc::error::OK(), {}};
+        if (state.status == canopy::security::attestation::route_attestation_status::failed)
+        {
+            RPC_WARNING(
+                "add_ref attestation rejected for route {} during {}: previous failure {}",
+                route_zone_id.get_subnet(),
+                operation,
+                state.failure_reason);
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
+        if (state.status == canopy::security::attestation::route_attestation_status::handshaking)
+        {
+            RPC_WARNING("add_ref attestation pending for route {} during {}", route_zone_id.get_subnet(), operation);
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
+
+        canopy::security::attestation::route_attestation_state handshaking_state;
+        handshaking_state.status = canopy::security::attestation::route_attestation_status::handshaking;
+        set_attestation_route_state(route_zone_id, std::move(handshaking_state));
+
+        handshake_params params;
+        params.protocol_version = rpc::HIGHEST_SUPPORTED_VERSION;
+        params.caller_zone_id = get_zone_id();
+        params.destination_zone_id = route_zone_id;
+        auto handshake = CO_AWAIT child_service::handshake(std::move(params));
+
+        auto post_handshake_state = get_attestation_route_state(route_zone_id);
+        if (handshake.error_code == rpc::error::OK()
+            && post_handshake_state.status == canopy::security::attestation::route_attestation_status::attested
+            && post_handshake_state.context && post_handshake_state.context->established)
+        {
+            CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
+        }
+        if (handshake.error_code == rpc::error::OK()
+            && post_handshake_state.status == canopy::security::attestation::route_attestation_status::unattested_allowed)
+        {
+            CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
+        }
+
+        canopy::security::attestation::route_attestation_state failed_state;
+        failed_state.status = canopy::security::attestation::route_attestation_status::failed;
+        failed_state.failure_epoch = state.failure_epoch + 1;
+        failed_state.failure_reason = "add_ref route attestation handshake did not establish an allowed route";
+        set_attestation_route_state(route_zone_id, std::move(failed_state));
+
+        RPC_WARNING(
+            "add_ref attestation failed for route {} during {}, handshake error {}",
+            route_zone_id.get_subnet(),
+            operation,
+            handshake.error_code);
+        CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+    }
+
     auto enclave_service::find_security_context_for_protected_call(
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id) const -> std::optional<canopy::security::attestation::security_context>
@@ -137,6 +245,17 @@ namespace rpc
         if (!destination_zone_id.is_set())
             return std::nullopt;
         return get_security_context(destination_zone_id);
+    }
+
+    CORO_TASK(standard_result)
+    enclave_service::add_ref(add_ref_params params)
+    {
+        auto route_result
+            = CO_AWAIT ensure_add_ref_route_allowed(params.remote_object_id.as_zone(), "inbound add_ref remote object");
+        if (route_result.error_code != rpc::error::OK())
+            CO_RETURN route_result;
+
+        CO_RETURN CO_AWAIT child_service::add_ref(std::move(params));
     }
 
     CORO_TASK(send_result)
@@ -257,5 +376,21 @@ namespace rpc
 
         CO_AWAIT child_service::outbound_post(std::move(request.value.params), std::move(transport));
         CO_RETURN;
+    }
+
+    CORO_TASK(standard_result)
+    enclave_service::outbound_add_ref(
+        add_ref_params params,
+        std::shared_ptr<transport> transport)
+    {
+        if (transport)
+        {
+            auto route_result = CO_AWAIT ensure_add_ref_route_allowed(
+                transport->get_adjacent_zone_id(), "outbound add_ref adjacent peer");
+            if (route_result.error_code != rpc::error::OK())
+                CO_RETURN route_result;
+        }
+
+        CO_RETURN CO_AWAIT child_service::outbound_add_ref(std::move(params), std::move(transport));
     }
 }
