@@ -14,6 +14,7 @@
 #include <vpx/vpx_decoder.h>
 #include <vpx/vpx_encoder.h>
 
+#include "face_track.h"
 #include "websocket_demo/websocket_demo.h"
 
 // Use the build-agnostic rpc::coro::scheduler spelling (libcoro on host, the
@@ -80,6 +81,9 @@ namespace websocket_demo
             // Effect bitmask, set live from the browser via set_effects().
             // atomic: written on the RPC-dispatch path, read on the worker.
             std::atomic<uint32_t> effects_{effect_genie};
+
+            // Per-connection skin-region tracker; only touched by the worker.
+            face_tracker face_tracker_;
 
             bool ensure_decoder();
             bool ensure_encoder(unsigned int width, unsigned int height);

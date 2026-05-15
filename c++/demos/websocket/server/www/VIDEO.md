@@ -10,9 +10,10 @@ real video bytes browser → enclave → browser.
 fixed-position procedural genie sprite and/or a luma invert, **toggled live
 from the browser** via `set_video_effects`; then VP8 re-encodes and pushes
 back. Includes the latency/smoothness work (all-keyframe, frame-drop,
-latest-frame-wins worker, Release build). The SGX/libvpx enclave port is done
-and runtime-validated (genie video runs inside SGX sim); next is Phase 4b
-face detection — see Roadmap.
+latest-frame-wins worker, Release build). The SGX/libvpx enclave port and
+skin-region face tracking are done and runtime-validated (the genie tracks
+your face entirely inside SGX sim); Phase 5 (genie animation) is next — see
+Roadmap.
 
 Branch: `sgx_iouring_video_genie` (forked from `sgx_iouring`).
 
@@ -251,10 +252,14 @@ runs it: the full browser→enclave→browser genie video round-trip executes
 libvpx. Enclave libvpx is pure-C (no SIMD) so it's CPU-heavy but functional;
 SIMD pinning is a later optimisation.
 
-Phase 4b — face detection (BlazeFace or a small ONNX model; candidate runtime
-`onnxruntime` minimal build or `ggml`), sprite anchored to detected
-landmarks instead of the fixed corner — drops into the same
-`transform_frame`/compositor seam.
+Phase 4b — **face tracking: DONE (host + in-SGX validated).** No ML: skin-
+chroma cluster scan over the I420 U/V planes → mean/σ bounding box → EMA
+smoothing (`face_track.{h,cpp}`), feeding a scaled/positioned genie via the
+now-parameterised `composite_genie_sprite`. Corner fallback when no skin.
+Pure integer plane math — needed *no* new enclave polyfill, runs in SGX
+unchanged. Tracks the dominant skin region (face+neck/hands), not strictly a
+face — the documented simple-by-design tradeoff; ggml (already in-enclave via
+llama.cpp) is the heavier upgrade path if real detection is ever needed.
 
 Phase 5 — smoke-from-lamp particle animation resolving into the genie head at
 the detected face position.

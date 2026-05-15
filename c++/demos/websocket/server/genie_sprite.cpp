@@ -15,7 +15,6 @@ namespace websocket_demo
         {
             constexpr int SPR_W = 140;
             constexpr int SPR_H = 180;
-            constexpr int MARGIN = 10; // fixed offset from the frame's bottom-left
 
             struct rgba
             {
@@ -102,10 +101,18 @@ namespace websocket_demo
             inline uint8_t mix(uint8_t dst, uint8_t src, int a) { return clamp8((src * a + dst * (255 - a) + 127) / 255); }
         }
 
-        void composite_genie_sprite(vpx_image_t* img)
+        void genie_sprite_native_size(int& w, int& h)
+        {
+            w = SPR_W;
+            h = SPR_H;
+        }
+
+        void composite_genie_sprite(vpx_image_t* img, int ox, int oy, int draw_w, int draw_h)
         {
             const int fw = static_cast<int>(img->d_w);
             const int fh = static_cast<int>(img->d_h);
+            if (draw_w <= 0 || draw_h <= 0)
+                return;
 
             unsigned char* yp = img->planes[VPX_PLANE_Y];
             unsigned char* up = img->planes[VPX_PLANE_U];
@@ -114,30 +121,25 @@ namespace websocket_demo
             const int us = img->stride[VPX_PLANE_U];
             const int vs = img->stride[VPX_PLANE_V];
 
-            // Fixed position: bottom-left with a margin. Clamp so it always
-            // fits regardless of negotiated resolution.
-            int ox = MARGIN;
-            int oy = fh - SPR_H - MARGIN;
-            if (oy < 0)
-                oy = 0;
-            if (ox + SPR_W > fw)
-                ox = std::max(0, fw - SPR_W);
-
             const std::vector<uint8_t>& spr = sprite();
 
-            for (int sy = 0; sy < SPR_H; ++sy)
+            // Iterate destination pixels in the target rect; nearest-neighbour
+            // sample the fixed-size source sprite. Clipped to the frame.
+            for (int ddy = 0; ddy < draw_h; ++ddy)
             {
-                const int dy = oy + sy;
+                const int dy = oy + ddy;
                 if (dy < 0 || dy >= fh)
                     continue;
-                for (int sx = 0; sx < SPR_W; ++sx)
+                const int sy = ddy * SPR_H / draw_h;
+                for (int ddx = 0; ddx < draw_w; ++ddx)
                 {
+                    const int dx = ox + ddx;
+                    if (dx < 0 || dx >= fw)
+                        continue;
+                    const int sx = ddx * SPR_W / draw_w;
                     const uint8_t* px = &spr[(static_cast<size_t>(sy) * SPR_W + sx) * 4];
                     const int a = px[3];
                     if (a == 0)
-                        continue;
-                    const int dx = ox + sx;
-                    if (dx < 0 || dx >= fw)
                         continue;
 
                     yp[dy * ys + dx] = mix(yp[dy * ys + dx], rgb2y(px[0], px[1], px[2]), a);

@@ -125,8 +125,48 @@ namespace websocket_demo
             // toggle.
             if (fx & effect_invert)
                 invert_luma(img);
-            if (fx & effect_genie)
-                composite_genie_sprite(img);
+            if (!(fx & effect_genie))
+                return;
+
+            const int fw = static_cast<int>(img->d_w);
+            const int fh = static_cast<int>(img->d_h);
+            int nat_w = 0;
+            int nat_h = 0;
+            genie_sprite_native_size(nat_w, nat_h);
+
+            const face_box fb = face_tracker_.track(img);
+            int draw_h = 0;
+            int draw_w = 0;
+            int ox = 0;
+            int oy = 0;
+            if (fb.valid)
+            {
+                // Genie a bit larger than the skin region; aspect preserved.
+                draw_h = fb.h * 11 / 5; // ~2.2x
+                if (draw_h < nat_h / 2)
+                    draw_h = nat_h / 2;
+                if (draw_h > fh)
+                    draw_h = fh;
+                draw_w = draw_h * nat_w / nat_h;
+                // Centre on the face horizontally; bias up so the genie head
+                // sits above the face and the lamp around the chin.
+                ox = fb.cx - draw_w / 2;
+                oy = fb.cy - draw_h * 3 / 5;
+            }
+            else
+            {
+                // No skin detected: fixed bottom-left at native size, as
+                // before, so the genie is still visible.
+                draw_w = nat_w;
+                draw_h = nat_h;
+                ox = 10;
+                oy = fh - nat_h - 10;
+            }
+            if (ox < 0)
+                ox = 0;
+            if (oy < 0)
+                oy = 0;
+            composite_genie_sprite(img, ox, oy, draw_w, draw_h);
         }
 
         CORO_TASK(void)
