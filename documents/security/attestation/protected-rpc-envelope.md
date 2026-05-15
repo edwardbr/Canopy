@@ -122,30 +122,37 @@ encrypted payload unless an intermediate genuinely needs them for routing.
 send/post:        outer route fields visible; original interface/method/data encrypted
 try_cast:         target route visible; requested interface id encrypted
 add_ref:          route fields visible; current route-control option visible and AEAD-bound
-release:          route fields visible; release_options encrypted
+release:          route fields visible; release_options visible and AEAD-bound
 object_released:  route fields visible; released object details encrypted
 transport_down:   end-to-end protected form deferred
 ```
 
-The current concrete outer carrier is `send_params`/`post_params`. Protected
-forms of `add_ref`, `release`, `try_cast`, and `object_released` may need
-method-specific carriers or a control-RPC encoding before implementation. They
-must not expose valid application method ids to intermediates.
+The current concrete outer carrier for call-like traffic is
+`send_params`/`post_params`. Protected `add_ref` and `release` use their
+`payload_type_id` / `payload` fields as encrypted payload carriers. Protected
+forms of `try_cast` and `object_released` may need method-specific carriers or
+a control-RPC encoding before implementation. They must not expose valid
+application method ids to intermediates.
 
 Current implementation status: protected `send` and `post` have concrete
 AES-GCM envelope helpers and generated-RPC runtime coverage through
 `rpc::enclave_service`. Host integration tests observe generated `send`,
-protected `send` response, generated `[post]`, and generated `add_ref` traffic over
-`rpc::stream_transport` and verify that those messages carry encrypted
-`rpc::encrypted_payload` blobs rather than plaintext application calls.
-`add_ref` also has an AES-GCM protected payload carrier in `payload_type_id` /
-`payload`; `rpc::enclave_service` wraps outbound add-ref traffic when an
-attested adjacent context exists and unwraps inbound protected add-ref traffic
-before route validation. Because the current transport route construction reads
-`build_out_param_channel` before the service hook receives the message, that
-field remains visible in this implementation and is authenticated as AEAD
-associated data plus repeated inside the encrypted plaintext. Hiding that
-route-control field requires a later transport-route refactor.
+protected `send` response, generated `[post]`, generated `add_ref`, and
+generated `release` traffic over `rpc::stream_transport` and verify that those
+messages carry encrypted `rpc::encrypted_payload` blobs rather than plaintext
+application calls.
+`add_ref` and `release` also have AES-GCM protected payload carriers in
+`payload_type_id` / `payload`; `rpc::enclave_service` wraps outbound
+reference-control traffic when an attested adjacent context exists and unwraps
+inbound protected reference-control traffic before route validation. Because
+the current transport route construction reads `build_out_param_channel`
+before the service hook receives an `add_ref`, that field remains visible in
+this implementation and is authenticated as AEAD associated data plus repeated
+inside the encrypted plaintext. The streaming transport also carries
+`release_options` as public lifetime-control data; protected release binds that
+visible value as AEAD associated data and repeats it inside the encrypted
+plaintext. Hiding those route-control fields requires a later transport-route
+refactor.
 
 `add_ref` has the first policy gate in `rpc::enclave_service`: routes can be
 attested, explicitly allowed unattested, failed, or marked as handshaking, and
@@ -155,10 +162,10 @@ for fake Evidence, backend-neutral identity, transcript id, nonce, backend id,
 security level, and a structured accept/reject verdict. SGX-sim host
 integration tests now drive this path through `rpc::stream_transport` from an
 unknown-route `add_ref`, including both mutual fake attestation and explicitly
-permitted unattested-client policy. The `release` parameter structs now include
-`payload_type_id` and `payload` fields for the future encrypted
-reference-control carrier, but those fields are not yet interpreted as a
-protected payload.
+permitted unattested-client policy. Protected inbound `release` does not start
+a new route-attestation handshake: if the caller route is unknown, failed, or
+still handshaking, the release fails closed because the corresponding protected
+`add_ref` should already have established the route state.
 
 ## Plaintext Payload
 

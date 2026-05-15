@@ -83,6 +83,7 @@ namespace rpc
         CORO_TASK(send_result) send(send_params params) override;
         CORO_TASK(void) post(post_params params) override;
         CORO_TASK(standard_result) add_ref(add_ref_params params) override;
+        CORO_TASK(standard_result) release(release_params params) override;
         CORO_TASK(handshake_result) handshake(handshake_params params) override;
         CORO_TASK(send_result)
         outbound_send(
@@ -96,6 +97,10 @@ namespace rpc
         outbound_add_ref(
             add_ref_params params,
             std::shared_ptr<transport> transport) override;
+        CORO_TASK(standard_result)
+        outbound_release(
+            release_params params,
+            std::shared_ptr<transport> transport) override;
 
     private:
         [[nodiscard]] auto find_security_context_for_protected_call(
@@ -106,6 +111,9 @@ namespace rpc
         ensure_add_ref_route_allowed(
             rpc::destination_zone route_zone_id,
             const char* operation);
+        [[nodiscard]] auto ensure_existing_reference_route_allowed(
+            rpc::destination_zone route_zone_id,
+            const char* operation) const -> standard_result;
 
         mutable std::mutex controller_mutex_;
         std::shared_ptr<rpc::io_uring::controller> io_uring_controller_;

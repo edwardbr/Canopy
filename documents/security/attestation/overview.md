@@ -9,18 +9,19 @@ All rights reserved.
 
 Design and implementation-tracking document. The current repository has a
 development fake-attestation backend, an attestation stream decorator, an
-enclave-service protected `send`/`post` envelope, encrypted `add_ref` payload
-wrapping, route-state storage, and an opt-in `add_ref` route-attestation gate
-backed by the first service-level `i_marshaller::handshake()` payload. SGX-sim
+enclave-service protected `send`/`post` envelope, encrypted `add_ref` and
+`release` payload wrapping, route-state storage, and an opt-in reference
+route-attestation gate backed by the first service-level
+`i_marshaller::handshake()` payload. SGX-sim
 host tests now drive an
 unknown-route `add_ref` through `rpc::stream_transport` and verify the
 service-level handshake updates both enclave-service route-state maps.
-Additional host tests drive generated `send`, `[post]`, and `add_ref` traffic
-through `rpc::enclave_service` with protected RPC enabled and verify that the
-observed streaming messages are encrypted payload carriers rather than
-plaintext application calls. The repository does not yet have real SGX/DCAP
-evidence production or protected encrypted carriers for every marshaller
-method.
+Additional host tests drive generated `send`, `[post]`, `add_ref`, and
+`release` traffic through `rpc::enclave_service` with protected RPC enabled and
+verify that the observed streaming messages are encrypted payload carriers
+rather than plaintext application calls. The repository does not yet have real
+SGX/DCAP evidence production or protected encrypted carriers for every
+marshaller method.
 
 This section describes the intended security model for enclave-to-enclave
 Canopy RPC:
@@ -156,14 +157,17 @@ Inbound marshaller methods on the enclave-derived service unwrap protected
 payloads, validate policy, and then pass the recovered plaintext request to the
 internal implementation or generated stub.
 
-The first `add_ref` hardening step now combines route-state gating with an
-encrypted `payload_type_id` / `payload` carrier. `rpc::enclave_service` can
-require add_ref route attestation, treat established attested routes as
-allowed, explicitly allow configured unattested routes, and fail closed for
-failed or still-handshaking routes. Unknown routes start the route-addressed
-`handshake()` path and remain blocked until the service-level attestation
-exchange marks the route allowed. The current route-attestation payloads are
-generated RPC/YAS structs:
+The first reference-control hardening step now combines route-state gating
+with encrypted `payload_type_id` / `payload` carriers for `add_ref` and
+`release`. `rpc::enclave_service` can require add-ref route attestation, treat
+established attested routes as allowed, explicitly allow configured unattested
+routes, and fail closed for failed or still-handshaking routes. Unknown
+`add_ref` routes start the route-addressed `handshake()` path and remain
+blocked until the service-level attestation exchange marks the route allowed.
+`release` does not start a new handshake: if the caller route is unknown when
+a release arrives, the system treats that as an elided or failed protected
+`add_ref` and rejects it. The current route-attestation payloads are generated
+RPC/YAS structs:
 `route_attestation_handshake_request` and
 `route_attestation_handshake_response`. They carry backend-neutral identity,
 CMW-like Evidence, transcript id, nonce, backend id, security level, and the
@@ -178,6 +182,10 @@ uses it before the service hook can unwrap a protected payload. Protected
 add-ref binds that visible value as AEAD associated data and repeats it inside
 the encrypted plaintext. Hiding it is deferred to a later transport-route
 refactor.
+
+For the same reason, `release_options` remains visible to the transport
+lifetime path. Protected release binds that value as AEAD associated data and
+repeats it inside the encrypted plaintext.
 
 ## Routing Classification
 
@@ -305,9 +313,9 @@ sequenceDiagram
     ServiceA->>ServiceA: bind output proxy and record peer transport
 ```
 
-After this sign-on, generated `send`, `[post]`, and endpoint `add_ref` traffic
-can be wrapped by `rpc::enclave_service` using the established
-`security_context`.
+After this sign-on, generated `send`, `[post]`, endpoint `add_ref`, and
+endpoint `release` traffic can be wrapped by `rpc::enclave_service` using the
+established `security_context`.
 
 ### Routed Service-Level Sign-On
 
@@ -342,7 +350,7 @@ sequenceDiagram
         ServiceA-->>AppA: ZONE_NOT_SUPPORTED
     end
 
-    ServiceA->>RouteB: protected add_ref / send / post for C
+    ServiceA->>RouteB: protected add_ref / send / post / release for C
     Note over RouteB: B may append public backchannels but cannot decrypt payloads
     RouteB->>ServiceC: protected envelope for C
 ```
@@ -365,7 +373,7 @@ sequenceDiagram
     participant AttC as Destination attestation_service
     participant StubC as Destination stub/service
 
-    ProxyA->>ServiceA: outbound_send / outbound_post / outbound_add_ref
+    ProxyA->>ServiceA: outbound_send / outbound_post / outbound_add_ref / outbound_release
     ServiceA->>AttA: find security_context and derive AEAD key
     AttA-->>ServiceA: key material and next e2e counter
     ServiceA->>Route: outer route fields + encrypted_payload
@@ -374,7 +382,7 @@ sequenceDiagram
     ServiceC->>AttC: find session, derive key, accept counter
     AttC-->>ServiceC: decrypted payload accepted
     ServiceC->>ServiceC: recover inner fields; keep received outer backchannels
-    ServiceC->>StubC: dispatch inner call or add_ref
+    ServiceC->>StubC: dispatch inner call or add_ref/release
 
     alt send expects a response
         StubC-->>ServiceC: send_result
@@ -383,7 +391,7 @@ sequenceDiagram
         Route-->>ServiceA: response
         ServiceA->>AttA: decrypt response and accept response counter
         ServiceA-->>ProxyA: plaintext send_result
-    else post/add_ref has no protected response body
+    else post/add_ref/release has no protected response body
         ServiceC-->>Route: ack or no response according to marshaller method
     end
 ```

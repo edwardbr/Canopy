@@ -28,7 +28,8 @@ namespace canopy::security::attestation
         send = 1,
         post = 2,
         response = 3,
-        add_ref = 4
+        add_ref = 4,
+        release = 5
     };
 
     struct protected_rpc_error
@@ -61,6 +62,13 @@ namespace canopy::security::attestation
     struct protected_add_ref_request
     {
         rpc::add_ref_params params;
+        security_context context;
+        uint64_t request_counter{protected_rpc_invalid_counter};
+    };
+
+    struct protected_release_request
+    {
+        rpc::release_params params;
         security_context context;
         uint64_t request_counter{protected_rpc_invalid_counter};
     };
@@ -122,4 +130,13 @@ namespace canopy::security::attestation
     [[nodiscard]] auto unprotect_add_ref_request(
         attestation_service& service,
         const rpc::add_ref_params& outer) -> protected_rpc_result<protected_add_ref_request>;
+
+    [[nodiscard]] auto protect_release_request(
+        attestation_service& service,
+        const security_context& context,
+        rpc::release_params params) -> protected_rpc_result<protected_release_request>;
+
+    [[nodiscard]] auto unprotect_release_request(
+        attestation_service& service,
+        const rpc::release_params& outer) -> protected_rpc_result<protected_release_request>;
 } // namespace canopy::security::attestation

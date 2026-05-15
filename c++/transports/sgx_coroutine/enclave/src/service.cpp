@@ -524,6 +524,31 @@ namespace rpc
         CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
     }
 
+    auto enclave_service::ensure_existing_reference_route_allowed(
+        rpc::destination_zone route_zone_id,
+        const char* operation) const -> standard_result
+    {
+        if (!add_ref_attestation_required())
+            return standard_result{rpc::error::OK(), {}};
+        if (!route_zone_id.is_set())
+            return standard_result{rpc::error::INVALID_DATA(), {}};
+        if (route_zone_id == get_zone_id())
+            return standard_result{rpc::error::OK(), {}};
+
+        auto state = get_attestation_route_state(route_zone_id);
+        const auto action = canopy::security::attestation::evaluate_route_attestation_state(state);
+        if (action == canopy::security::attestation::route_attestation_action::allow)
+            return standard_result{rpc::error::OK(), {}};
+
+        RPC_WARNING(
+            "reference route attestation rejected for route {} during {}: status={}, previous failure {}",
+            route_zone_id.get_subnet(),
+            operation,
+            static_cast<int>(state.status),
+            state.failure_reason);
+        return standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+    }
+
     auto enclave_service::find_security_context_for_protected_call(
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id) const -> std::optional<canopy::security::attestation::security_context>
@@ -568,6 +593,40 @@ namespace rpc
         }
 
         CO_RETURN CO_AWAIT child_service::add_ref(std::move(params));
+    }
+
+    CORO_TASK(standard_result)
+    enclave_service::release(release_params params)
+    {
+        const bool protected_payload
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+        if (protected_payload)
+        {
+            auto service = get_attestation_service();
+            if (!protected_rpc_enabled() || !service)
+                CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+
+            auto request = canopy::security::attestation::unprotect_release_request(*service, params);
+            if (!request.accepted)
+                CO_RETURN standard_result{request.error.error_code, {}};
+            params = std::move(request.value.params);
+        }
+        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        {
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        auto route_result = ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound release caller");
+        if (route_result.error_code != rpc::error::OK())
+            CO_RETURN route_result;
+
+        if (!protected_payload && protected_rpc_enabled() && get_security_context(params.caller_zone_id))
+        {
+            RPC_WARNING("plaintext release rejected for protected route {}", rpc::to_string(params.caller_zone_id));
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
+
+        CO_RETURN CO_AWAIT child_service::release(std::move(params));
     }
 
     CORO_TASK(handshake_result)
@@ -840,5 +899,37 @@ namespace rpc
         }
 
         CO_RETURN CO_AWAIT child_service::outbound_add_ref(std::move(params), std::move(transport));
+    }
+
+    CORO_TASK(standard_result)
+    enclave_service::outbound_release(
+        release_params params,
+        std::shared_ptr<transport> transport)
+    {
+        std::optional<rpc::destination_zone> adjacent_zone_id;
+        if (transport)
+        {
+            adjacent_zone_id = transport->get_adjacent_zone_id();
+            auto route_result
+                = ensure_existing_reference_route_allowed(*adjacent_zone_id, "outbound release adjacent peer");
+            if (route_result.error_code != rpc::error::OK())
+                CO_RETURN route_result;
+        }
+
+        auto service = get_attestation_service();
+        if (protected_rpc_enabled() && service && adjacent_zone_id)
+        {
+            auto context = get_security_context(*adjacent_zone_id);
+            if (context)
+            {
+                auto request
+                    = canopy::security::attestation::protect_release_request(*service, *context, std::move(params));
+                if (!request.accepted)
+                    CO_RETURN standard_result{request.error.error_code, {}};
+                params = std::move(request.value.params);
+            }
+        }
+
+        CO_RETURN CO_AWAIT child_service::outbound_release(std::move(params), std::move(transport));
     }
 }
