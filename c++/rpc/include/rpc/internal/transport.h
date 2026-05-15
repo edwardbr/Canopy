@@ -160,6 +160,11 @@ namespace rpc
 
         std::atomic<transport_status> status_{transport_status::CONNECTING};
 
+        template<typename Params>
+        bool resolve_payload_encoding_from_service(
+            Params& params,
+            const char* operation);
+
     protected:
         // Constructor for derived transport classes
         transport(

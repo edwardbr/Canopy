@@ -101,11 +101,13 @@ namespace rpc
         }
 
         template<class Payload>
-        [[nodiscard]] auto serialise_route_attestation_payload(const Payload& payload) -> std::optional<std::vector<char>>
+        [[nodiscard]] auto serialise_route_attestation_payload(
+            const Payload& payload,
+            rpc::encoding payload_encoding) -> std::optional<std::vector<char>>
         {
             try
             {
-                return rpc::to_yas_binary<std::vector<char>>(payload);
+                return rpc::serialise<std::vector<char>>(payload, payload_encoding);
             }
             catch (const std::exception& ex)
             {
@@ -121,11 +123,12 @@ namespace rpc
         template<class Payload>
         [[nodiscard]] auto parse_route_attestation_payload(
             const std::vector<char>& payload,
+            rpc::encoding payload_encoding,
             Payload& out) -> bool
         {
             if (payload.size() > max_route_attestation_handshake_payload_size)
                 return false;
-            return rpc::from_yas_binary(rpc::byte_span(payload), out).empty();
+            return rpc::deserialise(payload_encoding, rpc::byte_span(payload), out).empty();
         }
 
         [[nodiscard]] auto nonce_is_valid(const std::vector<uint8_t>& nonce) -> bool
@@ -154,9 +157,10 @@ namespace rpc
 
         [[nodiscard]] auto make_route_attestation_handshake_result(
             uint64_t protocol_version,
+            rpc::encoding payload_encoding,
             rpc::route_attestation_handshake_response response) -> rpc::handshake_result
         {
-            auto payload = serialise_route_attestation_payload(response);
+            auto payload = serialise_route_attestation_payload(response, payload_encoding);
             if (!payload.has_value())
                 return rpc::handshake_result{rpc::error::INVALID_DATA(), 0, {}, {}};
             return rpc::handshake_result{
@@ -435,7 +439,8 @@ namespace rpc
             }
         }
 
-        auto request_payload = serialise_route_attestation_payload(request);
+        const auto payload_encoding = get_default_encoding();
+        auto request_payload = serialise_route_attestation_payload(request, payload_encoding);
         if (!request_payload.has_value())
         {
             set_failed_attestation_route(
@@ -448,6 +453,7 @@ namespace rpc
         params.caller_zone_id = get_zone_id();
         params.destination_zone_id = route_zone_id;
         params.type_id = route_attestation_request_type_id(params.protocol_version);
+        params.payload_encoding = payload_encoding;
         params.payload = std::move(request_payload.value());
         auto handshake = CO_AWAIT child_service::handshake(std::move(params));
 
@@ -471,7 +477,7 @@ namespace rpc
         }
 
         rpc::route_attestation_handshake_response response;
-        if (!parse_route_attestation_payload(handshake.payload, response)
+        if (!parse_route_attestation_payload(handshake.payload, payload_encoding, response)
             || response.wire_version != route_attestation_handshake_wire_version
             || response.transcript_id != request.transcript_id || !flag_is_valid(response.accepted)
             || !flag_is_valid(response.evidence_present))
@@ -742,22 +748,27 @@ namespace rpc
             CO_RETURN handshake_result{rpc::error::NOT_IMPLEMENTED(), 0, {}, {}};
         }
 
+        if (params.payload_encoding == rpc::encoding::not_set)
+            params.payload_encoding = get_default_encoding();
+
         auto service = get_attestation_service();
         auto responder_identity = local_identity_for_route(service, get_zone_id());
         rpc::route_attestation_handshake_request request;
-        if (!parse_route_attestation_payload(params.payload, request)
+        if (!parse_route_attestation_payload(params.payload, params.payload_encoding, request)
             || request.wire_version != route_attestation_handshake_wire_version || request.transcript_id == 0
             || !flag_is_valid(request.evidence_present))
         {
             auto response = make_failed_handshake_response(0, "malformed route attestation request", responder_identity);
-            CO_RETURN make_route_attestation_handshake_result(params.protocol_version, std::move(response));
+            CO_RETURN make_route_attestation_handshake_result(
+                params.protocol_version, params.payload_encoding, std::move(response));
         }
 
         auto fail = [&](std::string reason) -> handshake_result
         {
             set_failed_attestation_route(*this, params.caller_zone_id, 0, reason);
             auto response = make_failed_handshake_response(request.transcript_id, std::move(reason), responder_identity);
-            return make_route_attestation_handshake_result(params.protocol_version, std::move(response));
+            return make_route_attestation_handshake_result(
+                params.protocol_version, params.payload_encoding, std::move(response));
         };
 
         if (!service)
@@ -841,7 +852,8 @@ namespace rpc
 
         response.accepted = route_attestation_flag_true;
         response.reason = peer_attested ? "route attestation accepted" : "unattested route accepted by policy";
-        CO_RETURN make_route_attestation_handshake_result(params.protocol_version, std::move(response));
+        CO_RETURN make_route_attestation_handshake_result(
+            params.protocol_version, params.payload_encoding, std::move(response));
     }
 
     CORO_TASK(send_result)
@@ -1004,6 +1016,9 @@ namespace rpc
         try_cast_params params,
         std::shared_ptr<transport> transport)
     {
+        if (params.payload_encoding == rpc::encoding::not_set)
+            params.payload_encoding = get_default_encoding();
+
         auto service = get_attestation_service();
         if (!protected_rpc_enabled() || !service)
         {
@@ -1035,6 +1050,9 @@ namespace rpc
         add_ref_params params,
         std::shared_ptr<transport> transport)
     {
+        if (params.payload_encoding == rpc::encoding::not_set)
+            params.payload_encoding = get_default_encoding();
+
         auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
         if (route_zone_id)
         {
@@ -1066,6 +1084,9 @@ namespace rpc
         release_params params,
         std::shared_ptr<transport> transport)
     {
+        if (params.payload_encoding == rpc::encoding::not_set)
+            params.payload_encoding = get_default_encoding();
+
         auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
         if (route_zone_id)
         {
@@ -1098,6 +1119,9 @@ namespace rpc
         object_released_params params,
         std::shared_ptr<transport> transport)
     {
+        if (params.payload_encoding == rpc::encoding::not_set)
+            params.payload_encoding = get_default_encoding();
+
         std::optional<rpc::destination_zone> caller_zone_id;
         if (transport)
         {

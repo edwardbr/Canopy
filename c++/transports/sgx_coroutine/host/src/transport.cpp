@@ -499,6 +499,7 @@ namespace rpc::sgx::coro::host
             auto* host_to_enclave_queue = host_to_enclave_queue_.get();
             auto* enclave_to_host_queue = enclave_to_host_queue_.get();
             auto state = owner->state_;
+            const auto request_encoding = svc->get_default_encoding();
             // These host-provided clock values are bootstrap hints only. They
             // must not be treated as trusted time for certificate validation,
             // attestation decisions, or other enclave security policy.
@@ -513,12 +514,11 @@ namespace rpc::sgx::coro::host
                 host_ticks_per_millisecond(),
                 host_unix_epoch_milliseconds()};
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
-            constexpr auto request_encoding = rpc::encoding::yas_binary;
-            constexpr auto request_encoding_value = static_cast<uint64_t>(request_encoding);
+            const auto request_encoding_value = static_cast<uint64_t>(request_encoding);
             auto request_blob
                 = std::make_shared<std::vector<char>>(rpc::serialise<std::vector<char>>(request, request_encoding));
             owner->init_thread_ = std::thread(
-                [state, request_blob = std::move(request_blob), request_type_id]()
+                [state, request_blob = std::move(request_blob), request_encoding_value, request_type_id]()
                 {
                     auto status = coroutine_init_enclave(
                         state->eid_, request_blob->size(), request_blob->data(), request_encoding_value, request_type_id);

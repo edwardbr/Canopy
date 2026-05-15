@@ -61,7 +61,7 @@ outer send_params:
     remote_object_id     = visible destination route, object id cleared
     interface_id         = rpc::id<encrypted_payload>::get(version)
     method_id            = 0
-    in_data              = YAS-binary encrypted_payload carrier
+    in_data              = encrypted_payload carrier serialized with encoding_type
     in_back_channel      = public route/security/telemetry context
     request_id           = transport_request_id for adjacent correlation
 ```
@@ -93,8 +93,25 @@ struct encrypted_payload
 }
 ```
 
-The carrier is serialized with YAS binary for the current implementation and
-stored in `in_data` for requests or `out_buf` for protected responses.
+For `send` and `post`, the unencrypted outer `encoding_type` is the agreed
+serializer for the protected `encrypted_payload` carrier. A C++ peer may choose
+YAS, but a Rust or JavaScript peer can use any serializer that both endpoints
+have already agreed and implemented. The encoding is not repeated inside
+`encrypted_payload`; it is public carrier metadata and is bound into AEAD AAD.
+The carrier bytes are stored in `in_data` for requests or `out_buf` for
+protected responses.
+
+For typed control carriers (`add_ref`, `release`, `try_cast`,
+`object_released`, `transport_down`, and route-attestation `handshake`), an
+internal `payload_encoding == rpc::encoding::not_set` is resolved from the live
+`service::get_default_encoding()` immediately before outbound transport
+activity. This is deliberately not a compile-time fallback: parent and child
+zones may choose a service default at creation time, and a transport without a
+service cannot safely invent one.
+
+Handshake replies do not negotiate or carry a separate response encoding. The
+reply payload, when present, is encoded with the request's `payload_encoding`;
+error replies carry no trusted payload.
 `session_id`, `session_epoch`, and `e2e_counter` are public cryptographic
 metadata: the receiver needs them to locate the session context and construct
 the nonce before decryption. They are also bound into AEAD associated data and
@@ -157,11 +174,14 @@ Because
 the current transport route construction reads `build_out_param_channel`
 before the service hook receives an `add_ref`, that field remains visible in
 this implementation and is authenticated as AEAD associated data plus repeated
-inside the encrypted plaintext. The streaming transport also carries
-`release_options` as public lifetime-control data; protected release binds that
-visible value as AEAD associated data and repeats it inside the encrypted
-plaintext. Hiding those route-control fields requires a later transport-route
-refactor.
+inside the encrypted plaintext. The requesting zone is also still visible
+because current route creation uses it as a fallback path hint before
+decryption. The transport and passthrough layers also carry `release_options`
+as public lifetime-control data; protected release binds that visible value as
+AEAD associated data and repeats it inside the encrypted plaintext. Hiding
+those route-control fields requires a later route-token or state-table
+refactor that changes `add_ref`, `release`, and `object_released` accounting
+together.
 
 `add_ref` has the first policy gate in `rpc::enclave_service`: routes can be
 attested, explicitly allowed unattested, failed, or marked as handshaking, and
@@ -190,7 +210,8 @@ The encrypted plaintext includes the original call fields:
 protected_plaintext:
     protected_kind       = send | post | try_cast | add_ref | release | ...
     protocol_version
-    encoding_type
+    encoding_type         = send/post call serializer, when present
+    payload_encoding      = typed payload carrier serializer, when present
     tag
     caller_zone_id
     remote_object_id
@@ -208,6 +229,12 @@ protected_plaintext:
 
 The destination decrypts this plaintext, validates it, and then passes the
 recovered request to the internal implementation or generated stub.
+
+Reference/control payload carriers such as `add_ref`, `release`, `try_cast`,
+`object_released`, `transport_down`, and attestation `handshake` carry a public
+`payload_type_id` plus `payload_encoding` beside the payload bytes. That
+outer metadata tells the receiver how to decode the payload and is included in
+AAD so an intermediate cannot silently switch formats.
 
 The first implementation sets `service_request_id` to zero. The field is kept
 in the protected plaintext for the later service-level binding work.

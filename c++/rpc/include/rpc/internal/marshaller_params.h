@@ -49,6 +49,7 @@ namespace rpc
         interface_ordinal interface_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t payload_type_id = 0;
+        encoding payload_encoding = encoding::not_set;
         std::vector<char> payload;
     };
 
@@ -62,6 +63,7 @@ namespace rpc
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t request_id = 0;
         uint64_t payload_type_id = 0;
+        encoding payload_encoding = encoding::not_set;
         std::vector<char> payload;
     };
 
@@ -73,6 +75,7 @@ namespace rpc
         release_options options;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t payload_type_id = 0;
+        encoding payload_encoding = encoding::not_set;
         std::vector<char> payload;
     };
 
@@ -82,6 +85,7 @@ namespace rpc
         caller_zone caller_zone_id;
         destination_zone destination_zone_id;
         uint64_t type_id = 0;
+        encoding payload_encoding = encoding::not_set;
         std::vector<char> payload;
         std::vector<rpc::back_channel_entry> in_back_channel;
     };
@@ -93,6 +97,7 @@ namespace rpc
         caller_zone caller_zone_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t payload_type_id = 0;
+        encoding payload_encoding = encoding::not_set;
         std::vector<char> payload;
     };
 
@@ -103,6 +108,7 @@ namespace rpc
         caller_zone caller_zone_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t payload_type_id = 0;
+        encoding payload_encoding = encoding::not_set;
         std::vector<char> payload;
     };
 

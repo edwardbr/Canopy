@@ -102,12 +102,19 @@ namespace rpc::sgx::coro::enclave
         if (!remote_object)
             CO_RETURN rpc::error::INVALID_DATA();
 
+        auto local_service = get_service();
+        if (!local_service)
+            CO_RETURN rpc::error::TRANSPORT_ERROR();
+
+        auto payload_encoding = local_service->get_default_encoding();
+
         rpc::add_ref_params params;
         params.protocol_version = service_proxy->get_remote_rpc_version();
         params.remote_object_id = *remote_object;
         params.caller_zone_id = get_zone_id();
         params.requesting_zone_id = get_zone_id();
         params.build_out_param_channel = rpc::add_ref_options::normal;
+        params.payload_encoding = payload_encoding;
 
         auto add_ref_result = CO_AWAIT outbound_add_ref(std::move(params));
         if (add_ref_result.error_code != rpc::error::OK())
@@ -117,7 +124,7 @@ namespace rpc::sgx::coro::enclave
             std::lock_guard<std::mutex> lock(host_control_reference_mutex_);
             host_control_reference_ = host_control_reference{
                 .protocol_version = service_proxy->get_remote_rpc_version(),
-                .encoding = rpc::encoding::yas_binary,
+                .encoding = payload_encoding,
                 .remote_object_id = *remote_object,
                 .caller_zone_id = get_zone_id(),
             };
@@ -127,6 +134,7 @@ namespace rpc::sgx::coro::enclave
                 .options = rpc::release_options::normal,
                 .in_back_channel = {},
                 .payload_type_id = 0,
+                .payload_encoding = payload_encoding,
                 .payload = {}};
         }
 
@@ -241,6 +249,7 @@ namespace rpc::sgx::coro::enclave
                 .options = release_params->options,
                 .back_channel = std::move(release_params->in_back_channel),
                 .payload_type_id = release_params->payload_type_id,
+                .payload_encoding = release_params->payload_encoding,
                 .payload = std::move(release_params->payload)},
             0);
 

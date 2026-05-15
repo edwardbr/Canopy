@@ -23,6 +23,37 @@ namespace rpc
                                  : pass_through_key{FLD(zone1) zone2, FLD(zone2) zone1};
         }
 
+        template<typename Params> bool payload_encoding_required(const Params& params)
+        {
+            return params.payload_type_id != 0 || !params.payload.empty();
+        }
+
+        bool payload_encoding_required(const handshake_params& params)
+        {
+            return params.type_id != 0 || !params.payload.empty();
+        }
+
+    }
+
+    template<typename Params>
+    bool transport::resolve_payload_encoding_from_service(
+        Params& params,
+        const char* operation)
+    {
+        if (params.payload_encoding != encoding::not_set)
+            return true;
+        if (!payload_encoding_required(params))
+            return true;
+
+        auto svc = service_.lock();
+        if (!svc)
+        {
+            RPC_ERROR("{} requires a local service to choose the default payload encoding", operation);
+            return false;
+        }
+
+        params.payload_encoding = svc->get_default_encoding();
+        return true;
     }
 
     transport::transport(
@@ -1381,6 +1412,9 @@ namespace rpc
 
     CORO_TASK(standard_result) transport::try_cast(try_cast_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::try_cast"))
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
         auto interface_id = params.interface_id;
@@ -1407,6 +1441,9 @@ namespace rpc
 
     CORO_TASK(standard_result) transport::add_ref(add_ref_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::add_ref"))
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
         auto caller_zone_id = params.caller_zone_id;
@@ -1441,6 +1478,9 @@ namespace rpc
 
     CORO_TASK(standard_result) transport::release(release_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::release"))
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+
         auto remote_object_id = params.remote_object_id;
         auto caller_zone_id = params.caller_zone_id;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -1469,6 +1509,9 @@ namespace rpc
 
     CORO_TASK(void) transport::object_released(object_released_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::object_released"))
+            CO_RETURN;
+
         auto caller_zone_id = params.caller_zone_id;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
@@ -1486,6 +1529,9 @@ namespace rpc
 
     CORO_TASK(void) transport::transport_down(transport_down_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::transport_down"))
+            CO_RETURN;
+
 #ifdef CANOPY_USE_TELEMETRY
         auto destination_zone_id = params.destination_zone_id;
         auto caller_zone_id = params.caller_zone_id;
@@ -1500,6 +1546,9 @@ namespace rpc
 
     CORO_TASK(handshake_result) transport::handshake(handshake_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::handshake"))
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+
         auto result = CO_AWAIT outbound_handshake(std::move(params));
         result.error_code = rpc::error::sanitise_public_control_status(result.error_code, "transport handshake");
         if (result.error_code != rpc::error::OK())
@@ -1553,8 +1602,9 @@ namespace rpc
         CO_RETURN CO_AWAIT svc->get_new_zone_id(std::move(params));
     }
 
-    CORO_TASK(handshake_result) transport::outbound_handshake(handshake_params)
+    CORO_TASK(handshake_result) transport::outbound_handshake(handshake_params params)
     {
+        std::ignore = params;
         CO_RETURN handshake_result{rpc::error::NOT_IMPLEMENTED(), 0, {}, {}};
     }
 

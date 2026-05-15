@@ -216,10 +216,14 @@ reference-control marshaller methods.
     generated inside an enclave pass through the enclave policy hook;
   - the current transport still needs visible `build_out_param_channel` for
     route construction, so that field is public but AEAD-bound and repeated in
-    encrypted plaintext until the route-control refactor happens;
-  - the current streaming release path still exposes `release_options` for
-    lifetime accounting, so that field is public but AEAD-bound and repeated in
-    encrypted plaintext.
+    encrypted plaintext until the route-control refactor happens. The
+    requesting zone and route-direction bits are likewise live routing inputs;
+  - the current transport/passthrough release path still exposes
+    `release_options` for lifetime accounting, so that field is public but
+    AEAD-bound and repeated in encrypted plaintext. The `add_ref` optimistic
+    bit, `release_options`, and `object_released` passthrough accounting must
+    be refactored as one route token/state-table change before
+    shared-vs-optimistic intent can be hidden.
 - Protected envelopes now clear the public object id in outer
   `remote_object_id` values. Intermediates receive the destination zone needed
   for routing; endpoints recover the full remote object from the decrypted
@@ -268,10 +272,11 @@ reference-control marshaller methods.
   rule locally. This gives local and non-stream coroutine transports the same
   "no positive public control status" guardrail as stream transports, even
   when they do not use the stream envelope.
-- Current runtime coverage is still stream-heavy by design. It now includes
-  focused non-stream control-status regressions, including the real local
-  parent-side `get_new_zone_id` path. It does not yet prove every local
-  marshaller operation. `rpc::local::parent_transport` and
+- Current runtime coverage now includes focused non-stream control-status
+  regressions, including the real local parent-side `get_new_zone_id` path.
+  The marked enclave-local wrapper path exercises generated `send`, generated
+  `post`, `try_cast`, `add_ref`, `release`, `object_released`, and plaintext
+  route-layer `transport_down`. `rpc::local::parent_transport` and
   `rpc::local::child_transport` can be built for enclaves and can link zones
   within the same enclave. Their outbound methods call the peer transport's
   inbound marshaller handlers directly, so there is no stream envelope, stream
@@ -297,7 +302,14 @@ reference-control marshaller methods.
   - `protect_post_request` / `unprotect_post_request`;
   - outer `interface_id == rpc::id<rpc::encrypted_payload>::get(version)`;
   - outer `method_id == 0`;
-  - YAS-binary serialization of the outer `encrypted_payload` carrier;
+  - serialization of the outer `encrypted_payload` carrier using the agreed
+    public carrier encoding (`encoding_type` for `send`/`post`,
+    `payload_encoding` beside `payload_type_id` for typed payload carriers);
+  - typed-carrier `payload_encoding == rpc::encoding::not_set` values resolved
+    from the live service default before outbound transport activity, not from
+    a compile-time fallback;
+  - handshake response payloads encoded with the request `payload_encoding`,
+    with no independent reply encoding field;
   - bounded canonical plaintext and AAD encoding using big-endian integers and
     length-prefixed fields;
   - AES-256-GCM encryption through OpenSSL/SGXSSL-compatible EVP APIs;
@@ -477,14 +489,16 @@ reference-control marshaller methods.
   there is no production outbound service hook or sender yet. Route-layer
   plaintext `transport_down` remains valid for intermediate-synthesized
   liveness notifications.
-- A transport-route refactor that hides `add_ref` route-control options from
-  intermediates. Today `build_out_param_channel` remains visible because
-  `rpc::transport::inbound_add_ref` needs it before the service hook can unwrap
-  the encrypted payload.
-- Full audit coverage for every enclave-local marshaller operation. The generic
-  `rpc::local` transports should remain policy-light in-process links; enclave
-  policy should live in enclave-specific local transport wrappers or adapters.
-  The current wrapper marker is
+- A transport-route refactor that hides `add_ref` route-control options and
+  `release_options` from intermediates. Today `build_out_param_channel`,
+  `requesting_zone_id`, and `release_options` remain visible because
+  transport/passthrough routing and lifetime accounting need them before the
+  endpoint service hook can unwrap the encrypted payload. This needs a
+  route-local reference token or state table, not isolated field zeroing.
+- Broader topology coverage for enclave-local marshaller operations. The
+  generic `rpc::local` transports should remain policy-light in-process links;
+  enclave policy should live in enclave-specific local transport wrappers or
+  adapters. The current wrapper marker is
   `rpc::sgx::coro::enclave::local_route_transport`, with
   `local_child_transport` and `local_parent_transport` as the concrete
   parent/child local wrappers. The generic local child transport exposes only
@@ -498,9 +512,10 @@ reference-control marshaller methods.
   route/security subject. Outbound `add_ref` and `release` now use the
   referenced owner route over marked enclave-local transports instead of the
   adjacent local peer. Runtime coverage verifies marked local creation,
-  enclave-service child creation, generated RPC over the marked local child,
-  reference-control route subject selection, protected `try_cast`, protected
-  `object_released`, plaintext route-layer `transport_down`, generic
+  enclave-service child creation, generated `send` and `post` over the marked
+  local child, reference-control route subject selection, protected
+  `try_cast`, protected `object_released`, plaintext route-layer
+  `transport_down`, generic
   control-status guardrails, and local `get_new_zone_id` sanitisation.
 - Full audit coverage for coroutine dynamic-library transports that override
   marshaller outbound methods without using `rpc::stream_transport::transport`.
@@ -516,12 +531,13 @@ reference-control marshaller methods.
 
 Telemetry and `post_report` are demo/diagnostic surfaces and are intentionally
 left out of the current production attestation path. The next implementation
-slice should finish the stream sign-on policy controls, then introduce or
-design the enclave-local transport wrapper layer and add the full local
-marshaller matrix tests against that layer. After that, continue reducing the
-remaining public carrier fields documented in
-`intermediate-visibility-audit.md` and apply the same audit checklist to
-non-C-ABI coroutine dynamic-library transports.
+slice should return to core attestation features: stream sign-on policy
+controls, explicit configuration for unattested clients, and backend selection
+for fake/SGX-sim/real SGX. After that, continue reducing the remaining public
+carrier fields documented in `intermediate-visibility-audit.md` with a
+route-token/state refactor, and only then apply the same checklist to
+non-C-ABI coroutine dynamic-library transports that are allowed at an enclave
+boundary.
 
 ## Architectural Layers
 

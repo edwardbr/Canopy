@@ -31,6 +31,13 @@ public `handshake()` and `get_new_zone_id()` statuses for all transports using
 the shared `rpc::error` public-control status helper, but that does not replace
 the local marshaller-operation audit.
 
+The current enclave-local wrapper coverage exercises generated `send`, `post`,
+`try_cast`, `add_ref`, `release`, `object_released`, plaintext route-layer
+`transport_down`, wrapper creation, and child-service creation over the marked
+local route. The generic `rpc::local` transports remain attestation-neutral;
+the enclave-specific wrappers identify the in-enclave next hop so the
+`rpc::enclave_service` policy can validate the referenced endpoint route.
+
 ## Classification
 
 Fields are classified as:
@@ -206,9 +213,9 @@ application dispatch and need separate policy:
   creates an `rpc::enclave_service` for that child zone instead of a plain
   `rpc::child_service`. Outbound `add_ref` and `release` over those marked
   transports validate the referenced owner route instead of the adjacent local
-  peer. Runtime coverage also checks protected `try_cast`, protected
-  `object_released`, and plaintext route-layer `transport_down` over the
-  marked local route.
+  peer. Runtime coverage also checks generated `send`, generated `post`,
+  protected `try_cast`, protected `object_released`, and plaintext route-layer
+  `transport_down` over the marked local route.
 
 Any new transport message outside this list should be treated as suspicious
 until it is classified as public route/control metadata, encrypted endpoint
@@ -226,9 +233,6 @@ intermediate transports:
   handshakes;
 - stream setup `init_client_channel_send` initial remote object and interface
   ids;
-- `encoding` fields on streaming `object_released_send` and
-  `transport_down_send`, which are carrier legacy fields rather than route
-  requirements;
 - endpoint-originated protected `transport_down` has encrypted payload carrier
   helpers and inbound unwrap support, but no production outbound service hook
   or sender currently uses it;
@@ -250,28 +254,27 @@ application interface ids, or encrypted application payload bytes.
    `OK()` or built-in `rpc::error::*` values.
 3. Split `add_ref` route construction from endpoint lifetime semantics so
    `build_out_param_channel`, `requesting_zone_id`, and object id can move
-   fully behind the protected payload.
+   fully behind the protected payload. Today the direction bits and requesting
+   zone are live routing inputs before the endpoint can decrypt.
 4. Refactor passthrough lifetime accounting so protected `release` does not
    need visible `release_options`. A route-local reference token or state
-   table would be cleaner than exposing shared-vs-optimistic intent.
-5. Remove or ignore legacy `encoding` fields from streaming
-   `object_released_send` and `transport_down_send`.
-6. Decide whether stream sign-on descriptors need privacy beyond the
+   table would be cleaner than exposing shared-vs-optimistic intent. The
+   `add_ref` optimistic bit, `release_options`, and `object_released`
+   passthrough counts must be changed together; hiding only one of them would
+   unbalance route lifetime accounting.
+5. Decide whether stream sign-on descriptors need privacy beyond the
    peer-to-peer attested stream policy. If they do, initial object/interface
    descriptors need their own setup envelope before `add_ref` can validate
    routed references.
-7. Audit telemetry callbacks and logs so intermediate telemetry records only
+6. Audit telemetry callbacks and logs so intermediate telemetry records only
    public route fields and carrier metadata, never decrypted endpoint fields.
-8. Audit non-stream coroutine/enclave-capable transports. Start with the
-   enclave-local path, because it can link zones inside one enclave and forwards
-   marshaller traffic directly without stream framing. Prefer enclave-specific
-   local transport wrappers or adapters over changing the generic `rpc::local`
-   transports. Tests should prove that adjacent local peers are next hops only,
-   while referenced remote route zones remain the attestation subjects. Then
-   apply the same checklist to coroutine dynamic-library transports that
-   override outbound marshaller methods. C ABI is intentionally excluded from
-   this slice because it is expected to be rewritten for Rust.
-9. Decide whether routed attestation handshakes need privacy beyond integrity.
+7. Keep coroutine dynamic-library transports on the audit list if they are ever
+   allowed at an enclave boundary. They pass full `rpc::*_params` structs
+   across a dynamically loaded boundary and are therefore external transport
+   surfaces, not enclave-local trusted links. The C ABI work is intentionally
+   excluded from this slice because that implementation is expected to be
+   rewritten for Rust.
+8. Decide whether routed attestation handshakes need privacy beyond integrity.
    Evidence is often intended to be verifiable, but policy may still consider
    measurements, backend identifiers, debug flags, or verdict detail sensitive.
 

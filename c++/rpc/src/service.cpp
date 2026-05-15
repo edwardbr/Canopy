@@ -901,6 +901,7 @@ namespace rpc
                 caller_params.in_back_channel = params.in_back_channel;
                 caller_params.request_id = request_id;
                 caller_params.payload_type_id = params.payload_type_id;
+                caller_params.payload_encoding = params.payload_encoding;
                 caller_params.payload = params.payload;
                 auto caller_result = CO_AWAIT caller_transport->add_ref(std::move(caller_params));
                 if (caller_result.error_code != rpc::error::OK())
@@ -1058,6 +1059,7 @@ namespace rpc
                 dest_params.in_back_channel = params.in_back_channel;
                 dest_params.request_id = request_id;
                 dest_params.payload_type_id = params.payload_type_id;
+                dest_params.payload_encoding = params.payload_encoding;
                 dest_params.payload = params.payload;
                 auto forward_result = CO_AWAIT dest_transport->add_ref(std::move(dest_params));
                 CO_RETURN forward_result;

@@ -229,6 +229,7 @@ namespace rpc::stream_transport
                 .interface_id = params.interface_id,
                 .back_channel = std::move(params.in_back_channel),
                 .payload_type_id = params.payload_type_id,
+                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)});
         int ret = response_result.error_code;
         if (ret != rpc::error::OK())
@@ -255,6 +256,7 @@ namespace rpc::stream_transport
                 .build_out_param_channel = params.build_out_param_channel,
                 .back_channel = std::move(params.in_back_channel),
                 .payload_type_id = params.payload_type_id,
+                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)});
         int ret = response_result.error_code;
         if (ret != rpc::error::OK())
@@ -302,6 +304,7 @@ namespace rpc::stream_transport
                 .options = params.options,
                 .back_channel = std::move(params.in_back_channel),
                 .payload_type_id = params.payload_type_id,
+                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)},
             0);
 
@@ -318,21 +321,24 @@ namespace rpc::stream_transport
             handshake_send{.caller_zone_id = params.caller_zone_id,
                 .destination_zone_id = params.destination_zone_id,
                 .type_id = params.type_id,
+                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload),
                 .back_channel = std::move(params.in_back_channel)});
         if (response_result.error_code != rpc::error::OK())
         {
-            CO_RETURN handshake_result{rpc::error::sanitise_public_control_status(
-                                           response_result.error_code, "stream handshake transport carrier"),
+            auto result = handshake_result{rpc::error::sanitise_public_control_status(
+                                               response_result.error_code, "stream handshake transport carrier"),
                 0,
                 {},
                 {}};
+            CO_RETURN result;
         }
 
         auto& response = response_result.payload;
         response.err_code = rpc::error::sanitise_public_control_status(response.err_code, "stream handshake response");
-        CO_RETURN handshake_result{
+        auto result = handshake_result{
             response.err_code, response.type_id, std::move(response.payload), std::move(response.back_channel)};
+        CO_RETURN result;
     }
 
     CORO_TASK(void)
@@ -349,11 +355,11 @@ namespace rpc::stream_transport
         send_payload_object_released_send(
             params.protocol_version,
             message_direction::one_way,
-            object_released_send{.encoding = encoding::yas_binary,
-                .destination_zone_id = params.remote_object_id,
+            object_released_send{.destination_zone_id = params.remote_object_id,
                 .caller_zone_id = params.caller_zone_id,
                 .back_channel = std::move(params.in_back_channel),
                 .payload_type_id = params.payload_type_id,
+                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)},
             0);
 
@@ -374,11 +380,11 @@ namespace rpc::stream_transport
         send_payload_transport_down_send(
             params.protocol_version,
             message_direction::one_way,
-            transport_down_send{.encoding = encoding::yas_binary,
-                .destination_zone_id = params.destination_zone_id,
+            transport_down_send{.destination_zone_id = params.destination_zone_id,
                 .caller_zone_id = params.caller_zone_id,
                 .back_channel = std::move(params.in_back_channel),
                 .payload_type_id = params.payload_type_id,
+                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)},
             0);
 
@@ -1195,6 +1201,7 @@ namespace rpc::stream_transport
                 .interface_id = request.interface_id,
                 .in_back_channel = std::move(request.back_channel),
                 .payload_type_id = request.payload_type_id,
+                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1242,6 +1249,7 @@ namespace rpc::stream_transport
                 .in_back_channel = std::move(request.back_channel),
                 .request_id = request.request_id,
                 .payload_type_id = request.payload_type_id,
+                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1283,6 +1291,7 @@ namespace rpc::stream_transport
                 .options = request.options,
                 .in_back_channel = std::move(request.back_channel),
                 .payload_type_id = request.payload_type_id,
+                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1317,6 +1326,7 @@ namespace rpc::stream_transport
                 .caller_zone_id = request.caller_zone_id,
                 .destination_zone_id = request.destination_zone_id,
                 .type_id = request.type_id,
+                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
                 .in_back_channel = std::move(request.back_channel)});
         hs_result.error_code
@@ -1327,7 +1337,6 @@ namespace rpc::stream_transport
             hs_result.payload.clear();
             hs_result.out_back_channel.clear();
         }
-
         send_payload_handshake_receive(
             prefix.version,
             message_direction::receive,
@@ -1409,6 +1418,7 @@ namespace rpc::stream_transport
                 .caller_zone_id = request.caller_zone_id,
                 .in_back_channel = std::move(request.back_channel),
                 .payload_type_id = request.payload_type_id,
+                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1440,6 +1450,7 @@ namespace rpc::stream_transport
                 .caller_zone_id = request.caller_zone_id,
                 .in_back_channel = std::move(request.back_channel),
                 .payload_type_id = request.payload_type_id,
+                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 

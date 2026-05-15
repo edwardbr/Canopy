@@ -18,6 +18,7 @@ namespace rpc
 
     enum encoding : uint64_t
     {
+        not_set = 0,
         yas_binary = 1,
         yas_compressed_binary = 2,
         //yas_text = 4,     //not really needed

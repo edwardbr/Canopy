@@ -18,6 +18,7 @@
 #  include <streaming/spsc_queue/stream.h>
 #  include <transports/local/transport.h>
 #  include <transport/tests/streaming_setup_base.h>
+#  include <unordered_map>
 #  ifdef CANOPY_BUILD_ENCLAVE
 #    include <transports/sgx_coroutine/enclave/local_transport.h>
 #    include <transports/sgx_coroutine/enclave/service.h>
@@ -57,6 +58,7 @@ namespace
     constexpr uint64_t enclave_local_subject_zone_subnet = 8192;
     constexpr uint64_t enclave_local_adjacent_zone_subnet = 8193;
     constexpr uint64_t enclave_local_referenced_zone_subnet = 8194;
+    constexpr int enclave_local_post_message_value = 77;
 
     auto make_test_attestation_service(
         const std::shared_ptr<fake_backend>& backend,
@@ -271,10 +273,12 @@ namespace
         return service.establish_session(params);
     }
 
-    auto is_valid_encrypted_payload(const std::vector<char>& payload) -> bool
+    auto is_valid_encrypted_payload(
+        const std::vector<char>& payload,
+        rpc::encoding encoding = rpc::encoding::yas_binary) -> bool
     {
         rpc::encrypted_payload encrypted_payload;
-        auto err = rpc::from_yas_binary(rpc::byte_span(payload), encrypted_payload);
+        auto err = rpc::deserialise(encoding, rpc::byte_span(payload), encrypted_payload);
         return err.empty() && !encrypted_payload.session_id.empty() && encrypted_payload.session_epoch != 0
                && encrypted_payload.e2e_counter != 0 && !encrypted_payload.payload.empty()
                && !encrypted_payload.authentication_tag.empty();
@@ -326,6 +330,7 @@ namespace
         size_t plaintext_object_released_count{0};
         size_t protected_transport_down_count{0};
         size_t plaintext_transport_down_count{0};
+        std::unordered_map<uint64_t, rpc::encoding> protected_send_response_encoding_by_sequence;
         bool malformed_encrypted_payload{false};
         bool protected_object_id_visible{false};
         bool non_rpc_public_control_status_visible{false};
@@ -686,9 +691,11 @@ namespace
                 {
                     ++observer.protected_send_count;
                     observer.malformed_encrypted_payload
-                        = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                        = observer.malformed_encrypted_payload
+                          || !is_valid_encrypted_payload(request.payload, request.encoding);
                     observer.protected_object_id_visible
                         = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
+                    observer.protected_send_response_encoding_by_sequence[prefix.sequence_number] = request.encoding;
                 }
                 else
                 {
@@ -706,7 +713,8 @@ namespace
                 {
                     ++observer.protected_post_count;
                     observer.malformed_encrypted_payload
-                        = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                        = observer.malformed_encrypted_payload
+                          || !is_valid_encrypted_payload(request.payload, request.encoding);
                     observer.protected_object_id_visible
                         = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
                 }
@@ -718,12 +726,15 @@ namespace
             });
 
         initiator_transport->add_typed_message_handler<rpc::stream_transport::call_receive>(
-            [&observer](auto, const auto&, const auto&, const rpc::stream_transport::call_receive& response)
+            [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::call_receive& response)
                 -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
             {
-                if (is_valid_encrypted_payload(response.payload))
+                auto encoding = observer.protected_send_response_encoding_by_sequence.find(prefix.sequence_number);
+                if (encoding != observer.protected_send_response_encoding_by_sequence.end()
+                    && is_valid_encrypted_payload(response.payload, encoding->second))
                 {
                     ++observer.protected_send_response_count;
+                    observer.protected_send_response_encoding_by_sequence.erase(encoding);
                     observer.non_rpc_public_control_status_visible = observer.non_rpc_public_control_status_visible
                                                                      || !is_valid_public_control_status(response.err_code);
                 }
@@ -768,7 +779,8 @@ namespace
             {
                 ++observer.protected_add_ref_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                    = observer.malformed_encrypted_payload
+                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -790,7 +802,8 @@ namespace
             {
                 ++observer.protected_try_cast_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                    = observer.malformed_encrypted_payload
+                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -812,7 +825,8 @@ namespace
             {
                 ++observer.protected_release_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                    = observer.malformed_encrypted_payload
+                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -834,7 +848,8 @@ namespace
             {
                 ++observer.protected_object_released_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                    = observer.malformed_encrypted_payload
+                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -858,7 +873,8 @@ namespace
             {
                 ++observer.protected_transport_down_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                    = observer.malformed_encrypted_payload
+                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
             }
             else
             {
@@ -1331,6 +1347,17 @@ namespace
                 arithmetic_test_left_value, arithmetic_test_right_value, add_result),
             rpc::error::OK());
         CORO_ASSERT_EQ(add_result, arithmetic_test_expected_result);
+
+        rpc::shared_ptr<xxx::i_foo> foo;
+        CORO_ASSERT_EQ(CO_AWAIT connect_result.output_interface->create_foo(foo), rpc::error::OK());
+        CORO_ASSERT_NE(foo, nullptr);
+        CORO_ASSERT_EQ(CO_AWAIT foo->clear_recorded_messages(), rpc::error::OK());
+        CORO_ASSERT_EQ(CO_AWAIT foo->record_message(enclave_local_post_message_value), rpc::error::OK());
+        CO_AWAIT parent_service->schedule();
+        std::vector<int> recorded_messages;
+        CORO_ASSERT_EQ(CO_AWAIT foo->get_recorded_messages(recorded_messages), rpc::error::OK());
+        CORO_ASSERT_EQ(recorded_messages.size(), 1U);
+        CORO_ASSERT_EQ(recorded_messages[0], enclave_local_post_message_value);
 
         CO_RETURN true;
     }
