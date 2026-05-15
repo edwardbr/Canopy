@@ -108,7 +108,9 @@ namespace websocket_protocol
         RPC_ASSERT(svc);
 
         // receive from client — wait for connect_request handshake envelope
-        std::array<char, 4096> buf;
+        // Sized for video frames (~30–60 KB encoded VP8) plus headroom; bumped
+        // from 4 KB which truncated anything beyond a chat-token payload.
+        std::array<char, 262144> buf;
         rpc::mutable_byte_span received_span;
         while (get_status() < rpc::transport_status::DISCONNECTED)
         {
@@ -416,6 +418,11 @@ namespace websocket_protocol
     {
         RPC_DEBUG("stub_handle_send");
 
+        // MSG_POST envelopes are one-way fire-and-forget: the caller does not
+        // register a pending response, so emitting one would log a spurious
+        // "no pending request" warning on the client.
+        const bool is_post = (envelope.type == websocket_protocol::v1::message_type::post);
+
         websocket_protocol::v1::request request;
         auto error = decode_transport_message(envelope.data, request);
         if (error.length())
@@ -441,6 +448,12 @@ namespace websocket_protocol
         if (send_result.error_code != rpc::error::OK())
         {
             RPC_ERROR("failed send {}", rpc::error::to_string(send_result.error_code));
+        }
+
+        if (is_post)
+        {
+            RPC_DEBUG("post request complete (no response)");
+            CO_RETURN;
         }
 
         // create a response

@@ -10,9 +10,20 @@ namespace websocket_demo
 {
     namespace v1
     {
+        // Inbound callback interface (enclave -> browser). Hosts both LLM
+        // token streaming (piece) and video egress (push_frame). Sharing one
+        // interface here is pragmatic: the websocket transport binds a single
+        // typed sink per connection from its [Remote, Local] template, and
+        // the JS-side proxy for outbound interface-ref params is not wired
+        // up yet. Keeping push_frame here lets the existing chat handshake
+        // path register the sink for video too, with no protocol change.
         interface i_context_event
         {
             [post] int piece(const std::string& piece);
+
+            // payload: encoded chunk (codec chosen at session start);
+            // flags bit 0 = keyframe, bit 1 = end-of-stream.
+            [post] int push_frame(uint64_t seq, uint64_t pts_us, uint32_t flags, const std::vector<uint8_t>& payload);
         };
 
         [status=demo]
@@ -26,6 +37,12 @@ namespace websocket_demo
             int add_prompt(const std::string& prompt);
             // int get_piece([out] std::string& piece, [out] bool& complete);
             int set_callback(const rpc::shared_ptr<i_context_event>& event);
+
+            // Video ingress (browser -> enclave). One-way; no interface params,
+            // so the JS proxy can marshal it directly with the prototype
+            // generator. The egress side rides on i_context_event::push_frame
+            // registered via the existing set_callback handshake.
+            [post] int push_video_frame(uint64_t seq, uint64_t pts_us, uint32_t flags, const std::vector<uint8_t>& payload);
         };
 
         interface i_enclave_websocket_server

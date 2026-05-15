@@ -321,6 +321,42 @@
     };
 
     // ---------------------------------------------------------------------------
+    // callPost() — sends a type-1 envelope (MSG_POST) one-way; no response is
+    // awaited. Used by generated proxy methods for [post] IDL entries: the
+    // caller fires the request into the pipe and returns immediately. Any
+    // server-side error is dropped on the floor, matching the [post] contract.
+    // ---------------------------------------------------------------------------
+    CanopyWebsocketTransport.prototype.callPost = function (interfaceId, methodId, requestBytes) {
+        var self = this;
+        if (!self._connected) {
+            throw new Error('[Canopy] Not connected');
+        }
+
+        self._msgCounter++;
+        var id = self._msgCounter;
+
+        var wsReq = self._proto.request.create({
+            encoding: self._encoding,
+            tag: Long_fromNumber(id, true),
+            callerZoneId: self.clientObject || {},
+            destinationZoneId: self.serverObject || {},
+            interfaceId: { id: interfaceId },
+            methodId: { id: methodId },
+            data: requestBytes,
+            backChannel: []
+        });
+        var payload = self._proto.request.encode(wsReq).finish();
+
+        var env = self._proto.envelope.create({
+            id: Long_fromNumber(id, true),
+            type: MSG_POST,
+            data: payload
+        });
+        var envBytes = self._proto.envelope.encode(env).finish();
+        self._ws.send(envBytes);
+    };
+
+    // ---------------------------------------------------------------------------
     // registerStub() — register a generated stub to receive [post] events
     // ---------------------------------------------------------------------------
     CanopyWebsocketTransport.prototype.registerStub = function (stub) {

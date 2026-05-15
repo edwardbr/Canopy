@@ -6,6 +6,7 @@
 
 #include <rpc/rpc.h>
 
+#include "video_session.h"
 #include "websocket_demo/websocket_demo.h"
 
 #ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
@@ -35,6 +36,7 @@ namespace websocket_demo
             std::shared_ptr<secret_llama::v1_0::context> context_;
 #endif
             rpc::shared_ptr<i_context_event> event_;
+            video_session video_;
 
 #ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
             std::shared_ptr<rpc::service> service_;
@@ -168,8 +170,19 @@ namespace websocket_demo
 #endif
 
                 event_ = event;
+                video_.set_sink(event);
 
                 CO_RETURN rpc::error::OK();
+            }
+
+            CORO_TASK(int)
+            push_video_frame(
+                uint64_t seq,
+                uint64_t pts_us,
+                uint32_t flags,
+                const std::vector<uint8_t>& payload) override
+            {
+                CO_RETURN CO_AWAIT video_.forward_frame(seq, pts_us, flags, payload);
             }
         };
 

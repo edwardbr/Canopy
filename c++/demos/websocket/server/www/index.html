@@ -401,6 +401,10 @@
                     <input type="radio" name="mode" id="chatMode" value="chat">
                     <label for="chatMode">Chat</label>
                 </div>
+                <div class="mode-option">
+                    <input type="radio" name="mode" id="videoMode" value="video">
+                    <label for="videoMode">Video</label>
+                </div>
             </div>
 
             <!-- Echo Mode Controls -->
@@ -434,6 +438,29 @@
                 <div class="chat-input-container">
                     <textarea id="chatInput" placeholder="Type your message..." disabled rows="2"></textarea>
                     <button class="btn btn-primary" id="sendChatBtn" disabled>Send</button>
+                </div>
+            </div>
+
+            <!-- Video Mode Controls -->
+            <div id="videoPanel" class="calculator-panel hidden">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+                    <div>
+                        <div style="font-weight:bold;margin-bottom:5px;">Local camera</div>
+                        <video id="videoLocal" autoplay playsinline muted
+                               style="width:100%;background:#000;border-radius:6px;"></video>
+                    </div>
+                    <div>
+                        <div style="font-weight:bold;margin-bottom:5px;">From enclave</div>
+                        <canvas id="videoRemote" width="640" height="480"
+                                style="width:100%;background:#111;border-radius:6px;"></canvas>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <button class="btn btn-success" id="videoStartBtn" disabled>Start camera</button>
+                    <button class="btn btn-danger" id="videoStopBtn" disabled>Stop</button>
+                    <div id="videoStats" style="margin-left:auto;color:#6b7280;font-size:14px;">
+                        sent 0 / received 0 / dropped 0
+                    </div>
                 </div>
             </div>
 
