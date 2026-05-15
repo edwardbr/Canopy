@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -91,7 +92,7 @@ namespace canopy::security::attestation
     struct route_attestation_state
     {
         route_attestation_status status{route_attestation_status::unknown};
-        security_context context;
+        std::optional<security_context> context;
         std::string failure_reason;
         uint64_t failure_epoch{0};
     };

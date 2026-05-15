@@ -25,10 +25,9 @@ namespace rpc
     {
         RPC_ASSERT(attested_zone_id.get_subnet());
         std::lock_guard<std::mutex> lock(security_context_mutex_);
-        security_contexts_[attested_zone_id] = std::move(context);
         canopy::security::attestation::route_attestation_state state;
         state.status = canopy::security::attestation::route_attestation_status::attested;
-        state.context = security_contexts_[attested_zone_id];
+        state.context = std::move(context);
         attestation_route_states_[attested_zone_id] = std::move(state);
     }
 
@@ -55,7 +54,6 @@ namespace rpc
     {
         RPC_ASSERT(attested_zone_id.get_subnet());
         std::lock_guard<std::mutex> lock(security_context_mutex_);
-        security_contexts_.erase(attested_zone_id);
         attestation_route_states_.erase(attested_zone_id);
     }
 
@@ -64,10 +62,14 @@ namespace rpc
     {
         RPC_ASSERT(attested_zone_id.get_subnet());
         std::lock_guard<std::mutex> lock(security_context_mutex_);
-        auto item = security_contexts_.find(attested_zone_id);
-        if (item == security_contexts_.end())
+        auto item = attestation_route_states_.find(attested_zone_id);
+        if (item == attestation_route_states_.end())
             return std::nullopt;
-        return item->second;
+        if (item->second.status != canopy::security::attestation::route_attestation_status::attested)
+            return std::nullopt;
+        if (!item->second.context || !item->second.context->established)
+            return std::nullopt;
+        return item->second.context;
     }
 
     void enclave_service::set_attestation_route_state(
@@ -76,8 +78,15 @@ namespace rpc
     {
         RPC_ASSERT(attested_zone_id.get_subnet());
         std::lock_guard<std::mutex> lock(security_context_mutex_);
-        if (state.status == canopy::security::attestation::route_attestation_status::attested && state.context.established)
-            security_contexts_[attested_zone_id] = state.context;
+        if (state.status != canopy::security::attestation::route_attestation_status::attested)
+        {
+            state.context.reset();
+        }
+        else if (!state.context || !state.context->established)
+        {
+            state.status = canopy::security::attestation::route_attestation_status::unknown;
+            state.context.reset();
+        }
         attestation_route_states_[attested_zone_id] = std::move(state);
     }
 

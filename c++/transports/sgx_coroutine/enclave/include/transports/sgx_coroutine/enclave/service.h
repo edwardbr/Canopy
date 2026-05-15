@@ -95,7 +95,6 @@ namespace rpc
         std::shared_ptr<rpc::io_uring::controller> io_uring_controller_;
 
         mutable std::mutex security_context_mutex_;
-        std::unordered_map<rpc::destination_zone, canopy::security::attestation::security_context> security_contexts_;
         std::unordered_map<rpc::destination_zone, canopy::security::attestation::route_attestation_state> attestation_route_states_;
 
         mutable std::mutex attestation_service_mutex_;
