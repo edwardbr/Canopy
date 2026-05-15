@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <security/attestation/fake_backend.h>
+#include <security/attestation/protected_rpc.h>
 #include <security/attestation/service.h>
 
 #include <array>
@@ -27,10 +28,14 @@ namespace
     using canopy::security::attestation::fake_evidence_media_type;
     using canopy::security::attestation::identity;
     using canopy::security::attestation::make_session_id;
+    using canopy::security::attestation::protect_send_request;
+    using canopy::security::attestation::protect_send_response;
     using canopy::security::attestation::protected_key_scope;
     using canopy::security::attestation::protected_rpc_direction;
     using canopy::security::attestation::security_context;
     using canopy::security::attestation::security_level;
+    using canopy::security::attestation::unprotect_send_request;
+    using canopy::security::attestation::unprotect_send_response;
 
     auto make_service(
         std::string enclave_id,
@@ -76,6 +81,14 @@ namespace
         scope.destination_identity = std::move(destination);
         scope.direction = direction;
         return scope;
+    }
+
+    auto make_zone(uint64_t subnet) -> rpc::zone
+    {
+        auto addr = rpc::DEFAULT_PREFIX;
+        auto set_result = addr.set_subnet(subnet);
+        EXPECT_TRUE(set_result.has_value());
+        return rpc::zone(addr);
     }
 } // namespace
 
@@ -262,4 +275,117 @@ TEST(
     auto attacker_scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"attacker", "zone-b"});
     EXPECT_FALSE(service->derive_aead_key(attacker_scope).has_value());
     EXPECT_FALSE(service->next_send_counter(attacker_scope).accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectsSendRequestAndResponse)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"});
+    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"});
+
+    auto caller_zone = make_zone(10);
+    auto destination_zone = make_zone(20);
+    auto remote_object = destination_zone.with_object(rpc::object(7));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 1234;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x445566);
+    params.method_id = rpc::method(9);
+    params.in_data = {'h', 'e', 'l', 'l', 'o'};
+    params.in_back_channel.push_back(rpc::back_channel_entry{42, {1, 2, 3}});
+    params.request_id = 77;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    EXPECT_EQ(
+        protected_request.value.params.interface_id,
+        canopy::security::attestation::encrypted_payload_interface_id(rpc::get_version()));
+    EXPECT_EQ(protected_request.value.params.method_id, rpc::method(0));
+    EXPECT_EQ(protected_request.value.params.encoding_type, rpc::encoding::yas_binary);
+    EXPECT_NE(protected_request.value.params.in_data, params.in_data);
+
+    auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.encoding_type, params.encoding_type);
+    EXPECT_EQ(unprotected_request.value.params.tag, params.tag);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.interface_id, params.interface_id);
+    EXPECT_EQ(unprotected_request.value.params.method_id, params.method_id);
+    EXPECT_EQ(unprotected_request.value.params.in_data, params.in_data);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 42U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({1, 2, 3}));
+    EXPECT_EQ(unprotected_request.value.params.request_id, params.request_id);
+
+    auto replayed_request = unprotect_send_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+
+    rpc::send_result response;
+    response.error_code = rpc::error::INVALID_METHOD_ID();
+    response.out_buf = {'o', 'k'};
+    response.out_back_channel.push_back(rpc::back_channel_entry{99, {4, 5, 6}});
+
+    auto protected_response = protect_send_response(
+        *service_b, context_b, protected_request.value.params, unprotected_request.value.request_counter, std::move(response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    EXPECT_EQ(protected_response.value.error_code, rpc::error::OK());
+    EXPECT_FALSE(protected_response.value.out_buf.empty());
+
+    auto unprotected_response = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    EXPECT_EQ(unprotected_response.value.error_code, rpc::error::INVALID_METHOD_ID());
+    EXPECT_EQ(unprotected_response.value.out_buf, std::vector<char>({'o', 'k'}));
+    ASSERT_EQ(unprotected_response.value.out_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].type_id, 99U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].payload, std::vector<uint8_t>({4, 5, 6}));
+}
+
+TEST(
+    AttestationService,
+    ProtectedSendRejectsTamperedCiphertext)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 101);
+    establish(service_b, identity{"enclave-a", "zone-a"}, 101);
+
+    auto caller_zone = make_zone(11);
+    auto destination_zone = make_zone(22);
+    auto remote_object = destination_zone.with_object(rpc::object(8));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 5678;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x112233);
+    params.method_id = rpc::method(4);
+    params.in_data = {'x'};
+    params.request_id = 12;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    ASSERT_FALSE(protected_request.value.params.in_data.empty());
+
+    protected_request.value.params.in_data.back() ^= 0x01;
+    auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(unprotected_request.accepted);
+    EXPECT_EQ(unprotected_request.error.error_code, rpc::error::SECURITY_ERROR());
 }

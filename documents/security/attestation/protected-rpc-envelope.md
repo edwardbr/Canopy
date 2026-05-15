@@ -61,7 +61,7 @@ outer send_params:
     remote_object_id     = visible destination/object route
     interface_id         = rpc::id<encrypted_payload>::get(version)
     method_id            = 0
-    in_data              = encrypted protected payload
+    in_data              = YAS-binary encrypted_payload carrier
     in_back_channel      = public route/security/telemetry context
     request_id           = transport_request_id for adjacent correlation
 ```
@@ -78,22 +78,30 @@ not dispatch the request directly; it must unwrap the protected payload first.
 For encrypted traffic, intermediates must not see a valid application
 `method_id`. The real interface and method live inside the encrypted plaintext.
 
-A candidate IDL envelope shape is:
+The current IDL carrier is:
 
 ```text
 struct encrypted_payload
 {
+    std::string session_id;
+    uint64_t session_epoch;
+    uint64_t e2e_counter;
     std::vector<uint8_t> payload;
-    std::vector<uint8_t> signature_or_authentication_tag;
+    std::vector<uint8_t> authentication_tag;
 }
 ```
 
-The exact field names are deferred. The important rule is that the outer
-`interface_id` names the envelope format and the payload body carries the
-encrypted protected-marshaller message. A second payload-format type id inside
-the struct is not needed unless a future format has multiple nested payload
-families that cannot be distinguished by the outer type, protocol version,
-encoding, or tag.
+The carrier is serialized with YAS binary for the current implementation and
+stored in `in_data` for requests or `out_buf` for protected responses.
+`session_id`, `session_epoch`, and `e2e_counter` are public cryptographic
+metadata: the receiver needs them to locate the session context and construct
+the nonce before decryption. They are also bound into AEAD associated data and
+repeated in the encrypted plaintext so tampering is detected.
+
+`authentication_tag` is the AES-GCM authentication tag, not a public-key
+signature. A second payload-format type id inside the struct is not needed
+unless a future format has multiple nested payload families that cannot be
+distinguished by the outer type, protocol version, encoding, or tag.
 
 ## Protected Method Visibility
 
@@ -131,15 +139,20 @@ protected_plaintext:
     interface_id
     method_id
     in_data
+    in_back_channel
     transport_request_id
     service_request_id
     e2e_counter
     session_id
+    session_epoch
     selected private context
 ```
 
 The destination decrypts this plaintext, validates it, and then passes the
 recovered request to the internal implementation or generated stub.
+
+The first implementation sets `service_request_id` to zero. The field is kept
+in the protected plaintext for the later service-level binding work.
 
 The attestation backend id and security level are normally properties of the
 session rather than repeated in every payload. Validation must still ensure that
@@ -161,14 +174,16 @@ transport_request_id
 service_request_id if present
 error_code
 out_buf
+out_back_channel
 selected private response context
 ```
 
 The caller service decrypts the protected `out_buf`, validates the binding, and
 returns the recovered result to the proxy.
 
-Response `out_back_channel` remains public metadata. Private response context
-belongs inside the encrypted response payload.
+For protected responses, the current implementation encrypts `out_back_channel`
+with the response body. Future route-visible response metadata must be carried
+separately and explicitly marked public.
 
 ## Request Ids
 

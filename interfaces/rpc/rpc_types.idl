@@ -136,6 +136,15 @@ namespace rpc
         std::vector<uint8_t> payload;
     };
 
+    struct encrypted_payload
+    {
+        std::string session_id;
+        uint64_t session_epoch = 0;
+        uint64_t e2e_counter = 0;
+        std::vector<uint8_t> payload;
+        std::vector<uint8_t> authentication_tag;
+    };
+
     // Versioned bit-packed zone address blob.
     //
     // Storage:

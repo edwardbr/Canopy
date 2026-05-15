@@ -72,6 +72,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
             streaming_enclave
             spsc_queue
             libcoro_enclave
+            canopy::security_attestation_enclave
             rpc::rpc_enclave
             transport_sgx_coroutine_sgxssl_time_enclave
             canopy_coroutine_edl_enclave)

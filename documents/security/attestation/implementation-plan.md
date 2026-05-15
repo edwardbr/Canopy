@@ -41,12 +41,14 @@ authoritative and the plan must be amended.
 
 ## Implementation Checkpoint - 2026-05-15
 
-The current tree contains a first no-SGX proof of concept. It is a vertical
-development slice across the fake backend, a first L4 `attestation_service`,
-an attestation stream decorator, and normal RPC traffic over that decorator. It
-is **not** completion of Phase 1 or Phase 2 as written below, because it
-intentionally does not yet implement AES-GCM protected payload encryption or
-the L7 protected RPC envelope.
+The current tree contains a no-SGX proof of concept plus the first protected
+RPC envelope implementation. It is a vertical development slice across the
+fake backend, a first L4 `attestation_service`, an attestation stream
+decorator, normal RPC traffic over that decorator, AES-GCM envelope helpers,
+and `rpc::enclave_service` send/post hooks. It is **not** completion of
+Phase 1 or Phase 2 as written below, because the protected envelope still
+needs a generated-RPC runtime test through `rpc::enclave_service`, build-time
+backend selection, and protected forms for the remaining marshaller methods.
 
 ### Implemented
 
@@ -112,8 +114,39 @@ the L7 protected RPC envelope.
   header-only interface that lets enclave-owned code discover attested streams
   without depending on the concrete decorator type.
 - `rpc::enclave_service` stores attestation `security_context` records keyed by
-  adjacent zone id. The base `rpc::service` and generic
+  the attested peer route zone. For a direct stream that peer is the adjacent
+  zone; for routed end-to-end protection it must be the final destination zone.
+  The base `rpc::service` and generic
   `rpc::stream_transport::transport` remain attestation-neutral.
+- `rpc::encrypted_payload` is pinned in `interfaces/rpc/rpc_types.idl` with:
+  - public `session_id`;
+  - public `session_epoch`;
+  - public `e2e_counter`;
+  - encrypted `payload`;
+  - AES-GCM `authentication_tag`.
+- `c++/security/attestation/include/security/attestation/protected_rpc.h` and
+  `c++/security/attestation/src/protected_rpc.cpp` implement the first L7
+  protected-envelope helpers:
+  - `protect_send_request` / `unprotect_send_request`;
+  - `protect_send_response` / `unprotect_send_response`;
+  - `protect_post_request` / `unprotect_post_request`;
+  - outer `interface_id == rpc::id<rpc::encrypted_payload>::get(version)`;
+  - outer `method_id == 0`;
+  - YAS-binary serialization of the outer `encrypted_payload` carrier;
+  - bounded canonical plaintext and AAD encoding using big-endian integers and
+    length-prefixed fields;
+  - AES-256-GCM encryption through OpenSSL/SGXSSL-compatible EVP APIs;
+  - replay checks that accept receive counters only after successful
+    authentication and plaintext validation.
+- `rpc::enclave_service` now owns the protected-RPC integration point:
+  - `set_attestation_service`;
+  - `set_protected_rpc_enabled`;
+  - inbound `send` / `post` unwrap;
+  - outbound `send` / `post` wrap;
+  - protected `send` response wrap/unwrap.
+- `transport_sgx_coroutine_enclave` links the enclave attestation library so
+  the protected-envelope helpers compile in SGX-sim and fake-SGX enclave
+  builds. The base `rpc::service` remains free of attestation-specific logic.
 - Raw stream POC coverage exists in
   `c++/streaming/attestation/tests/attestation_stream_test.cpp`.
 - Attestation service coverage exists in
@@ -126,6 +159,8 @@ the L7 protected RPC envelope.
   - monotonic counter allocation;
   - replay/out-of-order receive-counter rejection;
   - configured counter exhaustion.
+  - protected send request/response wrapping and unwrapping;
+  - tampered protected ciphertext rejection.
 - RPC-level POC coverage exists in
   `c++/tests/test_host/attested_streaming_transport_poc_suite.cpp`.
   It proves that generated RPC traffic can run over `rpc::stream_transport`
@@ -149,6 +184,19 @@ the L7 protected RPC envelope.
 - `ctest --test-dir build_debug -R attestation_service_test --output-on-failure`
 - `cmake --build build_debug_coroutine --target attestation_service_test attestation_stream_test rpc_test`
 - `ctest --test-dir build_debug_coroutine -R 'attestation_service_test|attestation_stream_test|attested_streaming_transport_poc_test' --output-on-failure`
+- `cmake --build build_debug --target attestation_service_test`
+- `build_debug/output/attestation_service_test`
+- `cmake --build build_debug_coroutine --target attestation_service_test attestation_stream_test`
+- `build_debug_coroutine/output/attestation_service_test`
+- `build_debug_coroutine/output/attestation_stream_test`
+- `cmake --build build_debug_sgx_sim --target security_attestation_enclave attestation_service_test`
+- `build_debug_sgx_sim/output/attestation_service_test`
+- `cmake --build build_debug_coroutine_sgx_sim --target security_attestation_enclave transport_sgx_coroutine_enclave attestation_service_test attestation_stream_test`
+- `build_debug_coroutine_sgx_sim/output/attestation_service_test`
+- `build_debug_coroutine_sgx_sim/output/attestation_stream_test`
+- `cmake --build build_debug_coroutine_fake_sgx --target security_attestation_enclave transport_sgx_coroutine_enclave attestation_service_test attestation_stream_test`
+- `build_debug_coroutine_fake_sgx/output/attestation_service_test`
+- `build_debug_coroutine_fake_sgx/output/attestation_stream_test`
 
 ### Not Yet Implemented
 
@@ -159,10 +207,11 @@ the L7 protected RPC envelope.
 - CMW / attestation context IDL additions.
 - Backend selection beyond explicit construction of one service with one
   backend.
-- AES-GCM or any other protected payload encryption.
-- L7 protected RPC envelope integration with `outbound_send`,
-  `outbound_post`, `add_ref`, `release`, `try_cast`, `object_released`, or
-  `transport_down`.
+- Generated-RPC runtime coverage for protected `send`/`post` through
+  `rpc::enclave_service`.
+- Protected envelope support for `add_ref`, `release`, `try_cast`,
+  `object_released`, or `transport_down`.
+- Non-zero `service_request_id` semantics.
 - TLS exporter binding. The current development binding is transcript id,
   identity, role, and nonce based.
 - `sgx_ttls`, DCAP, local SGX attestation, EPID, TDX, SEV-SNP, or
@@ -170,9 +219,10 @@ the L7 protected RPC envelope.
 
 ### Current Best Next Step
 
-The next implementation slice should introduce the protected RPC envelope behind
-a feature flag. That slice should use the existing `attestation_service`
-key/counter API, without moving attestation logic into the base `rpc::service`.
+The next implementation slice should add a generated-RPC runtime test that
+drives protected `send` and `post` through `rpc::enclave_service` over an
+attested fake stream. After that, extend the protected marshaller coverage
+method by method, starting with the lowest-risk control path.
 
 ## Architectural Layers
 

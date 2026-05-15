@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.24)
 
 find_package(OpenSSL REQUIRED)
 
-add_library(security_attestation STATIC src/fake_backend.cpp src/kdf.cpp src/service.cpp)
+add_library(security_attestation STATIC src/fake_backend.cpp src/kdf.cpp src/protected_rpc.cpp src/service.cpp)
 add_library(canopy::security_attestation ALIAS security_attestation)
 
 target_include_directories(
@@ -32,7 +32,7 @@ if(CANOPY_BUILD_ENCLAVE)
   endif()
 
   if(CANOPY_ATTESTATION_ENCLAVE_HEADERS_READY)
-    add_library(security_attestation_enclave STATIC src/fake_backend.cpp src/kdf.cpp src/service.cpp)
+    add_library(security_attestation_enclave STATIC src/fake_backend.cpp src/kdf.cpp src/protected_rpc.cpp src/service.cpp)
     add_library(canopy::security_attestation_enclave ALIAS security_attestation_enclave)
 
     target_include_directories(
