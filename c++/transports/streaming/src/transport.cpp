@@ -226,7 +226,9 @@ namespace rpc::stream_transport
             try_cast_send{.caller_zone_id = params.caller_zone_id,
                 .destination_zone_id = params.remote_object_id,
                 .interface_id = params.interface_id,
-                .back_channel = std::move(params.in_back_channel)});
+                .back_channel = std::move(params.in_back_channel),
+                .payload_type_id = params.payload_type_id,
+                .payload = std::move(params.payload)});
         int ret = response_result.error_code;
         if (ret != rpc::error::OK())
         {
@@ -1168,6 +1170,8 @@ namespace rpc::stream_transport
                 .remote_object_id = request.destination_zone_id,
                 .interface_id = request.interface_id,
                 .in_back_channel = std::move(request.back_channel),
+                .payload_type_id = request.payload_type_id,
+                .payload = std::move(request.payload),
             });
 
         if (rpc::error::is_error(tc_result.error_code))

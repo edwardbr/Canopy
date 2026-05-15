@@ -29,7 +29,8 @@ namespace canopy::security::attestation
         post = 2,
         response = 3,
         add_ref = 4,
-        release = 5
+        release = 5,
+        try_cast = 6
     };
 
     struct protected_rpc_error
@@ -73,13 +74,20 @@ namespace canopy::security::attestation
         uint64_t request_counter{protected_rpc_invalid_counter};
     };
 
+    struct protected_try_cast_request
+    {
+        rpc::try_cast_params params;
+        security_context context;
+        uint64_t request_counter{protected_rpc_invalid_counter};
+    };
+
     // Type fingerprint used when encrypted_payload is carried in payload_type_id fields.
     [[nodiscard]] auto encrypted_payload_type_id(uint64_t protocol_version) -> uint64_t;
 
     // Same fingerprint wrapped as an interface ordinal for protected send/post carriers.
     [[nodiscard]] auto encrypted_payload_interface_id(uint64_t protocol_version) -> rpc::interface_ordinal;
 
-    // True when an add_ref/release-style payload field carries encrypted_payload bytes.
+    // True when a reference/control payload field carries encrypted_payload bytes.
     [[nodiscard]] auto is_protected_rpc_payload(
         uint64_t payload_type_id,
         uint64_t protocol_version) -> bool;
@@ -139,4 +147,13 @@ namespace canopy::security::attestation
     [[nodiscard]] auto unprotect_release_request(
         attestation_service& service,
         const rpc::release_params& outer) -> protected_rpc_result<protected_release_request>;
+
+    [[nodiscard]] auto protect_try_cast_request(
+        attestation_service& service,
+        const security_context& context,
+        rpc::try_cast_params params) -> protected_rpc_result<protected_try_cast_request>;
+
+    [[nodiscard]] auto unprotect_try_cast_request(
+        attestation_service& service,
+        const rpc::try_cast_params& outer) -> protected_rpc_result<protected_try_cast_request>;
 } // namespace canopy::security::attestation

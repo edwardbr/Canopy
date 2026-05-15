@@ -9,19 +9,20 @@ All rights reserved.
 
 Design and implementation-tracking document. The current repository has a
 development fake-attestation backend, an attestation stream decorator, an
-enclave-service protected `send`/`post` envelope, encrypted `add_ref` and
-`release` payload wrapping, route-state storage, and an opt-in reference
-route-attestation gate backed by the first service-level
+enclave-service protected `send`/`post` envelope, encrypted `try_cast`,
+`add_ref`, and `release` payload wrapping, route-state storage, and an opt-in
+reference route-attestation gate backed by the first service-level
 `i_marshaller::handshake()` payload. SGX-sim
 host tests now drive an
 unknown-route `add_ref` through `rpc::stream_transport` and verify the
 service-level handshake updates both enclave-service route-state maps.
-Additional host tests drive generated `send`, `[post]`, `add_ref`, and
-`release` traffic through `rpc::enclave_service` with protected RPC enabled and
-verify that the observed streaming messages are encrypted payload carriers
-rather than plaintext application calls. The repository does not yet have real
-SGX/DCAP evidence production or protected encrypted carriers for every
-marshaller method.
+Additional host tests drive generated `send`, `[post]`, `try_cast`, `add_ref`,
+and `release` traffic through `rpc::enclave_service` with protected RPC enabled
+and verify that the observed streaming messages are encrypted payload carriers
+rather than plaintext application calls. They also verify that protected outer
+`remote_object_id` values expose only the destination zone, not the object id.
+The repository does not yet have real SGX/DCAP evidence production or
+protected encrypted carriers for every marshaller method.
 
 This section describes the intended security model for enclave-to-enclave
 Canopy RPC:
@@ -158,16 +159,16 @@ payloads, validate policy, and then pass the recovered plaintext request to the
 internal implementation or generated stub.
 
 The first reference-control hardening step now combines route-state gating
-with encrypted `payload_type_id` / `payload` carriers for `add_ref` and
-`release`. `rpc::enclave_service` can require add-ref route attestation, treat
-established attested routes as allowed, explicitly allow configured unattested
-routes, and fail closed for failed or still-handshaking routes. Unknown
-`add_ref` routes start the route-addressed `handshake()` path and remain
-blocked until the service-level attestation exchange marks the route allowed.
-`release` does not start a new handshake: if the caller route is unknown when
-a release arrives, the system treats that as an elided or failed protected
-`add_ref` and rejects it. The current route-attestation payloads are generated
-RPC/YAS structs:
+with encrypted `payload_type_id` / `payload` carriers for `try_cast`,
+`add_ref`, and `release`. `rpc::enclave_service` can require add-ref route
+attestation, treat established attested routes as allowed, explicitly allow
+configured unattested routes, and fail closed for failed or still-handshaking
+routes. Unknown `add_ref` routes start the route-addressed `handshake()` path
+and remain blocked until the service-level attestation exchange marks the
+route allowed. `try_cast` and `release` do not start new handshakes: if the
+caller route is unknown when one of those messages arrives, the system treats
+that as an elided or failed protected `add_ref` and rejects it. The current
+route-attestation payloads are generated RPC/YAS structs:
 `route_attestation_handshake_request` and
 `route_attestation_handshake_response`. They carry backend-neutral identity,
 CMW-like Evidence, transcript id, nonce, backend id, security level, and the
@@ -186,6 +187,9 @@ refactor.
 For the same reason, `release_options` remains visible to the transport
 lifetime path. Protected release binds that value as AEAD associated data and
 repeats it inside the encrypted plaintext.
+
+Protected `try_cast` exposes only the route and the encrypted-payload carrier
+type. The requested interface id is encrypted.
 
 ## Routing Classification
 
@@ -313,9 +317,9 @@ sequenceDiagram
     ServiceA->>ServiceA: bind output proxy and record peer transport
 ```
 
-After this sign-on, generated `send`, `[post]`, endpoint `add_ref`, and
-endpoint `release` traffic can be wrapped by `rpc::enclave_service` using the
-established `security_context`.
+After this sign-on, generated `send`, `[post]`, endpoint `try_cast`, endpoint
+`add_ref`, and endpoint `release` traffic can be wrapped by
+`rpc::enclave_service` using the established `security_context`.
 
 ### Routed Service-Level Sign-On
 
@@ -350,7 +354,7 @@ sequenceDiagram
         ServiceA-->>AppA: ZONE_NOT_SUPPORTED
     end
 
-    ServiceA->>RouteB: protected add_ref / send / post / release for C
+    ServiceA->>RouteB: protected add_ref / send / post / try_cast / release for C
     Note over RouteB: B may append public backchannels but cannot decrypt payloads
     RouteB->>ServiceC: protected envelope for C
 ```
@@ -373,7 +377,7 @@ sequenceDiagram
     participant AttC as Destination attestation_service
     participant StubC as Destination stub/service
 
-    ProxyA->>ServiceA: outbound_send / outbound_post / outbound_add_ref / outbound_release
+    ProxyA->>ServiceA: outbound_send / outbound_post / outbound_try_cast / outbound_add_ref / outbound_release
     ServiceA->>AttA: find security_context and derive AEAD key
     AttA-->>ServiceA: key material and next e2e counter
     ServiceA->>Route: outer route fields + encrypted_payload
@@ -382,7 +386,7 @@ sequenceDiagram
     ServiceC->>AttC: find session, derive key, accept counter
     AttC-->>ServiceC: decrypted payload accepted
     ServiceC->>ServiceC: recover inner fields; keep received outer backchannels
-    ServiceC->>StubC: dispatch inner call or add_ref/release
+    ServiceC->>StubC: dispatch inner call or try_cast/add_ref/release
 
     alt send expects a response
         StubC-->>ServiceC: send_result

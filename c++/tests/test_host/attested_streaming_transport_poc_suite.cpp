@@ -283,11 +283,14 @@ namespace
         size_t plaintext_send_response_count{0};
         size_t protected_post_count{0};
         size_t plaintext_post_count{0};
+        size_t protected_try_cast_count{0};
+        size_t plaintext_try_cast_count{0};
         size_t protected_add_ref_count{0};
         size_t plaintext_add_ref_count{0};
         size_t protected_release_count{0};
         size_t plaintext_release_count{0};
         bool malformed_encrypted_payload{false};
+        bool protected_object_id_visible{false};
     };
 
     void install_protected_rpc_runtime_observers(
@@ -305,6 +308,8 @@ namespace
                     ++observer.protected_send_count;
                     observer.malformed_encrypted_payload
                         = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                    observer.protected_object_id_visible
+                        = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
                 }
                 else
                 {
@@ -323,6 +328,8 @@ namespace
                     ++observer.protected_post_count;
                     observer.malformed_encrypted_payload
                         = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                    observer.protected_object_id_visible
+                        = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
                 }
                 else
                 {
@@ -355,6 +362,8 @@ namespace
                 ++observer.protected_add_ref_count;
                 observer.malformed_encrypted_payload
                     = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                observer.protected_object_id_visible
+                    = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
             else
             {
@@ -366,6 +375,28 @@ namespace
         responder_transport->add_typed_message_handler<rpc::stream_transport::addref_send>(add_ref_handler);
         initiator_transport->add_typed_message_handler<rpc::stream_transport::addref_send>(std::move(add_ref_handler));
 
+        auto try_cast_handler
+            = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::try_cast_send& request)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            {
+                ++observer.protected_try_cast_count;
+                observer.malformed_encrypted_payload
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                observer.protected_object_id_visible
+                    = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
+            }
+            else
+            {
+                ++observer.plaintext_try_cast_count;
+            }
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::try_cast_send>(try_cast_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::try_cast_send>(std::move(try_cast_handler));
+
         auto release_handler
             = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::release_send& request)
             -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
@@ -375,6 +406,8 @@ namespace
                 ++observer.protected_release_count;
                 observer.malformed_encrypted_payload
                     = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                observer.protected_object_id_visible
+                    = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
             else
             {
@@ -579,6 +612,9 @@ namespace
         CORO_ASSERT_NE(foo, nullptr);
         CORO_ASSERT_EQ(CO_AWAIT foo->clear_recorded_messages(), rpc::error::OK());
 
+        auto bar = CO_AWAIT rpc::dynamic_pointer_cast<xxx::i_bar>(foo);
+        CORO_ASSERT_EQ(bar, nullptr);
+
         for (size_t i = 0; i < protected_rpc_generated_runtime_post_count; ++i)
         {
             auto post_result = CO_AWAIT foo->record_message(static_cast<int>(i));
@@ -597,12 +633,15 @@ namespace
         CORO_ASSERT_EQ(observer.plaintext_send_count, 0U);
         CORO_ASSERT_EQ(observer.plaintext_send_response_count, 0U);
         CORO_ASSERT_EQ(observer.plaintext_post_count, 0U);
+        CORO_ASSERT_EQ(observer.plaintext_try_cast_count, 0U);
         CORO_ASSERT_EQ(observer.plaintext_add_ref_count, 0U);
         CORO_ASSERT_EQ(observer.plaintext_release_count, 0U);
         CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
+        CORO_ASSERT_EQ(observer.protected_object_id_visible, false);
         CORO_ASSERT_EQ(observer.protected_send_count >= protected_rpc_generated_runtime_min_send_count, true);
         CORO_ASSERT_EQ(observer.protected_send_count, observer.protected_send_response_count);
         CORO_ASSERT_EQ(observer.protected_post_count, protected_rpc_generated_runtime_post_count);
+        CORO_ASSERT_EQ(observer.protected_try_cast_count > 0U, true);
         CORO_ASSERT_EQ(observer.protected_add_ref_count > 0U, true);
 
         foo = nullptr;
@@ -629,6 +668,7 @@ namespace
         CORO_ASSERT_EQ(observer.plaintext_release_count, 0U);
         CORO_ASSERT_EQ(observer.protected_release_count > 0U, true);
         CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
+        CORO_ASSERT_EQ(observer.protected_object_id_visible, false);
 
         CO_RETURN true;
     }

@@ -45,9 +45,10 @@ The current tree contains a no-SGX proof of concept plus the first protected
 RPC envelope implementation. It is a vertical development slice across the
 fake backend, a first L4 `attestation_service`, an attestation stream
 decorator, normal RPC traffic over that decorator, AES-GCM envelope helpers,
-`rpc::enclave_service` send/post hooks, encrypted `add_ref` and `release`
-payload wrapping, and the first route-state gate for reference-control
-messages. It now also has the first generated-IDL service-level route
+`rpc::enclave_service` send/post hooks, encrypted `try_cast`, `add_ref`, and
+`release` payload wrapping, and the first route-state gate for
+reference-control messages. It now also has the first generated-IDL
+service-level route
 attestation handshake payload carried by `i_marshaller::handshake()` and
 SGX-sim host integration coverage that drives that handshake through a real
 transport from an unknown-route `add_ref`. It is **not** completion of Phase 1
@@ -156,15 +157,19 @@ reference-control marshaller methods.
   `evaluate_route_attestation_state(...)` decision helper. It maps route state
   to `allow`, `start_handshake`, `wait_for_handshake`, or `reject`; host tests
   cover the state matrix.
-- `add_ref_params`, `release_params`, and the streaming transport wire structs
-  now carry `payload_type_id` plus `payload` fields so encrypted
-  reference-control payloads can reuse the existing polymorphic marshaller
-  shape. `add_ref` and `release` now use those fields for protected payloads.
+- `try_cast_params`, `add_ref_params`, `release_params`, and the streaming
+  transport wire structs now carry `payload_type_id` plus `payload` fields so
+  encrypted reference-control payloads can reuse the existing polymorphic
+  marshaller shape. `try_cast`, `add_ref`, and `release` now use those fields
+  for protected payloads.
 - `rpc::enclave_service` has opt-in reference route enforcement:
   - `set_add_ref_attestation_required`;
   - `set_route_unattested_allowed`;
   - inbound `add_ref` checks the route in `remote_object_id.as_zone()`;
   - outbound `add_ref` checks the adjacent transport zone;
+  - inbound `try_cast` checks the caller route without starting a new
+    handshake;
+  - outbound `try_cast` uses the protected destination route context;
   - inbound `release` checks the caller route without starting a new
     handshake;
   - outbound `release` checks the adjacent transport zone;
@@ -173,8 +178,13 @@ reference-control marshaller methods.
   - accepted no-Evidence policy marks the route `unattested_allowed`;
   - failed or malformed handshakes mark the route `failed` and the call fails
     closed.
-- `add_ref` and `release` protected payloads are implemented in the L7
+- `try_cast`, `add_ref`, and `release` protected payloads are implemented in the L7
   envelope helpers:
+  - outbound `rpc::enclave_service::outbound_try_cast` wraps the requested
+    interface id and object id when the destination route has an attested
+    `security_context`;
+  - inbound `rpc::enclave_service::try_cast` unwraps protected payloads before
+    checking the existing caller route state;
   - outbound `rpc::enclave_service::outbound_add_ref` wraps when the adjacent
     route has an attested `security_context`;
   - inbound `rpc::enclave_service::add_ref` unwraps protected payloads before
@@ -192,6 +202,10 @@ reference-control marshaller methods.
   - the current streaming release path still exposes `release_options` for
     lifetime accounting, so that field is public but AEAD-bound and repeated in
     encrypted plaintext.
+- Protected envelopes now clear the public object id in outer
+  `remote_object_id` values. Intermediates receive the destination zone needed
+  for routing; endpoints recover the full remote object from the decrypted
+  plaintext.
 - Protected RPC treats back-channel vectors as mutable public metadata:
   intermediates may append entries, the vectors are not included in AEAD
   associated data, and inbound protected requests/responses pass the received
@@ -243,7 +257,9 @@ reference-control marshaller methods.
   - generated type ids and YAS round-tripping for the route-attestation
     handshake request and response payloads.
   - protected send request/response wrapping and unwrapping;
-  - protected `add_ref` and `release` wrapping and unwrapping;
+  - protected `try_cast`, `add_ref`, and `release` wrapping and unwrapping;
+  - protected outer route carriers hide object ids while preserving
+    decrypt-time object reconstruction;
   - tampered protected ciphertext rejection.
 - RPC-level POC coverage exists in
   `c++/tests/test_host/attested_streaming_transport_poc_suite.cpp`.
@@ -263,16 +279,18 @@ reference-control marshaller methods.
   `c++/tests/test_host/attested_streaming_transport_poc_suite.cpp`. It builds
   two `rpc::enclave_service` instances with pre-established fake security
   contexts, drives generated `send`, `[post]`, and `add_ref` calls through
-  `rpc::stream_transport`, observes cleanup `release` traffic, and verifies
-  that:
+  `rpc::stream_transport`, drives a generated `try_cast`, observes cleanup
+  `release` traffic, and verifies that:
   - inbound generated `send` traffic arrives as an encrypted outer
     `rpc::encrypted_payload`;
   - protected `send` responses carry encrypted payloads back to the caller;
   - generated `[post]` traffic also arrives as an encrypted outer payload;
+  - generated `try_cast` traffic carries an encrypted payload carrier;
   - generated `add_ref` traffic carries an encrypted payload carrier;
   - generated `release` traffic carries an encrypted payload carrier;
-  - no generated `send`, response, `[post]`, `add_ref`, or `release` traffic
-    is observed in plaintext while protection is enabled.
+  - no protected message exposes a nonzero public object id;
+  - no generated `send`, response, `[post]`, `try_cast`, `add_ref`, or
+    `release` traffic is observed in plaintext while protection is enabled.
 
 ### Verified
 
@@ -323,8 +341,16 @@ reference-control marshaller methods.
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
 - `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_fake_sgx --target attestation_service_test`
+- `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_filter=AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
+- `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_sgx_sim --target attestation_service_test`
+- `build_debug_coroutine_sgx_sim/output/attestation_service_test --gtest_filter=AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
+- `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug_coroutine_sgx_sim --target attestation_service_test`
 - `build_debug_coroutine_sgx_sim/output/attestation_service_test --gtest_filter=AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
@@ -345,8 +371,7 @@ reference-control marshaller methods.
   backend-neutral identity.
 - Backend selection beyond explicit construction of one service with one
   backend.
-- Encrypted protected payloads for `try_cast`, `object_released`, or
-  `transport_down`.
+- Encrypted protected payloads for `object_released` or `transport_down`.
 - A transport-route refactor that hides `add_ref` route-control options from
   intermediates. Today `build_out_param_channel` remains visible because
   `rpc::transport::inbound_add_ref` needs it before the service hook can unwrap
@@ -360,7 +385,7 @@ reference-control marshaller methods.
 ### Current Best Next Step
 
 The next implementation slice should extend reference-control protection to
-`try_cast` / `object_released`.
+`object_released`.
 
 ## Architectural Layers
 

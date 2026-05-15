@@ -14,7 +14,7 @@ and destination enclave.
 The transport still carries familiar fields such as `caller_zone_id`,
 `remote_object_id`, `interface_id`, `method_id`, `in_data`, `request_id`, and
 back-channel vectors. For protected messages, the sensitive call data moves
-inside an encrypted envelope stored in `in_data` or `out_buf`.
+inside an encrypted envelope stored in `in_data`, `payload`, or `out_buf`.
 
 Intermediate zones route by visible fields and public back-channel context.
 They do not decrypt or rewrite the protected application payload. A future
@@ -58,7 +58,7 @@ outer send_params:
     encoding_type
     tag                  = protected envelope tag/version
     caller_zone_id       = visible routing caller
-    remote_object_id     = visible destination/object route
+    remote_object_id     = visible destination route, object id cleared
     interface_id         = rpc::id<encrypted_payload>::get(version)
     method_id            = 0
     in_data              = YAS-binary encrypted_payload carrier
@@ -76,7 +76,9 @@ is not a protected-envelope marker. `method_id == 0` means the receiver must
 not dispatch the request directly; it must unwrap the protected payload first.
 
 For encrypted traffic, intermediates must not see a valid application
-`method_id`. The real interface and method live inside the encrypted plaintext.
+`method_id`. The real object id, interface, and method live inside the
+encrypted plaintext. The public `remote_object_id` is a route carrier only:
+it preserves the destination zone and clears the object id before transmission.
 
 The current IDL carrier is:
 
@@ -119,8 +121,8 @@ public back-channel context. Method-specific details belong inside the
 encrypted payload unless an intermediate genuinely needs them for routing.
 
 ```text
-send/post:        outer route fields visible; original interface/method/data encrypted
-try_cast:         target route visible; requested interface id encrypted
+send/post:        outer route fields visible; object/interface/method/data encrypted
+try_cast:         target route visible; object id and requested interface id encrypted
 add_ref:          route fields visible; current route-control option visible and AEAD-bound
 release:          route fields visible; release_options visible and AEAD-bound
 object_released:  route fields visible; released object details encrypted
@@ -128,20 +130,22 @@ transport_down:   end-to-end protected form deferred
 ```
 
 The current concrete outer carrier for call-like traffic is
-`send_params`/`post_params`. Protected `add_ref` and `release` use their
-`payload_type_id` / `payload` fields as encrypted payload carriers. Protected
-forms of `try_cast` and `object_released` may need method-specific carriers or
-a control-RPC encoding before implementation. They must not expose valid
+`send_params`/`post_params`. Protected `try_cast`, `add_ref`, and `release`
+use their `payload_type_id` / `payload` fields as encrypted payload carriers.
+Protected `object_released` may need a method-specific carrier or a control-RPC
+encoding before implementation. Protected traffic must not expose valid
 application method ids to intermediates.
 
 Current implementation status: protected `send` and `post` have concrete
 AES-GCM envelope helpers and generated-RPC runtime coverage through
 `rpc::enclave_service`. Host integration tests observe generated `send`,
-protected `send` response, generated `[post]`, generated `add_ref`, and
-generated `release` traffic over `rpc::stream_transport` and verify that those
-messages carry encrypted `rpc::encrypted_payload` blobs rather than plaintext
-application calls.
-`add_ref` and `release` also have AES-GCM protected payload carriers in
+protected `send` response, generated `[post]`, generated `try_cast`, generated
+`add_ref`, and generated `release` traffic over `rpc::stream_transport` and
+verify that those messages carry encrypted `rpc::encrypted_payload` blobs
+rather than plaintext application calls. The same tests verify that protected
+outer `remote_object_id` values carry only the destination zone and do not
+expose object ids to intermediates.
+`try_cast`, `add_ref`, and `release` also have AES-GCM protected payload carriers in
 `payload_type_id` / `payload`; `rpc::enclave_service` wraps outbound
 reference-control traffic when an attested adjacent context exists and unwraps
 inbound protected reference-control traffic before route validation. Because
@@ -166,6 +170,11 @@ permitted unattested-client policy. Protected inbound `release` does not start
 a new route-attestation handshake: if the caller route is unknown, failed, or
 still handshaking, the release fails closed because the corresponding protected
 `add_ref` should already have established the route state.
+Protected `try_cast` follows the existing call route and encrypts the requested
+interface id. Its current transport response still returns the `standard_result`
+error code in the clear; that leaks less useful metadata once the interface id
+is hidden, but a future response carrier can close that remaining metadata
+leak if policy requires it.
 
 ## Plaintext Payload
 

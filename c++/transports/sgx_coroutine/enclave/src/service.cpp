@@ -805,6 +805,40 @@ namespace rpc
         CO_RETURN;
     }
 
+    CORO_TASK(standard_result)
+    enclave_service::try_cast(try_cast_params params)
+    {
+        const bool protected_payload
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+        if (protected_payload)
+        {
+            auto service = get_attestation_service();
+            if (!protected_rpc_enabled() || !service)
+                CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+
+            auto request = canopy::security::attestation::unprotect_try_cast_request(*service, params);
+            if (!request.accepted)
+                CO_RETURN standard_result{request.error.error_code, {}};
+            params = std::move(request.value.params);
+        }
+        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        {
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        auto route_result = ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound try_cast caller");
+        if (route_result.error_code != rpc::error::OK())
+            CO_RETURN route_result;
+
+        if (!protected_payload && protected_rpc_enabled() && get_security_context(params.caller_zone_id))
+        {
+            RPC_WARNING("plaintext try_cast rejected for protected route {}", rpc::to_string(params.caller_zone_id));
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
+
+        CO_RETURN CO_AWAIT child_service::try_cast(std::move(params));
+    }
+
     CORO_TASK(send_result)
     enclave_service::outbound_send(
         send_params params,
@@ -868,6 +902,36 @@ namespace rpc
 
         CO_AWAIT child_service::outbound_post(std::move(request.value.params), std::move(transport));
         CO_RETURN;
+    }
+
+    CORO_TASK(standard_result)
+    enclave_service::outbound_try_cast(
+        try_cast_params params,
+        std::shared_ptr<transport> transport)
+    {
+        auto service = get_attestation_service();
+        if (!protected_rpc_enabled() || !service)
+        {
+            CO_RETURN CO_AWAIT child_service::outbound_try_cast(std::move(params), std::move(transport));
+        }
+        if (!transport)
+        {
+            CO_RETURN standard_result{rpc::error::TRANSPORT_ERROR(), {}};
+        }
+
+        auto context = find_security_context_for_protected_call(params.caller_zone_id, params.remote_object_id.as_zone());
+        if (!context)
+        {
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
+
+        auto request = canopy::security::attestation::protect_try_cast_request(*service, *context, std::move(params));
+        if (!request.accepted)
+        {
+            CO_RETURN standard_result{request.error.error_code, {}};
+        }
+
+        CO_RETURN CO_AWAIT child_service::outbound_try_cast(std::move(request.value.params), std::move(transport));
     }
 
     CORO_TASK(standard_result)
