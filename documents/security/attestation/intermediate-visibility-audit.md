@@ -124,9 +124,11 @@ protocol/security error rather than forwarded to an intermediate.
 | `object_released` | caller zone, owner route zone | protected payload type id, encrypted payload session/counter, public back-channel | released object id, payload, sender back-channel snapshot | no protected response body; timing still visible |
 | protected `transport_down` | caller zone, destination zone | protected payload type id, encrypted payload session/counter, public back-channel | endpoint-originated private payload and sender back-channel snapshot | route failure timing visible |
 | route-layer `transport_down` | caller zone, destination zone | public back-channel | none | intentionally unauthenticated route-liveness statement unless policy adds hop trust |
-| `handshake` | caller zone, destination zone | handshake type id, payload, public back-channel | none in current route-level bootstrap | attestation evidence and verdict metadata are visible to intermediates on routed handshakes |
+| `handshake` | caller zone, destination zone | handshake type id, payload, public back-channel, RPC control result | none in current route-level bootstrap | attestation evidence and verdict metadata are visible to intermediates on routed handshakes; positive result codes must not appear |
+| stream sign-on | adjacent stream endpoints | initial remote object, expected interface ids, adjacent zone id, RPC control result | none in current stream setup | initial descriptors are visible until stream setup is bound to attested transport policy |
+| stream close | adjacent stream endpoints | empty close/ack control messages | none | no payload by construction |
 | `post_report` | route to reporting service | telemetry event | none | intentionally diagnostic; needs separate redaction policy |
-| `get_new_zone_id` | route to allocator/root | public back-channel | none | allocator influence and returned zone id need policy review |
+| `get_new_zone_id` | route to allocator/root | RPC control result, allocated zone id, public back-channel | none | allocator influence and returned zone id need policy review; positive result codes must not appear |
 
 ## Non-Marshaller Traffic
 
@@ -140,23 +142,32 @@ application dispatch and need separate policy:
   establish adjacency, initial remote objects, and expected interface ids. In
   an attested stream this belongs to the stream sign-on path. For routed
   post-connect references, the subsequent `add_ref` route-attestation path must
-  validate the referenced zone before application code can use it.
+  validate the referenced zone before application code can use it. The current
+  runtime tests observe these setup messages and assert that their public
+  status fields remain RPC control statuses.
 - **Route handshakes.** `i_marshaller::handshake()` carries attestation
   request/response payloads. It is bootstrap/control traffic, not application
   RPC. Intermediates may see its route fields and currently may see the
-  attestation payload unless a later privacy layer is added.
+  attestation payload unless a later privacy layer is added. Stream transport
+  now sanitises routed handshake statuses so positive application-domain codes
+  cannot be emitted as public handshake results, and tests assert that only the
+  generated route-attestation request/response type ids appear on this path.
 - **Route liveness.** Plaintext route-layer `transport_down` is allowed only as
   a scoped statement by an intermediate about the route it controls. It must
   not be interpreted as a protected statement from the failed downstream
-  enclave.
+  enclave. Runtime tests keep this route-layer form plaintext and separate
+  from protected endpoint-originated `transport_down`.
 - **Telemetry and diagnostics.** `post_report` is intentionally diagnostic.
   It needs a redaction policy distinct from application payload encryption.
 - **Zone allocation.** `get_new_zone_id` is allocator/root control traffic.
-  It should not carry application payloads, and future policy must bind any
-  allocation decision to enclave/route identity.
+  It should not carry application payloads. Stream transport sanitises its
+  public result so only `OK()` or negative RPC control errors can be observed,
+  and failures do not carry allocator back-channel data or a zone id. Future
+  policy must bind any allocation decision to enclave/route identity.
 - **Stream close.** `close_connection_send` and `close_connection_ack` are
   transport lifecycle messages. They should carry no application object,
-  interface, method, or payload data.
+  interface, method, or payload data. They are empty wire structs in
+  `stream_transport.idl`, and runtime tests observe the close path.
 
 Any new transport message outside this list should be treated as suspicious
 until it is classified as public route/control metadata, encrypted endpoint
@@ -172,6 +183,8 @@ intermediate transports:
 - `release_params::options`;
 - route-attestation `handshake_params::type_id` and payload on routed
   handshakes;
+- stream setup `init_client_channel_send` initial remote object and interface
+  ids;
 - `encoding` fields on streaming `object_released_send` and
   `transport_down_send`, which are carrier legacy fields rather than route
   requirements;
@@ -199,9 +212,13 @@ application interface ids, or encrypted application payload bytes.
    table would be cleaner than exposing shared-vs-optimistic intent.
 5. Remove or ignore legacy `encoding` fields from streaming
    `object_released_send` and `transport_down_send`.
-6. Audit telemetry callbacks and logs so intermediate telemetry records only
+6. Decide whether stream sign-on descriptors need privacy beyond the
+   peer-to-peer attested stream policy. If they do, initial object/interface
+   descriptors need their own setup envelope before `add_ref` can validate
+   routed references.
+7. Audit telemetry callbacks and logs so intermediate telemetry records only
    public route fields and carrier metadata, never decrypted endpoint fields.
-7. Decide whether routed attestation handshakes need privacy beyond integrity.
+8. Decide whether routed attestation handshakes need privacy beyond integrity.
    Evidence is often intended to be verifiable, but policy may still consider
    measurements, backend identifiers, debug flags, or verdict detail sensitive.
 
@@ -223,4 +240,6 @@ The observer should allow:
 - public mutable back-channel append operations;
 - protected payload type fingerprints;
 - public encrypted-payload session and counter metadata;
+- public `get_new_zone_id` allocator control results and allocated route zone
+  ids;
 - plaintext route-layer `transport_down` when generated by an intermediate.

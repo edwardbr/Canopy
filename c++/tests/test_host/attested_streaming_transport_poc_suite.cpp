@@ -280,8 +280,31 @@ namespace
         return error_code == rpc::error::OK() || rpc::error::is_error(error_code);
     }
 
+    auto is_route_attestation_handshake_request_type(
+        uint64_t type_id,
+        uint64_t protocol_version) -> bool
+    {
+        return type_id == rpc::id<rpc::route_attestation_handshake_request>::get(protocol_version);
+    }
+
+    auto is_route_attestation_handshake_response_type(
+        uint64_t type_id,
+        uint64_t protocol_version) -> bool
+    {
+        return type_id == rpc::id<rpc::route_attestation_handshake_response>::get(protocol_version);
+    }
+
     struct protected_rpc_runtime_observer
     {
+        size_t stream_init_send_count{0};
+        size_t stream_init_initial_response_count{0};
+        size_t stream_init_response_count{0};
+        size_t route_handshake_send_count{0};
+        size_t route_handshake_response_count{0};
+        size_t get_new_zone_id_send_count{0};
+        size_t get_new_zone_id_response_count{0};
+        size_t close_connection_send_count{0};
+        size_t close_connection_ack_count{0};
         size_t protected_send_count{0};
         size_t plaintext_send_count{0};
         size_t protected_send_response_count{0};
@@ -301,6 +324,7 @@ namespace
         bool malformed_encrypted_payload{false};
         bool protected_object_id_visible{false};
         bool non_rpc_public_control_status_visible{false};
+        bool unexpected_route_handshake_type_visible{false};
     };
 
 #    ifdef CANOPY_BUILD_ENCLAVE
@@ -373,11 +397,162 @@ namespace
     };
 #    endif
 
+    class positive_zone_allocator_service final : public rpc::root_service
+    {
+    public:
+        static constexpr int positive_allocator_status = 41;
+
+        positive_zone_allocator_service(
+            const char* name,
+            rpc::zone zone_id,
+            const std::shared_ptr<coro::scheduler>& scheduler)
+            : rpc::root_service(
+                  name,
+                  zone_id,
+                  scheduler)
+        {
+        }
+
+        CORO_TASK(rpc::new_zone_id_result) get_new_zone_id(rpc::get_new_zone_id_params) override
+        {
+            CO_RETURN rpc::new_zone_id_result{positive_allocator_status, get_zone_id(), {}};
+        }
+    };
+
     void install_protected_rpc_runtime_observers(
         const std::shared_ptr<rpc::stream_transport::transport>& initiator_transport,
         const std::shared_ptr<rpc::stream_transport::transport>& responder_transport,
         protected_rpc_runtime_observer& observer)
     {
+        auto init_send_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::init_client_channel_send&)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.stream_init_send_count;
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::init_client_channel_send>(init_send_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::init_client_channel_send>(
+            std::move(init_send_handler));
+
+        auto init_initial_response_handler
+            = [&observer](
+                  auto, const auto&, const auto&, const rpc::stream_transport::init_client_initial_channel_response&)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.stream_init_initial_response_count;
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::init_client_initial_channel_response>(
+            init_initial_response_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::init_client_initial_channel_response>(
+            std::move(init_initial_response_handler));
+
+        auto init_response_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::init_client_channel_response& response)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.stream_init_response_count;
+            observer.non_rpc_public_control_status_visible
+                = observer.non_rpc_public_control_status_visible || !is_valid_public_control_status(response.err_code);
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::init_client_channel_response>(
+            init_response_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::init_client_channel_response>(
+            std::move(init_response_handler));
+
+        auto route_handshake_send_handler
+            = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::handshake_send& request)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.route_handshake_send_count;
+            observer.unexpected_route_handshake_type_visible
+                = observer.unexpected_route_handshake_type_visible
+                  || !is_route_attestation_handshake_request_type(request.type_id, prefix.version);
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::handshake_send>(route_handshake_send_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::handshake_send>(
+            std::move(route_handshake_send_handler));
+
+        auto route_handshake_response_handler
+            = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::handshake_receive& response)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.route_handshake_response_count;
+            observer.non_rpc_public_control_status_visible
+                = observer.non_rpc_public_control_status_visible || !is_valid_public_control_status(response.err_code);
+            if (response.err_code == rpc::error::OK())
+            {
+                observer.unexpected_route_handshake_type_visible
+                    = observer.unexpected_route_handshake_type_visible
+                      || !is_route_attestation_handshake_response_type(response.type_id, prefix.version);
+            }
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::handshake_receive>(
+            route_handshake_response_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::handshake_receive>(
+            std::move(route_handshake_response_handler));
+
+        auto get_new_zone_id_send_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::get_new_zone_id_send&)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.get_new_zone_id_send_count;
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::get_new_zone_id_send>(
+            get_new_zone_id_send_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::get_new_zone_id_send>(
+            std::move(get_new_zone_id_send_handler));
+
+        auto get_new_zone_id_response_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::get_new_zone_id_receive& response)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.get_new_zone_id_response_count;
+            observer.non_rpc_public_control_status_visible
+                = observer.non_rpc_public_control_status_visible || !is_valid_public_control_status(response.err_code);
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::get_new_zone_id_receive>(
+            get_new_zone_id_response_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::get_new_zone_id_receive>(
+            std::move(get_new_zone_id_response_handler));
+
+        auto close_send_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::close_connection_send&)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.close_connection_send_count;
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::close_connection_send>(close_send_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::close_connection_send>(
+            std::move(close_send_handler));
+
+        auto close_ack_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::close_connection_ack&)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            ++observer.close_connection_ack_count;
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::close_connection_ack>(close_ack_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::close_connection_ack>(
+            std::move(close_ack_handler));
+
         responder_transport->add_typed_message_handler<rpc::stream_transport::call_send>(
             [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::call_send& request)
                 -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
@@ -637,6 +812,9 @@ namespace
         initiator_service->add_transport(responder_zone, initiator_transport);
         responder_service->add_transport(initiator_zone, responder_transport);
 
+        protected_rpc_runtime_observer observer;
+        install_protected_rpc_runtime_observers(initiator_transport, responder_transport, observer);
+
         CORO_ASSERT_EQ(initiator_service->spawn(initiator_transport->pump_send_and_receive()), true);
         CORO_ASSERT_EQ(responder_service->spawn(responder_transport->pump_send_and_receive()), true);
 
@@ -661,6 +839,10 @@ namespace
             initiator_state.context && initiator_state.context->established, expected.initiator_context_established);
         CORO_ASSERT_EQ(
             responder_state.context && responder_state.context->established, expected.responder_context_established);
+        CORO_ASSERT_EQ(observer.route_handshake_send_count > 0U, true);
+        CORO_ASSERT_EQ(observer.route_handshake_response_count > 0U, true);
+        CORO_ASSERT_EQ(observer.unexpected_route_handshake_type_visible, false);
+        CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
 
         if (initiator_state.context)
         {
@@ -672,6 +854,121 @@ namespace
             CORO_ASSERT_EQ(
                 responder_state.context->peer_identity.enclave_id, std::string{"service-level-initiator-enclave"});
         }
+
+        std::static_pointer_cast<rpc::transport>(initiator_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        std::static_pointer_cast<rpc::transport>(responder_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        for (size_t i = 0; i < service_level_route_cleanup_drain_iterations; ++i)
+            CO_AWAIT initiator_service->schedule();
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
+    coro_stream_route_control_messages_remain_public_control(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto responder_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto initiator_service = rpc::root_service::create("route-control-initiator", initiator_zone, scheduler);
+        auto responder_service = rpc::root_service::create("route-control-responder", responder_zone, scheduler);
+
+        auto send_queue = std::make_shared<streaming::spsc_queue::queue_type>();
+        auto receive_queue = std::make_shared<streaming::spsc_queue::queue_type>();
+        auto initiator_stream = std::make_shared<streaming::spsc_queue::stream>(send_queue, receive_queue, scheduler);
+        auto responder_stream = std::make_shared<streaming::spsc_queue::stream>(receive_queue, send_queue, scheduler);
+
+        rpc::stream_transport::stream_transport_options options{
+            .call_timeout = service_level_route_call_timeout,
+            .call_timeout_sweep = service_level_route_call_timeout_sweep,
+        };
+        auto initiator_transport = rpc::stream_transport::make_client(
+            "route-control-initiator-transport", initiator_service, std::move(initiator_stream), options);
+        auto responder_transport = rpc::stream_transport::make_client(
+            "route-control-responder-transport", responder_service, std::move(responder_stream), options);
+        initiator_transport->set_adjacent_zone_id(responder_zone);
+        responder_transport->set_adjacent_zone_id(initiator_zone);
+        initiator_service->add_transport(responder_zone, initiator_transport);
+        responder_service->add_transport(initiator_zone, responder_transport);
+
+        protected_rpc_runtime_observer observer;
+        install_protected_rpc_runtime_observers(initiator_transport, responder_transport, observer);
+
+        CORO_ASSERT_EQ(initiator_service->spawn(initiator_transport->pump_send_and_receive()), true);
+        CORO_ASSERT_EQ(responder_service->spawn(responder_transport->pump_send_and_receive()), true);
+
+        rpc::get_new_zone_id_params get_new_zone_id_params;
+        get_new_zone_id_params.protocol_version = rpc::get_version();
+        auto zone_result = CO_AWAIT initiator_transport->get_new_zone_id(std::move(get_new_zone_id_params));
+        CORO_ASSERT_EQ(zone_result.error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(zone_result.zone_id.is_set(), true);
+        CORO_ASSERT_EQ(observer.get_new_zone_id_send_count > 0U, true);
+        CORO_ASSERT_EQ(observer.get_new_zone_id_response_count > 0U, true);
+        CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
+
+        rpc::transport_down_params transport_down_params;
+        transport_down_params.protocol_version = rpc::get_version();
+        transport_down_params.destination_zone_id = responder_zone;
+        transport_down_params.caller_zone_id = initiator_zone;
+        CO_AWAIT initiator_transport->outbound_transport_down(std::move(transport_down_params));
+
+        for (size_t i = 0; i < service_level_route_cleanup_drain_iterations; ++i)
+            CO_AWAIT initiator_service->schedule();
+
+        CORO_ASSERT_EQ(observer.plaintext_transport_down_count > 0U, true);
+        CORO_ASSERT_EQ(observer.protected_transport_down_count, 0U);
+        CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
+        CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
+
+        std::static_pointer_cast<rpc::transport>(initiator_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        std::static_pointer_cast<rpc::transport>(responder_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        for (size_t i = 0; i < service_level_route_cleanup_drain_iterations; ++i)
+            CO_AWAIT initiator_service->schedule();
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
+    coro_get_new_zone_id_sanitises_positive_allocator_status(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto responder_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto initiator_service = rpc::root_service::create("route-control-status-initiator", initiator_zone, scheduler);
+        auto responder_service = std::make_shared<positive_zone_allocator_service>(
+            "route-control-status-responder", responder_zone, scheduler);
+
+        auto send_queue = std::make_shared<streaming::spsc_queue::queue_type>();
+        auto receive_queue = std::make_shared<streaming::spsc_queue::queue_type>();
+        auto initiator_stream = std::make_shared<streaming::spsc_queue::stream>(send_queue, receive_queue, scheduler);
+        auto responder_stream = std::make_shared<streaming::spsc_queue::stream>(receive_queue, send_queue, scheduler);
+
+        rpc::stream_transport::stream_transport_options options{
+            .call_timeout = service_level_route_call_timeout,
+            .call_timeout_sweep = service_level_route_call_timeout_sweep,
+        };
+        auto initiator_transport = rpc::stream_transport::make_client(
+            "route-control-status-initiator-transport", initiator_service, std::move(initiator_stream), options);
+        auto responder_transport = rpc::stream_transport::make_client(
+            "route-control-status-responder-transport", responder_service, std::move(responder_stream), options);
+        initiator_transport->set_adjacent_zone_id(responder_zone);
+        responder_transport->set_adjacent_zone_id(initiator_zone);
+        initiator_service->add_transport(responder_zone, initiator_transport);
+        responder_service->add_transport(initiator_zone, responder_transport);
+
+        protected_rpc_runtime_observer observer;
+        install_protected_rpc_runtime_observers(initiator_transport, responder_transport, observer);
+
+        CORO_ASSERT_EQ(initiator_service->spawn(initiator_transport->pump_send_and_receive()), true);
+        CORO_ASSERT_EQ(responder_service->spawn(responder_transport->pump_send_and_receive()), true);
+
+        rpc::get_new_zone_id_params params;
+        params.protocol_version = rpc::get_version();
+        auto zone_result = CO_AWAIT initiator_transport->get_new_zone_id(std::move(params));
+        CORO_ASSERT_EQ(zone_result.error_code, rpc::error::PROTOCOL_ERROR());
+        CORO_ASSERT_EQ(zone_result.zone_id.is_set(), false);
+        CORO_ASSERT_EQ(observer.get_new_zone_id_send_count > 0U, true);
+        CORO_ASSERT_EQ(observer.get_new_zone_id_response_count > 0U, true);
+        CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
 
         std::static_pointer_cast<rpc::transport>(initiator_transport)->set_status(rpc::transport_status::DISCONNECTED);
         std::static_pointer_cast<rpc::transport>(responder_transport)->set_status(rpc::transport_status::DISCONNECTED);
@@ -792,6 +1089,10 @@ namespace
         CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
         CORO_ASSERT_EQ(observer.protected_object_id_visible, false);
         CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
+        CORO_ASSERT_EQ(observer.unexpected_route_handshake_type_visible, false);
+        CORO_ASSERT_EQ(observer.stream_init_send_count > 0U, true);
+        CORO_ASSERT_EQ(observer.stream_init_initial_response_count > 0U, true);
+        CORO_ASSERT_EQ(observer.stream_init_response_count > 0U, true);
         CORO_ASSERT_EQ(observer.protected_send_count >= protected_rpc_generated_runtime_min_send_count, true);
         CORO_ASSERT_EQ(observer.protected_send_count, observer.protected_send_response_count);
         CORO_ASSERT_EQ(observer.protected_post_count, protected_rpc_generated_runtime_post_count);
@@ -824,6 +1125,8 @@ namespace
         CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
         CORO_ASSERT_EQ(observer.protected_object_id_visible, false);
         CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
+        CORO_ASSERT_EQ(observer.unexpected_route_handshake_type_visible, false);
+        CORO_ASSERT_EQ(observer.close_connection_send_count > 0U, true);
 
         CO_RETURN true;
     }
@@ -913,6 +1216,56 @@ namespace
                 responder_sends_evidence,
                 responder_requires_peer_evidence,
                 expected);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
+    void run_stream_route_control_message_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_stream_route_control_messages_remain_public_control(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
+    void run_get_new_zone_id_status_sanitiser_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_get_new_zone_id_sanitises_positive_allocator_status(scheduler);
             done.store(true);
             CO_RETURN;
         };
@@ -1065,6 +1418,20 @@ TEST(
             .responder_route_status = route_attestation_status::unattested_allowed,
             .initiator_context_established = true,
             .responder_context_established = false});
+}
+
+TEST(
+    StreamRouteControl,
+    GetNewZoneIdAndRouteTransportDownUsePublicControlOnly)
+{
+    run_stream_route_control_message_test();
+}
+
+TEST(
+    StreamRouteControl,
+    GetNewZoneIdSanitisesPositiveAllocatorStatus)
+{
+    run_get_new_zone_id_status_sanitiser_test();
 }
 
 TEST(

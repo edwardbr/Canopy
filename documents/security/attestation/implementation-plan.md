@@ -241,6 +241,17 @@ reference-control marshaller methods.
   positive statuses through protected `try_cast`, `add_ref`, and the one-way
   `release` outbound hook and verifies they are converted to
   `PROTOCOL_ERROR()`.
+- Stream transport now sanitises routed `handshake` response statuses so
+  positive application-domain values cannot be emitted as public handshake
+  results. Runtime tests observe stream sign-on, generated route-attestation
+  `handshake` request/response messages, and stream close messages; they
+  assert that setup/handshake statuses remain RPC control statuses and that
+  routed handshakes use the expected generated route-attestation type ids.
+- Stream transport now sanitises `get_new_zone_id` carrier and response
+  statuses so positive application-domain values cannot be emitted as public
+  allocator results. Runtime tests observe `get_new_zone_id` request/response
+  messages and the intentionally plaintext route-layer `transport_down` form
+  used for intermediate route-liveness notifications.
 - `documents/security/attestation/intermediate-visibility-audit.md` records
   the current field-by-field visibility decision. The audit confirms that
   intermediate transports and passthroughs need route zones, carrier metadata,
@@ -338,6 +349,12 @@ reference-control marshaller methods.
   - positive protected control statuses returned by a transport for
     `try_cast`, `add_ref`, and `release` are sanitised to `PROTOCOL_ERROR()`
     by `rpc::enclave_service`.
+  - stream sign-on messages are observed during generated RPC connection
+    setup, stream close messages are observed during cleanup, and no non-RPC
+    public status is observed on setup/handshake/control response paths.
+  - service-level route handshakes use the generated
+    `route_attestation_handshake_request` and
+    `route_attestation_handshake_response` type ids.
 
 ### Verified
 
@@ -392,6 +409,12 @@ reference-control marshaller methods.
 - `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_filter=AttestationService.ProtectsObjectReleasedRequest:AttestationService.ProtectsTransportDownRequest:AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
+- `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine --target rpc_test`
+- `build_debug_coroutine/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug --target attestation_service_test`
 - `build_debug/output/attestation_service_test --gtest_filter=AttestationService.ProtectsObjectReleasedRequest:AttestationService.ProtectsTransportDownRequest:AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_fake_sgx --target attestation_service_test`
@@ -439,12 +462,11 @@ reference-control marshaller methods.
 
 ### Current Best Next Step
 
-The next implementation slice should audit the remaining non-application
-control traffic:
-
-- transport setup, teardown, telemetry, `post_report`, `get_new_zone_id`, and
-  route-layer `transport_down` need explicit review so they cannot bypass the
-  protected marshaller assumptions.
+Telemetry and `post_report` are demo/diagnostic surfaces and are intentionally
+left out of the current production attestation path. The next implementation
+slice should review stream sign-on policy controls, then continue reducing the
+remaining public carrier fields documented in
+`intermediate-visibility-audit.md`.
 
 ## Architectural Layers
 
