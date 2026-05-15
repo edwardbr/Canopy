@@ -53,6 +53,8 @@ if(TARGET transport_websocket_enclave)
                              PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
 endif()
 
+include(CanopyLibvpx)
+
 add_executable(
   websocket_server
   main.cpp
@@ -87,6 +89,7 @@ target_link_libraries(
          canopy_file_system
          canopy_http_server
          canopy_network_config
+         canopy_libvpx
          ${CANOPY_LIBRARIES}
          rpc_log)
 

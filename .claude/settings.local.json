@@ -50,7 +50,9 @@
       "Bash(gh api:*)",
       "Bash(/var/home/edward/projects/CanopyJson/build_debug/output/json_test:*)",
       "Bash(cargo build:*)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(./build_debug_coroutine/output/websocket_server --va-name server --va-type ipv4 --listen 0.0.0.0:8000 --cert c++/demos/websocket/server/certs/server.crt --key c++/demos/websocket/server/certs/server.key --static-root c++/demos/websocket/server/www)",
+      "Bash(disown)"
     ]
   },
   "enabledPlugins": {}

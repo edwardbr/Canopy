@@ -385,10 +385,19 @@ function clearMessages() {
 const VIDEO_FLAG_KEYFRAME = 1;
 const VIDEO_FLAG_EOS = 2;
 const VIDEO_CODEC = 'vp8';      // browser-native, no extra mux/demux
-const VIDEO_WIDTH = 640;
-const VIDEO_HEIGHT = 480;
-const VIDEO_FRAMERATE = 15;
-const VIDEO_BITRATE = 1_500_000;
+const VIDEO_WIDTH = 320;
+const VIDEO_HEIGHT = 240;
+// The enclave processes frames serially and the receive loop blocks on the
+// outbound push, so sustained throughput is well under 15 fps. Producing at
+// ~10 fps keeps the inbound rate at/below what the enclave drains so no
+// multi-second kernel-socket backlog forms. A worker that processes only the
+// latest frame (roadmap) would lift this.
+const VIDEO_FRAMERATE = 10;
+const VIDEO_MAX_ENCODE_QUEUE = 1;
+// Modest bitrate at 320x240: smaller frames decode faster in the enclave and
+// the smaller re-encoded payload pushes back quicker, both shortening the
+// serial per-frame cycle that gates latency.
+const VIDEO_BITRATE = 1_200_000;
 
 const videoState = {
     active: false,
@@ -493,21 +502,31 @@ async function startVideo() {
         videoStopBtn.disabled = false;
         addMessage('system', `Video started (${VIDEO_CODEC} ${VIDEO_WIDTH}x${VIDEO_HEIGHT}@${VIDEO_FRAMERATE})`);
 
-        let frameCounter = 0;
         (async function pump() {
             while (videoState.active) {
                 const { done, value } = await videoState.reader.read();
                 if (done) break;
-                // Keyframe every second to keep the receiver bounded.
-                const keyFrame = (frameCounter % VIDEO_FRAMERATE) === 0;
+                // Drop the freshest camera frame if the encoder is backed up:
+                // bounds end-to-end latency instead of buffering the whole
+                // stream (which made the returned video lag further behind
+                // real time the longer it ran).
+                if (videoState.encoder.encodeQueueSize > VIDEO_MAX_ENCODE_QUEUE) {
+                    videoState.droppedFrames++;
+                    updateVideoStats();
+                    value.close();
+                    continue;
+                }
+                // All-keyframe: [post] is best-effort and VP8 deltas reference
+                // the previous frame, so one lost frame corrupts the stream
+                // until the next keyframe. Encoding every frame as a keyframe
+                // makes each independent — a drop costs one frame, no cascade.
                 try {
-                    videoState.encoder.encode(value, { keyFrame: keyFrame });
+                    videoState.encoder.encode(value, { keyFrame: true });
                 } catch (err) {
                     videoState.droppedFrames++;
                     console.warn('encode failed:', err);
                 }
                 value.close();
-                frameCounter++;
             }
         })();
     } catch (err) {

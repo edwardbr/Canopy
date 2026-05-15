@@ -1,142 +1,181 @@
 # Video mode
 
-A fourth mode added to the websocket demo alongside Echo / Calculator / Chat.
-Proves the `[post]` fire-and-forget pipe end-to-end with real video bytes
-travelling browser → enclave → browser.
+A fourth mode in the websocket demo alongside Echo / Calculator / Chat.
+Phase 1 (complete): proves the `[post]` fire-and-forget pipe end-to-end with
+real video bytes travelling browser → enclave → browser.
 
-Today the enclave-side handler is a pure echo: every frame received via
+The enclave-side handler is currently a pure echo: every frame received via
 `i_calculator::push_video_frame` is bounced straight back to the browser via
-the registered `i_video_stream` sink. The interesting work — face detection,
-sprite compositing, the "Aladdin lamp genie" stylisation — is left as the
-next stage; only the data path is implemented here.
+the `i_context_event` callback the browser already registered for chat. The
+interesting work — face detection, sprite compositing, the "Aladdin lamp
+genie" stylisation — is phase 2 onward (see Roadmap).
+
+Branch: `sgx_iouring_video_genie` (forked from `sgx_iouring`).
+
+## Data flow
+
+```
+browser camera
+   │  getUserMedia → MediaStreamTrackProcessor → VideoEncoder (VP8)
+   ▼
+calc.push_video_frame(seq, pts_us, flags, payload)        [post, MSG_POST]
+   │  i_calculator (outbound proxy, no response awaited)
+   ▼
+demo::push_video_frame  →  video_session::forward_frame
+   │  (echo: no processing yet)
+   ▼
+event_->push_frame(seq, pts_us, flags, payload)           [post, MSG_POST]
+   │  i_context_event (the chat callback, reused)
+   ▼
+browser i_context_event_stub.push_frame
+   │  EncodedVideoChunk → VideoDecoder → canvas.drawImage
+   ▼
+"From enclave" canvas
+```
 
 ## What's in the box
 
-### IDL (`c++/demos/websocket/idl/websocket_demo/websocket_demo.idl`)
+### IDL (`idl/websocket_demo/websocket_demo.idl`)
 
-A new pure data-plane interface:
+`i_context_event` gained a second `[post]` method so the single per-connection
+callback carries both LLM tokens and video egress:
 
 ```idl
-interface i_video_stream
+interface i_context_event
 {
+    [post] int piece(const std::string& piece);
     [post] int push_frame(uint64_t seq, uint64_t pts_us, uint32_t flags,
-                          const std::string& payload);
+                          const std::vector<uint8_t>& payload);
 };
 ```
 
-Two bootstrap methods grafted onto `i_calculator` (the demo's existing
-session interface):
+`i_calculator` gained the ingress method:
 
 ```idl
-int set_video_sink(const rpc::shared_ptr<i_video_stream>& sink);
 [post] int push_video_frame(uint64_t seq, uint64_t pts_us, uint32_t flags,
-                            const std::string& payload);
+                            const std::vector<uint8_t>& payload);
 ```
 
-`push_video_frame` is browser → enclave ingress. The enclave egress goes back
-through `i_video_stream::push_frame` on the sink the browser registered.
+`payload` is `std::vector<uint8_t>` (protobuf `bytes`, JS `Uint8Array`) — a raw
+encoded VP8 chunk. `flags` bit 0 = keyframe, bit 1 = end-of-stream.
 
-### Server (`c++/demos/websocket/server/`)
+**Why one shared callback instead of a dedicated `i_video_stream`:** the
+websocket transport binds a single typed inbound sink per connection from its
+`create<Remote, Local>` template, and the JS proxy cannot yet marshal an
+interface-reference *argument* into the bit-packed `zone_address` wire format
+the C++ nanopb stub expects (this is why a JS-initiated `set_callback` /
+`set_video_sink` fails to deserialise server-side; chat only works because the
+server auto-binds the sink during the handshake). Reusing the
+handshake-bound `i_context_event` sidesteps that entirely. Restoring a clean
+separate `i_video_stream` is a generator/transport task tracked in Roadmap.
 
-* `video_session.{h,cpp}` — owns the per-connection sink and forwards inbound
-  frames to it. Kept out of `demo.cpp` so future processing (ffmpeg decode,
-  face detection, genie overlay, re-encode) has somewhere to live without
-  re-polluting the calculator/chat class.
-* `demo.cpp` gains two thin overrides that delegate straight to the
-  `video_session` member.
+### Server (`server/`)
 
-The non-enclave `websocket_server` executable picks up these sources
-unconditionally. The enclave variant is gated as before by
-`CANOPY_BUILD_ENCLAVE`.
+* `video_session.{h,cpp}` — owns the per-connection sink (`i_context_event`)
+  and forwards inbound frames to it. Isolated from the calculator/chat code so
+  phase 2+ processing (decode, detection, compositing, encode) has a home.
+* `demo.cpp` — `set_callback` stores the chat callback **and** hands it to
+  `video_session`; `push_video_frame` delegates to `video_session::forward_frame`.
+* `websocket_handler.cpp` — unchanged; the existing `set_callback` handshake
+  wiring now serves video too.
 
-### Browser (`c++/demos/websocket/server/www/`)
+The non-enclave `websocket_server` executable picks these up unconditionally;
+the enclave variant is gated as before by `CANOPY_BUILD_ENCLAVE`.
 
-* `index.html` — Video radio + a two-pane panel (local preview / remote
-  display) and Start/Stop controls.
-* `client.js` — WebCodecs pipeline:
-  * `getUserMedia` → `MediaStreamTrackProcessor` → `VideoEncoder` (VP8).
-  * Encoded chunks fire `calc.push_video_frame(...)` — a `[post]` outbound
-    that does not block on a response.
-  * Stylised frames returning from the enclave land in
-    `i_video_stream_stub.push_frame`, get decoded by a `VideoDecoder`, and
-    are drawn to a 2D canvas.
+### Transport (`c++/transports/websocket/`)
 
-Codec is VP8 because every Chromium ships a software VP8 codec — no platform
-codec dependency. Resolution defaults to 640×480 @ 15 fps, ~1.5 Mbps; well
-within the documented 100+ Mbps async io_uring envelope.
+Two fixes were required and both are general improvements, not video-specific:
 
-### Generator and transport additions
+1. **Receive buffer 4 KB → 256 KB** (`src/transport.cpp`). The old 4 KB buffer
+   truncated anything larger than a chat token; an encoded VP8 frame is
+   ~30–60 KB. Anything bigger than 256 KB would still truncate — proper
+   streaming reassembly is a future hardening item.
+2. **`MSG_POST` is now truly one-way** (`src/transport.cpp`,
+   `stub_handle_send`). The server previously sent a `response` envelope for
+   every inbound message including `[post]`; the client never registers a
+   pending entry for `[post]`, so each one logged a spurious
+   "No pending request for id N". `[post]` envelopes now return after dispatch
+   with no response.
 
-To make the browser ingress work, two small changes were needed:
+### Generator + JS transport
 
+* `generator/src/javascript_generator.cpp` — `[post]` methods now emit a
+  synchronous fire-and-forget **proxy** method (calling `callPost`) in
+  addition to the existing stub-side dispatch. Previously `[post]` rendered
+  stub-only, which was fine for chat (enclave → browser only) but not for
+  video ingress (browser → enclave).
 * `c++/transports/websocket/js/canopy_websocket_transport.js` — new
-  `callPost(interfaceId, methodId, bytes)` that wraps the existing
-  `MSG_POST=1` envelope and does not register a pending response.
-* `generator/src/javascript_generator.cpp` — `[post]` methods now also emit a
-  proxy method (synchronous fire-and-forget, no `Promise`) that invokes
-  `callPost` instead of `call`. Previously `[post]` rendered only on the stub
-  side, which was sufficient for chat (only enclave → browser) but not for
-  video (both directions).
+  `callPost(interfaceId, methodId, bytes)` wrapping a `MSG_POST` envelope with
+  no pending-response bookkeeping.
+
+### Browser (`server/www/`)
+
+* `index.html` — Video radio + two-pane panel (local preview / enclave output)
+  + Start/Stop + a sent/received/dropped counter.
+* `client.js` — WebCodecs VP8 pipeline. One `i_context_event_stub` handles
+  both `piece` (chat) and `push_frame` (video). VP8 chosen because every
+  modern Chromium ships a software VP8 codec with no platform dependency.
+  Defaults: 640×480 @ 15 fps, ~1.5 Mbps, keyframe every second.
 
 ## Running it (non-SGX)
 
 ```bash
 cmake --preset Debug_Coroutine
 cmake --build build_debug_coroutine --target websocket_server
-./build_debug_coroutine/output/websocket_server
+
+./build_debug_coroutine/output/websocket_server \
+  --va-name server --va-type ipv4 \
+  --listen 0.0.0.0:8000 \
+  --cert c++/demos/websocket/server/certs/server.crt \
+  --key  c++/demos/websocket/server/certs/server.key \
+  --static-root c++/demos/websocket/server/www
 ```
 
-Then open the browser at the configured endpoint, click **Connect**, switch
-to the **Video** radio, and click **Start camera**. Permission prompts for
-the camera will appear; allow them and you should see the local preview on
-the left and the echo-returned stream on the right.
+Open `https://localhost:8000`, accept the self-signed cert warning, click
+**Connect**, wait for the green badge, switch to **Video**, **Start camera**,
+and allow the camera permission. Left pane = local camera; right canvas =
+echo returned from the enclave.
 
-Browser requirements: any modern Chromium with WebCodecs and
-`MediaStreamTrackProcessor` (Chrome 94+ / Edge 94+).
+Browser requirement: Chromium with WebCodecs + `MediaStreamTrackProcessor`
+(Chrome/Edge 94+).
 
-## Limitations
+Rebuilding after an IDL change also needs the JS regenerated:
 
-* Echo only. No in-enclave processing yet.
-* No backpressure beyond the encoder's own queue — at sustained overload the
-  encoder will drop frames and `videoState.droppedFrames` will climb.
-* The bootstrap call lives on `i_calculator` rather than a dedicated
-  `i_video_session` interface. The cleaner split is described below.
-
-## Next steps
-
-### Cleaner interface boundary
-
-The minimum viable IDL keeps `set_video_sink` on `i_calculator`. The proper
-shape is:
-
-```idl
-interface i_video_session
-{
-    int open([in] const rpc::shared_ptr<i_video_stream>& browser_sink,
-             [out] rpc::shared_ptr<i_video_stream>& enclave_pipe);
-    int close();
-};
+```bash
+cmake --build build_debug_coroutine --target websocket_demo_www_js_generate
 ```
 
-This needs the JavaScript generator to construct a proxy on receipt of an
-`[out]` interface ref (today it just hands back the raw remote ref). Once
-that's done, video can drop off `i_calculator` entirely.
+## Known limitations
 
-### Actual processing
+* Echo only — no in-enclave processing yet.
+* 256 KB hard cap per websocket message; no fragment reassembly.
+* No backpressure beyond the encoder's own queue; sustained overload drops
+  frames (visible in the counter).
+* Video egress rides the chat `i_context_event` callback rather than a
+  dedicated interface (see the "why one shared callback" note above).
 
-The `video_session` class is where ffmpeg/OpenCV/face-detection plug in.
-A reasonable staged plan:
+## Roadmap
 
-1. Bypass — pure echo (what we have today).
-2. Color-pass — invert / sepia a decoded frame, re-encode. Verifies the
-   decode → process → encode loop works inside the enclave.
-3. Static sprite overlay — composite a genie sprite at a fixed canvas
-   position; no face detection yet.
-4. Face detection — BlazeFace or similar lightweight ONNX model in the
-   enclave; anchor the sprite to the detected landmarks.
-5. Smoke-from-lamp animation — particle effect emerging from a stylized
-   lamp into the genie head at the detected face position.
+Phase 1 — echo pipe **(done)**.
 
-Submodules that would land in `c++/submodules/` for stage 2+ (subject to
-SGX-build constraints): `libvpx` (decode/encode VP8), a small inference
-runtime (`onnxruntime` minimal build or `ggml`), and a face detector model.
+Phase 2 — **decode → trivial transform → re-encode in the enclave.** Invert
+or sepia a decoded frame and re-encode it. This is the real proof that a
+codec runs inside the enclave and validates the decode/encode loop before any
+detection work. Needs a VP8 codec usable in the build (and later, inside SGX):
+candidate is `libvpx` vendored under `c++/submodules/`. This is the next
+session's starting point.
+
+Phase 3 — static genie sprite composited at a fixed canvas position; still no
+detection.
+
+Phase 4 — face detection (BlazeFace or a small ONNX model; candidate runtime
+`onnxruntime` minimal build or `ggml`), sprite anchored to detected
+landmarks.
+
+Phase 5 — smoke-from-lamp particle animation resolving into the genie head at
+the detected face position.
+
+Cross-cutting cleanup (any time): teach the JS generator to construct a proxy
+from an `[out]`/argument-marshalled interface ref so the clean
+`i_video_session` / `i_video_stream` split can be restored and video can drop
+off `i_context_event` and `i_calculator`.
