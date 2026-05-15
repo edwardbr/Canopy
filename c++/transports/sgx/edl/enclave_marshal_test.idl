@@ -18,6 +18,7 @@ namespace rpc
             struct init_request
             {
                 rpc::remote_object host_remote_object;
+                rpc::encoding encoding_type;
                 rpc::zone child_zone_id;
             };
 
@@ -74,6 +75,9 @@ namespace rpc
                 rpc::remote_object remote_object_id;
                 rpc::interface_ordinal interface_id;
                 std::vector<rpc::back_channel_entry> in_back_channel;
+                uint64_t payload_type_id = 0;
+                rpc::encoding payload_encoding = rpc::encoding::not_set;
+                std::vector<char> payload;
             };
 
             struct add_ref_request
@@ -85,6 +89,9 @@ namespace rpc
                 uint64_t request_id;
                 rpc::add_ref_options build_out_param_channel;
                 std::vector<rpc::back_channel_entry> in_back_channel;
+                uint64_t payload_type_id = 0;
+                rpc::encoding payload_encoding = rpc::encoding::not_set;
+                std::vector<char> payload;
             };
 
             struct release_request
@@ -94,6 +101,9 @@ namespace rpc
                 rpc::caller_zone caller_zone_id;
                 rpc::release_options options;
                 std::vector<rpc::back_channel_entry> in_back_channel;
+                uint64_t payload_type_id = 0;
+                rpc::encoding payload_encoding = rpc::encoding::not_set;
+                std::vector<char> payload;
             };
 
             struct object_released_request
@@ -102,6 +112,9 @@ namespace rpc
                 rpc::remote_object remote_object_id;
                 rpc::caller_zone caller_zone_id;
                 std::vector<rpc::back_channel_entry> in_back_channel;
+                uint64_t payload_type_id = 0;
+                rpc::encoding payload_encoding = rpc::encoding::not_set;
+                std::vector<char> payload;
             };
 
             struct transport_down_request
@@ -110,6 +123,9 @@ namespace rpc
                 rpc::destination_zone destination_zone_id;
                 rpc::caller_zone caller_zone_id;
                 std::vector<rpc::back_channel_entry> in_back_channel;
+                uint64_t payload_type_id = 0;
+                rpc::encoding payload_encoding = rpc::encoding::not_set;
+                std::vector<char> payload;
             };
 
             struct get_new_zone_id_request

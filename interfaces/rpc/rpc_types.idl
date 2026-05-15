@@ -783,6 +783,7 @@ namespace rpc
     {
         interface_ordinal inbound_interface_id;
         interface_ordinal outbound_interface_id;
+        encoding encoding_type = encoding::not_set;
         remote_object remote_object_id;
 
     public:

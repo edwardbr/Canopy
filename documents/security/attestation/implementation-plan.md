@@ -45,16 +45,17 @@ The current tree contains a no-SGX proof of concept plus the first protected
 RPC envelope implementation. It is a vertical development slice across the
 fake backend, a first L4 `attestation_service`, an attestation stream
 decorator, normal RPC traffic over that decorator, AES-GCM envelope helpers,
-`rpc::enclave_service` send/post hooks, encrypted `try_cast`, `add_ref`, and
-`release` payload wrapping, and the first route-state gate for
-reference-control messages. It now also has the first generated-IDL
+`rpc::enclave_service` send/post hooks, encrypted `try_cast`, `add_ref`,
+`release`, `object_released`, and endpoint-originated `transport_down` payload
+wrapping, and the first route-state gate for reference-control messages. It
+now also has the first generated-IDL
 service-level route
 attestation handshake payload carried by `i_marshaller::handshake()` and
 SGX-sim host integration coverage that drives that handshake through a real
 transport from an unknown-route `add_ref`. It is **not** completion of Phase 1
 or Phase 2 as written below, because the protected envelope still needs
-build-time backend selection and protected encrypted forms for the remaining
-reference-control marshaller methods.
+build-time backend selection, real backend wiring, and the later carrier and
+policy-hardening work described in the remaining phases.
 
 ### Implemented
 
@@ -264,6 +265,14 @@ reference-control marshaller methods.
   policy, as with development JavaScript/demo clients. Routed references
   received during sign-on are still validated later by `add_ref` against the
   referenced zone, not trusted solely because the adjacent stream connected.
+- Connection setup now carries an explicit `connection_settings::encoding_type`
+  from the caller's service default into `transport::connect()`,
+  `inner_connect()`, stream `init_client_channel_send`, `attach_remote_zone()`,
+  and `create_child_zone()`. `transport::connect()` rejects `not_set` before
+  calling `inner_connect()`: a transport must not guess a serialization format.
+  Child services copy this explicit connection encoding into their own default
+  encoding so a parent can deliberately instantiate a child zone with the
+  parent's chosen format.
 - `rpc::error` now owns the public-control status predicate and sanitiser.
   `rpc::transport` final control methods use it for public `handshake()` and
   `get_new_zone_id()` results for all transport implementations. Stream
@@ -282,6 +291,18 @@ reference-control marshaller methods.
   inbound marshaller handlers directly, so there is no stream envelope, stream
   sign-on, or stream close message on that path. The service-level
   `rpc::enclave_service` hooks remain the intended protection boundary.
+- The SGX coroutine host transport uses a fixed YAS binary encoding only for
+  the pre-service ECALL bootstrap `init_request`, because that blob is decoded
+  before an enclave-side service exists and before a service default encoding
+  can be consulted. Once the RPC transport link is live, route handshakes and
+  protected payload carriers use the negotiated/request/service encoding paths
+  described above.
+- The non-coroutine SGX marshal-test DTOs and the current C ABI bridge now
+  preserve the explicit connection encoding plus typed-control
+  `payload_type_id`, `payload_encoding`, and payload bytes for `try_cast`,
+  `add_ref`, `release`, `object_released`, and `transport_down`. This is a
+  compatibility guard so older compiled paths do not silently discard
+  protected control payloads; it is not a full C ABI security-audit pass.
 - `documents/security/attestation/intermediate-visibility-audit.md` records
   the current field-by-field visibility decision. The audit confirms that
   intermediate transports and passthroughs need route zones, carrier metadata,
@@ -339,11 +360,16 @@ reference-control marshaller methods.
   - route attestation state decisions for unknown, handshaking, failed,
     explicitly allowed unattested, and attested routes.
   - OpenSSL/SGXSSL-backed 32-byte attestation nonce generation.
-  - generated type ids and YAS round-tripping for the route-attestation
-    handshake request and response payloads.
+  - generated type ids and round-tripping for route-attestation handshake
+    request and response payloads using every agreed payload encoding compiled
+    into the current build: YAS, protocol buffers, and/or nanopb.
   - protected send request/response wrapping and unwrapping;
   - protected `try_cast`, `add_ref`, `release`, `object_released`, and
     `transport_down` wrapping and unwrapping;
+  - protected `try_cast`, `add_ref`, `release`, `object_released`, and
+    `transport_down` typed payloads preserve and authenticate their public
+    `payload_encoding` while carrying encrypted payload bytes in the caller's
+    agreed encoding;
   - positive application-domain `send` result codes are recovered only after
     decrypting the protected response;
   - positive public carrier statuses on protected `send` responses are
@@ -446,6 +472,21 @@ reference-control marshaller methods.
 - `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_filter=AttestationService.ProtectsObjectReleasedRequest:AttestationService.ProtectsTransportDownRequest:AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug_coroutine_sgx_sim --target rpc_test attestation_service_test`
+- `cmake --build build_debug_coroutine_fake_sgx --target rpc_test attestation_service_test`
+- `build_debug_coroutine_sgx_sim/output/attestation_service_test --gtest_brief=1`
+- `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_brief=1`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/*.*:ServiceLevelRouteAttestation.*:StreamRouteControl.*:TransportRouteControl.*:LocalRouteControl.*:EnclaveLocalRouteControl.*:ProtectedRpcRuntime.* --gtest_fail_fast`
+- `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/*.*:ServiceLevelRouteAttestation.*:StreamRouteControl.*:TransportRouteControl.*:LocalRouteControl.*:EnclaveLocalRouteControl.*:ProtectedRpcRuntime.* --gtest_fail_fast`
+- `cmake --build build_debug --target rpc_test attestation_service_test`
+- `cmake --build build_debug_sgx_sim --target rpc_test attestation_service_test`
+- `build_debug/output/attestation_service_test --gtest_brief=1`
+- `build_debug_sgx_sim/output/attestation_service_test --gtest_brief=1`
+- `build_debug/output/rpc_test --gtest_fail_fast`
+- `build_debug_sgx_sim/output/rpc_test --gtest_fail_fast`
+- `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_fail_fast --gtest_brief=1`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=type_test/41.* --gtest_brief=1`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_fail_fast --gtest_brief=1`
 - `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
 - `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`

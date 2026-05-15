@@ -331,9 +331,9 @@ sequenceDiagram
     StreamB-->>ServiceB: security_context for caller zone
     ServiceB->>ServiceB: store peer route state
 
-    ServiceA->>TransportA: inner_connect(connection_settings)
-    TransportA->>TransportB: init_client_initial_channel_send
-    TransportB->>ServiceB: attach_remote_zone(connection_settings)
+    ServiceA->>TransportA: inner_connect(connection_settings with encoding_type)
+    TransportA->>TransportB: init_client_initial_channel_send with encoding_type
+    TransportB->>ServiceB: attach_remote_zone(connection_settings with encoding_type)
     opt caller supplied an inbound interface
         ServiceB->>TransportB: add_ref caller interface
         TransportB->>TransportA: addref_send with encrypted payload when context exists
@@ -348,6 +348,13 @@ sequenceDiagram
 After this sign-on, generated `send`, `[post]`, endpoint `try_cast`, endpoint
 `add_ref`, and endpoint `release` traffic can be wrapped by
 `rpc::enclave_service` using the established `security_context`.
+
+The connection encoding is explicit setup metadata, not a transport guess.
+`connect_to_zone()` fills `connection_settings::encoding_type` from the
+caller's service default, `transport::connect()` rejects `not_set` before
+calling `inner_connect()`, and child-zone creation copies that value into the
+new child service default. This keeps later generated traffic and typed control
+payloads on the serializer selected by the service that initiated the link.
 
 ### Routed Service-Level Sign-On
 

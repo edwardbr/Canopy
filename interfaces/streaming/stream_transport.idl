@@ -48,6 +48,8 @@ namespace rpc
             rpc::destination_zone destination_zone_id;
             // the expected interface id of the destination object
             rpc::interface_ordinal outbound_interface_id;
+            // the explicit RPC payload encoding selected by the caller for this link
+            rpc::encoding encoding_type = rpc::encoding::not_set;
 
             // the zone id of the zone immediately adjacent to the new zone
             rpc::zone adjacent_zone_id;

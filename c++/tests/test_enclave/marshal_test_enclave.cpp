@@ -106,7 +106,10 @@ namespace
             request.caller_zone_id,
             request.remote_object_id,
             request.interface_id,
-            request.in_back_channel};
+            request.in_back_channel,
+            request.payload_type_id,
+            request.payload_encoding,
+            request.payload};
     }
 
     rpc::add_ref_params from_sgx_request(const add_ref_request& request)
@@ -117,7 +120,10 @@ namespace
             request.requesting_zone_id,
             request.build_out_param_channel,
             request.in_back_channel,
-            request.request_id};
+            request.request_id,
+            request.payload_type_id,
+            request.payload_encoding,
+            request.payload};
     }
 
     rpc::release_params from_sgx_request(const release_request& request)
@@ -126,19 +132,32 @@ namespace
             request.remote_object_id,
             request.caller_zone_id,
             request.options,
-            request.in_back_channel};
+            request.in_back_channel,
+            request.payload_type_id,
+            request.payload_encoding,
+            request.payload};
     }
 
     rpc::object_released_params from_sgx_request(const object_released_request& request)
     {
-        return rpc::object_released_params{
-            request.protocol_version, request.remote_object_id, request.caller_zone_id, request.in_back_channel};
+        return rpc::object_released_params{request.protocol_version,
+            request.remote_object_id,
+            request.caller_zone_id,
+            request.in_back_channel,
+            request.payload_type_id,
+            request.payload_encoding,
+            request.payload};
     }
 
     rpc::transport_down_params from_sgx_request(const transport_down_request& request)
     {
-        return rpc::transport_down_params{
-            request.protocol_version, request.destination_zone_id, request.caller_zone_id, request.in_back_channel};
+        return rpc::transport_down_params{request.protocol_version,
+            request.destination_zone_id,
+            request.caller_zone_id,
+            request.in_back_channel,
+            request.payload_type_id,
+            request.payload_encoding,
+            request.payload};
     }
 
     rpc::get_new_zone_id_params from_sgx_request(const get_new_zone_id_request& request)
@@ -161,6 +180,7 @@ namespace
         rpc::connection_settings input_descr{};
         input_descr.inbound_interface_id = yyy::i_host::get_id(rpc::get_version());
         input_descr.outbound_interface_id = yyy::i_example::get_id(rpc::get_version());
+        input_descr.encoding_type = request.encoding_type;
         input_descr.remote_object_id = request.host_remote_object;
         return input_descr;
     }

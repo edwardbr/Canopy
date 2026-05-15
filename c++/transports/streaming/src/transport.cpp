@@ -131,6 +131,7 @@ namespace rpc::stream_transport
                     .inbound_interface_id = input_descr.inbound_interface_id,
                     .destination_zone_id = get_adjacent_zone_id(),
                     .outbound_interface_id = input_descr.outbound_interface_id,
+                    .encoding_type = input_descr.encoding_type,
                     .adjacent_zone_id = get_zone_id()});
             int ret = init_result.error_code;
             if (ret != rpc::error::OK())
@@ -1505,7 +1506,14 @@ namespace rpc::stream_transport
         rpc::connection_settings input_descr;
         input_descr.inbound_interface_id = request.inbound_interface_id;
         input_descr.outbound_interface_id = request.outbound_interface_id;
+        input_descr.encoding_type = request.encoding_type;
         input_descr.remote_object_id = request.inbound_remote_object;
+        if (input_descr.encoding_type == rpc::encoding::not_set)
+        {
+            RPC_ERROR("init_client_channel_send missing connection encoding");
+            set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN;
+        }
         set_adjacent_zone_id(request.adjacent_zone_id);
 
         // Immediately inform the peer of our zone_id before invoking connection_handler_

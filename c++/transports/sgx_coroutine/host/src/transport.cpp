@@ -36,6 +36,10 @@ namespace rpc::sgx::coro::host
     {
         using namespace rpc::sgx::coro::protocol;
 
+        constexpr rpc::encoding sgx_bootstrap_init_request_encoding = rpc::encoding::yas_binary;
+        constexpr uint64_t sgx_bootstrap_init_request_encoding_value
+            = static_cast<uint64_t>(sgx_bootstrap_init_request_encoding);
+
         bool signal_peer_closed(common::queue_type* send_queue)
         {
             if (!send_queue)
@@ -499,7 +503,10 @@ namespace rpc::sgx::coro::host
             auto* host_to_enclave_queue = host_to_enclave_queue_.get();
             auto* enclave_to_host_queue = enclave_to_host_queue_.get();
             auto state = owner->state_;
-            const auto request_encoding = svc->get_default_encoding();
+            // This ECALL blob is decoded before the enclave-side service
+            // exists. Keep it on the fixed SGX bootstrap ABI; the stream/RPC
+            // layers use service/request encoding after the link is live.
+            const auto request_encoding = sgx_bootstrap_init_request_encoding;
             // These host-provided clock values are bootstrap hints only. They
             // must not be treated as trusted time for certificate validation,
             // attestation decisions, or other enclave security policy.
@@ -514,14 +521,17 @@ namespace rpc::sgx::coro::host
                 host_ticks_per_millisecond(),
                 host_unix_epoch_milliseconds()};
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
-            const auto request_encoding_value = static_cast<uint64_t>(request_encoding);
             auto request_blob
                 = std::make_shared<std::vector<char>>(rpc::serialise<std::vector<char>>(request, request_encoding));
             owner->init_thread_ = std::thread(
-                [state, request_blob = std::move(request_blob), request_encoding_value, request_type_id]()
+                [state, request_blob = std::move(request_blob), request_type_id]()
                 {
                     auto status = coroutine_init_enclave(
-                        state->eid_, request_blob->size(), request_blob->data(), request_encoding_value, request_type_id);
+                        state->eid_,
+                        request_blob->size(),
+                        request_blob->data(),
+                        sgx_bootstrap_init_request_encoding_value,
+                        request_type_id);
 
                     if (status != SGX_SUCCESS)
                     {

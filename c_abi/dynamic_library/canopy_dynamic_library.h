@@ -136,6 +136,7 @@ extern "C"
          */
         uint64_t inbound_interface_id;
         uint64_t outbound_interface_id;
+        uint64_t encoding_type;
         canopy_remote_object remote_object_id;
     } canopy_connection_settings;
 
@@ -248,6 +249,9 @@ extern "C"
         canopy_remote_object remote_object_id;
         uint64_t interface_id;
         canopy_back_channel_span in_back_channel;
+        uint64_t payload_type_id;
+        uint64_t payload_encoding;
+        canopy_const_byte_buffer payload;
     } canopy_try_cast_params;
 
     typedef struct canopy_add_ref_params
@@ -263,6 +267,9 @@ extern "C"
         uint8_t build_out_param_channel;
         canopy_back_channel_span in_back_channel;
         uint64_t request_id;
+        uint64_t payload_type_id;
+        uint64_t payload_encoding;
+        canopy_const_byte_buffer payload;
     } canopy_add_ref_params;
 
     typedef struct canopy_release_params
@@ -276,6 +283,9 @@ extern "C"
         canopy_zone caller_zone_id;
         uint8_t options;
         canopy_back_channel_span in_back_channel;
+        uint64_t payload_type_id;
+        uint64_t payload_encoding;
+        canopy_const_byte_buffer payload;
     } canopy_release_params;
 
     typedef struct canopy_object_released_params
@@ -288,6 +298,9 @@ extern "C"
         canopy_remote_object remote_object_id;
         canopy_zone caller_zone_id;
         canopy_back_channel_span in_back_channel;
+        uint64_t payload_type_id;
+        uint64_t payload_encoding;
+        canopy_const_byte_buffer payload;
     } canopy_object_released_params;
 
     typedef struct canopy_transport_down_params
@@ -300,6 +313,9 @@ extern "C"
         canopy_zone destination_zone_id;
         canopy_zone caller_zone_id;
         canopy_back_channel_span in_back_channel;
+        uint64_t payload_type_id;
+        uint64_t payload_encoding;
+        canopy_const_byte_buffer payload;
     } canopy_transport_down_params;
 
     typedef struct canopy_get_new_zone_id_params

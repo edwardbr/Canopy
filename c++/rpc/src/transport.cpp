@@ -149,6 +149,12 @@ namespace rpc
         std::shared_ptr<rpc::object_stub> stub,
         connection_settings input_descr)
     {
+        if (input_descr.encoding_type == rpc::encoding::not_set)
+        {
+            RPC_ERROR("transport::connect called without an explicit connection encoding");
+            CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
+        }
+
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (input_descr.get_object_id().is_set())
         {

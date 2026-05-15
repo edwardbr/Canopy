@@ -1003,6 +1003,12 @@ namespace rpc
                 result.error_code = rpc::error::ZONE_NOT_FOUND();
                 CO_RETURN result;
             }
+            if (input_descr.encoding_type == rpc::encoding::not_set)
+            {
+                RPC_ERROR("create_child_zone called without an explicit connection encoding");
+                result.error_code = rpc::error::INVALID_DATA();
+                CO_RETURN result;
+            }
 
             auto zone_id = parent_transport->get_zone_id();
             auto adjacent_zone_id = parent_transport->get_adjacent_zone_id();
@@ -1021,6 +1027,7 @@ namespace rpc
                 result.error_code = rpc::error::INVALID_DATA();
                 CO_RETURN result;
             }
+            child_svc->set_default_encoding(input_descr.encoding_type);
 
             // Link the child to the parent via transport
             parent_transport->set_service(child_svc);
@@ -1043,6 +1050,7 @@ namespace rpc
             {
                 auto parent_service_proxy = rpc::service_proxy::create(
                     "parent", child_svc, parent_transport, input_descr.remote_object_id.as_zone());
+                parent_service_proxy->set_encoding(input_descr.encoding_type);
 
                 child_svc->add_zone_proxy(parent_service_proxy);
 
@@ -1195,6 +1203,13 @@ namespace rpc
         }
         input_descr.inbound_interface_id = in_param_type::get_id(rpc::get_version());
         input_descr.outbound_interface_id = out_param_type::get_id(rpc::get_version());
+        input_descr.encoding_type = get_default_encoding();
+        if (input_descr.encoding_type == rpc::encoding::not_set)
+        {
+            RPC_ERROR("connect_to_zone called with unset service default encoding");
+            result.error_code = rpc::error::INVALID_DATA();
+            CO_RETURN result;
+        }
 
         // once the transport is connected the adjacent zone id is known it must add_ref the stub against the transport
         // if the input interface is remote then the addref is not needed.
@@ -1230,6 +1245,7 @@ namespace rpc
             // Create service_proxy for this connection
             auto new_service_proxy = rpc::service_proxy::create(
                 name, shared_from_this(), child_transport, child_transport->get_adjacent_zone_id());
+            new_service_proxy->set_encoding(input_descr.encoding_type);
 
             // add the proxy to the service
             add_zone_proxy(new_service_proxy);
@@ -1277,6 +1293,12 @@ namespace rpc
             result.error_code = rpc::error::INVALID_INTERFACE_ID();
             CO_RETURN result;
         }
+        if (input_descr.encoding_type == rpc::encoding::not_set)
+        {
+            RPC_ERROR("attach_remote_zone called without an explicit connection encoding");
+            result.error_code = rpc::error::INVALID_DATA();
+            CO_RETURN result;
+        }
 
         auto adjacent_zone_id = peer_transport->get_adjacent_zone_id();
 
@@ -1294,6 +1316,7 @@ namespace rpc
         {
             auto parent_service_proxy = rpc::service_proxy::create(
                 name, shared_from_this(), peer_transport, input_descr.remote_object_id.as_zone());
+            parent_service_proxy->set_encoding(input_descr.encoding_type);
 
             add_zone_proxy(parent_service_proxy);
 

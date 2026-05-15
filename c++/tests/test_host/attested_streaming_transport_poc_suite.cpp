@@ -1359,6 +1359,17 @@ namespace
         CORO_ASSERT_EQ(recorded_messages.size(), 1U);
         CORO_ASSERT_EQ(recorded_messages[0], enclave_local_post_message_value);
 
+        foo = nullptr;
+        connect_result.output_interface = nullptr;
+        host_ptr = nullptr;
+        for (size_t i = 0; i < service_level_route_cleanup_drain_iterations; ++i)
+            CO_AWAIT parent_service->schedule();
+
+        std::static_pointer_cast<rpc::transport>(parent_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        std::static_pointer_cast<rpc::transport>(child_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        for (size_t i = 0; i < service_level_route_cleanup_drain_iterations; ++i)
+            CO_AWAIT parent_service->schedule();
+
         CO_RETURN true;
     }
 

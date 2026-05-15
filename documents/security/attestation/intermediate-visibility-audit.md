@@ -143,7 +143,7 @@ protocol/security error rather than forwarded to an intermediate.
 | protected `transport_down` | caller zone, destination zone | protected payload type id, encrypted payload session/counter, public back-channel | endpoint-originated private payload and sender back-channel snapshot | route failure timing visible |
 | route-layer `transport_down` | caller zone, destination zone | public back-channel | none | intentionally unauthenticated route-liveness statement unless policy adds hop trust |
 | `handshake` | caller zone, destination zone | handshake type id, payload, public back-channel, RPC control result | none in current route-level bootstrap | attestation evidence and verdict metadata are visible to intermediates on routed handshakes; positive result codes must not appear |
-| stream sign-on | adjacent stream endpoints | initial remote object, expected interface ids, adjacent zone id, RPC control result | none in current stream setup | initial descriptors are visible until stream setup is bound to attested transport policy |
+| stream sign-on | adjacent stream endpoints | initial remote object, expected interface ids, explicit connection encoding, adjacent zone id, RPC control result | none in current stream setup | initial descriptors are visible until stream setup is bound to attested transport policy |
 | stream close | adjacent stream endpoints | empty close/ack control messages | none | no payload by construction |
 | `post_report` | route to reporting service | telemetry event | none | intentionally diagnostic; needs separate redaction policy |
 | `get_new_zone_id` | route to allocator/root | RPC control result, allocated zone id, public back-channel | none | allocator influence and returned zone id need policy review; positive result codes must not appear |
@@ -157,8 +157,9 @@ application dispatch and need separate policy:
 
 - **Stream connection setup.** `init_client_channel_send`,
   `init_client_initial_channel_response`, and `init_client_channel_response`
-  establish adjacency, initial remote objects, and expected interface ids. In
-  an attested stream this belongs to the stream sign-on path. For routed
+  establish adjacency, initial remote objects, expected interface ids, and the
+  explicit connection encoding selected by the initiating service. In an
+  attested stream this belongs to the stream sign-on path. For routed
   post-connect references, the subsequent `add_ref` route-attestation path must
   validate the referenced zone before application code can use it. The current
   runtime tests observe these setup messages and assert that their public

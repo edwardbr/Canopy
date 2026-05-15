@@ -603,14 +603,18 @@ namespace rpc::stream_transport
         run_custom_connect(
             rpc::remote_object inbound_remote_object,
             rpc::interface_ordinal inbound_interface_id,
-            rpc::interface_ordinal outbound_interface_id)
+            rpc::interface_ordinal outbound_interface_id,
+            rpc::encoding encoding_type)
         {
             RPC_DEBUG("custom connect handler zone: {}", get_zone_id().get_subnet());
 
             rpc::connection_settings input_descr;
             input_descr.inbound_interface_id = inbound_interface_id;
             input_descr.outbound_interface_id = outbound_interface_id;
+            input_descr.encoding_type = encoding_type;
             input_descr.remote_object_id = inbound_remote_object;
+            if (input_descr.encoding_type == rpc::encoding::not_set)
+                CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
 
             set_adjacent_zone_id(inbound_remote_object.as_zone());
 
