@@ -68,6 +68,10 @@ namespace websocket_demo
 
             bool decoder_ready_ = false;
             bool encoder_ready_ = false;
+            // Latches if codec init persistently fails (e.g. enclave heap
+            // exhausted). Without this, every inbound frame retries init,
+            // pegging the CPU and flooding the log.
+            bool codec_failed_ = false;
             vpx_codec_ctx_t decoder_{};
             vpx_codec_ctx_t encoder_{};
             vpx_codec_enc_cfg_t encoder_cfg_{};

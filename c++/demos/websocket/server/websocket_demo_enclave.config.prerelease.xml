@@ -1,0 +1,17 @@
+<EnclaveConfiguration>
+  <ProdID>0</ProdID>
+  <ISVSVN>0</ISVSVN>
+  <!-- libvpx VP8 enc+dec call depth plus the coroutine worker frames. -->
+  <StackMaxSize>0x200000</StackMaxSize>
+  <!-- The video demo runs libvpx inside the enclave: VP8 encoder/decoder
+       contexts, reference + I420 frame buffers, plus the HTTP/RPC stack.
+       The shared test config's 4 MiB heap starves it (encoder init fails,
+       even static-file reads OOM). 64 MiB gives comfortable headroom in
+       simulation; tune down for hardware EPC limits later. -->
+  <HeapMaxSize>0x4000000</HeapMaxSize>
+  <TCSNum>5</TCSNum>
+  <TCSPolicy>1</TCSPolicy>
+  <DisableDebug>0</DisableDebug>
+  <MiscSelect>0</MiscSelect>
+  <MiscMask>0xFFFFFFFF</MiscMask>
+</EnclaveConfiguration>

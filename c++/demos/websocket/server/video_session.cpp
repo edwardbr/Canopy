@@ -138,11 +138,13 @@ namespace websocket_demo
         {
             std::ignore = flags;
 
-            if (!sink_)
+            if (!sink_ || codec_failed_)
                 CO_RETURN;
             if (!ensure_decoder())
             {
-                RPC_WARNING("vp8 decoder init failed");
+                if (!codec_failed_)
+                    RPC_WARNING("vp8 decoder init failed - video disabled for this session");
+                codec_failed_ = true;
                 CO_RETURN;
             }
 
@@ -162,7 +164,9 @@ namespace websocket_demo
 
             if (!ensure_encoder(img->d_w, img->d_h))
             {
-                RPC_WARNING("vp8 encoder init failed");
+                if (!codec_failed_)
+                    RPC_WARNING("vp8 encoder init failed - video disabled for this session");
+                codec_failed_ = true;
                 CO_RETURN;
             }
 

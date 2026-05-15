@@ -216,6 +216,15 @@ if(CANOPY_BUILD_ENCLAVE
               CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
     target_include_directories(websocket_demo_enclave PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
                                                               ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+    # add_enclave_library links canopy_libvpx_enclave (TRUSTED_LIBS) but does
+    # not propagate its INTERFACE includes to the enclave SRCS compile, so the
+    # vpx/ headers must be added explicitly here (the compile-fit target gets
+    # them via target_link_libraries usage requirements).
+    if(TARGET canopy_libvpx_enclave)
+      target_include_directories(
+        websocket_demo_enclave
+        PRIVATE $<TARGET_PROPERTY:canopy_libvpx_enclave,INTERFACE_INCLUDE_DIRECTORIES>)
+    endif()
     target_compile_options(websocket_demo_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
     target_link_options(websocket_demo_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
     set_property(TARGET websocket_demo_enclave PROPERTY COMPILE_PDB_NAME websocket_demo_enclave)
@@ -224,10 +233,13 @@ if(CANOPY_BUILD_ENCLAVE
       set_target_properties(websocket_demo_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
     endif()
 
+    # Demo-specific enclave config (large heap for in-enclave libvpx); the
+    # shared test config's 4 MiB heap starves the codec. Kept separate so
+    # other test enclaves are unaffected.
     enclave_sign(
       websocket_demo_enclave
       KEY ../../../tests/test_enclave/marshal_test_enclave_private.pem
-      CONFIG ../../../tests/test_enclave/marshal_test_enclave.config.${SGX_MODE}.xml)
+      CONFIG websocket_demo_enclave.config.${SGX_MODE}.xml)
 
     # sgx_create_enclave expects the signed image in simulation and hardware modes.
     set(WEBSOCKET_DEMO_ENCLAVE_RUNTIME_PATH "${websocket_demo_enclave_sign_OUTPUT_NAME}")

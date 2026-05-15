@@ -10,8 +10,9 @@ real video bytes browser → enclave → browser.
 fixed-position procedural genie sprite and/or a luma invert, **toggled live
 from the browser** via `set_video_effects`; then VP8 re-encodes and pushes
 back. Includes the latency/smoothness work (all-keyframe, frame-drop,
-latest-frame-wins worker, Release build). Next is Phase 4 (face detection +
-SGX port) — see Roadmap.
+latest-frame-wins worker, Release build). The SGX/libvpx enclave port is done
+and runtime-validated (genie video runs inside SGX sim); next is Phase 4b
+face detection — see Roadmap.
 
 Branch: `sgx_iouring_video_genie` (forked from `sgx_iouring`).
 
@@ -209,7 +210,9 @@ cmake --build build_debug_coroutine --target websocket_demo_www_js_generate
   effective rate is whatever the enclave sustains (counter shows drops).
 * Video egress rides the chat `i_context_event` callback rather than a
   dedicated interface (see the "why one shared callback" note above).
-* libvpx is host-side only; not yet built for the SGX enclave (phase 4).
+* Enclave libvpx is `generic-gnu` pure-C (no SIMD) — runs in-enclave but
+  CPU-heavy; SIMD ISA pinning via `CANOPY_LIBVPX_ENCLAVE_CPU` is a later
+  optimisation (needs the SGX CPUID-exception path validated).
 * Worker vs `video_session` teardown on abrupt disconnect is guarded by
   `stopping_` but a late in-flight frame is theoretically possible — benign
   for the demo; tighten with shared-ownership if it ever matters.
@@ -237,13 +240,21 @@ connect. Invert is applied before the genie composite so the sprite always
 renders with correct colours. (Future per-stream controls — sprite
 position/scale, effect intensity — extend the same bitmask/channel.)
 
-Phase 4 — face detection (BlazeFace or a small ONNX model; candidate runtime
+Phase 4a — **SGX/libvpx enclave port: DONE (runtime-validated).**
+`canopy_libvpx_enclave` builds a freestanding libvpx (`generic-gnu`,
+deterministic; pin via `CANOPY_LIBVPX_ENCLAVE_CPU`) against tlibc + three rpc
+polyfills (`polyfill/sgx/{stdio,inttypes,sys/time}.h`).
+`websocket_demo_enclave` links + **signs**, and `websocket_enclave_server`
+runs it: the full browser→enclave→browser genie video round-trip executes
+**inside SGX sim**. Needs the demo's own enclave config (64 MiB heap;
+`websocket_demo_enclave.config.*.xml`) — the shared 4 MiB test heap starves
+libvpx. Enclave libvpx is pure-C (no SIMD) so it's CPU-heavy but functional;
+SIMD pinning is a later optimisation.
+
+Phase 4b — face detection (BlazeFace or a small ONNX model; candidate runtime
 `onnxruntime` minimal build or `ggml`), sprite anchored to detected
 landmarks instead of the fixed corner — drops into the same
-`transform_frame`/compositor seam. **Also the SGX/libvpx port**: build libvpx
-with the enclave toolchain and make it a reproducible/deterministic build so
-MRENCLAVE is stable (the pinned shallow submodule is the groundwork for
-this).
+`transform_frame`/compositor seam.
 
 Phase 5 — smoke-from-lamp particle animation resolving into the genie head at
 the detected face position.
