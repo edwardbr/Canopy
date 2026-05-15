@@ -1,0 +1,265 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#include <gtest/gtest.h>
+
+#include <security/attestation/fake_backend.h>
+#include <security/attestation/service.h>
+
+#include <array>
+#include <limits>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace
+{
+    using canopy::security::attestation::attestation_policy;
+    using canopy::security::attestation::attestation_service;
+    using canopy::security::attestation::attestation_service_options;
+    using canopy::security::attestation::cmw;
+    using canopy::security::attestation::establish_session_params;
+    using canopy::security::attestation::evidence_binding;
+    using canopy::security::attestation::fake_backend;
+    using canopy::security::attestation::fake_backend_id;
+    using canopy::security::attestation::fake_evidence_media_type;
+    using canopy::security::attestation::identity;
+    using canopy::security::attestation::make_session_id;
+    using canopy::security::attestation::protected_key_scope;
+    using canopy::security::attestation::protected_rpc_direction;
+    using canopy::security::attestation::security_context;
+    using canopy::security::attestation::security_level;
+
+    auto make_service(
+        std::string enclave_id,
+        std::string zone_id,
+        uint64_t max_counter_value = std::numeric_limits<uint64_t>::max()) -> std::shared_ptr<attestation_service>
+    {
+        attestation_service_options options;
+        options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
+        options.backend = std::make_shared<fake_backend>();
+        options.policy = attestation_policy{};
+        options.policy.required_backend_id = fake_backend_id;
+        options.policy.minimum_security_level = security_level::development;
+        options.max_counter_value = max_counter_value;
+        return std::make_shared<attestation_service>(std::move(options));
+    }
+
+    auto establish(
+        const std::shared_ptr<attestation_service>& service,
+        identity peer,
+        uint64_t transcript_id = 99,
+        std::vector<uint8_t> shared_secret = {}) -> security_context
+    {
+        establish_session_params params;
+        params.peer_identity = std::move(peer);
+        params.transcript_id = transcript_id;
+        params.local_evidence_sent = true;
+        params.peer_attested = true;
+        params.verified_backend_id = fake_backend_id;
+        params.verified_level = security_level::development;
+        params.shared_secret = std::move(shared_secret);
+        return service->establish_session(params);
+    }
+
+    auto make_scope(
+        const security_context& context,
+        identity caller,
+        identity destination,
+        protected_rpc_direction direction = protected_rpc_direction::caller_to_destination) -> protected_key_scope
+    {
+        protected_key_scope scope;
+        scope.session_id = context.session_id;
+        scope.caller_identity = std::move(caller);
+        scope.destination_identity = std::move(destination);
+        scope.direction = direction;
+        return scope;
+    }
+} // namespace
+
+TEST(
+    AttestationService,
+    FakeBackendRejectsMalformedEvidenceSafely)
+{
+    fake_backend backend;
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"enclave-a", "zone-a"};
+    expected_binding.transcript_id = 17;
+    expected_binding.nonce = {1, 2, 3, 4};
+
+    attestation_policy policy;
+    policy.required_backend_id = fake_backend_id;
+    policy.minimum_security_level = security_level::development;
+
+    auto valid = backend.produce_evidence(expected_binding);
+    EXPECT_TRUE(backend.verify_evidence(valid, expected_binding, policy).accepted);
+
+    cmw truncated;
+    truncated.media_type = fake_evidence_media_type;
+    truncated.content_format = "canopy.fake.v1";
+    truncated.payload = {4, 0, 0, 0, 'f'};
+    EXPECT_FALSE(backend.verify_evidence(truncated, expected_binding, policy).accepted);
+
+    cmw oversized;
+    oversized.media_type = fake_evidence_media_type;
+    oversized.content_format = "canopy.fake.v1";
+    oversized.payload = {0xff, 0xff, 0xff, 0xff};
+    EXPECT_FALSE(backend.verify_evidence(oversized, expected_binding, policy).accepted);
+}
+
+TEST(
+    AttestationService,
+    SessionIdsAreScopedToEnclavePairs)
+{
+    auto first = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"}, 99);
+    auto second = make_session_id(identity{"enclave-a", "zone-a-2"}, identity{"enclave-b", "zone-b-2"}, 99);
+    auto third = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-c", "zone-c"}, 99);
+
+    EXPECT_EQ(first, second);
+    EXPECT_NE(first, third);
+}
+
+TEST(
+    AttestationService,
+    KdfGoldenVectorIsStable)
+{
+    auto service = make_service("enclave-a", "zone-a");
+    const auto context = establish(service, identity{"enclave-b", "zone-b"});
+    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
+
+    auto material = service->derive_aead_key(scope);
+    ASSERT_TRUE(material.has_value());
+
+    const std::array<uint8_t, canopy::security::attestation::aead_key_size> expected_key{0xb2,
+        0x37,
+        0x48,
+        0x74,
+        0x02,
+        0x03,
+        0xdb,
+        0x3b,
+        0x04,
+        0x03,
+        0x5c,
+        0xf3,
+        0x49,
+        0xd8,
+        0x4e,
+        0x64,
+        0xfe,
+        0x43,
+        0xd9,
+        0x1a,
+        0x41,
+        0xc2,
+        0x72,
+        0xcb,
+        0x19,
+        0xf6,
+        0x01,
+        0xe7,
+        0x51,
+        0x6a,
+        0x3f,
+        0x81};
+    const std::array<uint8_t, canopy::security::attestation::aead_nonce_prefix_size> expected_nonce_prefix{
+        0x47, 0x52, 0x4b, 0xd5};
+    const std::array<uint8_t, canopy::security::attestation::aead_nonce_size> expected_nonce{
+        0x47, 0x52, 0x4b, 0xd5, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07};
+
+    EXPECT_EQ(material->key, expected_key);
+    EXPECT_EQ(material->nonce_prefix, expected_nonce_prefix);
+    EXPECT_EQ(service->make_aead_nonce(*material, 7), expected_nonce);
+}
+
+TEST(
+    AttestationService,
+    DerivesMatchingDirectionalKeysForBothPeers)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"});
+    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"});
+    ASSERT_EQ(context_a.session_id, context_b.session_id);
+
+    auto request_scope = make_scope(context_a, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
+    auto a_request_key = service_a->derive_aead_key(request_scope);
+    auto b_request_key = service_b->derive_aead_key(request_scope);
+    ASSERT_TRUE(a_request_key.has_value());
+    ASSERT_TRUE(b_request_key.has_value());
+    EXPECT_EQ(a_request_key->key, b_request_key->key);
+    EXPECT_EQ(a_request_key->nonce_prefix, b_request_key->nonce_prefix);
+    EXPECT_EQ(a_request_key->session_epoch, 1U);
+
+    auto response_scope = make_scope(
+        context_a,
+        identity{"enclave-a", "zone-a"},
+        identity{"enclave-b", "zone-b"},
+        protected_rpc_direction::destination_to_caller);
+    auto response_key = service_a->derive_aead_key(response_scope);
+    ASSERT_TRUE(response_key.has_value());
+    EXPECT_TRUE(response_key->key != a_request_key->key || response_key->nonce_prefix != a_request_key->nonce_prefix);
+
+    auto sibling_zone_scope = make_scope(context_a, identity{"enclave-a", "zone-a-2"}, identity{"enclave-b", "zone-b"});
+    auto sibling_zone_key = service_a->derive_aead_key(sibling_zone_scope);
+    ASSERT_TRUE(sibling_zone_key.has_value());
+    EXPECT_TRUE(
+        sibling_zone_key->key != a_request_key->key || sibling_zone_key->nonce_prefix != a_request_key->nonce_prefix);
+
+    auto nonce = service_a->make_aead_nonce(*a_request_key, 7);
+    EXPECT_EQ(
+        std::vector<uint8_t>(nonce.begin(), nonce.begin() + a_request_key->nonce_prefix.size()),
+        std::vector<uint8_t>(a_request_key->nonce_prefix.begin(), a_request_key->nonce_prefix.end()));
+    EXPECT_EQ(nonce.back(), 7U);
+}
+
+TEST(
+    AttestationService,
+    AllocatesAndValidatesMonotonicCountersPerDerivedKey)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"});
+    establish(service_b, identity{"enclave-a", "zone-a"});
+
+    auto scope = make_scope(context_a, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
+
+    auto first_send = service_a->next_send_counter(scope);
+    auto second_send = service_a->next_send_counter(scope);
+    ASSERT_TRUE(first_send.accepted);
+    ASSERT_TRUE(second_send.accepted);
+    EXPECT_EQ(first_send.counter, 1U);
+    EXPECT_EQ(second_send.counter, 2U);
+
+    EXPECT_FALSE(service_b->accept_receive_counter(scope, 0).accepted);
+
+    auto first_receive = service_b->accept_receive_counter(scope, first_send.counter);
+    auto replayed_receive = service_b->accept_receive_counter(scope, first_send.counter);
+    auto second_receive = service_b->accept_receive_counter(scope, second_send.counter);
+    auto out_of_order_receive = service_b->accept_receive_counter(scope, second_send.counter);
+    EXPECT_TRUE(first_receive.accepted);
+    EXPECT_FALSE(replayed_receive.accepted);
+    EXPECT_TRUE(second_receive.accepted);
+    EXPECT_FALSE(out_of_order_receive.accepted);
+}
+
+TEST(
+    AttestationService,
+    RejectsCounterExhaustionAndMismatchedScopes)
+{
+    auto service = make_service("enclave-a", "zone-a", 2);
+    const auto context = establish(service, identity{"enclave-b", "zone-b"});
+    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
+
+    EXPECT_TRUE(service->next_send_counter(scope).accepted);
+    EXPECT_TRUE(service->next_send_counter(scope).accepted);
+    EXPECT_FALSE(service->next_send_counter(scope).accepted);
+    EXPECT_FALSE(service->accept_receive_counter(scope, 3).accepted);
+
+    auto attacker_scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"attacker", "zone-b"});
+    EXPECT_FALSE(service->derive_aead_key(attacker_scope).has_value());
+    EXPECT_FALSE(service->next_send_counter(attacker_scope).accepted);
+}

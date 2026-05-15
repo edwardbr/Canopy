@@ -6,8 +6,8 @@
 #include <streaming/attestation/stream.h>
 
 #include <array>
-#include <cstring>
 #include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -73,51 +73,95 @@ namespace streaming::attestation
                 .type = coro::net::io_status::kind::native, .native_code = rpc::error::PROTOCOL_ERROR()};
         }
 
+        auto can_append(
+            const std::vector<uint8_t>& out,
+            size_t size) noexcept -> bool
+        {
+            return size <= out.max_size() - out.size();
+        }
+
+        auto has_remaining(
+            const std::vector<uint8_t>& in,
+            size_t offset,
+            size_t size) noexcept -> bool
+        {
+            return offset <= in.size() && size <= in.size() - offset;
+        }
+
+        auto fits_u32(size_t value) noexcept -> bool
+        {
+            return value <= static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+        }
+
         auto append_u16(
             std::vector<uint8_t>& out,
-            uint16_t value) -> void
+            uint16_t value) -> bool
         {
+            if (!can_append(out, sizeof(value)))
+                return false;
             for (unsigned shift = 0; shift < 16; shift += 8)
                 out.push_back(static_cast<uint8_t>((value >> shift) & 0xffU));
+            return true;
         }
 
         auto append_u32(
             std::vector<uint8_t>& out,
-            uint32_t value) -> void
+            uint32_t value) -> bool
         {
+            if (!can_append(out, sizeof(value)))
+                return false;
             for (unsigned shift = 0; shift < 32; shift += 8)
                 out.push_back(static_cast<uint8_t>((value >> shift) & 0xffU));
+            return true;
         }
 
         auto append_u64(
             std::vector<uint8_t>& out,
-            uint64_t value) -> void
+            uint64_t value) -> bool
         {
+            if (!can_append(out, sizeof(value)))
+                return false;
             for (unsigned shift = 0; shift < 64; shift += 8)
                 out.push_back(static_cast<uint8_t>((value >> shift) & 0xffU));
+            return true;
         }
 
         auto append_bool(
             std::vector<uint8_t>& out,
-            bool value) -> void
+            bool value) -> bool
         {
+            if (!can_append(out, sizeof(uint8_t)))
+                return false;
             out.push_back(value ? 1 : 0);
+            return true;
         }
 
         auto append_bytes(
             std::vector<uint8_t>& out,
-            const std::vector<uint8_t>& bytes) -> void
+            const std::vector<uint8_t>& bytes) -> bool
         {
-            append_u32(out, static_cast<uint32_t>(bytes.size()));
+            if (bytes.size() > max_frame_payload || !fits_u32(bytes.size()))
+                return false;
+            if (!can_append(out, sizeof(uint32_t) + bytes.size()))
+                return false;
+            if (!append_u32(out, static_cast<uint32_t>(bytes.size())))
+                return false;
             out.insert(out.end(), bytes.begin(), bytes.end());
+            return true;
         }
 
         auto append_string(
             std::vector<uint8_t>& out,
-            const std::string& value) -> void
+            const std::string& value) -> bool
         {
-            append_u32(out, static_cast<uint32_t>(value.size()));
+            if (value.size() > max_frame_payload || !fits_u32(value.size()))
+                return false;
+            if (!can_append(out, sizeof(uint32_t) + value.size()))
+                return false;
+            if (!append_u32(out, static_cast<uint32_t>(value.size())))
+                return false;
             out.insert(out.end(), value.begin(), value.end());
+            return true;
         }
 
         auto read_u16(
@@ -125,7 +169,7 @@ namespace streaming::attestation
             size_t& offset,
             uint16_t& value) -> bool
         {
-            if (offset + sizeof(uint16_t) > in.size())
+            if (!has_remaining(in, offset, sizeof(uint16_t)))
                 return false;
             value = 0;
             for (unsigned shift = 0; shift < 16; shift += 8)
@@ -138,7 +182,7 @@ namespace streaming::attestation
             size_t& offset,
             uint32_t& value) -> bool
         {
-            if (offset + sizeof(uint32_t) > in.size())
+            if (!has_remaining(in, offset, sizeof(uint32_t)))
                 return false;
             value = 0;
             for (unsigned shift = 0; shift < 32; shift += 8)
@@ -151,7 +195,7 @@ namespace streaming::attestation
             size_t& offset,
             uint64_t& value) -> bool
         {
-            if (offset + sizeof(uint64_t) > in.size())
+            if (!has_remaining(in, offset, sizeof(uint64_t)))
                 return false;
             value = 0;
             for (unsigned shift = 0; shift < 64; shift += 8)
@@ -164,7 +208,7 @@ namespace streaming::attestation
             size_t& offset,
             bool& value) -> bool
         {
-            if (offset >= in.size())
+            if (!has_remaining(in, offset, sizeof(uint8_t)))
                 return false;
             const auto raw = in[offset++];
             if (raw > 1)
@@ -181,7 +225,7 @@ namespace streaming::attestation
             uint32_t size = 0;
             if (!read_u32(in, offset, size))
                 return false;
-            if (offset + size > in.size())
+            if (size > max_frame_payload || !has_remaining(in, offset, size))
                 return false;
             value.assign(
                 in.begin() + static_cast<std::ptrdiff_t>(offset), in.begin() + static_cast<std::ptrdiff_t>(offset + size));
@@ -201,12 +245,17 @@ namespace streaming::attestation
             return true;
         }
 
-        auto serialise_cmw(const cmw& value) -> std::vector<uint8_t>
+        auto serialise_cmw(const cmw& value) -> std::optional<std::vector<uint8_t>>
         {
             std::vector<uint8_t> out;
-            append_string(out, value.media_type);
-            append_string(out, value.content_format);
-            append_bytes(out, value.payload);
+            if (!append_string(out, value.media_type))
+                return std::nullopt;
+            if (!append_string(out, value.content_format))
+                return std::nullopt;
+            if (!append_bytes(out, value.payload))
+                return std::nullopt;
+            if (out.size() > max_frame_payload)
+                return std::nullopt;
             return out;
         }
 
@@ -224,14 +273,19 @@ namespace streaming::attestation
             return offset == payload.size();
         }
 
-        auto serialise_hello(const hello_payload& hello) -> std::vector<uint8_t>
+        auto serialise_hello(const hello_payload& hello) -> std::optional<std::vector<uint8_t>>
         {
             std::vector<uint8_t> out;
-            append_string(out, hello.local_identity.enclave_id);
-            append_string(out, hello.local_identity.zone_id);
-            append_string(out, hello.backend_id);
-            append_bool(out, hello.will_send_evidence);
-            append_bool(out, hello.requires_peer_evidence);
+            if (!append_string(out, hello.local_identity.enclave_id))
+                return std::nullopt;
+            if (!append_string(out, hello.local_identity.zone_id))
+                return std::nullopt;
+            if (!append_string(out, hello.backend_id))
+                return std::nullopt;
+            if (!append_bool(out, hello.will_send_evidence))
+                return std::nullopt;
+            if (!append_bool(out, hello.requires_peer_evidence))
+                return std::nullopt;
             return out;
         }
 
@@ -253,11 +307,13 @@ namespace streaming::attestation
             return offset == payload.size();
         }
 
-        auto serialise_verdict(const verdict_payload& verdict) -> std::vector<uint8_t>
+        auto serialise_verdict(const verdict_payload& verdict) -> std::optional<std::vector<uint8_t>>
         {
             std::vector<uint8_t> out;
-            append_bool(out, verdict.accepted);
-            append_string(out, verdict.reason);
+            if (!append_bool(out, verdict.accepted))
+                return std::nullopt;
+            if (!append_string(out, verdict.reason))
+                return std::nullopt;
             return out;
         }
 
@@ -276,13 +332,17 @@ namespace streaming::attestation
         auto make_nonce(
             uint64_t transcript_id,
             const identity& subject,
-            handshake_role role) -> std::vector<uint8_t>
+            handshake_role role) -> std::optional<std::vector<uint8_t>>
         {
             std::vector<uint8_t> nonce;
-            append_u64(nonce, transcript_id);
-            append_string(nonce, subject.enclave_id);
-            append_string(nonce, subject.zone_id);
-            append_string(nonce, role == handshake_role::client ? "client" : "server");
+            if (!append_u64(nonce, transcript_id))
+                return std::nullopt;
+            if (!append_string(nonce, subject.enclave_id))
+                return std::nullopt;
+            if (!append_string(nonce, subject.zone_id))
+                return std::nullopt;
+            if (!append_string(nonce, role == handshake_role::client ? "client" : "server"))
+                return std::nullopt;
             return nonce;
         }
 
@@ -298,17 +358,26 @@ namespace streaming::attestation
             return value;
         }
 
-        auto serialise_frame(const frame& value) -> std::vector<uint8_t>
+        auto serialise_frame(const frame& value) -> std::optional<std::vector<uint8_t>>
         {
             auto payload = serialise_cmw(value.body);
+            if (!payload || payload->size() > max_frame_payload || !fits_u32(payload->size()))
+                return std::nullopt;
             std::vector<uint8_t> out;
-            out.reserve(frame_header_size + payload.size());
-            append_u32(out, frame_magic);
-            append_u16(out, frame_version);
-            append_u16(out, static_cast<uint16_t>(value.kind));
-            append_u64(out, value.transcript_id);
-            append_u32(out, static_cast<uint32_t>(payload.size()));
-            out.insert(out.end(), payload.begin(), payload.end());
+            if (!can_append(out, frame_header_size + payload->size()))
+                return std::nullopt;
+            out.reserve(frame_header_size + payload->size());
+            if (!append_u32(out, frame_magic))
+                return std::nullopt;
+            if (!append_u16(out, frame_version))
+                return std::nullopt;
+            if (!append_u16(out, static_cast<uint16_t>(value.kind)))
+                return std::nullopt;
+            if (!append_u64(out, value.transcript_id))
+                return std::nullopt;
+            if (!append_u32(out, static_cast<uint32_t>(payload->size())))
+                return std::nullopt;
+            out.insert(out.end(), payload->begin(), payload->end());
             return out;
         }
 
@@ -393,7 +462,9 @@ namespace streaming::attestation
             if (!underlying)
                 co_return closed_status();
             auto bytes = serialise_frame(value);
-            co_return co_await underlying->send(rpc::byte_span{bytes});
+            if (!bytes)
+                co_return protocol_status();
+            co_return co_await underlying->send(rpc::byte_span{*bytes});
         }
 
         auto receive_frame() -> coro::task<std::pair<
@@ -444,7 +515,10 @@ namespace streaming::attestation
             frame value;
             value.kind = role == handshake_role::client ? frame_kind::client_hello_attest : frame_kind::server_hello_attest;
             value.transcript_id = options.transcript_id;
-            value.body = make_cmw(hello_media_type(), "canopy.attestation.hello.v1", serialise_hello(hello));
+            auto hello_payload_bytes = serialise_hello(hello);
+            if (!hello_payload_bytes)
+                co_return protocol_status();
+            value.body = make_cmw(hello_media_type(), "canopy.attestation.hello.v1", std::move(*hello_payload_bytes));
             co_return co_await send_frame(value);
         }
 
@@ -455,8 +529,11 @@ namespace streaming::attestation
             if (!options.service->should_send_local_evidence())
                 co_return ok_status();
 
-            auto evidence = options.service->produce_evidence(
-                options.transcript_id, make_nonce(options.transcript_id, options.service->local_identity(), role));
+            auto nonce = make_nonce(options.transcript_id, options.service->local_identity(), role);
+            if (!nonce)
+                co_return protocol_status();
+
+            auto evidence = options.service->produce_evidence(options.transcript_id, std::move(*nonce));
             if (!evidence.accepted)
             {
                 RPC_WARNING("Attestation service failed to produce local evidence: {}", evidence.reason);
@@ -482,7 +559,11 @@ namespace streaming::attestation
             frame value;
             value.kind = frame_kind::evidence_verdict;
             value.transcript_id = options.transcript_id;
-            value.body = make_cmw(verdict_media_type(), "canopy.attestation.verdict.v1", serialise_verdict(verdict));
+            auto verdict_payload_bytes = serialise_verdict(verdict);
+            if (!verdict_payload_bytes)
+                co_return protocol_status();
+            value.body
+                = make_cmw(verdict_media_type(), "canopy.attestation.verdict.v1", std::move(*verdict_payload_bytes));
             co_return co_await send_frame(value);
         }
 
@@ -541,10 +622,16 @@ namespace streaming::attestation
             evidence_binding binding;
             binding.subject = peer_hello.local_identity;
             binding.transcript_id = options.transcript_id;
-            binding.nonce = make_nonce(
+            auto nonce = make_nonce(
                 options.transcript_id,
                 peer_hello.local_identity,
                 local_role == handshake_role::client ? handshake_role::server : handshake_role::client);
+            if (!nonce)
+            {
+                reason = "failed to encode peer evidence binding";
+                co_return false;
+            }
+            binding.nonce = std::move(*nonce);
 
             auto verdict = options.service->verify_peer_evidence(value.body, std::move(binding));
             if (!verdict.accepted)

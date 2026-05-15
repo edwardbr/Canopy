@@ -45,8 +45,8 @@ The current tree contains a first no-SGX proof of concept. It is a vertical
 development slice across the fake backend, a first L4 `attestation_service`,
 an attestation stream decorator, and normal RPC traffic over that decorator. It
 is **not** completion of Phase 1 or Phase 2 as written below, because it
-intentionally does not yet implement key derivation, counters, or the L7
-protected RPC envelope.
+intentionally does not yet implement AES-GCM protected payload encryption or
+the L7 protected RPC envelope.
 
 ### Implemented
 
@@ -83,7 +83,19 @@ protected RPC envelope.
   - local enclave and zone identity;
   - local attestation policy;
   - selected backend;
-  - established `security_context` records keyed by session id.
+  - established `security_context` records keyed by enclave-pair session id;
+  - OpenSSL HKDF-SHA256 root-secret extraction for each established session;
+  - AEAD key derivation scoped by session id, caller zone, destination zone,
+    and direction;
+  - per-derived-key monotonic send and receive counters.
+- Key-derivation inputs now use a named Canopy Attestation v1 canonical KDF
+  encoding instead of anonymous serializer bytes. This encoding uses
+  length-prefixed fields, big-endian integers, explicit labels, and the fixed
+  protocol id `Canopy-Attestation-v1`.
+- The current fake path uses a deterministic development shared secret when a
+  real key-exchange secret is not supplied. This is only for no-SGX developer
+  tests; the `attestation_service` API already accepts explicit shared secret
+  bytes for the real exchange.
 - The current development handshake uses four in-tunnel frame kinds:
   - `client_hello_attest`
   - `server_hello_attest`
@@ -104,6 +116,16 @@ protected RPC envelope.
   `rpc::stream_transport::transport` remain attestation-neutral.
 - Raw stream POC coverage exists in
   `c++/streaming/attestation/tests/attestation_stream_test.cpp`.
+- Attestation service coverage exists in
+  `c++/security/attestation/tests/attestation_service_test.cpp`. It checks:
+  - session ids are scoped to enclave pairs rather than zone pairs;
+  - a stable golden vector for the fake-session AEAD key and nonce prefix;
+  - key derivation agreement between both peers;
+  - direction and zone-pair separation;
+  - nonce construction from the per-key nonce prefix plus counter;
+  - monotonic counter allocation;
+  - replay/out-of-order receive-counter rejection;
+  - configured counter exhaustion.
 - RPC-level POC coverage exists in
   `c++/tests/test_host/attested_streaming_transport_poc_suite.cpp`.
   It proves that generated RPC traffic can run over `rpc::stream_transport`
@@ -122,6 +144,11 @@ protected RPC envelope.
 - `cmake --build build_debug --target security_attestation`
 - `cmake --build build_debug --target rpc security_attestation`
 - `ctest --test-dir build_debug_coroutine -R 'attestation_stream_test|attested_streaming_transport_poc_test' --output-on-failure`
+- `cmake --build build_debug --target attestation_service_test security_attestation`
+- `build_debug/output/attestation_service_test`
+- `ctest --test-dir build_debug -R attestation_service_test --output-on-failure`
+- `cmake --build build_debug_coroutine --target attestation_service_test attestation_stream_test rpc_test`
+- `ctest --test-dir build_debug_coroutine -R 'attestation_service_test|attestation_stream_test|attested_streaming_transport_poc_test' --output-on-failure`
 
 ### Not Yet Implemented
 
@@ -132,8 +159,6 @@ protected RPC envelope.
 - CMW / attestation context IDL additions.
 - Backend selection beyond explicit construction of one service with one
   backend.
-- Session key derivation.
-- Monotonic end-to-end counters.
 - AES-GCM or any other protected payload encryption.
 - L7 protected RPC envelope integration with `outbound_send`,
   `outbound_post`, `add_ref`, `release`, `try_cast`, `object_released`, or
@@ -145,10 +170,9 @@ protected RPC envelope.
 
 ### Current Best Next Step
 
-The next implementation slice should add session key derivation and monotonic
-end-to-end counters inside `attestation_service`. The protected RPC envelope can
-then be introduced behind a feature flag without tying envelope code to any
-particular backend or carrier.
+The next implementation slice should introduce the protected RPC envelope behind
+a feature flag. That slice should use the existing `attestation_service`
+key/counter API, without moving attestation logic into the base `rpc::service`.
 
 ## Architectural Layers
 
@@ -244,7 +268,7 @@ flowchart TD
   - *Does not*: derive keys, talk to a backend, terminate TLS, decide
     whether a peer is allowed (L8 decides).
 
-- **L8 Application / `rpc::service`.**
+- **L8 Application / `rpc::enclave_service`.**
   - *Does*: read `security_context` and apply application-level
     authorisation policy. Decide whether a peer enclave is allowed to
     call a specific interface or object.
@@ -409,6 +433,8 @@ the existing Canopy transport, all on a plain Linux host.
   - HKDF-Extract over the session shared secret;
   - HKDF-Expand-Label over `(enclave-pair session, caller zone,
     destination zone, direction)` per `protected-rpc-envelope.md`;
+  - canonical KDF input encoding with golden vectors;
+  - no direct dependence on YAS or protocol-buffer byte output for KDF inputs;
   - one AEAD key per derived label.
 - Counter store: in-memory, per derived key, with monotonic guarantee
   and per-key exhaustion handling.

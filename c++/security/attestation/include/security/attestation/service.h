@@ -5,11 +5,15 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <security/attestation/types.h>
 
@@ -20,6 +24,7 @@ namespace canopy::security::attestation
         identity local_identity;
         attestation_policy policy;
         std::shared_ptr<attestation_backend> backend;
+        uint64_t max_counter_value{std::numeric_limits<uint64_t>::max()};
     };
 
     struct evidence_result
@@ -37,6 +42,8 @@ namespace canopy::security::attestation
         bool peer_attested{false};
         std::string verified_backend_id;
         security_level verified_level{security_level::none};
+        uint64_t session_epoch{1};
+        std::vector<uint8_t> shared_secret;
     };
 
     class attestation_service final
@@ -62,10 +69,35 @@ namespace canopy::security::attestation
         [[nodiscard]] auto establish_session(const establish_session_params& params) -> security_context;
         [[nodiscard]] auto find_session(const std::string& session_id) const -> std::optional<security_context>;
         [[nodiscard]] auto session_count() const -> size_t;
+        [[nodiscard]] auto derive_aead_key(const protected_key_scope& scope) const -> std::optional<aead_key_material>;
+        [[nodiscard]] auto next_send_counter(const protected_key_scope& scope) -> monotonic_counter_result;
+        [[nodiscard]] auto accept_receive_counter(
+            const protected_key_scope& scope,
+            uint64_t counter) -> monotonic_counter_result;
+        [[nodiscard]] auto make_aead_nonce(
+            const aead_key_material& key,
+            uint64_t counter) const
+            -> std::array<
+                uint8_t,
+                aead_nonce_size>;
 
     private:
+        struct key_counter_state
+        {
+            uint64_t next_send{1};
+            uint64_t highest_received{0};
+            bool send_exhausted{false};
+        };
+
+        struct session_state
+        {
+            security_context context;
+            std::vector<uint8_t> root_secret;
+            std::unordered_map<std::string, key_counter_state> counters;
+        };
+
         attestation_service_options options_;
         mutable std::mutex sessions_mutex_;
-        std::unordered_map<std::string, security_context> sessions_;
+        std::unordered_map<std::string, session_state> sessions_;
     };
 } // namespace canopy::security::attestation

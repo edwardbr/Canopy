@@ -6,7 +6,8 @@
 #include <security/attestation/fake_backend.h>
 
 #include <algorithm>
-#include <cstring>
+#include <limits>
+#include <optional>
 #include <sstream>
 #include <utility>
 
@@ -24,36 +25,76 @@ namespace canopy::security::attestation
             uint64_t signature{0};
         };
 
+        constexpr size_t max_fake_evidence_field_size = 1024 * 1024;
+
+        auto can_append(
+            const std::vector<uint8_t>& out,
+            size_t size) -> bool
+        {
+            return size <= out.max_size() && out.size() <= out.max_size() - size;
+        }
+
         auto append_u32(
             std::vector<uint8_t>& out,
-            uint32_t value) -> void
+            uint32_t value) -> bool
         {
+            if (!can_append(out, sizeof(value)))
+                return false;
             for (unsigned shift = 0; shift < 32; shift += 8)
                 out.push_back(static_cast<uint8_t>((value >> shift) & 0xffU));
+            return true;
         }
 
         auto append_u64(
             std::vector<uint8_t>& out,
-            uint64_t value) -> void
+            uint64_t value) -> bool
         {
+            if (!can_append(out, sizeof(value)))
+                return false;
             for (unsigned shift = 0; shift < 64; shift += 8)
                 out.push_back(static_cast<uint8_t>((value >> shift) & 0xffU));
+            return true;
         }
 
         auto append_bytes(
             std::vector<uint8_t>& out,
-            const std::vector<uint8_t>& bytes) -> void
+            const uint8_t* data,
+            size_t size) -> bool
         {
-            append_u32(out, static_cast<uint32_t>(bytes.size()));
-            out.insert(out.end(), bytes.begin(), bytes.end());
+            if (size > max_fake_evidence_field_size || size > std::numeric_limits<uint32_t>::max())
+                return false;
+            if (size > 0 && data == nullptr)
+                return false;
+            if (!can_append(out, sizeof(uint32_t) + size))
+                return false;
+
+            if (!append_u32(out, static_cast<uint32_t>(size)))
+                return false;
+            if (size != 0)
+                out.insert(out.end(), data, data + size);
+            return true;
+        }
+
+        auto append_bytes(
+            std::vector<uint8_t>& out,
+            const std::vector<uint8_t>& bytes) -> bool
+        {
+            return append_bytes(out, bytes.empty() ? nullptr : bytes.data(), bytes.size());
         }
 
         auto append_string(
             std::vector<uint8_t>& out,
-            const std::string& value) -> void
+            const std::string& value) -> bool
         {
-            append_u32(out, static_cast<uint32_t>(value.size()));
-            out.insert(out.end(), value.begin(), value.end());
+            return append_bytes(out, reinterpret_cast<const uint8_t*>(value.data()), value.size());
+        }
+
+        auto has_remaining(
+            const std::vector<uint8_t>& in,
+            size_t offset,
+            size_t size) -> bool
+        {
+            return offset <= in.size() && size <= in.size() - offset;
         }
 
         auto read_u32(
@@ -61,7 +102,7 @@ namespace canopy::security::attestation
             size_t& offset,
             uint32_t& value) -> bool
         {
-            if (offset + sizeof(uint32_t) > in.size())
+            if (!has_remaining(in, offset, sizeof(uint32_t)))
                 return false;
             value = 0;
             for (unsigned shift = 0; shift < 32; shift += 8)
@@ -74,7 +115,7 @@ namespace canopy::security::attestation
             size_t& offset,
             uint64_t& value) -> bool
         {
-            if (offset + sizeof(uint64_t) > in.size())
+            if (!has_remaining(in, offset, sizeof(uint64_t)))
                 return false;
             value = 0;
             for (unsigned shift = 0; shift < 64; shift += 8)
@@ -90,10 +131,16 @@ namespace canopy::security::attestation
             uint32_t size = 0;
             if (!read_u32(in, offset, size))
                 return false;
-            if (offset + size > in.size())
+            if (size > max_fake_evidence_field_size || !has_remaining(in, offset, size))
                 return false;
+            using difference_type = std::vector<uint8_t>::difference_type;
+            constexpr auto max_difference = static_cast<size_t>(std::numeric_limits<difference_type>::max());
+            if (offset > max_difference || size > max_difference - offset)
+                return false;
+
             value.assign(
-                in.begin() + static_cast<std::ptrdiff_t>(offset), in.begin() + static_cast<std::ptrdiff_t>(offset + size));
+                in.begin() + static_cast<difference_type>(offset),
+                in.begin() + static_cast<difference_type>(offset + size));
             offset += size;
             return true;
         }
@@ -135,33 +182,39 @@ namespace canopy::security::attestation
             uint64_t hash,
             const std::vector<uint8_t>& value) -> uint64_t
         {
-            return fnv1a_update(hash, value.data(), value.size());
+            return fnv1a_update(hash, value.empty() ? nullptr : value.data(), value.size());
+        }
+
+        auto append_signed_fake_evidence_fields(
+            std::vector<uint8_t>& out,
+            const fake_evidence& evidence) -> bool
+        {
+            return append_string(out, evidence.backend_id) && append_string(out, evidence.enclave_id)
+                   && append_string(out, evidence.zone_id) && append_u64(out, evidence.transcript_id)
+                   && append_bytes(out, evidence.nonce);
         }
 
         auto fake_signature(
             const fake_evidence& evidence,
-            const std::string& development_key) -> uint64_t
+            const std::string& development_key) -> std::optional<uint64_t>
         {
+            std::vector<uint8_t> signed_fields;
+            if (!append_signed_fake_evidence_fields(signed_fields, evidence))
+                return std::nullopt;
+
             uint64_t hash = 1469598103934665603ULL;
             hash = fnv1a_update(hash, development_key);
-            hash = fnv1a_update(hash, evidence.backend_id);
-            hash = fnv1a_update(hash, evidence.enclave_id);
-            hash = fnv1a_update(hash, evidence.zone_id);
-            hash = fnv1a_update(
-                hash, reinterpret_cast<const uint8_t*>(&evidence.transcript_id), sizeof(evidence.transcript_id));
-            hash = fnv1a_update(hash, evidence.nonce);
+            hash = fnv1a_update(hash, signed_fields);
             return hash;
         }
 
-        auto serialise_fake_evidence(const fake_evidence& evidence) -> std::vector<uint8_t>
+        auto serialise_fake_evidence(const fake_evidence& evidence) -> std::optional<std::vector<uint8_t>>
         {
             std::vector<uint8_t> out;
-            append_string(out, evidence.backend_id);
-            append_string(out, evidence.enclave_id);
-            append_string(out, evidence.zone_id);
-            append_u64(out, evidence.transcript_id);
-            append_bytes(out, evidence.nonce);
-            append_u64(out, evidence.signature);
+            if (!append_signed_fake_evidence_fields(out, evidence))
+                return std::nullopt;
+            if (!append_u64(out, evidence.signature))
+                return std::nullopt;
             return out;
         }
 
@@ -191,6 +244,13 @@ namespace canopy::security::attestation
             verdict.accepted = false;
             verdict.reason = std::move(reason);
             return verdict;
+        }
+
+        auto session_participant_key(const identity& value) -> std::string
+        {
+            if (!value.enclave_id.empty())
+                return value.enclave_id;
+            return "/" + value.zone_id;
         }
     } // namespace
 
@@ -235,13 +295,13 @@ namespace canopy::security::attestation
         const identity& peer,
         uint64_t transcript_id) -> std::string
     {
-        auto left = local.enclave_id + "/" + local.zone_id;
-        auto right = peer.enclave_id + "/" + peer.zone_id;
+        auto left = session_participant_key(local);
+        auto right = session_participant_key(peer);
         if (right < left)
             std::swap(left, right);
 
         std::ostringstream out;
-        out << "fake-session:" << left << ":" << right << ":" << transcript_id;
+        out << "fake-enclave-session:" << left << ":" << right << ":" << transcript_id;
         return out.str();
     }
 
@@ -268,12 +328,18 @@ namespace canopy::security::attestation
         evidence.zone_id = binding.subject.zone_id;
         evidence.transcript_id = binding.transcript_id;
         evidence.nonce = binding.nonce;
-        evidence.signature = fake_signature(evidence, development_key_);
 
         cmw result;
         result.media_type = fake_evidence_media_type;
         result.content_format = "canopy.fake.v1";
-        result.payload = serialise_fake_evidence(evidence);
+        auto signature = fake_signature(evidence, development_key_);
+        if (!signature.has_value())
+            return result;
+        evidence.signature = signature.value();
+
+        auto payload = serialise_fake_evidence(evidence);
+        if (payload.has_value())
+            result.payload = std::move(payload.value());
         return result;
     }
 
@@ -302,7 +368,8 @@ namespace canopy::security::attestation
             return reject("fake evidence transcript mismatch");
         if (parsed.nonce != expected_binding.nonce)
             return reject("fake evidence nonce mismatch");
-        if (parsed.signature != fake_signature(parsed, development_key_))
+        auto expected_signature = fake_signature(parsed, development_key_);
+        if (!expected_signature.has_value() || parsed.signature != expected_signature.value())
             return reject("fake evidence signature mismatch");
 
         attestation_verdict verdict;

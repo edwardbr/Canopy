@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -12,6 +14,10 @@
 
 namespace canopy::security::attestation
 {
+    inline constexpr size_t aead_key_size = 32;
+    inline constexpr size_t aead_nonce_size = 12;
+    inline constexpr size_t aead_nonce_prefix_size = 4;
+
     enum class security_level
     {
         none,
@@ -70,6 +76,36 @@ namespace canopy::security::attestation
         security_level level{security_level::none};
         std::string session_id;
         uint64_t transcript_id{0};
+        uint64_t session_epoch{1};
+    };
+
+    enum class protected_rpc_direction
+    {
+        caller_to_destination,
+        destination_to_caller
+    };
+
+    struct protected_key_scope
+    {
+        std::string session_id;
+        identity caller_identity;
+        identity destination_identity;
+        protected_rpc_direction direction{protected_rpc_direction::caller_to_destination};
+    };
+
+    struct aead_key_material
+    {
+        std::array<uint8_t, aead_key_size> key{};
+        std::array<uint8_t, aead_nonce_prefix_size> nonce_prefix{};
+        protected_key_scope scope;
+        uint64_t session_epoch{0};
+    };
+
+    struct monotonic_counter_result
+    {
+        bool accepted{false};
+        std::string reason;
+        uint64_t counter{0};
     };
 
     class attestation_backend

@@ -217,6 +217,26 @@ If a future design uses one AEAD key for an entire enclave-pair session, it
 must instead use enclave-pair-wide counters or put the zone pair into a
 collision-free nonce domain separator. That is not the preferred default.
 
+## KDF Encoding
+
+Wire-facing attestation records may use Canopy IDL, YAS, or protocol buffers.
+Key-derivation and transcript-binding inputs must not depend on ordinary
+serializer output unless that serializer is explicitly profiled as canonical
+for cryptographic use.
+
+The implementation uses a small Canopy Attestation v1 canonical KDF encoding:
+
+- fixed protocol id: `Canopy-Attestation-v1`;
+- big-endian fixed-width integers;
+- length-prefixed byte strings;
+- length-prefixed identity fields;
+- explicit labels for each KDF use;
+- HKDF-SHA256 through the platform crypto library.
+
+This keeps KDF inputs unambiguous across C++, JavaScript, and future TEE
+backends. Any change to this encoding changes the cryptographic protocol and
+must be covered by golden-vector tests.
+
 ## Encryption
 
 AES-GCM is the provisional algorithm. This is acceptable only if nonce
