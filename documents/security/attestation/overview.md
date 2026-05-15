@@ -13,9 +13,12 @@ enclave-service protected `send`/`post` envelope, route-state storage, and an
 opt-in `add_ref` route-attestation gate backed by the first service-level
 `i_marshaller::handshake()` payload. SGX-sim host tests now drive an
 unknown-route `add_ref` through `rpc::stream_transport` and verify the
-service-level handshake updates both enclave-service route-state maps. The
-repository does not yet have real SGX/DCAP evidence production or protected
-encrypted carriers for every marshaller method.
+service-level handshake updates both enclave-service route-state maps.
+Additional host tests drive generated `send` and `[post]` traffic through
+`rpc::enclave_service` with protected RPC enabled and verify that the observed
+streaming messages are encrypted payload carriers rather than plaintext
+application calls. The repository does not yet have real SGX/DCAP evidence
+production or protected encrypted carriers for every marshaller method.
 
 This section describes the intended security model for enclave-to-enclave
 Canopy RPC:
