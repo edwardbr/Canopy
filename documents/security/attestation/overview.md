@@ -175,7 +175,10 @@ marker is `rpc::sgx::coro::enclave::local_route_transport`, implemented by
 `local_child_transport` and `local_parent_transport`. When
 `rpc::enclave_service` sees that marker on outbound reference-control traffic,
 it treats `remote_object_id.as_zone()` as the attestation subject instead of
-the adjacent local peer.
+the adjacent local peer. The marker is applied during real local child-zone
+creation: the generic local child transport has a default parent-transport
+factory, and the enclave-local child transport overrides that factory to create
+a marked enclave-local parent transport.
 
 The first reference-control hardening step now combines route-state gating
 with encrypted `payload_type_id` / `payload` carriers for `try_cast`,

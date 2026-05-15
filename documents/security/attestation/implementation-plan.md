@@ -485,15 +485,21 @@ reference-control marshaller methods.
   The current wrapper marker is
   `rpc::sgx::coro::enclave::local_route_transport`, with
   `local_child_transport` and `local_parent_transport` as the concrete
-  parent/child local wrappers. A local B-to-C hop inside one enclave does not
-  need attestation just because it is local, but if A passes an interface owned
-  by D through B to C, C still has to validate D as the referenced
-  route/security subject. Outbound `add_ref` and `release` now use the
-  referenced owner route over marked enclave-local transports instead of the
-  adjacent local peer. The current code has generic control-status guardrails
-  and a local `get_new_zone_id` regression, but the full
-  send/post/try_cast/add_ref/release/object_released/transport_down matrix
-  still needs dedicated local tests.
+  parent/child local wrappers. The generic local child transport exposes only
+  an overridable child-side parent-transport factory; its default behavior is
+  unchanged, and the enclave-local wrapper uses that factory to create a marked
+  parent transport during real `connect_to_zone` child creation. A local B-to-C
+  hop inside one enclave does not need attestation just because it is local,
+  but if A passes an interface owned by D through B to C, C still has to
+  validate D as the referenced route/security subject. Outbound `add_ref` and
+  `release` now use the referenced owner route over marked enclave-local
+  transports instead of the adjacent local peer. Runtime coverage verifies
+  marked local creation, reference-control route subject selection, protected
+  `try_cast`, protected `object_released`, plaintext route-layer
+  `transport_down`, generic control-status guardrails, and local
+  `get_new_zone_id` sanitisation. Endpoint-originated protected
+  `transport_down` still needs an enclave-service outbound hook before it can
+  be covered in this local matrix.
 - Full audit coverage for coroutine dynamic-library transports that override
   marshaller outbound methods without using `rpc::stream_transport::transport`.
   C ABI is intentionally excluded from this slice because that implementation

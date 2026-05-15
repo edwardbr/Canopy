@@ -442,9 +442,13 @@ namespace
             CO_RETURN rpc::send_result{rpc::error::NOT_IMPLEMENTED(), {}, {}};
         }
         CORO_TASK(void) outbound_post(rpc::post_params) override { CO_RETURN; }
-        CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params) override
+        CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override
         {
-            CO_RETURN rpc::standard_result{rpc::error::NOT_IMPLEMENTED(), {}};
+            ++try_cast_count;
+            try_cast_was_protected = canopy::security::attestation::is_protected_rpc_payload(
+                params.payload_type_id, params.protocol_version);
+            last_try_cast_remote_object = params.remote_object_id;
+            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
         }
         CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override
         {
@@ -466,13 +470,40 @@ namespace
         {
             CO_RETURN rpc::new_zone_id_result{rpc::error::NOT_IMPLEMENTED(), {}, {}};
         }
-        CORO_TASK(void) outbound_object_released(rpc::object_released_params) override { CO_RETURN; }
-        CORO_TASK(void) outbound_transport_down(rpc::transport_down_params) override { CO_RETURN; }
+        CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override
+        {
+            ++object_released_count;
+            object_released_was_protected = canopy::security::attestation::is_protected_rpc_payload(
+                params.payload_type_id, params.protocol_version);
+            last_object_released_remote_object = params.remote_object_id;
+            last_object_released_caller_zone = params.caller_zone_id;
+            CO_RETURN;
+        }
+        CORO_TASK(void) outbound_transport_down(rpc::transport_down_params params) override
+        {
+            ++transport_down_count;
+            transport_down_was_protected = canopy::security::attestation::is_protected_rpc_payload(
+                params.payload_type_id, params.protocol_version);
+            last_transport_down_destination_zone = params.destination_zone_id;
+            last_transport_down_caller_zone = params.caller_zone_id;
+            CO_RETURN;
+        }
 
+        size_t try_cast_count{0};
         size_t add_ref_count{0};
         size_t release_count{0};
+        size_t object_released_count{0};
+        size_t transport_down_count{0};
+        bool try_cast_was_protected{false};
+        bool object_released_was_protected{false};
+        bool transport_down_was_protected{false};
+        rpc::remote_object last_try_cast_remote_object;
         rpc::remote_object last_add_ref_remote_object;
         rpc::remote_object last_release_remote_object;
+        rpc::remote_object last_object_released_remote_object;
+        rpc::caller_zone last_object_released_caller_zone;
+        rpc::destination_zone last_transport_down_destination_zone;
+        rpc::caller_zone last_transport_down_caller_zone;
     };
 
     class recording_enclave_local_reference_control_transport final : public recording_reference_control_transport,
@@ -1178,14 +1209,103 @@ namespace
     }
 
     CORO_TASK(bool)
+    coro_enclave_local_metadata_controls_use_endpoint_routes(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto local_zone = make_service_level_route_zone(enclave_local_subject_zone_subnet);
+        auto adjacent_zone = make_service_level_route_zone(enclave_local_adjacent_zone_subnet);
+        auto referenced_zone = make_service_level_route_zone(enclave_local_referenced_zone_subnet);
+
+        auto service = std::make_shared<rpc::enclave_service>(
+            "enclave-local-metadata-control", local_zone, adjacent_zone, scheduler);
+
+        auto backend = std::make_shared<fake_backend>();
+        auto local_identity = identity{"enclave-local-metadata-local", "enclave-local-metadata-local-zone"};
+        auto referenced_identity = identity{"enclave-local-metadata-referenced", "enclave-local-metadata-referenced-zone"};
+        auto attestation_service
+            = make_test_attestation_service(backend, local_identity.enclave_id, local_identity.zone_id, true, true);
+        auto context = make_attested_security_context(
+            *attestation_service, referenced_identity, protected_rpc_generated_runtime_transcript_id + 2);
+        CORO_ASSERT_EQ(context.established, true);
+
+        service->set_attestation_service(attestation_service);
+        service->set_security_context(referenced_zone, std::move(context));
+        service->set_protected_rpc_enabled(true);
+        service->set_add_ref_attestation_required(true);
+
+        canopy::security::attestation::route_attestation_state failed_adjacent_state;
+        failed_adjacent_state.status = route_attestation_status::failed;
+        failed_adjacent_state.failure_reason = "adjacent local peer is only a next hop";
+        service->set_attestation_route_state(adjacent_zone, std::move(failed_adjacent_state));
+
+        auto referenced_object = referenced_zone.with_object(rpc::dummy_object_id);
+        CORO_ASSERT_EQ(referenced_object.has_value(), true);
+
+        auto enclave_local_transport
+            = std::make_shared<recording_enclave_local_reference_control_transport>(local_zone, adjacent_zone);
+
+        rpc::try_cast_params try_cast_params;
+        try_cast_params.protocol_version = rpc::get_version();
+        try_cast_params.remote_object_id = *referenced_object;
+        try_cast_params.caller_zone_id = local_zone;
+        try_cast_params.interface_id = rpc::interface_ordinal(0x1234);
+
+        auto try_cast_result = CO_AWAIT service->outbound_try_cast(try_cast_params, enclave_local_transport);
+        CORO_ASSERT_EQ(try_cast_result.error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(enclave_local_transport->try_cast_count, 1U);
+        CORO_ASSERT_EQ(enclave_local_transport->try_cast_was_protected, true);
+        CORO_ASSERT_EQ(enclave_local_transport->last_try_cast_remote_object.as_zone(), referenced_zone);
+        CORO_ASSERT_EQ(enclave_local_transport->last_try_cast_remote_object.get_object_id().get_val(), 0U);
+
+        auto local_object = local_zone.with_object(rpc::dummy_object_id);
+        CORO_ASSERT_EQ(local_object.has_value(), true);
+
+        rpc::object_released_params object_released_params;
+        object_released_params.protocol_version = rpc::get_version();
+        object_released_params.remote_object_id = *local_object;
+        object_released_params.caller_zone_id = referenced_zone;
+
+        enclave_local_transport->increment_inbound_stub_count(referenced_zone);
+        CO_AWAIT service->outbound_object_released(object_released_params, enclave_local_transport);
+        CORO_ASSERT_EQ(enclave_local_transport->object_released_count, 1U);
+        CORO_ASSERT_EQ(enclave_local_transport->object_released_was_protected, true);
+        CORO_ASSERT_EQ(enclave_local_transport->last_object_released_remote_object.as_zone(), local_zone);
+        CORO_ASSERT_EQ(enclave_local_transport->last_object_released_remote_object.get_object_id().get_val(), 0U);
+        CORO_ASSERT_EQ(enclave_local_transport->last_object_released_caller_zone, referenced_zone);
+
+        rpc::transport_down_params transport_down_params;
+        transport_down_params.protocol_version = rpc::get_version();
+        transport_down_params.destination_zone_id = referenced_zone;
+        transport_down_params.caller_zone_id = local_zone;
+
+        CO_AWAIT enclave_local_transport->transport_down(std::move(transport_down_params));
+        CORO_ASSERT_EQ(enclave_local_transport->transport_down_count, 1U);
+        CORO_ASSERT_EQ(enclave_local_transport->transport_down_was_protected, false);
+        CORO_ASSERT_EQ(enclave_local_transport->last_transport_down_destination_zone, referenced_zone);
+        CORO_ASSERT_EQ(enclave_local_transport->last_transport_down_caller_zone, local_zone);
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
     coro_enclave_local_transport_wrappers_are_marked(const std::shared_ptr<coro::scheduler>& scheduler)
     {
         auto parent_zone = make_service_level_route_zone(enclave_local_subject_zone_subnet);
         auto child_zone = make_service_level_route_zone(enclave_local_adjacent_zone_subnet);
         auto parent_service = rpc::root_service::create("enclave-local-wrapper-parent", parent_zone, scheduler);
+        bool child_parent_transport_marked = false;
         auto child_transport = std::make_shared<rpc::sgx::coro::enclave::local_child_transport>(
             "enclave-local-child-transport", parent_service);
         child_transport->set_adjacent_zone_id(child_zone);
+        child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
+            [&child_parent_transport_marked](
+                const rpc::shared_ptr<yyy::i_host>& host, const std::shared_ptr<rpc::child_service>& child_service_ptr)
+                -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+            {
+                child_parent_transport_marked
+                    = rpc::sgx::coro::enclave::is_local_route_transport(child_service_ptr->get_parent_transport());
+                CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(),
+                    rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host))};
+            });
         auto parent_transport = std::make_shared<rpc::sgx::coro::enclave::local_parent_transport>(
             "enclave-local-parent-transport", child_transport);
 
@@ -1193,6 +1313,13 @@ namespace
         CORO_ASSERT_EQ(rpc::sgx::coro::enclave::is_local_route_transport(parent_transport), true);
         CORO_ASSERT_EQ(child_transport->get_adjacent_zone_id(), child_zone);
         CORO_ASSERT_EQ(parent_transport->get_adjacent_zone_id(), parent_zone);
+
+        rpc::shared_ptr<yyy::i_host> host_ptr(new host());
+        auto connect_result = CO_AWAIT parent_service->connect_to_zone<yyy::i_host, yyy::i_example>(
+            "enclave-local-wrapper-child", child_transport, host_ptr);
+        CORO_ASSERT_EQ(connect_result.error_code, rpc::error::OK());
+        CORO_ASSERT_NE(connect_result.output_interface, nullptr);
+        CORO_ASSERT_EQ(child_parent_transport_marked, true);
 
         CO_RETURN true;
     }
@@ -1549,6 +1676,31 @@ namespace
         scheduler->shutdown();
     }
 
+    void run_enclave_local_metadata_route_subject_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_enclave_local_metadata_controls_use_endpoint_routes(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
     void run_enclave_local_transport_wrapper_marker_test()
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -1779,6 +1931,13 @@ TEST(
     ReferenceControlUsesReferencedRouteNotAdjacentLocalPeer)
 {
     run_enclave_local_reference_route_subject_test();
+}
+
+TEST(
+    EnclaveLocalRouteControl,
+    MetadataControlUsesEndpointRoutesNotAdjacentLocalPeer)
+{
+    run_enclave_local_metadata_route_subject_test();
 }
 
 TEST(

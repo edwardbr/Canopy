@@ -196,9 +196,15 @@ application dispatch and need separate policy:
   local path, and runtime coverage includes that parent-side local allocator
   case. `rpc::sgx::coro::enclave::local_child_transport` and
   `rpc::sgx::coro::enclave::local_parent_transport` mark this enclave-local
-  next-hop case without changing generic `rpc::local` semantics. Outbound
-  `add_ref` and `release` over those marked transports validate the referenced
-  owner route instead of the adjacent local peer.
+  next-hop case without changing generic `rpc::local` semantics. The generic
+  local child transport now has an overridable child-side parent-transport
+  factory; the default still constructs `rpc::local::parent_transport`, while
+  the enclave-local wrapper constructs a marked `local_parent_transport` during
+  real `connect_to_zone` child creation. Outbound `add_ref` and `release` over
+  those marked transports validate the referenced owner route instead of the
+  adjacent local peer. Runtime coverage also checks protected `try_cast`,
+  protected `object_released`, and plaintext route-layer `transport_down` over
+  the marked local route.
 
 Any new transport message outside this list should be treated as suspicious
 until it is classified as public route/control metadata, encrypted endpoint
@@ -219,6 +225,9 @@ intermediate transports:
 - `encoding` fields on streaming `object_released_send` and
   `transport_down_send`, which are carrier legacy fields rather than route
   requirements;
+- endpoint-originated protected `transport_down` has protected payload support
+  in the attestation library, but there is not yet an enclave-service outbound
+  hook analogous to `outbound_object_released`;
 - telemetry/logging fields when intermediate telemetry is enabled.
 
 These are not all equally serious. The most important distinction is that none

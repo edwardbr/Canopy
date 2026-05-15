@@ -91,6 +91,11 @@ namespace rpc::local
 
         child_entry_point_factory_fn child_entry_point_factory_fn_;
 
+    protected:
+        [[nodiscard]] virtual std::shared_ptr<parent_transport> make_child_parent_transport(
+            std::string name,
+            std::shared_ptr<child_transport> parent);
+
     public:
         child_transport(
             std::string name,
@@ -190,7 +195,7 @@ namespace rpc::local
                       rpc::connection_settings input_descr,
                       std::shared_ptr<child_transport> parent) mutable -> CORO_TASK(child_entry_point_result)
             {
-                child_entry_point_result result{rpc::error::OK(), {}, std::make_shared<parent_transport>("child", parent)};
+                child_entry_point_result result{rpc::error::OK(), {}, parent->make_child_parent_transport("child", parent)};
 
                 auto create_result = CO_AWAIT rpc::child_service::create_child_zone<in_param_type, out_param_type>(
                     "child",

@@ -13,8 +13,15 @@
 
 namespace rpc::sgx::coro::enclave
 {
+    class local_parent_transport;
+
     class local_child_transport final : public rpc::local::child_transport, public local_route_transport
     {
+    protected:
+        [[nodiscard]] std::shared_ptr<rpc::local::parent_transport> make_child_parent_transport(
+            std::string name,
+            std::shared_ptr<rpc::local::child_transport> parent) override;
+
     public:
         local_child_transport(
             std::string name,
@@ -49,4 +56,15 @@ namespace rpc::sgx::coro::enclave
         {
         }
     };
+
+    inline std::shared_ptr<rpc::local::parent_transport> local_child_transport::make_child_parent_transport(
+        std::string name,
+        std::shared_ptr<rpc::local::child_transport> parent)
+    {
+        auto enclave_parent = std::dynamic_pointer_cast<local_child_transport>(std::move(parent));
+        RPC_ASSERT(enclave_parent != nullptr);
+        if (!enclave_parent)
+            return nullptr;
+        return std::make_shared<local_parent_transport>(std::move(name), std::move(enclave_parent));
+    }
 }

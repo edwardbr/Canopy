@@ -173,6 +173,13 @@ namespace rpc::local
     // Transport from parent zone to child zone
     // Used by parent to communicate with child
 
+    std::shared_ptr<parent_transport> child_transport::make_child_parent_transport(
+        std::string name,
+        std::shared_ptr<child_transport> parent)
+    {
+        return std::make_shared<parent_transport>(std::move(name), std::move(parent));
+    }
+
     void child_transport::on_child_disconnected()
     {
         // Break circular reference when child zone disconnects
