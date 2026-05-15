@@ -275,6 +275,11 @@ namespace
                && !encrypted_payload.authentication_tag.empty();
     }
 
+    auto is_valid_public_control_status(int error_code) -> bool
+    {
+        return error_code == rpc::error::OK() || rpc::error::is_error(error_code);
+    }
+
     struct protected_rpc_runtime_observer
     {
         size_t protected_send_count{0};
@@ -295,7 +300,78 @@ namespace
         size_t plaintext_transport_down_count{0};
         bool malformed_encrypted_payload{false};
         bool protected_object_id_visible{false};
+        bool non_rpc_public_control_status_visible{false};
     };
+
+#    ifdef CANOPY_BUILD_ENCLAVE
+    class positive_control_status_transport final : public rpc::transport
+    {
+    public:
+        static constexpr int positive_control_status = 42;
+
+        positive_control_status_transport(
+            rpc::zone zone_id,
+            rpc::zone adjacent_zone_id)
+            : rpc::transport(
+                  "positive-control-status-transport",
+                  zone_id)
+        {
+            set_adjacent_zone_id(adjacent_zone_id);
+            set_status(rpc::transport_status::CONNECTED);
+        }
+
+        CORO_TASK(rpc::connect_result)
+        inner_connect(
+            std::shared_ptr<rpc::object_stub>,
+            rpc::connection_settings) override
+        {
+            CO_RETURN rpc::connect_result{rpc::error::NOT_IMPLEMENTED(), {}};
+        }
+
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
+
+        CORO_TASK(rpc::send_result) outbound_send(rpc::send_params) override
+        {
+            CO_RETURN rpc::send_result{rpc::error::NOT_IMPLEMENTED(), {}, {}};
+        }
+
+        CORO_TASK(void) outbound_post(rpc::post_params) override { CO_RETURN; }
+
+        CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override
+        {
+            ++try_cast_count;
+            try_cast_was_protected = canopy::security::attestation::is_protected_rpc_payload(
+                params.payload_type_id, params.protocol_version);
+            CO_RETURN rpc::standard_result{positive_control_status, {}};
+        }
+
+        CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override
+        {
+            ++add_ref_count;
+            add_ref_was_protected = canopy::security::attestation::is_protected_rpc_payload(
+                params.payload_type_id, params.protocol_version);
+            CO_RETURN rpc::standard_result{positive_control_status, {}};
+        }
+
+        CORO_TASK(rpc::standard_result) outbound_release(rpc::release_params params) override
+        {
+            ++release_count;
+            release_was_protected = canopy::security::attestation::is_protected_rpc_payload(
+                params.payload_type_id, params.protocol_version);
+            CO_RETURN rpc::standard_result{positive_control_status, {}};
+        }
+
+        CORO_TASK(void) outbound_object_released(rpc::object_released_params) override { CO_RETURN; }
+        CORO_TASK(void) outbound_transport_down(rpc::transport_down_params) override { CO_RETURN; }
+
+        size_t try_cast_count{0};
+        size_t add_ref_count{0};
+        size_t release_count{0};
+        bool try_cast_was_protected{false};
+        bool add_ref_was_protected{false};
+        bool release_was_protected{false};
+    };
+#    endif
 
     void install_protected_rpc_runtime_observers(
         const std::shared_ptr<rpc::stream_transport::transport>& initiator_transport,
@@ -349,6 +425,8 @@ namespace
                 if (is_valid_encrypted_payload(response.payload))
                 {
                     ++observer.protected_send_response_count;
+                    observer.non_rpc_public_control_status_visible = observer.non_rpc_public_control_status_visible
+                                                                     || !is_valid_public_control_status(response.err_code);
                 }
                 else
                 {
@@ -356,6 +434,32 @@ namespace
                 }
                 CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
             });
+
+        auto try_cast_receive_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::try_cast_receive& response)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            observer.non_rpc_public_control_status_visible
+                = observer.non_rpc_public_control_status_visible || !is_valid_public_control_status(response.err_code);
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::try_cast_receive>(try_cast_receive_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::try_cast_receive>(
+            std::move(try_cast_receive_handler));
+
+        auto add_ref_receive_handler
+            = [&observer](auto, const auto&, const auto&, const rpc::stream_transport::addref_receive& response)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            observer.non_rpc_public_control_status_visible
+                = observer.non_rpc_public_control_status_visible || !is_valid_public_control_status(response.err_code);
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::addref_receive>(add_ref_receive_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::addref_receive>(
+            std::move(add_ref_receive_handler));
 
         auto add_ref_handler
             = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::addref_send& request)
@@ -687,6 +791,7 @@ namespace
         CORO_ASSERT_EQ(observer.plaintext_release_count, 0U);
         CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
         CORO_ASSERT_EQ(observer.protected_object_id_visible, false);
+        CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
         CORO_ASSERT_EQ(observer.protected_send_count >= protected_rpc_generated_runtime_min_send_count, true);
         CORO_ASSERT_EQ(observer.protected_send_count, observer.protected_send_response_count);
         CORO_ASSERT_EQ(observer.protected_post_count, protected_rpc_generated_runtime_post_count);
@@ -718,6 +823,70 @@ namespace
         CORO_ASSERT_EQ(observer.protected_release_count > 0U, true);
         CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
         CORO_ASSERT_EQ(observer.protected_object_id_visible, false);
+        CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
+    coro_enclave_service_sanitises_positive_control_statuses(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto responder_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto initiator_service = std::make_shared<rpc::enclave_service>(
+            "protected-rpc-control-status-initiator", initiator_zone, responder_zone, scheduler);
+
+        auto backend = std::make_shared<fake_backend>();
+        auto initiator_identity = identity{"protected-control-initiator-enclave", "protected-control-initiator-zone"};
+        auto responder_identity = identity{"protected-control-responder-enclave", "protected-control-responder-zone"};
+        auto initiator_attestation_service = make_test_attestation_service(
+            backend, initiator_identity.enclave_id, initiator_identity.zone_id, true, true);
+        auto initiator_context = make_attested_security_context(
+            *initiator_attestation_service, responder_identity, protected_rpc_generated_runtime_transcript_id + 1);
+        CORO_ASSERT_EQ(initiator_context.established, true);
+
+        initiator_service->set_attestation_service(initiator_attestation_service);
+        initiator_service->set_security_context(responder_zone, std::move(initiator_context));
+        initiator_service->set_protected_rpc_enabled(true);
+
+        auto transport = std::make_shared<positive_control_status_transport>(initiator_zone, responder_zone);
+        auto remote_object = responder_zone.with_object(rpc::dummy_object_id);
+        CORO_ASSERT_EQ(remote_object.has_value(), true);
+
+        rpc::try_cast_params try_cast_params;
+        try_cast_params.protocol_version = rpc::get_version();
+        try_cast_params.caller_zone_id = initiator_zone;
+        try_cast_params.remote_object_id = *remote_object;
+        try_cast_params.interface_id = rpc::interface_ordinal(0x1234);
+
+        auto try_cast_result = CO_AWAIT initiator_service->outbound_try_cast(try_cast_params, transport);
+        CORO_ASSERT_EQ(try_cast_result.error_code, rpc::error::PROTOCOL_ERROR());
+        CORO_ASSERT_EQ(transport->try_cast_count, 1U);
+        CORO_ASSERT_EQ(transport->try_cast_was_protected, true);
+
+        rpc::add_ref_params add_ref_params;
+        add_ref_params.protocol_version = rpc::get_version();
+        add_ref_params.remote_object_id = *remote_object;
+        add_ref_params.caller_zone_id = initiator_zone;
+        add_ref_params.requesting_zone_id = initiator_zone;
+        add_ref_params.build_out_param_channel = rpc::add_ref_options::normal;
+
+        auto add_ref_result = CO_AWAIT initiator_service->outbound_add_ref(add_ref_params, transport);
+        CORO_ASSERT_EQ(add_ref_result.error_code, rpc::error::PROTOCOL_ERROR());
+        CORO_ASSERT_EQ(transport->add_ref_count, 1U);
+        CORO_ASSERT_EQ(transport->add_ref_was_protected, true);
+
+        rpc::release_params release_params;
+        release_params.protocol_version = rpc::get_version();
+        release_params.remote_object_id = *remote_object;
+        release_params.caller_zone_id = initiator_zone;
+        release_params.options = rpc::release_options::normal;
+
+        auto release_result = CO_AWAIT initiator_service->outbound_release(release_params, transport);
+        CORO_ASSERT_EQ(release_result.error_code, rpc::error::PROTOCOL_ERROR());
+        CORO_ASSERT_EQ(transport->release_count, 1U);
+        CORO_ASSERT_EQ(transport->release_was_protected, true);
 
         CO_RETURN true;
     }
@@ -769,6 +938,31 @@ namespace
         auto task = [&]() -> coro::task<void>
         {
             result = CO_AWAIT coro_generated_rpc_runs_through_enclave_service_protected_send_post(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
+    void run_enclave_service_control_status_sanitiser_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_enclave_service_sanitises_positive_control_statuses(scheduler);
             done.store(true);
             CO_RETURN;
         };
@@ -878,6 +1072,13 @@ TEST(
     GeneratedRpcSendAndPostUseEnclaveServiceProtection)
 {
     run_generated_rpc_protected_send_post_test();
+}
+
+TEST(
+    ProtectedRpcRuntime,
+    EnclaveServiceSanitisesPositiveControlStatuses)
+{
+    run_enclave_service_control_status_sanitiser_test();
 }
 #  endif
 #endif

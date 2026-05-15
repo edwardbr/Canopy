@@ -183,10 +183,10 @@ application interface ids, or encrypted application payload bytes.
 
 ## Recommended Next Refactors
 
-1. Continue adding assertions/tests that protected control paths never put
-   positive `standard_result::error_code` values on the wire. Protected `send`
-   already rejects public positive carrier statuses and keeps real application
-   result codes inside the encrypted response.
+1. Extend the control-status guardrail to any future marshaller operation that
+   gains a public response status. Current regression coverage checks protected
+   `send` response carriers plus `try_cast`, `add_ref`, and the one-way
+   `release` outbound hook.
 2. Add a protected `standard_result` carrier for `try_cast`, `add_ref`, and
    `release` only if those control paths later gain legitimate positive
    application-domain results. For the current model they should expose only

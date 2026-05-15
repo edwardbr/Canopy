@@ -235,6 +235,12 @@ reference-control marshaller methods.
 - `rpc::enclave_service` now sanitises `try_cast`, `add_ref`, and `release`
   control results so non-RPC positive values are not returned on those public
   control paths.
+- Protected RPC runtime tests now observe public response statuses for
+  protected `send`, `try_cast`, and `add_ref`, and fail if a non-RPC positive
+  status becomes visible. A direct enclave-service regression test also forces
+  positive statuses through protected `try_cast`, `add_ref`, and the one-way
+  `release` outbound hook and verifies they are converted to
+  `PROTOCOL_ERROR()`.
 - `documents/security/attestation/intermediate-visibility-audit.md` records
   the current field-by-field visibility decision. The audit confirms that
   intermediate transports and passthroughs need route zones, carrier metadata,
@@ -327,6 +333,11 @@ reference-control marshaller methods.
   - no protected message exposes a nonzero public object id;
   - no generated `send`, response, `[post]`, `try_cast`, `add_ref`, or
     `release` traffic is observed in plaintext while protection is enabled.
+  - no positive non-RPC public status is observed on protected `send`,
+    `try_cast`, or `add_ref` responses.
+  - positive protected control statuses returned by a transport for
+    `try_cast`, `add_ref`, and `release` are sanitised to `PROTOCOL_ERROR()`
+    by `rpc::enclave_service`.
 
 ### Verified
 
@@ -428,12 +439,9 @@ reference-control marshaller methods.
 
 ### Current Best Next Step
 
-The next implementation slice should continue enforcing the visibility audit in
-tests and guardrails:
+The next implementation slice should audit the remaining non-application
+control traffic:
 
-- add direct regression coverage around protected control paths such as
-  `try_cast`, `add_ref`, and `release` so they never put positive
-  `standard_result::error_code` values on the wire;
 - transport setup, teardown, telemetry, `post_report`, `get_new_zone_id`, and
   route-layer `transport_down` need explicit review so they cannot bypass the
   protected marshaller assumptions.
