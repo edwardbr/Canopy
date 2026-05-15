@@ -10,6 +10,7 @@
 
 #include <coro/task.hpp>
 
+#include <security/attestation/context_source.h>
 #include <security/attestation/service.h>
 #include <streaming/stream.h>
 
@@ -28,7 +29,7 @@ namespace streaming::attestation
         std::chrono::milliseconds handshake_timeout{std::chrono::milliseconds{5000}};
     };
 
-    class stream final : public ::streaming::stream
+    class stream final : public ::streaming::stream, public canopy::security::attestation::security_context_source
     {
     public:
         stream(
@@ -43,7 +44,7 @@ namespace streaming::attestation
         auto server_handshake() -> coro::task<bool>;
         auto handshake(handshake_role role) -> coro::task<bool>;
 
-        [[nodiscard]] auto security_context() const -> canopy::security::attestation::security_context;
+        [[nodiscard]] auto security_context() const -> canopy::security::attestation::security_context override;
         [[nodiscard]] auto handshake_complete() const -> bool;
 
         auto receive(

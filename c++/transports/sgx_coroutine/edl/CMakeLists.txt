@@ -21,6 +21,7 @@ target_link_libraries(transport_sgx_coroutine_host_headers INTERFACE transport_s
 add_library(transport_sgx_coroutine_enclave_headers INTERFACE)
 target_include_directories(
   transport_sgx_coroutine_enclave_headers INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../enclave/include>"
+                                                    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../security/attestation/include>"
                                                     "$<INSTALL_INTERFACE:include>")
 target_link_libraries(transport_sgx_coroutine_enclave_headers INTERFACE transport_sgx_coroutine_common_headers)
 

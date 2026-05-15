@@ -6,9 +6,17 @@
 
 #include <io_uring/controller.h>
 #include <rpc/rpc.h>
+#include <security/attestation/types.h>
 
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <unordered_map>
+
+namespace streaming
+{
+    class stream;
+}
 
 namespace rpc
 {
@@ -42,10 +50,23 @@ namespace rpc
             return io_uring_controller_;
         }
 
+        void set_security_context(
+            rpc::destination_zone adjacent_zone_id,
+            canopy::security::attestation::security_context context);
+        [[nodiscard]] bool publish_security_context_from_stream(
+            rpc::destination_zone adjacent_zone_id,
+            const std::shared_ptr<streaming::stream>& stream);
+        void remove_security_context(rpc::destination_zone adjacent_zone_id);
+        [[nodiscard]] auto get_security_context(rpc::destination_zone adjacent_zone_id) const
+            -> std::optional<canopy::security::attestation::security_context>;
+
         void add_parent_zone_proxy(const std::shared_ptr<rpc::service_proxy>& proxy) { add_zone_proxy(proxy); }
 
     private:
         mutable std::mutex controller_mutex_;
         std::shared_ptr<rpc::io_uring::controller> io_uring_controller_;
+
+        mutable std::mutex security_context_mutex_;
+        std::unordered_map<rpc::destination_zone, canopy::security::attestation::security_context> security_contexts_;
     };
 }

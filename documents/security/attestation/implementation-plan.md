@@ -95,6 +95,13 @@ protected RPC envelope.
 - `streaming::attestation::stream` exposes a `security_context()` after the
   handshake and delegates normal `send` / `receive` to the wrapped stream. The
   `security_context` is now created and cached by `attestation_service`.
+- `streaming::attestation::stream` implements
+  `canopy::security::attestation::security_context_source`, a small
+  header-only interface that lets enclave-owned code discover attested streams
+  without depending on the concrete decorator type.
+- `rpc::enclave_service` stores attestation `security_context` records keyed by
+  adjacent zone id. The base `rpc::service` and generic
+  `rpc::stream_transport::transport` remain attestation-neutral.
 - Raw stream POC coverage exists in
   `c++/streaming/attestation/tests/attestation_stream_test.cpp`.
 - RPC-level POC coverage exists in
@@ -113,6 +120,8 @@ protected RPC envelope.
 - `ctest --test-dir build_debug_coroutine -R attested_streaming_transport_poc_test --output-on-failure`
 - `ctest --test-dir build_debug_coroutine -R attestation_stream_test --output-on-failure`
 - `cmake --build build_debug --target security_attestation`
+- `cmake --build build_debug --target rpc security_attestation`
+- `ctest --test-dir build_debug_coroutine -R 'attestation_stream_test|attested_streaming_transport_poc_test' --output-on-failure`
 
 ### Not Yet Implemented
 
@@ -129,8 +138,6 @@ protected RPC envelope.
 - L7 protected RPC envelope integration with `outbound_send`,
   `outbound_post`, `add_ref`, `release`, `try_cast`, `object_released`, or
   `transport_down`.
-- Publishing the stream `security_context` into `rpc::service` or
-  `rpc::stream_transport`.
 - TLS exporter binding. The current development binding is transcript id,
   identity, role, and nonce based.
 - `sgx_ttls`, DCAP, local SGX attestation, EPID, TDX, SEV-SNP, or
@@ -138,12 +145,10 @@ protected RPC envelope.
 
 ### Current Best Next Step
 
-The next implementation slice should publish the service-owned
-`security_context` into `rpc::stream_transport` / `rpc::service`, so application
-code and later L7 envelope code can look up the attested peer for a caller zone.
-After that, add session key derivation and monotonic counters inside
-`attestation_service`; the protected RPC envelope can then be introduced behind
-a feature flag without tying envelope code to any particular backend or carrier.
+The next implementation slice should add session key derivation and monotonic
+end-to-end counters inside `attestation_service`. The protected RPC envelope can
+then be introduced behind a feature flag without tying envelope code to any
+particular backend or carrier.
 
 ## Architectural Layers
 
@@ -153,7 +158,7 @@ forbidden.
 
 ```mermaid
 flowchart TD
-    L8["L8 Application / rpc::service<br/>Consumes security_context to authorise calls"]
+    L8["L8 Application / rpc::enclave_service<br/>Consumes security_context to authorise calls"]
     L7["L7 Protected RPC Envelope<br/>Encrypts and decrypts marshaller payloads"]
     L6["L6 Transport / Streaming Decorator<br/>attestation_stream wraps secure_stream"]
     L5["L5 Wire Format<br/>Moves CMW Evidence on the chosen carrier"]
@@ -206,8 +211,8 @@ flowchart TD
     sessions. Choose a backend per session using L1's classifier.
     Derive per-session AEAD keys (per caller-zone, destination-zone,
     direction). Own the monotonic counter store. Publish a
-    `security_context` to the transport. Expose a typed handle for L7
-    to encrypt and decrypt with.
+    `security_context` to the enclave service. Expose a typed handle for
+    L7 to encrypt and decrypt with.
   - *Does not*: know which TEE produced the Evidence (delegated to
     L3). Know how Evidence travels on the wire (delegated to L5).
     Know what RPC payload looks like (delegated to L7).
@@ -225,7 +230,8 @@ flowchart TD
   - *Does*: `streaming::attestation::stream` wraps a
     `streaming::secure::stream`. After the secure stream handshake,
     drives the L5 wire exchange, calls L4 for session establishment,
-    and publishes the resulting `security_context` to the transport.
+    and exposes the resulting `security_context` for enclave-owned
+    connection setup code to publish.
   - *Does not*: peek inside CMW payload bytes. Cache sessions
     (L4 does that). Encrypt application data (L7 does that).
 
@@ -468,8 +474,8 @@ unchanged.
 
 Goal: introduce the `attestation_stream` decorator that wraps
 `streaming::secure::stream`, runs the attestation exchange immediately
-after the TLS handshake, and publishes the resulting `security_context`
-to the transport. Still uses the Fake backend; no SGX yet.
+after the TLS handshake, and makes the resulting `security_context`
+available to `rpc::enclave_service`. Still uses the Fake backend; no SGX yet.
 
 ### Deliverables
 
@@ -493,11 +499,10 @@ to the transport. Still uses the Fake backend; no SGX yet.
   four message kinds in
   [wire-format.md, "In-Tunnel Development Carrier"](wire-format.md).
 - Transport plumbing:
-  - `c++/transports/sgx_coroutine/host/src/transport.cpp` and the
-    enclave half accept a `security_context` shared pointer set by the
-    attestation stream;
-  - `rpc::service` exposes a `security_context` accessor keyed by
-    `caller_zone`.
+  - enclave-owned connection setup publishes a `security_context` from
+    an attested stream into `rpc::enclave_service`;
+  - `rpc::enclave_service` exposes a `security_context` accessor keyed
+    by adjacent zone. The base `rpc::service` remains attestation-neutral.
 - Update the websocket demo
   (`c++/demos/websocket/server/enclave_websocket_server.cpp`) to wrap
   its TLS stream in `attestation_stream` when the listener policy
