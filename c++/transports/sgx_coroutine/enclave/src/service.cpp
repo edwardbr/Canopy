@@ -182,12 +182,11 @@ namespace rpc
             rpc::standard_result result,
             const char* operation) -> rpc::standard_result
         {
-            if (result.error_code == rpc::error::OK() || rpc::error::is_error(result.error_code))
+            const auto error_code = rpc::error::sanitise_public_control_status(result.error_code, operation);
+            if (error_code == result.error_code)
                 return result;
 
-            RPC_WARNING(
-                "control operation {} exposed non-RPC status {}; replacing with PROTOCOL_ERROR", operation, result.error_code);
-            result.error_code = rpc::error::PROTOCOL_ERROR();
+            result.error_code = error_code;
             result.out_back_channel.clear();
             return result;
         }

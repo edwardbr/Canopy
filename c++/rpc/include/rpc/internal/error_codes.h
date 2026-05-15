@@ -69,8 +69,12 @@ namespace rpc
         int NATIVE_IO_ERROR(); // native I/O operation failed; inspect operation-specific native result when available
         int MAX();             // the biggest value
 
-        bool is_error(int err);    // any error listed above that is >= MIN() && <= MAX
-        bool is_critical(int err); // any error listed above other than OBJECT_GONE and INVALID_CAST
+        bool is_error(int err);                 // any error listed above that is >= MIN() && <= MAX
+        bool is_critical(int err);              // any error listed above other than OBJECT_GONE and INVALID_CAST
+        bool is_public_control_status(int err); // OK or a built-in RPC error, never an application-domain result
+        int sanitise_public_control_status(
+            int err,
+            const char* operation);
 
         void set_OK_val(int val);
         void set_offset_val(int val);

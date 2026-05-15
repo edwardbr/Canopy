@@ -16,6 +16,7 @@
 #  include <security/attestation/protected_rpc.h>
 #  include <streaming/attestation/stream.h>
 #  include <streaming/spsc_queue/stream.h>
+#  include <transports/local/transport.h>
 #  include <transport/tests/streaming_setup_base.h>
 #  ifdef CANOPY_BUILD_ENCLAVE
 #    include <transports/sgx_coroutine/enclave/service.h>
@@ -332,6 +333,8 @@ namespace
     {
     public:
         static constexpr int positive_control_status = 42;
+        static constexpr uint64_t positive_handshake_type_id = 1234;
+        static constexpr char positive_handshake_payload_byte = 'x';
 
         positive_control_status_transport(
             rpc::zone zone_id,
@@ -383,6 +386,17 @@ namespace
             release_was_protected = canopy::security::attestation::is_protected_rpc_payload(
                 params.payload_type_id, params.protocol_version);
             CO_RETURN rpc::standard_result{positive_control_status, {}};
+        }
+
+        CORO_TASK(rpc::handshake_result) outbound_handshake(rpc::handshake_params) override
+        {
+            CO_RETURN rpc::handshake_result{
+                positive_control_status, positive_handshake_type_id, {positive_handshake_payload_byte}, {}};
+        }
+
+        CORO_TASK(rpc::new_zone_id_result) outbound_get_new_zone_id(rpc::get_new_zone_id_params) override
+        {
+            CO_RETURN rpc::new_zone_id_result{positive_control_status, get_adjacent_zone_id(), {}};
         }
 
         CORO_TASK(void) outbound_object_released(rpc::object_released_params) override { CO_RETURN; }
@@ -979,6 +993,55 @@ namespace
     }
 
     CORO_TASK(bool)
+    coro_transport_final_methods_sanitise_positive_control_statuses(const std::shared_ptr<coro::scheduler>&)
+    {
+        auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto responder_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+        auto transport = std::make_shared<positive_control_status_transport>(initiator_zone, responder_zone);
+
+        rpc::handshake_params handshake_params;
+        handshake_params.protocol_version = rpc::get_version();
+        handshake_params.caller_zone_id = initiator_zone;
+        handshake_params.destination_zone_id = responder_zone;
+        auto handshake_result = CO_AWAIT transport->handshake(std::move(handshake_params));
+        CORO_ASSERT_EQ(handshake_result.error_code, rpc::error::PROTOCOL_ERROR());
+        CORO_ASSERT_EQ(handshake_result.type_id, 0U);
+        CORO_ASSERT_EQ(handshake_result.payload.empty(), true);
+        CORO_ASSERT_EQ(handshake_result.out_back_channel.empty(), true);
+
+        rpc::get_new_zone_id_params get_new_zone_id_params;
+        get_new_zone_id_params.protocol_version = rpc::get_version();
+        auto zone_result = CO_AWAIT transport->get_new_zone_id(std::move(get_new_zone_id_params));
+        CORO_ASSERT_EQ(zone_result.error_code, rpc::error::PROTOCOL_ERROR());
+        CORO_ASSERT_EQ(zone_result.zone_id.is_set(), false);
+        CORO_ASSERT_EQ(zone_result.out_back_channel.empty(), true);
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
+    coro_local_parent_transport_sanitises_positive_allocator_status(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto parent_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto child_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+        auto parent_service
+            = std::make_shared<positive_zone_allocator_service>("local-positive-zone-allocator", parent_zone, scheduler);
+        auto parent_side_transport = std::make_shared<rpc::local::child_transport>("local-parent-side", parent_service);
+        parent_side_transport->set_adjacent_zone_id(child_zone);
+        auto child_side_transport
+            = std::make_shared<rpc::local::parent_transport>("local-child-side", parent_side_transport);
+
+        rpc::get_new_zone_id_params params;
+        params.protocol_version = rpc::get_version();
+        auto zone_result = CO_AWAIT child_side_transport->get_new_zone_id(std::move(params));
+        CORO_ASSERT_EQ(zone_result.error_code, rpc::error::PROTOCOL_ERROR());
+        CORO_ASSERT_EQ(zone_result.zone_id.is_set(), false);
+        CORO_ASSERT_EQ(zone_result.out_back_channel.empty(), true);
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
     coro_generated_rpc_runs_through_enclave_service_protected_send_post(const std::shared_ptr<coro::scheduler>& scheduler)
     {
         auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
@@ -1255,6 +1318,56 @@ namespace
         scheduler->shutdown();
     }
 
+    void run_transport_final_control_status_sanitiser_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_transport_final_methods_sanitise_positive_control_statuses(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
+    void run_local_transport_control_status_sanitiser_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_local_parent_transport_sanitises_positive_allocator_status(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
     void run_get_new_zone_id_status_sanitiser_test()
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -1432,6 +1545,20 @@ TEST(
     GetNewZoneIdSanitisesPositiveAllocatorStatus)
 {
     run_get_new_zone_id_status_sanitiser_test();
+}
+
+TEST(
+    TransportRouteControl,
+    FinalMethodsSanitisePositiveControlStatuses)
+{
+    run_transport_final_control_status_sanitiser_test();
+}
+
+TEST(
+    LocalRouteControl,
+    ParentTransportSanitisesPositiveAllocatorStatus)
+{
+    run_local_transport_control_status_sanitiser_test();
 }
 
 TEST(

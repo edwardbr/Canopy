@@ -1479,7 +1479,15 @@ namespace rpc
 
     CORO_TASK(handshake_result) transport::handshake(handshake_params params)
     {
-        CO_RETURN CO_AWAIT outbound_handshake(std::move(params));
+        auto result = CO_AWAIT outbound_handshake(std::move(params));
+        result.error_code = rpc::error::sanitise_public_control_status(result.error_code, "transport handshake");
+        if (result.error_code != rpc::error::OK())
+        {
+            result.type_id = 0;
+            result.payload.clear();
+            result.out_back_channel.clear();
+        }
+        CO_RETURN result;
     }
 
     CORO_TASK(void) transport::post_report(rpc::telemetry_event event)
@@ -1496,7 +1504,14 @@ namespace rpc
 
     CORO_TASK(new_zone_id_result) transport::get_new_zone_id(get_new_zone_id_params params)
     {
-        CO_RETURN CO_AWAIT outbound_get_new_zone_id(std::move(params));
+        auto result = CO_AWAIT outbound_get_new_zone_id(std::move(params));
+        result.error_code = rpc::error::sanitise_public_control_status(result.error_code, "transport get_new_zone_id");
+        if (result.error_code != rpc::error::OK())
+        {
+            result.zone_id = {};
+            result.out_back_channel.clear();
+        }
+        CO_RETURN result;
     }
 
     CORO_TASK(void) transport::outbound_post_report(rpc::telemetry_event event)

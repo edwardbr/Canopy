@@ -20,6 +20,16 @@ protected `send`, `post`, `try_cast`, `add_ref`, `release`, and
 form and an intentionally plaintext route-layer form because an intermediate
 may have to report that its route to a downstream zone failed.
 
+Most current runtime assertions exercise stream transports. That is not the
+same as proving every coroutine-capable transport is covered. Local transports
+can be compiled for enclaves and can link zones inside the same enclave; those
+paths forward marshaller parameters directly between parent/child transports
+instead of serialising a stream envelope. Treat them as a separate local-route
+audit surface. Generic `rpc::transport` final-method guardrails now sanitise
+public `handshake()` and `get_new_zone_id()` statuses for all transports using
+the shared `rpc::error` public-control status helper, but that does not replace
+the local marshaller-operation audit.
+
 ## Classification
 
 Fields are classified as:
@@ -168,6 +178,17 @@ application dispatch and need separate policy:
   transport lifecycle messages. They should carry no application object,
   interface, method, or payload data. They are empty wire structs in
   `stream_transport.idl`, and runtime tests observe the close path.
+- **Local in-enclave routing.** `rpc::local::parent_transport` and
+  `rpc::local::child_transport` can connect zones inside an enclave without a
+  stream envelope. They directly call peer `inbound_*` handlers for `send`,
+  `post`, `try_cast`, `add_ref`, `release`, `object_released`, and
+  `transport_down`, and the parent side forwards `get_new_zone_id` to the
+  parent zone. These links may be inside one enclave trust boundary, but they
+  still need explicit audit coverage because stream sign-on, stream close, and
+  stream status sanitisation do not exist on this path. The generic transport
+  guardrail now prevents positive public `get_new_zone_id` statuses on the
+  local path, and runtime coverage includes that parent-side local allocator
+  case.
 
 Any new transport message outside this list should be treated as suspicious
 until it is classified as public route/control metadata, encrypted endpoint
@@ -218,7 +239,13 @@ application interface ids, or encrypted application payload bytes.
    routed references.
 7. Audit telemetry callbacks and logs so intermediate telemetry records only
    public route fields and carrier metadata, never decrypted endpoint fields.
-8. Decide whether routed attestation handshakes need privacy beyond integrity.
+8. Audit non-stream coroutine/enclave-capable transports. Start with
+   `transport_local_enclave`, because it can link zones inside one enclave and
+   forwards marshaller traffic directly without stream framing. Then apply the
+   same checklist to coroutine dynamic-library transports that override
+   outbound marshaller methods. C ABI is intentionally excluded from this slice
+   because it is expected to be rewritten for Rust.
+9. Decide whether routed attestation handshakes need privacy beyond integrity.
    Evidence is often intended to be verifiable, but policy may still consider
    measurements, backend identifiers, debug flags, or verdict detail sensitive.
 

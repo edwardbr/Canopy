@@ -34,22 +34,6 @@ namespace rpc::stream_transport
 #endif
         }
 
-        auto is_public_control_status(int error_code) -> bool
-        {
-            return error_code == rpc::error::OK() || rpc::error::is_error(error_code);
-        }
-
-        auto sanitise_public_control_status(
-            int error_code,
-            const char* operation) -> int
-        {
-            if (is_public_control_status(error_code))
-                return error_code;
-
-            RPC_WARNING(
-                "stream transport {} exposed non-RPC status {}; replacing with PROTOCOL_ERROR", operation, error_code);
-            return rpc::error::PROTOCOL_ERROR();
-        }
     } // namespace
 
     transport::transport(
@@ -338,12 +322,15 @@ namespace rpc::stream_transport
                 .back_channel = std::move(params.in_back_channel)});
         if (response_result.error_code != rpc::error::OK())
         {
-            CO_RETURN handshake_result{
-                sanitise_public_control_status(response_result.error_code, "handshake transport carrier"), 0, {}, {}};
+            CO_RETURN handshake_result{rpc::error::sanitise_public_control_status(
+                                           response_result.error_code, "stream handshake transport carrier"),
+                0,
+                {},
+                {}};
         }
 
         auto& response = response_result.payload;
-        response.err_code = sanitise_public_control_status(response.err_code, "handshake response");
+        response.err_code = rpc::error::sanitise_public_control_status(response.err_code, "stream handshake response");
         CO_RETURN handshake_result{
             response.err_code, response.type_id, std::move(response.payload), std::move(response.back_channel)};
     }
@@ -419,10 +406,13 @@ namespace rpc::stream_transport
         if (result.error_code != rpc::error::OK())
         {
             CO_RETURN new_zone_id_result{
-                sanitise_public_control_status(result.error_code, "get_new_zone_id transport carrier"), {}, {}};
+                rpc::error::sanitise_public_control_status(result.error_code, "stream get_new_zone_id transport carrier"),
+                {},
+                {}};
         }
 
-        result.payload.err_code = sanitise_public_control_status(result.payload.err_code, "get_new_zone_id response");
+        result.payload.err_code
+            = rpc::error::sanitise_public_control_status(result.payload.err_code, "stream get_new_zone_id response");
         if (result.payload.err_code != rpc::error::OK())
         {
             result.payload.zone_id = {};
@@ -1329,7 +1319,8 @@ namespace rpc::stream_transport
                 .type_id = request.type_id,
                 .payload = std::move(request.payload),
                 .in_back_channel = std::move(request.back_channel)});
-        hs_result.error_code = sanitise_public_control_status(hs_result.error_code, "handshake receive");
+        hs_result.error_code
+            = rpc::error::sanitise_public_control_status(hs_result.error_code, "stream handshake receive");
         if (hs_result.error_code != rpc::error::OK())
         {
             hs_result.type_id = 0;
@@ -1375,7 +1366,8 @@ namespace rpc::stream_transport
                 });
         }
 
-        zone_result.error_code = sanitise_public_control_status(zone_result.error_code, "get_new_zone_id receive");
+        zone_result.error_code
+            = rpc::error::sanitise_public_control_status(zone_result.error_code, "stream get_new_zone_id receive");
         if (zone_result.error_code != rpc::error::OK())
         {
             zone_result.zone_id = {};

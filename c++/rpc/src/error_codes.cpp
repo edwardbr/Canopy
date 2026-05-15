@@ -182,6 +182,23 @@ namespace rpc
             return false;
         }
 
+        bool is_public_control_status(int err)
+        {
+            return err == OK() || is_error(err);
+        }
+
+        int sanitise_public_control_status(
+            int err,
+            const char* operation)
+        {
+            (void)operation;
+            if (is_public_control_status(err))
+                return err;
+
+            RPC_WARNING("control operation {} exposed non-RPC status {}; replacing with PROTOCOL_ERROR", operation, err);
+            return PROTOCOL_ERROR();
+        }
+
         void set_OK_val(int val)
         {
             state().OK_val = val;

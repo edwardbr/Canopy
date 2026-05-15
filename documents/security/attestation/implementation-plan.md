@@ -252,6 +252,31 @@ reference-control marshaller methods.
   allocator results. Runtime tests observe `get_new_zone_id` request/response
   messages and the intentionally plaintext route-layer `transport_down` form
   used for intermediate route-liveness notifications.
+- Stream sign-on remains a narrow transport-adjacency step. The setup
+  descriptors in `init_client_channel_send` are public control data until a
+  dedicated setup envelope exists. A direct peer-to-peer attested stream may
+  publish its already-established `security_context` to the service before RPC
+  routing starts; otherwise an unattested sign-on must be explicitly allowed by
+  policy, as with development JavaScript/demo clients. Routed references
+  received during sign-on are still validated later by `add_ref` against the
+  referenced zone, not trusted solely because the adjacent stream connected.
+- `rpc::error` now owns the public-control status predicate and sanitiser.
+  `rpc::transport` final control methods use it for public `handshake()` and
+  `get_new_zone_id()` results for all transport implementations. Stream
+  transport, protected RPC response validation, and enclave-service control
+  result handling share that same error-code helper instead of copying the
+  rule locally. This gives local and non-stream coroutine transports the same
+  "no positive public control status" guardrail as stream transports, even
+  when they do not use the stream envelope.
+- Current runtime coverage is still stream-heavy by design. It now includes
+  focused non-stream control-status regressions, including the real local
+  parent-side `get_new_zone_id` path. It does not yet prove every local
+  marshaller operation. `rpc::local::parent_transport` and
+  `rpc::local::child_transport` can be built for enclaves and can link zones
+  within the same enclave. Their outbound methods call the peer transport's
+  inbound marshaller handlers directly, so there is no stream envelope, stream
+  sign-on, or stream close message on that path. The service-level
+  `rpc::enclave_service` hooks remain the intended protection boundary.
 - `documents/security/attestation/intermediate-visibility-audit.md` records
   the current field-by-field visibility decision. The audit confirms that
   intermediate transports and passthroughs need route zones, carrier metadata,
@@ -454,6 +479,15 @@ reference-control marshaller methods.
   intermediates. Today `build_out_param_channel` remains visible because
   `rpc::transport::inbound_add_ref` needs it before the service hook can unwrap
   the encrypted payload.
+- Full audit coverage for every local marshaller operation on
+  `transport_local_enclave`. The current code has generic control-status
+  guardrails and a local `get_new_zone_id` regression, but the full
+  send/post/try_cast/add_ref/release/object_released/transport_down matrix
+  still needs dedicated local tests.
+- Full audit coverage for coroutine dynamic-library transports that override
+  marshaller outbound methods without using `rpc::stream_transport::transport`.
+  C ABI is intentionally excluded from this slice because that implementation
+  is expected to be rewritten for Rust.
 - Non-zero `service_request_id` semantics.
 - TLS exporter binding. The current development binding is transcript id,
   identity, role, and nonce based.
@@ -464,9 +498,11 @@ reference-control marshaller methods.
 
 Telemetry and `post_report` are demo/diagnostic surfaces and are intentionally
 left out of the current production attestation path. The next implementation
-slice should review stream sign-on policy controls, then continue reducing the
-remaining public carrier fields documented in
-`intermediate-visibility-audit.md`.
+slice should finish the stream sign-on policy controls, then add the full local
+transport marshaller matrix tests. After that, continue reducing the remaining
+public carrier fields documented in `intermediate-visibility-audit.md` and
+apply the same audit checklist to non-C-ABI coroutine dynamic-library
+transports.
 
 ## Architectural Layers
 
