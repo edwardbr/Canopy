@@ -164,6 +164,19 @@ is that intermediate transports and passthroughs need caller and destination
 route zones, not application object ids, real application interface ids, or
 real application method ids.
 
+Local transports inside one enclave are not separate attestation boundaries.
+They are next-hop links between local zones. If zone A passes an interface owned
+by zone D through local zone B to local zone C, the B-to-C local hop does not
+need attestation, but C must still preserve and validate D as the referenced
+route/security subject before exposing that interface to application code.
+Enclave-specific local transport wrappers or adapters should carry that policy
+rather than changing the generic `rpc::local` transports. The current wrapper
+marker is `rpc::sgx::coro::enclave::local_route_transport`, implemented by
+`local_child_transport` and `local_parent_transport`. When
+`rpc::enclave_service` sees that marker on outbound reference-control traffic,
+it treats `remote_object_id.as_zone()` as the attestation subject instead of
+the adjacent local peer.
+
 The first reference-control hardening step now combines route-state gating
 with encrypted `payload_type_id` / `payload` carriers for `try_cast`,
 `add_ref`, `release`, and `object_released`. `transport_down` can also carry a

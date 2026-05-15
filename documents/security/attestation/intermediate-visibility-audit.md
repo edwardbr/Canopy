@@ -183,12 +183,22 @@ application dispatch and need separate policy:
   stream envelope. They directly call peer `inbound_*` handlers for `send`,
   `post`, `try_cast`, `add_ref`, `release`, `object_released`, and
   `transport_down`, and the parent side forwards `get_new_zone_id` to the
-  parent zone. These links may be inside one enclave trust boundary, but they
-  still need explicit audit coverage because stream sign-on, stream close, and
-  stream status sanitisation do not exist on this path. The generic transport
+  parent zone. These generic transports should stay policy-light: a local link
+  between two zones in the same enclave is not itself an attestation boundary.
+  The enclave layer should add enclave-specific local transport wrappers or
+  adapters if it needs to enforce attestation policy on local routing. In the
+  A/B/C/D forwarding case, where B and C are local zones in one enclave but A
+  passes an interface owned by D through B to C, B-to-C does not need
+  attestation. C still has to preserve and validate the true referenced route
+  zone D before application code can use that interface. The adjacent local
+  peer B is only the next hop, not the security subject. The generic transport
   guardrail now prevents positive public `get_new_zone_id` statuses on the
   local path, and runtime coverage includes that parent-side local allocator
-  case.
+  case. `rpc::sgx::coro::enclave::local_child_transport` and
+  `rpc::sgx::coro::enclave::local_parent_transport` mark this enclave-local
+  next-hop case without changing generic `rpc::local` semantics. Outbound
+  `add_ref` and `release` over those marked transports validate the referenced
+  owner route instead of the adjacent local peer.
 
 Any new transport message outside this list should be treated as suspicious
 until it is classified as public route/control metadata, encrypted endpoint
@@ -239,12 +249,15 @@ application interface ids, or encrypted application payload bytes.
    routed references.
 7. Audit telemetry callbacks and logs so intermediate telemetry records only
    public route fields and carrier metadata, never decrypted endpoint fields.
-8. Audit non-stream coroutine/enclave-capable transports. Start with
-   `transport_local_enclave`, because it can link zones inside one enclave and
-   forwards marshaller traffic directly without stream framing. Then apply the
-   same checklist to coroutine dynamic-library transports that override
-   outbound marshaller methods. C ABI is intentionally excluded from this slice
-   because it is expected to be rewritten for Rust.
+8. Audit non-stream coroutine/enclave-capable transports. Start with the
+   enclave-local path, because it can link zones inside one enclave and forwards
+   marshaller traffic directly without stream framing. Prefer enclave-specific
+   local transport wrappers or adapters over changing the generic `rpc::local`
+   transports. Tests should prove that adjacent local peers are next hops only,
+   while referenced remote route zones remain the attestation subjects. Then
+   apply the same checklist to coroutine dynamic-library transports that
+   override outbound marshaller methods. C ABI is intentionally excluded from
+   this slice because it is expected to be rewritten for Rust.
 9. Decide whether routed attestation handshakes need privacy beyond integrity.
    Evidence is often intended to be verifiable, but policy may still consider
    measurements, backend identifiers, debug flags, or verdict detail sensitive.

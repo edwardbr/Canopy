@@ -479,9 +479,19 @@ reference-control marshaller methods.
   intermediates. Today `build_out_param_channel` remains visible because
   `rpc::transport::inbound_add_ref` needs it before the service hook can unwrap
   the encrypted payload.
-- Full audit coverage for every local marshaller operation on
-  `transport_local_enclave`. The current code has generic control-status
-  guardrails and a local `get_new_zone_id` regression, but the full
+- Full audit coverage for every enclave-local marshaller operation. The generic
+  `rpc::local` transports should remain policy-light in-process links; enclave
+  policy should live in enclave-specific local transport wrappers or adapters.
+  The current wrapper marker is
+  `rpc::sgx::coro::enclave::local_route_transport`, with
+  `local_child_transport` and `local_parent_transport` as the concrete
+  parent/child local wrappers. A local B-to-C hop inside one enclave does not
+  need attestation just because it is local, but if A passes an interface owned
+  by D through B to C, C still has to validate D as the referenced
+  route/security subject. Outbound `add_ref` and `release` now use the
+  referenced owner route over marked enclave-local transports instead of the
+  adjacent local peer. The current code has generic control-status guardrails
+  and a local `get_new_zone_id` regression, but the full
   send/post/try_cast/add_ref/release/object_released/transport_down matrix
   still needs dedicated local tests.
 - Full audit coverage for coroutine dynamic-library transports that override
@@ -498,11 +508,12 @@ reference-control marshaller methods.
 
 Telemetry and `post_report` are demo/diagnostic surfaces and are intentionally
 left out of the current production attestation path. The next implementation
-slice should finish the stream sign-on policy controls, then add the full local
-transport marshaller matrix tests. After that, continue reducing the remaining
-public carrier fields documented in `intermediate-visibility-audit.md` and
-apply the same audit checklist to non-C-ABI coroutine dynamic-library
-transports.
+slice should finish the stream sign-on policy controls, then introduce or
+design the enclave-local transport wrapper layer and add the full local
+marshaller matrix tests against that layer. After that, continue reducing the
+remaining public carrier fields documented in
+`intermediate-visibility-audit.md` and apply the same audit checklist to
+non-C-ABI coroutine dynamic-library transports.
 
 ## Architectural Layers
 

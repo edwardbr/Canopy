@@ -8,6 +8,7 @@
 #include <security/attestation/context_source.h>
 #include <security/attestation/protected_rpc.h>
 #include <streaming/stream.h>
+#include <transports/sgx_coroutine/enclave/local_route_transport.h>
 
 #include <limits>
 #include <optional>
@@ -189,6 +190,22 @@ namespace rpc
             result.error_code = error_code;
             result.out_back_channel.clear();
             return result;
+        }
+
+        [[nodiscard]] auto outbound_reference_route_zone(
+            const rpc::remote_object& remote_object_id,
+            const std::shared_ptr<rpc::transport>& transport) -> std::optional<rpc::destination_zone>
+        {
+            if (!transport)
+                return std::nullopt;
+
+            // Enclave-local transports are only next-hop links between zones in
+            // the same enclave. Reference-control security is still about the
+            // referenced owner route, not the adjacent local peer.
+            if (rpc::sgx::coro::enclave::is_local_route_transport(transport))
+                return remote_object_id.as_zone();
+
+            return transport->get_adjacent_zone_id();
         }
     }
 
@@ -1018,19 +1035,18 @@ namespace rpc
         add_ref_params params,
         std::shared_ptr<transport> transport)
     {
-        std::optional<rpc::destination_zone> adjacent_zone_id;
-        if (transport)
+        auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
+        if (route_zone_id)
         {
-            adjacent_zone_id = transport->get_adjacent_zone_id();
-            auto route_result = CO_AWAIT ensure_add_ref_route_allowed(*adjacent_zone_id, "outbound add_ref adjacent peer");
+            auto route_result = CO_AWAIT ensure_add_ref_route_allowed(*route_zone_id, "outbound add_ref reference route");
             if (route_result.error_code != rpc::error::OK())
                 CO_RETURN route_result;
         }
 
         auto service = get_attestation_service();
-        if (protected_rpc_enabled() && service && adjacent_zone_id)
+        if (protected_rpc_enabled() && service && route_zone_id)
         {
-            auto context = get_security_context(*adjacent_zone_id);
+            auto context = get_security_context(*route_zone_id);
             if (context)
             {
                 auto request
@@ -1050,20 +1066,19 @@ namespace rpc
         release_params params,
         std::shared_ptr<transport> transport)
     {
-        std::optional<rpc::destination_zone> adjacent_zone_id;
-        if (transport)
+        auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
+        if (route_zone_id)
         {
-            adjacent_zone_id = transport->get_adjacent_zone_id();
             auto route_result
-                = ensure_existing_reference_route_allowed(*adjacent_zone_id, "outbound release adjacent peer");
+                = ensure_existing_reference_route_allowed(*route_zone_id, "outbound release reference route");
             if (route_result.error_code != rpc::error::OK())
                 CO_RETURN route_result;
         }
 
         auto service = get_attestation_service();
-        if (protected_rpc_enabled() && service && adjacent_zone_id)
+        if (protected_rpc_enabled() && service && route_zone_id)
         {
-            auto context = get_security_context(*adjacent_zone_id);
+            auto context = get_security_context(*route_zone_id);
             if (context)
             {
                 auto request
