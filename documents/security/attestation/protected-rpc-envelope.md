@@ -124,6 +124,15 @@ forms of `add_ref`, `release`, `try_cast`, and `object_released` may need
 method-specific carriers or a control-RPC encoding before implementation. They
 must not expose valid application method ids to intermediates.
 
+Current implementation status: protected `send` and `post` have concrete
+AES-GCM envelope helpers. `add_ref` has the first policy gate in
+`rpc::enclave_service`: routes can be attested, explicitly allowed
+unattested, failed, or marked as handshaking, and unknown routes trigger the
+route-addressed `handshake()` path before failing closed. The `add_ref` and
+`release` parameter structs now include `payload_type_id` and `payload` fields
+for the future encrypted reference-control carrier, but those fields are not
+yet interpreted as a protected payload.
+
 ## Plaintext Payload
 
 The encrypted plaintext includes the original call fields:

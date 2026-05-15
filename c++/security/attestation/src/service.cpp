@@ -82,6 +82,25 @@ namespace canopy::security::attestation
         }
     } // namespace
 
+    auto evaluate_route_attestation_state(const route_attestation_state& state) noexcept -> route_attestation_action
+    {
+        switch (state.status)
+        {
+        case route_attestation_status::unknown:
+            return route_attestation_action::start_handshake;
+        case route_attestation_status::handshaking:
+            return route_attestation_action::wait_for_handshake;
+        case route_attestation_status::attested:
+            return state.context && state.context->established ? route_attestation_action::allow
+                                                               : route_attestation_action::start_handshake;
+        case route_attestation_status::unattested_allowed:
+            return route_attestation_action::allow;
+        case route_attestation_status::failed:
+            return route_attestation_action::reject;
+        }
+        return route_attestation_action::reject;
+    }
+
     attestation_service::attestation_service(attestation_service_options options)
         : options_(std::move(options))
     {

@@ -7,8 +7,12 @@ All rights reserved.
 
 ## Status
 
-Design document. No attestation or protected-envelope implementation exists in
-the current repository state.
+Design and implementation-tracking document. The current repository has a
+development fake-attestation backend, an attestation stream decorator, an
+enclave-service protected `send`/`post` envelope, route-state storage, and an
+opt-in `add_ref` route-attestation gate. It does not yet have real SGX/DCAP
+evidence production or protected encrypted carriers for every marshaller
+method.
 
 This section describes the intended security model for enclave-to-enclave
 Canopy RPC:
@@ -143,6 +147,14 @@ enclave identity.
 Inbound marshaller methods on the enclave-derived service unwrap protected
 payloads, validate policy, and then pass the recovered plaintext request to the
 internal implementation or generated stub.
+
+The first `add_ref` hardening step is route-state gating rather than a full
+encrypted `add_ref` carrier. `rpc::enclave_service` can require add_ref route
+attestation, treat established attested routes as allowed, explicitly allow
+configured unattested routes, and fail closed for failed or still-handshaking
+routes. Unknown routes start the route-addressed `handshake()` path and remain
+blocked until a later service-level attestation exchange marks the route
+allowed.
 
 ## Routing Classification
 

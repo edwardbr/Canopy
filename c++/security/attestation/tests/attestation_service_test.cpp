@@ -22,6 +22,7 @@ namespace
     using canopy::security::attestation::attestation_service_options;
     using canopy::security::attestation::cmw;
     using canopy::security::attestation::establish_session_params;
+    using canopy::security::attestation::evaluate_route_attestation_state;
     using canopy::security::attestation::evidence_binding;
     using canopy::security::attestation::fake_backend;
     using canopy::security::attestation::fake_backend_id;
@@ -32,6 +33,9 @@ namespace
     using canopy::security::attestation::protect_send_response;
     using canopy::security::attestation::protected_key_scope;
     using canopy::security::attestation::protected_rpc_direction;
+    using canopy::security::attestation::route_attestation_action;
+    using canopy::security::attestation::route_attestation_state;
+    using canopy::security::attestation::route_attestation_status;
     using canopy::security::attestation::security_context;
     using canopy::security::attestation::security_level;
     using canopy::security::attestation::unprotect_send_request;
@@ -132,6 +136,36 @@ TEST(
 
     EXPECT_EQ(first, second);
     EXPECT_NE(first, third);
+}
+
+TEST(
+    AttestationService,
+    RouteAttestationStateDecisionMatrix)
+{
+    route_attestation_state state;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
+
+    state.status = route_attestation_status::handshaking;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::wait_for_handshake);
+
+    state.status = route_attestation_status::failed;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::reject);
+
+    state.status = route_attestation_status::unattested_allowed;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::allow);
+
+    state.status = route_attestation_status::attested;
+    state.context.reset();
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
+
+    auto service = make_service("enclave-a", "zone-a");
+    auto context = establish(service, identity{"enclave-b", "zone-b"});
+    ASSERT_TRUE(context.established);
+    state.context = context;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::allow);
+
+    state.context->established = false;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
 }
 
 TEST(

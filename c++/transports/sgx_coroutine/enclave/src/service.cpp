@@ -177,14 +177,12 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::OK(), {}};
 
         auto state = get_attestation_route_state(route_zone_id);
-        if (state.status == canopy::security::attestation::route_attestation_status::attested && state.context
-            && state.context->established)
+        const auto action = canopy::security::attestation::evaluate_route_attestation_state(state);
+        if (action == canopy::security::attestation::route_attestation_action::allow)
         {
             CO_RETURN standard_result{rpc::error::OK(), {}};
         }
-        if (state.status == canopy::security::attestation::route_attestation_status::unattested_allowed)
-            CO_RETURN standard_result{rpc::error::OK(), {}};
-        if (state.status == canopy::security::attestation::route_attestation_status::failed)
+        if (action == canopy::security::attestation::route_attestation_action::reject)
         {
             RPC_WARNING(
                 "add_ref attestation rejected for route {} during {}: previous failure {}",
@@ -193,7 +191,7 @@ namespace rpc
                 state.failure_reason);
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
-        if (state.status == canopy::security::attestation::route_attestation_status::handshaking)
+        if (action == canopy::security::attestation::route_attestation_action::wait_for_handshake)
         {
             RPC_WARNING("add_ref attestation pending for route {} during {}", route_zone_id.get_subnet(), operation);
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};

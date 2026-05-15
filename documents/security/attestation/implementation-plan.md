@@ -45,10 +45,12 @@ The current tree contains a no-SGX proof of concept plus the first protected
 RPC envelope implementation. It is a vertical development slice across the
 fake backend, a first L4 `attestation_service`, an attestation stream
 decorator, normal RPC traffic over that decorator, AES-GCM envelope helpers,
-and `rpc::enclave_service` send/post hooks. It is **not** completion of
-Phase 1 or Phase 2 as written below, because the protected envelope still
-needs a generated-RPC runtime test through `rpc::enclave_service`, build-time
-backend selection, and protected forms for the remaining marshaller methods.
+`rpc::enclave_service` send/post hooks, and the first route-state gate for
+`add_ref`. It is **not** completion of Phase 1 or Phase 2 as written below,
+because the protected envelope still needs a generated-RPC runtime test through
+`rpc::enclave_service`, build-time backend selection, a real service-level
+attestation handshake payload, and protected encrypted forms for the remaining
+marshaller methods.
 
 ### Implemented
 
@@ -113,11 +115,33 @@ backend selection, and protected forms for the remaining marshaller methods.
   `canopy::security::attestation::security_context_source`, a small
   header-only interface that lets enclave-owned code discover attested streams
   without depending on the concrete decorator type.
+- `rpc::i_marshaller` now has a route-addressed `handshake()` operation for
+  service-level attestation and key exchange. Base service and transport
+  implementations route it generically; concrete attestation payload semantics
+  are still pending.
 - `rpc::enclave_service` stores attestation `security_context` records keyed by
-  the attested peer route zone. For a direct stream that peer is the adjacent
-  zone; for routed end-to-end protection it must be the final destination zone.
-  The base `rpc::service` and generic
+  the attested peer route zone through a single `route_attestation_state` map.
+  The `security_context` is optional inside the route state and is only
+  authoritative when the route state is `attested`. For a direct stream that
+  peer is the adjacent zone; for routed end-to-end protection it must be the
+  final destination zone. The base `rpc::service` and generic
   `rpc::stream_transport::transport` remain attestation-neutral.
+- `route_attestation_state` now has a pure
+  `evaluate_route_attestation_state(...)` decision helper. It maps route state
+  to `allow`, `start_handshake`, `wait_for_handshake`, or `reject`; host tests
+  cover the state matrix.
+- `add_ref_params`, `release_params`, and the streaming transport wire structs
+  now carry `payload_type_id` plus `payload` fields so future encrypted
+  reference-control payloads can reuse the existing polymorphic marshaller
+  shape.
+- `rpc::enclave_service` has opt-in add_ref route enforcement:
+  - `set_add_ref_attestation_required`;
+  - `set_route_unattested_allowed`;
+  - inbound `add_ref` checks the route in `remote_object_id.as_zone()`;
+  - outbound `add_ref` checks the adjacent transport zone;
+  - unknown routes start the route-addressed `handshake()` path and fail
+    closed until that handshake marks the route `attested` or
+    `unattested_allowed`.
 - `rpc::encrypted_payload` is pinned in `interfaces/rpc/rpc_types.idl` with:
   - public `session_id`;
   - public `session_epoch`;
@@ -159,6 +183,8 @@ backend selection, and protected forms for the remaining marshaller methods.
   - monotonic counter allocation;
   - replay/out-of-order receive-counter rejection;
   - configured counter exhaustion.
+  - route attestation state decisions for unknown, handshaking, failed,
+    explicitly allowed unattested, and attested routes.
   - protected send request/response wrapping and unwrapping;
   - tampered protected ciphertext rejection.
 - RPC-level POC coverage exists in
@@ -197,6 +223,11 @@ backend selection, and protected forms for the remaining marshaller methods.
 - `cmake --build build_debug_coroutine_fake_sgx --target security_attestation_enclave transport_sgx_coroutine_enclave attestation_service_test attestation_stream_test`
 - `build_debug_coroutine_fake_sgx/output/attestation_service_test`
 - `build_debug_coroutine_fake_sgx/output/attestation_stream_test`
+- `cmake --build build_debug --target attestation_service_test`
+- `cmake --build build_debug_coroutine --target attestation_service_test`
+- `build_debug/output/attestation_service_test`
+- `build_debug_coroutine/output/attestation_service_test`
+- `cmake --build build_debug_coroutine_sgx_sim --target transport_sgx_coroutine_enclave security_attestation_enclave`
 
 ### Not Yet Implemented
 
@@ -209,8 +240,12 @@ backend selection, and protected forms for the remaining marshaller methods.
   backend.
 - Generated-RPC runtime coverage for protected `send`/`post` through
   `rpc::enclave_service`.
-- Protected envelope support for `add_ref`, `release`, `try_cast`,
-  `object_released`, or `transport_down`.
+- Real service-level attestation handshake payloads over
+  `i_marshaller::handshake`.
+- Encrypted protected payloads for `add_ref`, `release`, `try_cast`,
+  `object_released`, or `transport_down`. `add_ref` currently has an opt-in
+  route-state gate and typed payload carrier fields, but not encrypted
+  add_ref plaintext protection.
 - Non-zero `service_request_id` semantics.
 - TLS exporter binding. The current development binding is transcript id,
   identity, role, and nonce based.
@@ -219,10 +254,12 @@ backend selection, and protected forms for the remaining marshaller methods.
 
 ### Current Best Next Step
 
-The next implementation slice should add a generated-RPC runtime test that
-drives protected `send` and `post` through `rpc::enclave_service` over an
-attested fake stream. After that, extend the protected marshaller coverage
-method by method, starting with the lowest-risk control path.
+The next implementation slice should implement the service-level
+`handshake()` payload that turns an unknown route into `attested`,
+`unattested_allowed`, or `failed`. After that, add generated-RPC runtime
+coverage that drives protected `send`/`post` through `rpc::enclave_service`
+and extend reference-control protection in this order: encrypted `add_ref`,
+attested `release`, then `try_cast` / `object_released`.
 
 ## Architectural Layers
 

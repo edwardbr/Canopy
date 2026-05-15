@@ -89,6 +89,14 @@ namespace canopy::security::attestation
         failed
     };
 
+    enum class route_attestation_action
+    {
+        allow,
+        start_handshake,
+        wait_for_handshake,
+        reject
+    };
+
     struct route_attestation_state
     {
         route_attestation_status status{route_attestation_status::unknown};
@@ -96,6 +104,9 @@ namespace canopy::security::attestation
         std::string failure_reason;
         uint64_t failure_epoch{0};
     };
+
+    [[nodiscard]] auto evaluate_route_attestation_state(const route_attestation_state& state) noexcept
+        -> route_attestation_action;
 
     enum class protected_rpc_direction
     {
