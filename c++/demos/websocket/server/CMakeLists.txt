@@ -154,11 +154,22 @@ if(CANOPY_BUILD_ENCLAVE
            transport_sgx_coroutine_enclave
     PRIVATE rpc::rpc_enclave ${CANOPY_ENCLAVE_FMT_LIB})
 
+  # libvpx built against the enclave freestanding toolchain — propagates the
+  # vpx/ include dirs so video_session/genie_sprite compile under -nostdinc.
+  if(TARGET canopy_libvpx_enclave)
+    target_link_libraries(websocket_demo_enclave_compile_fit PRIVATE canopy_libvpx_enclave)
+  endif()
+
   if((CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS" AND TARGET streaming_mbedtls_enclave)
      OR (CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL" AND CANOPY_STREAMING_TLS_ENCLAVE_HAS_SGXSSL_IMPL))
     set(WEBSOCKET_DEMO_TELEMETRY_ENCLAVE_LIBS)
     if(CANOPY_USE_TELEMETRY)
       list(APPEND WEBSOCKET_DEMO_TELEMETRY_ENCLAVE_LIBS rpc_telemetry_enclave)
+    endif()
+
+    set(WEBSOCKET_DEMO_LIBVPX_ENCLAVE_LIB)
+    if(TARGET canopy_libvpx_enclave)
+      set(WEBSOCKET_DEMO_LIBVPX_ENCLAVE_LIB canopy_libvpx_enclave)
     endif()
 
     set(WEBSOCKET_DEMO_PROTOBUF_ENCLAVE_LIBS)
@@ -194,6 +205,7 @@ if(CANOPY_BUILD_ENCLAVE
         websocket_demo_idl_enclave
         websocket_protocol_idl_enclave
         yas_common
+        ${WEBSOCKET_DEMO_LIBVPX_ENCLAVE_LIB}
         ${WEBSOCKET_DEMO_PROTOBUF_ENCLAVE_LIBS}
         ${SGX_ENCLAVE_LIBS})
 

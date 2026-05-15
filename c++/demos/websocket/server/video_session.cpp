@@ -37,7 +37,7 @@ namespace websocket_demo
             return rpc::error::OK();
         }
 
-        void video_session::set_scheduler(const std::shared_ptr<coro::scheduler>& scheduler)
+        void video_session::set_scheduler(const std::shared_ptr<rpc::coro::scheduler>& scheduler)
         {
             // The scheduler, never the service — see the header note on the
             // service -> demo -> video_session reference cycle.

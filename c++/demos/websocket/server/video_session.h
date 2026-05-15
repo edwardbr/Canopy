@@ -16,10 +16,11 @@
 
 #include "websocket_demo/websocket_demo.h"
 
-namespace coro
-{
-    class scheduler;
-}
+// Use the build-agnostic rpc::coro::scheduler spelling (libcoro on host, the
+// SGX coro runtime in-enclave) provided by <rpc/rpc.h>, as demo_zone does.
+// Do NOT forward-declare coro or pull coroutine_support.h here: re-entering
+// rpc internals after rpc.h in consumers ODR-diverges the shared_ptr control
+// block.
 
 namespace websocket_demo
 {
@@ -54,7 +55,7 @@ namespace websocket_demo
             // owns this video_session, so a shared_ptr back to the service
             // would form a reference cycle. The scheduler does not own demo,
             // so a shared_ptr to it is cycle-free and outlives the connection.
-            std::shared_ptr<coro::scheduler> scheduler_;
+            std::shared_ptr<rpc::coro::scheduler> scheduler_;
 
             std::mutex mailbox_mutex_;
             bool has_pending_ = false;
@@ -96,7 +97,7 @@ namespace websocket_demo
             video_session& operator=(const video_session&) = delete;
 
             int set_sink(const rpc::shared_ptr<i_context_event>& sink);
-            void set_scheduler(const std::shared_ptr<coro::scheduler>& scheduler);
+            void set_scheduler(const std::shared_ptr<rpc::coro::scheduler>& scheduler);
             void set_effects(uint32_t effects);
 
             CORO_TASK(int)
