@@ -10,8 +10,10 @@ All rights reserved.
 Design and implementation-tracking document. The current repository has a
 development fake-attestation backend, an attestation stream decorator, an
 enclave-service protected `send`/`post` envelope, route-state storage, and an
-opt-in `add_ref` route-attestation gate. It does not yet have real SGX/DCAP
-evidence production or protected encrypted carriers for every marshaller
+opt-in `add_ref` route-attestation gate backed by the first service-level
+`i_marshaller::handshake()` payload. It does not yet have real SGX/DCAP
+evidence production, direct transport/add_ref integration coverage for the new
+service-level handshake, or protected encrypted carriers for every marshaller
 method.
 
 This section describes the intended security model for enclave-to-enclave
@@ -153,8 +155,15 @@ encrypted `add_ref` carrier. `rpc::enclave_service` can require add_ref route
 attestation, treat established attested routes as allowed, explicitly allow
 configured unattested routes, and fail closed for failed or still-handshaking
 routes. Unknown routes start the route-addressed `handshake()` path and remain
-blocked until a later service-level attestation exchange marks the route
-allowed.
+blocked until the service-level attestation exchange marks the route allowed.
+The current payloads are generated RPC/YAS structs:
+`route_attestation_handshake_request` and
+`route_attestation_handshake_response`. They carry backend-neutral identity,
+CMW-like Evidence, transcript id, nonce, backend id, security level, and the
+structured accept/reject verdict. A route becomes `attested` only after peer
+Evidence verifies and a `security_context` is established. A route becomes
+`unattested_allowed` only when Evidence is absent and policy explicitly does
+not require it.
 
 ## Routing Classification
 

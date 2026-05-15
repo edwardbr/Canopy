@@ -145,6 +145,45 @@ namespace rpc
         std::vector<uint8_t> authentication_tag;
     };
 
+    struct attestation_identity
+    {
+        std::string enclave_id;
+        std::string zone_id;
+    };
+
+    struct attestation_cmw
+    {
+        std::string media_type;
+        std::string content_format;
+        std::vector<uint8_t> payload;
+    };
+
+    struct route_attestation_handshake_request
+    {
+        uint64_t wire_version = 1;
+        uint64_t transcript_id = 0;
+        attestation_identity claimant;
+        std::string backend_id;
+        uint8_t evidence_present = 0;
+        attestation_cmw evidence;
+        std::vector<uint8_t> nonce;
+    };
+
+    struct route_attestation_handshake_response
+    {
+        uint64_t wire_version = 1;
+        uint64_t transcript_id = 0;
+        uint8_t accepted = 0;
+        std::string reason;
+        attestation_identity responder;
+        std::string backend_id;
+        uint64_t security_level = 0;
+        uint64_t session_epoch = 1;
+        uint8_t evidence_present = 0;
+        attestation_cmw evidence;
+        std::vector<uint8_t> nonce;
+    };
+
     // Versioned bit-packed zone address blob.
     //
     // Storage:

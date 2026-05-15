@@ -9,8 +9,11 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <utility>
 #include <vector>
+
+#include <openssl/rand.h>
 
 namespace canopy::security::attestation
 {
@@ -81,6 +84,16 @@ namespace canopy::security::attestation
             return result;
         }
     } // namespace
+
+    auto make_attestation_nonce() -> std::optional<std::vector<uint8_t>>
+    {
+        static_assert(attestation_nonce_size <= static_cast<size_t>(std::numeric_limits<int>::max()));
+
+        std::vector<uint8_t> nonce(attestation_nonce_size);
+        if (RAND_bytes(nonce.data(), static_cast<int>(nonce.size())) != 1)
+            return std::nullopt;
+        return nonce;
+    }
 
     auto evaluate_route_attestation_state(const route_attestation_state& state) noexcept -> route_attestation_action
     {

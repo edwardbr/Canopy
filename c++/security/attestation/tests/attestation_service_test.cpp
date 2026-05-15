@@ -28,6 +28,7 @@ namespace
     using canopy::security::attestation::fake_backend_id;
     using canopy::security::attestation::fake_evidence_media_type;
     using canopy::security::attestation::identity;
+    using canopy::security::attestation::make_attestation_nonce;
     using canopy::security::attestation::make_session_id;
     using canopy::security::attestation::protect_send_request;
     using canopy::security::attestation::protect_send_response;
@@ -166,6 +167,60 @@ TEST(
 
     state.context->established = false;
     EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
+}
+
+TEST(
+    AttestationService,
+    GeneratesFixedSizeAttestationNonces)
+{
+    auto nonce = make_attestation_nonce();
+    ASSERT_TRUE(nonce.has_value());
+    EXPECT_EQ(nonce->size(), canopy::security::attestation::attestation_nonce_size);
+}
+
+TEST(
+    AttestationService,
+    RouteHandshakePayloadsUseGeneratedTypeIdsAndYas)
+{
+    rpc::route_attestation_handshake_request request;
+    request.transcript_id = 42;
+    request.claimant.enclave_id = "enclave-a";
+    request.claimant.zone_id = "zone-a";
+    request.backend_id = fake_backend_id;
+    request.evidence_present = true;
+    request.evidence.media_type = fake_evidence_media_type;
+    request.evidence.content_format = "canopy.fake.v1";
+    request.evidence.payload = {1, 2, 3};
+    request.nonce = {4, 5, 6};
+
+    auto request_type_id = rpc::id<rpc::route_attestation_handshake_request>::get(rpc::get_version());
+    auto response_type_id = rpc::id<rpc::route_attestation_handshake_response>::get(rpc::get_version());
+    EXPECT_NE(request_type_id, 0U);
+    EXPECT_NE(response_type_id, 0U);
+    EXPECT_NE(request_type_id, response_type_id);
+
+    auto bytes = rpc::to_yas_binary<std::vector<char>>(request);
+    rpc::route_attestation_handshake_request decoded_request;
+    EXPECT_TRUE(rpc::from_yas_binary(rpc::byte_span(bytes), decoded_request).empty());
+    EXPECT_EQ(decoded_request, request);
+
+    rpc::route_attestation_handshake_response response;
+    response.transcript_id = request.transcript_id;
+    response.accepted = true;
+    response.reason = "accepted";
+    response.responder.enclave_id = "enclave-b";
+    response.responder.zone_id = "zone-b";
+    response.backend_id = fake_backend_id;
+    response.security_level = static_cast<uint64_t>(security_level::development);
+    response.session_epoch = 1;
+    response.evidence_present = true;
+    response.evidence = request.evidence;
+    response.nonce = {7, 8, 9};
+
+    auto response_bytes = rpc::to_yas_binary<std::vector<char>>(response);
+    rpc::route_attestation_handshake_response decoded_response;
+    EXPECT_TRUE(rpc::from_yas_binary(rpc::byte_span(response_bytes), decoded_response).empty());
+    EXPECT_EQ(decoded_response, response);
 }
 
 TEST(

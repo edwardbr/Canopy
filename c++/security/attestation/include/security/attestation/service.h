@@ -19,6 +19,8 @@
 
 namespace canopy::security::attestation
 {
+    inline constexpr size_t attestation_nonce_size = 32;
+
     struct attestation_service_options
     {
         identity local_identity;
@@ -45,6 +47,8 @@ namespace canopy::security::attestation
         uint64_t session_epoch{1};
         std::vector<uint8_t> shared_secret;
     };
+
+    [[nodiscard]] auto make_attestation_nonce() -> std::optional<std::vector<uint8_t>>;
 
     class attestation_service final
     {

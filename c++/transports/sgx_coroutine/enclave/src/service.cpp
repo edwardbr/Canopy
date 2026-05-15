@@ -9,10 +9,175 @@
 #include <security/attestation/protected_rpc.h>
 #include <streaming/stream.h>
 
+#include <limits>
+#include <string>
 #include <utility>
 
 namespace rpc
 {
+    namespace
+    {
+        constexpr uint64_t route_attestation_handshake_wire_version = 1;
+        constexpr uint64_t route_attestation_session_epoch = 1;
+        constexpr uint8_t route_attestation_flag_false = 0;
+        constexpr uint8_t route_attestation_flag_true = 1;
+        constexpr size_t max_route_attestation_handshake_payload_size = 1024 * 1024;
+
+        [[nodiscard]] auto route_attestation_request_type_id(uint64_t protocol_version) -> uint64_t
+        {
+            return rpc::id<rpc::route_attestation_handshake_request>::get(protocol_version);
+        }
+
+        [[nodiscard]] auto route_attestation_response_type_id(uint64_t protocol_version) -> uint64_t
+        {
+            return rpc::id<rpc::route_attestation_handshake_response>::get(protocol_version);
+        }
+
+        [[nodiscard]] auto route_identity_string(rpc::zone zone_id) -> std::string
+        {
+            return std::to_string(zone_id);
+        }
+
+        [[nodiscard]] auto to_wire_identity(const canopy::security::attestation::identity& value) -> rpc::attestation_identity
+        {
+            rpc::attestation_identity out;
+            out.enclave_id = value.enclave_id;
+            out.zone_id = value.zone_id;
+            return out;
+        }
+
+        [[nodiscard]] auto from_wire_identity(const rpc::attestation_identity& value)
+            -> canopy::security::attestation::identity
+        {
+            canopy::security::attestation::identity out;
+            out.enclave_id = value.enclave_id;
+            out.zone_id = value.zone_id;
+            return out;
+        }
+
+        [[nodiscard]] auto to_wire_cmw(const canopy::security::attestation::cmw& value) -> rpc::attestation_cmw
+        {
+            rpc::attestation_cmw out;
+            out.media_type = value.media_type;
+            out.content_format = value.content_format;
+            out.payload = value.payload;
+            return out;
+        }
+
+        [[nodiscard]] auto from_wire_cmw(const rpc::attestation_cmw& value) -> canopy::security::attestation::cmw
+        {
+            canopy::security::attestation::cmw out;
+            out.media_type = value.media_type;
+            out.content_format = value.content_format;
+            out.payload = value.payload;
+            return out;
+        }
+
+        [[nodiscard]] auto wire_security_level(canopy::security::attestation::security_level level) -> uint64_t
+        {
+            return static_cast<uint64_t>(level);
+        }
+
+        [[nodiscard]] auto from_wire_security_level(uint64_t level) -> canopy::security::attestation::security_level
+        {
+            using canopy::security::attestation::security_level;
+            if (level > static_cast<uint64_t>(security_level::hardware))
+                return security_level::none;
+            return static_cast<security_level>(level);
+        }
+
+        [[nodiscard]] auto local_identity_for_route(
+            const std::shared_ptr<canopy::security::attestation::attestation_service>& service,
+            rpc::zone zone_id) -> canopy::security::attestation::identity
+        {
+            canopy::security::attestation::identity identity;
+            if (service)
+                identity = service->local_identity();
+            if (identity.zone_id.empty())
+                identity.zone_id = route_identity_string(zone_id);
+            return identity;
+        }
+
+        template<class Payload>
+        [[nodiscard]] auto serialise_route_attestation_payload(const Payload& payload) -> std::optional<std::vector<char>>
+        {
+            try
+            {
+                return rpc::to_yas_binary<std::vector<char>>(payload);
+            }
+            catch (const std::exception& ex)
+            {
+                RPC_WARNING("route attestation payload serialisation failed: {}", ex.what());
+            }
+            catch (...)
+            {
+                RPC_WARNING("route attestation payload serialisation failed");
+            }
+            return std::nullopt;
+        }
+
+        template<class Payload>
+        [[nodiscard]] auto parse_route_attestation_payload(
+            const std::vector<char>& payload,
+            Payload& out) -> bool
+        {
+            if (payload.size() > max_route_attestation_handshake_payload_size)
+                return false;
+            return rpc::from_yas_binary(rpc::byte_span(payload), out).empty();
+        }
+
+        [[nodiscard]] auto nonce_is_valid(const std::vector<uint8_t>& nonce) -> bool
+        {
+            return nonce.size() == canopy::security::attestation::attestation_nonce_size;
+        }
+
+        [[nodiscard]] auto flag_is_valid(uint8_t value) -> bool
+        {
+            return value == route_attestation_flag_false || value == route_attestation_flag_true;
+        }
+
+        [[nodiscard]] auto make_failed_handshake_response(
+            uint64_t transcript_id,
+            std::string reason,
+            const canopy::security::attestation::identity& responder) -> rpc::route_attestation_handshake_response
+        {
+            rpc::route_attestation_handshake_response response;
+            response.wire_version = route_attestation_handshake_wire_version;
+            response.transcript_id = transcript_id;
+            response.accepted = route_attestation_flag_false;
+            response.reason = std::move(reason);
+            response.responder = to_wire_identity(responder);
+            return response;
+        }
+
+        [[nodiscard]] auto make_route_attestation_handshake_result(
+            uint64_t protocol_version,
+            rpc::route_attestation_handshake_response response) -> rpc::handshake_result
+        {
+            auto payload = serialise_route_attestation_payload(response);
+            if (!payload.has_value())
+                return rpc::handshake_result{rpc::error::INVALID_DATA(), 0, {}, {}};
+            return rpc::handshake_result{
+                rpc::error::OK(), route_attestation_response_type_id(protocol_version), std::move(payload.value()), {}};
+        }
+
+        void set_failed_attestation_route(
+            rpc::enclave_service& service,
+            rpc::destination_zone route_zone_id,
+            uint64_t previous_failure_epoch,
+            std::string reason)
+        {
+            if (!route_zone_id.is_set())
+                return;
+
+            canopy::security::attestation::route_attestation_state failed_state;
+            failed_state.status = canopy::security::attestation::route_attestation_status::failed;
+            failed_state.failure_epoch = previous_failure_epoch + 1;
+            failed_state.failure_reason = std::move(reason);
+            service.set_attestation_route_state(route_zone_id, std::move(failed_state));
+        }
+    }
+
     enclave_service::~enclave_service()
     {
         if (auto controller = get_io_uring_controller())
@@ -201,37 +366,161 @@ namespace rpc
         handshaking_state.status = canopy::security::attestation::route_attestation_status::handshaking;
         set_attestation_route_state(route_zone_id, std::move(handshaking_state));
 
+        auto service = get_attestation_service();
+        const auto transcript_id = next_route_attestation_transcript_id_.fetch_add(1);
+        if (transcript_id == 0)
+        {
+            set_failed_attestation_route(
+                *this, route_zone_id, state.failure_epoch, "route attestation transcript id exhausted");
+            CO_RETURN standard_result{rpc::error::RESOURCE_EXHAUSTED(), {}};
+        }
+
+        rpc::route_attestation_handshake_request request;
+        request.wire_version = route_attestation_handshake_wire_version;
+        request.transcript_id = transcript_id;
+        request.claimant = to_wire_identity(local_identity_for_route(service, get_zone_id()));
+        if (service)
+        {
+            request.backend_id = service->backend_id();
+            if (service->should_send_local_evidence())
+            {
+                auto nonce = canopy::security::attestation::make_attestation_nonce();
+                if (!nonce.has_value())
+                {
+                    set_failed_attestation_route(
+                        *this, route_zone_id, state.failure_epoch, "failed to generate route attestation nonce");
+                    CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+                }
+                request.nonce = std::move(nonce.value());
+
+                auto evidence = service->produce_evidence(request.transcript_id, request.nonce);
+                if (!evidence.accepted)
+                {
+                    set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, evidence.reason);
+                    CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+                }
+                request.evidence = to_wire_cmw(evidence.evidence);
+                request.evidence_present = route_attestation_flag_true;
+            }
+        }
+
+        auto request_payload = serialise_route_attestation_payload(request);
+        if (!request_payload.has_value())
+        {
+            set_failed_attestation_route(
+                *this, route_zone_id, state.failure_epoch, "failed to serialise route attestation request");
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+        }
+
         handshake_params params;
         params.protocol_version = rpc::HIGHEST_SUPPORTED_VERSION;
         params.caller_zone_id = get_zone_id();
         params.destination_zone_id = route_zone_id;
+        params.type_id = route_attestation_request_type_id(params.protocol_version);
+        params.payload = std::move(request_payload.value());
         auto handshake = CO_AWAIT child_service::handshake(std::move(params));
 
-        auto post_handshake_state = get_attestation_route_state(route_zone_id);
-        if (handshake.error_code == rpc::error::OK()
-            && post_handshake_state.status == canopy::security::attestation::route_attestation_status::attested
-            && post_handshake_state.context && post_handshake_state.context->established)
+        if (handshake.error_code != rpc::error::OK())
         {
-            CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
+            set_failed_attestation_route(
+                *this, route_zone_id, state.failure_epoch, "route attestation handshake transport failed");
+            RPC_WARNING(
+                "add_ref attestation failed for route {} during {}, handshake error {}",
+                route_zone_id.get_subnet(),
+                operation,
+                handshake.error_code);
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
-        if (handshake.error_code == rpc::error::OK()
-            && post_handshake_state.status == canopy::security::attestation::route_attestation_status::unattested_allowed)
+
+        if (handshake.type_id != route_attestation_response_type_id(rpc::HIGHEST_SUPPORTED_VERSION))
         {
+            set_failed_attestation_route(
+                *this, route_zone_id, state.failure_epoch, "route attestation handshake returned an unexpected payload type");
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        rpc::route_attestation_handshake_response response;
+        if (!parse_route_attestation_payload(handshake.payload, response)
+            || response.wire_version != route_attestation_handshake_wire_version
+            || response.transcript_id != request.transcript_id || !flag_is_valid(response.accepted)
+            || !flag_is_valid(response.evidence_present))
+        {
+            set_failed_attestation_route(
+                *this, route_zone_id, state.failure_epoch, "route attestation handshake returned malformed payload");
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        if (!response.accepted)
+        {
+            set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, response.reason);
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
+
+        if (!service)
+        {
+            set_route_unattested_allowed(route_zone_id, true);
             CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
         }
 
-        canopy::security::attestation::route_attestation_state failed_state;
-        failed_state.status = canopy::security::attestation::route_attestation_status::failed;
-        failed_state.failure_epoch = state.failure_epoch + 1;
-        failed_state.failure_reason = "add_ref route attestation handshake did not establish an allowed route";
-        set_attestation_route_state(route_zone_id, std::move(failed_state));
+        if (response.evidence_present)
+        {
+            if (!nonce_is_valid(response.nonce))
+            {
+                set_failed_attestation_route(
+                    *this, route_zone_id, state.failure_epoch, "route attestation response nonce was invalid");
+                CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+            }
 
-        RPC_WARNING(
-            "add_ref attestation failed for route {} during {}, handshake error {}",
-            route_zone_id.get_subnet(),
-            operation,
-            handshake.error_code);
-        CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            canopy::security::attestation::evidence_binding expected_binding;
+            expected_binding.subject = from_wire_identity(response.responder);
+            expected_binding.transcript_id = response.transcript_id;
+            expected_binding.nonce = response.nonce;
+            auto verdict = service->verify_peer_evidence(from_wire_cmw(response.evidence), std::move(expected_binding));
+            if (!verdict.accepted)
+            {
+                set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, verdict.reason);
+                CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            }
+            if (response.backend_id != verdict.backend_id
+                || from_wire_security_level(response.security_level) != verdict.level)
+            {
+                set_failed_attestation_route(
+                    *this,
+                    route_zone_id,
+                    state.failure_epoch,
+                    "route attestation response metadata did not match verified evidence");
+                CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            }
+
+            canopy::security::attestation::establish_session_params session_params;
+            session_params.peer_identity = verdict.peer_identity;
+            session_params.transcript_id = response.transcript_id;
+            session_params.local_evidence_sent = request.evidence_present;
+            session_params.peer_attested = true;
+            session_params.verified_backend_id = verdict.backend_id;
+            session_params.verified_level = verdict.level;
+            session_params.session_epoch = response.session_epoch;
+            auto context = service->establish_session(session_params);
+            if (!context.established)
+            {
+                set_failed_attestation_route(
+                    *this, route_zone_id, state.failure_epoch, "route attestation session establishment failed");
+                CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+            }
+
+            set_security_context(route_zone_id, std::move(context));
+            CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
+        }
+
+        if (service->requires_peer_evidence())
+        {
+            set_failed_attestation_route(
+                *this, route_zone_id, state.failure_epoch, "route attestation response did not include evidence");
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
+
+        set_route_unattested_allowed(route_zone_id, true);
+        CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
     }
 
     auto enclave_service::find_security_context_for_protected_call(
@@ -254,6 +543,127 @@ namespace rpc
             CO_RETURN route_result;
 
         CO_RETURN CO_AWAIT child_service::add_ref(std::move(params));
+    }
+
+    CORO_TASK(handshake_result)
+    enclave_service::handshake(handshake_params params)
+    {
+        if (params.destination_zone_id != get_zone_id())
+        {
+            CO_RETURN CO_AWAIT child_service::handshake(std::move(params));
+        }
+
+        if (params.protocol_version < rpc::LOWEST_SUPPORTED_VERSION
+            || params.protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
+        {
+            CO_RETURN handshake_result{rpc::error::INVALID_VERSION(), 0, {}, {}};
+        }
+
+        if (params.type_id != route_attestation_request_type_id(params.protocol_version))
+        {
+            CO_RETURN handshake_result{rpc::error::NOT_IMPLEMENTED(), 0, {}, {}};
+        }
+
+        auto service = get_attestation_service();
+        auto responder_identity = local_identity_for_route(service, get_zone_id());
+        rpc::route_attestation_handshake_request request;
+        if (!parse_route_attestation_payload(params.payload, request)
+            || request.wire_version != route_attestation_handshake_wire_version || request.transcript_id == 0
+            || !flag_is_valid(request.evidence_present))
+        {
+            auto response = make_failed_handshake_response(0, "malformed route attestation request", responder_identity);
+            CO_RETURN make_route_attestation_handshake_result(params.protocol_version, std::move(response));
+        }
+
+        auto fail = [&](std::string reason) -> handshake_result
+        {
+            set_failed_attestation_route(*this, params.caller_zone_id, 0, reason);
+            auto response = make_failed_handshake_response(request.transcript_id, std::move(reason), responder_identity);
+            return make_route_attestation_handshake_result(params.protocol_version, std::move(response));
+        };
+
+        if (!service)
+        {
+            CO_RETURN fail("no local attestation service configured");
+        }
+
+        rpc::route_attestation_handshake_response response;
+        response.wire_version = route_attestation_handshake_wire_version;
+        response.transcript_id = request.transcript_id;
+        response.responder = to_wire_identity(responder_identity);
+        response.backend_id = service->backend_id();
+        response.security_level = wire_security_level(service->backend_level());
+        response.session_epoch = route_attestation_session_epoch;
+
+        bool peer_attested = false;
+        canopy::security::attestation::attestation_verdict verdict;
+        if (request.evidence_present)
+        {
+            if (!nonce_is_valid(request.nonce))
+            {
+                CO_RETURN fail("route attestation request nonce was invalid");
+            }
+
+            canopy::security::attestation::evidence_binding expected_binding;
+            expected_binding.subject = from_wire_identity(request.claimant);
+            expected_binding.transcript_id = request.transcript_id;
+            expected_binding.nonce = request.nonce;
+            verdict = service->verify_peer_evidence(from_wire_cmw(request.evidence), std::move(expected_binding));
+            if (!verdict.accepted)
+            {
+                CO_RETURN fail(verdict.reason);
+            }
+            peer_attested = true;
+        }
+        else if (service->requires_peer_evidence())
+        {
+            CO_RETURN fail("route attestation request did not include peer evidence");
+        }
+
+        if (service->should_send_local_evidence())
+        {
+            auto nonce = canopy::security::attestation::make_attestation_nonce();
+            if (!nonce.has_value())
+            {
+                CO_RETURN fail("failed to generate route attestation response nonce");
+            }
+            response.nonce = std::move(nonce.value());
+
+            auto evidence = service->produce_evidence(response.transcript_id, response.nonce);
+            if (!evidence.accepted)
+            {
+                CO_RETURN fail(evidence.reason);
+            }
+
+            response.evidence = to_wire_cmw(evidence.evidence);
+            response.evidence_present = route_attestation_flag_true;
+        }
+
+        if (peer_attested)
+        {
+            canopy::security::attestation::establish_session_params session_params;
+            session_params.peer_identity = verdict.peer_identity;
+            session_params.transcript_id = request.transcript_id;
+            session_params.local_evidence_sent = response.evidence_present;
+            session_params.peer_attested = true;
+            session_params.verified_backend_id = verdict.backend_id;
+            session_params.verified_level = verdict.level;
+            session_params.session_epoch = response.session_epoch;
+            auto context = service->establish_session(session_params);
+            if (!context.established)
+            {
+                CO_RETURN fail("route attestation session establishment failed");
+            }
+            set_security_context(params.caller_zone_id, std::move(context));
+        }
+        else
+        {
+            set_route_unattested_allowed(params.caller_zone_id, true);
+        }
+
+        response.accepted = route_attestation_flag_true;
+        response.reason = peer_attested ? "route attestation accepted" : "unattested route accepted by policy";
+        CO_RETURN make_route_attestation_handshake_result(params.protocol_version, std::move(response));
     }
 
     CORO_TASK(send_result)

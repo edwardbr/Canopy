@@ -128,10 +128,13 @@ Current implementation status: protected `send` and `post` have concrete
 AES-GCM envelope helpers. `add_ref` has the first policy gate in
 `rpc::enclave_service`: routes can be attested, explicitly allowed
 unattested, failed, or marked as handshaking, and unknown routes trigger the
-route-addressed `handshake()` path before failing closed. The `add_ref` and
-`release` parameter structs now include `payload_type_id` and `payload` fields
-for the future encrypted reference-control carrier, but those fields are not
-yet interpreted as a protected payload.
+route-addressed `handshake()` path before failing closed. That handshake now
+has generated RPC/YAS request and response payloads for fake Evidence,
+backend-neutral identity, transcript id, nonce, backend id, security level,
+and a structured accept/reject verdict. The `add_ref` and `release` parameter
+structs now include `payload_type_id` and `payload` fields for the future
+encrypted reference-control carrier, but those fields are not yet interpreted
+as a protected payload.
 
 ## Plaintext Payload
 

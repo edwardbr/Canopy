@@ -46,11 +46,13 @@ RPC envelope implementation. It is a vertical development slice across the
 fake backend, a first L4 `attestation_service`, an attestation stream
 decorator, normal RPC traffic over that decorator, AES-GCM envelope helpers,
 `rpc::enclave_service` send/post hooks, and the first route-state gate for
-`add_ref`. It is **not** completion of Phase 1 or Phase 2 as written below,
+`add_ref`. It now also has the first generated-IDL service-level route
+attestation handshake payload carried by `i_marshaller::handshake()`. It is
+**not** completion of Phase 1 or Phase 2 as written below,
 because the protected envelope still needs a generated-RPC runtime test through
-`rpc::enclave_service`, build-time backend selection, a real service-level
-attestation handshake payload, and protected encrypted forms for the remaining
-marshaller methods.
+`rpc::enclave_service`, build-time backend selection, direct route-handshake
+integration coverage through transport/add_ref, and protected encrypted forms
+for the remaining marshaller methods.
 
 ### Implemented
 
@@ -117,8 +119,31 @@ marshaller methods.
   without depending on the concrete decorator type.
 - `rpc::i_marshaller` now has a route-addressed `handshake()` operation for
   service-level attestation and key exchange. Base service and transport
-  implementations route it generically; concrete attestation payload semantics
-  are still pending.
+  implementations route it generically.
+- `interfaces/rpc/rpc_types.idl` now defines the first service-level route
+  attestation payloads:
+  - `attestation_identity`;
+  - `attestation_cmw`;
+  - `route_attestation_handshake_request`;
+  - `route_attestation_handshake_response`.
+  These are generated RPC/YAS types and their generated fingerprints are used
+  as the `handshake_params::type_id` and `handshake_result::type_id` values.
+- `attestation_service` now exposes OpenSSL/SGXSSL-backed nonce generation for
+  route-attestation Evidence bindings. The POC uses 32-byte nonces and rejects
+  malformed service-level request/response nonces before Evidence
+  verification.
+- `rpc::enclave_service::handshake()` now handles local route-attestation
+  requests. The first implementation:
+  - deserializes bounded generated-YAS payloads;
+  - verifies peer fake Evidence against claimed identity, transcript id, and
+    nonce;
+  - produces local Evidence for the response when policy requires it;
+  - establishes and stores an attested `security_context` when peer Evidence is
+    accepted;
+  - marks routes `unattested_allowed` only when peer Evidence is absent and the
+    local policy does not require it;
+  - returns a structured rejection payload for malformed or policy-rejected
+    handshakes.
 - `rpc::enclave_service` stores attestation `security_context` records keyed by
   the attested peer route zone through a single `route_attestation_state` map.
   The `security_context` is optional inside the route state and is only
@@ -139,9 +164,11 @@ marshaller methods.
   - `set_route_unattested_allowed`;
   - inbound `add_ref` checks the route in `remote_object_id.as_zone()`;
   - outbound `add_ref` checks the adjacent transport zone;
-  - unknown routes start the route-addressed `handshake()` path and fail
-    closed until that handshake marks the route `attested` or
-    `unattested_allowed`.
+  - unknown routes start the route-addressed service-level `handshake()` path;
+  - successful Evidence verification marks the route `attested`;
+  - accepted no-Evidence policy marks the route `unattested_allowed`;
+  - failed or malformed handshakes mark the route `failed` and the call fails
+    closed.
 - `rpc::encrypted_payload` is pinned in `interfaces/rpc/rpc_types.idl` with:
   - public `session_id`;
   - public `session_epoch`;
@@ -185,6 +212,9 @@ marshaller methods.
   - configured counter exhaustion.
   - route attestation state decisions for unknown, handshaking, failed,
     explicitly allowed unattested, and attested routes.
+  - OpenSSL/SGXSSL-backed 32-byte attestation nonce generation.
+  - generated type ids and YAS round-tripping for the route-attestation
+    handshake request and response payloads.
   - protected send request/response wrapping and unwrapping;
   - tampered protected ciphertext rejection.
 - RPC-level POC coverage exists in
@@ -228,6 +258,15 @@ marshaller methods.
 - `build_debug/output/attestation_service_test`
 - `build_debug_coroutine/output/attestation_service_test`
 - `cmake --build build_debug_coroutine_sgx_sim --target transport_sgx_coroutine_enclave security_attestation_enclave`
+- `cmake --build build_debug --target attestation_service_test`
+- `build_debug/output/attestation_service_test`
+- `cmake --build build_debug_coroutine --target attestation_service_test`
+- `build_debug_coroutine/output/attestation_service_test`
+- `cmake --build build_debug_coroutine_sgx_sim --target transport_sgx_coroutine_enclave security_attestation_enclave`
+- `cmake --build build_debug_coroutine_fake_sgx --target transport_sgx_coroutine_enclave security_attestation_enclave`
+- `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_list_tests`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/*`
 
 ### Not Yet Implemented
 
@@ -235,13 +274,16 @@ marshaller methods.
 - Separate `cmw.h`, `backend.h`, `policy.h`, and `security_context.h` header
   split. The current POC keeps these passive types together in `types.h`.
 - `null_backend`.
-- CMW / attestation context IDL additions.
+- Full production CMW / attestation context IDL split. The current route
+  handshake has minimal generated IDL carriers for fake Evidence and
+  backend-neutral identity.
 - Backend selection beyond explicit construction of one service with one
   backend.
 - Generated-RPC runtime coverage for protected `send`/`post` through
   `rpc::enclave_service`.
-- Real service-level attestation handshake payloads over
-  `i_marshaller::handshake`.
+- Direct integration coverage proving that an unknown `add_ref` route drives
+  the new service-level `i_marshaller::handshake()` payload through a transport
+  and updates both enclave-service route-state maps.
 - Encrypted protected payloads for `add_ref`, `release`, `try_cast`,
   `object_released`, or `transport_down`. `add_ref` currently has an opt-in
   route-state gate and typed payload carrier fields, but not encrypted
@@ -254,12 +296,13 @@ marshaller methods.
 
 ### Current Best Next Step
 
-The next implementation slice should implement the service-level
-`handshake()` payload that turns an unknown route into `attested`,
-`unattested_allowed`, or `failed`. After that, add generated-RPC runtime
-coverage that drives protected `send`/`post` through `rpc::enclave_service`
-and extend reference-control protection in this order: encrypted `add_ref`,
-attested `release`, then `try_cast` / `object_released`.
+The next implementation slice should add direct integration coverage for the
+new service-level `handshake()` path, ideally by driving an unknown-route
+`add_ref` through a real transport and asserting that both route-state maps are
+updated correctly. After that, add generated-RPC runtime coverage that drives
+protected `send`/`post` through `rpc::enclave_service` and extend
+reference-control protection in this order: encrypted `add_ref`, attested
+`release`, then `try_cast` / `object_released`.
 
 ## Architectural Layers
 

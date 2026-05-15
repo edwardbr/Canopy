@@ -9,6 +9,7 @@
 #include <security/attestation/service.h>
 #include <security/attestation/types.h>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -82,6 +83,7 @@ namespace rpc
         CORO_TASK(send_result) send(send_params params) override;
         CORO_TASK(void) post(post_params params) override;
         CORO_TASK(standard_result) add_ref(add_ref_params params) override;
+        CORO_TASK(handshake_result) handshake(handshake_params params) override;
         CORO_TASK(send_result)
         outbound_send(
             send_params params,
@@ -111,6 +113,7 @@ namespace rpc
         mutable std::mutex security_context_mutex_;
         std::unordered_map<rpc::destination_zone, canopy::security::attestation::route_attestation_state> attestation_route_states_;
         bool add_ref_attestation_required_{false};
+        std::atomic<uint64_t> next_route_attestation_transcript_id_{1};
 
         mutable std::mutex attestation_service_mutex_;
         std::shared_ptr<canopy::security::attestation::attestation_service> attestation_service_;
