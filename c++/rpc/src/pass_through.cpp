@@ -358,6 +358,8 @@ namespace rpc
             dest_params.build_out_param_channel = build_out_param_channel & ~add_ref_options::build_caller_route;
             dest_params.in_back_channel = params.in_back_channel;
             dest_params.request_id = params.request_id;
+            dest_params.payload_type_id = params.payload_type_id;
+            dest_params.payload = params.payload;
 
             auto dest_result = CO_AWAIT destination_transport->add_ref(std::move(dest_params));
 
@@ -381,6 +383,8 @@ namespace rpc
             caller_params.build_out_param_channel = build_out_param_channel & ~add_ref_options::build_destination_route;
             caller_params.in_back_channel = params.in_back_channel;
             caller_params.request_id = params.request_id;
+            caller_params.payload_type_id = params.payload_type_id;
+            caller_params.payload = params.payload;
 
             auto caller_result = CO_AWAIT caller_transport->add_ref(std::move(caller_params));
 
@@ -572,6 +576,36 @@ namespace rpc
         // Atomically mark shutdown. do_cleanup() will run either immediately (no
         // active calls) or when the last in-flight call's end_call() fires.
         trigger_self_destruction();
+    }
+
+    CORO_TASK(handshake_result)
+    pass_through::handshake(handshake_params params)
+    {
+        if (!begin_call())
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+        auto keep_alive = shared_from_this();
+
+        auto target_transport = get_directional_transport(params.destination_zone_id);
+        if (!target_transport)
+        {
+            end_call();
+            CO_RETURN handshake_result{error::ZONE_NOT_FOUND(), 0, {}, {}};
+        }
+
+        if (target_transport->get_status() != transport_status::CONNECTED)
+        {
+            end_call();
+            trigger_self_destruction();
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+        }
+
+        auto result = CO_AWAIT target_transport->handshake(std::move(params));
+        end_call();
+
+        if (error::is_critical(result.error_code))
+            trigger_self_destruction();
+
+        CO_RETURN result;
     }
 
     CORO_TASK(void)

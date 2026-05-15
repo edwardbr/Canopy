@@ -245,6 +245,11 @@ namespace rpc::stream_transport
             envelope_prefix prefix,
             envelope_payload payload);
         CORO_TASK(void)
+        stub_handle_handshake(
+            std::shared_ptr<activity_tracker> tracker,
+            envelope_prefix prefix,
+            envelope_payload payload);
+        CORO_TASK(void)
         stub_handle_post(
             std::shared_ptr<activity_tracker> tracker,
             envelope_prefix prefix,
@@ -509,6 +514,11 @@ namespace rpc::stream_transport
             message_direction direction,
             addref_receive&& payload,
             uint64_t sequence_number);
+        virtual void send_payload_handshake_receive(
+            uint64_t protocol_version,
+            message_direction direction,
+            handshake_receive&& payload,
+            uint64_t sequence_number);
         virtual void send_payload_init_client_initial_channel_response(
             uint64_t protocol_version,
             message_direction direction,
@@ -645,6 +655,7 @@ namespace rpc::stream_transport
         CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
         CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) outbound_release(release_params params) override;
+        CORO_TASK(handshake_result) outbound_handshake(handshake_params params) override;
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
         CORO_TASK(void) outbound_post_report(rpc::telemetry_event event) override;

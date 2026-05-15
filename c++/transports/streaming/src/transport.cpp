@@ -250,7 +250,9 @@ namespace rpc::stream_transport
                 .requesting_zone_id = params.requesting_zone_id,
                 .request_id = params.request_id,
                 .build_out_param_channel = params.build_out_param_channel,
-                .back_channel = std::move(params.in_back_channel)});
+                .back_channel = std::move(params.in_back_channel),
+                .payload_type_id = params.payload_type_id,
+                .payload = std::move(params.payload)});
         int ret = response_result.error_code;
         if (ret != rpc::error::OK())
         {
@@ -295,10 +297,32 @@ namespace rpc::stream_transport
             release_send{.destination_zone_id = params.remote_object_id,
                 .caller_zone_id = params.caller_zone_id,
                 .options = params.options,
-                .back_channel = std::move(params.in_back_channel)},
+                .back_channel = std::move(params.in_back_channel),
+                .payload_type_id = params.payload_type_id,
+                .payload = std::move(params.payload)},
             0);
 
         CO_RETURN standard_result{rpc::error::OK(), {}};
+    }
+
+    CORO_TASK(handshake_result)
+    transport::outbound_handshake(handshake_params params)
+    {
+        RPC_DEBUG("stream_transport::transport::outbound_handshake zone={}", get_zone_id().get_subnet());
+
+        auto response_result = CO_AWAIT call_peer<handshake_send, handshake_receive>(
+            params.protocol_version,
+            handshake_send{.caller_zone_id = params.caller_zone_id,
+                .destination_zone_id = params.destination_zone_id,
+                .type_id = params.type_id,
+                .payload = std::move(params.payload),
+                .back_channel = std::move(params.in_back_channel)});
+        if (response_result.error_code != rpc::error::OK())
+            CO_RETURN handshake_result{response_result.error_code, 0, {}, {}};
+
+        auto& response = response_result.payload;
+        CO_RETURN handshake_result{
+            response.err_code, response.type_id, std::move(response.payload), std::move(response.back_channel)};
     }
 
     CORO_TASK(void)
@@ -422,6 +446,11 @@ namespace rpc::stream_transport
         else if (payload.payload_fingerprint == rpc::id<release_send>::get(prefix.version))
         {
             tracker->svc->spawn(stub_handle_release(tracker, prefix, std::move(payload)));
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<handshake_send>::get(prefix.version))
+        {
+            tracker->svc->spawn(stub_handle_handshake(tracker, prefix, std::move(payload)));
             CO_RETURN true;
         }
         else if (payload.payload_fingerprint == rpc::id<object_released_send>::get(prefix.version))
@@ -1184,6 +1213,8 @@ namespace rpc::stream_transport
                 .build_out_param_channel = request.build_out_param_channel,
                 .in_back_channel = std::move(request.back_channel),
                 .request_id = request.request_id,
+                .payload_type_id = request.payload_type_id,
+                .payload = std::move(request.payload),
             });
 
         if (rpc::error::is_error(ar_result.error_code))
@@ -1223,6 +1254,8 @@ namespace rpc::stream_transport
                 .caller_zone_id = request.caller_zone_id,
                 .options = request.options,
                 .in_back_channel = std::move(request.back_channel),
+                .payload_type_id = request.payload_type_id,
+                .payload = std::move(request.payload),
             });
 
         if (rpc::error::is_error(rel_result.error_code))
@@ -1231,6 +1264,43 @@ namespace rpc::stream_transport
         }
 
         RPC_DEBUG("stub_handle_release complete");
+        CO_RETURN;
+    }
+
+    CORO_TASK(void)
+    transport::stub_handle_handshake(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
+    {
+        RPC_DEBUG("stub_handle_handshake");
+
+        handshake_send request;
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
+        if (!str_err.empty())
+        {
+            RPC_ERROR("failed handshake_send from_yas_binary");
+            set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN;
+        }
+
+        auto hs_result = CO_AWAIT inbound_handshake(
+            rpc::handshake_params{.protocol_version = prefix.version,
+                .caller_zone_id = request.caller_zone_id,
+                .destination_zone_id = request.destination_zone_id,
+                .type_id = request.type_id,
+                .payload = std::move(request.payload),
+                .in_back_channel = std::move(request.back_channel)});
+
+        send_payload_handshake_receive(
+            prefix.version,
+            message_direction::receive,
+            handshake_receive{.err_code = hs_result.error_code,
+                .type_id = hs_result.type_id,
+                .payload = std::move(hs_result.payload),
+                .back_channel = std::move(hs_result.out_back_channel)},
+            prefix.sequence_number);
+        RPC_DEBUG("stub_handle_handshake complete");
         CO_RETURN;
     }
 
@@ -1496,6 +1566,17 @@ namespace rpc::stream_transport
         uint64_t protocol_version,
         message_direction direction,
         addref_receive&& payload,
+        uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
+    }
+
+    void transport::send_payload_handshake_receive(
+        uint64_t protocol_version,
+        message_direction direction,
+        handshake_receive&& payload,
         uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))

@@ -536,7 +536,9 @@ namespace rpc::c_abi
                 *requesting_zone,
                 static_cast<rpc::add_ref_options>(params.build_out_param_channel),
                 std::move(*back_channel),
-                params.request_id};
+                params.request_id,
+                0,
+                {}};
         }
 
         rpc::expected<
@@ -558,7 +560,9 @@ namespace rpc::c_abi
                 *remote_object,
                 *caller_zone,
                 static_cast<rpc::release_options>(params.options),
-                std::move(*back_channel)};
+                std::move(*back_channel),
+                0,
+                {}};
         }
 
         rpc::expected<

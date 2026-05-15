@@ -26,6 +26,10 @@ namespace rpc
         RPC_ASSERT(attested_zone_id.get_subnet());
         std::lock_guard<std::mutex> lock(security_context_mutex_);
         security_contexts_[attested_zone_id] = std::move(context);
+        canopy::security::attestation::route_attestation_state state;
+        state.status = canopy::security::attestation::route_attestation_status::attested;
+        state.context = security_contexts_[attested_zone_id];
+        attestation_route_states_[attested_zone_id] = std::move(state);
     }
 
     bool enclave_service::publish_security_context_from_stream(
@@ -52,6 +56,7 @@ namespace rpc
         RPC_ASSERT(attested_zone_id.get_subnet());
         std::lock_guard<std::mutex> lock(security_context_mutex_);
         security_contexts_.erase(attested_zone_id);
+        attestation_route_states_.erase(attested_zone_id);
     }
 
     auto enclave_service::get_security_context(rpc::destination_zone attested_zone_id) const
@@ -62,6 +67,30 @@ namespace rpc
         auto item = security_contexts_.find(attested_zone_id);
         if (item == security_contexts_.end())
             return std::nullopt;
+        return item->second;
+    }
+
+    void enclave_service::set_attestation_route_state(
+        rpc::destination_zone attested_zone_id,
+        canopy::security::attestation::route_attestation_state state)
+    {
+        RPC_ASSERT(attested_zone_id.get_subnet());
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        if (state.status == canopy::security::attestation::route_attestation_status::attested && state.context.established)
+            security_contexts_[attested_zone_id] = state.context;
+        attestation_route_states_[attested_zone_id] = std::move(state);
+    }
+
+    auto enclave_service::get_attestation_route_state(rpc::destination_zone attested_zone_id) const
+        -> canopy::security::attestation::route_attestation_state
+    {
+        if (!attested_zone_id.is_set())
+            return {};
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(attested_zone_id);
+        if (item == attestation_route_states_.end())
+            return {};
         return item->second;
     }
 

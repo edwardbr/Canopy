@@ -899,6 +899,8 @@ namespace rpc
                       | (optimistic ? add_ref_options::optimistic : add_ref_options::normal);
                 caller_params.in_back_channel = params.in_back_channel;
                 caller_params.request_id = request_id;
+                caller_params.payload_type_id = params.payload_type_id;
+                caller_params.payload = params.payload;
                 auto caller_result = CO_AWAIT caller_transport->add_ref(std::move(caller_params));
                 if (caller_result.error_code != rpc::error::OK())
                 {
@@ -1054,6 +1056,8 @@ namespace rpc
                 dest_params.build_out_param_channel = build_out_param_channel & (~add_ref_options::build_caller_route);
                 dest_params.in_back_channel = params.in_back_channel;
                 dest_params.request_id = request_id;
+                dest_params.payload_type_id = params.payload_type_id;
+                dest_params.payload = params.payload;
                 auto forward_result = CO_AWAIT dest_transport->add_ref(std::move(dest_params));
                 CO_RETURN forward_result;
             }
@@ -1637,6 +1641,29 @@ namespace rpc
         CO_RETURN;
     }
 
+    CORO_TASK(handshake_result)
+    service::handshake(handshake_params params)
+    {
+        current_service_tracker tracker(this);
+
+        if (params.protocol_version < rpc::LOWEST_SUPPORTED_VERSION
+            || params.protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
+        {
+            CO_RETURN handshake_result{rpc::error::INVALID_VERSION(), 0, {}, {}};
+        }
+
+        if (params.destination_zone_id == zone_id_)
+        {
+            CO_RETURN handshake_result{rpc::error::NOT_IMPLEMENTED(), 0, {}, {}};
+        }
+
+        auto transport = get_transport(params.destination_zone_id);
+        if (!transport)
+            CO_RETURN handshake_result{rpc::error::ZONE_NOT_FOUND(), 0, {}, {}};
+
+        CO_RETURN CO_AWAIT outbound_handshake(std::move(params), std::move(transport));
+    }
+
     ///////////////////////////////////////////////////////////////////////////////
     // Default implementations of outbound functions
     ///////////////////////////////////////////////////////////////////////////////
@@ -1684,6 +1711,16 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->release(std::move(params));
+    }
+
+    CORO_TASK(handshake_result)
+    service::outbound_handshake(
+        handshake_params params,
+        std::shared_ptr<transport> transport)
+    {
+        if (!transport)
+            CO_RETURN handshake_result{rpc::error::TRANSPORT_ERROR(), 0, {}, {}};
+        CO_RETURN CO_AWAIT transport->handshake(std::move(params));
     }
 
     // Efficient targeted cleanup for a specific remote zone

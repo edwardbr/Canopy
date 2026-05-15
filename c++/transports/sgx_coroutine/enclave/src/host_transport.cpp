@@ -125,7 +125,9 @@ namespace rpc::sgx::coro::enclave
                 .remote_object_id = *remote_object,
                 .caller_zone_id = get_zone_id(),
                 .options = rpc::release_options::normal,
-                .in_back_channel = {}};
+                .in_back_channel = {},
+                .payload_type_id = 0,
+                .payload = {}};
         }
 
         CO_RETURN rpc::error::OK();
@@ -237,7 +239,9 @@ namespace rpc::sgx::coro::enclave
             rpc::stream_transport::release_send{.destination_zone_id = release_params->remote_object_id,
                 .caller_zone_id = release_params->caller_zone_id,
                 .options = release_params->options,
-                .back_channel = std::move(release_params->in_back_channel)},
+                .back_channel = std::move(release_params->in_back_channel),
+                .payload_type_id = release_params->payload_type_id,
+                .payload = std::move(release_params->payload)},
             0);
 
         return rpc::error::OK();

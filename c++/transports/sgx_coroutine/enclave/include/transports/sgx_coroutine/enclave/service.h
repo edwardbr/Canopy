@@ -60,6 +60,11 @@ namespace rpc
         void remove_security_context(rpc::destination_zone attested_zone_id);
         [[nodiscard]] auto get_security_context(rpc::destination_zone attested_zone_id) const
             -> std::optional<canopy::security::attestation::security_context>;
+        void set_attestation_route_state(
+            rpc::destination_zone attested_zone_id,
+            canopy::security::attestation::route_attestation_state state);
+        [[nodiscard]] auto get_attestation_route_state(rpc::destination_zone attested_zone_id) const
+            -> canopy::security::attestation::route_attestation_state;
 
         void set_attestation_service(std::shared_ptr<canopy::security::attestation::attestation_service> service);
         [[nodiscard]] auto get_attestation_service() const
@@ -91,6 +96,7 @@ namespace rpc
 
         mutable std::mutex security_context_mutex_;
         std::unordered_map<rpc::destination_zone, canopy::security::attestation::security_context> security_contexts_;
+        std::unordered_map<rpc::destination_zone, canopy::security::attestation::route_attestation_state> attestation_route_states_;
 
         mutable std::mutex attestation_service_mutex_;
         std::shared_ptr<canopy::security::attestation::attestation_service> attestation_service_;

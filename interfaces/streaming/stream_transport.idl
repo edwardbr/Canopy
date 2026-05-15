@@ -126,6 +126,8 @@ namespace rpc
             uint64_t request_id;
             rpc::add_ref_options build_out_param_channel;
             std::vector<rpc::back_channel_entry> back_channel;
+            uint64_t payload_type_id = 0;
+            std::vector<char> payload;
         };
 
         struct addref_receive
@@ -139,6 +141,25 @@ namespace rpc
             rpc::remote_object destination_zone_id;
             rpc::caller_zone caller_zone_id;
             rpc::release_options options;
+            std::vector<rpc::back_channel_entry> back_channel;
+            uint64_t payload_type_id = 0;
+            std::vector<char> payload;
+        };
+
+        struct handshake_send
+        {
+            rpc::caller_zone caller_zone_id;
+            rpc::destination_zone destination_zone_id;
+            uint64_t type_id = 0;
+            std::vector<char> payload;
+            std::vector<rpc::back_channel_entry> back_channel;
+        };
+
+        struct handshake_receive
+        {
+            int err_code;
+            uint64_t type_id = 0;
+            std::vector<char> payload;
             std::vector<rpc::back_channel_entry> back_channel;
         };
 

@@ -5,10 +5,13 @@
 
 #include <security/attestation/fake_backend.h>
 
+#include <fmt/format.h>
+
 #include <algorithm>
+#include <iterator>
 #include <limits>
 #include <optional>
-#include <sstream>
+#include <string_view>
 #include <utility>
 
 namespace canopy::security::attestation
@@ -26,6 +29,9 @@ namespace canopy::security::attestation
         };
 
         constexpr size_t max_fake_evidence_field_size = 1024 * 1024;
+        constexpr std::string_view fake_session_id_prefix = "fake-enclave-session:";
+        constexpr size_t fake_session_id_separator_count = 2;
+        constexpr size_t uint64_decimal_max_digits = std::numeric_limits<uint64_t>::digits10 + 1;
 
         auto can_append(
             const std::vector<uint8_t>& out,
@@ -252,6 +258,7 @@ namespace canopy::security::attestation
                 return value.enclave_id;
             return "/" + value.zone_id;
         }
+
     } // namespace
 
     auto security_level_rank(security_level level) noexcept -> int
@@ -300,9 +307,12 @@ namespace canopy::security::attestation
         if (right < left)
             std::swap(left, right);
 
-        std::ostringstream out;
-        out << "fake-enclave-session:" << left << ":" << right << ":" << transcript_id;
-        return out.str();
+        std::string out;
+        out.reserve(
+            fake_session_id_prefix.size() + left.size() + right.size() + fake_session_id_separator_count
+            + uint64_decimal_max_digits);
+        fmt::format_to(std::back_inserter(out), "{}{}:{}:{}", fake_session_id_prefix, left, right, transcript_id);
+        return out;
     }
 
     fake_backend::fake_backend(std::string development_key)

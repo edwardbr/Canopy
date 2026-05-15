@@ -46,6 +46,9 @@ namespace rpc
         // notify callers that a transport is down unidirectional call
         virtual CORO_TASK(void) transport_down(transport_down_params params) = 0;
 
+        // route-level handshake used to establish security context with a target zone before object calls
+        virtual CORO_TASK(handshake_result) handshake(handshake_params params) = 0;
+
         // post log, telemetry, or diagnostic report events towards the root zone as a one-way message
         virtual CORO_TASK(void) post_report(rpc::telemetry_event event) = 0;
 

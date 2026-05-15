@@ -1292,6 +1292,30 @@ namespace rpc
         }
     }
 
+    CORO_TASK(handshake_result)
+    transport::inbound_handshake(handshake_params params)
+    {
+        if (get_status() >= transport_status::DISCONNECTING)
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+
+        std::shared_ptr<i_marshaller> dest;
+        if (params.destination_zone_id.get_address().same_zone(zone_id_.get_address()))
+        {
+            dest = service_.lock();
+        }
+        else
+        {
+            dest = get_passthrough(params.destination_zone_id, params.caller_zone_id);
+            if (!dest)
+                CO_RETURN handshake_result{error::ZONE_NOT_FOUND(), 0, {}, {}};
+        }
+
+        if (!dest)
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+
+        CO_RETURN CO_AWAIT dest->handshake(std::move(params));
+    }
+
     CORO_TASK(send_result) transport::send(send_params params)
     {
         [[maybe_unused]] auto remote_object_id = params.remote_object_id;
@@ -1453,6 +1477,11 @@ namespace rpc
         CO_AWAIT outbound_transport_down(std::move(params));
     }
 
+    CORO_TASK(handshake_result) transport::handshake(handshake_params params)
+    {
+        CO_RETURN CO_AWAIT outbound_handshake(std::move(params));
+    }
+
     CORO_TASK(void) transport::post_report(rpc::telemetry_event event)
     {
         CO_AWAIT outbound_post_report(std::move(event));
@@ -1486,6 +1515,11 @@ namespace rpc
         if (!svc)
             CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         CO_RETURN CO_AWAIT svc->get_new_zone_id(std::move(params));
+    }
+
+    CORO_TASK(handshake_result) transport::outbound_handshake(handshake_params)
+    {
+        CO_RETURN handshake_result{rpc::error::NOT_IMPLEMENTED(), 0, {}, {}};
     }
 
 } // namespace rpc

@@ -59,6 +59,8 @@ namespace rpc
         add_ref_options build_out_param_channel;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t request_id = 0;
+        uint64_t payload_type_id = 0;
+        std::vector<char> payload;
     };
 
     struct release_params
@@ -67,6 +69,18 @@ namespace rpc
         remote_object remote_object_id;
         caller_zone caller_zone_id;
         release_options options;
+        std::vector<rpc::back_channel_entry> in_back_channel;
+        uint64_t payload_type_id = 0;
+        std::vector<char> payload;
+    };
+
+    struct handshake_params
+    {
+        uint64_t protocol_version;
+        caller_zone caller_zone_id;
+        destination_zone destination_zone_id;
+        uint64_t type_id = 0;
+        std::vector<char> payload;
         std::vector<rpc::back_channel_entry> in_back_channel;
     };
 
@@ -105,6 +119,26 @@ namespace rpc
             std::vector<rpc::back_channel_entry> out_back_channel)
             : error_code(error_code)
             , out_back_channel(std::move(out_back_channel))
+        {
+        }
+    };
+
+    struct handshake_result : standard_result
+    {
+        uint64_t type_id = 0;
+        std::vector<char> payload;
+
+        handshake_result() = default;
+        handshake_result(
+            int ec,
+            uint64_t tid,
+            std::vector<char> p,
+            std::vector<rpc::back_channel_entry> bce)
+            : standard_result(
+                  ec,
+                  std::move(bce))
+            , type_id(tid)
+            , payload(std::move(p))
         {
         }
     };

@@ -79,6 +79,23 @@ namespace canopy::security::attestation
         uint64_t session_epoch{1};
     };
 
+    enum class route_attestation_status
+    {
+        unknown,
+        handshaking,
+        attested,
+        unattested_allowed,
+        failed
+    };
+
+    struct route_attestation_state
+    {
+        route_attestation_status status{route_attestation_status::unknown};
+        security_context context;
+        std::string failure_reason;
+        uint64_t failure_epoch{0};
+    };
+
     enum class protected_rpc_direction
     {
         caller_to_destination,

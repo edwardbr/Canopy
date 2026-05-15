@@ -392,6 +392,8 @@ namespace rpc
 
         CORO_TASK(void) inbound_transport_down(transport_down_params params);
 
+        CORO_TASK(handshake_result) inbound_handshake(handshake_params params);
+
         CORO_TASK(void) inbound_post_report(rpc::telemetry_event event);
 
         /////////////////////////////////
@@ -420,6 +422,7 @@ namespace rpc
         CORO_TASK(standard_result) release(release_params params) final;
         CORO_TASK(void) object_released(object_released_params params) final;
         CORO_TASK(void) transport_down(transport_down_params params) final;
+        CORO_TASK(handshake_result) handshake(handshake_params params) final;
         CORO_TASK(void) post_report(rpc::telemetry_event event) final;
 
         // Requests a new zone ID from the root zone.
@@ -473,6 +476,7 @@ namespace rpc
         virtual CORO_TASK(standard_result) outbound_release(release_params params) = 0;
         virtual CORO_TASK(void) outbound_object_released(object_released_params params) = 0;
         virtual CORO_TASK(void) outbound_transport_down(transport_down_params params) = 0;
+        virtual CORO_TASK(handshake_result) outbound_handshake(handshake_params params);
     };
 
 } // namespace rpc
