@@ -3,6 +3,8 @@
 
 #include "video_session.h"
 
+#include <utility>
+
 #include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 
@@ -17,6 +19,10 @@ namespace websocket_demo
 
         video_session::~video_session()
         {
+            {
+                std::lock_guard<std::mutex> guard(mailbox_mutex_);
+                stopping_ = true;
+            }
             if (decoder_ready_)
                 vpx_codec_destroy(&decoder_);
             if (encoder_ready_)
@@ -27,6 +33,13 @@ namespace websocket_demo
         {
             sink_ = sink;
             return rpc::error::OK();
+        }
+
+        void video_session::set_scheduler(const std::shared_ptr<coro::scheduler>& scheduler)
+        {
+            // The scheduler, never the service — see the header note on the
+            // service -> demo -> video_session reference cycle.
+            scheduler_ = scheduler;
         }
 
         bool video_session::ensure_decoder()
@@ -71,13 +84,10 @@ namespace websocket_demo
             // cpu_used is the dominant realtime speed/quality lever for VP8.
             // Range [-16, 16]; higher = much faster encode, lower quality.
             // Max it: the demo needs to keep up with the camera, not look
-            // pretty. Without this the synchronous per-frame encode falls
-            // behind 15 fps and latency grows unbounded.
+            // pretty.
             vpx_codec_control(&encoder_, VP8E_SET_CPUUSED, 16);
             vpx_codec_control(&encoder_, VP8E_SET_STATIC_THRESHOLD, 1000);
 
-            frame_width_ = width;
-            frame_height_ = height;
             encoder_ready_ = true;
             return true;
         }
@@ -100,6 +110,99 @@ namespace websocket_demo
             }
         }
 
+        CORO_TASK(void)
+        video_session::process_one(
+            uint64_t seq,
+            uint64_t pts_us,
+            uint32_t flags,
+            std::vector<uint8_t> payload)
+        {
+            std::ignore = flags;
+
+            if (!sink_)
+                CO_RETURN;
+            if (!ensure_decoder())
+            {
+                RPC_WARNING("vp8 decoder init failed");
+                CO_RETURN;
+            }
+
+            if (vpx_codec_decode(&decoder_, payload.data(), static_cast<unsigned int>(payload.size()), nullptr, 0)
+                != VPX_CODEC_OK)
+            {
+                // Likely a delta arriving before a keyframe; skip silently.
+                CO_RETURN;
+            }
+
+            vpx_codec_iter_t dec_iter = nullptr;
+            vpx_image_t* img = vpx_codec_get_frame(&decoder_, &dec_iter);
+            if (!img)
+                CO_RETURN;
+
+            transform_frame(img);
+
+            if (!ensure_encoder(img->d_w, img->d_h))
+            {
+                RPC_WARNING("vp8 encoder init failed");
+                CO_RETURN;
+            }
+
+            vpx_enc_frame_flags_t enc_flags = VPX_EFLAG_FORCE_KF;
+            if (vpx_codec_encode(&encoder_, img, encode_pts_++, 1, enc_flags, VPX_DL_REALTIME) != VPX_CODEC_OK)
+            {
+                RPC_WARNING("vp8 encode failed");
+                CO_RETURN;
+            }
+
+            std::vector<uint8_t> out_payload;
+            uint32_t out_flags = 0;
+            vpx_codec_iter_t enc_iter = nullptr;
+            const vpx_codec_cx_pkt_t* pkt = nullptr;
+            while ((pkt = vpx_codec_get_cx_data(&encoder_, &enc_iter)) != nullptr)
+            {
+                if (pkt->kind != VPX_CODEC_CX_FRAME_PKT)
+                    continue;
+                const auto* buf = static_cast<const uint8_t*>(pkt->data.frame.buf);
+                out_payload.assign(buf, buf + pkt->data.frame.sz);
+                if (pkt->data.frame.flags & VPX_FRAME_IS_KEY)
+                    out_flags |= VIDEO_FLAG_KEYFRAME;
+                break; // one encoded frame per input frame in realtime mode
+            }
+
+            if (out_payload.empty())
+                CO_RETURN;
+
+            co_await sink_->push_frame(seq, pts_us, out_flags, out_payload);
+            CO_RETURN;
+        }
+
+        CORO_TASK(void)
+        video_session::worker_loop()
+        {
+            for (;;)
+            {
+                uint64_t seq = 0;
+                uint64_t pts = 0;
+                uint32_t flags = 0;
+                std::vector<uint8_t> payload;
+                {
+                    std::lock_guard<std::mutex> guard(mailbox_mutex_);
+                    if (stopping_ || !has_pending_)
+                    {
+                        worker_running_ = false;
+                        CO_RETURN;
+                    }
+                    seq = pending_seq_;
+                    pts = pending_pts_;
+                    flags = pending_flags_;
+                    payload = std::move(pending_payload_);
+                    pending_payload_.clear();
+                    has_pending_ = false;
+                }
+                co_await process_one(seq, pts, flags, std::move(payload));
+            }
+        }
+
         CORO_TASK(int)
         video_session::forward_frame(
             uint64_t seq,
@@ -110,65 +213,39 @@ namespace websocket_demo
             if (!sink_)
                 CO_RETURN rpc::error::OK();
 
-            std::vector<uint8_t> out_payload;
-            uint32_t out_flags = 0;
-
+            // No scheduler (CALCULATOR_ONLY enclave compile-fit has no
+            // rpc::service): fall back to synchronous inline processing —
+            // correctness over latency there.
+            if (!scheduler_)
             {
-                std::lock_guard<std::mutex> guard(codec_mutex_);
+                co_await process_one(seq, pts_us, flags, payload);
+                CO_RETURN rpc::error::OK();
+            }
 
-                if (!ensure_decoder())
-                {
-                    RPC_WARNING("vp8 decoder init failed");
+            bool start_worker = false;
+            {
+                std::lock_guard<std::mutex> guard(mailbox_mutex_);
+                if (stopping_)
                     CO_RETURN rpc::error::OK();
-                }
-
-                if (vpx_codec_decode(&decoder_, payload.data(), static_cast<unsigned int>(payload.size()), nullptr, 0)
-                    != VPX_CODEC_OK)
+                // Overwrite: only the freshest frame survives. Intermediate
+                // frames the worker hasn't picked up are deliberately dropped.
+                pending_seq_ = seq;
+                pending_pts_ = pts_us;
+                pending_flags_ = flags;
+                pending_payload_ = payload;
+                has_pending_ = true;
+                if (!worker_running_)
                 {
-                    // Likely a delta arriving before a keyframe; skip silently.
-                    CO_RETURN rpc::error::OK();
-                }
-
-                vpx_codec_iter_t dec_iter = nullptr;
-                vpx_image_t* img = vpx_codec_get_frame(&decoder_, &dec_iter);
-                if (!img)
-                    CO_RETURN rpc::error::OK();
-
-                transform_frame(img);
-
-                if (!ensure_encoder(img->d_w, img->d_h))
-                {
-                    RPC_WARNING("vp8 encoder init failed");
-                    CO_RETURN rpc::error::OK();
-                }
-
-                vpx_enc_frame_flags_t enc_flags = VPX_EFLAG_FORCE_KF;
-                if (vpx_codec_encode(&encoder_, img, encode_pts_++, 1, enc_flags, VPX_DL_REALTIME)
-                    != VPX_CODEC_OK)
-                {
-                    RPC_WARNING("vp8 encode failed");
-                    CO_RETURN rpc::error::OK();
-                }
-
-                vpx_codec_iter_t enc_iter = nullptr;
-                const vpx_codec_cx_pkt_t* pkt = nullptr;
-                while ((pkt = vpx_codec_get_cx_data(&encoder_, &enc_iter)) != nullptr)
-                {
-                    if (pkt->kind != VPX_CODEC_CX_FRAME_PKT)
-                        continue;
-                    const auto* buf = static_cast<const uint8_t*>(pkt->data.frame.buf);
-                    out_payload.assign(buf, buf + pkt->data.frame.sz);
-                    if (pkt->data.frame.flags & VPX_FRAME_IS_KEY)
-                        out_flags |= VIDEO_FLAG_KEYFRAME;
-                    break; // one encoded frame per input frame in realtime mode
+                    worker_running_ = true;
+                    start_worker = true;
                 }
             }
 
-            std::ignore = flags;
-            if (out_payload.empty())
-                CO_RETURN rpc::error::OK();
+            if (start_worker)
+                scheduler_->spawn_detached(worker_loop());
 
-            co_await sink_->push_frame(seq, pts_us, out_flags, out_payload);
+            // Return immediately: the transport receive loop is never blocked
+            // by codec work, so no kernel-socket backlog forms.
             CO_RETURN rpc::error::OK();
         }
     }

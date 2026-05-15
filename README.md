@@ -357,6 +357,7 @@ Key entry points:
 - **Build System**: Ninja (recommended)
 - **Node.js**: 18+ (for llhttp code generation)
 - **OpenSSL**: Development headers (libssl-dev on Linux, OpenSSL SDK on Windows)
+- **nasm**: 2.14+ (only for the websocket video demo; libvpx's x86 assembly. Fedora: `sudo dnf install nasm`)
 - **clang-tidy** (optional): LLVM 16+ for static analysis; LLVM 21+ recommended for full check coverage including `modernize-use-designated-initializers`
 
 ### Build

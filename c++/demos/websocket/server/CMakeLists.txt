@@ -53,8 +53,6 @@ if(TARGET transport_websocket_enclave)
                              PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
 endif()
 
-include(CanopyLibvpx)
-
 add_executable(
   websocket_server
   main.cpp
@@ -89,9 +87,14 @@ target_link_libraries(
          canopy_file_system
          canopy_http_server
          canopy_network_config
-         canopy_libvpx
          ${CANOPY_LIBRARIES}
          rpc_log)
+
+# libvpx is provided centrally by c++/submodules/CMakeLists.txt (gated on
+# demos + websocket). Link it only if that target exists.
+if(TARGET canopy_libvpx)
+  target_link_libraries(websocket_server PUBLIC canopy_libvpx)
+endif()
 
 target_compile_options(websocket_server PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(websocket_server PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

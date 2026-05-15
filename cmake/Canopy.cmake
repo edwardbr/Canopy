@@ -331,6 +331,11 @@ if(NOT DEPENDENCIES_LOADED)
       endif()
       if(CANOPY_BUILD_DEMOS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/llama.cpp)
+        # libvpx is needed only by the websocket video demo (update=none in
+        # .gitmodules; selectively initialised here, like llama.cpp).
+        if(CANOPY_BUILD_WEBSOCKET)
+          list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libvpx)
+        endif()
       endif()
 
       set(CANOPY_FULL_HISTORY_SUBMODULES c++/submodules/yas c++/submodules/fmt submodules/idlparser c++/submodules/args)

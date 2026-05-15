@@ -392,7 +392,11 @@ const VIDEO_HEIGHT = 240;
 // ~10 fps keeps the inbound rate at/below what the enclave drains so no
 // multi-second kernel-socket backlog forms. A worker that processes only the
 // latest frame (roadmap) would lift this.
-const VIDEO_FRAMERATE = 10;
+// The enclave now self-regulates (drops stale frames), so the browser can
+// capture at a higher rate — more frames give the enclave fresher choices
+// and more get through, which is the main smoothness lever. The encode-queue
+// guard still prevents the browser from over-buffering.
+const VIDEO_FRAMERATE = 24;
 const VIDEO_MAX_ENCODE_QUEUE = 1;
 // Modest bitrate at 320x240: smaller frames decode faster in the enclave and
 // the smaller re-encoded payload pushes back quicker, both shortening the
@@ -409,7 +413,19 @@ const videoState = {
     sentFrames: 0,
     receivedFrames: 0,
     droppedFrames: 0,
+    latestFrame: null,
+    rafHandle: null,
 };
+
+// Paint the most recent decoded frame at display refresh. Decoupling paint
+// from decoder-output timing turns irregular delivery into smooth motion.
+function videoPaintLoop() {
+    if (!videoState.active) return;
+    if (videoState.latestFrame) {
+        videoRemoteCtx.drawImage(videoState.latestFrame, 0, 0, videoRemote.width, videoRemote.height);
+    }
+    videoState.rafHandle = requestAnimationFrame(videoPaintLoop);
+}
 
 function updateVideoStats() {
     videoStatsEl.textContent =
@@ -438,11 +454,17 @@ async function startVideo() {
         });
         videoLocal.srcObject = videoState.mediaStream;
 
-        // Decoder for inbound stylized frames.
+        // Decoder for inbound stylized frames. Decoded frames are stashed,
+        // not drawn here: a requestAnimationFrame loop paints the most recent
+        // frame at the display refresh rate, so irregular network/enclave
+        // delivery cadence doesn't show as judder. Latency is unaffected —
+        // there's no queue, only ever the single freshest frame.
         videoState.decoder = new VideoDecoder({
             output: function(frame) {
-                videoRemoteCtx.drawImage(frame, 0, 0, videoRemote.width, videoRemote.height);
-                frame.close();
+                if (videoState.latestFrame) {
+                    videoState.latestFrame.close();
+                }
+                videoState.latestFrame = frame;
             },
             error: function(err) {
                 console.error('VideoDecoder error:', err);
@@ -500,6 +522,7 @@ async function startVideo() {
         videoState.active = true;
         videoStartBtn.disabled = true;
         videoStopBtn.disabled = false;
+        videoState.rafHandle = requestAnimationFrame(videoPaintLoop);
         addMessage('system', `Video started (${VIDEO_CODEC} ${VIDEO_WIDTH}x${VIDEO_HEIGHT}@${VIDEO_FRAMERATE})`);
 
         (async function pump() {
@@ -538,6 +561,14 @@ async function startVideo() {
 
 function stopVideo() {
     videoState.active = false;
+    if (videoState.rafHandle) {
+        cancelAnimationFrame(videoState.rafHandle);
+        videoState.rafHandle = null;
+    }
+    if (videoState.latestFrame) {
+        try { videoState.latestFrame.close(); } catch (_) { /* ignore */ }
+        videoState.latestFrame = null;
+    }
     if (videoState.reader) {
         try { videoState.reader.cancel(); } catch (_) { /* ignore */ }
         videoState.reader = null;

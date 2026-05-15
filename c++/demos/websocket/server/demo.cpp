@@ -58,6 +58,7 @@ namespace websocket_demo
                 signal_stop_ = std::make_shared<bool>(false);
                 complete_ = std::make_shared<bool>(true);
                 evt_stopped_ = std::make_shared<rpc::event>();
+                video_.set_scheduler(service_->get_scheduler());
             }
 #endif
 

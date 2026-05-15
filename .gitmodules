@@ -71,3 +71,8 @@
 	url = https://github.com/Mbed-TLS/mbedtls.git
 	update = none
 	shallow = true
+[submodule "c++/submodules/libvpx"]
+	path = c++/submodules/libvpx
+	url = https://github.com/webmproject/libvpx.git
+	shallow = true
+	update = none

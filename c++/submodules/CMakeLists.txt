@@ -208,6 +208,14 @@ if(CANOPY_BUILD_COROUTINE)
     # set(GGML_CUDA ON) set(CMAKE_CUDA_ARCHITECTURES 61) set(GGML_CUDA_F16 OFF) set(CMAKE_CUDA_COMPILER
     # /usr/local/cuda/bin/nvcc) set(CMAKE_CUDA_FLAGS "-allow-unsupported-compiler")
     add_subdirectory(llama.cpp)
+
+    # libvpx powers the websocket video demo only. Pinned shallow submodule;
+    # its own configure+make build is driven by cmake/CanopyLibvpx.cmake, which
+    # defines the GLOBAL imported target `canopy_libvpx`. Loaded only here so
+    # non-demo / non-websocket builds never touch libvpx or require nasm.
+    if(CANOPY_BUILD_WEBSOCKET)
+      include(CanopyLibvpx)
+    endif()
   endif()
 endif()
 
