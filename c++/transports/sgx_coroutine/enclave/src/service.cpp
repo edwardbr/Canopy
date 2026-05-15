@@ -177,6 +177,20 @@ namespace rpc
             failed_state.failure_reason = std::move(reason);
             service.set_attestation_route_state(route_zone_id, std::move(failed_state));
         }
+
+        [[nodiscard]] auto sanitise_public_control_result(
+            rpc::standard_result result,
+            const char* operation) -> rpc::standard_result
+        {
+            if (result.error_code == rpc::error::OK() || rpc::error::is_error(result.error_code))
+                return result;
+
+            RPC_WARNING(
+                "control operation {} exposed non-RPC status {}; replacing with PROTOCOL_ERROR", operation, result.error_code);
+            result.error_code = rpc::error::PROTOCOL_ERROR();
+            result.out_back_channel.clear();
+            return result;
+        }
     }
 
     enclave_service::~enclave_service()
@@ -592,7 +606,8 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
-        CO_RETURN CO_AWAIT child_service::add_ref(std::move(params));
+        auto result = CO_AWAIT child_service::add_ref(std::move(params));
+        CO_RETURN sanitise_public_control_result(std::move(result), "add_ref");
     }
 
     CORO_TASK(standard_result)
@@ -626,7 +641,8 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
-        CO_RETURN CO_AWAIT child_service::release(std::move(params));
+        auto result = CO_AWAIT child_service::release(std::move(params));
+        CO_RETURN sanitise_public_control_result(std::move(result), "release");
     }
 
     CORO_TASK(void)
@@ -898,7 +914,8 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
-        CO_RETURN CO_AWAIT child_service::try_cast(std::move(params));
+        auto result = CO_AWAIT child_service::try_cast(std::move(params));
+        CO_RETURN sanitise_public_control_result(std::move(result), "try_cast");
     }
 
     CORO_TASK(send_result)
@@ -993,7 +1010,8 @@ namespace rpc
             CO_RETURN standard_result{request.error.error_code, {}};
         }
 
-        CO_RETURN CO_AWAIT child_service::outbound_try_cast(std::move(request.value.params), std::move(transport));
+        auto result = CO_AWAIT child_service::outbound_try_cast(std::move(request.value.params), std::move(transport));
+        CO_RETURN sanitise_public_control_result(std::move(result), "outbound_try_cast");
     }
 
     CORO_TASK(standard_result)
@@ -1024,7 +1042,8 @@ namespace rpc
             }
         }
 
-        CO_RETURN CO_AWAIT child_service::outbound_add_ref(std::move(params), std::move(transport));
+        auto result = CO_AWAIT child_service::outbound_add_ref(std::move(params), std::move(transport));
+        CO_RETURN sanitise_public_control_result(std::move(result), "outbound_add_ref");
     }
 
     CORO_TASK(standard_result)
@@ -1056,7 +1075,8 @@ namespace rpc
             }
         }
 
-        CO_RETURN CO_AWAIT child_service::outbound_release(std::move(params), std::move(transport));
+        auto result = CO_AWAIT child_service::outbound_release(std::move(params), std::move(transport));
+        CO_RETURN sanitise_public_control_result(std::move(result), "outbound_release");
     }
 
     CORO_TASK(void)

@@ -1,0 +1,226 @@
+# Intermediate Visibility Audit
+
+This note records what an intermediate transport, passthrough, or route zone
+can currently see in protected RPC traffic, and what it actually needs in
+order to forward that traffic.
+
+The audit conclusion is:
+
+- application object ids are not needed by intermediates;
+- real application `interface_id` values are not needed by intermediates;
+- real application `method_id` values are not needed by intermediates;
+- payload bytes and return values are not needed by intermediates;
+- public back-channel entries are intentionally visible and mutable;
+- route endpoints, carrier type, and narrowly scoped route-control state remain
+  visible.
+
+The current protected envelope already follows the first three rules for
+protected `send`, `post`, `try_cast`, `add_ref`, `release`, and
+`object_released`. `transport_down` has both a protected endpoint-originated
+form and an intentionally plaintext route-layer form because an intermediate
+may have to report that its route to a downstream zone failed.
+
+## Classification
+
+Fields are classified as:
+
+- **Public route**: required by transports or passthroughs to choose the next
+  hop.
+- **Public carrier**: required by the receiver to identify or authenticate the
+  protected payload carrier, but not application data.
+- **Public mutable**: intentionally readable and appendable by intermediates.
+- **Public route-control**: currently visible because the transport or
+  passthrough uses it for route or lifetime accounting.
+- **Encrypted**: endpoint-only data recovered from the protected plaintext.
+- **Residual leak**: visible today but not needed by intermediates.
+- **Local-only**: should not cross a route boundary.
+
+## Field Rules
+
+### Zone Identity
+
+`caller_zone_id` and destination route zone are public route fields. Current
+transport and passthrough forwarding code uses the pair of caller zone and
+destination zone to choose or create the route.
+
+The destination route zone is carried as either:
+
+- `remote_object_id.as_zone()` for object-addressed operations; or
+- `destination_zone_id` for route-addressed operations.
+
+Only the zone part is needed by intermediates. The object-id bits are endpoint
+data.
+
+### Object Ids
+
+Object ids are encrypted endpoint data for protected traffic. Intermediates
+route on the destination zone only. The public `remote_object_id` for a
+protected message should therefore have object id zero or an equivalent
+route-only representation.
+
+The destination endpoint reconstructs the full `remote_object_id` from the
+decrypted plaintext and verifies that the visible route-only destination is
+compatible with it.
+
+### Interface And Method Ids
+
+Real application `interface_id` and `method_id` values are encrypted endpoint
+data for protected traffic.
+
+For `send` and `post`, the public `interface_id` is only the
+`rpc::encrypted_payload` carrier fingerprint and the public `method_id` is the
+protected outer method sentinel. For `try_cast`, the requested interface id is
+inside the encrypted payload. This means intermediates can identify "this is a
+protected carrier" but cannot identify the application interface or method.
+
+### Back Channels
+
+Back-channel vectors are public mutable metadata. Intermediates may append
+entries such as telemetry context. Protected RPC must not compare the received
+back-channel vector with the sender's encrypted snapshot, and must not include
+the outer back-channel vector in AEAD associated data.
+
+Security-sensitive back-channel entries need their own issuer identity and
+signature or MAC inside the entry payload.
+
+### Counters And Request Ids
+
+`session_id`, `session_epoch`, and `e2e_counter` in `rpc::encrypted_payload`
+are public carrier fields. They are needed by the receiver to find the session,
+derive the AEAD key, build the nonce, and reject replay. They are not
+application data.
+
+`send_params::request_id` is currently interpreted as a public
+`transport_request_id` in protected traffic. It is a transport correlation
+value, not the end-to-end service request id. The protected plaintext reserves
+`service_request_id` for future endpoint-only semantics.
+
+### Error Codes
+
+Application result codes only apply to `send` in the RPC model. `post` is
+one-way and has no response code. Protected `send` encrypts the real
+`send_result::error_code` inside the protected response, including positive
+application-domain values. The public outer response error is only the carrier
+status. If that public carrier status is non-OK it must be a built-in
+`rpc::error::*` value; a positive application-domain value in the public
+carrier is invalid.
+
+`standard_result::error_code` on `try_cast`, `add_ref`, and `release` is a
+transport/control result. It should be either `rpc::error::OK()` or a value in
+the built-in `rpc::error::*` range. Positive values on these control paths are
+not valid application results; they should be treated as invalid data or a
+protocol/security error rather than forwarded to an intermediate.
+
+## Operation Matrix
+
+| Operation | Required public fields | Currently public carrier/control fields | Encrypted fields | Residual exposure |
+| --- | --- | --- | --- | --- |
+| `send` | caller zone, destination zone | protocol version, fixed protected tag, fixed carrier encoding, transport request id, encrypted payload session/counter, public back-channel | object id, real interface id, method id, application tag, application encoding, input data, sender back-channel snapshot, service request id | transport request id and session/counter timing metadata |
+| `send` response | return route from transport call | outer carrier success code, encrypted payload session/counter, public out-back-channel | real result error code, output buffer, sender out-back-channel snapshot | response timing and carrier success/failure |
+| `post` | caller zone, destination zone | protocol version, fixed protected tag, fixed carrier encoding, encrypted payload session/counter, public back-channel | object id, real interface id, method id, application tag, application encoding, input data, sender back-channel snapshot | session/counter timing metadata |
+| `try_cast` | caller zone, destination zone | protected payload type id, carrier interface id, encrypted payload session/counter, public back-channel, RPC control result | object id, requested interface id, sender back-channel snapshot | positive result codes must not appear on this path |
+| `add_ref` | caller zone, destination zone | requesting zone, request id, `build_out_param_channel`, protected payload type id, encrypted payload session/counter, public back-channel, RPC control result | object id, payload, sender back-channel snapshot | requesting zone and route-control options are public until route construction is refactored; positive result codes must not appear on this path |
+| `release` | caller zone, destination zone | `release_options`, protected payload type id, encrypted payload session/counter, public back-channel, RPC control result | object id, payload, sender back-channel snapshot | release option is public until passthrough lifetime accounting is refactored; positive result codes must not appear on this path |
+| `object_released` | caller zone, owner route zone | protected payload type id, encrypted payload session/counter, public back-channel | released object id, payload, sender back-channel snapshot | no protected response body; timing still visible |
+| protected `transport_down` | caller zone, destination zone | protected payload type id, encrypted payload session/counter, public back-channel | endpoint-originated private payload and sender back-channel snapshot | route failure timing visible |
+| route-layer `transport_down` | caller zone, destination zone | public back-channel | none | intentionally unauthenticated route-liveness statement unless policy adds hop trust |
+| `handshake` | caller zone, destination zone | handshake type id, payload, public back-channel | none in current route-level bootstrap | attestation evidence and verdict metadata are visible to intermediates on routed handshakes |
+| `post_report` | route to reporting service | telemetry event | none | intentionally diagnostic; needs separate redaction policy |
+| `get_new_zone_id` | route to allocator/root | public back-channel | none | allocator influence and returned zone id need policy review |
+
+## Non-Marshaller Traffic
+
+Protected RPC interposes between generated/internal proxies and transports,
+and between destination transports and stubs. That leaves a small set of
+transport/service communications that are intentionally outside normal
+application dispatch and need separate policy:
+
+- **Stream connection setup.** `init_client_channel_send`,
+  `init_client_initial_channel_response`, and `init_client_channel_response`
+  establish adjacency, initial remote objects, and expected interface ids. In
+  an attested stream this belongs to the stream sign-on path. For routed
+  post-connect references, the subsequent `add_ref` route-attestation path must
+  validate the referenced zone before application code can use it.
+- **Route handshakes.** `i_marshaller::handshake()` carries attestation
+  request/response payloads. It is bootstrap/control traffic, not application
+  RPC. Intermediates may see its route fields and currently may see the
+  attestation payload unless a later privacy layer is added.
+- **Route liveness.** Plaintext route-layer `transport_down` is allowed only as
+  a scoped statement by an intermediate about the route it controls. It must
+  not be interpreted as a protected statement from the failed downstream
+  enclave.
+- **Telemetry and diagnostics.** `post_report` is intentionally diagnostic.
+  It needs a redaction policy distinct from application payload encryption.
+- **Zone allocation.** `get_new_zone_id` is allocator/root control traffic.
+  It should not carry application payloads, and future policy must bind any
+  allocation decision to enclave/route identity.
+- **Stream close.** `close_connection_send` and `close_connection_ack` are
+  transport lifecycle messages. They should carry no application object,
+  interface, method, or payload data.
+
+Any new transport message outside this list should be treated as suspicious
+until it is classified as public route/control metadata, encrypted endpoint
+payload, or local-only state.
+
+## Current Residual Leaks
+
+The following data is still visible but is not required as application data by
+intermediate transports:
+
+- `add_ref_params::build_out_param_channel`;
+- `add_ref_params::requesting_zone_id`;
+- `release_params::options`;
+- route-attestation `handshake_params::type_id` and payload on routed
+  handshakes;
+- `encoding` fields on streaming `object_released_send` and
+  `transport_down_send`, which are carrier legacy fields rather than route
+  requirements;
+- telemetry/logging fields when intermediate telemetry is enabled.
+
+These are not all equally serious. The most important distinction is that none
+of them should expose application object ids, real application method ids, real
+application interface ids, or encrypted application payload bytes.
+
+## Recommended Next Refactors
+
+1. Continue adding assertions/tests that protected control paths never put
+   positive `standard_result::error_code` values on the wire. Protected `send`
+   already rejects public positive carrier statuses and keeps real application
+   result codes inside the encrypted response.
+2. Add a protected `standard_result` carrier for `try_cast`, `add_ref`, and
+   `release` only if those control paths later gain legitimate positive
+   application-domain results. For the current model they should expose only
+   `OK()` or built-in `rpc::error::*` values.
+3. Split `add_ref` route construction from endpoint lifetime semantics so
+   `build_out_param_channel`, `requesting_zone_id`, and object id can move
+   fully behind the protected payload.
+4. Refactor passthrough lifetime accounting so protected `release` does not
+   need visible `release_options`. A route-local reference token or state
+   table would be cleaner than exposing shared-vs-optimistic intent.
+5. Remove or ignore legacy `encoding` fields from streaming
+   `object_released_send` and `transport_down_send`.
+6. Audit telemetry callbacks and logs so intermediate telemetry records only
+   public route fields and carrier metadata, never decrypted endpoint fields.
+7. Decide whether routed attestation handshakes need privacy beyond integrity.
+   Evidence is often intended to be verifiable, but policy may still consider
+   measurements, backend identifiers, debug flags, or verdict detail sensitive.
+
+## Test Expectations
+
+Runtime observers for protected traffic should fail if they see:
+
+- a non-zero public object id in protected object-addressed operations;
+- a real application method id in protected `send` or `post`;
+- a real requested interface id in protected `try_cast`;
+- plaintext application payload bytes in protected request or response
+  carriers;
+- a positive `standard_result::error_code` on protected control paths;
+- back-channel mutation causing AEAD failure.
+
+The observer should allow:
+
+- public caller and destination route zones;
+- public mutable back-channel append operations;
+- protected payload type fingerprints;
+- public encrypted-payload session and counter metadata;
+- plaintext route-layer `transport_down` when generated by an intermediate.

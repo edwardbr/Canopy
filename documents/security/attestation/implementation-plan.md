@@ -228,6 +228,19 @@ reference-control marshaller methods.
   intermediates may append entries, the vectors are not included in AEAD
   associated data, and inbound protected requests/responses pass the received
   outer vectors onward.
+- Protected `send` keeps positive application-domain result codes inside the
+  encrypted response. The public carrier status is now limited to `OK()` or
+  built-in `rpc::error::*` control values; a positive public carrier status is
+  rejected as a protocol error.
+- `rpc::enclave_service` now sanitises `try_cast`, `add_ref`, and `release`
+  control results so non-RPC positive values are not returned on those public
+  control paths.
+- `documents/security/attestation/intermediate-visibility-audit.md` records
+  the current field-by-field visibility decision. The audit confirms that
+  intermediate transports and passthroughs need route zones, carrier metadata,
+  and current route-control fields, but do not need application object ids,
+  real application interface ids, real application method ids, or payload
+  bytes.
 - `rpc::encrypted_payload` is pinned in `interfaces/rpc/rpc_types.idl` with:
   - public `session_id`;
   - public `session_epoch`;
@@ -277,6 +290,10 @@ reference-control marshaller methods.
   - protected send request/response wrapping and unwrapping;
   - protected `try_cast`, `add_ref`, `release`, `object_released`, and
     `transport_down` wrapping and unwrapping;
+  - positive application-domain `send` result codes are recovered only after
+    decrypting the protected response;
+  - positive public carrier statuses on protected `send` responses are
+    rejected as protocol errors;
   - protected outer route carriers hide object ids while preserving
     decrypt-time object reconstruction;
   - tampered protected ciphertext rejection.
@@ -411,10 +428,15 @@ reference-control marshaller methods.
 
 ### Current Best Next Step
 
-The next implementation slice should be a visibility audit across all
-marshaller operations. The audit should classify each field as public routing
-data, mutable public back-channel context, public AEAD-bound data,
-end-to-end encrypted data, local-only state, or a residual leak.
+The next implementation slice should continue enforcing the visibility audit in
+tests and guardrails:
+
+- add direct regression coverage around protected control paths such as
+  `try_cast`, `add_ref`, and `release` so they never put positive
+  `standard_result::error_code` values on the wire;
+- transport setup, teardown, telemetry, `post_report`, `get_new_zone_id`, and
+  route-layer `transport_down` need explicit review so they cannot bypass the
+  protected marshaller assumptions.
 
 ## Architectural Layers
 

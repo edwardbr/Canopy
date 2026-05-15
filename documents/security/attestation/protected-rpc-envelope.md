@@ -119,6 +119,8 @@ The visibility rule is the same for all protected marshaller operations:
 intermediates may see only the route fields required to forward the message and
 public back-channel context. Method-specific details belong inside the
 encrypted payload unless an intermediate genuinely needs them for routing.
+The detailed field-by-field audit is in
+[Intermediate Visibility Audit](intermediate-visibility-audit.md).
 
 ```text
 send/post:        outer route fields visible; object/interface/method/data encrypted
@@ -174,10 +176,11 @@ a new route-attestation handshake: if the caller route is unknown, failed, or
 still handshaking, the release fails closed because the corresponding protected
 `add_ref` should already have established the route state.
 Protected `try_cast` follows the existing call route and encrypts the requested
-interface id. Its current transport response still returns the `standard_result`
-error code in the clear; that leaks less useful metadata once the interface id
-is hidden, but a future response carrier can close that remaining metadata
-leak if policy requires it.
+interface id. Its `standard_result` response is a control result: it must be
+`OK()` or a built-in `rpc::error::*` value. Positive application-domain result
+codes are valid only for `send`; protected `send` encrypts those codes inside
+the protected response and treats a positive public carrier status as a
+protocol error. `post` is one-way and has no response code.
 
 ## Plaintext Payload
 

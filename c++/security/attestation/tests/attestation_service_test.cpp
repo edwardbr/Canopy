@@ -458,6 +458,109 @@ TEST(
 
 TEST(
     AttestationService,
+    ProtectsPositiveApplicationSendResult)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 106);
+    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"}, 106);
+
+    auto caller_zone = make_zone(16);
+    auto destination_zone = make_zone(26);
+    auto remote_object = destination_zone.with_object(rpc::object(11));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 0x4242;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x1111);
+    params.method_id = rpc::method(9);
+    params.in_data = {'a', 'p', 'p'};
+    params.request_id = 16;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+
+    auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+
+    constexpr int application_result_code = 42;
+    rpc::send_result response;
+    response.error_code = application_result_code;
+    response.out_buf = {'r', 'e', 's'};
+
+    auto protected_response = protect_send_response(
+        *service_b, context_b, protected_request.value.params, unprotected_request.value.request_counter, std::move(response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    EXPECT_EQ(protected_response.value.error_code, rpc::error::OK());
+    EXPECT_NE(protected_response.value.out_buf, std::vector<char>({'r', 'e', 's'}));
+
+    auto unprotected_response = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    EXPECT_EQ(unprotected_response.value.error_code, application_result_code);
+    EXPECT_EQ(unprotected_response.value.out_buf, std::vector<char>({'r', 'e', 's'}));
+}
+
+TEST(
+    AttestationService,
+    RejectsPositiveProtectedSendCarrierStatus)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 107);
+    establish(service_b, identity{"enclave-a", "zone-a"}, 107);
+
+    auto caller_zone = make_zone(17);
+    auto destination_zone = make_zone(27);
+    auto remote_object = destination_zone.with_object(rpc::object(12));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 0x4243;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x1112);
+    params.method_id = rpc::method(10);
+    params.in_data = {'a', 'p', 'p'};
+    params.request_id = 17;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+
+    rpc::send_result route_failure;
+    route_failure.error_code = rpc::error::ZONE_NOT_FOUND();
+    auto accepted_route_failure = unprotect_send_response(
+        *service_a, context_a, protected_request.value.params, protected_request.value.request_counter, std::move(route_failure));
+    ASSERT_TRUE(accepted_route_failure.accepted) << accepted_route_failure.error.reason;
+    EXPECT_EQ(accepted_route_failure.value.error_code, rpc::error::ZONE_NOT_FOUND());
+
+    constexpr int application_result_code = 42;
+    rpc::send_result exposed_application_result;
+    exposed_application_result.error_code = application_result_code;
+    exposed_application_result.out_buf = {'r', 'e', 's'};
+
+    auto rejected_application_result = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(exposed_application_result));
+    EXPECT_FALSE(rejected_application_result.accepted);
+    EXPECT_EQ(rejected_application_result.error.error_code, rpc::error::PROTOCOL_ERROR());
+}
+
+TEST(
+    AttestationService,
     ProtectedSendRejectsTamperedCiphertext)
 {
     auto service_a = make_service("enclave-a", "zone-a");

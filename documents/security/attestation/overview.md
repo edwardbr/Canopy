@@ -158,6 +158,12 @@ Inbound marshaller methods on the enclave-derived service unwrap protected
 payloads, validate policy, and then pass the recovered plaintext request to the
 internal implementation or generated stub.
 
+The current field visibility audit is recorded in
+[Intermediate Visibility Audit](intermediate-visibility-audit.md). The key rule
+is that intermediate transports and passthroughs need caller and destination
+route zones, not application object ids, real application interface ids, or
+real application method ids.
+
 The first reference-control hardening step now combines route-state gating
 with encrypted `payload_type_id` / `payload` carriers for `try_cast`,
 `add_ref`, `release`, and `object_released`. `transport_down` can also carry a

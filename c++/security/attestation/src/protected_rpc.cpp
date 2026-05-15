@@ -57,6 +57,11 @@ namespace canopy::security::attestation
             return result;
         }
 
+        [[nodiscard]] auto is_public_control_status(int error_code) -> bool
+        {
+            return error_code == rpc::error::OK() || rpc::error::is_error(error_code);
+        }
+
         auto can_append(
             const std::vector<uint8_t>& out,
             size_t size) noexcept -> bool
@@ -1545,7 +1550,14 @@ namespace canopy::security::attestation
         rpc::send_result outer_response) -> protected_rpc_result<rpc::send_result>
     {
         if (outer_response.error_code != rpc::error::OK())
+        {
+            if (!is_public_control_status(outer_response.error_code))
+            {
+                return rejected<rpc::send_result>(
+                    rpc::error::PROTOCOL_ERROR(), "protected response exposed a non-RPC carrier status");
+            }
             return accepted(std::move(outer_response));
+        }
 
         auto envelope = deserialise_envelope(outer_response.out_buf);
         if (!envelope)
