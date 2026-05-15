@@ -178,16 +178,19 @@ it treats `remote_object_id.as_zone()` as the attestation subject instead of
 the adjacent local peer. The marker is applied during real local child-zone
 creation: the generic local child transport has a default parent-transport
 factory, and the enclave-local child transport overrides that factory to create
-a marked enclave-local parent transport.
+a marked enclave-local parent transport. The marked parent transport also
+overrides child-service creation so the local child zone is an
+`rpc::enclave_service`, not a plain `rpc::child_service`.
 
 The first reference-control hardening step now combines route-state gating
 with encrypted `payload_type_id` / `payload` carriers for `try_cast`,
-`add_ref`, `release`, and `object_released`. `transport_down` can also carry a
-protected endpoint-originated payload, but route-layer plaintext
-`transport_down` remains accepted. `rpc::enclave_service` can require add-ref
-route attestation, treat established attested routes as allowed, explicitly
-allow configured unattested routes, and fail closed for failed or
-still-handshaking routes. Unknown `add_ref` routes start the route-addressed
+`add_ref`, `release`, and `object_released`. `transport_down` has protected
+payload parsing support for a future endpoint-originated sender, but there is
+no symmetric service outbound hook until a real production call site needs one;
+route-layer plaintext `transport_down` remains accepted. `rpc::enclave_service`
+can require add-ref route attestation, treat established attested routes as
+allowed, explicitly allow configured unattested routes, and fail closed for
+failed or still-handshaking routes. Unknown `add_ref` routes start the route-addressed
 `handshake()` path and remain blocked until the service-level attestation
 exchange marks the route allowed. `try_cast`, `release`, and
 `object_released` do not start new handshakes: if the caller/owner route is

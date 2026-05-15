@@ -473,8 +473,10 @@ reference-control marshaller methods.
 - Backend selection beyond explicit construction of one service with one
   backend.
 - Strict end-to-end enforcement for every `transport_down`. The protected
-  endpoint-originated form exists, but route-layer plaintext `transport_down`
-  remains valid for intermediate-synthesized liveness notifications.
+  endpoint-originated payload carrier and inbound unwrap support exist, but
+  there is no production outbound service hook or sender yet. Route-layer
+  plaintext `transport_down` remains valid for intermediate-synthesized
+  liveness notifications.
 - A transport-route refactor that hides `add_ref` route-control options from
   intermediates. Today `build_out_param_channel` remains visible because
   `rpc::transport::inbound_add_ref` needs it before the service hook can unwrap
@@ -488,18 +490,18 @@ reference-control marshaller methods.
   parent/child local wrappers. The generic local child transport exposes only
   an overridable child-side parent-transport factory; its default behavior is
   unchanged, and the enclave-local wrapper uses that factory to create a marked
-  parent transport during real `connect_to_zone` child creation. A local B-to-C
-  hop inside one enclave does not need attestation just because it is local,
-  but if A passes an interface owned by D through B to C, C still has to
-  validate D as the referenced route/security subject. Outbound `add_ref` and
-  `release` now use the referenced owner route over marked enclave-local
-  transports instead of the adjacent local peer. Runtime coverage verifies
-  marked local creation, reference-control route subject selection, protected
-  `try_cast`, protected `object_released`, plaintext route-layer
-  `transport_down`, generic control-status guardrails, and local
-  `get_new_zone_id` sanitisation. Endpoint-originated protected
-  `transport_down` still needs an enclave-service outbound hook before it can
-  be covered in this local matrix.
+  parent transport during real `connect_to_zone` child creation. The marked
+  parent transport creates an `rpc::enclave_service` for that child zone rather
+  than a plain `rpc::child_service`. A local B-to-C hop inside one enclave does
+  not need attestation just because it is local, but if A passes an interface
+  owned by D through B to C, C still has to validate D as the referenced
+  route/security subject. Outbound `add_ref` and `release` now use the
+  referenced owner route over marked enclave-local transports instead of the
+  adjacent local peer. Runtime coverage verifies marked local creation,
+  enclave-service child creation, generated RPC over the marked local child,
+  reference-control route subject selection, protected `try_cast`, protected
+  `object_released`, plaintext route-layer `transport_down`, generic
+  control-status guardrails, and local `get_new_zone_id` sanitisation.
 - Full audit coverage for coroutine dynamic-library transports that override
   marshaller outbound methods without using `rpc::stream_transport::transport`.
   C ABI is intentionally excluded from this slice because that implementation

@@ -10,6 +10,7 @@
 
 #include <transports/local/transport.h>
 #include <transports/sgx_coroutine/enclave/local_route_transport.h>
+#include <transports/sgx_coroutine/enclave/service.h>
 
 namespace rpc::sgx::coro::enclave
 {
@@ -55,6 +56,12 @@ namespace rpc::sgx::coro::enclave
                   std::move(parent))
         {
         }
+
+        [[nodiscard]] std::shared_ptr<rpc::child_service> make_child_service(
+            const char* name,
+            rpc::zone zone_id,
+            rpc::destination_zone parent_zone_id,
+            const std::shared_ptr<rpc::coro::scheduler>& io_scheduler) override;
     };
 
     inline std::shared_ptr<rpc::local::parent_transport> local_child_transport::make_child_parent_transport(
@@ -66,5 +73,14 @@ namespace rpc::sgx::coro::enclave
         if (!enclave_parent)
             return nullptr;
         return std::make_shared<local_parent_transport>(std::move(name), std::move(enclave_parent));
+    }
+
+    inline std::shared_ptr<rpc::child_service> local_parent_transport::make_child_service(
+        const char* name,
+        rpc::zone zone_id,
+        rpc::destination_zone parent_zone_id,
+        const std::shared_ptr<rpc::coro::scheduler>& io_scheduler)
+    {
+        return std::make_shared<rpc::enclave_service>(name, zone_id, parent_zone_id, io_scheduler);
     }
 }

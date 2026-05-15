@@ -16,9 +16,10 @@ The audit conclusion is:
 
 The current protected envelope already follows the first three rules for
 protected `send`, `post`, `try_cast`, `add_ref`, `release`, and
-`object_released`. `transport_down` has both a protected endpoint-originated
-form and an intentionally plaintext route-layer form because an intermediate
-may have to report that its route to a downstream zone failed.
+`object_released`. `transport_down` has protected endpoint-originated parsing
+support but no production outbound sender yet. It also has an intentionally
+plaintext route-layer form because an intermediate may have to report that its
+route to a downstream zone failed.
 
 Most current runtime assertions exercise stream transports. That is not the
 same as proving every coroutine-capable transport is covered. Local transports
@@ -165,8 +166,9 @@ application dispatch and need separate policy:
 - **Route liveness.** Plaintext route-layer `transport_down` is allowed only as
   a scoped statement by an intermediate about the route it controls. It must
   not be interpreted as a protected statement from the failed downstream
-  enclave. Runtime tests keep this route-layer form plaintext and separate
-  from protected endpoint-originated `transport_down`.
+  enclave. Runtime tests keep this route-layer form plaintext; a protected
+  endpoint-originated sender should be added only when a real production call
+  site needs it.
 - **Telemetry and diagnostics.** `post_report` is intentionally diagnostic.
   It needs a redaction policy distinct from application payload encryption.
 - **Zone allocation.** `get_new_zone_id` is allocator/root control traffic.
@@ -200,11 +202,13 @@ application dispatch and need separate policy:
   local child transport now has an overridable child-side parent-transport
   factory; the default still constructs `rpc::local::parent_transport`, while
   the enclave-local wrapper constructs a marked `local_parent_transport` during
-  real `connect_to_zone` child creation. Outbound `add_ref` and `release` over
-  those marked transports validate the referenced owner route instead of the
-  adjacent local peer. Runtime coverage also checks protected `try_cast`,
-  protected `object_released`, and plaintext route-layer `transport_down` over
-  the marked local route.
+  real `connect_to_zone` child creation. The marked parent transport then
+  creates an `rpc::enclave_service` for that child zone instead of a plain
+  `rpc::child_service`. Outbound `add_ref` and `release` over those marked
+  transports validate the referenced owner route instead of the adjacent local
+  peer. Runtime coverage also checks protected `try_cast`, protected
+  `object_released`, and plaintext route-layer `transport_down` over the
+  marked local route.
 
 Any new transport message outside this list should be treated as suspicious
 until it is classified as public route/control metadata, encrypted endpoint
@@ -225,9 +229,9 @@ intermediate transports:
 - `encoding` fields on streaming `object_released_send` and
   `transport_down_send`, which are carrier legacy fields rather than route
   requirements;
-- endpoint-originated protected `transport_down` has protected payload support
-  in the attestation library, but there is not yet an enclave-service outbound
-  hook analogous to `outbound_object_released`;
+- endpoint-originated protected `transport_down` has encrypted payload carrier
+  helpers and inbound unwrap support, but no production outbound service hook
+  or sender currently uses it;
 - telemetry/logging fields when intermediate telemetry is enabled.
 
 These are not all equally serious. The most important distinction is that none

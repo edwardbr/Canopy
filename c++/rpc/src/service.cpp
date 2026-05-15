@@ -38,10 +38,11 @@ namespace rpc
 #ifdef CANOPY_BUILD_COROUTINE
         CORO_TASK(void)
         notify_object_released_on_transport(
+            std::shared_ptr<rpc::service> service,
             std::shared_ptr<rpc::transport> transport,
             rpc::object_released_params params)
         {
-            CO_AWAIT transport->object_released(std::move(params));
+            CO_AWAIT service->outbound_object_released(std::move(params), std::move(transport));
             CO_RETURN;
         }
 #endif
@@ -1157,7 +1158,7 @@ namespace rpc
                     auto async_params = or_params;
                     if (io_scheduler_
                         && io_scheduler_->spawn_detached(
-                            notify_object_released_on_transport(transport, std::move(async_params))))
+                            notify_object_released_on_transport(shared_from_this(), transport, std::move(async_params))))
                     {
                         continue;
                     }

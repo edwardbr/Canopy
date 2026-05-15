@@ -998,10 +998,16 @@ namespace rpc
                 result.error_code = rpc::error::INVALID_INTERFACE_ID();
                 CO_RETURN result;
             }
+            if (!parent_transport)
+            {
+                result.error_code = rpc::error::ZONE_NOT_FOUND();
+                CO_RETURN result;
+            }
+
             auto zone_id = parent_transport->get_zone_id();
             auto adjacent_zone_id = parent_transport->get_adjacent_zone_id();
 
-            auto child_svc = std::shared_ptr<rpc::child_service>(new rpc::child_service(
+            auto child_svc = parent_transport->make_child_service(
                 name,
                 zone_id,
                 adjacent_zone_id
@@ -1009,7 +1015,12 @@ namespace rpc
                 ,
                 io_scheduler
 #endif
-                ));
+            );
+            if (!child_svc)
+            {
+                result.error_code = rpc::error::INVALID_DATA();
+                CO_RETURN result;
+            }
 
             // Link the child to the parent via transport
             parent_transport->set_service(child_svc);

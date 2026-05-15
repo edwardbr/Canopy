@@ -1293,16 +1293,19 @@ namespace
         auto child_zone = make_service_level_route_zone(enclave_local_adjacent_zone_subnet);
         auto parent_service = rpc::root_service::create("enclave-local-wrapper-parent", parent_zone, scheduler);
         bool child_parent_transport_marked = false;
+        bool child_service_is_enclave_service = false;
         auto child_transport = std::make_shared<rpc::sgx::coro::enclave::local_child_transport>(
             "enclave-local-child-transport", parent_service);
         child_transport->set_adjacent_zone_id(child_zone);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
-            [&child_parent_transport_marked](
+            [&child_parent_transport_marked, &child_service_is_enclave_service](
                 const rpc::shared_ptr<yyy::i_host>& host, const std::shared_ptr<rpc::child_service>& child_service_ptr)
                 -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
             {
                 child_parent_transport_marked
                     = rpc::sgx::coro::enclave::is_local_route_transport(child_service_ptr->get_parent_transport());
+                child_service_is_enclave_service
+                    = static_cast<bool>(std::dynamic_pointer_cast<rpc::enclave_service>(child_service_ptr));
                 CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(),
                     rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host))};
             });
@@ -1320,6 +1323,14 @@ namespace
         CORO_ASSERT_EQ(connect_result.error_code, rpc::error::OK());
         CORO_ASSERT_NE(connect_result.output_interface, nullptr);
         CORO_ASSERT_EQ(child_parent_transport_marked, true);
+        CORO_ASSERT_EQ(child_service_is_enclave_service, true);
+
+        int add_result = 0;
+        CORO_ASSERT_EQ(
+            CO_AWAIT connect_result.output_interface->add(
+                arithmetic_test_left_value, arithmetic_test_right_value, add_result),
+            rpc::error::OK());
+        CORO_ASSERT_EQ(add_result, arithmetic_test_expected_result);
 
         CO_RETURN true;
     }
