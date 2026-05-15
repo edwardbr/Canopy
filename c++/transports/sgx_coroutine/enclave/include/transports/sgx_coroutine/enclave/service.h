@@ -85,6 +85,8 @@ namespace rpc
         CORO_TASK(standard_result) try_cast(try_cast_params params) override;
         CORO_TASK(standard_result) add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) release(release_params params) override;
+        CORO_TASK(void) object_released(object_released_params params) override;
+        CORO_TASK(void) transport_down(transport_down_params params) override;
         CORO_TASK(handshake_result) handshake(handshake_params params) override;
         CORO_TASK(send_result)
         outbound_send(
@@ -105,6 +107,10 @@ namespace rpc
         CORO_TASK(standard_result)
         outbound_release(
             release_params params,
+            std::shared_ptr<transport> transport) override;
+        CORO_TASK(void)
+        outbound_object_released(
+            object_released_params params,
             std::shared_ptr<transport> transport) override;
 
     private:

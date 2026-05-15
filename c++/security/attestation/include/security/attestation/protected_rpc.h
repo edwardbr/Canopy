@@ -30,7 +30,9 @@ namespace canopy::security::attestation
         response = 3,
         add_ref = 4,
         release = 5,
-        try_cast = 6
+        try_cast = 6,
+        object_released = 7,
+        transport_down = 8
     };
 
     struct protected_rpc_error
@@ -77,6 +79,20 @@ namespace canopy::security::attestation
     struct protected_try_cast_request
     {
         rpc::try_cast_params params;
+        security_context context;
+        uint64_t request_counter{protected_rpc_invalid_counter};
+    };
+
+    struct protected_object_released_request
+    {
+        rpc::object_released_params params;
+        security_context context;
+        uint64_t request_counter{protected_rpc_invalid_counter};
+    };
+
+    struct protected_transport_down_request
+    {
+        rpc::transport_down_params params;
         security_context context;
         uint64_t request_counter{protected_rpc_invalid_counter};
     };
@@ -156,4 +172,22 @@ namespace canopy::security::attestation
     [[nodiscard]] auto unprotect_try_cast_request(
         attestation_service& service,
         const rpc::try_cast_params& outer) -> protected_rpc_result<protected_try_cast_request>;
+
+    [[nodiscard]] auto protect_object_released_request(
+        attestation_service& service,
+        const security_context& context,
+        rpc::object_released_params params) -> protected_rpc_result<protected_object_released_request>;
+
+    [[nodiscard]] auto unprotect_object_released_request(
+        attestation_service& service,
+        const rpc::object_released_params& outer) -> protected_rpc_result<protected_object_released_request>;
+
+    [[nodiscard]] auto protect_transport_down_request(
+        attestation_service& service,
+        const security_context& context,
+        rpc::transport_down_params params) -> protected_rpc_result<protected_transport_down_request>;
+
+    [[nodiscard]] auto unprotect_transport_down_request(
+        attestation_service& service,
+        const rpc::transport_down_params& outer) -> protected_rpc_result<protected_transport_down_request>;
 } // namespace canopy::security::attestation

@@ -289,6 +289,10 @@ namespace
         size_t plaintext_add_ref_count{0};
         size_t protected_release_count{0};
         size_t plaintext_release_count{0};
+        size_t protected_object_released_count{0};
+        size_t plaintext_object_released_count{0};
+        size_t protected_transport_down_count{0};
+        size_t plaintext_transport_down_count{0};
         bool malformed_encrypted_payload{false};
         bool protected_object_id_visible{false};
     };
@@ -418,6 +422,51 @@ namespace
 
         responder_transport->add_typed_message_handler<rpc::stream_transport::release_send>(release_handler);
         initiator_transport->add_typed_message_handler<rpc::stream_transport::release_send>(std::move(release_handler));
+
+        auto object_released_handler
+            = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::object_released_send& request)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            {
+                ++observer.protected_object_released_count;
+                observer.malformed_encrypted_payload
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+                observer.protected_object_id_visible
+                    = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
+            }
+            else
+            {
+                ++observer.plaintext_object_released_count;
+            }
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::object_released_send>(
+            object_released_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::object_released_send>(
+            std::move(object_released_handler));
+
+        auto transport_down_handler
+            = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::transport_down_send& request)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            {
+                ++observer.protected_transport_down_count;
+                observer.malformed_encrypted_payload
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+            }
+            else
+            {
+                ++observer.plaintext_transport_down_count;
+            }
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::transport_down_send>(transport_down_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::transport_down_send>(
+            std::move(transport_down_handler));
     }
 
     struct service_level_route_handshake_expectation

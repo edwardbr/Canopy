@@ -553,6 +553,9 @@ namespace rpc
         virtual CORO_TASK(standard_result) outbound_release(
             release_params params,
             std::shared_ptr<transport> transport);
+        virtual CORO_TASK(void) outbound_object_released(
+            object_released_params params,
+            std::shared_ptr<transport> transport);
         virtual CORO_TASK(handshake_result) outbound_handshake(
             handshake_params params,
             std::shared_ptr<transport> transport);

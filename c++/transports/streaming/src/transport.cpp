@@ -344,7 +344,9 @@ namespace rpc::stream_transport
             object_released_send{.encoding = encoding::yas_binary,
                 .destination_zone_id = params.remote_object_id,
                 .caller_zone_id = params.caller_zone_id,
-                .back_channel = std::move(params.in_back_channel)},
+                .back_channel = std::move(params.in_back_channel),
+                .payload_type_id = params.payload_type_id,
+                .payload = std::move(params.payload)},
             0);
 
         RPC_DEBUG("stream_transport::transport::outbound_object_released complete zone={}", get_zone_id().get_subnet());
@@ -367,7 +369,9 @@ namespace rpc::stream_transport
             transport_down_send{.encoding = encoding::yas_binary,
                 .destination_zone_id = params.destination_zone_id,
                 .caller_zone_id = params.caller_zone_id,
-                .back_channel = std::move(params.in_back_channel)},
+                .back_channel = std::move(params.in_back_channel),
+                .payload_type_id = params.payload_type_id,
+                .payload = std::move(params.payload)},
             0);
 
         RPC_DEBUG("stream_transport::transport::outbound_transport_down complete zone={}", get_zone_id().get_subnet());
@@ -1368,6 +1372,8 @@ namespace rpc::stream_transport
                 .remote_object_id = request.destination_zone_id,
                 .caller_zone_id = request.caller_zone_id,
                 .in_back_channel = std::move(request.back_channel),
+                .payload_type_id = request.payload_type_id,
+                .payload = std::move(request.payload),
             });
 
         RPC_DEBUG("stub_handle_object_released complete");
@@ -1397,6 +1403,8 @@ namespace rpc::stream_transport
                 .destination_zone_id = request.destination_zone_id,
                 .caller_zone_id = request.caller_zone_id,
                 .in_back_channel = std::move(request.back_channel),
+                .payload_type_id = request.payload_type_id,
+                .payload = std::move(request.payload),
             });
 
         RPC_DEBUG("stub_handle_transport_down complete");

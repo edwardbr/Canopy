@@ -157,11 +157,13 @@ reference-control marshaller methods.
   `evaluate_route_attestation_state(...)` decision helper. It maps route state
   to `allow`, `start_handshake`, `wait_for_handshake`, or `reject`; host tests
   cover the state matrix.
-- `try_cast_params`, `add_ref_params`, `release_params`, and the streaming
+- `try_cast_params`, `add_ref_params`, `release_params`,
+  `object_released_params`, `transport_down_params`, and the streaming
   transport wire structs now carry `payload_type_id` plus `payload` fields so
-  encrypted reference-control payloads can reuse the existing polymorphic
-  marshaller shape. `try_cast`, `add_ref`, and `release` now use those fields
-  for protected payloads.
+  encrypted reference/control payloads can reuse the existing polymorphic
+  marshaller shape. `try_cast`, `add_ref`, `release`, `object_released`, and
+  endpoint-originated `transport_down` now use those fields for protected
+  payloads.
 - `rpc::enclave_service` has opt-in reference route enforcement:
   - `set_add_ref_attestation_required`;
   - `set_route_unattested_allowed`;
@@ -173,13 +175,18 @@ reference-control marshaller methods.
   - inbound `release` checks the caller route without starting a new
     handshake;
   - outbound `release` checks the adjacent transport zone;
+  - inbound `object_released` checks the released-object owner route without
+    starting a new handshake;
+  - outbound `object_released` checks the recipient caller route;
+  - inbound `transport_down` unwraps protected payloads when present but still
+    accepts empty plaintext route-layer notifications from intermediates;
   - unknown routes start the route-addressed service-level `handshake()` path;
   - successful Evidence verification marks the route `attested`;
   - accepted no-Evidence policy marks the route `unattested_allowed`;
   - failed or malformed handshakes mark the route `failed` and the call fails
     closed.
-- `try_cast`, `add_ref`, and `release` protected payloads are implemented in the L7
-  envelope helpers:
+- `try_cast`, `add_ref`, `release`, `object_released`, and `transport_down`
+  protected payloads are implemented in the L7 envelope helpers:
   - outbound `rpc::enclave_service::outbound_try_cast` wraps the requested
     interface id and object id when the destination route has an attested
     `security_context`;
@@ -193,9 +200,20 @@ reference-control marshaller methods.
     route has an attested `security_context`;
   - inbound `rpc::enclave_service::release` unwraps protected payloads before
     checking the existing caller route state;
+  - outbound `rpc::enclave_service::outbound_object_released` wraps optimistic
+    reference notifications when the recipient route has an attested
+    `security_context`;
+  - inbound `rpc::enclave_service::object_released` unwraps protected payloads
+    before checking the owner route state;
+  - inbound `rpc::enclave_service::transport_down` unwraps protected endpoint
+    notifications when present and leaves the empty route-layer form available
+    for intermediates;
   - `object_stub::add_ref` now calls the service `outbound_add_ref` virtual for
     outcall add-ref messages, so initial connection add-refs pass through the
     enclave policy hook;
+  - `service::release_local_stub` now calls the service
+    `outbound_object_released` virtual, so optimistic reference notifications
+    generated inside an enclave pass through the enclave policy hook;
   - the current transport still needs visible `build_out_param_channel` for
     route construction, so that field is public but AEAD-bound and repeated in
     encrypted plaintext until the route-control refactor happens;
@@ -257,7 +275,8 @@ reference-control marshaller methods.
   - generated type ids and YAS round-tripping for the route-attestation
     handshake request and response payloads.
   - protected send request/response wrapping and unwrapping;
-  - protected `try_cast`, `add_ref`, and `release` wrapping and unwrapping;
+  - protected `try_cast`, `add_ref`, `release`, `object_released`, and
+    `transport_down` wrapping and unwrapping;
   - protected outer route carriers hide object ids while preserving
     decrypt-time object reconstruction;
   - tampered protected ciphertext rejection.
@@ -342,13 +361,19 @@ reference-control marshaller methods.
 - `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
 - `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug_coroutine_fake_sgx --target attestation_service_test`
-- `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_filter=AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
+- `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_filter=AttestationService.ProtectsObjectReleasedRequest:AttestationService.ProtectsTransportDownRequest:AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
+- `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
+- `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug --target attestation_service_test`
+- `build_debug/output/attestation_service_test --gtest_filter=AttestationService.ProtectsObjectReleasedRequest:AttestationService.ProtectsTransportDownRequest:AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
+- `cmake --build build_debug_coroutine_fake_sgx --target attestation_service_test`
+- `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_filter=AttestationService.ProtectsObjectReleasedRequest:AttestationService.ProtectsTransportDownRequest:AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug_coroutine_sgx_sim --target attestation_service_test`
-- `build_debug_coroutine_sgx_sim/output/attestation_service_test --gtest_filter=AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
+- `build_debug_coroutine_sgx_sim/output/attestation_service_test --gtest_filter=AttestationService.ProtectsObjectReleasedRequest:AttestationService.ProtectsTransportDownRequest:AttestationService.ProtectsTryCastRequest:AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_sgx_sim --target rpc_test`
 - `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
 - `cmake --build build_debug_coroutine_sgx_sim --target attestation_service_test`
@@ -371,7 +396,9 @@ reference-control marshaller methods.
   backend-neutral identity.
 - Backend selection beyond explicit construction of one service with one
   backend.
-- Encrypted protected payloads for `object_released` or `transport_down`.
+- Strict end-to-end enforcement for every `transport_down`. The protected
+  endpoint-originated form exists, but route-layer plaintext `transport_down`
+  remains valid for intermediate-synthesized liveness notifications.
 - A transport-route refactor that hides `add_ref` route-control options from
   intermediates. Today `build_out_param_channel` remains visible because
   `rpc::transport::inbound_add_ref` needs it before the service hook can unwrap
@@ -384,8 +411,10 @@ reference-control marshaller methods.
 
 ### Current Best Next Step
 
-The next implementation slice should extend reference-control protection to
-`object_released`.
+The next implementation slice should be a visibility audit across all
+marshaller operations. The audit should classify each field as public routing
+data, mutable public back-channel context, public AEAD-bound data,
+end-to-end encrypted data, local-only state, or a residual leak.
 
 ## Architectural Layers
 

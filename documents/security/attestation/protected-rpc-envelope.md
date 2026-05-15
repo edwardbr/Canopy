@@ -126,14 +126,13 @@ try_cast:         target route visible; object id and requested interface id enc
 add_ref:          route fields visible; current route-control option visible and AEAD-bound
 release:          route fields visible; release_options visible and AEAD-bound
 object_released:  route fields visible; released object details encrypted
-transport_down:   end-to-end protected form deferred
+transport_down:   route fields visible; protected endpoint-originated form optional
 ```
 
 The current concrete outer carrier for call-like traffic is
-`send_params`/`post_params`. Protected `try_cast`, `add_ref`, and `release`
-use their `payload_type_id` / `payload` fields as encrypted payload carriers.
-Protected `object_released` may need a method-specific carrier or a control-RPC
-encoding before implementation. Protected traffic must not expose valid
+`send_params`/`post_params`. Protected `try_cast`, `add_ref`, `release`,
+`object_released`, and `transport_down` use their `payload_type_id` / `payload`
+fields as encrypted payload carriers. Protected traffic must not expose valid
 application method ids to intermediates.
 
 Current implementation status: protected `send` and `post` have concrete
@@ -145,10 +144,14 @@ verify that those messages carry encrypted `rpc::encrypted_payload` blobs
 rather than plaintext application calls. The same tests verify that protected
 outer `remote_object_id` values carry only the destination zone and do not
 expose object ids to intermediates.
-`try_cast`, `add_ref`, and `release` also have AES-GCM protected payload carriers in
-`payload_type_id` / `payload`; `rpc::enclave_service` wraps outbound
-reference-control traffic when an attested adjacent context exists and unwraps
-inbound protected reference-control traffic before route validation. Because
+`try_cast`, `add_ref`, `release`, `object_released`, and `transport_down` also
+have AES-GCM protected payload carriers in `payload_type_id` / `payload`;
+`rpc::enclave_service` wraps outbound reference-control traffic when an
+attested context exists and unwraps inbound protected reference-control traffic
+before route validation. `transport_down` keeps accepting the empty plaintext
+route-layer form because an intermediate may legitimately synthesize it when a
+downstream route fails and cannot attest on behalf of the failed endpoint.
+Because
 the current transport route construction reads `build_out_param_channel`
 before the service hook receives an `add_ref`, that field remains visible in
 this implementation and is authenticated as AEAD associated data plus repeated
@@ -350,14 +353,16 @@ failure.
 That trust should be scoped narrowly. B's statement should mean "my route to C
 is down" unless stronger attestation policy makes B authoritative for more.
 
-The end-to-end protected `transport_down` from a zone is deferred. The
-route-layer `transport_down` synthesized by an intermediate is a separate,
-narrowly scoped message that may trigger the same service upcall but does not
-prove the downstream enclave's internal state.
+An endpoint-originated protected `transport_down` can use the encrypted
+payload carrier. The route-layer `transport_down` synthesized by an
+intermediate is a separate, narrowly scoped plaintext message that may trigger
+the same service upcall but does not prove the downstream enclave's internal
+state.
 
-Whether future protected control messages use distinct envelope structs or a
-single generic protected marshaller envelope with a `protected_kind` enum is
-deferred.
+The current protected plaintext includes a `protected_kind` discriminator.
+Whether the public carrier should eventually become one generic protected
+marshaller envelope instead of method-specific `payload_type_id` / `payload`
+fields is still deferred.
 
 ## Legacy Peers
 

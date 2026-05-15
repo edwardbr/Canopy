@@ -1162,7 +1162,7 @@ namespace rpc
                         continue;
                     }
 #endif
-                    CO_AWAIT transport->object_released(std::move(or_params));
+                    CO_AWAIT outbound_object_released(std::move(or_params), std::move(transport));
                 }
             }
         }
@@ -1711,6 +1711,15 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->release(std::move(params));
+    }
+
+    CORO_TASK(void)
+    service::outbound_object_released(
+        object_released_params params,
+        std::shared_ptr<transport> transport)
+    {
+        // Default implementation - directly call the transport
+        CO_AWAIT transport->object_released(std::move(params));
     }
 
     CORO_TASK(handshake_result)

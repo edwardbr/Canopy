@@ -629,6 +629,68 @@ namespace rpc
         CO_RETURN CO_AWAIT child_service::release(std::move(params));
     }
 
+    CORO_TASK(void)
+    enclave_service::object_released(object_released_params params)
+    {
+        const bool protected_payload
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+        if (protected_payload)
+        {
+            auto service = get_attestation_service();
+            if (!protected_rpc_enabled() || !service)
+                CO_RETURN;
+
+            auto request = canopy::security::attestation::unprotect_object_released_request(*service, params);
+            if (!request.accepted)
+                CO_RETURN;
+            params = std::move(request.value.params);
+        }
+        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        {
+            CO_RETURN;
+        }
+
+        const auto route_zone_id = params.remote_object_id.as_zone();
+        auto route_result = ensure_existing_reference_route_allowed(route_zone_id, "inbound object_released owner");
+        if (route_result.error_code != rpc::error::OK())
+            CO_RETURN;
+
+        if (!protected_payload && protected_rpc_enabled() && get_security_context(route_zone_id))
+        {
+            RPC_WARNING("plaintext object_released rejected for protected route {}", rpc::to_string(route_zone_id));
+            CO_RETURN;
+        }
+
+        CO_AWAIT child_service::object_released(std::move(params));
+    }
+
+    CORO_TASK(void)
+    enclave_service::transport_down(transport_down_params params)
+    {
+        const bool protected_payload
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+        if (protected_payload)
+        {
+            auto service = get_attestation_service();
+            if (!protected_rpc_enabled() || !service)
+                CO_RETURN;
+
+            auto request = canopy::security::attestation::unprotect_transport_down_request(*service, params);
+            if (!request.accepted)
+                CO_RETURN;
+            params = std::move(request.value.params);
+        }
+        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        {
+            CO_RETURN;
+        }
+
+        // Intermediates may synthesize route-layer transport_down messages and
+        // usually cannot attest on behalf of the failed endpoint. Empty
+        // plaintext transport_down remains valid for that liveness path.
+        CO_AWAIT child_service::transport_down(std::move(params));
+    }
+
     CORO_TASK(handshake_result)
     enclave_service::handshake(handshake_params params)
     {
@@ -995,5 +1057,37 @@ namespace rpc
         }
 
         CO_RETURN CO_AWAIT child_service::outbound_release(std::move(params), std::move(transport));
+    }
+
+    CORO_TASK(void)
+    enclave_service::outbound_object_released(
+        object_released_params params,
+        std::shared_ptr<transport> transport)
+    {
+        std::optional<rpc::destination_zone> caller_zone_id;
+        if (transport)
+        {
+            caller_zone_id = params.caller_zone_id;
+            auto route_result
+                = ensure_existing_reference_route_allowed(*caller_zone_id, "outbound object_released caller");
+            if (route_result.error_code != rpc::error::OK())
+                CO_RETURN;
+        }
+
+        auto service = get_attestation_service();
+        if (protected_rpc_enabled() && service && caller_zone_id)
+        {
+            auto context = get_security_context(*caller_zone_id);
+            if (context)
+            {
+                auto request = canopy::security::attestation::protect_object_released_request(
+                    *service, *context, std::move(params));
+                if (!request.accepted)
+                    CO_RETURN;
+                params = std::move(request.value.params);
+            }
+        }
+
+        CO_AWAIT child_service::outbound_object_released(std::move(params), std::move(transport));
     }
 }

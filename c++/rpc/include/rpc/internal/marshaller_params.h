@@ -92,6 +92,8 @@ namespace rpc
         remote_object remote_object_id;
         caller_zone caller_zone_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
+        uint64_t payload_type_id = 0;
+        std::vector<char> payload;
     };
 
     struct transport_down_params
@@ -100,6 +102,8 @@ namespace rpc
         destination_zone destination_zone_id;
         caller_zone caller_zone_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
+        uint64_t payload_type_id = 0;
+        std::vector<char> payload;
     };
 
     struct get_new_zone_id_params

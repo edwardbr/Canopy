@@ -133,12 +133,12 @@ enclave-derived service should protect them before they leave the enclave:
 - `try_cast`
 - `add_ref`
 - `release`
+- `object_released`
 
-The `object_released` marshaller path also needs protection when optimistic
-reference notifications cross an enclave boundary. The end-to-end protected
-form of `transport_down` is deferred. For now, `transport_down` remains a
-route-liveness/control message that an intermediate may synthesize according to
-policy.
+`object_released` is protected when optimistic reference notifications cross an
+attested enclave boundary. `transport_down` has a protected payload form for
+endpoint-originated notifications, but the empty plaintext route-layer form
+remains valid because an intermediate may synthesize it according to policy.
 
 The other `i_marshaller` methods are:
 
@@ -160,14 +160,17 @@ internal implementation or generated stub.
 
 The first reference-control hardening step now combines route-state gating
 with encrypted `payload_type_id` / `payload` carriers for `try_cast`,
-`add_ref`, and `release`. `rpc::enclave_service` can require add-ref route
-attestation, treat established attested routes as allowed, explicitly allow
-configured unattested routes, and fail closed for failed or still-handshaking
-routes. Unknown `add_ref` routes start the route-addressed `handshake()` path
-and remain blocked until the service-level attestation exchange marks the
-route allowed. `try_cast` and `release` do not start new handshakes: if the
-caller route is unknown when one of those messages arrives, the system treats
-that as an elided or failed protected `add_ref` and rejects it. The current
+`add_ref`, `release`, and `object_released`. `transport_down` can also carry a
+protected endpoint-originated payload, but route-layer plaintext
+`transport_down` remains accepted. `rpc::enclave_service` can require add-ref
+route attestation, treat established attested routes as allowed, explicitly
+allow configured unattested routes, and fail closed for failed or
+still-handshaking routes. Unknown `add_ref` routes start the route-addressed
+`handshake()` path and remain blocked until the service-level attestation
+exchange marks the route allowed. `try_cast`, `release`, and
+`object_released` do not start new handshakes: if the caller/owner route is
+unknown when one of those messages arrives, the system treats that as an
+elided or failed protected `add_ref` and rejects it. The current
 route-attestation payloads are generated RPC/YAS structs:
 `route_attestation_handshake_request` and
 `route_attestation_handshake_response`. They carry backend-neutral identity,
@@ -354,7 +357,7 @@ sequenceDiagram
         ServiceA-->>AppA: ZONE_NOT_SUPPORTED
     end
 
-    ServiceA->>RouteB: protected add_ref / send / post / try_cast / release for C
+    ServiceA->>RouteB: protected add_ref / send / post / try_cast / release / object_released for C
     Note over RouteB: B may append public backchannels but cannot decrypt payloads
     RouteB->>ServiceC: protected envelope for C
 ```
@@ -377,7 +380,7 @@ sequenceDiagram
     participant AttC as Destination attestation_service
     participant StubC as Destination stub/service
 
-    ProxyA->>ServiceA: outbound_send / outbound_post / outbound_try_cast / outbound_add_ref / outbound_release
+    ProxyA->>ServiceA: outbound_send / outbound_post / outbound_try_cast / outbound_add_ref / outbound_release / outbound_object_released
     ServiceA->>AttA: find security_context and derive AEAD key
     AttA-->>ServiceA: key material and next e2e counter
     ServiceA->>Route: outer route fields + encrypted_payload
@@ -386,7 +389,7 @@ sequenceDiagram
     ServiceC->>AttC: find session, derive key, accept counter
     AttC-->>ServiceC: decrypted payload accepted
     ServiceC->>ServiceC: recover inner fields; keep received outer backchannels
-    ServiceC->>StubC: dispatch inner call or try_cast/add_ref/release
+    ServiceC->>StubC: dispatch inner call or try_cast/add_ref/release/object_released
 
     alt send expects a response
         StubC-->>ServiceC: send_result
@@ -395,8 +398,13 @@ sequenceDiagram
         Route-->>ServiceA: response
         ServiceA->>AttA: decrypt response and accept response counter
         ServiceA-->>ProxyA: plaintext send_result
-    else post/add_ref/release has no protected response body
+    else post/add_ref/release/object_released has no protected response body
         ServiceC-->>Route: ack or no response according to marshaller method
+    end
+
+    opt route-layer transport_down
+        Route-->>ServiceA: plaintext transport_down from intermediate
+        Note over ServiceA: accepted as scoped liveness, not proof of enclave state
     end
 ```
 
