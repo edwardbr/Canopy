@@ -76,8 +76,12 @@ add_dependencies(canopy_libvpx canopy_libvpx_build)
 #            -> --target=x86_64-linux-gcc --disable-runtime-cpu-detect plus
 #               -m<feature> in extra-cflags; pinned ISA, still no probe.
 if(CANOPY_BUILD_ENCLAVE)
+  # Default sse2: the universal x86_64 SIMD baseline — a large speedup over
+  # pure C, present on every x86_64 (so portable + deterministic) and, with
+  # --disable-runtime-cpu-detect, no in-enclave CPUID. Pin to sse4_1/avx/avx2
+  # for a known target machine; `generic` forces pure C (no asm at all).
   set(CANOPY_LIBVPX_ENCLAVE_CPU
-      "generic"
+      "sse2"
       CACHE STRING "libvpx enclave target CPU feature set (replicable builds pin this to the target machine)")
   set_property(CACHE CANOPY_LIBVPX_ENCLAVE_CPU PROPERTY STRINGS generic sse2 sse4_1 avx avx2)
 
@@ -106,6 +110,21 @@ if(CANOPY_BUILD_ENCLAVE)
     string(APPEND _canopy_libvpx_enc_cflags " -I${_inc}")
   endforeach()
 
+  # The SIMD source files include the compiler's own intrinsic headers
+  # (<emmintrin.h>, <immintrin.h>, ...). -nostdinc drops the clang resource
+  # dir too, so re-add just its include/ as -isystem (searched AFTER our -I
+  # tlibc/polyfill, so it only supplies intrinsics — never host libc/stdio).
+  execute_process(
+    COMMAND clang -print-resource-dir
+    OUTPUT_VARIABLE _canopy_clang_resource_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _canopy_clang_rd_rc)
+  if(_canopy_clang_rd_rc EQUAL 0 AND _canopy_clang_resource_dir)
+    string(APPEND _canopy_libvpx_enc_cflags " -isystem ${_canopy_clang_resource_dir}/include")
+  else()
+    message(FATAL_ERROR "Could not determine clang resource dir for libvpx enclave SIMD intrinsics")
+  endif()
+
   add_custom_command(
     OUTPUT "${CANOPY_LIBVPX_ENCLAVE_ARCHIVE}"
     WORKING_DIRECTORY "${CANOPY_LIBVPX_ENCLAVE_BUILD_DIR}"
@@ -114,10 +133,11 @@ if(CANOPY_BUILD_ENCLAVE)
       --target=${_canopy_libvpx_enc_target} --disable-vp9 --enable-vp8 --enable-vp8-encoder
       --enable-vp8-decoder --disable-examples --disable-tools --disable-docs --disable-unit-tests
       --disable-multithread --disable-runtime-cpu-detect --disable-shared --enable-static --enable-pic
-      "--extra-cflags=${_canopy_libvpx_enc_cflags}"
-    # Build only the C static archive — skip the optional C++ rate-control
-    # lib (libvpxrc / vp8_ratectrl_rtc.cc), which needs the C++ stdlib and is
-    # not consumed here (we use the C vpx_codec_* API only).
+      --disable-postproc --disable-rate_ctrl --as=nasm "--extra-cflags=${_canopy_libvpx_enc_cflags}"
+    # Build just the C static archive (we use the C vpx_codec_* API only).
+    # postproc + rate_ctrl are disabled at configure above — they pull
+    # add_noise.c's rand() and the C++ libvpxrc (<new>), neither available
+    # nor needed in the freestanding enclave build.
     COMMAND ${CMAKE_COMMAND} -E env make -j4 libvpx.a
     COMMENT "Configuring and building libvpx for enclave (VP8, ${CANOPY_LIBVPX_ENCLAVE_CPU}, freestanding)"
     VERBATIM)

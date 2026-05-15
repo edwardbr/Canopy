@@ -437,6 +437,12 @@ const videoState = {
     droppedFrames: 0,
     latestFrame: null,
     rafHandle: null,
+    // Perf: seq -> capture time (ms) for end-to-end latency; rolling FPS.
+    sendTimes: new Map(),
+    lastLatencyMs: 0,
+    fpsWindowStart: 0,
+    fpsWindowCount: 0,
+    fps: 0,
 };
 
 // Paint the most recent decoded frame at display refresh. Decoupling paint
@@ -451,7 +457,8 @@ function videoPaintLoop() {
 
 function updateVideoStats() {
     videoStatsEl.textContent =
-        `sent ${videoState.sentFrames} / received ${videoState.receivedFrames} / dropped ${videoState.droppedFrames}`;
+        `sent ${videoState.sentFrames} / recv ${videoState.receivedFrames} / drop ${videoState.droppedFrames}`
+        + ` | ${videoState.fps.toFixed(1)} fps | ${videoState.lastLatencyMs.toFixed(0)} ms e2e`;
 }
 
 async function startVideo() {
@@ -512,8 +519,15 @@ async function startVideo() {
                 let flags = 0;
                 if (chunk.type === 'key') flags |= VIDEO_FLAG_KEYFRAME;
                 try {
+                    const seq = videoState.frameSeq++;
+                    videoState.sendTimes.set(seq, performance.now());
+                    // Bound the map: dropped frames never come back to clear it.
+                    if (videoState.sendTimes.size > 120) {
+                        const oldest = videoState.sendTimes.keys().next().value;
+                        videoState.sendTimes.delete(oldest);
+                    }
                     calc.push_video_frame(
-                        Long_fromNumber_safe(videoState.frameSeq++),
+                        Long_fromNumber_safe(seq),
                         Long_fromNumber_safe(chunk.timestamp),
                         flags,
                         buf);
@@ -631,6 +645,24 @@ function handleRemoteFrame(seq, pts_us, flags, payload) {
         });
         dec.decode(chunk);
         videoState.receivedFrames++;
+
+        // End-to-end latency: this frame's seq round-tripped from the enclave.
+        const s = (seq && seq.toNumber) ? seq.toNumber() : Number(seq);
+        const sent = videoState.sendTimes.get(s);
+        if (sent !== undefined) {
+            videoState.lastLatencyMs = performance.now() - sent;
+            videoState.sendTimes.delete(s);
+        }
+        // Rolling 1 s received-FPS (the processed throughput the user sees).
+        const nowMs = performance.now();
+        if (videoState.fpsWindowStart === 0) videoState.fpsWindowStart = nowMs;
+        videoState.fpsWindowCount++;
+        const span = nowMs - videoState.fpsWindowStart;
+        if (span >= 1000) {
+            videoState.fps = videoState.fpsWindowCount * 1000 / span;
+            videoState.fpsWindowStart = nowMs;
+            videoState.fpsWindowCount = 0;
+        }
     } catch (err) {
         videoState.droppedFrames++;
         console.warn('remote frame decode failed:', err);
