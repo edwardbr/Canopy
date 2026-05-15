@@ -283,6 +283,8 @@ namespace
         size_t plaintext_send_response_count{0};
         size_t protected_post_count{0};
         size_t plaintext_post_count{0};
+        size_t protected_add_ref_count{0};
+        size_t plaintext_add_ref_count{0};
         bool malformed_encrypted_payload{false};
     };
 
@@ -341,6 +343,26 @@ namespace
                 }
                 CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
             });
+
+        auto add_ref_handler
+            = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::addref_send& request)
+            -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+        {
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            {
+                ++observer.protected_add_ref_count;
+                observer.malformed_encrypted_payload
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
+            }
+            else
+            {
+                ++observer.plaintext_add_ref_count;
+            }
+            CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+        };
+
+        responder_transport->add_typed_message_handler<rpc::stream_transport::addref_send>(add_ref_handler);
+        initiator_transport->add_typed_message_handler<rpc::stream_transport::addref_send>(std::move(add_ref_handler));
     }
 
     struct service_level_route_handshake_expectation
@@ -553,10 +575,12 @@ namespace
         CORO_ASSERT_EQ(observer.plaintext_send_count, 0U);
         CORO_ASSERT_EQ(observer.plaintext_send_response_count, 0U);
         CORO_ASSERT_EQ(observer.plaintext_post_count, 0U);
+        CORO_ASSERT_EQ(observer.plaintext_add_ref_count, 0U);
         CORO_ASSERT_EQ(observer.malformed_encrypted_payload, false);
         CORO_ASSERT_EQ(observer.protected_send_count >= protected_rpc_generated_runtime_min_send_count, true);
         CORO_ASSERT_EQ(observer.protected_send_count, observer.protected_send_response_count);
         CORO_ASSERT_EQ(observer.protected_post_count, protected_rpc_generated_runtime_post_count);
+        CORO_ASSERT_EQ(observer.protected_add_ref_count > 0U, true);
 
         foo = nullptr;
         example = nullptr;

@@ -21,6 +21,7 @@ namespace
     using canopy::security::attestation::attestation_service;
     using canopy::security::attestation::attestation_service_options;
     using canopy::security::attestation::cmw;
+    using canopy::security::attestation::encrypted_payload_type_id;
     using canopy::security::attestation::establish_session_params;
     using canopy::security::attestation::evaluate_route_attestation_state;
     using canopy::security::attestation::evidence_binding;
@@ -30,6 +31,7 @@ namespace
     using canopy::security::attestation::identity;
     using canopy::security::attestation::make_attestation_nonce;
     using canopy::security::attestation::make_session_id;
+    using canopy::security::attestation::protect_add_ref_request;
     using canopy::security::attestation::protect_send_request;
     using canopy::security::attestation::protect_send_response;
     using canopy::security::attestation::protected_key_scope;
@@ -39,6 +41,7 @@ namespace
     using canopy::security::attestation::route_attestation_status;
     using canopy::security::attestation::security_context;
     using canopy::security::attestation::security_level;
+    using canopy::security::attestation::unprotect_add_ref_request;
     using canopy::security::attestation::unprotect_send_request;
     using canopy::security::attestation::unprotect_send_response;
 
@@ -477,4 +480,139 @@ TEST(
     auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
     EXPECT_FALSE(unprotected_request.accepted);
     EXPECT_EQ(unprotected_request.error.error_code, rpc::error::SECURITY_ERROR());
+}
+
+TEST(
+    AttestationService,
+    ProtectsAddRefRequest)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 202);
+    establish(service_b, identity{"enclave-a", "zone-a"}, 202);
+
+    auto caller_zone = make_zone(31);
+    auto destination_zone = make_zone(41);
+    auto requesting_zone = make_zone(51);
+    auto remote_object = destination_zone.with_object(rpc::object(12));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::add_ref_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = *remote_object;
+    params.caller_zone_id = caller_zone;
+    params.requesting_zone_id = requesting_zone;
+    params.build_out_param_channel = rpc::add_ref_options::build_caller_route | rpc::add_ref_options::optimistic;
+    params.in_back_channel.push_back(rpc::back_channel_entry{12, {7, 8, 9}});
+    params.request_id = 88;
+    params.payload_type_id = 0xabcdef;
+    params.payload = {'a', 'd', 'd'};
+
+    auto protected_request = protect_add_ref_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    EXPECT_EQ(protected_request.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
+    EXPECT_NE(protected_request.value.params.payload, params.payload);
+    EXPECT_FALSE(protected_request.value.params.payload.empty());
+
+    auto unprotected_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.requesting_zone_id, params.requesting_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.build_out_param_channel, params.build_out_param_channel);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 12U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({7, 8, 9}));
+    EXPECT_EQ(unprotected_request.value.params.request_id, params.request_id);
+    EXPECT_EQ(unprotected_request.value.params.payload_type_id, params.payload_type_id);
+    EXPECT_EQ(unprotected_request.value.params.payload, params.payload);
+
+    auto replayed_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectedRequestsAllowMutablePublicBackChannels)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 303);
+    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"}, 303);
+
+    auto caller_zone = make_zone(61);
+    auto destination_zone = make_zone(71);
+    auto remote_object = destination_zone.with_object(rpc::object(13));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params send_params;
+    send_params.protocol_version = rpc::get_version();
+    send_params.encoding_type = rpc::encoding::yas_binary;
+    send_params.tag = 4321;
+    send_params.caller_zone_id = caller_zone;
+    send_params.remote_object_id = *remote_object;
+    send_params.interface_id = rpc::interface_ordinal(0x778899);
+    send_params.method_id = rpc::method(6);
+    send_params.in_data = {'s'};
+    send_params.in_back_channel.push_back(rpc::back_channel_entry{1, {2}});
+    send_params.request_id = 14;
+
+    auto protected_send = protect_send_request(*service_a, context_a, send_params);
+    ASSERT_TRUE(protected_send.accepted) << protected_send.error.reason;
+
+    auto receiver_send = protected_send.value.params;
+    receiver_send.in_back_channel.push_back(rpc::back_channel_entry{99, {8, 7, 6}});
+
+    auto unprotected_send = unprotect_send_request(*service_b, receiver_send);
+    ASSERT_TRUE(unprotected_send.accepted) << unprotected_send.error.reason;
+    ASSERT_EQ(unprotected_send.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_send.value.params.in_back_channel[0].type_id, 1U);
+    EXPECT_EQ(unprotected_send.value.params.in_back_channel[1].type_id, 99U);
+    EXPECT_EQ(unprotected_send.value.params.in_back_channel[1].payload, std::vector<uint8_t>({8, 7, 6}));
+
+    rpc::send_result response;
+    response.error_code = rpc::error::OK();
+    response.out_buf = {'r'};
+    response.out_back_channel.push_back(rpc::back_channel_entry{5, {6}});
+    auto protected_response = protect_send_response(
+        *service_b, context_b, receiver_send, unprotected_send.value.request_counter, std::move(response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    protected_response.value.out_back_channel.push_back(rpc::back_channel_entry{101, {10, 11}});
+
+    auto unprotected_response = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_send.value.params,
+        protected_send.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    EXPECT_EQ(unprotected_response.value.out_buf, std::vector<char>({'r'}));
+    ASSERT_EQ(unprotected_response.value.out_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].type_id, 5U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[1].type_id, 101U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[1].payload, std::vector<uint8_t>({10, 11}));
+
+    auto requesting_zone = make_zone(81);
+    rpc::add_ref_params add_ref_params;
+    add_ref_params.protocol_version = rpc::get_version();
+    add_ref_params.remote_object_id = *remote_object;
+    add_ref_params.caller_zone_id = caller_zone;
+    add_ref_params.requesting_zone_id = requesting_zone;
+    add_ref_params.build_out_param_channel = rpc::add_ref_options::normal;
+    add_ref_params.in_back_channel.push_back(rpc::back_channel_entry{3, {4}});
+    add_ref_params.request_id = 15;
+
+    auto protected_add_ref = protect_add_ref_request(*service_a, context_a, add_ref_params);
+    ASSERT_TRUE(protected_add_ref.accepted) << protected_add_ref.error.reason;
+
+    auto receiver_add_ref = protected_add_ref.value.params;
+    receiver_add_ref.in_back_channel.push_back(rpc::back_channel_entry{100, {9, 8, 7}});
+
+    auto unprotected_add_ref = unprotect_add_ref_request(*service_b, receiver_add_ref);
+    ASSERT_TRUE(unprotected_add_ref.accepted) << unprotected_add_ref.error.reason;
+    ASSERT_EQ(unprotected_add_ref.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_add_ref.value.params.in_back_channel[0].type_id, 3U);
+    EXPECT_EQ(unprotected_add_ref.value.params.in_back_channel[1].type_id, 100U);
+    EXPECT_EQ(unprotected_add_ref.value.params.in_back_channel[1].payload, std::vector<uint8_t>({9, 8, 7}));
 }

@@ -61,7 +61,11 @@ protected envelope plaintext instead.
 
 ## Mutation Model
 
-The first implementation does not need a complex append/signature model.
+Back-channel vectors are public and mutable while a message is routed.
+Intermediates may append entries, for example OpenTelemetry correlation data or
+route diagnostics. Protected RPC must therefore treat the received outer vector
+as authoritative public context, not as data that must match the sender's
+encrypted payload or AEAD associated data.
 
 Future work may distinguish:
 

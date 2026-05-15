@@ -9,16 +9,18 @@ All rights reserved.
 
 Design and implementation-tracking document. The current repository has a
 development fake-attestation backend, an attestation stream decorator, an
-enclave-service protected `send`/`post` envelope, route-state storage, and an
-opt-in `add_ref` route-attestation gate backed by the first service-level
-`i_marshaller::handshake()` payload. SGX-sim host tests now drive an
+enclave-service protected `send`/`post` envelope, encrypted `add_ref` payload
+wrapping, route-state storage, and an opt-in `add_ref` route-attestation gate
+backed by the first service-level `i_marshaller::handshake()` payload. SGX-sim
+host tests now drive an
 unknown-route `add_ref` through `rpc::stream_transport` and verify the
 service-level handshake updates both enclave-service route-state maps.
-Additional host tests drive generated `send` and `[post]` traffic through
-`rpc::enclave_service` with protected RPC enabled and verify that the observed
-streaming messages are encrypted payload carriers rather than plaintext
-application calls. The repository does not yet have real SGX/DCAP evidence
-production or protected encrypted carriers for every marshaller method.
+Additional host tests drive generated `send`, `[post]`, and `add_ref` traffic
+through `rpc::enclave_service` with protected RPC enabled and verify that the
+observed streaming messages are encrypted payload carriers rather than
+plaintext application calls. The repository does not yet have real SGX/DCAP
+evidence production or protected encrypted carriers for every marshaller
+method.
 
 This section describes the intended security model for enclave-to-enclave
 Canopy RPC:
@@ -29,7 +31,7 @@ Canopy RPC:
   existing transport;
 - end-to-end encrypted marshaller payloads for application RPC traffic;
 - public back-channel records for routing, attestation context, key ids,
-  telemetry ids, and other metadata that intermediates may read;
+  telemetry ids, and other metadata that intermediates may read and append to;
 - policy-driven validation of caller zone ids, destination zone ids, and
   enclave identity.
 
@@ -154,13 +156,14 @@ Inbound marshaller methods on the enclave-derived service unwrap protected
 payloads, validate policy, and then pass the recovered plaintext request to the
 internal implementation or generated stub.
 
-The first `add_ref` hardening step is route-state gating rather than a full
-encrypted `add_ref` carrier. `rpc::enclave_service` can require add_ref route
-attestation, treat established attested routes as allowed, explicitly allow
-configured unattested routes, and fail closed for failed or still-handshaking
-routes. Unknown routes start the route-addressed `handshake()` path and remain
-blocked until the service-level attestation exchange marks the route allowed.
-The current payloads are generated RPC/YAS structs:
+The first `add_ref` hardening step now combines route-state gating with an
+encrypted `payload_type_id` / `payload` carrier. `rpc::enclave_service` can
+require add_ref route attestation, treat established attested routes as
+allowed, explicitly allow configured unattested routes, and fail closed for
+failed or still-handshaking routes. Unknown routes start the route-addressed
+`handshake()` path and remain blocked until the service-level attestation
+exchange marks the route allowed. The current route-attestation payloads are
+generated RPC/YAS structs:
 `route_attestation_handshake_request` and
 `route_attestation_handshake_response`. They carry backend-neutral identity,
 CMW-like Evidence, transcript id, nonce, backend id, security level, and the
@@ -168,6 +171,13 @@ structured accept/reject verdict. A route becomes `attested` only after peer
 Evidence verifies and a `security_context` is established. A route becomes
 `unattested_allowed` only when Evidence is absent and policy explicitly does
 not require it.
+
+For the current transport implementation, `build_out_param_channel` remains a
+visible add-ref route-control field because `rpc::transport::inbound_add_ref`
+uses it before the service hook can unwrap a protected payload. Protected
+add-ref binds that visible value as AEAD associated data and repeats it inside
+the encrypted plaintext. Hiding it is deferred to a later transport-route
+refactor.
 
 ## Routing Classification
 
@@ -247,21 +257,135 @@ stateDiagram-v2
     FreshEpoch --> ClassifyRoute
 ```
 
-## Sequence Sketch
+## RPC Sign-On Sequence Diagrams
+
+These diagrams show the intended RPC sign-on shape using the current code
+names. Direct sign-on uses the attestation stream before the RPC transport
+connects. Routed sign-on uses `i_marshaller::handshake()` after a route already
+exists.
+
+### Direct Stream Sign-On
 
 ```mermaid
 sequenceDiagram
-    participant Caller as Caller service
-    participant Attestation as Attestation service
-    participant Route as Transport / route
-    participant Peer as Peer service
+    autonumber
+    participant AppA as Caller app
+    participant ServiceA as Caller enclave_service
+    participant StreamA as Caller attestation stream
+    participant AttA as Caller attestation_service
+    participant TransportA as Caller stream_transport
+    participant TransportB as Peer stream_transport
+    participant StreamB as Peer attestation stream
+    participant ServiceB as Peer enclave_service
+    participant AttB as Peer attestation_service
 
-    Caller->>Attestation: classify(peer address)
-    Attestation->>Route: choose local or remote carrier
-    Attestation->>Peer: attestation exchange over stream or RPC
-    Peer-->>Attestation: evidence response and key agreement data
-    Attestation-->>Caller: verified evidence and session keys
-    Caller->>Peer: protected marshaller traffic using session context
+    AppA->>ServiceA: connect_to_zone(input interface)
+    ServiceA->>StreamA: client_handshake()
+    StreamA->>AttA: produce local Evidence and nonce
+    StreamA->>StreamB: attestation frames over secure stream
+    StreamB->>AttB: verify caller Evidence and policy
+    AttB-->>StreamB: peer verdict and security_context
+    StreamB-->>StreamA: peer Evidence or accept verdict
+    StreamA->>AttA: verify peer Evidence and policy
+    AttA-->>ServiceA: security_context for adjacent peer
+    StreamB-->>ServiceB: security_context for caller zone
+    ServiceB->>ServiceB: store peer route state
+
+    ServiceA->>TransportA: inner_connect(connection_settings)
+    TransportA->>TransportB: init_client_initial_channel_send
+    TransportB->>ServiceB: attach_remote_zone(connection_settings)
+    opt caller supplied an inbound interface
+        ServiceB->>TransportB: add_ref caller interface
+        TransportB->>TransportA: addref_send with encrypted payload when context exists
+        TransportA->>ServiceA: unwrap add_ref and update local reference state
+    end
+    ServiceB-->>TransportB: output interface descriptor
+    TransportB-->>TransportA: init_client_initial_channel_response
+    TransportA-->>ServiceA: adjacent zone id and output descriptor
+    ServiceA->>ServiceA: bind output proxy and record peer transport
+```
+
+After this sign-on, generated `send`, `[post]`, and endpoint `add_ref` traffic
+can be wrapped by `rpc::enclave_service` using the established
+`security_context`.
+
+### Routed Service-Level Sign-On
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant AppA as Caller app
+    participant ServiceA as Caller enclave_service A
+    participant AttA as A attestation_service
+    participant RouteB as Existing route via B
+    participant ServiceC as Destination enclave_service C
+    participant AttC as C attestation_service
+
+    AppA->>ServiceA: use reference to zone C
+    ServiceA->>ServiceA: ensure_add_ref_route_allowed(C)
+    alt C route is unknown
+        ServiceA->>ServiceA: mark C route handshaking
+        ServiceA->>AttA: build route_attestation_handshake_request
+        ServiceA->>RouteB: i_marshaller::handshake(destination=C)
+        Note over RouteB: forwards public route fields and backchannels only
+        RouteB->>ServiceC: handshake(request)
+        ServiceC->>AttC: verify A Evidence and apply policy
+        AttC-->>ServiceC: verdict and optional security_context
+        ServiceC-->>RouteB: route_attestation_handshake_response
+        RouteB-->>ServiceA: handshake_result
+        ServiceA->>AttA: verify C Evidence and establish session
+        AttA-->>ServiceA: security_context for C route
+        ServiceA->>ServiceA: mark C route attested
+    else C route is attested or explicitly unattested_allowed
+        ServiceA->>ServiceA: allow immediately
+    else C route failed or still handshaking
+        ServiceA-->>AppA: ZONE_NOT_SUPPORTED
+    end
+
+    ServiceA->>RouteB: protected add_ref / send / post for C
+    Note over RouteB: B may append public backchannels but cannot decrypt payloads
+    RouteB->>ServiceC: protected envelope for C
+```
+
+This is the path used when a remote client passes an interface whose
+`remote_object_id` belongs to a zone behind the adjacent transport. The
+adjacent zone is still the transport peer, but the attested route check is for
+the zone named by the object being referenced.
+
+### Protected Runtime After Sign-On
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ProxyA as Caller proxy/stub logic
+    participant ServiceA as Caller enclave_service
+    participant AttA as Caller attestation_service
+    participant Route as Route / intermediate zones
+    participant ServiceC as Destination enclave_service
+    participant AttC as Destination attestation_service
+    participant StubC as Destination stub/service
+
+    ProxyA->>ServiceA: outbound_send / outbound_post / outbound_add_ref
+    ServiceA->>AttA: find security_context and derive AEAD key
+    AttA-->>ServiceA: key material and next e2e counter
+    ServiceA->>Route: outer route fields + encrypted_payload
+    Note over Route: may append public back_channel entries
+    Route->>ServiceC: protected envelope
+    ServiceC->>AttC: find session, derive key, accept counter
+    AttC-->>ServiceC: decrypted payload accepted
+    ServiceC->>ServiceC: recover inner fields; keep received outer backchannels
+    ServiceC->>StubC: dispatch inner call or add_ref
+
+    alt send expects a response
+        StubC-->>ServiceC: send_result
+        ServiceC->>AttC: derive response key and next counter
+        ServiceC-->>Route: encrypted response out_buf + public out_back_channel
+        Route-->>ServiceA: response
+        ServiceA->>AttA: decrypt response and accept response counter
+        ServiceA-->>ProxyA: plaintext send_result
+    else post/add_ref has no protected response body
+        ServiceC-->>Route: ack or no response according to marshaller method
+    end
 ```
 
 ## Direct Attestation Flow

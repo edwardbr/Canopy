@@ -103,6 +103,14 @@ signature. A second payload-format type id inside the struct is not needed
 unless a future format has multiple nested payload families that cannot be
 distinguished by the outer type, protocol version, encoding, or tag.
 
+Back-channel vectors are public mutable metadata. Intermediates may append
+entries such as OpenTelemetry context while forwarding a protected request or
+response. Therefore protected RPC must not include the outer back-channel
+vector in AEAD associated data, must not compare it with a sender snapshot, and
+must pass the received outer vector to the next layer. Security-relevant
+back-channel entries that need integrity must carry their own issuer identity
+and signature/MAC inside that entry.
+
 ## Protected Method Visibility
 
 The visibility rule is the same for all protected marshaller operations:
@@ -113,7 +121,7 @@ encrypted payload unless an intermediate genuinely needs them for routing.
 ```text
 send/post:        outer route fields visible; original interface/method/data encrypted
 try_cast:         target route visible; requested interface id encrypted
-add_ref:          route fields visible; add_ref_options and service id encrypted
+add_ref:          route fields visible; current route-control option visible and AEAD-bound
 release:          route fields visible; release_options encrypted
 object_released:  route fields visible; released object details encrypted
 transport_down:   end-to-end protected form deferred
@@ -127,9 +135,18 @@ must not expose valid application method ids to intermediates.
 Current implementation status: protected `send` and `post` have concrete
 AES-GCM envelope helpers and generated-RPC runtime coverage through
 `rpc::enclave_service`. Host integration tests observe generated `send`,
-protected `send` response, and generated `[post]` traffic over
+protected `send` response, generated `[post]`, and generated `add_ref` traffic over
 `rpc::stream_transport` and verify that those messages carry encrypted
 `rpc::encrypted_payload` blobs rather than plaintext application calls.
+`add_ref` also has an AES-GCM protected payload carrier in `payload_type_id` /
+`payload`; `rpc::enclave_service` wraps outbound add-ref traffic when an
+attested adjacent context exists and unwraps inbound protected add-ref traffic
+before route validation. Because the current transport route construction reads
+`build_out_param_channel` before the service hook receives the message, that
+field remains visible in this implementation and is authenticated as AEAD
+associated data plus repeated inside the encrypted plaintext. Hiding that
+route-control field requires a later transport-route refactor.
+
 `add_ref` has the first policy gate in `rpc::enclave_service`: routes can be
 attested, explicitly allowed unattested, failed, or marked as handshaking, and
 unknown routes trigger the route-addressed `handshake()` path before failing
@@ -138,10 +155,10 @@ for fake Evidence, backend-neutral identity, transcript id, nonce, backend id,
 security level, and a structured accept/reject verdict. SGX-sim host
 integration tests now drive this path through `rpc::stream_transport` from an
 unknown-route `add_ref`, including both mutual fake attestation and explicitly
-permitted unattested-client policy. The `add_ref` and `release` parameter
-structs now include `payload_type_id` and `payload` fields for the future
-encrypted reference-control carrier, but those fields are not yet interpreted
-as a protected payload.
+permitted unattested-client policy. The `release` parameter structs now include
+`payload_type_id` and `payload` fields for the future encrypted
+reference-control carrier, but those fields are not yet interpreted as a
+protected payload.
 
 ## Plaintext Payload
 
@@ -158,7 +175,7 @@ protected_plaintext:
     interface_id
     method_id
     in_data
-    in_back_channel
+    in_back_channel       = sender snapshot only; outer received vector is authoritative
     transport_request_id
     service_request_id
     e2e_counter
@@ -200,9 +217,10 @@ selected private response context
 The caller service decrypts the protected `out_buf`, validates the binding, and
 returns the recovered result to the proxy.
 
-For protected responses, the current implementation encrypts `out_back_channel`
-with the response body. Future route-visible response metadata must be carried
-separately and explicitly marked public.
+For protected responses, `out_back_channel` remains outer public mutable
+metadata. It is not part of the AEAD request/response binding. Private response
+context must be placed inside the encrypted payload rather than in the
+back-channel vector.
 
 ## Request Ids
 

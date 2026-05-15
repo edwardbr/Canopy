@@ -140,7 +140,7 @@ namespace rpc
                     = rpc::add_ref_options::build_caller_route
                       | (is_optimistic ? rpc::add_ref_options::optimistic : rpc::add_ref_options::normal);
                 ar_params.request_id = request_id;
-                auto ar_result = CO_AWAIT transport->add_ref(std::move(ar_params));
+                auto ar_result = CO_AWAIT zone_->outbound_add_ref(std::move(ar_params), transport);
                 ret = ar_result.error_code;
             }
         }

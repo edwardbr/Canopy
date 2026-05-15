@@ -10,6 +10,7 @@
 #include <streaming/stream.h>
 
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -537,10 +538,34 @@ namespace rpc
     CORO_TASK(standard_result)
     enclave_service::add_ref(add_ref_params params)
     {
-        auto route_result
-            = CO_AWAIT ensure_add_ref_route_allowed(params.remote_object_id.as_zone(), "inbound add_ref remote object");
+        const bool protected_payload
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+        if (protected_payload)
+        {
+            auto service = get_attestation_service();
+            if (!protected_rpc_enabled() || !service)
+                CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+
+            auto request = canopy::security::attestation::unprotect_add_ref_request(*service, params);
+            if (!request.accepted)
+                CO_RETURN standard_result{request.error.error_code, {}};
+            params = std::move(request.value.params);
+        }
+        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        {
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        const auto route_zone_id = params.remote_object_id.as_zone();
+        auto route_result = CO_AWAIT ensure_add_ref_route_allowed(route_zone_id, "inbound add_ref remote object");
         if (route_result.error_code != rpc::error::OK())
             CO_RETURN route_result;
+
+        if (!protected_payload && protected_rpc_enabled() && get_security_context(route_zone_id))
+        {
+            RPC_WARNING("plaintext add_ref rejected for protected route {}", rpc::to_string(route_zone_id));
+            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        }
 
         CO_RETURN CO_AWAIT child_service::add_ref(std::move(params));
     }
@@ -791,12 +816,27 @@ namespace rpc
         add_ref_params params,
         std::shared_ptr<transport> transport)
     {
+        std::optional<rpc::destination_zone> adjacent_zone_id;
         if (transport)
         {
-            auto route_result = CO_AWAIT ensure_add_ref_route_allowed(
-                transport->get_adjacent_zone_id(), "outbound add_ref adjacent peer");
+            adjacent_zone_id = transport->get_adjacent_zone_id();
+            auto route_result = CO_AWAIT ensure_add_ref_route_allowed(*adjacent_zone_id, "outbound add_ref adjacent peer");
             if (route_result.error_code != rpc::error::OK())
                 CO_RETURN route_result;
+        }
+
+        auto service = get_attestation_service();
+        if (protected_rpc_enabled() && service && adjacent_zone_id)
+        {
+            auto context = get_security_context(*adjacent_zone_id);
+            if (context)
+            {
+                auto request
+                    = canopy::security::attestation::protect_add_ref_request(*service, *context, std::move(params));
+                if (!request.accepted)
+                    CO_RETURN standard_result{request.error.error_code, {}};
+                params = std::move(request.value.params);
+            }
         }
 
         CO_RETURN CO_AWAIT child_service::outbound_add_ref(std::move(params), std::move(transport));

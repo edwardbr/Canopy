@@ -27,7 +27,8 @@ namespace canopy::security::attestation
     {
         send = 1,
         post = 2,
-        response = 3
+        response = 3,
+        add_ref = 4
     };
 
     struct protected_rpc_error
@@ -57,7 +58,25 @@ namespace canopy::security::attestation
         uint64_t request_counter{protected_rpc_invalid_counter};
     };
 
+    struct protected_add_ref_request
+    {
+        rpc::add_ref_params params;
+        security_context context;
+        uint64_t request_counter{protected_rpc_invalid_counter};
+    };
+
+    // Type fingerprint used when encrypted_payload is carried in payload_type_id fields.
+    [[nodiscard]] auto encrypted_payload_type_id(uint64_t protocol_version) -> uint64_t;
+
+    // Same fingerprint wrapped as an interface ordinal for protected send/post carriers.
     [[nodiscard]] auto encrypted_payload_interface_id(uint64_t protocol_version) -> rpc::interface_ordinal;
+
+    // True when an add_ref/release-style payload field carries encrypted_payload bytes.
+    [[nodiscard]] auto is_protected_rpc_payload(
+        uint64_t payload_type_id,
+        uint64_t protocol_version) -> bool;
+
+    // True when a send/post-style interface+method pair is the protected envelope carrier.
     [[nodiscard]] auto is_protected_rpc_envelope(
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
@@ -94,4 +113,13 @@ namespace canopy::security::attestation
     [[nodiscard]] auto unprotect_post_request(
         attestation_service& service,
         const rpc::post_params& outer) -> protected_rpc_result<protected_post_request>;
+
+    [[nodiscard]] auto protect_add_ref_request(
+        attestation_service& service,
+        const security_context& context,
+        rpc::add_ref_params params) -> protected_rpc_result<protected_add_ref_request>;
+
+    [[nodiscard]] auto unprotect_add_ref_request(
+        attestation_service& service,
+        const rpc::add_ref_params& outer) -> protected_rpc_result<protected_add_ref_request>;
 } // namespace canopy::security::attestation
