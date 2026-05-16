@@ -150,26 +150,27 @@ namespace websocket_demo
             int oy = 0;
             if (fb.valid)
             {
-                // Genie a bit larger than the skin region; aspect preserved.
-                draw_h = fb.h * 11 / 5; // ~2.2x
-                if (draw_h < nat_h / 2)
-                    draw_h = nat_h / 2;
-                if (draw_h > fh)
-                    draw_h = fh;
-                draw_w = draw_h * nat_w / nat_h;
-                // Centre on the face horizontally; bias up so the genie head
-                // sits above the face and the lamp around the chin.
+                // Crown scales with the head: a bit wider than the detected
+                // skin region, aspect preserved.
+                draw_w = fb.w * 6 / 5; // ~1.2x head width
+                if (draw_w < nat_w / 2)
+                    draw_w = nat_w / 2;
+                if (draw_w > fw)
+                    draw_w = fw;
+                draw_h = draw_w * nat_h / nat_w;
+                // Centre on the head; rest the band on top of the head with a
+                // slight overlap so it sits on the head rather than floating.
                 ox = fb.cx - draw_w / 2;
-                oy = fb.cy - draw_h * 3 / 5;
+                oy = (fb.cy - fb.h / 2) - draw_h * 85 / 100;
             }
             else
             {
-                // No skin detected: fixed bottom-left at native size, as
-                // before, so the genie is still visible.
+                // No skin detected: fixed top-centre at native size so the
+                // crown is still visible.
                 draw_w = nat_w;
                 draw_h = nat_h;
-                ox = 10;
-                oy = fh - nat_h - 10;
+                ox = (fw - nat_w) / 2;
+                oy = 10;
             }
             if (ox < 0)
                 ox = 0;

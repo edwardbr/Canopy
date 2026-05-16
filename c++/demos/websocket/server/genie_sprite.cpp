@@ -13,8 +13,8 @@ namespace websocket_demo
     {
         namespace
         {
-            constexpr int SPR_W = 140;
-            constexpr int SPR_H = 180;
+            constexpr int SPR_W = 200;
+            constexpr int SPR_H = 130;
 
             struct rgba
             {
@@ -50,44 +50,82 @@ namespace websocket_demo
                     }
             }
 
-            // Build the genie+lamp sprite once. Recognisable placeholder, not
-            // art: a gold lamp, a translucent blue plume widening into a round
-            // genie head with eyes. Replaceable later with real artwork.
+            void fill_rect(std::vector<uint8_t>& buf, int x0, int y0, int x1, int y1, rgba c)
+            {
+                for (int y = y0; y <= y1; ++y)
+                    for (int x = x0; x <= x1; ++x)
+                        blend_px(buf, x, y, c);
+            }
+
+            // Filled triangle via edge-function sign test over the bounding box.
+            void fill_triangle(std::vector<uint8_t>& buf,
+                int ax, int ay, int bx, int by, int cx, int cy, rgba col)
+            {
+                const int minx = std::min({ax, bx, cx});
+                const int maxx = std::max({ax, bx, cx});
+                const int miny = std::min({ay, by, cy});
+                const int maxy = std::max({ay, by, cy});
+                auto edge = [](int x0, int y0, int x1, int y1, int px, int py) {
+                    return (x1 - x0) * (py - y0) - (y1 - y0) * (px - x0);
+                };
+                for (int y = miny; y <= maxy; ++y)
+                    for (int x = minx; x <= maxx; ++x)
+                    {
+                        const int w0 = edge(ax, ay, bx, by, x, y);
+                        const int w1 = edge(bx, by, cx, cy, x, y);
+                        const int w2 = edge(cx, cy, ax, ay, x, y);
+                        if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0))
+                            blend_px(buf, x, y, col);
+                    }
+            }
+
+            // Build the crown sprite once. Procedural (no asset file) so the
+            // build stays deterministic for the SGX reproducible-build /
+            // MRENCLAVE requirement: a gold band with five jewelled points and
+            // a pearl trim. Replaceable later with real artwork without
+            // touching callers. Drawn wide-then-short so the aspect ratio
+            // reads as a crown when the caller scales it to head width.
             const std::vector<uint8_t>& sprite()
             {
                 static const std::vector<uint8_t> data = [] {
                     std::vector<uint8_t> buf(static_cast<size_t>(SPR_W) * SPR_H * 4, 0);
 
-                    const rgba gold{214, 170, 60, 255};
-                    const rgba gold_dark{150, 115, 35, 255};
-                    const rgba genie{90, 170, 255, 170};
-                    const rgba genie_soft{120, 195, 255, 120};
-                    const rgba white{255, 255, 255, 255};
-                    const rgba pupil{20, 30, 60, 255};
+                    const rgba gold{235, 190, 70, 255};
+                    const rgba gold_dark{165, 125, 35, 255};
+                    const rgba pearl{255, 250, 235, 255};
+                    const rgba ruby{220, 40, 60, 255};
+                    const rgba sapphire{60, 110, 225, 255};
+                    const rgba emerald{40, 180, 120, 255};
 
-                    // Lamp (bottom).
-                    fill_ellipse(buf, 70, 150, 46, 22, gold);          // body
-                    fill_ellipse(buf, 24, 146, 16, 9, gold);           // spout
-                    fill_ellipse(buf, 70, 132, 11, 8, gold_dark);      // lid base
-                    fill_ellipse(buf, 70, 124, 5, 6, gold);            // knob
+                    // Five points rising from the band top (y = 78). Centre
+                    // tallest, outer ones lowest, so the silhouette reads as a
+                    // crown. Base edges tile [16,184] into five segments.
+                    const int base_y = 78;
+                    const int ex[6] = {16, 50, 84, 116, 150, 184};
+                    const int apex_x[5] = {33, 67, 100, 133, 167};
+                    const int apex_y[5] = {44, 26, 8, 26, 44};
+                    for (int i = 0; i < 5; ++i)
+                        fill_triangle(buf, ex[i], base_y, ex[i + 1], base_y,
+                            apex_x[i], apex_y[i], gold);
 
-                    // Plume rising from the lid, narrow -> wide going up.
-                    for (int y = 120; y >= 86; y -= 2)
-                    {
-                        const int t = 120 - y;             // 0..34
-                        const int rx = 6 + t / 2;          // widen upward
-                        fill_ellipse(buf, 70, y, rx, 8, genie_soft);
-                    }
+                    // Band.
+                    fill_rect(buf, 16, base_y, 184, 116, gold);
+                    // Darker base trim.
+                    fill_rect(buf, 16, 112, 184, 122, gold_dark);
 
-                    // Genie head.
-                    fill_ellipse(buf, 70, 56, 38, 40, genie);
-                    // Eyes.
-                    fill_ellipse(buf, 57, 50, 8, 9, white);
-                    fill_ellipse(buf, 83, 50, 8, 9, white);
-                    fill_ellipse(buf, 58, 51, 3, 4, pupil);
-                    fill_ellipse(buf, 84, 51, 3, 4, pupil);
-                    // Topknot.
-                    fill_ellipse(buf, 70, 16, 6, 9, genie);
+                    // Jewel ball at each point's tip.
+                    const rgba tip[5] = {sapphire, emerald, ruby, emerald, sapphire};
+                    for (int i = 0; i < 5; ++i)
+                        fill_ellipse(buf, apex_x[i], apex_y[i] + 4, 7, 7, tip[i]);
+
+                    // Band jewels: ruby centred, sapphires either side.
+                    fill_ellipse(buf, 100, 95, 11, 12, ruby);
+                    fill_ellipse(buf, 58, 96, 8, 9, sapphire);
+                    fill_ellipse(buf, 142, 96, 8, 9, sapphire);
+
+                    // Pearl trim along the bottom edge.
+                    for (int x = 24; x <= 176; x += 17)
+                        fill_ellipse(buf, x, 124, 5, 5, pearl);
 
                     return buf;
                 }();
