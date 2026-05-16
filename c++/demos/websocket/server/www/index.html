@@ -468,6 +468,23 @@
                         sent 0 / received 0 / dropped 0
                     </div>
                 </div>
+                <div style="display:flex;gap:18px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+                    <label>Resolution
+                        <select id="videoResolution" disabled>
+                            <option value="160x120">160×120</option>
+                            <option value="320x240" selected>320×240</option>
+                            <option value="640x480">640×480</option>
+                        </select>
+                    </label>
+                    <label>Brightness
+                        <input type="range" id="videoBrightness" min="-128" max="127" value="0" disabled>
+                        <span id="videoBrightnessVal">0</span>
+                    </label>
+                    <label>Quality
+                        <input type="range" id="videoQuality" min="0" max="100" value="40" disabled>
+                        <span id="videoQualityVal">40</span>
+                    </label>
+                </div>
             </div>
 
             <div class="action-buttons">

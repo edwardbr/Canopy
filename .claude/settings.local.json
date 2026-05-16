@@ -52,7 +52,10 @@
       "Bash(cargo build:*)",
       "Bash(cargo test:*)",
       "Bash(./build_debug_coroutine/output/websocket_server --va-name server --va-type ipv4 --listen 0.0.0.0:8000 --cert c++/demos/websocket/server/certs/server.crt --key c++/demos/websocket/server/certs/server.key --static-root c++/demos/websocket/server/www)",
-      "Bash(disown)"
+      "Bash(disown)",
+      "Bash(pkill -f websocket_enclave_server)",
+      "Bash(/var/home/edward/projects/Canopy_gitlab/.claude/worktrees/video_genie/build_release_coroutine_sgx_sim/output/websocket_enclave_server --port=8000)",
+      "Bash(pgrep -af 'websocket_enclave_server$')"
     ]
   },
   "enabledPlugins": {}

@@ -191,6 +191,13 @@ namespace websocket_demo
                 video_.set_effects(effects);
                 CO_RETURN rpc::error::OK();
             }
+
+            CORO_TASK(int)
+            set_video_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used) override
+            {
+                video_.set_params(brightness, bitrate_kbps, cpu_used);
+                CO_RETURN rpc::error::OK();
+            }
         };
 
 #ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY

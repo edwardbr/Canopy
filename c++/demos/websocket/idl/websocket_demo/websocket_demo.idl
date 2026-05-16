@@ -48,6 +48,13 @@ namespace websocket_demo
             // call so the browser gets confirmation. `effects` is a bitmask:
             // bit 0 = genie sprite overlay, bit 1 = invert luma.
             int set_video_effects(uint32_t effects);
+
+            // Live in-enclave video parameters. Scalars only (JS-marshalling
+            // safe). brightness: signed luma offset [-128,127] applied to the
+            // decoded frame. bitrate_kbps / cpu_used: VP8 encoder rate and
+            // speed; the enclave re-inits the encoder when these (or the
+            // frame size, from a browser resolution switch) change.
+            int set_video_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used);
         };
 
         interface i_enclave_websocket_server

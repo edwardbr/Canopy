@@ -41,6 +41,11 @@ const videoStopBtn = document.getElementById('videoStopBtn');
 const videoStatsEl = document.getElementById('videoStats');
 const videoEffectGenie = document.getElementById('videoEffectGenie');
 const videoEffectInvert = document.getElementById('videoEffectInvert');
+const videoResolution = document.getElementById('videoResolution');
+const videoBrightness = document.getElementById('videoBrightness');
+const videoBrightnessVal = document.getElementById('videoBrightnessVal');
+const videoQuality = document.getElementById('videoQuality');
+const videoQualityVal = document.getElementById('videoQualityVal');
 
 // Must match i_calculator::set_video_effects / video_session.h.
 const EFFECT_GENIE = 1;
@@ -55,6 +60,43 @@ async function sendVideoEffects() {
         await calc.set_video_effects(mask);
     } catch (err) {
         console.warn('set_video_effects failed:', err);
+    }
+}
+
+// Quality slider 0..100 -> enclave VP8 encoder (bitrate_kbps, cpu_used).
+// Higher quality = more bitrate and a slower/better cpu_used.
+function qualityToParams(q) {
+    const bitrate_kbps = Math.round(300 + (q / 100) * (5000 - 300));
+    const cpu_used = Math.round(16 - (q / 100) * (16 - 4)); // 16 (fast) .. 4 (better)
+    return { bitrate_kbps, cpu_used };
+}
+
+async function sendVideoParams() {
+    if (!calc) return;
+    const brightness = parseInt(videoBrightness.value, 10) || 0;
+    const q = parseInt(videoQuality.value, 10) || 0;
+    const { bitrate_kbps, cpu_used } = qualityToParams(q);
+    videoBrightnessVal.textContent = String(brightness);
+    videoQualityVal.textContent = String(q);
+    try {
+        await calc.set_video_params(brightness, bitrate_kbps, cpu_used);
+    } catch (err) {
+        console.warn('set_video_params failed:', err);
+    }
+}
+
+// Resolution change: rebuild the WebCodecs pipeline at the new size
+// (stop+start keeps the websocket; the enclave re-inits its codec when the
+// decoded frame size changes).
+async function onResolutionChange() {
+    const [w, h] = videoResolution.value.split('x').map(function(n) { return parseInt(n, 10); });
+    videoState.width = w;
+    videoState.height = h;
+    videoRemote.width = w;
+    videoRemote.height = h;
+    if (videoState.active) {
+        stopVideo();
+        await startVideo();
     }
 }
 
@@ -138,6 +180,9 @@ function setUIConnected(connected) {
     videoStopBtn.disabled = !connected || !videoState.active;
     videoEffectGenie.disabled = !connected;
     videoEffectInvert.disabled = !connected;
+    videoResolution.disabled = !connected;
+    videoBrightness.disabled = !connected;
+    videoQuality.disabled = !connected;
 }
 
 // Mode switching
@@ -215,8 +260,9 @@ function connect() {
             connectTime = Date.now();
             uptimeInterval = setInterval(updateUptime, 1000);
             addMessage('system', '✓ Connected and ready');
-            // Sync the enclave to the current toggle state on connect.
+            // Sync the enclave to the current control state on connect.
             sendVideoEffects();
+            sendVideoParams();
         },
         onClose: function(code, reason) {
             calc = null;
@@ -427,6 +473,9 @@ const VIDEO_BITRATE = 1_200_000;
 
 const videoState = {
     active: false,
+    // Live, set from the Resolution control (defaults match the dropdown).
+    width: VIDEO_WIDTH,
+    height: VIDEO_HEIGHT,
     mediaStream: null,
     reader: null,
     encoder: null,
@@ -478,7 +527,7 @@ async function startVideo() {
         // path (websocket_handler.cpp's set_callback wiring) hands the demo
         // class an i_context_event sink that doubles as the video egress.
         videoState.mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT, frameRate: VIDEO_FRAMERATE },
+            video: { width: videoState.width, height: videoState.height, frameRate: VIDEO_FRAMERATE },
             audio: false,
         });
         videoLocal.srcObject = videoState.mediaStream;
@@ -501,8 +550,8 @@ async function startVideo() {
         });
         videoState.decoder.configure({
             codec: VIDEO_CODEC,
-            codedWidth: VIDEO_WIDTH,
-            codedHeight: VIDEO_HEIGHT,
+            codedWidth: videoState.width,
+            codedHeight: videoState.height,
         });
 
         // Encoder for outbound capture.
@@ -544,8 +593,8 @@ async function startVideo() {
         });
         videoState.encoder.configure({
             codec: VIDEO_CODEC,
-            width: VIDEO_WIDTH,
-            height: VIDEO_HEIGHT,
+            width: videoState.width,
+            height: videoState.height,
             framerate: VIDEO_FRAMERATE,
             bitrate: VIDEO_BITRATE,
             latencyMode: 'realtime',
@@ -559,7 +608,7 @@ async function startVideo() {
         videoStartBtn.disabled = true;
         videoStopBtn.disabled = false;
         videoState.rafHandle = requestAnimationFrame(videoPaintLoop);
-        addMessage('system', `Video started (${VIDEO_CODEC} ${VIDEO_WIDTH}x${VIDEO_HEIGHT}@${VIDEO_FRAMERATE})`);
+        addMessage('system', `Video started (${VIDEO_CODEC} ${videoState.width}x${videoState.height}@${VIDEO_FRAMERATE})`);
 
         (async function pump() {
             while (videoState.active) {
@@ -691,6 +740,9 @@ videoStartBtn.addEventListener('click', startVideo);
 videoStopBtn.addEventListener('click', stopVideo);
 videoEffectGenie.addEventListener('change', sendVideoEffects);
 videoEffectInvert.addEventListener('change', sendVideoEffects);
+videoResolution.addEventListener('change', onResolutionChange);
+videoBrightness.addEventListener('input', sendVideoParams);
+videoQuality.addEventListener('input', sendVideoParams);
 
 messageInput.addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {

@@ -19,37 +19,20 @@ namespace websocket_demo
             constexpr uint32_t VIDEO_FLAG_KEYFRAME = 1u;
         }
 
-        video_session::~video_session()
+        // ---- pump: shared-state worker core ---------------------------------
+
+        video_session::pump::~pump()
         {
-            {
-                std::lock_guard<std::mutex> guard(mailbox_mutex_);
-                stopping_ = true;
-            }
+            // Runs only when BOTH video_session and any detached worker have
+            // released their references, so the codecs are never destroyed
+            // under an in-flight worker.
             if (decoder_ready_)
                 vpx_codec_destroy(&decoder_);
             if (encoder_ready_)
                 vpx_codec_destroy(&encoder_);
         }
 
-        int video_session::set_sink(const rpc::shared_ptr<i_context_event>& sink)
-        {
-            sink_ = sink;
-            return rpc::error::OK();
-        }
-
-        void video_session::set_scheduler(const std::shared_ptr<rpc::coro::scheduler>& scheduler)
-        {
-            // The scheduler, never the service — see the header note on the
-            // service -> demo -> video_session reference cycle.
-            scheduler_ = scheduler;
-        }
-
-        void video_session::set_effects(uint32_t effects)
-        {
-            effects_.store(effects, std::memory_order_relaxed);
-        }
-
-        bool video_session::ensure_decoder()
+        bool video_session::pump::ensure_decoder()
         {
             if (decoder_ready_)
                 return true;
@@ -61,10 +44,19 @@ namespace websocket_demo
             return true;
         }
 
-        bool video_session::ensure_encoder(unsigned int width, unsigned int height)
+        bool video_session::pump::ensure_encoder(unsigned int width, unsigned int height)
         {
-            if (encoder_ready_)
+            const uint32_t gen = params_gen_.load(std::memory_order_relaxed);
+            // Reuse the encoder unless the frame size changed (browser
+            // resolution switch) or params changed (set_video_params).
+            if (encoder_ready_ && enc_w_ == width && enc_h_ == height && enc_params_gen_ == gen)
                 return true;
+            if (encoder_ready_)
+            {
+                vpx_codec_destroy(&encoder_);
+                encoder_ready_ = false;
+            }
+
             if (vpx_codec_enc_config_default(vpx_codec_vp8_cx(), &encoder_cfg_, 0) != VPX_CODEC_OK)
                 return false;
 
@@ -83,27 +75,25 @@ namespace websocket_demo
             // frame costs exactly one frame, no block-artifact cascade.
             encoder_cfg_.kf_mode = VPX_KF_AUTO;
             encoder_cfg_.kf_max_dist = 1;
-            encoder_cfg_.rc_target_bitrate = 1200; // kbps; smaller = faster encode + push
+            encoder_cfg_.rc_target_bitrate = bitrate_kbps_.load(std::memory_order_relaxed);
 
             if (vpx_codec_enc_init(&encoder_, vpx_codec_vp8_cx(), &encoder_cfg_, 0) != VPX_CODEC_OK)
                 return false;
 
             // cpu_used is the dominant realtime speed/quality lever for VP8.
-            // Range [-16, 16]; higher = much faster encode, lower quality.
-            // Max it: the demo needs to keep up with the camera, not look
-            // pretty.
-            vpx_codec_control(&encoder_, VP8E_SET_CPUUSED, 16);
+            // Range [-16, 16]; higher = faster encode, lower quality.
+            vpx_codec_control(
+                &encoder_, VP8E_SET_CPUUSED, static_cast<int>(cpu_used_.load(std::memory_order_relaxed)));
             vpx_codec_control(&encoder_, VP8E_SET_STATIC_THRESHOLD, 1000);
 
+            enc_w_ = width;
+            enc_h_ = height;
+            enc_params_gen_ = gen;
             encoder_ready_ = true;
             return true;
         }
 
-        // The in-enclave processing seam. Phase 2 proved the codec loop with a
-        // luma invert; Phase 3 composites a fixed-position genie sprite over
-        // the otherwise-unmodified frame. Phase 4 will anchor the sprite to a
-        // detected face; that change stays entirely inside this seam.
-        void video_session::invert_luma(vpx_image_t* img)
+        void video_session::pump::invert_luma(vpx_image_t* img)
         {
             unsigned char* y = img->planes[VPX_PLANE_Y];
             const int stride = img->stride[VPX_PLANE_Y];
@@ -117,12 +107,31 @@ namespace websocket_demo
             }
         }
 
-        void video_session::transform_frame(vpx_image_t* img)
+        void video_session::pump::apply_brightness(vpx_image_t* img, int delta)
+        {
+            if (delta == 0)
+                return;
+            unsigned char* y = img->planes[VPX_PLANE_Y];
+            const int stride = img->stride[VPX_PLANE_Y];
+            const unsigned int w = img->d_w;
+            const unsigned int h = img->d_h;
+            for (unsigned int row = 0; row < h; ++row)
+            {
+                unsigned char* line = y + static_cast<size_t>(row) * stride;
+                for (unsigned int col = 0; col < w; ++col)
+                {
+                    const int v = line[col] + delta;
+                    line[col] = static_cast<unsigned char>(v < 0 ? 0 : (v > 255 ? 255 : v));
+                }
+            }
+        }
+
+        // The in-enclave processing seam: brightness -> invert -> face-anchored
+        // genie composite. All effects are toggled live from the browser.
+        void video_session::pump::transform_frame(vpx_image_t* img)
         {
             const uint32_t fx = effects_.load(std::memory_order_relaxed);
-            // Invert first, then composite the genie on top so the sprite
-            // always renders with correct colours regardless of the invert
-            // toggle.
+            apply_brightness(img, brightness_.load(std::memory_order_relaxed));
             if (fx & effect_invert)
                 invert_luma(img);
             if (!(fx & effect_genie))
@@ -170,7 +179,7 @@ namespace websocket_demo
         }
 
         CORO_TASK(void)
-        video_session::process_one(
+        video_session::pump::process_one(
             uint64_t seq,
             uint64_t pts_us,
             uint32_t flags,
@@ -240,8 +249,13 @@ namespace websocket_demo
         }
 
         CORO_TASK(void)
-        video_session::worker_loop()
+        video_session::pump::worker_loop()
         {
+            // Strong self-ref for the worker's entire lifetime: even if
+            // video_session (and demo) are destroyed mid-flush, the pump —
+            // and therefore sink_ and the codecs — stays alive until this
+            // coroutine returns, so the suspended push_frame can't UAF.
+            auto self = shared_from_this();
             for (;;)
             {
                 uint64_t seq = 0;
@@ -266,6 +280,51 @@ namespace websocket_demo
             }
         }
 
+        // ---- video_session: thin facade over the shared pump ----------------
+
+        video_session::~video_session()
+        {
+            // Signal the worker to stop; the pump (and its codecs/sink_) is
+            // freed by ~pump only once the worker has also released it.
+            std::lock_guard<std::mutex> guard(pump_->mailbox_mutex_);
+            pump_->stopping_ = true;
+        }
+
+        int video_session::set_sink(const rpc::shared_ptr<i_context_event>& sink)
+        {
+            pump_->sink_ = sink;
+            return rpc::error::OK();
+        }
+
+        void video_session::set_scheduler(const std::shared_ptr<rpc::coro::scheduler>& scheduler)
+        {
+            pump_->scheduler_ = scheduler;
+        }
+
+        void video_session::set_effects(uint32_t effects)
+        {
+            pump_->effects_.store(effects, std::memory_order_relaxed);
+        }
+
+        void video_session::set_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used)
+        {
+            if (brightness < -128)
+                brightness = -128;
+            if (brightness > 127)
+                brightness = 127;
+            if (bitrate_kbps < 50)
+                bitrate_kbps = 50;
+            if (bitrate_kbps > 20000)
+                bitrate_kbps = 20000;
+            if (cpu_used > 16)
+                cpu_used = 16;
+            pump_->brightness_.store(brightness, std::memory_order_relaxed);
+            pump_->bitrate_kbps_.store(bitrate_kbps, std::memory_order_relaxed);
+            pump_->cpu_used_.store(cpu_used, std::memory_order_relaxed);
+            // Bump so the worker re-inits the encoder with the new rate/speed.
+            pump_->params_gen_.fetch_add(1, std::memory_order_relaxed);
+        }
+
         CORO_TASK(int)
         video_session::forward_frame(
             uint64_t seq,
@@ -273,39 +332,40 @@ namespace websocket_demo
             uint32_t flags,
             const std::vector<uint8_t>& payload)
         {
-            if (!sink_)
+            auto p = pump_;
+            if (!p->sink_)
                 CO_RETURN rpc::error::OK();
 
             // No scheduler (CALCULATOR_ONLY enclave compile-fit has no
             // rpc::service): fall back to synchronous inline processing —
             // correctness over latency there.
-            if (!scheduler_)
+            if (!p->scheduler_)
             {
-                co_await process_one(seq, pts_us, flags, payload);
+                co_await p->process_one(seq, pts_us, flags, payload);
                 CO_RETURN rpc::error::OK();
             }
 
             bool start_worker = false;
             {
-                std::lock_guard<std::mutex> guard(mailbox_mutex_);
-                if (stopping_)
+                std::lock_guard<std::mutex> guard(p->mailbox_mutex_);
+                if (p->stopping_)
                     CO_RETURN rpc::error::OK();
                 // Overwrite: only the freshest frame survives. Intermediate
                 // frames the worker hasn't picked up are deliberately dropped.
-                pending_seq_ = seq;
-                pending_pts_ = pts_us;
-                pending_flags_ = flags;
-                pending_payload_ = payload;
-                has_pending_ = true;
-                if (!worker_running_)
+                p->pending_seq_ = seq;
+                p->pending_pts_ = pts_us;
+                p->pending_flags_ = flags;
+                p->pending_payload_ = payload;
+                p->has_pending_ = true;
+                if (!p->worker_running_)
                 {
-                    worker_running_ = true;
+                    p->worker_running_ = true;
                     start_worker = true;
                 }
             }
 
             if (start_worker)
-                scheduler_->spawn_detached(worker_loop());
+                p->scheduler_->spawn_detached(p->worker_loop());
 
             // Return immediately: the transport receive loop is never blocked
             // by codec work, so no kernel-socket backlog forms.
