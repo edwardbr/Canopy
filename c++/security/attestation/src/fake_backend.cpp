@@ -195,6 +195,10 @@ namespace canopy::security::attestation
             std::vector<uint8_t>& out,
             const fake_evidence& evidence) -> bool
         {
+            // The fake backend is only a development stand-in, but it still
+            // signs every field a real verifier would care about: who claimed
+            // the identity, which handshake run this is, and the verifier's
+            // nonce.
             return append_string(out, evidence.backend_id) && append_string(out, evidence.enclave_id)
                    && append_string(out, evidence.zone_id) && append_u64(out, evidence.transcript_id)
                    && append_bytes(out, evidence.nonce);
@@ -310,7 +314,7 @@ namespace canopy::security::attestation
         std::string out;
         out.reserve(
             fake_session_id_prefix.size() + left.size() + right.size() + fake_session_id_separator_count
-            + uint64_decimal_max_digits);
+            + uint64_decimal_max_digits + 1);
         fmt::format_to(std::back_inserter(out), "{}{}:{}:{}", fake_session_id_prefix, left, right, transcript_id);
         return out;
     }
@@ -341,7 +345,7 @@ namespace canopy::security::attestation
 
         cmw result;
         result.media_type = fake_evidence_media_type;
-        result.content_format = "canopy.fake.v1";
+        result.content_format = fake_evidence_content_format;
         auto signature = fake_signature(evidence, development_key_);
         if (!signature.has_value())
             return result;
@@ -360,6 +364,8 @@ namespace canopy::security::attestation
     {
         if (evidence.media_type != fake_evidence_media_type)
             return reject("unsupported fake evidence media type");
+        if (evidence.content_format != fake_evidence_content_format)
+            return reject("unsupported fake evidence content format");
         if (!policy.allow_development_evidence)
             return reject("development evidence is not allowed by policy");
         if (!policy.required_backend_id.empty() && policy.required_backend_id != fake_backend_id)

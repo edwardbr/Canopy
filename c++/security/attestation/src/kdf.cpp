@@ -19,7 +19,13 @@ namespace canopy::security::attestation::detail
 {
     namespace
     {
-        constexpr std::string_view protocol_id = "Canopy-Attestation-v1";
+        // Domain separator for the byte encoding used as HKDF input. This is
+        // not the negotiated attestation handshake suite.
+        constexpr std::string_view canonical_kdf_encoding_domain = "Canopy-Attestation-v1";
+        constexpr std::string_view kdf_purpose_development_shared_secret = "development-shared-secret";
+        constexpr std::string_view kdf_purpose_session_root_secret = "session-root-secret";
+        constexpr std::string_view kdf_purpose_protected_rpc_aead_key = "protected-rpc-aead-key";
+        constexpr std::string_view kdf_salt_purpose_fake_development_kex = "fake-development-kex";
         constexpr size_t hkdf_sha256_max_output = 255 * sha256_digest_size;
 
         class canonical_kdf_encoder final
@@ -224,7 +230,7 @@ namespace canopy::security::attestation::detail
         auto make_labeled_salt(std::string_view label) -> std::optional<std::vector<uint8_t>>
         {
             canonical_kdf_encoder encoder;
-            encoder.append_string(protocol_id);
+            encoder.append_string(canonical_kdf_encoding_domain);
             encoder.append_string(label);
             return std::move(encoder).finish();
         }
@@ -239,7 +245,7 @@ namespace canopy::security::attestation::detail
 
             canonical_kdf_encoder encoder;
             encoder.append_u16(static_cast<uint16_t>(output_size));
-            encoder.append_string(protocol_id);
+            encoder.append_string(canonical_kdf_encoding_domain);
             encoder.append_string(label);
             encoder.append_bytes(context.empty() ? nullptr : context.data(), context.size());
             return std::move(encoder).finish();
@@ -248,11 +254,20 @@ namespace canopy::security::attestation::detail
         auto make_development_shared_secret_context(const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
             canonical_kdf_encoder encoder;
-            encoder.append_string(protocol_id);
-            encoder.append_string("development-shared-secret");
+            encoder.append_string(canonical_kdf_encoding_domain);
+            encoder.append_string(kdf_purpose_development_shared_secret);
+            // RPC view: this is the stable security relationship being set up.
+            // Multiple zones can share an enclave identity, so the pair is
+            // canonicalised by enclave id before key material is derived.
             append_canonical_enclave_pair(encoder, context.local_identity, context.peer_identity);
+            // transcript_id separates two different executions of the
+            // handshake. session_epoch separates key generations if a route is
+            // re-established later.
             encoder.append_u64(context.transcript_id);
             encoder.append_u64(context.session_epoch);
+            // These are the attestation result that authorised this session,
+            // not message schemas. A production backend would set hardware
+            // levels; the fake backend sets development.
             encoder.append_string(context.backend_id);
             encoder.append_string(security_level_name(context.level));
             return std::move(encoder).finish();
@@ -261,8 +276,8 @@ namespace canopy::security::attestation::detail
         auto make_session_root_context(const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
             canonical_kdf_encoder encoder;
-            encoder.append_string(protocol_id);
-            encoder.append_string("session-root-secret");
+            encoder.append_string(canonical_kdf_encoding_domain);
+            encoder.append_string(kdf_purpose_session_root_secret);
             encoder.append_string(context.session_id);
             encoder.append_u64(context.transcript_id);
             encoder.append_u64(context.session_epoch);
@@ -275,8 +290,8 @@ namespace canopy::security::attestation::detail
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
             canonical_kdf_encoder encoder;
-            encoder.append_string(protocol_id);
-            encoder.append_string("protected-rpc-aead-key");
+            encoder.append_string(canonical_kdf_encoding_domain);
+            encoder.append_string(kdf_purpose_protected_rpc_aead_key);
             encoder.append_string(scope.session_id);
             encoder.append_u64(context.session_epoch);
             encoder.append_u64(context.transcript_id);
@@ -297,7 +312,7 @@ namespace canopy::security::attestation::detail
 
     auto derive_development_shared_secret(const security_context& context) -> std::optional<std::vector<uint8_t>>
     {
-        auto salt = make_labeled_salt("fake-development-kex");
+        auto salt = make_labeled_salt(kdf_salt_purpose_fake_development_kex);
         auto kdf_context = make_development_shared_secret_context(context);
         if (!salt.has_value() || !kdf_context.has_value())
             return std::nullopt;
@@ -332,7 +347,7 @@ namespace canopy::security::attestation::detail
         if (!kdf_context.has_value())
             return std::nullopt;
 
-        auto info = make_labeled_info("protected-rpc-aead-key", kdf_context.value(), output_size);
+        auto info = make_labeled_info(kdf_purpose_protected_rpc_aead_key, kdf_context.value(), output_size);
         if (!info.has_value())
             return std::nullopt;
         return hkdf_expand_sha256(root_secret, info.value(), output_size);

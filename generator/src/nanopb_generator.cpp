@@ -17,6 +17,7 @@
 #include <functional>
 #include <set>
 #include <sstream>
+#include <utility>
 
 namespace nanopb_generator
 {
@@ -125,6 +126,17 @@ namespace nanopb_generator
     {
         const auto normalized = normalize_type(type);
         return normalized.find('<') != std::string::npos && normalized.find('>') != std::string::npos;
+    }
+
+    bool is_optional_type(const std::string& type)
+    {
+        std::string inner_type;
+        return proto_generator::is_optional_type(normalize_type(type), inner_type);
+    }
+
+    std::string optional_inner_type(const std::string& type)
+    {
+        return proto_generator::optional_inner_type(normalize_type(type));
     }
 
     bool is_user_template_instantiation(const std::string& type)
@@ -239,6 +251,8 @@ namespace nanopb_generator
 
     bool is_unsupported_nanopb_field_type(const std::string& type)
     {
+        if (is_optional_type(type))
+            return is_unsupported_nanopb_field_type(optional_inner_type(type));
         if (is_interface_type(type) || is_byte_vector_type(type) || is_repeated_varint_type(type)
             || is_sequence_structure_type(type) || is_dictionary_structure_type(type))
             return false;
@@ -575,6 +589,27 @@ namespace nanopb_generator
         return find_struct_entity(lib, type_str);
     }
 
+    bool optional_wrapper_value_has_nanopb_presence(
+        const class_entity& lib,
+        const std::string& inner_type)
+    {
+        const auto normalized = normalize_type(inner_type);
+
+        if (is_scalar_type(normalized) || is_string_type(normalized) || is_byte_vector_type(normalized)
+            || is_pointer_type(normalized) || is_interface_type(normalized) || is_enum_type(lib, normalized))
+            return false;
+
+        if (is_repeated_varint_type(normalized) || is_sequence_structure_type(normalized)
+            || is_dictionary_structure_type(normalized) || is_sequence_type(normalized) || is_map_type(normalized)
+            || is_int128_type(normalized))
+            return false;
+
+        // Nanopb emits a has_value member for message fields. That lets the
+        // generated Canopy layer reject a present optional wrapper that omitted
+        // the wrapped message entirely.
+        return true;
+    }
+
     std::string substitute_single_template_parameter(
         const class_entity& template_entity,
         const std::string& concrete_param,
@@ -619,9 +654,362 @@ namespace nanopb_generator
         const std::string& source_expr,
         const std::string& target_expr,
         const std::string& state_prefix,
+        writer& cpp);
+
+    void write_cpp_value_to_nanopb_field(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& field_type,
+        const std::string& source_value_expr,
+        const std::string& target_expr,
+        const std::string& state_prefix,
         writer& cpp)
     {
-        if (is_pointer_type(member_type))
+        if (is_pointer_type(field_type))
+        {
+            cpp("{}.{} = static_cast<decltype({}.{})>(reinterpret_cast<std::uintptr_t>({}));",
+                target_expr,
+                field_name,
+                target_expr,
+                field_name,
+                source_value_expr);
+        }
+        else if (is_enum_type(lib, field_type))
+        {
+            cpp("{}.{} = static_cast<decltype({}.{})>(static_cast<std::underlying_type_t<{}>>({}));",
+                target_expr,
+                field_name,
+                target_expr,
+                field_name,
+                enum_type_ref(lib, field_type),
+                source_value_expr);
+        }
+        else if (is_scalar_type(field_type))
+        {
+            cpp("{}.{} = static_cast<decltype({}.{})>({});", target_expr, field_name, target_expr, field_name, source_value_expr);
+        }
+        else if (is_string_type(field_type))
+        {
+            cpp("rpc::serialization::nanopb::string_encode_state {}_state {{ &{} }};", state_prefix, source_value_expr);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_string;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_byte_vector_type(field_type))
+        {
+            cpp("rpc::serialization::nanopb::bytes_encode_state {}_state {{ {}.data(), {}.size() }};",
+                state_prefix,
+                source_value_expr,
+                source_value_expr);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_repeated_varint_type(field_type))
+        {
+            const auto inner_type = vector_inner_type(field_type);
+            cpp("rpc::serialization::nanopb::repeated_varint_encode_state<{}> {}_state {{ &{} }};",
+                inner_type,
+                state_prefix,
+                source_value_expr);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_repeated_varint<{}>;",
+                target_expr,
+                field_name,
+                inner_type);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_sequence_structure_type(field_type))
+        {
+            const auto inner_type = vector_inner_type(field_type);
+            if (const auto* nested_struct = find_struct_entity(lib, inner_type);
+                nested_struct && !has_explicit_access_markers(*nested_struct))
+            {
+                const auto nested_c_type = nanopb_c_type_for_cpp_type(package_name, inner_type);
+                cpp("rpc::serialization::nanopb::sequence_submessage_encode_state<{}> {}_state {{ &{}, {}_fields,",
+                    inner_type,
+                    state_prefix,
+                    source_value_expr,
+                    nested_c_type);
+                cpp("    +[](pb_ostream_t* __stream, const pb_msgdesc_t* __fields, const {}& __value) -> bool", inner_type);
+                cpp("    {{");
+                cpp("        {} __message = {}_init_zero;", nested_c_type, nested_c_type);
+                write_cpp_to_nanopb_message(
+                    lib, *nested_struct, package_name, "__value", "__message", state_prefix + "_item", cpp);
+                cpp("        return pb_encode_submessage(__stream, __fields, &__message);");
+                cpp("    }} }};");
+                cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_sequence_submessage<{}>;",
+                    target_expr,
+                    field_name,
+                    inner_type);
+            }
+            else
+            {
+                cpp("rpc::serialization::nanopb::sequence_structure_encode_state<{}> {}_state {{ &{} }};",
+                    inner_type,
+                    state_prefix,
+                    source_value_expr);
+                cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_sequence_structure<{}>;",
+                    target_expr,
+                    field_name,
+                    inner_type);
+            }
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_dictionary_structure_type(field_type))
+        {
+            std::string key_type;
+            std::string value_type;
+            const bool has_map_types = map_key_value_types(field_type, key_type, value_type);
+            const auto normalized_field_type = normalize_type(field_type);
+            const auto* nested_struct = has_map_types ? find_struct_entity(lib, value_type) : nullptr;
+            if (nested_struct && !has_explicit_access_markers(*nested_struct))
+            {
+                const auto nested_c_type = nanopb_c_type_for_cpp_type(package_name, value_type);
+                cpp("rpc::serialization::nanopb::dictionary_submessage_encode_state<{}> {}_state {{ &{}, {}_fields,",
+                    normalized_field_type,
+                    state_prefix,
+                    source_value_expr,
+                    nested_c_type);
+                cpp("    +[](pb_ostream_t* __stream, const pb_msgdesc_t* __fields, const {}& __value) -> bool",
+                    normalize_type(value_type));
+                cpp("    {{");
+                cpp("        {} __message = {}_init_zero;", nested_c_type, nested_c_type);
+                write_cpp_to_nanopb_message(
+                    lib, *nested_struct, package_name, "__value", "__message", state_prefix + "_value", cpp);
+                cpp("        return pb_encode_submessage(__stream, __fields, &__message);");
+                cpp("    }} }};");
+                cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_dictionary_submessage<{}>;",
+                    target_expr,
+                    field_name,
+                    normalized_field_type);
+            }
+            else
+            {
+                cpp("rpc::serialization::nanopb::dictionary_structure_encode_state<{}> {}_state {{ &{} }};",
+                    normalized_field_type,
+                    state_prefix,
+                    source_value_expr);
+                cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_dictionary_structure<{}>;",
+                    target_expr,
+                    field_name,
+                    normalized_field_type);
+            }
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else
+        {
+            std::string nested_concrete_template_param;
+            if (const auto* nested_struct
+                = find_struct_or_template_entity(lib, field_type, &nested_concrete_template_param))
+            {
+                if (!has_explicit_access_markers(*nested_struct))
+                {
+                    write_cpp_to_nanopb_message(
+                        lib,
+                        *nested_struct,
+                        package_name,
+                        source_value_expr,
+                        target_expr + "." + field_name,
+                        state_prefix + "_" + field_name,
+                        cpp,
+                        nested_concrete_template_param);
+                }
+                else
+                {
+                    const auto nested_c_type = nanopb_c_type_for_cpp_type(package_name, field_type);
+                    cpp("{{");
+                    cpp("std::vector<char> {}_buffer;", state_prefix);
+                    cpp("{}.nanopb_serialise({}_buffer);", source_value_expr, state_prefix);
+                    cpp("rpc::serialization::nanopb::decode_message({}_buffer, {}_fields, &{}.{});",
+                        state_prefix,
+                        nested_c_type,
+                        target_expr,
+                        field_name);
+                    cpp("}}");
+                }
+                cpp("{}.has_{} = true;", target_expr, field_name);
+            }
+            else
+            {
+                write_unsupported_member(cpp);
+            }
+        }
+    }
+
+    void write_prepare_nanopb_field_decode(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& field_type,
+        const std::string& target_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        if (is_string_type(field_type))
+        {
+            cpp("std::string {}_decoded;", state_prefix);
+            cpp("rpc::serialization::nanopb::string_decode_state {}_state {{ &{}_decoded }};", state_prefix, state_prefix);
+            cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_string;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_byte_vector_type(field_type))
+        {
+            cpp("std::vector<uint8_t> {}_decoded;", state_prefix);
+            cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};", state_prefix, state_prefix);
+            cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_repeated_varint_type(field_type))
+        {
+            const auto inner_type = vector_inner_type(field_type);
+            cpp("{} {}_decoded;", normalize_type(field_type), state_prefix);
+            cpp("rpc::serialization::nanopb::repeated_varint_decode_state<{}> {}_state {{ &{}_decoded }};",
+                inner_type,
+                state_prefix,
+                state_prefix);
+            cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_repeated_varint<{}>;",
+                target_expr,
+                field_name,
+                inner_type);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_sequence_structure_type(field_type))
+        {
+            const auto inner_type = vector_inner_type(field_type);
+            cpp("{} {}_decoded;", normalize_type(field_type), state_prefix);
+            cpp("rpc::serialization::nanopb::sequence_structure_decode_state<{}> {}_state {{ &{}_decoded }};",
+                inner_type,
+                state_prefix,
+                state_prefix);
+            cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_sequence_structure<{}>;",
+                target_expr,
+                field_name,
+                inner_type);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_dictionary_structure_type(field_type))
+        {
+            cpp("{} {}_decoded;", normalize_type(field_type), state_prefix);
+            cpp("rpc::serialization::nanopb::dictionary_structure_decode_state<{}> {}_state {{ &{}_decoded }};",
+                normalize_type(field_type),
+                state_prefix,
+                state_prefix);
+            cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_dictionary_structure<{}>;",
+                target_expr,
+                field_name,
+                normalize_type(field_type));
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else
+        {
+            std::string nested_concrete_template_param;
+            if (const auto* nested_struct
+                = find_struct_or_template_entity(lib, field_type, &nested_concrete_template_param))
+            {
+                write_prepare_nanopb_message_decode(
+                    lib, *nested_struct, package_name, target_expr + "." + field_name, state_prefix, cpp, nested_concrete_template_param);
+            }
+        }
+    }
+
+    void write_nanopb_field_to_cpp_value(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& field_type,
+        const std::string& source_expr,
+        const std::string& dest_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        if (is_pointer_type(field_type))
+        {
+            cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>({}.{}));",
+                dest_expr,
+                pointer_cast_type(field_type),
+                source_expr,
+                field_name);
+        }
+        else if (is_enum_type(lib, field_type))
+        {
+            cpp("{} = static_cast<{}>(static_cast<std::underlying_type_t<{}>>({}.{}));",
+                dest_expr,
+                enum_type_ref(lib, field_type),
+                enum_type_ref(lib, field_type),
+                source_expr,
+                field_name);
+        }
+        else if (is_scalar_type(field_type))
+        {
+            cpp("{} = static_cast<{}>({}.{});", dest_expr, normalize_type(field_type), source_expr, field_name);
+        }
+        else if (is_string_type(field_type))
+        {
+            cpp("{} = std::move({}_decoded);", dest_expr, state_prefix);
+        }
+        else if (is_byte_vector_type(field_type))
+        {
+            cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", dest_expr, state_prefix, state_prefix);
+        }
+        else if (is_repeated_varint_type(field_type) || is_sequence_structure_type(field_type)
+                 || is_dictionary_structure_type(field_type))
+        {
+            cpp("{} = std::move({}_decoded);", dest_expr, state_prefix);
+        }
+        else
+        {
+            std::string nested_concrete_template_param;
+            if (const auto* nested_struct
+                = find_struct_or_template_entity(lib, field_type, &nested_concrete_template_param))
+            {
+                write_nanopb_message_to_cpp(
+                    lib,
+                    *nested_struct,
+                    package_name,
+                    source_expr + "." + field_name,
+                    dest_expr,
+                    state_prefix,
+                    cpp,
+                    nested_concrete_template_param);
+            }
+            else
+            {
+                write_unsupported_member(cpp);
+            }
+        }
+    }
+
+    void write_cpp_to_nanopb_field(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& member_name,
+        const std::string& member_type,
+        const std::string& source_expr,
+        const std::string& target_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        if (is_optional_type(member_type))
+        {
+            const auto inner_type = optional_inner_type(member_type);
+            cpp("if ({}.{}.has_value())", source_expr, member_name);
+            cpp("{{");
+            write_cpp_value_to_nanopb_field(
+                lib,
+                package_name,
+                "value",
+                inner_type,
+                source_expr + "." + member_name + ".value()",
+                target_expr + "." + member_name,
+                state_prefix + "_value",
+                cpp);
+            cpp("{}.has_{} = true;", target_expr, member_name);
+            cpp("}}");
+            cpp("else");
+            cpp("{{");
+            cpp("{}.has_{} = false;", target_expr, member_name);
+            cpp("}}");
+        }
+        else if (is_pointer_type(member_type))
         {
             cpp("{}.{} = static_cast<decltype({}.{})>(reinterpret_cast<std::uintptr_t>({}.{}));",
                 target_expr,
@@ -864,7 +1252,18 @@ namespace nanopb_generator
                 member_type = substitute_single_template_parameter(struct_entity, concrete_template_param, member_type);
             const auto current_prefix = state_prefix + "_" + member_name;
 
-            if (is_string_type(member_type))
+            if (is_optional_type(member_type))
+            {
+                write_prepare_nanopb_field_decode(
+                    lib,
+                    package_name,
+                    "value",
+                    optional_inner_type(member_type),
+                    target_expr + "." + member_name,
+                    current_prefix + "_value",
+                    cpp);
+            }
+            else if (is_string_type(member_type))
             {
                 cpp("std::string {}_decoded;", current_prefix);
                 cpp("rpc::serialization::nanopb::string_decode_state {}_state {{ &{}_decoded }};",
@@ -967,7 +1366,38 @@ namespace nanopb_generator
                 member_type = substitute_single_template_parameter(struct_entity, concrete_template_param, member_type);
             const auto current_prefix = state_prefix + "_" + member_name;
 
-            if (is_pointer_type(member_type))
+            if (is_optional_type(member_type))
+            {
+                const auto inner_type = optional_inner_type(member_type);
+                cpp("if ({}.has_{})", source_expr, member_name);
+                cpp("{{");
+                if (optional_wrapper_value_has_nanopb_presence(lib, inner_type))
+                {
+                    cpp("if (!{}.{}.has_value)", source_expr, member_name);
+                    cpp("{{");
+                    cpp("throw std::runtime_error(\"Malformed nanopb optional field {}: wrapper is present without "
+                        "value\");",
+                        member_name);
+                    cpp("}}");
+                }
+                cpp("{} {}_value {{}};", normalize_type(inner_type), current_prefix);
+                write_nanopb_field_to_cpp_value(
+                    lib,
+                    package_name,
+                    "value",
+                    inner_type,
+                    source_expr + "." + member_name,
+                    current_prefix + "_value",
+                    current_prefix + "_value",
+                    cpp);
+                cpp("{}.{} = {}_value;", target_expr, member_name, current_prefix);
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{}.{}.reset();", target_expr, member_name);
+                cpp("}}");
+            }
+            else if (is_pointer_type(member_type))
             {
                 cpp("{}.{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>({}.{}));",
                     target_expr,
@@ -1155,7 +1585,31 @@ namespace nanopb_generator
             const auto member_type
                 = substitute_single_template_parameter(template_entity, inst.template_param, field->get_return_type());
 
-            if (is_pointer_type(member_type))
+            if (is_optional_type(member_type))
+            {
+                const auto inner_type = optional_inner_type(member_type);
+                cpp("if (msg.has_{})", field_name);
+                cpp("{{");
+                if (optional_wrapper_value_has_nanopb_presence(lib, inner_type))
+                {
+                    cpp("if (!msg.{}.has_value)", field_name);
+                    cpp("{{");
+                    cpp("throw std::runtime_error(\"Malformed nanopb optional field {}: wrapper is present without "
+                        "value\");",
+                        field_name);
+                    cpp("}}");
+                }
+                cpp("{} {}_value {{}};", normalize_type(inner_type), field_name);
+                write_nanopb_field_to_cpp_value(
+                    lib, package_name, "value", inner_type, "msg." + field_name, field_name + "_value", field_name + "_value", cpp);
+                cpp("{} = {}_value;", member_name, field_name);
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{}.reset();", member_name);
+                cpp("}}");
+            }
+            else if (is_pointer_type(member_type))
             {
                 cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>(msg.{}));",
                     member_name,
@@ -1237,7 +1691,12 @@ namespace nanopb_generator
             const auto field_name = proto_generator::sanitize_field_name(member_name);
             const auto member_type = field->get_return_type();
 
-            if (is_string_type(member_type))
+            if (is_optional_type(member_type))
+            {
+                write_prepare_nanopb_field_decode(
+                    lib, package_name, "value", optional_inner_type(member_type), "msg." + field_name, field_name + "_value", cpp);
+            }
+            else if (is_string_type(member_type))
             {
                 cpp("std::string {}_decoded;", field_name);
                 cpp("rpc::serialization::nanopb::string_decode_state {}_state {{ &{}_decoded }};", field_name, field_name);
@@ -1315,7 +1774,31 @@ namespace nanopb_generator
             const auto field_name = proto_generator::sanitize_field_name(member_name);
             const auto member_type = field->get_return_type();
 
-            if (is_pointer_type(member_type))
+            if (is_optional_type(member_type))
+            {
+                const auto inner_type = optional_inner_type(member_type);
+                cpp("if (msg.has_{})", field_name);
+                cpp("{{");
+                if (optional_wrapper_value_has_nanopb_presence(lib, inner_type))
+                {
+                    cpp("if (!msg.{}.has_value)", field_name);
+                    cpp("{{");
+                    cpp("throw std::runtime_error(\"Malformed nanopb optional field {}: wrapper is present without "
+                        "value\");",
+                        field_name);
+                    cpp("}}");
+                }
+                cpp("{} {}_value {{}};", normalize_type(inner_type), field_name);
+                write_nanopb_field_to_cpp_value(
+                    lib, package_name, "value", inner_type, "msg." + field_name, field_name + "_value", field_name + "_value", cpp);
+                cpp("{} = {}_value;", member_name, field_name);
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{}.reset();", member_name);
+                cpp("}}");
+            }
+            else if (is_pointer_type(member_type))
             {
                 cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>(msg.{}));",
                     member_name,

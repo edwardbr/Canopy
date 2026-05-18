@@ -5,6 +5,7 @@
 
 #include <transports/sgx_coroutine/enclave/service.h>
 
+#include <attestation/route_attestation_protocol.h>
 #include <security/attestation/context_source.h>
 #include <security/attestation/protected_rpc.h>
 #include <streaming/stream.h>
@@ -19,7 +20,6 @@ namespace rpc
 {
     namespace
     {
-        constexpr uint64_t route_attestation_handshake_wire_version = 1;
         constexpr uint64_t route_attestation_session_epoch = 1;
         constexpr uint8_t route_attestation_flag_false = 0;
         constexpr uint8_t route_attestation_flag_true = 1;
@@ -142,12 +142,12 @@ namespace rpc
         }
 
         [[nodiscard]] auto make_failed_handshake_response(
+            uint64_t protocol_version,
             uint64_t transcript_id,
             std::string reason,
             const canopy::security::attestation::identity& responder) -> rpc::route_attestation_handshake_response
         {
             rpc::route_attestation_handshake_response response;
-            response.wire_version = route_attestation_handshake_wire_version;
             response.transcript_id = transcript_id;
             response.accepted = route_attestation_flag_false;
             response.reason = std::move(reason);
@@ -411,7 +411,6 @@ namespace rpc
         }
 
         rpc::route_attestation_handshake_request request;
-        request.wire_version = route_attestation_handshake_wire_version;
         request.transcript_id = transcript_id;
         request.claimant = to_wire_identity(local_identity_for_route(service, get_zone_id()));
         if (service)
@@ -435,10 +434,13 @@ namespace rpc
                     CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
                 }
                 request.evidence = to_wire_cmw(evidence.evidence);
-                request.evidence_present = route_attestation_flag_true;
             }
         }
 
+        // The route handshake is intentionally just another RPC marshaller
+        // payload: type fingerprint + encoding + serialized IDL struct. The
+        // transport does not need to understand the struct; it only routes the
+        // handshake to route_zone_id.
         const auto payload_encoding = get_default_encoding();
         auto request_payload = serialise_route_attestation_payload(request, payload_encoding);
         if (!request_payload.has_value())
@@ -455,6 +457,9 @@ namespace rpc
         params.type_id = route_attestation_request_type_id(params.protocol_version);
         params.payload_encoding = payload_encoding;
         params.payload = std::move(request_payload.value());
+        // This call bounces the first typed IDL blob to the destination zone. If
+        // the route crosses intermediates, they can route the message but should
+        // not need to parse the request payload.
         auto handshake = CO_AWAIT child_service::handshake(std::move(params));
 
         if (handshake.error_code != rpc::error::OK())
@@ -476,11 +481,12 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
         }
 
+        // The response is the second typed IDL blob in this protocol file. The
+        // type id already names the response schema, and transcript_id ties it
+        // back to this concrete request.
         rpc::route_attestation_handshake_response response;
         if (!parse_route_attestation_payload(handshake.payload, payload_encoding, response)
-            || response.wire_version != route_attestation_handshake_wire_version
-            || response.transcript_id != request.transcript_id || !flag_is_valid(response.accepted)
-            || !flag_is_valid(response.evidence_present))
+            || response.transcript_id != request.transcript_id || !flag_is_valid(response.accepted))
         {
             set_failed_attestation_route(
                 *this, route_zone_id, state.failure_epoch, "route attestation handshake returned malformed payload");
@@ -499,7 +505,7 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
         }
 
-        if (response.evidence_present)
+        if (response.evidence.has_value())
         {
             if (!nonce_is_valid(response.nonce))
             {
@@ -512,7 +518,8 @@ namespace rpc
             expected_binding.subject = from_wire_identity(response.responder);
             expected_binding.transcript_id = response.transcript_id;
             expected_binding.nonce = response.nonce;
-            auto verdict = service->verify_peer_evidence(from_wire_cmw(response.evidence), std::move(expected_binding));
+            auto verdict
+                = service->verify_peer_evidence(from_wire_cmw(response.evidence.value()), std::move(expected_binding));
             if (!verdict.accepted)
             {
                 set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, verdict.reason);
@@ -532,7 +539,7 @@ namespace rpc
             canopy::security::attestation::establish_session_params session_params;
             session_params.peer_identity = verdict.peer_identity;
             session_params.transcript_id = response.transcript_id;
-            session_params.local_evidence_sent = request.evidence_present;
+            session_params.local_evidence_sent = request.evidence.has_value();
             session_params.peer_attested = true;
             session_params.verified_backend_id = verdict.backend_id;
             session_params.verified_level = verdict.level;
@@ -735,6 +742,13 @@ namespace rpc
     CORO_TASK(handshake_result)
     enclave_service::handshake(handshake_params params)
     {
+        // This is the inbound side of the same two-blob exchange started by
+        // ensure_add_ref_route_allowed():
+        //   1. receive a route_attestation_handshake_request IDL blob;
+        //   2. verify the type fingerprint, transcript id, flags, and Evidence;
+        //   3. optionally produce local Evidence;
+        //   4. return a route_attestation_handshake_response IDL blob using the
+        //      caller's payload encoding.
         if (params.destination_zone_id != get_zone_id())
         {
             CO_RETURN CO_AWAIT child_service::handshake(std::move(params));
@@ -757,11 +771,10 @@ namespace rpc
         auto service = get_attestation_service();
         auto responder_identity = local_identity_for_route(service, get_zone_id());
         rpc::route_attestation_handshake_request request;
-        if (!parse_route_attestation_payload(params.payload, params.payload_encoding, request)
-            || request.wire_version != route_attestation_handshake_wire_version || request.transcript_id == 0
-            || !flag_is_valid(request.evidence_present))
+        if (!parse_route_attestation_payload(params.payload, params.payload_encoding, request) || request.transcript_id == 0)
         {
-            auto response = make_failed_handshake_response(0, "malformed route attestation request", responder_identity);
+            auto response = make_failed_handshake_response(
+                params.protocol_version, 0, "malformed route attestation request", responder_identity);
             CO_RETURN make_route_attestation_handshake_result(
                 params.protocol_version, params.payload_encoding, std::move(response));
         }
@@ -769,7 +782,8 @@ namespace rpc
         auto fail = [&](std::string reason) -> handshake_result
         {
             set_failed_attestation_route(*this, params.caller_zone_id, 0, reason);
-            auto response = make_failed_handshake_response(request.transcript_id, std::move(reason), responder_identity);
+            auto response = make_failed_handshake_response(
+                params.protocol_version, request.transcript_id, std::move(reason), responder_identity);
             return make_route_attestation_handshake_result(
                 params.protocol_version, params.payload_encoding, std::move(response));
         };
@@ -780,7 +794,6 @@ namespace rpc
         }
 
         rpc::route_attestation_handshake_response response;
-        response.wire_version = route_attestation_handshake_wire_version;
         response.transcript_id = request.transcript_id;
         response.responder = to_wire_identity(responder_identity);
         response.backend_id = service->backend_id();
@@ -789,7 +802,7 @@ namespace rpc
 
         bool peer_attested = false;
         canopy::security::attestation::attestation_verdict verdict;
-        if (request.evidence_present)
+        if (request.evidence.has_value())
         {
             if (!nonce_is_valid(request.nonce))
             {
@@ -800,7 +813,7 @@ namespace rpc
             expected_binding.subject = from_wire_identity(request.claimant);
             expected_binding.transcript_id = request.transcript_id;
             expected_binding.nonce = request.nonce;
-            verdict = service->verify_peer_evidence(from_wire_cmw(request.evidence), std::move(expected_binding));
+            verdict = service->verify_peer_evidence(from_wire_cmw(request.evidence.value()), std::move(expected_binding));
             if (!verdict.accepted)
             {
                 CO_RETURN fail(verdict.reason);
@@ -828,7 +841,6 @@ namespace rpc
             }
 
             response.evidence = to_wire_cmw(evidence.evidence);
-            response.evidence_present = route_attestation_flag_true;
         }
 
         if (peer_attested)
@@ -836,7 +848,7 @@ namespace rpc
             canopy::security::attestation::establish_session_params session_params;
             session_params.peer_identity = verdict.peer_identity;
             session_params.transcript_id = request.transcript_id;
-            session_params.local_evidence_sent = response.evidence_present;
+            session_params.local_evidence_sent = response.evidence.has_value();
             session_params.peer_attested = true;
             session_params.verified_backend_id = verdict.backend_id;
             session_params.verified_level = verdict.level;

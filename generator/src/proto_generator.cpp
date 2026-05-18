@@ -122,6 +122,30 @@ namespace proto_generator
         return false;
     }
 
+    bool is_optional_type(
+        const std::string& type,
+        std::string& inner_type)
+    {
+        const auto normalized = normalise_cpp_type(type);
+        if (normalized.find("std::optional<") != 0)
+            return false;
+
+        const auto template_start = normalized.find('<');
+        std::string content;
+        if (extract_template_content(normalized, template_start, content) == std::string::npos)
+            return false;
+
+        inner_type = trim_copy(content);
+        return !inner_type.empty();
+    }
+
+    std::string optional_inner_type(const std::string& type)
+    {
+        std::string inner_type;
+        is_optional_type(type, inner_type);
+        return inner_type;
+    }
+
     std::string cpp_scalar_to_proto_type(const std::string& type)
     {
         if (type == "error_code" || type == "int8_t" || type == "signed char" || type == "int16_t" || type == "short"

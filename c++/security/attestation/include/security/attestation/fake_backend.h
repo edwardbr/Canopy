@@ -11,6 +11,7 @@ namespace canopy::security::attestation
 {
     inline constexpr const char* fake_backend_id = "fake";
     inline constexpr const char* fake_evidence_media_type = "application/canopy-fake-evidence";
+    inline constexpr const char* fake_evidence_content_format = "canopy.fake.v1";
 
     class fake_backend final : public attestation_backend
     {

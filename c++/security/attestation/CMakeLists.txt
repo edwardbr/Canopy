@@ -91,7 +91,9 @@ if(CANOPY_BUILD_TEST)
   target_compile_definitions(attestation_service_test PRIVATE ${CANOPY_DEFINES})
   target_compile_options(attestation_service_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(attestation_service_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_libraries(attestation_service_test PRIVATE canopy::security_attestation GTest::gtest_main rpc_log)
+  target_link_libraries(
+    attestation_service_test PRIVATE canopy::security_attestation route_attestation_protocol_idl GTest::gtest_main
+                                     rpc_log)
   add_test(NAME attestation_service_test COMMAND attestation_service_test)
   message(STATUS "attestation_service_test configured")
 endif()

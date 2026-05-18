@@ -1,0 +1,120 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+namespace rpc
+{
+    [inline] namespace v4
+    {
+        // RPC-level identity claimed or verified during route attestation.
+        //
+        // enclave_id is the security bucket used by the attestation service. Several
+        // zones may share one enclave identity. zone_id is still included so the RPC
+        // route that triggered the handshake can be tied back to a concrete Canopy
+        // zone address.
+        struct attestation_identity
+        {
+            [description="Security bucket identifier used by the attestation service. Several Canopy zones may share this identity when one enclave owns them."]
+            std::string enclave_id;
+
+            [description="Concrete Canopy zone address string for the route that triggered the handshake."]
+            std::string zone_id;
+        };
+
+        // Backend-neutral attestation Evidence wrapper.
+        //
+        // The payload is deliberately opaque here. SGX, TDX, SEV-SNP,
+        // TrustZone/PSA, fake development backends, and certificate-authenticated
+        // encrypted routes can all provide different payload formats while the RPC
+        // handshake carries the same outer CMW-shaped structure.
+        //
+        // MCP and A2A are not attestation protocols. They are agent/orchestration
+        // surfaces that can consume generated IDL descriptions, fingerprints, and
+        // JSON schema to understand these fields and decide how to request or
+        // validate attestation for a remote service.
+        struct attestation_cmw
+        {
+            [description="Media type for the opaque Evidence payload. Values may be standards-based or private Canopy labels until registered."]
+            std::string media_type;
+
+            [description="Content-format or profile label for the Evidence payload. This is descriptive metadata for verifiers and agent-facing tooling."]
+            std::string content_format;
+
+            [description="Opaque Evidence bytes. JSON serializers must expose this field as a base64 string rather than an array of numbers."]
+            std::vector<uint8_t> payload;
+        };
+
+        // First message in the route-level attestation handshake.
+        //
+        // It is carried by handshake_params with:
+        //   type_id          = fingerprint(route_attestation_handshake_request)
+        //   payload_encoding = agreed encoding for this blob
+        //   payload          = serialized instance of this struct
+        //
+        // There is intentionally no separate protocol-suite or wire-version
+        // field here. The generated fingerprint of this v4 struct names this
+        // exact message schema. A future SGX-v2, TDX-v1, SEV-SNP-v1,
+        // TrustZone/PSA-v1, or certificate-route-v1 handshake should get its
+        // own IDL file, [inline] namespace version, and message structs, and
+        // therefore its own generated fingerprints.
+        struct route_attestation_handshake_request
+        {
+            [description="Caller-generated transcript identifier used to correlate the request and response and to bind generated keys to this handshake."]
+            uint64_t transcript_id = 0;
+
+            [description="Identity claimed by the peer sending this request."]
+            attestation_identity claimant;
+
+            [description="Attestation backend or route-security mechanism selected for this request, such as fake, sgx-dcap, sgx-epid, tdx, sev-snp, psa, or cert-route."]
+            std::string backend_id;
+
+            [description="Evidence produced by the claimant for this route-attestation request. An empty optional allows policy-controlled unattested or one-way-attested handshakes."]
+            std::optional<attestation_cmw> evidence;
+
+            [description="Fresh anti-replay bytes chosen by the requester. JSON serializers must expose this as a base64 string."]
+            std::vector<uint8_t> nonce;
+        };
+
+        // Second message in the route-level attestation handshake.
+        //
+        // It is carried by handshake_result with:
+        //   type_id = fingerprint(route_attestation_handshake_response)
+        //   payload = serialized instance of this struct in the request encoding
+        //
+        // accepted == 0 means the RPC transport worked but the attestation policy or
+        // Evidence check failed. In that case reason is for the caller; local logs
+        // may still contain more detail. accepted != 0 means the responder either
+        // produced Evidence or explicitly accepted an unattested route according to
+        // local policy.
+        struct route_attestation_handshake_response
+        {
+            [description="Echo of the request transcript identifier."]
+            uint64_t transcript_id = 0;
+
+            [description="Non-zero when the route-attestation policy accepted the handshake."]
+            uint8_t accepted = 0;
+
+            [description="Short caller-facing reason for rejection or degraded acceptance. Detailed diagnostic information should stay in local logs."]
+            std::string reason;
+
+            [description="Identity asserted or verified by the responder."]
+            attestation_identity responder;
+
+            [description="Attestation backend or route-security mechanism used by the responder."]
+            std::string backend_id;
+
+            [description="Policy-level result such as none, fake, one-way, or hardware attested. Exact numeric values are defined by the attestation implementation."]
+            uint64_t security_level = 0;
+
+            [description="Fresh session epoch for keys and counters derived from this accepted handshake."]
+            uint64_t session_epoch = 1;
+
+            [description="Evidence produced by the responder for this route-attestation response. An empty optional allows policy-controlled unattested or one-way-attested handshakes."]
+            std::optional<attestation_cmw> evidence;
+
+            [description="Fresh anti-replay bytes chosen by the responder. JSON serializers must expose this as a base64 string."]
+            std::vector<uint8_t> nonce;
+        };
+    }
+}

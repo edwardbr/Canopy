@@ -337,11 +337,14 @@ for cryptographic use.
 
 The implementation uses a small Canopy Attestation v1 canonical KDF encoding:
 
-- fixed protocol id: `Canopy-Attestation-v1`;
+- fixed canonical encoding domain: `Canopy-Attestation-v1`;
 - big-endian fixed-width integers;
 - length-prefixed byte strings;
 - length-prefixed identity fields;
-- explicit labels for each KDF use;
+- explicit purpose labels for each KDF use, such as development key exchange,
+  session root secret, and protected-RPC AEAD key derivation;
+- transcript ids, session epochs, attested identity pairs, backend verdict
+  metadata, and protected-RPC direction where applicable;
 - HKDF-SHA256 through the platform crypto library.
 
 This keeps KDF inputs unambiguous across C++, JavaScript, and future TEE

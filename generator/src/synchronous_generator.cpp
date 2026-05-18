@@ -2811,6 +2811,7 @@ namespace synchronous_generator
         header("#include <unordered_set>");
         header("#include <string>");
         header("#include <array>");
+        header("#include <optional>");
         header("#include <cstdint>");
 
         if (include_rpc_headers)

@@ -9,6 +9,7 @@
 #include <security/attestation/fake_backend.h>
 #include <security/attestation/null_backend.h>
 #include <security/attestation/protected_rpc.h>
+#include <attestation/route_attestation_protocol.h>
 #include <security/attestation/service.h>
 
 #include <array>
@@ -33,6 +34,7 @@ namespace
     using canopy::security::attestation::evidence_binding;
     using canopy::security::attestation::fake_backend;
     using canopy::security::attestation::fake_backend_id;
+    using canopy::security::attestation::fake_evidence_content_format;
     using canopy::security::attestation::fake_evidence_media_type;
     using canopy::security::attestation::identity;
     using canopy::security::attestation::make_attestation_nonce;
@@ -169,15 +171,23 @@ TEST(
     auto valid = backend.produce_evidence(expected_binding);
     EXPECT_TRUE(backend.verify_evidence(valid, expected_binding, policy).accepted);
 
+    auto wrong_nonce_binding = expected_binding;
+    wrong_nonce_binding.nonce.push_back(5);
+    EXPECT_FALSE(backend.verify_evidence(valid, wrong_nonce_binding, policy).accepted);
+
+    auto wrong_format = valid;
+    wrong_format.content_format = "canopy.fake.unknown";
+    EXPECT_FALSE(backend.verify_evidence(wrong_format, expected_binding, policy).accepted);
+
     cmw truncated;
     truncated.media_type = fake_evidence_media_type;
-    truncated.content_format = "canopy.fake.v1";
+    truncated.content_format = fake_evidence_content_format;
     truncated.payload = {4, 0, 0, 0, 'f'};
     EXPECT_FALSE(backend.verify_evidence(truncated, expected_binding, policy).accepted);
 
     cmw oversized;
     oversized.media_type = fake_evidence_media_type;
-    oversized.content_format = "canopy.fake.v1";
+    oversized.content_format = fake_evidence_content_format;
     oversized.payload = {0xff, 0xff, 0xff, 0xff};
     EXPECT_FALSE(backend.verify_evidence(oversized, expected_binding, policy).accepted);
 }
@@ -242,9 +252,11 @@ TEST(
     auto first = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"}, 99);
     auto second = make_session_id(identity{"enclave-a", "zone-a-2"}, identity{"enclave-b", "zone-b-2"}, 99);
     auto third = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-c", "zone-c"}, 99);
+    auto fourth = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"}, 100);
 
     EXPECT_EQ(first, second);
     EXPECT_NE(first, third);
+    EXPECT_NE(first, fourth);
 }
 
 TEST(
@@ -295,10 +307,10 @@ TEST(
     request.claimant.enclave_id = "enclave-a";
     request.claimant.zone_id = "zone-a";
     request.backend_id = fake_backend_id;
-    request.evidence_present = true;
-    request.evidence.media_type = fake_evidence_media_type;
-    request.evidence.content_format = "canopy.fake.v1";
-    request.evidence.payload = {1, 2, 3};
+    request.evidence = rpc::attestation_cmw{};
+    request.evidence->media_type = fake_evidence_media_type;
+    request.evidence->content_format = fake_evidence_content_format;
+    request.evidence->payload = {1, 2, 3};
     request.nonce = {4, 5, 6};
 
     auto request_type_id = rpc::id<rpc::route_attestation_handshake_request>::get(rpc::get_version());
@@ -316,7 +328,6 @@ TEST(
     response.backend_id = fake_backend_id;
     response.security_level = static_cast<uint64_t>(security_level::development);
     response.session_epoch = 1;
-    response.evidence_present = true;
     response.evidence = request.evidence;
     response.nonce = {7, 8, 9};
 
@@ -333,7 +344,55 @@ TEST(
         rpc::route_attestation_handshake_response decoded_response;
         EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(response_bytes), decoded_response).empty());
         EXPECT_EQ(decoded_response, response);
+
+        auto request_without_evidence = request;
+        request_without_evidence.evidence.reset();
+        auto no_evidence_bytes = rpc::serialise<std::vector<char>>(request_without_evidence, encoding);
+        rpc::route_attestation_handshake_request decoded_no_evidence_request;
+        EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(no_evidence_bytes), decoded_no_evidence_request).empty());
+        EXPECT_EQ(decoded_no_evidence_request, request_without_evidence);
     }
+}
+
+TEST(
+    AttestationService,
+    RouteHandshakeRejectsPresentOptionalEvidenceWrapperWithoutValue)
+{
+    const std::vector<char> malformed_request = {
+        static_cast<char>((4U << 3U) | 2U),
+        0,
+    };
+    const std::vector<char> malformed_response = {
+        static_cast<char>((8U << 3U) | 2U),
+        0,
+    };
+
+    auto expect_rejected = [](rpc::encoding encoding, const std::vector<char>& bytes, auto& decoded)
+    {
+        const auto error = rpc::deserialise(encoding, rpc::byte_span(bytes), decoded);
+        EXPECT_FALSE(error.empty());
+        EXPECT_NE(error.find("wrapper is present without value"), std::string::npos) << error;
+    };
+
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+    {
+        rpc::route_attestation_handshake_request decoded_request;
+        expect_rejected(rpc::encoding::protocol_buffers, malformed_request, decoded_request);
+
+        rpc::route_attestation_handshake_response decoded_response;
+        expect_rejected(rpc::encoding::protocol_buffers, malformed_response, decoded_response);
+    }
+#endif
+
+#ifdef CANOPY_BUILD_NANOPB
+    {
+        rpc::route_attestation_handshake_request decoded_request;
+        expect_rejected(rpc::encoding::nanopb, malformed_request, decoded_request);
+
+        rpc::route_attestation_handshake_response decoded_response;
+        expect_rejected(rpc::encoding::nanopb, malformed_response, decoded_response);
+    }
+#endif
 }
 
 TEST(

@@ -20,6 +20,20 @@ CanopyGenerate(
   additional_headers stdint.h no_include_rpc_headers ON)
 
 CanopyGenerate(
+  route_attestation_protocol
+  attestation/route_attestation_protocol.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  protocol_buffers
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR})
+
+CanopyGenerate(
   noop
   rpc/noop.idl
   ${CMAKE_CURRENT_SOURCE_DIR}

@@ -48,6 +48,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     PUBLIC transport_sgx_coroutine_enclave_headers
     PRIVATE canopy::security_attestation
             canopy_io_uring
+            route_attestation_protocol_idl
             streaming
             transport_streaming
             rpc::rpc)
@@ -91,6 +92,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     PRIVATE yas_common
             coroutine_enclave_idl_enclave
             rpc_types_idl_enclave
+            route_attestation_protocol_idl_enclave
             streaming_transport_idl_enclave
             streaming_enclave
             spsc_queue

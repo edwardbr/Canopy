@@ -35,6 +35,12 @@ namespace proto_generator
         const std::string& type,
         std::string& prefix);
 
+    bool is_optional_type(
+        const std::string& type,
+        std::string& inner_type);
+
+    std::string optional_inner_type(const std::string& type);
+
     std::string cpp_scalar_to_proto_type(const std::string& type);
 
     std::string sanitize_type_name(const std::string& type_name);

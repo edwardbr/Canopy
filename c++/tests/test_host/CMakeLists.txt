@@ -160,6 +160,7 @@ if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     rpc_test
     PUBLIC transport_ipc_transport
+           route_attestation_protocol_idl
            streaming
            streaming_attestation
            streaming_tcp

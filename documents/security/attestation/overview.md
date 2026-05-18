@@ -196,7 +196,8 @@ exchange marks the route allowed. `try_cast`, `release`, and
 `object_released` do not start new handshakes: if the caller/owner route is
 unknown when one of those messages arrives, the system treats that as an
 elided or failed protected `add_ref` and rejects it. The current
-route-attestation payloads are generated RPC/YAS structs:
+route-attestation payloads are generated structs from
+`interfaces/attestation/route_attestation_protocol.idl`:
 `route_attestation_handshake_request` and
 `route_attestation_handshake_response`. They carry backend-neutral identity,
 CMW-like Evidence, transcript id, nonce, backend id, security level, and the

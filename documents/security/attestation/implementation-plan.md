@@ -113,7 +113,7 @@ policy-hardening work described in the remaining phases.
 - Key-derivation inputs now use a named Canopy Attestation v1 canonical KDF
   encoding instead of anonymous serializer bytes. This encoding uses
   length-prefixed fields, big-endian integers, explicit labels, and the fixed
-  protocol id `Canopy-Attestation-v1`.
+  canonical encoding domain `Canopy-Attestation-v1`.
 - The current fake path uses a deterministic development shared secret when a
   real key-exchange secret is not supplied. This is only for no-SGX developer
   tests; the `attestation_service` API already accepts explicit shared secret
@@ -136,18 +136,34 @@ policy-hardening work described in the remaining phases.
 - `rpc::i_marshaller` now has a route-addressed `handshake()` operation for
   service-level attestation and key exchange. Base service and transport
   implementations route it generically.
-- `interfaces/rpc/rpc_types.idl` now defines the first service-level route
-  attestation payloads:
+- `interfaces/rpc/rpc_types.idl` remains limited to generic RPC carriers such
+  as `rpc::encrypted_payload`.
+- `interfaces/attestation/route_attestation_protocol.idl` defines the
+  first service-level route attestation payloads:
   - `attestation_identity`;
   - `attestation_cmw`;
   - `route_attestation_handshake_request`;
   - `route_attestation_handshake_response`.
   These are generated RPC/YAS types and their generated fingerprints are used
   as the `handshake_params::type_id` and `handshake_result::type_id` values.
+  This is the general handshake versioning rule:
+  every handshake blob is identified by an IDL fingerprint and the selected
+  payload encoding. Protocol-specific handshakes should live in their own IDL
+  files with an `[inline] namespace vN`, so SGX, TDX, SEV-SNP,
+  TrustZone/PSA, certificate-authenticated routes, and future route-security
+  variants can evolve without growing `rpc_types.idl`. Human-readable names
+  remain diagnostic labels only.
+  MCP and A2A are consumers of generated IDL descriptions, fingerprints, and
+  schema metadata; they are not attestation protocol families.
 - `attestation_service` now exposes OpenSSL/SGXSSL-backed nonce generation for
   route-attestation Evidence bindings. The POC uses 32-byte nonces and rejects
   malformed service-level request/response nonces before Evidence
   verification.
+- `security_context`, fake Evidence, session ids, and KDF input contexts bind
+  the attested identity pair, transcript id, nonce material, backend result,
+  session epoch, and protected-RPC direction. Future security-critical
+  transcript hashes should bind the exact transmitted typed blobs:
+  `(type_id, payload_encoding, payload bytes)` in protocol order.
 - `rpc::enclave_service::handshake()` now handles local route-attestation
   requests. The first implementation:
   - deserializes bounded generated-YAS payloads;
@@ -435,6 +451,17 @@ policy-hardening work described in the remaining phases.
 
 ### Verified
 
+- `cmake --preset Debug`
+- `cmake --preset Debug_Coroutine`
+- `cmake --preset Debug_Coroutine_SGX_Sim`
+- `cmake --build build_debug --target attestation_service_test`
+- `cmake --build build_debug_coroutine --target attestation_service_test rpc_test`
+- `cmake --build build_debug_coroutine_sgx_sim --target attestation_service_test rpc_test`
+- `build_debug/output/attestation_service_test`
+- `build_debug_coroutine/output/attestation_service_test`
+- `build_debug_coroutine/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/* --gtest_brief=1`
+- `build_debug_coroutine_sgx_sim/output/attestation_service_test`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=attested_streaming_transport_poc_test/* --gtest_brief=1`
 - `cmake --preset Debug_Coroutine`
 - `cmake --build build_debug_coroutine --target rpc_test attestation_stream_test`
 - `build_debug_coroutine/output/attestation_stream_test`
@@ -601,7 +628,7 @@ select the current `FAKE` or `NULL` development backends with `NULL` as the
 fail-closed build default for fresh CMake configurations. The next
 implementation slice should reduce the remaining public carrier fields
 documented in `intermediate-visibility-audit.md` with a route-token/state
-refactor, then continue backend work for SGX-sim and real SGX/DCAP. After that,
+refactor. After that, continue backend work for SGX-sim and real SGX/DCAP, then
 apply the same checklist to non-C-ABI coroutine dynamic-library transports that
 are allowed at an enclave boundary.
 
@@ -1380,6 +1407,57 @@ phase.
   hardware attestation.
 - The websocket demo continues to ship a browser-facing listener that
   does not attest, regardless of phase.
+
+### Handshake Protocol Identity And Canonical Encoding
+
+- Handshake messages should not be versioned primarily by free-form strings
+  such as `name.v2`. Each transmitted handshake blob should carry the generated
+  IDL fingerprint for the exact message schema, the selected `rpc::encoding`,
+  and the exact payload bytes.
+- Multi-message handshakes should be grouped by an IDL-rooted protocol file,
+  not by a separate runtime suite string or suite-id field. For example,
+  SGX-v1, SGX-v2, TDX-v1, SEV-SNP-v1, TrustZone/PSA-v1, and
+  certificate-route-v1 handshakes can each live in their own IDL file with
+  their own request/response/challenge/verdict structures. The ordered set of
+  generated message fingerprints is the protocol identity.
+- New handshake IDL files must put protocol messages under an `[inline]`
+  namespace such as `v4`. A breaking wire-schema change should bump that
+  inline namespace and therefore change every affected generated fingerprint;
+  an extra in-struct `wire_version` field is unnecessary when the carrier
+  already includes `(type_id, payload_encoding, payload bytes)`.
+- MCP, A2A, and similar agent/orchestration surfaces should be integrated by
+  exposing clear IDL field descriptions, generated fingerprints, and generated
+  schema metadata. They can use that metadata to interpret service identity,
+  Evidence blobs, media/content-format labels, and policy results, but they do
+  not define the attestation handshake protocol themselves.
+- JSON-facing RPC services must represent opaque binary fields from these
+  handshake structures as base64 strings. Custom binary security formats should
+  therefore appear as base64 when carried through JSON. If exact floating-point
+  fidelity is security-relevant for a JSON-facing type, the field should be
+  described as canonical IEEE-754 bytes carried as base64, or replaced with an
+  integer/fixed-point representation; security checks must not rely on lossy
+  JSON number round-trips.
+- Transcript hashes, signatures, MACs, and KDF context must bind each message
+  type fingerprint, payload encoding, exact transmitted payload bytes, role or
+  direction, nonce material, and backend/security-level context where
+  applicable. Implementations must not parse and reserialise a non-canonical
+  message and then sign or verify the reserialised bytes.
+- YAS and protobuf remain valid negotiated RPC/application encodings, and may
+  be valid handshake payload encodings when both endpoints explicitly support
+  them. They are not automatically canonical cryptographic encodings. Any
+  serializer whose output is signed, MACed, hashed into a transcript, or fed
+  into KDF context must either bind exact transmitted bytes or be profiled as
+  canonical with test vectors.
+- Add a future generator track for a restricted security-IDL profile that can
+  emit canonical attestation/control bytes. The preferred candidates are:
+  - ASN.1 DER where interoperability with X.509, keys, certificate extensions,
+    or existing crypto tooling is useful;
+  - a simpler Canopy canonical security encoding for internal handshake
+    structures where DER's ASN.1 complexity is not justified.
+- A DER/security encoder is not a replacement for YAS or protobuf in normal
+  Canopy RPC. It should reject unsupported IDL constructs, enforce bounded
+  fields, and ship with golden byte-level vectors before it is used for
+  security decisions.
 
 ### Documentation
 
