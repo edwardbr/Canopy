@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <security/attestation/aead.h>
 #include <security/attestation/backend_factory.h>
 #include <security/attestation/fake_backend.h>
 #include <security/attestation/null_backend.h>
@@ -21,6 +22,7 @@
 
 namespace
 {
+    using canopy::security::attestation::aead_aes_256_gcm_tag_size;
     using canopy::security::attestation::attestation_policy;
     using canopy::security::attestation::attestation_service;
     using canopy::security::attestation::attestation_service_options;
@@ -28,6 +30,8 @@ namespace
     using canopy::security::attestation::configured_attestation_backend_kind;
     using canopy::security::attestation::configured_attestation_backend_name;
     using canopy::security::attestation::configured_backend_kind;
+    using canopy::security::attestation::decrypt_aes_256_gcm;
+    using canopy::security::attestation::encrypt_aes_256_gcm;
     using canopy::security::attestation::encrypted_payload_type_id;
     using canopy::security::attestation::establish_session_params;
     using canopy::security::attestation::evaluate_route_attestation_state;
@@ -492,6 +496,35 @@ TEST(
 
 TEST(
     AttestationService,
+    AesGcmWrapperHandlesEmptyPlaintextAndAad)
+{
+    auto service = make_service("enclave-a", "zone-a");
+    const auto context = establish(service, identity{"enclave-b", "zone-b"});
+    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
+
+    auto material = service->derive_aead_key(scope);
+    ASSERT_TRUE(material.has_value());
+    auto nonce = service->make_aead_nonce(*material, 1);
+
+    const std::vector<uint8_t> empty_plaintext;
+    const std::vector<uint8_t> empty_aad;
+    auto ciphertext = encrypt_aes_256_gcm(*material, nonce, empty_plaintext, empty_aad);
+    ASSERT_TRUE(ciphertext.has_value());
+    EXPECT_TRUE(ciphertext->payload.empty());
+    EXPECT_EQ(ciphertext->authentication_tag.size(), aead_aes_256_gcm_tag_size);
+
+    auto decrypted = decrypt_aes_256_gcm(*material, nonce, ciphertext->payload, ciphertext->authentication_tag, empty_aad);
+    ASSERT_TRUE(decrypted.has_value());
+    EXPECT_TRUE(decrypted->empty());
+
+    auto tampered_tag = ciphertext->authentication_tag;
+    ASSERT_FALSE(tampered_tag.empty());
+    tampered_tag.back() ^= 0x01;
+    EXPECT_FALSE(decrypt_aes_256_gcm(*material, nonce, ciphertext->payload, tampered_tag, empty_aad).has_value());
+}
+
+TEST(
+    AttestationService,
     DerivesMatchingDirectionalKeysForBothPeers)
 {
     auto service_a = make_service("enclave-a", "zone-a");
@@ -620,7 +653,7 @@ TEST(
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
     EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
     EXPECT_EQ(unprotected_request.value.params.encoding_type, params.encoding_type);
-    EXPECT_EQ(unprotected_request.value.params.tag, params.tag);
+    EXPECT_EQ(unprotected_request.value.params.tag, 0U);
     EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
     EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
     EXPECT_EQ(unprotected_request.value.params.interface_id, params.interface_id);
@@ -697,7 +730,7 @@ TEST(
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
     EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
     EXPECT_EQ(unprotected_request.value.params.encoding_type, params.encoding_type);
-    EXPECT_EQ(unprotected_request.value.params.tag, params.tag);
+    EXPECT_EQ(unprotected_request.value.params.tag, 0U);
     EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
     EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
     EXPECT_EQ(unprotected_request.value.params.interface_id, params.interface_id);

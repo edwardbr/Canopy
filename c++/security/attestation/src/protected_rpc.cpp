@@ -5,31 +5,23 @@
 
 #include <security/attestation/protected_rpc.h>
 
-#include <openssl/evp.h>
+#include <attestation/protected_rpc_protocol.h>
+#include <security/attestation/aead.h>
 
 #include <array>
 #include <limits>
-#include <memory>
 #include <optional>
-#include <type_traits>
+#include <utility>
 
 namespace canopy::security::attestation
 {
     namespace
     {
-        inline constexpr uint32_t protected_rpc_plaintext_magic = 0x43505231U; // "CPR1"
         inline constexpr size_t bytes_per_kib = 1024U;
         inline constexpr size_t kib_per_mib = 1024U;
         inline constexpr size_t max_protected_field_size_mib = 64U;
         inline constexpr size_t max_protected_field_size = max_protected_field_size_mib * kib_per_mib * bytes_per_kib;
         inline constexpr size_t max_public_back_channel_entries = 4096U;
-        inline constexpr size_t aes_gcm_tag_size_bytes = 16U;
-        inline constexpr int openssl_success = 1;
-        inline constexpr int lowest_shift_bits = 0;
-        inline constexpr int bits_per_byte = 8;
-        inline constexpr int uint32_high_shift_bits = 24;
-        inline constexpr int uint64_high_shift_bits = 56;
-        inline constexpr uint32_t byte_mask = 0xffU;
         inline constexpr uint64_t add_ref_options_valid_mask
             = static_cast<uint64_t>(rpc::add_ref_options::build_destination_route)
               | static_cast<uint64_t>(rpc::add_ref_options::build_caller_route)
@@ -57,268 +49,9 @@ namespace canopy::security::attestation
             return result;
         }
 
-        auto can_append(
-            const std::vector<uint8_t>& out,
-            size_t size) noexcept -> bool
-        {
-            return size <= out.max_size() - out.size();
-        }
-
-        auto has_remaining(
-            const std::vector<uint8_t>& in,
-            size_t offset,
-            size_t size) noexcept -> bool
-        {
-            return offset <= in.size() && size <= in.size() - offset;
-        }
-
-        auto fits_u32(size_t value) noexcept -> bool
-        {
-            return value <= static_cast<size_t>(std::numeric_limits<uint32_t>::max());
-        }
-
-        auto fits_int(size_t value) noexcept -> bool
-        {
-            return value <= static_cast<size_t>(std::numeric_limits<int>::max());
-        }
-
-        auto openssl_ok(int result) noexcept -> bool
-        {
-            return result == openssl_success;
-        }
-
-        class writer
-        {
-        public:
-            [[nodiscard]] auto ok() const noexcept -> bool { return ok_; }
-            [[nodiscard]] auto take() -> std::vector<uint8_t> { return std::move(out_); }
-
-            auto append_u8(uint8_t value) -> bool
-            {
-                if (!can_append(out_, sizeof(value)))
-                    return fail();
-                out_.push_back(value);
-                return true;
-            }
-
-            auto append_u32(uint32_t value) -> bool
-            {
-                if (!can_append(out_, sizeof(value)))
-                    return fail();
-                for (int shift = uint32_high_shift_bits; shift >= lowest_shift_bits; shift -= bits_per_byte)
-                    out_.push_back(static_cast<uint8_t>((value >> shift) & byte_mask));
-                return true;
-            }
-
-            auto append_u64(uint64_t value) -> bool
-            {
-                if (!can_append(out_, sizeof(value)))
-                    return fail();
-                for (int shift = uint64_high_shift_bits; shift >= lowest_shift_bits; shift -= bits_per_byte)
-                    out_.push_back(static_cast<uint8_t>((value >> shift) & byte_mask));
-                return true;
-            }
-
-            auto append_i64(int64_t value) -> bool { return append_u64(static_cast<uint64_t>(value)); }
-
-            auto append_bytes(const std::vector<uint8_t>& value) -> bool
-            {
-                if (value.size() > max_protected_field_size || !fits_u32(value.size()))
-                    return fail();
-                if (!can_append(out_, sizeof(uint32_t) + value.size()))
-                    return fail();
-                if (!append_u32(static_cast<uint32_t>(value.size())))
-                    return false;
-                out_.insert(out_.end(), value.begin(), value.end());
-                return true;
-            }
-
-            auto append_chars(const std::vector<char>& value) -> bool
-            {
-                if (value.size() > max_protected_field_size || !fits_u32(value.size()))
-                    return fail();
-                if (!can_append(out_, sizeof(uint32_t) + value.size()))
-                    return fail();
-                if (!append_u32(static_cast<uint32_t>(value.size())))
-                    return false;
-                out_.insert(out_.end(), value.begin(), value.end());
-                return true;
-            }
-
-            auto append_string(const std::string& value) -> bool
-            {
-                if (value.size() > max_protected_field_size || !fits_u32(value.size()))
-                    return fail();
-                if (!can_append(out_, sizeof(uint32_t) + value.size()))
-                    return fail();
-                if (!append_u32(static_cast<uint32_t>(value.size())))
-                    return false;
-                out_.insert(out_.end(), value.begin(), value.end());
-                return true;
-            }
-
-            auto append_back_channel(const std::vector<rpc::back_channel_entry>& entries) -> bool
-            {
-                if (entries.size() > max_public_back_channel_entries || !fits_u32(entries.size()))
-                    return fail();
-                if (!append_u32(static_cast<uint32_t>(entries.size())))
-                    return false;
-                for (const auto& entry : entries)
-                {
-                    if (!append_u64(entry.type_id))
-                        return false;
-                    if (!append_bytes(entry.payload))
-                        return false;
-                }
-                return true;
-            }
-
-        private:
-            auto fail() noexcept -> bool
-            {
-                ok_ = false;
-                return false;
-            }
-
-            std::vector<uint8_t> out_;
-            bool ok_{true};
-        };
-
-        class reader
-        {
-        public:
-            explicit reader(const std::vector<uint8_t>& in)
-                : in_(in)
-            {
-            }
-
-            [[nodiscard]] auto done() const noexcept -> bool { return ok_ && offset_ == in_.size(); }
-            [[nodiscard]] auto ok() const noexcept -> bool { return ok_; }
-
-            auto read_u8(uint8_t& value) -> bool
-            {
-                if (!has_remaining(in_, offset_, sizeof(value)))
-                    return fail();
-                value = in_[offset_++];
-                return true;
-            }
-
-            auto read_u32(uint32_t& value) -> bool
-            {
-                if (!has_remaining(in_, offset_, sizeof(value)))
-                    return fail();
-                value = 0;
-                for (int shift = uint32_high_shift_bits; shift >= lowest_shift_bits; shift -= bits_per_byte)
-                {
-                    value |= static_cast<uint32_t>(in_[offset_++]) << shift;
-                }
-                return true;
-            }
-
-            auto read_u64(uint64_t& value) -> bool
-            {
-                if (!has_remaining(in_, offset_, sizeof(value)))
-                    return fail();
-                value = 0;
-                for (int shift = uint64_high_shift_bits; shift >= lowest_shift_bits; shift -= bits_per_byte)
-                {
-                    value |= static_cast<uint64_t>(in_[offset_++]) << shift;
-                }
-                return true;
-            }
-
-            auto read_i64(int64_t& value) -> bool
-            {
-                uint64_t raw = 0;
-                if (!read_u64(raw))
-                    return false;
-                value = static_cast<int64_t>(raw);
-                return true;
-            }
-
-            auto read_bytes(std::vector<uint8_t>& value) -> bool
-            {
-                uint32_t size = 0;
-                if (!read_u32(size))
-                    return false;
-                if (size > max_protected_field_size || !has_remaining(in_, offset_, size))
-                    return fail();
-                value.assign(
-                    in_.begin() + static_cast<std::ptrdiff_t>(offset_),
-                    in_.begin() + static_cast<std::ptrdiff_t>(offset_ + size));
-                offset_ += size;
-                return true;
-            }
-
-            auto read_chars(std::vector<char>& value) -> bool
-            {
-                std::vector<uint8_t> bytes;
-                if (!read_bytes(bytes))
-                    return false;
-                value.assign(bytes.begin(), bytes.end());
-                return true;
-            }
-
-            auto read_string(std::string& value) -> bool
-            {
-                std::vector<uint8_t> bytes;
-                if (!read_bytes(bytes))
-                    return false;
-                value.assign(bytes.begin(), bytes.end());
-                return true;
-            }
-
-            auto read_back_channel(std::vector<rpc::back_channel_entry>& entries) -> bool
-            {
-                uint32_t count = 0;
-                if (!read_u32(count))
-                    return false;
-                if (count > max_public_back_channel_entries)
-                    return fail();
-                entries.clear();
-                entries.reserve(count);
-                for (uint32_t index = 0; index < count; ++index)
-                {
-                    rpc::back_channel_entry entry;
-                    if (!read_u64(entry.type_id))
-                        return false;
-                    if (!read_bytes(entry.payload))
-                        return false;
-                    entries.push_back(std::move(entry));
-                }
-                return true;
-            }
-
-        private:
-            auto fail() noexcept -> bool
-            {
-                ok_ = false;
-                return false;
-            }
-
-            const std::vector<uint8_t>& in_;
-            size_t offset_{0};
-            bool ok_{true};
-        };
-
-        auto zone_blob(const rpc::zone& zone) -> const std::vector<uint8_t>&
-        {
-            return zone.get_address().get_blob();
-        }
-
-        auto remote_object_blob(const rpc::remote_object& object) -> const std::vector<uint8_t>&
-        {
-            return object.get_address().get_blob();
-        }
-
         auto route_only_remote_object(const rpc::remote_object& object) -> rpc::remote_object
         {
             return rpc::remote_object(object.as_zone());
-        }
-
-        auto payload_type_id(const std::optional<rpc::typed_payload>& payload) -> uint64_t
-        {
-            return payload ? payload->get_type_id() : 0;
         }
 
         auto payload_encoding(const std::optional<rpc::typed_payload>& payload) -> rpc::encoding
@@ -334,181 +67,112 @@ namespace canopy::security::attestation
             return rpc::typed_payload{type_id, encoding, std::move(payload)};
         }
 
-        auto append_typed_payload_field(
-            writer& out,
-            const std::optional<rpc::typed_payload>& payload) -> bool
+        template<typename T> auto serialise_canonical(const T& value) -> std::optional<std::vector<uint8_t>>
         {
-            if (!out.append_u8(payload ? 1 : 0))
-                return false;
-            if (!payload)
-                return true;
-            return out.append_u64(payload->get_type_id())
-                   && out.append_u64(static_cast<uint64_t>(payload->get_encoding()))
-                   && out.append_chars(payload->get_payload());
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+            try
+            {
+                return rpc::to_canonical_crypto<std::vector<uint8_t>>(value);
+            }
+            catch (...)
+            {
+                return std::nullopt;
+            }
+#else
+            (void)value;
+            return std::nullopt;
+#endif
         }
 
-        auto read_typed_payload_field(
-            reader& in,
-            std::optional<rpc::typed_payload>& payload) -> bool
+        template<typename T> auto deserialise_canonical(const std::vector<uint8_t>& bytes) -> std::optional<T>
         {
-            uint8_t present = 0;
-            if (!in.read_u8(present))
-                return false;
-            if (present == 0)
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+            T value;
+            try
             {
-                payload.reset();
-                return true;
+                if (!rpc::from_canonical_crypto(rpc::byte_span(bytes), value).empty())
+                    return std::nullopt;
             }
-            if (present != 1)
-                return false;
+            catch (...)
+            {
+                return std::nullopt;
+            }
+            return value;
+#else
+            (void)bytes;
+            return std::nullopt;
+#endif
+        }
 
-            uint64_t type_id = 0;
-            uint64_t raw_encoding = 0;
-            std::vector<char> payload_bytes;
-            if (!in.read_u64(type_id) || !in.read_u64(raw_encoding) || !in.read_chars(payload_bytes))
+        // Common protected-record context used at the start of every canonical
+        // AAD/plaintext struct. protocol_version is carried here because it is
+        // shared schema context, not a marshaller-specific field.
+        auto make_envelope_metadata(
+            uint64_t protocol_version,
+            std::string session_id,
+            uint64_t session_epoch,
+            uint64_t e2e_counter) -> rpc::attestation::envelope_metadata
+        {
+            rpc::attestation::envelope_metadata metadata;
+            metadata.protocol_version = protocol_version;
+            metadata.session_id = std::move(session_id);
+            metadata.session_epoch = session_epoch;
+            metadata.e2e_counter = e2e_counter;
+            return metadata;
+        }
+
+        auto make_envelope_metadata(
+            uint64_t protocol_version,
+            const rpc::encrypted_payload& envelope) -> rpc::attestation::envelope_metadata
+        {
+            return make_envelope_metadata(
+                protocol_version, envelope.session_id, envelope.session_epoch, envelope.e2e_counter);
+        }
+
+        auto make_envelope_metadata(
+            uint64_t protocol_version,
+            const security_context& context,
+            uint64_t e2e_counter) -> rpc::attestation::envelope_metadata
+        {
+            return make_envelope_metadata(protocol_version, context.session_id, context.session_epoch, e2e_counter);
+        }
+
+        auto back_channels_are_reasonable(const std::vector<rpc::back_channel_entry>& entries) -> bool
+        {
+            if (entries.size() > max_public_back_channel_entries)
                 return false;
-            payload = rpc::typed_payload(type_id, static_cast<rpc::encoding>(raw_encoding), std::move(payload_bytes));
+            for (const auto& entry : entries)
+            {
+                if (entry.payload.size() > max_protected_field_size)
+                    return false;
+            }
             return true;
         }
 
-        auto append_envelope_metadata(
-            writer& out,
-            const rpc::encrypted_payload& envelope) -> bool
-        {
-            return out.append_string(envelope.session_id) && out.append_u64(envelope.session_epoch)
-                   && out.append_u64(envelope.e2e_counter);
-        }
-
-        // AAD is AES-GCM "additional authenticated data": public routing fields
-        // authenticated by the tag but not encrypted.
-        auto append_send_outer_aad(
-            writer& out,
+        // AAD is AES-GCM "additional authenticated data": public routing context
+        // authenticated by the tag but not encrypted. These helpers deliberately
+        // do not include encrypted_payload.payload; OpenSSL authenticates the
+        // ciphertext and tag through GCM itself.
+        auto make_send_public_aad(
             const rpc::send_params& outer,
-            const rpc::encrypted_payload& envelope,
-            protected_rpc_kind kind) -> bool
+            const rpc::encrypted_payload& envelope) -> rpc::attestation::send_public_aad
         {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(kind)) && out.append_u64(outer.protocol_version)
-                   && out.append_u64(static_cast<uint64_t>(outer.encoding_type)) && out.append_u64(outer.tag)
-                   && out.append_bytes(zone_blob(outer.caller_zone_id))
-                   && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_u64(outer.interface_id.get_val()) && out.append_u64(outer.method_id.get_val())
-                   && out.append_u64(outer.request_id) && append_envelope_metadata(out, envelope);
-        }
-
-        // Post requests have no transport request id, so their authenticated
-        // public routing data is the visible route plus envelope metadata.
-        auto append_post_outer_aad(
-            writer& out,
-            const rpc::post_params& outer,
-            const rpc::encrypted_payload& envelope) -> bool
-        {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::post))
-                   && out.append_u64(outer.protocol_version) && out.append_u64(static_cast<uint64_t>(outer.encoding_type))
-                   && out.append_u64(outer.tag) && out.append_bytes(zone_blob(outer.caller_zone_id))
-                   && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_u64(outer.interface_id.get_val()) && out.append_u64(outer.method_id.get_val())
-                   && append_envelope_metadata(out, envelope);
-        }
-
-        // add_ref still exposes route-control fields to the transport. Bind
-        // those visible values into AAD so tampering fails authentication.
-        auto append_add_ref_outer_aad(
-            writer& out,
-            const rpc::add_ref_params& outer,
-            const rpc::encrypted_payload& envelope) -> bool
-        {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::add_ref))
-                   && out.append_u64(outer.protocol_version)
-                   && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_bytes(zone_blob(outer.caller_zone_id))
-                   && out.append_bytes(zone_blob(outer.requesting_zone_id)) && out.append_u64(outer.request_id)
-                   && out.append_u64(static_cast<uint64_t>(outer.build_out_param_channel))
-                   && out.append_u64(payload_type_id(outer.payload))
-                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
-                   && append_envelope_metadata(out, envelope);
-        }
-
-        // release also has transport-visible route/control fields. They stay
-        // public for routing and lifetime accounting but are authenticated.
-        auto append_release_outer_aad(
-            writer& out,
-            const rpc::release_params& outer,
-            const rpc::encrypted_payload& envelope) -> bool
-        {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::release))
-                   && out.append_u64(outer.protocol_version)
-                   && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_bytes(zone_blob(outer.caller_zone_id))
-                   && out.append_u64(static_cast<uint64_t>(outer.options))
-                   && out.append_u64(payload_type_id(outer.payload))
-                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
-                   && append_envelope_metadata(out, envelope);
-        }
-
-        // try_cast hides the requested interface id; the visible interface_id
-        // is only the encrypted_payload carrier type.
-        auto append_try_cast_outer_aad(
-            writer& out,
-            const rpc::try_cast_params& outer,
-            const rpc::encrypted_payload& envelope) -> bool
-        {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::try_cast))
-                   && out.append_u64(outer.protocol_version) && out.append_bytes(zone_blob(outer.caller_zone_id))
-                   && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_u64(outer.interface_id.get_val()) && out.append_u64(payload_type_id(outer.payload))
-                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
-                   && append_envelope_metadata(out, envelope);
-        }
-
-        // object_released is sent from an object owner back to a caller. The
-        // public remote_object_id is route-only; the released object id is
-        // restored from the encrypted plaintext.
-        auto append_object_released_outer_aad(
-            writer& out,
-            const rpc::object_released_params& outer,
-            const rpc::encrypted_payload& envelope) -> bool
-        {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::object_released))
-                   && out.append_u64(outer.protocol_version)
-                   && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_bytes(zone_blob(outer.caller_zone_id)) && out.append_u64(payload_type_id(outer.payload))
-                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
-                   && append_envelope_metadata(out, envelope);
-        }
-
-        // transport_down can be synthesized by intermediates. This protected
-        // AAD is only for endpoint-originated transport_down messages; the
-        // service layer still accepts the empty plaintext route-layer form.
-        auto append_transport_down_outer_aad(
-            writer& out,
-            const rpc::transport_down_params& outer,
-            const rpc::encrypted_payload& envelope) -> bool
-        {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::transport_down))
-                   && out.append_u64(outer.protocol_version) && out.append_bytes(zone_blob(outer.destination_zone_id))
-                   && out.append_bytes(zone_blob(outer.caller_zone_id)) && out.append_u64(payload_type_id(outer.payload))
-                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
-                   && append_envelope_metadata(out, envelope);
+            rpc::attestation::send_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.caller_zone_id = outer.caller_zone_id;
+            aad.destination_zone_id = outer.remote_object_id.as_zone();
+            aad.interface_id = outer.interface_id;
+            aad.method_id = outer.method_id;
+            return aad;
         }
 
         // Builds the complete AAD byte string passed to AES-GCM for send-like
         // requests and protected send responses.
         auto make_send_request_aad(
             const rpc::send_params& outer,
-            const rpc::encrypted_payload& envelope,
-            protected_rpc_kind kind) -> std::optional<std::vector<uint8_t>>
+            const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_send_outer_aad(out, outer, envelope, kind) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            return serialise_canonical(make_send_public_aad(outer, envelope));
         }
 
         // Builds the complete AAD byte string passed to AES-GCM for post requests.
@@ -516,10 +180,13 @@ namespace canopy::security::attestation
             const rpc::post_params& outer,
             const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_post_outer_aad(out, outer, envelope) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            rpc::attestation::post_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.caller_zone_id = outer.caller_zone_id;
+            aad.destination_zone_id = outer.remote_object_id.as_zone();
+            aad.interface_id = outer.interface_id;
+            aad.method_id = outer.method_id;
+            return serialise_canonical(aad);
         }
 
         // Builds the complete AAD byte string passed to AES-GCM for add_ref requests.
@@ -527,10 +194,13 @@ namespace canopy::security::attestation
             const rpc::add_ref_params& outer,
             const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_add_ref_outer_aad(out, outer, envelope) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            rpc::attestation::add_ref_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.destination_zone_id = outer.remote_object_id.as_zone();
+            aad.caller_zone_id = outer.caller_zone_id;
+            aad.requesting_zone_id = outer.requesting_zone_id;
+            aad.add_ref_options = outer.build_out_param_channel;
+            return serialise_canonical(aad);
         }
 
         // Builds the complete AAD byte string passed to AES-GCM for release requests.
@@ -538,10 +208,12 @@ namespace canopy::security::attestation
             const rpc::release_params& outer,
             const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_release_outer_aad(out, outer, envelope) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            rpc::attestation::release_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.destination_zone_id = outer.remote_object_id.as_zone();
+            aad.caller_zone_id = outer.caller_zone_id;
+            aad.release_options = outer.options;
+            return serialise_canonical(aad);
         }
 
         // Builds the complete AAD byte string passed to AES-GCM for try_cast requests.
@@ -549,10 +221,12 @@ namespace canopy::security::attestation
             const rpc::try_cast_params& outer,
             const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_try_cast_outer_aad(out, outer, envelope) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            rpc::attestation::try_cast_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.caller_zone_id = outer.caller_zone_id;
+            aad.destination_zone_id = outer.remote_object_id.as_zone();
+            aad.interface_id = outer.interface_id;
+            return serialise_canonical(aad);
         }
 
         // Builds the complete AAD byte string passed to AES-GCM for object_released requests.
@@ -560,10 +234,11 @@ namespace canopy::security::attestation
             const rpc::object_released_params& outer,
             const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_object_released_outer_aad(out, outer, envelope) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            rpc::attestation::object_released_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.destination_zone_id = outer.remote_object_id.as_zone();
+            aad.caller_zone_id = outer.caller_zone_id;
+            return serialise_canonical(aad);
         }
 
         // Builds the complete AAD byte string passed to AES-GCM for protected transport_down requests.
@@ -571,54 +246,58 @@ namespace canopy::security::attestation
             const rpc::transport_down_params& outer,
             const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_transport_down_outer_aad(out, outer, envelope) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            rpc::attestation::transport_down_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.destination_zone_id = outer.destination_zone_id;
+            aad.caller_zone_id = outer.caller_zone_id;
+            return serialise_canonical(aad);
         }
 
-        // Response AAD reuses the original public request header and binds the
-        // response to the request counter that was accepted by the callee.
+        // Response AAD is public authenticated context for the encrypted response.
+        // The accepted attestation request counter is enough to bind the response
+        // to one protected send within this session/key scope; caller-owned route
+        // fields from the original request do not need to be repeated here.
         auto make_response_aad(
-            const rpc::send_params& outer_request,
+            uint64_t protocol_version,
             const rpc::encrypted_payload& envelope,
             uint64_t request_counter) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_send_outer_aad(out, outer_request, envelope, protected_rpc_kind::response))
-                return std::nullopt;
-            if (!out.append_u64(request_counter) || !out.ok())
-                return std::nullopt;
-            return out.take();
+            rpc::attestation::response_aad aad;
+            aad.envelope = make_envelope_metadata(protocol_version, envelope);
+            aad.request_counter = request_counter;
+            return serialise_canonical(aad);
         }
 
-        auto append_request_common(
-            writer& out,
-            protected_rpc_kind kind,
-            uint64_t protocol_version,
-            rpc::encoding encoding_type,
-            uint64_t tag,
-            const rpc::caller_zone& caller_zone_id,
-            const rpc::remote_object& remote_object_id,
-            rpc::interface_ordinal interface_id,
-            rpc::method method_id,
-            const std::vector<char>& in_data,
-            const std::vector<rpc::back_channel_entry>& in_back_channel,
-            uint64_t transport_request_id,
-            uint64_t service_request_id,
+        auto make_send_plaintext(
+            const rpc::send_params& params,
             uint64_t e2e_counter,
-            const std::string& session_id,
-            uint64_t session_epoch) -> bool
+            const security_context& context) -> rpc::attestation::send_plaintext
         {
-            return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
-                   && out.append_u8(static_cast<uint8_t>(kind)) && out.append_u64(protocol_version)
-                   && out.append_u64(static_cast<uint64_t>(encoding_type)) && out.append_u64(tag)
-                   && out.append_bytes(zone_blob(caller_zone_id))
-                   && out.append_bytes(remote_object_blob(remote_object_id)) && out.append_u64(interface_id.get_val())
-                   && out.append_u64(method_id.get_val()) && out.append_chars(in_data)
-                   && out.append_back_channel(in_back_channel) && out.append_u64(transport_request_id)
-                   && out.append_u64(service_request_id) && out.append_u64(e2e_counter) && out.append_string(session_id)
-                   && out.append_u64(session_epoch);
+            rpc::attestation::send_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.remote_object_id = params.remote_object_id;
+            plaintext.interface_id = params.interface_id;
+            plaintext.method_id = params.method_id;
+            plaintext.in_data = params.in_data;
+            plaintext.in_back_channel = params.in_back_channel;
+            return plaintext;
+        }
+
+        auto make_post_plaintext(
+            const rpc::post_params& params,
+            uint64_t e2e_counter,
+            const security_context& context) -> rpc::attestation::post_plaintext
+        {
+            rpc::attestation::post_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.remote_object_id = params.remote_object_id;
+            plaintext.interface_id = params.interface_id;
+            plaintext.method_id = params.method_id;
+            plaintext.in_data = params.in_data;
+            plaintext.in_back_channel = params.in_back_channel;
+            return plaintext;
         }
 
         auto encode_send_request_plaintext(
@@ -626,29 +305,7 @@ namespace canopy::security::attestation
             uint64_t e2e_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_request_common(
-                    out,
-                    protected_rpc_kind::send,
-                    params.protocol_version,
-                    params.encoding_type,
-                    params.tag,
-                    params.caller_zone_id,
-                    params.remote_object_id,
-                    params.interface_id,
-                    params.method_id,
-                    params.in_data,
-                    params.in_back_channel,
-                    params.request_id,
-                    protected_rpc_unset_service_request_id,
-                    e2e_counter,
-                    context.session_id,
-                    context.session_epoch)
-                || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            return serialise_canonical(make_send_plaintext(params, e2e_counter, context));
         }
 
         auto encode_post_request_plaintext(
@@ -656,29 +313,7 @@ namespace canopy::security::attestation
             uint64_t e2e_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!append_request_common(
-                    out,
-                    protected_rpc_kind::post,
-                    params.protocol_version,
-                    params.encoding_type,
-                    params.tag,
-                    params.caller_zone_id,
-                    params.remote_object_id,
-                    params.interface_id,
-                    params.method_id,
-                    params.in_data,
-                    params.in_back_channel,
-                    protected_rpc_unset_transport_request_id,
-                    protected_rpc_unset_service_request_id,
-                    e2e_counter,
-                    context.session_id,
-                    context.session_epoch)
-                || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            return serialise_canonical(make_post_plaintext(params, e2e_counter, context));
         }
 
         auto encode_add_ref_request_plaintext(
@@ -686,21 +321,15 @@ namespace canopy::security::attestation
             uint64_t e2e_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!out.append_u32(protected_rpc_plaintext_magic) || !out.append_u32(protected_rpc_envelope_version)
-                || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::add_ref))
-                || !out.append_u64(params.protocol_version)
-                || !out.append_bytes(remote_object_blob(params.remote_object_id))
-                || !out.append_bytes(zone_blob(params.caller_zone_id))
-                || !out.append_bytes(zone_blob(params.requesting_zone_id)) || !out.append_u64(params.request_id)
-                || !out.append_u64(static_cast<uint64_t>(params.build_out_param_channel))
-                || !out.append_back_channel(params.in_back_channel) || !append_typed_payload_field(out, params.payload)
-                || !out.append_u64(e2e_counter) || !out.append_string(context.session_id)
-                || !out.append_u64(context.session_epoch) || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            rpc::attestation::add_ref_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.remote_object_id = params.remote_object_id;
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.requesting_zone_id = params.requesting_zone_id;
+            plaintext.add_ref_options = params.build_out_param_channel;
+            plaintext.in_back_channel = params.in_back_channel;
+            plaintext.payload = params.payload;
+            return serialise_canonical(plaintext);
         }
 
         auto encode_release_request_plaintext(
@@ -708,20 +337,14 @@ namespace canopy::security::attestation
             uint64_t e2e_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!out.append_u32(protected_rpc_plaintext_magic) || !out.append_u32(protected_rpc_envelope_version)
-                || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::release))
-                || !out.append_u64(params.protocol_version)
-                || !out.append_bytes(remote_object_blob(params.remote_object_id))
-                || !out.append_bytes(zone_blob(params.caller_zone_id))
-                || !out.append_u64(static_cast<uint64_t>(params.options))
-                || !out.append_back_channel(params.in_back_channel) || !append_typed_payload_field(out, params.payload)
-                || !out.append_u64(e2e_counter) || !out.append_string(context.session_id)
-                || !out.append_u64(context.session_epoch) || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            rpc::attestation::release_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.remote_object_id = params.remote_object_id;
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.release_options = params.options;
+            plaintext.in_back_channel = params.in_back_channel;
+            plaintext.payload = params.payload;
+            return serialise_canonical(plaintext);
         }
 
         auto encode_try_cast_request_plaintext(
@@ -729,18 +352,14 @@ namespace canopy::security::attestation
             uint64_t e2e_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!out.append_u32(protected_rpc_plaintext_magic) || !out.append_u32(protected_rpc_envelope_version)
-                || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::try_cast))
-                || !out.append_u64(params.protocol_version) || !out.append_bytes(zone_blob(params.caller_zone_id))
-                || !out.append_bytes(remote_object_blob(params.remote_object_id))
-                || !out.append_u64(params.interface_id.get_val()) || !out.append_back_channel(params.in_back_channel)
-                || !append_typed_payload_field(out, params.payload) || !out.append_u64(e2e_counter)
-                || !out.append_string(context.session_id) || !out.append_u64(context.session_epoch) || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            rpc::attestation::try_cast_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.remote_object_id = params.remote_object_id;
+            plaintext.interface_id = params.interface_id;
+            plaintext.in_back_channel = params.in_back_channel;
+            plaintext.payload = params.payload;
+            return serialise_canonical(plaintext);
         }
 
         auto encode_object_released_request_plaintext(
@@ -748,18 +367,13 @@ namespace canopy::security::attestation
             uint64_t e2e_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!out.append_u32(protected_rpc_plaintext_magic) || !out.append_u32(protected_rpc_envelope_version)
-                || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::object_released))
-                || !out.append_u64(params.protocol_version)
-                || !out.append_bytes(remote_object_blob(params.remote_object_id))
-                || !out.append_bytes(zone_blob(params.caller_zone_id)) || !out.append_back_channel(params.in_back_channel)
-                || !append_typed_payload_field(out, params.payload) || !out.append_u64(e2e_counter)
-                || !out.append_string(context.session_id) || !out.append_u64(context.session_epoch) || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            rpc::attestation::object_released_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.remote_object_id = params.remote_object_id;
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.in_back_channel = params.in_back_channel;
+            plaintext.payload = params.payload;
+            return serialise_canonical(plaintext);
         }
 
         auto encode_transport_down_request_plaintext(
@@ -767,24 +381,18 @@ namespace canopy::security::attestation
             uint64_t e2e_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!out.append_u32(protected_rpc_plaintext_magic) || !out.append_u32(protected_rpc_envelope_version)
-                || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::transport_down))
-                || !out.append_u64(params.protocol_version) || !out.append_bytes(zone_blob(params.destination_zone_id))
-                || !out.append_bytes(zone_blob(params.caller_zone_id)) || !out.append_back_channel(params.in_back_channel)
-                || !append_typed_payload_field(out, params.payload) || !out.append_u64(e2e_counter)
-                || !out.append_string(context.session_id) || !out.append_u64(context.session_epoch) || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            rpc::attestation::transport_down_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.destination_zone_id = params.destination_zone_id;
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.in_back_channel = params.in_back_channel;
+            plaintext.payload = params.payload;
+            return serialise_canonical(plaintext);
         }
 
         struct decoded_request
         {
             protected_rpc_kind kind{protected_rpc_kind::send};
-            uint64_t transport_request_id{0};
-            uint64_t service_request_id{0};
             uint64_t e2e_counter{0};
             std::string session_id;
             uint64_t session_epoch{0};
@@ -797,330 +405,176 @@ namespace canopy::security::attestation
             rpc::transport_down_params transport_down;
         };
 
-        auto read_zone(std::vector<uint8_t> blob) -> std::optional<rpc::zone>
-        {
-            auto addr = rpc::zone_address::from_blob(std::move(blob));
-            if (!addr)
-                return std::nullopt;
-            return rpc::zone(*addr);
-        }
-
-        auto read_remote_object(std::vector<uint8_t> blob) -> std::optional<rpc::remote_object>
-        {
-            auto addr = rpc::zone_address::from_blob(std::move(blob));
-            if (!addr)
-                return std::nullopt;
-            return rpc::remote_object(*addr);
-        }
-
         auto decode_request_plaintext(
             const std::vector<uint8_t>& plaintext,
             protected_rpc_kind expected_kind) -> std::optional<decoded_request>
         {
-            reader in(plaintext);
-            uint32_t magic = 0;
-            uint32_t version = 0;
-            uint8_t raw_kind = 0;
-            uint64_t raw_encoding = 0;
-            uint64_t raw_interface = 0;
-            uint64_t raw_method = 0;
-            std::vector<uint8_t> caller_blob_value;
-            std::vector<uint8_t> remote_blob_value;
+            if (expected_kind == protected_rpc_kind::send)
+            {
+                auto decoded = deserialise_canonical<rpc::attestation::send_plaintext>(plaintext);
+                if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                    return std::nullopt;
+
+                decoded_request result;
+                result.kind = expected_kind;
+                result.e2e_counter = decoded->envelope.e2e_counter;
+                result.session_id = decoded->envelope.session_id;
+                result.session_epoch = decoded->envelope.session_epoch;
+                result.send.protocol_version = decoded->envelope.protocol_version;
+                result.send.tag = 0;
+                result.send.caller_zone_id = decoded->caller_zone_id;
+                result.send.remote_object_id = decoded->remote_object_id;
+                result.send.interface_id = decoded->interface_id;
+                result.send.method_id = decoded->method_id;
+                result.send.in_data = std::move(decoded->in_data);
+                result.send.in_back_channel = std::move(decoded->in_back_channel);
+                return result;
+            }
+
+            auto decoded = deserialise_canonical<rpc::attestation::post_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                return std::nullopt;
 
             decoded_request result;
-            if (!in.read_u32(magic) || !in.read_u32(version) || !in.read_u8(raw_kind))
-                return std::nullopt;
-            if (magic != protected_rpc_plaintext_magic || version != protected_rpc_envelope_version)
-                return std::nullopt;
-            result.kind = static_cast<protected_rpc_kind>(raw_kind);
-            if (result.kind != expected_kind)
-                return std::nullopt;
-
-            uint64_t protocol_version = 0;
-            uint64_t tag = 0;
-            if (!in.read_u64(protocol_version) || !in.read_u64(raw_encoding) || !in.read_u64(tag)
-                || !in.read_bytes(caller_blob_value) || !in.read_bytes(remote_blob_value) || !in.read_u64(raw_interface)
-                || !in.read_u64(raw_method))
-            {
-                return std::nullopt;
-            }
-
-            auto caller_zone_value = read_zone(std::move(caller_blob_value));
-            auto remote_object_value = read_remote_object(std::move(remote_blob_value));
-            if (!caller_zone_value || !remote_object_value)
-                return std::nullopt;
-
-            const auto encoding_type = static_cast<rpc::encoding>(raw_encoding);
-            const auto interface_id = rpc::interface_ordinal(raw_interface);
-            const auto method_id = rpc::method(raw_method);
-
-            if (expected_kind == protected_rpc_kind::send)
-            {
-                result.send.protocol_version = protocol_version;
-                result.send.encoding_type = encoding_type;
-                result.send.tag = tag;
-                result.send.caller_zone_id = *caller_zone_value;
-                result.send.remote_object_id = *remote_object_value;
-                result.send.interface_id = interface_id;
-                result.send.method_id = method_id;
-                if (!in.read_chars(result.send.in_data) || !in.read_back_channel(result.send.in_back_channel))
-                    return std::nullopt;
-            }
-            else
-            {
-                result.post.protocol_version = protocol_version;
-                result.post.encoding_type = encoding_type;
-                result.post.tag = tag;
-                result.post.caller_zone_id = *caller_zone_value;
-                result.post.remote_object_id = *remote_object_value;
-                result.post.interface_id = interface_id;
-                result.post.method_id = method_id;
-                if (!in.read_chars(result.post.in_data) || !in.read_back_channel(result.post.in_back_channel))
-                    return std::nullopt;
-            }
-
-            if (!in.read_u64(result.transport_request_id) || !in.read_u64(result.service_request_id)
-                || !in.read_u64(result.e2e_counter) || !in.read_string(result.session_id)
-                || !in.read_u64(result.session_epoch))
-            {
-                return std::nullopt;
-            }
-            if (!in.done())
-                return std::nullopt;
-            if (expected_kind == protected_rpc_kind::send)
-                result.send.request_id = result.transport_request_id;
+            result.kind = expected_kind;
+            result.e2e_counter = decoded->envelope.e2e_counter;
+            result.session_id = decoded->envelope.session_id;
+            result.session_epoch = decoded->envelope.session_epoch;
+            result.post.protocol_version = decoded->envelope.protocol_version;
+            result.post.tag = 0;
+            result.post.caller_zone_id = decoded->caller_zone_id;
+            result.post.remote_object_id = decoded->remote_object_id;
+            result.post.interface_id = decoded->interface_id;
+            result.post.method_id = decoded->method_id;
+            result.post.in_data = std::move(decoded->in_data);
+            result.post.in_back_channel = std::move(decoded->in_back_channel);
             return result;
         }
 
         auto decode_add_ref_request_plaintext(const std::vector<uint8_t>& plaintext) -> std::optional<decoded_request>
         {
-            reader in(plaintext);
-            uint32_t magic = 0;
-            uint32_t version = 0;
-            uint8_t raw_kind = 0;
-            uint64_t raw_options = 0;
-            std::vector<uint8_t> remote_blob_value;
-            std::vector<uint8_t> caller_blob_value;
-            std::vector<uint8_t> requesting_blob_value;
+            auto decoded = deserialise_canonical<rpc::attestation::add_ref_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                return std::nullopt;
+
+            if ((static_cast<uint64_t>(decoded->add_ref_options) & ~add_ref_options_valid_mask) != 0)
+                return std::nullopt;
 
             decoded_request result;
-            if (!in.read_u32(magic) || !in.read_u32(version) || !in.read_u8(raw_kind))
-                return std::nullopt;
-            if (magic != protected_rpc_plaintext_magic || version != protected_rpc_envelope_version
-                || static_cast<protected_rpc_kind>(raw_kind) != protected_rpc_kind::add_ref)
-            {
-                return std::nullopt;
-            }
-
             result.kind = protected_rpc_kind::add_ref;
-            if (!in.read_u64(result.add_ref.protocol_version) || !in.read_bytes(remote_blob_value)
-                || !in.read_bytes(caller_blob_value) || !in.read_bytes(requesting_blob_value)
-                || !in.read_u64(result.add_ref.request_id) || !in.read_u64(raw_options)
-                || !in.read_back_channel(result.add_ref.in_back_channel)
-                || !read_typed_payload_field(in, result.add_ref.payload) || !in.read_u64(result.e2e_counter)
-                || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
-            {
-                return std::nullopt;
-            }
-
-            if ((raw_options & ~add_ref_options_valid_mask) != 0)
-                return std::nullopt;
-
-            auto remote_object_value = read_remote_object(std::move(remote_blob_value));
-            auto caller_zone_value = read_zone(std::move(caller_blob_value));
-            auto requesting_zone_value = read_zone(std::move(requesting_blob_value));
-            if (!remote_object_value || !caller_zone_value || !requesting_zone_value)
-                return std::nullopt;
-
-            result.add_ref.remote_object_id = *remote_object_value;
-            result.add_ref.caller_zone_id = *caller_zone_value;
-            result.add_ref.requesting_zone_id = *requesting_zone_value;
-            result.add_ref.build_out_param_channel = static_cast<rpc::add_ref_options>(raw_options);
+            result.e2e_counter = decoded->envelope.e2e_counter;
+            result.session_id = decoded->envelope.session_id;
+            result.session_epoch = decoded->envelope.session_epoch;
+            result.add_ref.protocol_version = decoded->envelope.protocol_version;
+            result.add_ref.remote_object_id = decoded->remote_object_id;
+            result.add_ref.caller_zone_id = decoded->caller_zone_id;
+            result.add_ref.requesting_zone_id = decoded->requesting_zone_id;
+            result.add_ref.build_out_param_channel = decoded->add_ref_options;
+            result.add_ref.in_back_channel = std::move(decoded->in_back_channel);
+            result.add_ref.payload = std::move(decoded->payload);
             return result;
         }
 
         auto decode_release_request_plaintext(const std::vector<uint8_t>& plaintext) -> std::optional<decoded_request>
         {
-            reader in(plaintext);
-            uint32_t magic = 0;
-            uint32_t version = 0;
-            uint8_t raw_kind = 0;
-            uint64_t raw_options = 0;
-            std::vector<uint8_t> remote_blob_value;
-            std::vector<uint8_t> caller_blob_value;
+            auto decoded = deserialise_canonical<rpc::attestation::release_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                return std::nullopt;
+
+            if ((static_cast<uint64_t>(decoded->release_options) & ~release_options_valid_mask) != 0)
+                return std::nullopt;
 
             decoded_request result;
-            if (!in.read_u32(magic) || !in.read_u32(version) || !in.read_u8(raw_kind))
-                return std::nullopt;
-            if (magic != protected_rpc_plaintext_magic || version != protected_rpc_envelope_version
-                || static_cast<protected_rpc_kind>(raw_kind) != protected_rpc_kind::release)
-            {
-                return std::nullopt;
-            }
-
             result.kind = protected_rpc_kind::release;
-            if (!in.read_u64(result.release.protocol_version) || !in.read_bytes(remote_blob_value)
-                || !in.read_bytes(caller_blob_value) || !in.read_u64(raw_options)
-                || !in.read_back_channel(result.release.in_back_channel)
-                || !read_typed_payload_field(in, result.release.payload) || !in.read_u64(result.e2e_counter)
-                || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
-            {
-                return std::nullopt;
-            }
-
-            if ((raw_options & ~release_options_valid_mask) != 0)
-                return std::nullopt;
-
-            auto remote_object_value = read_remote_object(std::move(remote_blob_value));
-            auto caller_zone_value = read_zone(std::move(caller_blob_value));
-            if (!remote_object_value || !caller_zone_value)
-                return std::nullopt;
-
-            result.release.remote_object_id = *remote_object_value;
-            result.release.caller_zone_id = *caller_zone_value;
-            result.release.options = static_cast<rpc::release_options>(raw_options);
+            result.e2e_counter = decoded->envelope.e2e_counter;
+            result.session_id = decoded->envelope.session_id;
+            result.session_epoch = decoded->envelope.session_epoch;
+            result.release.protocol_version = decoded->envelope.protocol_version;
+            result.release.remote_object_id = decoded->remote_object_id;
+            result.release.caller_zone_id = decoded->caller_zone_id;
+            result.release.options = decoded->release_options;
+            result.release.in_back_channel = std::move(decoded->in_back_channel);
+            result.release.payload = std::move(decoded->payload);
             return result;
         }
 
         auto decode_try_cast_request_plaintext(const std::vector<uint8_t>& plaintext) -> std::optional<decoded_request>
         {
-            reader in(plaintext);
-            uint32_t magic = 0;
-            uint32_t version = 0;
-            uint8_t raw_kind = 0;
-            uint64_t raw_interface = 0;
-            std::vector<uint8_t> caller_blob_value;
-            std::vector<uint8_t> remote_blob_value;
+            auto decoded = deserialise_canonical<rpc::attestation::try_cast_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                return std::nullopt;
 
             decoded_request result;
-            if (!in.read_u32(magic) || !in.read_u32(version) || !in.read_u8(raw_kind))
-                return std::nullopt;
-            if (magic != protected_rpc_plaintext_magic || version != protected_rpc_envelope_version
-                || static_cast<protected_rpc_kind>(raw_kind) != protected_rpc_kind::try_cast)
-            {
-                return std::nullopt;
-            }
-
             result.kind = protected_rpc_kind::try_cast;
-            if (!in.read_u64(result.try_cast.protocol_version) || !in.read_bytes(caller_blob_value)
-                || !in.read_bytes(remote_blob_value) || !in.read_u64(raw_interface)
-                || !in.read_back_channel(result.try_cast.in_back_channel)
-                || !read_typed_payload_field(in, result.try_cast.payload) || !in.read_u64(result.e2e_counter)
-                || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
-            {
-                return std::nullopt;
-            }
-
-            auto caller_zone_value = read_zone(std::move(caller_blob_value));
-            auto remote_object_value = read_remote_object(std::move(remote_blob_value));
-            if (!caller_zone_value || !remote_object_value)
-                return std::nullopt;
-
-            result.try_cast.caller_zone_id = *caller_zone_value;
-            result.try_cast.remote_object_id = *remote_object_value;
-            result.try_cast.interface_id = rpc::interface_ordinal(raw_interface);
+            result.e2e_counter = decoded->envelope.e2e_counter;
+            result.session_id = decoded->envelope.session_id;
+            result.session_epoch = decoded->envelope.session_epoch;
+            result.try_cast.protocol_version = decoded->envelope.protocol_version;
+            result.try_cast.caller_zone_id = decoded->caller_zone_id;
+            result.try_cast.remote_object_id = decoded->remote_object_id;
+            result.try_cast.interface_id = decoded->interface_id;
+            result.try_cast.in_back_channel = std::move(decoded->in_back_channel);
+            result.try_cast.payload = std::move(decoded->payload);
             return result;
         }
 
         auto decode_object_released_request_plaintext(const std::vector<uint8_t>& plaintext)
             -> std::optional<decoded_request>
         {
-            reader in(plaintext);
-            uint32_t magic = 0;
-            uint32_t version = 0;
-            uint8_t raw_kind = 0;
-            std::vector<uint8_t> remote_blob_value;
-            std::vector<uint8_t> caller_blob_value;
+            auto decoded = deserialise_canonical<rpc::attestation::object_released_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                return std::nullopt;
 
             decoded_request result;
-            if (!in.read_u32(magic) || !in.read_u32(version) || !in.read_u8(raw_kind))
-                return std::nullopt;
-            if (magic != protected_rpc_plaintext_magic || version != protected_rpc_envelope_version
-                || static_cast<protected_rpc_kind>(raw_kind) != protected_rpc_kind::object_released)
-            {
-                return std::nullopt;
-            }
-
             result.kind = protected_rpc_kind::object_released;
-            if (!in.read_u64(result.object_released.protocol_version) || !in.read_bytes(remote_blob_value)
-                || !in.read_bytes(caller_blob_value) || !in.read_back_channel(result.object_released.in_back_channel)
-                || !read_typed_payload_field(in, result.object_released.payload) || !in.read_u64(result.e2e_counter)
-                || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
-            {
-                return std::nullopt;
-            }
-
-            auto remote_object_value = read_remote_object(std::move(remote_blob_value));
-            auto caller_zone_value = read_zone(std::move(caller_blob_value));
-            if (!remote_object_value || !caller_zone_value)
-                return std::nullopt;
-
-            result.object_released.remote_object_id = *remote_object_value;
-            result.object_released.caller_zone_id = *caller_zone_value;
+            result.e2e_counter = decoded->envelope.e2e_counter;
+            result.session_id = decoded->envelope.session_id;
+            result.session_epoch = decoded->envelope.session_epoch;
+            result.object_released.protocol_version = decoded->envelope.protocol_version;
+            result.object_released.remote_object_id = decoded->remote_object_id;
+            result.object_released.caller_zone_id = decoded->caller_zone_id;
+            result.object_released.in_back_channel = std::move(decoded->in_back_channel);
+            result.object_released.payload = std::move(decoded->payload);
             return result;
         }
 
         auto decode_transport_down_request_plaintext(const std::vector<uint8_t>& plaintext)
             -> std::optional<decoded_request>
         {
-            reader in(plaintext);
-            uint32_t magic = 0;
-            uint32_t version = 0;
-            uint8_t raw_kind = 0;
-            std::vector<uint8_t> destination_blob_value;
-            std::vector<uint8_t> caller_blob_value;
+            auto decoded = deserialise_canonical<rpc::attestation::transport_down_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                return std::nullopt;
 
             decoded_request result;
-            if (!in.read_u32(magic) || !in.read_u32(version) || !in.read_u8(raw_kind))
-                return std::nullopt;
-            if (magic != protected_rpc_plaintext_magic || version != protected_rpc_envelope_version
-                || static_cast<protected_rpc_kind>(raw_kind) != protected_rpc_kind::transport_down)
-            {
-                return std::nullopt;
-            }
-
             result.kind = protected_rpc_kind::transport_down;
-            if (!in.read_u64(result.transport_down.protocol_version) || !in.read_bytes(destination_blob_value)
-                || !in.read_bytes(caller_blob_value) || !in.read_back_channel(result.transport_down.in_back_channel)
-                || !read_typed_payload_field(in, result.transport_down.payload) || !in.read_u64(result.e2e_counter)
-                || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
-            {
-                return std::nullopt;
-            }
-
-            auto destination_zone_value = read_zone(std::move(destination_blob_value));
-            auto caller_zone_value = read_zone(std::move(caller_blob_value));
-            if (!destination_zone_value || !caller_zone_value)
-                return std::nullopt;
-
-            result.transport_down.destination_zone_id = *destination_zone_value;
-            result.transport_down.caller_zone_id = *caller_zone_value;
+            result.e2e_counter = decoded->envelope.e2e_counter;
+            result.session_id = decoded->envelope.session_id;
+            result.session_epoch = decoded->envelope.session_epoch;
+            result.transport_down.protocol_version = decoded->envelope.protocol_version;
+            result.transport_down.destination_zone_id = decoded->destination_zone_id;
+            result.transport_down.caller_zone_id = decoded->caller_zone_id;
+            result.transport_down.in_back_channel = std::move(decoded->in_back_channel);
+            result.transport_down.payload = std::move(decoded->payload);
             return result;
         }
 
         auto encode_response_plaintext(
             const rpc::send_result& response,
-            uint64_t request_counter,
+            uint64_t protocol_version,
             uint64_t response_counter,
             const security_context& context) -> std::optional<std::vector<uint8_t>>
         {
-            writer out;
-            if (!out.append_u32(protected_rpc_plaintext_magic) || !out.append_u32(protected_rpc_envelope_version)
-                || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::response))
-                || !out.append_i64(static_cast<int64_t>(response.error_code)) || !out.append_chars(response.out_buf)
-                || !out.append_back_channel(response.out_back_channel) || !out.append_u64(request_counter)
-                || !out.append_u64(response_counter) || !out.append_string(context.session_id)
-                || !out.append_u64(context.session_epoch) || !out.ok())
-            {
-                return std::nullopt;
-            }
-            return out.take();
+            rpc::attestation::response_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(protocol_version, context, response_counter);
+            plaintext.error_code = static_cast<int64_t>(response.error_code);
+            plaintext.out_buf = response.out_buf;
+            plaintext.out_back_channel = response.out_back_channel;
+            return serialise_canonical(plaintext);
         }
 
         struct decoded_response
         {
             rpc::send_result response;
-            uint64_t request_counter{0};
             uint64_t response_counter{0};
             std::string session_id;
             uint64_t session_epoch{0};
@@ -1128,29 +582,24 @@ namespace canopy::security::attestation
 
         auto decode_response_plaintext(const std::vector<uint8_t>& plaintext) -> std::optional<decoded_response>
         {
-            reader in(plaintext);
-            uint32_t magic = 0;
-            uint32_t version = 0;
-            uint8_t raw_kind = 0;
-            int64_t error_code = 0;
+            auto decoded = deserialise_canonical<rpc::attestation::response_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->out_back_channel))
+            {
+                return std::nullopt;
+            }
+            if (decoded->error_code < std::numeric_limits<int>::min()
+                || decoded->error_code > std::numeric_limits<int>::max())
+            {
+                return std::nullopt;
+            }
+
             decoded_response result;
-            if (!in.read_u32(magic) || !in.read_u32(version) || !in.read_u8(raw_kind))
-                return std::nullopt;
-            if (magic != protected_rpc_plaintext_magic || version != protected_rpc_envelope_version
-                || static_cast<protected_rpc_kind>(raw_kind) != protected_rpc_kind::response)
-            {
-                return std::nullopt;
-            }
-            if (!in.read_i64(error_code) || !in.read_chars(result.response.out_buf)
-                || !in.read_back_channel(result.response.out_back_channel) || !in.read_u64(result.request_counter)
-                || !in.read_u64(result.response_counter) || !in.read_string(result.session_id)
-                || !in.read_u64(result.session_epoch) || !in.done())
-            {
-                return std::nullopt;
-            }
-            if (error_code < std::numeric_limits<int>::min() || error_code > std::numeric_limits<int>::max())
-                return std::nullopt;
-            result.response.error_code = static_cast<int>(error_code);
+            result.response.error_code = static_cast<int>(decoded->error_code);
+            result.response.out_buf = std::move(decoded->out_buf);
+            result.response.out_back_channel = std::move(decoded->out_back_channel);
+            result.response_counter = decoded->envelope.e2e_counter;
+            result.session_id = std::move(decoded->envelope.session_id);
+            result.session_epoch = decoded->envelope.session_epoch;
             return result;
         }
 
@@ -1165,9 +614,10 @@ namespace canopy::security::attestation
             return service.make_aead_nonce(key, counter);
         }
 
-        // AES-GCM encrypts plaintext and authenticates both plaintext and AAD.
-        // The AAD remains public; modifying it later makes tag verification fail.
-        auto gcm_encrypt(
+        // RPC-specific adapter around the AEAD helper. The OpenSSL/SGXSSL call
+        // sequence lives in aead.cpp; protected_rpc.cpp only fills the wire
+        // envelope fields after encryption succeeds.
+        auto encrypt_into_envelope(
             const aead_key_material& key,
             const std::array<
                 uint8_t,
@@ -1176,57 +626,17 @@ namespace canopy::security::attestation
             const std::vector<uint8_t>& aad,
             rpc::encrypted_payload& envelope) -> bool
         {
-            if (!fits_int(plaintext.size()) || !fits_int(aad.size()))
+            auto ciphertext = encrypt_aes_256_gcm(key, nonce, plaintext, aad);
+            if (!ciphertext)
                 return false;
-
-            using ctx_ptr = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>;
-            ctx_ptr ctx(EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free);
-            if (!ctx)
-                return false;
-
-            if (!openssl_ok(EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr)))
-                return false;
-            if (!openssl_ok(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(nonce.size()), nullptr)))
-                return false;
-            if (!openssl_ok(EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key.key.data(), nonce.data())))
-                return false;
-
-            int len = 0;
-            if (!aad.empty()
-                && !openssl_ok(EVP_EncryptUpdate(ctx.get(), nullptr, &len, aad.data(), static_cast<int>(aad.size()))))
-            {
-                return false;
-            }
-
-            envelope.payload.resize(plaintext.size());
-            if (!plaintext.empty()
-                && !openssl_ok(EVP_EncryptUpdate(
-                    ctx.get(), envelope.payload.data(), &len, plaintext.data(), static_cast<int>(plaintext.size()))))
-            {
-                return false;
-            }
-            size_t produced = static_cast<size_t>(len);
-
-            if (!openssl_ok(EVP_EncryptFinal_ex(ctx.get(), envelope.payload.data() + produced, &len)))
-                return false;
-            produced += static_cast<size_t>(len);
-            envelope.payload.resize(produced);
-
-            envelope.authentication_tag.resize(aes_gcm_tag_size_bytes);
-            if (!openssl_ok(EVP_CIPHER_CTX_ctrl(
-                    ctx.get(),
-                    EVP_CTRL_GCM_GET_TAG,
-                    static_cast<int>(envelope.authentication_tag.size()),
-                    envelope.authentication_tag.data())))
-            {
-                return false;
-            }
+            envelope.payload = std::move(ciphertext->payload);
+            envelope.authentication_tag = std::move(ciphertext->authentication_tag);
             return true;
         }
 
-        // Returns plaintext only when AES-GCM tag verification succeeds for the
-        // ciphertext and the exact AAD supplied by the caller.
-        auto gcm_decrypt(
+        // Returns plaintext only when AEAD verification succeeds for both the
+        // ciphertext and the exact public AAD bytes computed by this layer.
+        auto decrypt_envelope(
             const aead_key_material& key,
             const std::array<
                 uint8_t,
@@ -1234,53 +644,7 @@ namespace canopy::security::attestation
             const rpc::encrypted_payload& envelope,
             const std::vector<uint8_t>& aad) -> std::optional<std::vector<uint8_t>>
         {
-            if (envelope.authentication_tag.size() != aes_gcm_tag_size_bytes)
-                return std::nullopt;
-            if (!fits_int(envelope.payload.size()) || !fits_int(aad.size()))
-                return std::nullopt;
-
-            using ctx_ptr = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>;
-            ctx_ptr ctx(EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free);
-            if (!ctx)
-                return std::nullopt;
-
-            if (!openssl_ok(EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr)))
-                return std::nullopt;
-            if (!openssl_ok(EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(nonce.size()), nullptr)))
-                return std::nullopt;
-            if (!openssl_ok(EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.key.data(), nonce.data())))
-                return std::nullopt;
-
-            int len = 0;
-            if (!aad.empty()
-                && !openssl_ok(EVP_DecryptUpdate(ctx.get(), nullptr, &len, aad.data(), static_cast<int>(aad.size()))))
-            {
-                return std::nullopt;
-            }
-
-            std::vector<uint8_t> plaintext(envelope.payload.size());
-            if (!envelope.payload.empty()
-                && !openssl_ok(EVP_DecryptUpdate(
-                    ctx.get(), plaintext.data(), &len, envelope.payload.data(), static_cast<int>(envelope.payload.size()))))
-            {
-                return std::nullopt;
-            }
-            size_t produced = static_cast<size_t>(len);
-
-            if (!openssl_ok(EVP_CIPHER_CTX_ctrl(
-                    ctx.get(),
-                    EVP_CTRL_GCM_SET_TAG,
-                    static_cast<int>(envelope.authentication_tag.size()),
-                    const_cast<uint8_t*>(envelope.authentication_tag.data()))))
-            {
-                return std::nullopt;
-            }
-
-            if (!openssl_ok(EVP_DecryptFinal_ex(ctx.get(), plaintext.data() + produced, &len)))
-                return std::nullopt;
-            produced += static_cast<size_t>(len);
-            plaintext.resize(produced);
-            return plaintext;
+            return decrypt_aes_256_gcm(key, nonce, envelope.payload, envelope.authentication_tag, aad);
         }
 
         auto serialise_envelope(
@@ -1319,7 +683,7 @@ namespace canopy::security::attestation
             }
             if (envelope.session_id.empty() || envelope.session_epoch == protected_rpc_invalid_counter
                 || envelope.e2e_counter == protected_rpc_invalid_counter || envelope.payload.size() > max_protected_field_size
-                || envelope.authentication_tag.size() != aes_gcm_tag_size_bytes)
+                || envelope.authentication_tag.size() != aead_aes_256_gcm_tag_size)
             {
                 return std::nullopt;
             }
@@ -1353,7 +717,7 @@ namespace canopy::security::attestation
         }
 
         // Prepares the public encrypted_payload header; ciphertext and tag are
-        // filled by gcm_encrypt.
+        // filled only after AEAD encryption succeeds.
         auto prepare_envelope(
             const security_context& context,
             uint64_t counter) -> rpc::encrypted_payload
@@ -1381,16 +745,15 @@ namespace canopy::security::attestation
             const rpc::send_params& outer,
             const rpc::send_params& inner) -> bool
         {
-            return outer.encoding_type == inner.encoding_type && outer.caller_zone_id == inner.caller_zone_id
-                   && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address())
-                   && outer.request_id == inner.request_id;
+            return outer.protocol_version == inner.protocol_version && outer.caller_zone_id == inner.caller_zone_id
+                   && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address());
         }
 
         auto validate_visible_post_fields(
             const rpc::post_params& outer,
             const rpc::post_params& inner) -> bool
         {
-            return outer.encoding_type == inner.encoding_type && outer.caller_zone_id == inner.caller_zone_id
+            return outer.protocol_version == inner.protocol_version && outer.caller_zone_id == inner.caller_zone_id
                    && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address());
         }
 
@@ -1400,8 +763,7 @@ namespace canopy::security::attestation
         {
             return outer.protocol_version == inner.protocol_version
                    && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address())
-                   && outer.caller_zone_id == inner.caller_zone_id
-                   && outer.requesting_zone_id == inner.requesting_zone_id && outer.request_id == inner.request_id
+                   && outer.caller_zone_id == inner.caller_zone_id && outer.requesting_zone_id == inner.requesting_zone_id
                    && outer.build_out_param_channel == inner.build_out_param_channel;
         }
 
@@ -1469,7 +831,7 @@ namespace canopy::security::attestation
         rpc::method method_id,
         uint64_t protocol_version) -> bool
     {
-        return method_id == protected_rpc_outer_method_id
+        return method_id == protected_rpc_carrier_method_id
                && interface_id == encrypted_payload_interface_id(protocol_version);
     }
 
@@ -1478,10 +840,14 @@ namespace canopy::security::attestation
         const security_context& context,
         rpc::send_params params) -> protected_rpc_result<protected_send_request>
     {
+        // Protect the original send as canonical_crypto plaintext, then reuse
+        // send_params as a routing-only carrier for the encrypted_payload blob.
         if (!context.established)
             return rejected<protected_send_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
 
+        // Caller -> destination traffic gets its own AEAD key scope and
+        // monotonic end-to-end counter; the counter is also the nonce input.
         auto scope = make_request_scope(context, true, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
         if (!key)
@@ -1495,19 +861,25 @@ namespace canopy::security::attestation
         if (!plaintext)
             return rejected<protected_send_request>(rpc::error::INVALID_DATA(), "failed to encode protected request");
 
+        // Keep only route-visible fields outside the encrypted envelope. The
+        // destination reconstructs the private object/interface/method/data
+        // values from the plaintext after authentication succeeds.
         auto outer = params;
-        outer.tag = protected_rpc_envelope_tag;
+        outer.tag = 0;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
         outer.interface_id = encrypted_payload_interface_id(params.protocol_version);
-        outer.method_id = rpc::method(protected_rpc_outer_method_id);
+        outer.method_id = rpc::method(protected_rpc_carrier_method_id);
 
+        // AAD binds the visible carrier fields to the ciphertext without
+        // encrypting them. Any intermediate change to these fields invalidates
+        // the GCM authentication tag.
         auto envelope = prepare_envelope(context, counter.counter);
-        auto aad = make_send_request_aad(outer, envelope, protected_rpc_kind::send);
+        auto aad = make_send_request_aad(outer, envelope);
         if (!aad)
             return rejected<protected_send_request>(rpc::error::INVALID_DATA(), "failed to encode protected request aad");
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
             return rejected<protected_send_request>(rpc::error::SECURITY_ERROR(), "failed to encrypt protected request");
 
         auto wire = serialise_envelope(envelope, outer.encoding_type);
@@ -1526,6 +898,8 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::send_params& outer) -> protected_rpc_result<protected_send_request>
     {
+        // The public carrier is parsed first, but none of its private meaning
+        // is trusted until the AEAD tag and plaintext binding checks pass.
         auto envelope = deserialise_envelope(outer.in_data, outer.encoding_type);
         if (!envelope)
             return rejected<protected_send_request>(rpc::error::INVALID_DATA(), "protected request envelope is malformed");
@@ -1538,17 +912,21 @@ namespace canopy::security::attestation
             return rejected<protected_send_request>(
                 rpc::error::SECURITY_ERROR(), "protected request session metadata mismatch");
 
+        // The receiver derives the same caller -> destination key using the
+        // remote identity as caller and the local identity as destination.
         auto scope = make_request_scope(*context, false, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
         if (!key)
             return rejected<protected_send_request>(rpc::error::SECURITY_ERROR(), "failed to derive protected request key");
 
-        auto aad = make_send_request_aad(outer, *envelope, protected_rpc_kind::send);
+        // Recompute AAD from the received public carrier so route-field
+        // tampering fails before any plaintext is accepted.
+        auto aad = make_send_request_aad(outer, *envelope);
         if (!aad)
             return rejected<protected_send_request>(rpc::error::INVALID_DATA(), "failed to encode protected request aad");
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_send_request>(
                 rpc::error::SECURITY_ERROR(), "protected request authentication failed");
@@ -1556,13 +934,19 @@ namespace canopy::security::attestation
         auto decoded = decode_request_plaintext(*plaintext, protected_rpc_kind::send);
         if (!decoded)
             return rejected<protected_send_request>(rpc::error::INVALID_DATA(), "protected request plaintext is malformed");
+        // The plaintext repeats route-critical fields so a valid envelope
+        // cannot be replayed through a different visible carrier.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_send_fields(outer, decoded->send))
         {
             return rejected<protected_send_request>(rpc::error::SECURITY_ERROR(), "protected request binding mismatch");
         }
+        decoded->send.request_id = outer.request_id;
+        decoded->send.encoding_type = outer.encoding_type;
         decoded->send.in_back_channel = outer.in_back_channel;
 
+        // Replay protection is committed only after authentication and binding
+        // validation have both succeeded.
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
             return rejected<protected_send_request>(rpc::error::SECURITY_ERROR(), counter.reason);
@@ -1581,6 +965,8 @@ namespace canopy::security::attestation
         uint64_t request_counter,
         rpc::send_result response) -> protected_rpc_result<rpc::send_result>
     {
+        // Send responses use the destination -> caller key direction and bind
+        // the response to the accepted request counter.
         if (!context.established || request_counter == protected_rpc_invalid_counter)
             return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "protected response context is invalid");
 
@@ -1593,17 +979,19 @@ namespace canopy::security::attestation
         if (!counter.accepted)
             return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), counter.reason);
 
-        auto plaintext = encode_response_plaintext(response, request_counter, counter.counter, context);
+        auto plaintext = encode_response_plaintext(response, outer_request.protocol_version, counter.counter, context);
         if (!plaintext)
             return rejected<rpc::send_result>(rpc::error::INVALID_DATA(), "failed to encode protected response");
 
+        // Only RPC carrier success is visible here. The application error code
+        // is part of the encrypted response plaintext.
         auto envelope = prepare_envelope(context, counter.counter);
-        auto aad = make_response_aad(outer_request, envelope, request_counter);
+        auto aad = make_response_aad(outer_request.protocol_version, envelope, request_counter);
         if (!aad)
             return rejected<rpc::send_result>(rpc::error::INVALID_DATA(), "failed to encode protected response aad");
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
             return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "failed to encrypt protected response");
 
         auto wire = serialise_envelope(envelope, outer_request.encoding_type);
@@ -1624,6 +1012,8 @@ namespace canopy::security::attestation
         uint64_t request_counter,
         rpc::send_result outer_response) -> protected_rpc_result<rpc::send_result>
     {
+        // Public carrier failures are allowed only for standard RPC control
+        // statuses. Application result codes must stay inside the envelope.
         if (outer_response.error_code != rpc::error::OK())
         {
             if (!rpc::error::is_public_control_status(outer_response.error_code))
@@ -1645,20 +1035,24 @@ namespace canopy::security::attestation
         if (!key)
             return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "failed to derive protected response key");
 
-        auto aad = make_response_aad(outer_request, *envelope, request_counter);
+        // The request counter in AAD prevents a valid response from being
+        // detached from the protected send that caused it.
+        auto aad = make_response_aad(outer_request.protocol_version, *envelope, request_counter);
         if (!aad)
             return rejected<rpc::send_result>(rpc::error::INVALID_DATA(), "failed to encode protected response aad");
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "protected response authentication failed");
 
         auto decoded = decode_response_plaintext(*plaintext);
         if (!decoded)
             return rejected<rpc::send_result>(rpc::error::INVALID_DATA(), "protected response plaintext is malformed");
+        // Session metadata is repeated inside the plaintext to catch malformed
+        // or confused carriers even after the AEAD tag validates.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
-            || decoded->request_counter != request_counter || decoded->response_counter != envelope->e2e_counter)
+            || decoded->response_counter != envelope->e2e_counter)
         {
             return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "protected response binding mismatch");
         }
@@ -1676,6 +1070,8 @@ namespace canopy::security::attestation
         const security_context& context,
         rpc::post_params params) -> protected_rpc_result<protected_post_request>
     {
+        // Post follows the send request shape but has no response path; the
+        // original payload and private dispatch fields are encrypted together.
         if (!context.established)
             return rejected<protected_post_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
@@ -1693,11 +1089,13 @@ namespace canopy::security::attestation
         if (!plaintext)
             return rejected<protected_post_request>(rpc::error::INVALID_DATA(), "failed to encode protected post");
 
+        // Intermediates see only routing information and the protected payload
+        // carrier identity.
         auto outer = params;
-        outer.tag = protected_rpc_envelope_tag;
+        outer.tag = 0;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
         outer.interface_id = encrypted_payload_interface_id(params.protocol_version);
-        outer.method_id = rpc::method(protected_rpc_outer_method_id);
+        outer.method_id = rpc::method(protected_rpc_carrier_method_id);
 
         auto envelope = prepare_envelope(context, counter.counter);
         auto aad = make_post_request_aad(outer, envelope);
@@ -1705,7 +1103,7 @@ namespace canopy::security::attestation
             return rejected<protected_post_request>(rpc::error::INVALID_DATA(), "failed to encode protected post aad");
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
             return rejected<protected_post_request>(rpc::error::SECURITY_ERROR(), "failed to encrypt protected post");
 
         auto wire = serialise_envelope(envelope, outer.encoding_type);
@@ -1724,6 +1122,8 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::post_params& outer) -> protected_rpc_result<protected_post_request>
     {
+        // Post request receive-side validation mirrors send request validation,
+        // except there is no request_id/response correlation to preserve.
         auto envelope = deserialise_envelope(outer.in_data, outer.encoding_type);
         if (!envelope)
             return rejected<protected_post_request>(rpc::error::INVALID_DATA(), "protected post envelope is malformed");
@@ -1745,18 +1145,21 @@ namespace canopy::security::attestation
             return rejected<protected_post_request>(rpc::error::INVALID_DATA(), "failed to encode protected post aad");
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_post_request>(rpc::error::SECURITY_ERROR(), "protected post authentication failed");
 
         auto decoded = decode_request_plaintext(*plaintext, protected_rpc_kind::post);
         if (!decoded)
             return rejected<protected_post_request>(rpc::error::INVALID_DATA(), "protected post plaintext is malformed");
+        // The route-visible caller and destination zone must match the private
+        // plaintext view before the post is delivered to the stub.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_post_fields(outer, decoded->post))
         {
             return rejected<protected_post_request>(rpc::error::SECURITY_ERROR(), "protected post binding mismatch");
         }
+        decoded->post.encoding_type = outer.encoding_type;
         decoded->post.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
@@ -1776,6 +1179,9 @@ namespace canopy::security::attestation
         rpc::add_ref_params params,
         rpc::encoding envelope_encoding) -> protected_rpc_result<protected_add_ref_request>
     {
+        // add_ref must remain routable before the callee has a usable proxy, so
+        // only the zone-level address fields stay public. Object id and payload
+        // details are recovered from the encrypted plaintext.
         if (!context.established)
             return rejected<protected_add_ref_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
@@ -1801,6 +1207,8 @@ namespace canopy::security::attestation
         if (!plaintext)
             return rejected<protected_add_ref_request>(rpc::error::INVALID_DATA(), "failed to encode protected add_ref");
 
+        // The typed payload slot becomes the encrypted_payload carrier. Its
+        // encoding is explicitly supplied by the service/transport call path.
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
 
@@ -1812,7 +1220,7 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected add_ref aad");
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
             return rejected<protected_add_ref_request>(rpc::error::SECURITY_ERROR(), "failed to encrypt protected add_ref");
 
         auto wire = serialise_envelope(envelope, envelope_encoding);
@@ -1831,6 +1239,8 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::add_ref_params& outer) -> protected_rpc_result<protected_add_ref_request>
     {
+        // Protected add_ref requires the typed payload carrier; an absent or
+        // differently typed payload is handled by the caller's policy path.
         if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
             return rejected<protected_add_ref_request>(rpc::error::INVALID_DATA(), "add_ref payload is not protected");
 
@@ -1859,7 +1269,7 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected add_ref aad");
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_add_ref_request>(
                 rpc::error::SECURITY_ERROR(), "protected add_ref authentication failed");
@@ -1868,11 +1278,14 @@ namespace canopy::security::attestation
         if (!decoded)
             return rejected<protected_add_ref_request>(
                 rpc::error::INVALID_DATA(), "protected add_ref plaintext is malformed");
+        // The public routing hint must still describe the same destination zone
+        // and reference-count operation that the source signed/encrypted.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_add_ref_fields(outer, decoded->add_ref))
         {
             return rejected<protected_add_ref_request>(rpc::error::SECURITY_ERROR(), "protected add_ref binding mismatch");
         }
+        decoded->add_ref.request_id = outer.request_id;
         decoded->add_ref.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
@@ -1892,6 +1305,8 @@ namespace canopy::security::attestation
         rpc::release_params params,
         rpc::encoding envelope_encoding) -> protected_rpc_result<protected_release_request>
     {
+        // release protects the private object id and any typed payload while
+        // leaving enough route context for intermediate transports.
         if (!context.established)
             return rejected<protected_release_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
@@ -1917,6 +1332,8 @@ namespace canopy::security::attestation
         if (!plaintext)
             return rejected<protected_release_request>(rpc::error::INVALID_DATA(), "failed to encode protected release");
 
+        // Keep the destination zone public, but hide the destination object id
+        // inside the encrypted plaintext.
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
 
@@ -1928,7 +1345,7 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected release aad");
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
             return rejected<protected_release_request>(rpc::error::SECURITY_ERROR(), "failed to encrypt protected release");
 
         auto wire = serialise_envelope(envelope, envelope_encoding);
@@ -1947,6 +1364,9 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::release_params& outer) -> protected_rpc_result<protected_release_request>
     {
+        // A release without an authenticated add_ref should be rejected by
+        // higher-level reference accounting; this layer verifies the envelope
+        // and preserves the route-visible fields.
         if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
             return rejected<protected_release_request>(rpc::error::INVALID_DATA(), "release payload is not protected");
 
@@ -1975,7 +1395,7 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected release aad");
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_release_request>(
                 rpc::error::SECURITY_ERROR(), "protected release authentication failed");
@@ -1984,6 +1404,8 @@ namespace canopy::security::attestation
         if (!decoded)
             return rejected<protected_release_request>(
                 rpc::error::INVALID_DATA(), "protected release plaintext is malformed");
+        // The caller, destination zone, and release flags are public because
+        // transports need them; the full object identity remains private.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_release_fields(outer, decoded->release))
         {
@@ -2008,6 +1430,9 @@ namespace canopy::security::attestation
         rpc::try_cast_params params,
         rpc::encoding envelope_encoding) -> protected_rpc_result<protected_try_cast_request>
     {
+        // try_cast is runtime metadata, but interface discovery is still private
+        // to the two attested endpoints. The public interface_id is only the
+        // encrypted_payload carrier type.
         if (!context.established)
             return rejected<protected_try_cast_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
@@ -2034,6 +1459,8 @@ namespace canopy::security::attestation
         if (!plaintext)
             return rejected<protected_try_cast_request>(rpc::error::INVALID_DATA(), "failed to encode protected try_cast");
 
+        // Preserve routeability while hiding the requested interface fingerprint
+        // in the encrypted payload.
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
         outer.interface_id = encrypted_payload_interface_id(params.protocol_version);
@@ -2046,7 +1473,7 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected try_cast aad");
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
             return rejected<protected_try_cast_request>(
                 rpc::error::SECURITY_ERROR(), "failed to encrypt protected try_cast");
 
@@ -2067,6 +1494,8 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::try_cast_params& outer) -> protected_rpc_result<protected_try_cast_request>
     {
+        // The visible interface_id must be the carrier type, never the private
+        // interface being queried.
         if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
             return rejected<protected_try_cast_request>(rpc::error::INVALID_DATA(), "try_cast payload is not protected");
         if (outer.interface_id != encrypted_payload_interface_id(outer.protocol_version))
@@ -2098,7 +1527,7 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected try_cast aad");
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_try_cast_request>(
                 rpc::error::SECURITY_ERROR(), "protected try_cast authentication failed");
@@ -2107,6 +1536,8 @@ namespace canopy::security::attestation
         if (!decoded)
             return rejected<protected_try_cast_request>(
                 rpc::error::INVALID_DATA(), "protected try_cast plaintext is malformed");
+        // Caller and destination zone remain public for routing; the actual
+        // interface fingerprint is accepted only from authenticated plaintext.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter
             || !validate_visible_try_cast_fields(outer, decoded->try_cast))
@@ -2133,6 +1564,8 @@ namespace canopy::security::attestation
         rpc::object_released_params params,
         rpc::encoding envelope_encoding) -> protected_rpc_result<protected_object_released_request>
     {
+        // object_released is generated by the attested destination side, so it
+        // travels in the destination -> caller direction.
         if (!context.established)
             return rejected<protected_object_released_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
@@ -2168,6 +1601,8 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected object_released");
         }
 
+        // Intermediates need the destination zone but not the object id that was
+        // released.
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
 
@@ -2181,7 +1616,7 @@ namespace canopy::security::attestation
         }
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
         {
             return rejected<protected_object_released_request>(
                 rpc::error::SECURITY_ERROR(), "failed to encrypt protected object_released");
@@ -2206,6 +1641,8 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::object_released_params& outer) -> protected_rpc_result<protected_object_released_request>
     {
+        // This validates the zone-originated protected object_released path. A
+        // route-layer status generated by an intermediate is handled elsewhere.
         if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
         {
             return rejected<protected_object_released_request>(
@@ -2247,7 +1684,7 @@ namespace canopy::security::attestation
         }
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
         {
             return rejected<protected_object_released_request>(
@@ -2260,6 +1697,8 @@ namespace canopy::security::attestation
             return rejected<protected_object_released_request>(
                 rpc::error::INVALID_DATA(), "protected object_released plaintext is malformed");
         }
+        // The visible carrier may expose only the zone route. The full object id
+        // is restored from the encrypted plaintext after authentication.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter
             || !validate_visible_object_released_fields(outer, decoded->object_released))
@@ -2286,6 +1725,9 @@ namespace canopy::security::attestation
         rpc::transport_down_params params,
         rpc::encoding envelope_encoding) -> protected_rpc_result<protected_transport_down_request>
     {
+        // This is the protected zone-originated transport_down form. An
+        // intermediate may still synthesize an unprotected route-layer failure
+        // when it is the only source of liveness information.
         if (!context.established)
             return rejected<protected_transport_down_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
@@ -2321,6 +1763,8 @@ namespace canopy::security::attestation
                 rpc::error::INVALID_DATA(), "failed to encode protected transport_down");
         }
 
+        // destination_zone_id and caller_zone_id remain public because the
+        // shutdown notice has to be routed even when intermediates are untrusted.
         auto outer = params;
 
         auto envelope = prepare_envelope(context, counter.counter);
@@ -2333,7 +1777,7 @@ namespace canopy::security::attestation
         }
 
         auto nonce = make_nonce(service, *key, counter.counter);
-        if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
         {
             return rejected<protected_transport_down_request>(
                 rpc::error::SECURITY_ERROR(), "failed to encrypt protected transport_down");
@@ -2358,6 +1802,9 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::transport_down_params& outer) -> protected_rpc_result<protected_transport_down_request>
     {
+        // Only a typed encrypted_payload is accepted on the protected path. The
+        // policy layer decides whether an unprotected intermediate notice is
+        // acceptable for a given route.
         if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
         {
             return rejected<protected_transport_down_request>(
@@ -2399,7 +1846,7 @@ namespace canopy::security::attestation
         }
 
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
-        auto plaintext = gcm_decrypt(*key, nonce, *envelope, *aad);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
         {
             return rejected<protected_transport_down_request>(
@@ -2412,6 +1859,8 @@ namespace canopy::security::attestation
             return rejected<protected_transport_down_request>(
                 rpc::error::INVALID_DATA(), "protected transport_down plaintext is malformed");
         }
+        // The public route endpoints must match the authenticated plaintext
+        // before this is treated as a zone-originated transport_down.
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter
             || !validate_visible_transport_down_fields(outer, decoded->transport_down))

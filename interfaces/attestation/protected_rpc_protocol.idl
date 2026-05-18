@@ -1,0 +1,222 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    [inline] namespace v4
+    {
+        namespace attestation
+        {
+        // Common cryptographic context for every protected RPC record.
+        //
+        // This is deliberately the first field in every protected AAD and
+        // plaintext schema. canonical_crypto serializes fields in schema order,
+        // so every protected record starts with the same context bytes.
+        //
+        // protocol_version is the Canopy IDL fingerprint version used when a
+        // runtime field needs a type id, for example rpc::encrypted_payload.
+        // The protected-record schemas themselves are also fingerprinted by this
+        // file's inline namespace.
+        //
+        // session_id and session_epoch identify the attested session keys.
+        // e2e_counter is the end-to-end protected-message counter used in AEAD
+        // nonce construction. It is separate from transport-local request_id.
+        struct envelope_metadata
+        {
+            uint64_t protocol_version = 0;
+            std::string session_id;
+            uint64_t session_epoch = 0;
+            uint64_t e2e_counter = 0;
+        };
+
+        // AAD means AES-GCM "additional authenticated data".
+        //
+        // AAD is public but authenticated: intermediates can read these route
+        // fields, but changing them makes tag verification fail at the receiver.
+        // Do not include rpc::encrypted_payload.payload here. AES-GCM already
+        // authenticates the ciphertext and authentication_tag directly.
+        //
+        // Object ids, interface ids, method ids, payload bytes, and application
+        // status values should stay in encrypted plaintext unless an intermediate
+        // genuinely needs them for routing. For object-bearing messages the AAD
+        // uses destination_zone_id, not remote_object, so intermediates can route
+        // without seeing the destination object id.
+        //
+        // If a public AAD struct still has interface_id or method_id, those are
+        // protected carrier identifiers such as rpc::encrypted_payload. They are
+        // not the original application interface or method ids; those are in the
+        // encrypted plaintext structs below.
+        struct send_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct post_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+        };
+
+        struct add_ref_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::requesting_zone requesting_zone_id;
+            rpc::add_ref_options add_ref_options = rpc::add_ref_options::normal;
+        };
+
+        struct release_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::release_options release_options = rpc::release_options::normal;
+        };
+
+        struct try_cast_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::destination_zone destination_zone_id;
+            rpc::interface_ordinal interface_id;
+        };
+
+        struct object_released_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        struct transport_down_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+        };
+
+        // Response AAD binds the encrypted response to the accepted protected
+        // request counter. The request's caller/destination/interface/method were
+        // already supplied by the caller's request and do not need to be repeated
+        // here. If the per-session request counter is not enough to identify the
+        // request, the counter/key scope is wrong and must be fixed there.
+        struct response_aad
+        {
+            envelope_metadata envelope;
+            uint64_t request_counter = 0;
+        };
+
+        // Plaintext structs are encrypted into rpc::encrypted_payload.payload.
+        //
+        // They are always serialized with canonical_crypto, so there is no
+        // encoding field in these structs. The outer marshaller params specify
+        // how the rpc::encrypted_payload carrier is serialized for the current
+        // link, and the decrypted request inherits that outer encoding.
+        //
+        // Full remote_object values live here, not in public AAD, because object
+        // ids are private to the destination service/proxy. The receiver checks
+        // that the public destination zone matches the encrypted remote object
+        // before reconstructing the original marshaller params.
+        //
+        // Backchannels are included to keep the protected schemas close to the
+        // marshaller shapes, but they are not sender-authenticated end to end in
+        // the live policy. Receiver code replaces them with the mutable public
+        // outer backchannels after decrypting, so intermediates can append route
+        // context such as telemetry.
+        struct send_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+            std::vector<char> in_data;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+        };
+
+        struct post_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+            std::vector<char> in_data;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+        };
+
+        struct add_ref_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::requesting_zone requesting_zone_id;
+            rpc::add_ref_options add_ref_options = rpc::add_ref_options::normal;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+            std::optional<rpc::typed_payload> payload;
+        };
+
+        struct release_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            rpc::release_options release_options = rpc::release_options::normal;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+            std::optional<rpc::typed_payload> payload;
+        };
+
+        struct try_cast_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::remote_object remote_object_id;
+            rpc::interface_ordinal interface_id;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+            std::optional<rpc::typed_payload> payload;
+        };
+
+        struct object_released_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::remote_object remote_object_id;
+            rpc::caller_zone caller_zone_id;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+            std::optional<rpc::typed_payload> payload;
+        };
+
+        struct transport_down_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::destination_zone destination_zone_id;
+            rpc::caller_zone caller_zone_id;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+            std::optional<rpc::typed_payload> payload;
+        };
+
+        // Protected send responses hide application error codes and out_buf from
+        // intermediates. The public send_result carrier must expose only public
+        // RPC transport/control statuses; a successful protected response carries
+        // this encrypted plaintext in out_buf.
+        struct response_plaintext
+        {
+            envelope_metadata envelope;
+            int64_t error_code = 0;
+            std::vector<char> out_buf;
+            std::vector<rpc::back_channel_entry> out_back_channel;
+        };
+        }
+    }
+}

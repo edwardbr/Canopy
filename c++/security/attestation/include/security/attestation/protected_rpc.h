@@ -16,11 +16,7 @@
 
 namespace canopy::security::attestation
 {
-    inline constexpr uint64_t protected_rpc_envelope_tag = 0x43414e4f50595052ULL; // "CANOPYPR"
-    inline constexpr uint32_t protected_rpc_envelope_version = 1;
-    inline constexpr uint64_t protected_rpc_outer_method_id = 0;
-    inline constexpr uint64_t protected_rpc_unset_transport_request_id = 0;
-    inline constexpr uint64_t protected_rpc_unset_service_request_id = 0;
+    inline constexpr uint64_t protected_rpc_carrier_method_id = 0;
     inline constexpr uint64_t protected_rpc_invalid_counter = 0;
 
     enum class protected_rpc_kind : uint8_t
