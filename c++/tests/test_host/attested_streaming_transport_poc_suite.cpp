@@ -65,7 +65,8 @@ namespace
         std::string enclave_id,
         std::string zone_id,
         bool send_evidence,
-        bool require_peer_evidence) -> std::shared_ptr<attestation_service>
+        bool require_peer_evidence,
+        bool allow_unattested_peer = false) -> std::shared_ptr<attestation_service>
     {
         attestation_service_options options;
         options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
@@ -73,6 +74,7 @@ namespace
         options.policy = attestation_policy{};
         options.policy.send_local_evidence = send_evidence;
         options.policy.require_peer_evidence = require_peer_evidence;
+        options.policy.allow_unattested_peer = allow_unattested_peer;
         options.policy.allow_development_evidence = true;
         options.policy.required_backend_id = fake_backend_id;
         return std::make_shared<attestation_service>(std::move(options));
@@ -88,18 +90,21 @@ namespace
         std::shared_ptr<attestation_service> responder_attestation_service_;
         bool initiator_sends_evidence_{true};
         bool initiator_requires_peer_evidence_{true};
+        bool initiator_allows_unattested_peer_{false};
         bool responder_sends_evidence_{true};
         bool responder_requires_peer_evidence_{true};
+        bool responder_allows_unattested_peer_{false};
 
         static auto make_attestation_service(
             std::shared_ptr<fake_backend> backend,
             std::string enclave_id,
             std::string zone_id,
             bool send_evidence,
-            bool require_peer_evidence) -> std::shared_ptr<attestation_service>
+            bool require_peer_evidence,
+            bool allow_unattested_peer) -> std::shared_ptr<attestation_service>
         {
             return make_test_attestation_service(
-                backend, std::move(enclave_id), std::move(zone_id), send_evidence, require_peer_evidence);
+                backend, std::move(enclave_id), std::move(zone_id), send_evidence, require_peer_evidence, allow_unattested_peer);
         }
 
         static auto make_options(std::shared_ptr<attestation_service> service) -> stream_options
@@ -116,11 +121,15 @@ namespace
             bool initiator_sends_evidence,
             bool initiator_requires_peer_evidence,
             bool responder_sends_evidence,
-            bool responder_requires_peer_evidence)
+            bool responder_requires_peer_evidence,
+            bool initiator_allows_unattested_peer = false,
+            bool responder_allows_unattested_peer = false)
             : initiator_sends_evidence_(initiator_sends_evidence)
             , initiator_requires_peer_evidence_(initiator_requires_peer_evidence)
+            , initiator_allows_unattested_peer_(initiator_allows_unattested_peer)
             , responder_sends_evidence_(responder_sends_evidence)
             , responder_requires_peer_evidence_(responder_requires_peer_evidence)
+            , responder_allows_unattested_peer_(responder_allows_unattested_peer)
         {
         }
 
@@ -142,9 +151,19 @@ namespace
                 = std::make_shared<streaming::spsc_queue::stream>(receive_spsc_queue_, send_spsc_queue_, io_scheduler_);
 
             initiator_attestation_service_ = make_attestation_service(
-                backend, "initiator-enclave", "initiator-zone", initiator_sends_evidence_, initiator_requires_peer_evidence_);
+                backend,
+                "initiator-enclave",
+                "initiator-zone",
+                initiator_sends_evidence_,
+                initiator_requires_peer_evidence_,
+                initiator_allows_unattested_peer_);
             responder_attestation_service_ = make_attestation_service(
-                backend, "responder-enclave", "responder-zone", responder_sends_evidence_, responder_requires_peer_evidence_);
+                backend,
+                "responder-enclave",
+                "responder-zone",
+                responder_sends_evidence_,
+                responder_requires_peer_evidence_,
+                responder_allows_unattested_peer_);
 
             initiator_stream_ = std::make_shared<streaming::attestation::stream>(
                 std::move(initiator_raw), make_options(initiator_attestation_service_));
@@ -244,7 +263,9 @@ namespace
                   false,
                   true,
                   true,
-                  false)
+                  false,
+                  false,
+                  true)
         {
         }
     };
@@ -890,6 +911,7 @@ namespace
 
     struct service_level_route_handshake_expectation
     {
+        int add_ref_error_code{rpc::error::OK()};
         route_attestation_status initiator_route_status{route_attestation_status::attested};
         route_attestation_status responder_route_status{route_attestation_status::attested};
         bool initiator_context_established{true};
@@ -901,8 +923,10 @@ namespace
         const std::shared_ptr<coro::scheduler>& scheduler,
         bool initiator_sends_evidence,
         bool initiator_requires_peer_evidence,
+        bool initiator_allows_unattested_peer,
         bool responder_sends_evidence,
         bool responder_requires_peer_evidence,
+        bool responder_allows_unattested_peer,
         service_level_route_handshake_expectation expected)
     {
         auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
@@ -919,13 +943,15 @@ namespace
             "service-level-initiator-enclave",
             "service-level-initiator-zone",
             initiator_sends_evidence,
-            initiator_requires_peer_evidence));
+            initiator_requires_peer_evidence,
+            initiator_allows_unattested_peer));
         responder_service->set_attestation_service(make_test_attestation_service(
             backend,
             "service-level-responder-enclave",
             "service-level-responder-zone",
             responder_sends_evidence,
-            responder_requires_peer_evidence));
+            responder_requires_peer_evidence,
+            responder_allows_unattested_peer));
         initiator_service->set_add_ref_attestation_required(true);
         responder_service->set_add_ref_attestation_required(true);
 
@@ -969,7 +995,7 @@ namespace
         params.build_out_param_channel = rpc::add_ref_options::normal;
 
         auto result = CO_AWAIT initiator_service->outbound_add_ref(std::move(params), initiator_transport);
-        CORO_ASSERT_EQ(result.error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(result.error_code, expected.add_ref_error_code);
 
         auto initiator_state = initiator_service->get_attestation_route_state(responder_zone);
         auto responder_state = responder_service->get_attestation_route_state(initiator_zone);
@@ -1592,8 +1618,10 @@ namespace
     void run_service_level_route_handshake_test(
         bool initiator_sends_evidence,
         bool initiator_requires_peer_evidence,
+        bool initiator_allows_unattested_peer,
         bool responder_sends_evidence,
         bool responder_requires_peer_evidence,
+        bool responder_allows_unattested_peer,
         service_level_route_handshake_expectation expected)
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -1608,8 +1636,10 @@ namespace
                 scheduler,
                 initiator_sends_evidence,
                 initiator_requires_peer_evidence,
+                initiator_allows_unattested_peer,
                 responder_sends_evidence,
                 responder_requires_peer_evidence,
+                responder_allows_unattested_peer,
                 expected);
             done.store(true);
             CO_RETURN;
@@ -1870,8 +1900,8 @@ template<class T> CORO_TASK(bool) coro_rpc_round_trip_over_attested_stream(T& li
     CORO_ASSERT_EQ(responder_context.established, true);
     CORO_ASSERT_EQ(initiator_context.local_evidence_sent, lib.initiator_sends_evidence());
     CORO_ASSERT_EQ(responder_context.local_evidence_sent, lib.responder_sends_evidence());
-    CORO_ASSERT_EQ(initiator_context.peer_attested, lib.initiator_requires_peer_evidence());
-    CORO_ASSERT_EQ(responder_context.peer_attested, lib.responder_requires_peer_evidence());
+    CORO_ASSERT_EQ(initiator_context.peer_attested, lib.responder_sends_evidence());
+    CORO_ASSERT_EQ(responder_context.peer_attested, lib.initiator_sends_evidence());
     CORO_ASSERT_EQ(initiator_context.local_identity.enclave_id, std::string{"initiator-enclave"});
     CORO_ASSERT_EQ(initiator_context.peer_identity.enclave_id, std::string{"responder-enclave"});
     CORO_ASSERT_EQ(responder_context.local_identity.enclave_id, std::string{"responder-enclave"});
@@ -1917,8 +1947,10 @@ TEST(
     run_service_level_route_handshake_test(
         true,
         true,
+        false,
         true,
         true,
+        false,
         service_level_route_handshake_expectation{.initiator_route_status = route_attestation_status::attested,
             .responder_route_status = route_attestation_status::attested,
             .initiator_context_established = true,
@@ -1932,11 +1964,31 @@ TEST(
     run_service_level_route_handshake_test(
         false,
         true,
+        false,
         true,
         false,
+        true,
         service_level_route_handshake_expectation{.initiator_route_status = route_attestation_status::attested,
             .responder_route_status = route_attestation_status::unattested_allowed,
             .initiator_context_established = true,
+            .responder_context_established = false});
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    AddRefRejectsUnattestedClientWithoutExplicitPolicy)
+{
+    run_service_level_route_handshake_test(
+        false,
+        true,
+        false,
+        true,
+        false,
+        false,
+        service_level_route_handshake_expectation{.add_ref_error_code = rpc::error::ZONE_NOT_SUPPORTED(),
+            .initiator_route_status = route_attestation_status::failed,
+            .responder_route_status = route_attestation_status::failed,
+            .initiator_context_established = false,
             .responder_context_established = false});
 }
 

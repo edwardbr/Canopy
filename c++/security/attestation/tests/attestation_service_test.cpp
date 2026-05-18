@@ -5,7 +5,9 @@
 
 #include <gtest/gtest.h>
 
+#include <security/attestation/backend_factory.h>
 #include <security/attestation/fake_backend.h>
+#include <security/attestation/null_backend.h>
 #include <security/attestation/protected_rpc.h>
 #include <security/attestation/service.h>
 
@@ -13,6 +15,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -21,6 +24,9 @@ namespace
     using canopy::security::attestation::attestation_service;
     using canopy::security::attestation::attestation_service_options;
     using canopy::security::attestation::cmw;
+    using canopy::security::attestation::configured_attestation_backend_kind;
+    using canopy::security::attestation::configured_attestation_backend_name;
+    using canopy::security::attestation::configured_backend_kind;
     using canopy::security::attestation::encrypted_payload_type_id;
     using canopy::security::attestation::establish_session_params;
     using canopy::security::attestation::evaluate_route_attestation_state;
@@ -30,7 +36,10 @@ namespace
     using canopy::security::attestation::fake_evidence_media_type;
     using canopy::security::attestation::identity;
     using canopy::security::attestation::make_attestation_nonce;
+    using canopy::security::attestation::make_default_attestation_service_options;
     using canopy::security::attestation::make_session_id;
+    using canopy::security::attestation::null_backend;
+    using canopy::security::attestation::null_backend_id;
     using canopy::security::attestation::protect_add_ref_request;
     using canopy::security::attestation::protect_object_released_request;
     using canopy::security::attestation::protect_post_request;
@@ -171,6 +180,59 @@ TEST(
     oversized.content_format = "canopy.fake.v1";
     oversized.payload = {0xff, 0xff, 0xff, 0xff};
     EXPECT_FALSE(backend.verify_evidence(oversized, expected_binding, policy).accepted);
+}
+
+TEST(
+    AttestationService,
+    NullBackendDoesNotCreateAttestedEvidence)
+{
+    attestation_service_options options;
+    options.local_identity = identity{"client-process", "client-zone"};
+    options.backend = std::make_shared<null_backend>();
+    options.policy = attestation_policy{};
+    options.policy.send_local_evidence = true;
+    options.policy.require_peer_evidence = false;
+    options.policy.allow_unattested_peer = true;
+    options.policy.minimum_security_level = security_level::none;
+    options.policy.required_backend_id = null_backend_id;
+
+    attestation_service service(std::move(options));
+    auto evidence = service.produce_evidence(11, {1, 2, 3, 4});
+    EXPECT_FALSE(evidence.accepted);
+    EXPECT_EQ(service.backend_id(), null_backend_id);
+    EXPECT_EQ(service.backend_level(), security_level::none);
+    EXPECT_FALSE(service.requires_peer_evidence());
+    EXPECT_TRUE(service.allows_unattested_peer());
+}
+
+TEST(
+    AttestationService,
+    BackendFactoryUsesConfiguredBackendDefaults)
+{
+    auto options = make_default_attestation_service_options(identity{"factory-enclave", "factory-zone"});
+    ASSERT_TRUE(options.backend);
+    EXPECT_EQ(options.backend->backend_id(), configured_attestation_backend_name());
+    EXPECT_EQ(options.local_identity.enclave_id, "factory-enclave");
+    EXPECT_EQ(options.local_identity.zone_id, "factory-zone");
+
+    if (configured_attestation_backend_kind() == configured_backend_kind::null_backend)
+    {
+        EXPECT_FALSE(options.policy.send_local_evidence);
+        EXPECT_FALSE(options.policy.require_peer_evidence);
+        EXPECT_TRUE(options.policy.allow_unattested_peer);
+        EXPECT_FALSE(options.policy.allow_development_evidence);
+        EXPECT_EQ(options.policy.minimum_security_level, security_level::none);
+        EXPECT_EQ(options.policy.required_backend_id, null_backend_id);
+    }
+    else
+    {
+        EXPECT_TRUE(options.policy.send_local_evidence);
+        EXPECT_TRUE(options.policy.require_peer_evidence);
+        EXPECT_FALSE(options.policy.allow_unattested_peer);
+        EXPECT_TRUE(options.policy.allow_development_evidence);
+        EXPECT_EQ(options.policy.minimum_security_level, security_level::development);
+        EXPECT_EQ(options.policy.required_backend_id, fake_backend_id);
+    }
 }
 
 TEST(

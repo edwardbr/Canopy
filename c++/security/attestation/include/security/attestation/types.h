@@ -52,6 +52,7 @@ namespace canopy::security::attestation
     {
         bool send_local_evidence{true};
         bool require_peer_evidence{true};
+        bool allow_unattested_peer{false};
         bool allow_development_evidence{true};
         security_level minimum_security_level{security_level::development};
         std::string required_backend_id;

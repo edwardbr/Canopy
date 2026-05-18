@@ -59,7 +59,8 @@ namespace
         std::string enclave_id,
         std::string zone_id,
         bool send_evidence,
-        bool require_peer_evidence) -> std::shared_ptr<attestation_service>
+        bool require_peer_evidence,
+        bool allow_unattested_peer = false) -> std::shared_ptr<attestation_service>
     {
         attestation_service_options options;
         options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
@@ -67,6 +68,7 @@ namespace
         options.policy = attestation_policy{};
         options.policy.send_local_evidence = send_evidence;
         options.policy.require_peer_evidence = require_peer_evidence;
+        options.policy.allow_unattested_peer = allow_unattested_peer;
         options.policy.allow_development_evidence = true;
         options.policy.required_backend_id = canopy::security::attestation::fake_backend_id;
         return std::make_shared<attestation_service>(std::move(options));
@@ -157,7 +159,7 @@ TEST(
     auto pair = make_stream_pair(scheduler);
 
     auto client_service = make_service("client-process", "client-zone", false, true);
-    auto server_service = make_service("server-enclave", "server-zone", true, false);
+    auto server_service = make_service("server-enclave", "server-zone", true, false, true);
     auto client = std::make_shared<streaming::attestation::stream>(pair.a, make_options(client_service));
     auto server = std::make_shared<streaming::attestation::stream>(pair.b, make_options(server_service));
 
@@ -190,6 +192,37 @@ TEST(
 
     auto received = coro::sync_wait(send_string(client, server, "unattested client request"));
     EXPECT_EQ(received, "unattested client request");
+
+    coro::sync_wait(client->set_closed());
+    coro::sync_wait(server->set_closed());
+    scheduler->shutdown();
+}
+
+TEST(
+    AttestationStream,
+    UnattestedClientIsRejectedUnlessServerPolicyAllowsIt)
+{
+    auto scheduler = make_scheduler();
+    auto pair = make_stream_pair(scheduler);
+
+    auto client_service = make_service("client-process", "client-zone", false, true);
+    auto server_service = make_service("server-enclave", "server-zone", true, false);
+    auto client = std::make_shared<streaming::attestation::stream>(pair.a, make_options(client_service));
+    auto server = std::make_shared<streaming::attestation::stream>(pair.b, make_options(server_service));
+
+    bool client_ok = true;
+    bool server_ok = true;
+    coro::sync_wait(
+        coro::when_all(
+            [&]() -> coro::task<void> { client_ok = co_await client->client_handshake(); }(),
+            [&]() -> coro::task<void> { server_ok = co_await server->server_handshake(); }()));
+
+    EXPECT_FALSE(client_ok);
+    EXPECT_FALSE(server_ok);
+    EXPECT_FALSE(client->handshake_complete());
+    EXPECT_FALSE(server->handshake_complete());
+    EXPECT_EQ(client_service->session_count(), 0U);
+    EXPECT_EQ(server_service->session_count(), 0U);
 
     coro::sync_wait(client->set_closed());
     coro::sync_wait(server->set_closed());

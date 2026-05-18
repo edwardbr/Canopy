@@ -20,6 +20,7 @@ provide SGX remote attestation use fake evidence behind the same interface.
 
 | Backend | Purpose | Production trust |
 |---|---|---|
+| Null | Explicit no-attestation policy for demos/browser clients | No |
 | Fake | Host development and tests | No |
 | SGX simulation | SDK/runtime development | No |
 | SGX local report | Same-platform enclave pairs | Yes, for local SGX policy |
@@ -33,6 +34,18 @@ provide SGX remote attestation use fake evidence behind the same interface.
 Fake and SGX simulation backends are useful on machines without SGX hardware,
 including non-Intel development systems. They must never silently satisfy a
 production hardware-attestation policy.
+
+## Null Backend
+
+The null backend is the explicit no-attestation option. It exists so demos,
+browser clients, diagnostics, or other non-enclave clients can connect only
+when service policy deliberately permits an unattested peer.
+
+Null is not evidence. It has `backend_id == "null"`, `security_level == none`,
+does not produce accepted local Evidence, and rejects any Evidence verification
+attempt. Accepting a peer with no Evidence therefore must flow through policy:
+`require_peer_evidence == false` plus `allow_unattested_peer == true`.
+Disabling `require_peer_evidence` alone is not sufficient.
 
 ## Fake Attestation Backend
 

@@ -149,6 +149,11 @@ namespace canopy::security::attestation
         return options_.policy.require_peer_evidence;
     }
 
+    auto attestation_service::allows_unattested_peer() const -> bool
+    {
+        return options_.policy.allow_unattested_peer;
+    }
+
     auto attestation_service::produce_evidence(
         uint64_t transcript_id,
         std::vector<uint8_t> nonce) const -> evidence_result
@@ -164,6 +169,12 @@ namespace canopy::security::attestation
         if (!options_.backend)
         {
             result.reason = "no attestation backend configured";
+            return result;
+        }
+
+        if (options_.backend->level() == security_level::none)
+        {
+            result.reason = "configured backend cannot produce attestation evidence";
             return result;
         }
 

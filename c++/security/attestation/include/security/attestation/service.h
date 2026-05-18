@@ -61,6 +61,7 @@ namespace canopy::security::attestation
         [[nodiscard]] auto backend_level() const -> security_level;
         [[nodiscard]] auto should_send_local_evidence() const -> bool;
         [[nodiscard]] auto requires_peer_evidence() const -> bool;
+        [[nodiscard]] auto allows_unattested_peer() const -> bool;
 
         [[nodiscard]] auto produce_evidence(
             uint64_t transcript_id,

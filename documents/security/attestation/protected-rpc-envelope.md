@@ -35,8 +35,8 @@ The protected envelope is responsible for:
   must forward bytes without reading them;
 - end-to-end integrity that is not weakened by an intermediate
   re-terminating TLS;
-- binding the decrypted caller and destination fields to an attested
-  end-to-end session;
+- binding the decrypted caller and destination fields to an attested or
+  otherwise authenticated end-to-end session;
 - replay protection scoped to the end-to-end zone pair rather than the
   adjacent transport.
 
@@ -44,6 +44,16 @@ For single-hop direct attestation, TLS-layer protections may be sufficient for
 the adjacent link, depending on policy. The protected envelope still matters
 when the same RPC payload may later be forwarded through routing zones that
 the original caller did not directly authenticate.
+
+A future certificate-authenticated encrypted route mode should reuse this same
+protected envelope. In that mode, the session key and `security_context` come
+from a certificate-authenticated key exchange rather than TEE Evidence. The
+envelope should not care whether the session was created by SGX/DCAP,
+fake/simulation Evidence, a verified certificate chain, a pinned certificate,
+or a pinned public key. It needs only an established session id, peer identity,
+directional AEAD key material, and monotonic counters. This mode must remain
+distinct from `unattested_allowed`, which means the route was explicitly
+permitted without an established protected session.
 
 See [overview.md, "Binding Modes"](overview.md) and [wire-format.md](wire-format.md)
 for how adjacent TLS attestation differs from routed RPC attestation.

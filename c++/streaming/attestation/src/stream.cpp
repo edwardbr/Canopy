@@ -592,12 +592,13 @@ namespace streaming::attestation
             context.peer_identity = peer_hello.local_identity;
             if (!peer_hello.will_send_evidence)
             {
-                if (!options.service || options.service->requires_peer_evidence())
+                if (!options.service || options.service->requires_peer_evidence()
+                    || !options.service->allows_unattested_peer())
                 {
-                    reason = "peer did not send required attestation evidence";
+                    reason = "peer did not send attestation evidence and local policy does not allow unattested peers";
                     co_return false;
                 }
-                reason = "peer attestation not required";
+                reason = "peer attestation explicitly allowed by policy";
                 co_return true;
             }
 

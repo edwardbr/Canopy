@@ -549,10 +549,13 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
         }
 
-        if (service->requires_peer_evidence())
+        if (service->requires_peer_evidence() || !service->allows_unattested_peer())
         {
             set_failed_attestation_route(
-                *this, route_zone_id, state.failure_epoch, "route attestation response did not include evidence");
+                *this,
+                route_zone_id,
+                state.failure_epoch,
+                "route attestation response did not include evidence and local policy does not allow unattested peers");
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
@@ -804,9 +807,9 @@ namespace rpc
             }
             peer_attested = true;
         }
-        else if (service->requires_peer_evidence())
+        else if (service->requires_peer_evidence() || !service->allows_unattested_peer())
         {
-            CO_RETURN fail("route attestation request did not include peer evidence");
+            CO_RETURN fail("route attestation request did not include peer evidence and local policy does not allow unattested peers");
         }
 
         if (service->should_send_local_evidence())

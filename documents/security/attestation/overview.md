@@ -202,8 +202,8 @@ route-attestation payloads are generated RPC/YAS structs:
 CMW-like Evidence, transcript id, nonce, backend id, security level, and the
 structured accept/reject verdict. A route becomes `attested` only after peer
 Evidence verifies and a `security_context` is established. A route becomes
-`unattested_allowed` only when Evidence is absent and policy explicitly does
-not require it.
+`unattested_allowed` only when Evidence is absent, peer Evidence is not
+required, and policy explicitly allows an unattested peer.
 
 For the current transport implementation, `build_out_param_channel` remains a
 visible add-ref route-control field because `rpc::transport::inbound_add_ref`

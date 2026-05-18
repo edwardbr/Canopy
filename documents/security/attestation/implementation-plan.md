@@ -60,15 +60,28 @@ policy-hardening work described in the remaining phases.
 ### Implemented
 
 - `c++/security/attestation/` now builds a `security_attestation` target with
-  backend-neutral passive types and a development fake backend:
+  backend-neutral passive types, a development fake backend, a null backend,
+  and a small configured-backend factory:
   - `include/security/attestation/types.h`
+  - `include/security/attestation/backend_factory.h`
   - `include/security/attestation/fake_backend.h`
+  - `include/security/attestation/null_backend.h`
   - `include/security/attestation/service.h`
+  - `src/backend_factory.cpp`
   - `src/fake_backend.cpp`
+  - `src/null_backend.cpp`
   - `src/service.cpp`
 - The fake backend produces CMW-like fake Evidence using
   `media_type == "application/canopy-fake-evidence"` and
   `content_format == "canopy.fake.v1"`.
+- The null backend is an explicit no-Evidence backend for demos and browser or
+  host clients. It reports `backend_id == "null"`,
+  `security_level == none`, does not produce accepted local Evidence, and
+  rejects Evidence verification. A peer without Evidence is accepted only when
+  policy sets both `require_peer_evidence == false` and
+  `allow_unattested_peer == true`.
+- `CANOPY_ATTESTATION_BACKEND` currently accepts `FAKE` and `NULL` and defines
+  the backend selected by `make_default_attestation_service_options(...)`.
 - Fake Evidence verification checks:
   - policy permission for development Evidence;
   - required backend id;
@@ -143,8 +156,9 @@ policy-hardening work described in the remaining phases.
   - produces local Evidence for the response when policy requires it;
   - establishes and stores an attested `security_context` when peer Evidence is
     accepted;
-  - marks routes `unattested_allowed` only when peer Evidence is absent and the
-    local policy does not require it;
+  - marks routes `unattested_allowed` only when peer Evidence is absent, the
+    local policy does not require it, and the local policy explicitly allows
+    an unattested peer;
   - returns a structured rejection payload for malformed or policy-rejected
     handshakes.
 - `rpc::enclave_service` stores attestation `security_context` records keyed by
@@ -513,18 +527,27 @@ policy-hardening work described in the remaining phases.
 - `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_filter=AttestationService.ProtectsReleaseRequest:AttestationService.ProtectedRequestsAllowMutablePublicBackChannels:AttestationService.ProtectsAddRefRequest:AttestationService.ProtectsSendRequestAndResponse:AttestationService.ProtectedSendRejectsTamperedCiphertext`
 - `cmake --build build_debug_coroutine_fake_sgx --target rpc_test`
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/*`
+- `cmake --build build_debug --target attestation_service_test`
+- `build_debug/output/attestation_service_test --gtest_brief=1`
+- `cmake --build build_debug_coroutine_sgx_sim --target attestation_service_test attestation_stream_test rpc_test`
+- `build_debug_coroutine_sgx_sim/output/attestation_service_test --gtest_brief=1`
+- `build_debug_coroutine_sgx_sim/output/attestation_stream_test --gtest_brief=1`
+- `build_debug_coroutine_sgx_sim/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/* --gtest_fail_fast --gtest_brief=1`
+- `cmake --build build_debug_coroutine_fake_sgx --target attestation_service_test attestation_stream_test rpc_test`
+- `build_debug_coroutine_fake_sgx/output/attestation_service_test --gtest_brief=1`
+- `build_debug_coroutine_fake_sgx/output/attestation_stream_test --gtest_brief=1`
+- `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/* --gtest_fail_fast --gtest_brief=1`
 
 ### Not Yet Implemented
 
-- `CANOPY_ATTESTATION_BACKEND` build selection.
 - Separate `cmw.h`, `backend.h`, `policy.h`, and `security_context.h` header
   split. The current POC keeps these passive types together in `types.h`.
-- `null_backend`.
 - Full production CMW / attestation context IDL split. The current route
   handshake has minimal generated IDL carriers for fake Evidence and
   backend-neutral identity.
-- Backend selection beyond explicit construction of one service with one
-  backend.
+- Backend selection for production SGX/DCAP, SGX-sim Evidence, EPID, TDX,
+  SEV-SNP, and TrustZone/PSA. The current build-time factory only selects
+  `FAKE` or `NULL`.
 - Strict end-to-end enforcement for every `transport_down`. The protected
   endpoint-originated payload carrier and inbound unwrap support exist, but
   there is no production outbound service hook or sender yet. Route-layer
@@ -571,14 +594,15 @@ policy-hardening work described in the remaining phases.
 ### Current Best Next Step
 
 Telemetry and `post_report` are demo/diagnostic surfaces and are intentionally
-left out of the current production attestation path. The next implementation
-slice should return to core attestation features: stream sign-on policy
-controls, explicit configuration for unattested clients, and backend selection
-for fake/SGX-sim/real SGX. After that, continue reducing the remaining public
-carrier fields documented in `intermediate-visibility-audit.md` with a
-route-token/state refactor, and only then apply the same checklist to
-non-C-ABI coroutine dynamic-library transports that are allowed at an enclave
-boundary.
+left out of the current production attestation path. Stream sign-on and
+service-level route handshakes now distinguish "peer Evidence is not required"
+from "an unattested peer is explicitly allowed", and the backend factory can
+select the current `FAKE` or `NULL` development backends. The next
+implementation slice should continue backend work for SGX-sim and real
+SGX/DCAP, while also reducing the remaining public carrier fields documented in
+`intermediate-visibility-audit.md` with a route-token/state refactor. After
+that, apply the same checklist to non-C-ABI coroutine dynamic-library
+transports that are allowed at an enclave boundary.
 
 ## Architectural Layers
 
@@ -709,6 +733,10 @@ sees L5's wire bytes. L7 never instantiates a backend.
 - Adding a new TEE (DCAP to TDX) changes only L3.
 - Adding a new transport (TCP to io_uring) changes only L6.
 - Tightening production policy changes only L1.
+- Adding a non-attested encrypted route mode, such as certificate-authenticated
+  encryption between non-enclave zones, should change L1/L4/L5 policy and
+  handshake/session establishment only. It must reuse the L7 protected RPC
+  envelope rather than adding a second encrypted RPC path.
 - The protected RPC envelope (L7) is agnostic to all of the above:
   given a session handle, it encrypts and decrypts. This is the property
   that lets phases 1, 2, 3, and 4 progressively swap backends and wire
@@ -774,7 +802,8 @@ attest.
   - `src/null_backend.cpp` -- backend that returns
     `SUPPORTS_PRODUCTION_POLICY=false` and refuses every evidence call.
 - Build option `CANOPY_ATTESTATION_BACKEND` with values
-  `NULL` (default for current builds) and `FAKE` (added in phase 1).
+  `FAKE` (current development default) and `NULL` (explicit no-attestation
+  policy for demos/browser clients).
 - Conditional compilation: when set to `NULL`, the rest of Canopy keeps
   building exactly as today; no attestation paths are taken.
 - IDL additions in `interfaces/rpc/`:
@@ -1291,6 +1320,30 @@ Tracked here so the design is not forgotten.
   - IANA codepoints are allocated;
   - either Mbed TLS or SGXSSL ships upstream support, or Canopy
     decides to maintain a patch.
+- **Certificate-authenticated encrypted routes without TEE attestation.**
+  Preserve the current protected-RPC envelope, key derivation, counters,
+  replay protection, and public routing model, but allow the session that feeds
+  the envelope to come from a certificate-authenticated handshake instead of
+  TEE Evidence. This is for non-attested zones that still require confidential
+  and tamper-evident RPC payloads, including server-to-server links where SGX,
+  TDX, SEV-SNP, TrustZone, or another TEE is not available. This must not be
+  modelled as `unattested_allowed`: `unattested_allowed` remains the explicit
+  no-Evidence/no-protected-session exception. The new mode should have its own
+  route-security status and policy, such as `certificate_authenticated`, with
+  `peer_attested == false` but `security_context.established == true`.
+  Certificate exchange prevents MITM only when the certificate chain, pinned
+  certificate, pinned public-key fingerprint, or configured zone allow-list is
+  already trusted out of band. Self-signed certificates exchanged only in-band
+  are not sufficient. The existing route handshake IDL carriers should be
+  evolved rather than replaced: keep the request/response shape, CMW-style
+  proof container, transcript id, nonce, identity, backend/mechanism id,
+  security level, and session epoch, but add an explicit route-security kind
+  so the same carrier can represent hardware attestation, development
+  attestation, certificate-authenticated encryption, pinned-public-key
+  encryption, or future PSK/resumption modes. If the current names become too
+  narrow, introduce versioned neutral names such as
+  `route_security_handshake_request` while keeping compatibility shims for the
+  existing `route_attestation_handshake_*` types during migration.
 - **TDX backend.** When TDX support is required, add a backend that
   emits TDX quotes via the same DCAP host APIs (`tee_verify_quote` is
   already TDX-aware). CMW media types extend with
@@ -1319,8 +1372,9 @@ phase.
 
 ### Compatibility With Existing Code
 
-- Until phase 4 ships, `CANOPY_ATTESTATION_BACKEND=NULL` is the
-  default in production presets so existing deployments are unaffected.
+- Until phase 4 ships, production presets should use
+  `CANOPY_ATTESTATION_BACKEND=NULL` unless they deliberately enable fake or
+  hardware attestation.
 - The websocket demo continues to ship a browser-facing listener that
   does not attest, regardless of phase.
 
