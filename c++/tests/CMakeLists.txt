@@ -35,6 +35,8 @@ endif()
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   add_subdirectory(sgx_coroutine_test_enclave)
   add_subdirectory(sgx_coroutine_test_host)
+  add_subdirectory(attestation_test_enclave)
+  add_subdirectory(attestation_test_host)
 endif()
 
 if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")

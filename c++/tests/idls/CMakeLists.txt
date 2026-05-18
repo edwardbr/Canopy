@@ -76,3 +76,16 @@ CanopyGenerate(
   yas_json
   protocol_buffers
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
+
+CanopyGenerate(
+  attestation_test
+  attestation_test/attestation_test.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  protocol_buffers
+  canonical_crypto
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)

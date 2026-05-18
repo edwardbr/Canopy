@@ -75,15 +75,33 @@ SGX simulation is useful for Intel SDK/runtime integration, but it is not remote
 attestation evidence. Treat simulation evidence as development evidence with a
 distinct backend id.
 
-The current `SGX_SIM` backend is only a Canopy development profile layered over
-the fake evidence machinery. It does not yet call SGX SDK report, quote, or
-local-attestation APIs. Its purpose is to let an SGX-sim build select stricter
-simulation policy defaults without confusing that result with production
-hardware evidence.
+The current `SGX_SIM` backend is a Canopy development profile with two
+evidence shapes:
 
-The intended next SGX-sim slice is to exercise as much Intel SGX SDK simulation
-machinery as the installed SDK exposes on non-SGX hardware, including AMD
-developer machines:
+- host-only builds fall back to signed development evidence with
+  `backend_id == "sgx-sim"`;
+- Intel SGX simulation enclave builds produce an IDL-defined
+  `sgx_sim_report_evidence` payload that binds the Canopy transcript into
+  `sgx_report_data_t`, calls `sgx_self_target`, calls `sgx_create_report`, and
+  requires the producer to verify that self-targeted report with
+  `sgx_verify_report` before sending it.
+
+This lets an SGX-sim build exercise stricter simulation policy defaults and SGX
+SDK report mechanics without confusing that result with production hardware
+evidence.
+
+The runtime proof for this path is test-only and uses the dedicated
+`sgx_attestation_test_enclave` plus `sgx_attestation_test_host` targets rather
+than piggybacking on unrelated transport tests.
+
+The current report is self-targeted because the generic route handshake does
+not yet exchange verifier `sgx_target_info_t`. A later SGX local-attestation
+protocol should add that target-info request/response step so each enclave can
+create a report targeted to its peer.
+
+SGX simulation should exercise as much Intel SGX SDK simulation machinery as
+the installed SDK exposes on non-SGX hardware, including AMD developer
+machines:
 
 - enclave creation, ECALL/OCALL, and EDL ABI flow already used by the SGX
   coroutine transport;

@@ -1,0 +1,72 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "attestation/route_attestation_protocol.idl"
+
+namespace rpc
+{
+    [inline] namespace v4
+    {
+        namespace attestation
+        {
+        // Transcript fields bound into SGX SIM report_data.
+        //
+        // SGX report_data is only 64 bytes, so the backend canonical_crypto
+        // serializes this struct, hashes it with SHA-256, and copies the digest
+        // into the first 32 bytes of sgx_report_data_t. The remaining bytes are
+        // currently zero. A verifier recomputes the same hash from this struct
+        // before trusting the carried report as matching the Canopy handshake.
+        struct sgx_sim_report_binding
+        {
+            [description="Backend identity expected to be sgx-sim for this simulation evidence profile."]
+            std::string backend_id;
+
+            [description="Identity claimed by the simulated enclave route."]
+            attestation_identity subject;
+
+            [description="Caller-generated transcript id for the route-attestation handshake."]
+            uint64_t transcript_id = 0;
+
+            [description="Verifier nonce copied from the route-attestation handshake. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> nonce;
+        };
+
+        // Canopy-owned SGX SIM evidence payload.
+        //
+        // This is not a production SGX quote. It is a development/simulation
+        // carrier that lets Canopy exercise SGX SDK report mechanics in enclave
+        // simulation builds while still reporting security_level::simulation.
+        //
+        // target_info and report are raw SGX SDK structures:
+        //   target_info = sgx_target_info_t bytes when available;
+        //   report      = sgx_report_t bytes when available.
+        //
+        // The current producer creates a self-targeted report because the
+        // generic route handshake does not yet exchange verifier target_info.
+        // A later SGX-local-attestation protocol should add a target-info
+        // request/response step so each enclave can create a report targeted to
+        // its peer.
+        struct sgx_sim_report_evidence
+        {
+            sgx_sim_report_binding binding;
+
+            [description="SHA-256 digest copied into the first 32 bytes of sgx_report_data_t."]
+            std::vector<uint8_t> report_data_sha256;
+
+            [description="Raw sgx_target_info_t bytes for the report target when SGX SIM APIs produced one."]
+            std::vector<uint8_t> target_info;
+
+            [description="Raw sgx_report_t bytes produced by sgx_create_report when SGX SIM APIs were available."]
+            std::vector<uint8_t> report;
+
+            [description="Non-zero when the producer verified the self-targeted report with sgx_verify_report before sending it."]
+            uint8_t report_verified_by_producer = 0;
+
+            [description="HMAC-SHA256 over this structure with this field empty. This remains a development key, not a production root of trust."]
+            std::vector<uint8_t> development_signature;
+        };
+        }
+    }
+}

@@ -1,0 +1,32 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+// Test-only RPC interface for exercising attestation code inside an enclave.
+// Production attestation protocols live under interfaces/attestation.
+
+namespace attestation_test
+{
+    [inline] namespace v4
+    {
+        struct sgx_sim_report_self_test_result
+        {
+            bool produced_report_evidence = false;
+            bool producer_verified_report = false;
+            bool verifier_accepted_report = false;
+            uint64_t payload_size = 0;
+            uint64_t report_size = 0;
+            uint64_t target_info_size = 0;
+            uint64_t report_data_hash_size = 0;
+            uint64_t development_signature_size = 0;
+            std::string content_format;
+            std::string verifier_reason;
+        };
+
+        interface i_attestation_enclave_test
+        {
+            int sgx_sim_report_self_test([out] sgx_sim_report_self_test_result& details);
+        };
+    }
+}

@@ -10,10 +10,12 @@ find_package(OpenSSL REQUIRED)
 set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/aead.cpp
     src/backend_factory.cpp
+    src/crypto_hash.cpp
     src/fake_backend.cpp
     src/kdf.cpp
     src/null_backend.cpp
     src/protected_rpc.cpp
+    src/simulation_backend.cpp
     src/service.cpp)
 
 add_library(security_attestation STATIC ${CANOPY_SECURITY_ATTESTATION_SOURCES})
@@ -26,7 +28,8 @@ target_include_directories(
 target_compile_definitions(security_attestation PRIVATE ${CANOPY_DEFINES})
 target_compile_options(security_attestation PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(security_attestation PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(security_attestation PUBLIC rpc PRIVATE protected_rpc_protocol_idl OpenSSL::Crypto)
+target_link_libraries(
+  security_attestation PUBLIC rpc PRIVATE protected_rpc_protocol_idl sgx_sim_protocol_idl OpenSSL::Crypto)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(security_attestation PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
@@ -58,7 +61,9 @@ if(CANOPY_BUILD_ENCLAVE)
       target_compile_options(security_attestation_enclave PRIVATE "SHELL:-include tsgxsslio.h")
     endif()
     target_link_options(security_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
-      target_link_libraries(security_attestation_enclave PUBLIC rpc::rpc_enclave PRIVATE protected_rpc_protocol_idl_enclave)
+    target_link_libraries(
+      security_attestation_enclave PUBLIC rpc::rpc_enclave PRIVATE protected_rpc_protocol_idl_enclave
+                                                   sgx_sim_protocol_idl_enclave)
 
     if(CANOPY_SGX_BACKEND STREQUAL "Fake")
       target_link_libraries(security_attestation_enclave PRIVATE OpenSSL::Crypto)

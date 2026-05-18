@@ -66,6 +66,7 @@ namespace
     using canopy::security::attestation::simulation_backend_id;
     using canopy::security::attestation::simulation_evidence_content_format;
     using canopy::security::attestation::simulation_evidence_media_type;
+    using canopy::security::attestation::simulation_report_evidence_content_format;
     using canopy::security::attestation::unprotect_add_ref_request;
     using canopy::security::attestation::unprotect_object_released_request;
     using canopy::security::attestation::unprotect_post_request;
@@ -302,6 +303,31 @@ TEST(
     auto hardware_policy = policy;
     hardware_policy.minimum_security_level = security_level::hardware;
     EXPECT_FALSE(backend.verify_evidence(evidence, expected_binding, hardware_policy).accepted);
+}
+
+TEST(
+    AttestationService,
+    RejectsMalformedSgxSimulationReportEvidence)
+{
+    simulation_backend backend;
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"sim-enclave", "sim-zone"};
+    expected_binding.transcript_id = 24;
+    expected_binding.nonce = {1, 3, 5, 7};
+
+    cmw malformed;
+    malformed.media_type = simulation_evidence_media_type;
+    malformed.content_format = simulation_report_evidence_content_format;
+    malformed.payload = {1, 2, 3};
+
+    attestation_policy policy;
+    policy.required_backend_id = simulation_backend_id;
+    policy.minimum_security_level = security_level::simulation;
+    policy.allow_development_evidence = true;
+
+    auto verdict = backend.verify_evidence(malformed, expected_binding, policy);
+    EXPECT_FALSE(verdict.accepted);
 }
 
 TEST(
