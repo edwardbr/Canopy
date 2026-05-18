@@ -23,7 +23,8 @@ function(
       yas_compressed_binary
       yas_json
       protocol_buffers
-      nanopb)
+      nanopb
+      canonical_crypto)
   set(singleValueArgs mock install_dir)
   set(multiValueArgs
       dependencies
@@ -125,6 +126,11 @@ function(
         ON
         CACHE BOOL "Include Nanopb support")
   endif()
+  if(NOT DEFINED CANOPY_BUILD_CANONICAL_CRYPTO)
+    set(CANOPY_BUILD_CANONICAL_CRYPTO
+        ON
+        CACHE BOOL "Include deterministic canonical_crypto serialization support")
+  endif()
   if(NOT DEFINED CANOPY_NANOPB_PROTOC_EXECUTABLE)
     if(TARGET protoc)
       set(CANOPY_NANOPB_PROTOC_EXECUTABLE "$<TARGET_FILE:protoc>")
@@ -198,6 +204,7 @@ function(
   set(generate_yas FALSE)
   set(generate_protobuf FALSE)
   set(generate_nanopb FALSE)
+  set(generate_canonical_crypto FALSE)
 
   if(${params_yas_binary}
      OR ${params_yas_compressed_binary}
@@ -245,6 +252,18 @@ function(
     else()
       message(FATAL_ERROR "Nanopb generation was requested for '${name}', but CANOPY_BUILD_NANOPB is OFF "
                           "and no alternative generated serialization format was requested.")
+    endif()
+  endif()
+
+  if(${params_canonical_crypto})
+    if(CANOPY_BUILD_CANONICAL_CRYPTO)
+      set(generate_canonical_crypto TRUE)
+    elseif(NOT generate_yas AND NOT generate_protobuf AND NOT generate_nanopb)
+      message(FATAL_ERROR "canonical_crypto generation was requested for '${name}', but CANOPY_BUILD_CANONICAL_CRYPTO is OFF "
+                          "and no alternative generated serialization format was requested.")
+    else()
+      message(STATUS "canonical_crypto generation requested for '${name}', but CANOPY_BUILD_CANONICAL_CRYPTO is OFF. "
+                     "Continuing with the other requested serialization format(s).")
     endif()
   endif()
 
@@ -308,6 +327,7 @@ function(
     message("full_protobuf_path ${full_protobuf_path}")
     message("protobuf_cpp_path ${protobuf_cpp_path}")
     message("full_protobuf_cpp_path ${full_protobuf_cpp_path}")
+    message("generate_canonical_crypto ${generate_canonical_crypto}")
     message("no_include_rpc_headers ${params_no_include_rpc_headers}")
   endif()
 
@@ -431,6 +451,9 @@ function(
   endif()
   if(generate_nanopb)
     set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --nanopb)
+  endif()
+  if(generate_canonical_crypto)
+    set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --canonical_crypto)
   endif()
 
   # Determine generator dependency for custom command If generator target exists(building from source), depend on the

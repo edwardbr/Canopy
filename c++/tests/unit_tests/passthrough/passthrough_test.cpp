@@ -175,6 +175,7 @@ template<class T> CORO_TASK(bool) coro_send_happy_path(T& lib)
             .method_id = rpc::method{1},
             .in_data = in_data,
             .in_back_channel = {},
+            .request_id = 0,
         });
 
     CORO_ASSERT_EQ(result.error_code, rpc::error::OK());
@@ -210,6 +211,7 @@ template<class T> CORO_TASK(bool) coro_send_to_reverse_destination(T& lib)
             .method_id = rpc::method{1},
             .in_data = in_data,
             .in_back_channel = {},
+            .request_id = 0,
         });
 
     CORO_ASSERT_EQ(result.error_code, rpc::error::OK());
@@ -282,6 +284,7 @@ template<class T> CORO_TASK(bool) coro_try_cast_happy_path(T& lib)
             .method_id = rpc::method{1},
             .in_data = {}, // empty for try_cast
             .in_back_channel = {},
+            .request_id = 0,
         });
 
     // For try_cast functionality test, verify that reverse transport received the call
@@ -318,6 +321,8 @@ template<class T> CORO_TASK(bool) coro_add_ref_happy_path(T& lib)
             .requesting_zone_id = lib.get_reverse_dest(),
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
         });
 
     // Verify exact count changes: shared_count should increase by exactly 1, optimistic_count unchanged
@@ -355,6 +360,8 @@ template<class T> CORO_TASK(bool) coro_add_ref_optimistic(T& lib)
             .requesting_zone_id = lib.get_reverse_dest(),
             .build_out_param_channel = rpc::add_ref_options::optimistic,
             .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
         });
 
     // Verify exact count changes: optimistic_count should increase by exactly 1, shared_count unchanged
@@ -393,6 +400,8 @@ template<class T> CORO_TASK(bool) coro_release_happy_path(T& lib)
             .requesting_zone_id = lib.get_reverse_dest(),
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
         });
 
     // Verify add_ref worked: shared_count should increase by exactly 1
@@ -407,6 +416,7 @@ template<class T> CORO_TASK(bool) coro_release_happy_path(T& lib)
             .caller_zone_id = lib.get_reverse_dest(),
             .options = rpc::release_options::normal,
             .in_back_channel = {},
+            .payload = {},
         });
 
     // Verify balanced operation: release should decrease by exactly 1, returning to initial state
@@ -448,6 +458,7 @@ template<class T> CORO_TASK(bool) coro_send_with_forward_transport_down(T& lib)
             .method_id = rpc::method{1},
             .in_data = {1, 2, 3, 4},
             .in_back_channel = {},
+            .request_id = 0,
         });
 
     CORO_ASSERT_EQ(result.error_code, rpc::error::TRANSPORT_ERROR());
@@ -479,6 +490,7 @@ template<class T> CORO_TASK(bool) coro_send_with_invalid_destination(T& lib)
             .method_id = rpc::method{1},
             .in_data = {1, 2, 3, 4},
             .in_back_channel = {},
+            .request_id = 0,
         });
 
     CORO_ASSERT_EQ(result.error_code, rpc::error::ZONE_NOT_FOUND());
@@ -514,6 +526,8 @@ template<class T> CORO_TASK(bool) coro_add_ref_with_transport_down(T& lib)
             .requesting_zone_id = lib.get_reverse_dest(),
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
         });
 
     // Verify operation failed AND counts unchanged due to transport being down
@@ -550,6 +564,8 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .requesting_zone_id = lib.get_reverse_dest(),
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
         });
 
     // Add optimistic reference
@@ -561,6 +577,8 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .requesting_zone_id = lib.get_reverse_dest(),
             .build_out_param_channel = rpc::add_ref_options::optimistic,
             .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
         });
 
     // Verify both increments
@@ -576,6 +594,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
             .options = rpc::release_options::normal,
             .in_back_channel = {},
+            .payload = {},
         });
 
     CO_AWAIT reverse_transport->inbound_release(
@@ -585,6 +604,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
             .options = rpc::release_options::normal,
             .in_back_channel = {},
+            .payload = {},
         });
 
     // Verify everything returned to initial state (balanced operations)
@@ -623,6 +643,8 @@ template<class T> CORO_TASK(bool) coro_cleanup_verification(T& lib)
             .requesting_zone_id = lib.get_reverse_dest(),
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
         });
 
     CO_AWAIT reverse_transport->inbound_release(
@@ -632,6 +654,7 @@ template<class T> CORO_TASK(bool) coro_cleanup_verification(T& lib)
             .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
             .options = rpc::release_options::normal,
             .in_back_channel = {},
+            .payload = {},
         });
 
     // Verify balanced operation returned to initial state

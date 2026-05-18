@@ -15,6 +15,7 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
+  canonical_crypto
   mock example_shared/example_shared_mock.h
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR})
@@ -29,6 +30,7 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
+  canonical_crypto
   mock example_import/example_import_mock.h
   dependencies example_shared_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
@@ -44,6 +46,7 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
+  canonical_crypto
   mock example/example_mock.h
   dependencies example_import_idl example_shared_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
@@ -59,6 +62,7 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
+  canonical_crypto
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
 
 CanopyGenerate(

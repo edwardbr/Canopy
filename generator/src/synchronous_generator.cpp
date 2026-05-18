@@ -9,6 +9,7 @@
 #include <sstream>
 #include <tuple>
 #include <type_traits>
+#include <unordered_set>
 
 // Other headers
 extern "C"
@@ -717,6 +718,351 @@ namespace synchronous_generator
         return false;
     }
 
+    bool is_serialized_struct_field(const std::shared_ptr<entity>& field)
+    {
+        if (!field || field->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+            return false;
+
+        auto* function_variable = static_cast<const function_entity*>(field.get());
+        return !function_variable->is_static();
+    }
+
+    void write_canonical_crypto_struct_methods(
+        const class_entity& m_ob,
+        writer& header)
+    {
+        header("");
+        header("#ifdef CANOPY_BUILD_CANONICAL_CRYPTO");
+        header("// Writes fields in IDL declaration order for deterministic crypto transcripts.");
+        header("bool canonical_crypto_write_to(rpc::canonical_crypto_writer& __rpc_writer) const");
+        header("{{");
+
+        bool has_fields = false;
+        for (const auto& field : m_ob.get_functions())
+        {
+            if (!is_serialized_struct_field(field))
+                continue;
+
+            has_fields = true;
+            auto* function_variable = static_cast<const function_entity*>(field.get());
+            if (is_serialized_pointer_field(*function_variable))
+            {
+                header(
+                    "auto __canonical_{0}_address = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>({0}));",
+                    field->get_name());
+                header("if (!rpc::canonical_crypto_write(__rpc_writer, __canonical_{}_address))", field->get_name());
+            }
+            else
+            {
+                header("if (!rpc::canonical_crypto_write(__rpc_writer, {}))", field->get_name());
+            }
+            header("{{");
+            header("return false;");
+            header("}}");
+        }
+
+        if (!has_fields)
+            header("std::ignore = __rpc_writer;");
+        header("return __rpc_writer.ok();");
+        header("}}");
+        header("");
+        header("// Reads the same deterministic field sequence emitted by canonical_crypto_write_to().");
+        header("bool canonical_crypto_read_from(rpc::canonical_crypto_reader& __rpc_reader)");
+        header("{{");
+
+        has_fields = false;
+        for (const auto& field : m_ob.get_functions())
+        {
+            if (!is_serialized_struct_field(field))
+                continue;
+
+            has_fields = true;
+            auto* function_variable = static_cast<const function_entity*>(field.get());
+            if (is_serialized_pointer_field(*function_variable))
+            {
+                header("std::uint64_t __canonical_{}_address = 0;", field->get_name());
+                header("if (!rpc::canonical_crypto_read(__rpc_reader, __canonical_{}_address))", field->get_name());
+                header("{{");
+                header("return false;");
+                header("}}");
+                header(
+                    "{0} = reinterpret_cast<{1}>(static_cast<std::uintptr_t>(__canonical_{0}_address));",
+                    field->get_name(),
+                    pointer_cast_type(function_variable->get_return_type()));
+            }
+            else
+            {
+                header("if (!rpc::canonical_crypto_read(__rpc_reader, {}))", field->get_name());
+                header("{{");
+                header("return false;");
+                header("}}");
+            }
+        }
+
+        if (!has_fields)
+            header("std::ignore = __rpc_reader;");
+        header("return true;");
+        header("}}");
+        header("");
+        header("// Helper used by rpc::serialise(..., rpc::encoding::canonical_crypto).");
+        header("void canonical_crypto_serialise(std::vector<char>& buffer) const");
+        header("{{");
+        header("buffer.clear();");
+        header("rpc::canonical_crypto_writer __rpc_writer(buffer);");
+        header("if (!canonical_crypto_write_to(__rpc_writer) || !__rpc_writer.ok())");
+        header("{{");
+        header("throw std::runtime_error(\"canonical_crypto serialization failed\");");
+        header("}}");
+        header("}}");
+        header("");
+        header("// Helper used by rpc::deserialise(..., rpc::encoding::canonical_crypto).");
+        header("std::string canonical_crypto_deserialise(const std::vector<char>& buffer)");
+        header("{{");
+        header("rpc::canonical_crypto_reader __rpc_reader(buffer);");
+        header("if (!canonical_crypto_read_from(__rpc_reader) || !__rpc_reader.done())");
+        header("{{");
+        header("return \"canonical_crypto deserialization failed\";");
+        header("}}");
+        header("return {{}};");
+        header("}}");
+        header("#endif");
+    }
+
+    void write_canonical_crypto_proxy_send_method(
+        bool from_host,
+        const class_entity& m_ob,
+        writer& proxy,
+        const std::string& interface_name,
+        const std::shared_ptr<function_entity>& function)
+    {
+        bool has_inparams = false;
+        proxy("template<>");
+        proxy(
+            "{}",
+            interface_declaration_generator::write_proxy_send_declaration(
+                m_ob, interface_name + "::proxy_serialiser<rpc::serialiser::canonical_crypto>::", function, has_inparams, "", false));
+        proxy("{{");
+        proxy("__buffer.clear();");
+        if (has_inparams)
+        {
+            proxy("rpc::canonical_crypto_writer __rpc_writer(__buffer);");
+            for (const auto& parameter : function->get_parameters())
+            {
+                std::string output;
+                uint64_t count = 1;
+                if (!do_in_param(
+                        PROXY_MARSHALL_IN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
+                    continue;
+                proxy("if (!rpc::canonical_crypto_write(__rpc_writer, {}))", parameter.get_name());
+                proxy("{{");
+                proxy("return rpc::error::INCOMPATIBLE_SERIALISATION();");
+                proxy("}}");
+            }
+            proxy("if (!__rpc_writer.ok())");
+            proxy("{{");
+            proxy("return rpc::error::INCOMPATIBLE_SERIALISATION();");
+            proxy("}}");
+        }
+        proxy("return rpc::error::OK();");
+        proxy("}}");
+        proxy("");
+    }
+
+    void write_canonical_crypto_proxy_receive_method(
+        bool from_host,
+        const class_entity& m_ob,
+        writer& proxy,
+        const std::string& interface_name,
+        const std::shared_ptr<function_entity>& function)
+    {
+        bool has_outparams = false;
+        proxy("template<>");
+        proxy(
+            "{}",
+            interface_declaration_generator::write_proxy_receive_declaration(
+                m_ob,
+                interface_name + "::proxy_deserialiser<rpc::serialiser::canonical_crypto>::",
+                function,
+                has_outparams,
+                "",
+                false));
+        proxy("{{");
+        proxy("rpc::canonical_crypto_reader __rpc_reader(__rpc_data.data(), __rpc_data.size());");
+        if (has_outparams)
+        {
+            for (const auto& parameter : function->get_parameters())
+            {
+                std::string output;
+                uint64_t count = 1;
+                if (!do_out_param(
+                        PROXY_MARSHALL_OUT, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
+                    continue;
+                proxy("if (!rpc::canonical_crypto_read(__rpc_reader, {}))", parameter.get_name());
+                proxy("{{");
+                proxy("return rpc::error::PROXY_DESERIALISATION_ERROR();");
+                proxy("}}");
+            }
+        }
+        proxy("if (!__rpc_reader.done())");
+        proxy("{{");
+        proxy("return rpc::error::PROXY_DESERIALISATION_ERROR();");
+        proxy("}}");
+        proxy("return rpc::error::OK();");
+        proxy("}}");
+        proxy("");
+    }
+
+    void write_canonical_crypto_stub_receive_method(
+        bool from_host,
+        const class_entity& m_ob,
+        writer& proxy,
+        const std::string& interface_name,
+        const std::shared_ptr<function_entity>& function)
+    {
+        bool has_inparams = false;
+        proxy("template<>");
+        proxy(
+            "{}",
+            interface_declaration_generator::write_stub_receive_declaration(
+                m_ob, interface_name + "::stub_deserialiser<rpc::serialiser::canonical_crypto>::", function, has_inparams, "", false));
+        proxy("{{");
+        proxy("rpc::canonical_crypto_reader __rpc_reader(__rpc_data.data(), __rpc_data.size());");
+        if (has_inparams)
+        {
+            for (const auto& parameter : function->get_parameters())
+            {
+                std::string output;
+                uint64_t count = 1;
+                if (!do_in_param(
+                        STUB_MARSHALL_IN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
+                    continue;
+                proxy("if (!rpc::canonical_crypto_read(__rpc_reader, {}))", parameter.get_name());
+                proxy("{{");
+                proxy("return rpc::error::STUB_DESERIALISATION_ERROR();");
+                proxy("}}");
+            }
+        }
+        proxy("if (!__rpc_reader.done())");
+        proxy("{{");
+        proxy("return rpc::error::STUB_DESERIALISATION_ERROR();");
+        proxy("}}");
+        proxy("return rpc::error::OK();");
+        proxy("}}");
+        proxy("");
+    }
+
+    void write_canonical_crypto_stub_reply_method(
+        bool from_host,
+        const class_entity& m_ob,
+        writer& proxy,
+        const std::string& interface_name,
+        const std::shared_ptr<function_entity>& function)
+    {
+        bool has_outparams = false;
+        proxy("template<>");
+        proxy(
+            "{}",
+            interface_declaration_generator::write_stub_reply_declaration(
+                m_ob, interface_name + "::stub_serialiser<rpc::serialiser::canonical_crypto>::", function, has_outparams, "", false));
+        proxy("{{");
+        proxy("__buffer.clear();");
+        if (has_outparams)
+        {
+            proxy("rpc::canonical_crypto_writer __rpc_writer(__buffer);");
+            for (const auto& parameter : function->get_parameters())
+            {
+                std::string output;
+                uint64_t count = 1;
+                if (!do_out_param(
+                        STUB_MARSHALL_OUT, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
+                    continue;
+                proxy("if (!rpc::canonical_crypto_write(__rpc_writer, {}))", parameter.get_name());
+                proxy("{{");
+                proxy("return rpc::error::INCOMPATIBLE_SERIALISATION();");
+                proxy("}}");
+            }
+            proxy("if (!__rpc_writer.ok())");
+            proxy("{{");
+            proxy("return rpc::error::INCOMPATIBLE_SERIALISATION();");
+            proxy("}}");
+        }
+        proxy("return rpc::error::OK();");
+        proxy("}}");
+        proxy("");
+    }
+
+    void write_canonical_crypto_interface_serializers(
+        bool from_host,
+        const class_entity& m_ob,
+        writer& proxy)
+    {
+        if (m_ob.is_in_import())
+            return;
+
+        auto interface_name = m_ob.get_name();
+        proxy("#ifdef CANOPY_BUILD_CANONICAL_CRYPTO");
+        proxy("// canonical_crypto request and reply marshalling uses raw field order, not named fields.");
+
+        {
+            std::unordered_set<std::string> unique_signatures;
+            for (const auto& function : m_ob.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                bool has_params = false;
+                auto key = interface_declaration_generator::write_proxy_send_declaration(
+                    m_ob, "", function, has_params, "", false);
+                if (unique_signatures.emplace(key).second)
+                    write_canonical_crypto_proxy_send_method(from_host, m_ob, proxy, interface_name, function);
+            }
+        }
+
+        {
+            std::unordered_set<std::string> unique_signatures;
+            for (const auto& function : m_ob.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                bool has_params = false;
+                auto key = interface_declaration_generator::write_proxy_receive_declaration(
+                    m_ob, "", function, has_params, "", false);
+                if (unique_signatures.emplace(key).second)
+                    write_canonical_crypto_proxy_receive_method(from_host, m_ob, proxy, interface_name, function);
+            }
+        }
+
+        {
+            std::unordered_set<std::string> unique_signatures;
+            for (const auto& function : m_ob.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                bool has_params = false;
+                auto key = interface_declaration_generator::write_stub_receive_declaration(
+                    m_ob, "", function, has_params, "", false);
+                if (unique_signatures.emplace(key).second)
+                    write_canonical_crypto_stub_receive_method(from_host, m_ob, proxy, interface_name, function);
+            }
+        }
+
+        {
+            std::unordered_set<std::string> unique_signatures;
+            for (const auto& function : m_ob.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                bool has_params = false;
+                auto key = interface_declaration_generator::write_stub_reply_declaration(
+                    m_ob, "", function, has_params, "", false);
+                if (unique_signatures.emplace(key).second)
+                    write_canonical_crypto_stub_reply_method(from_host, m_ob, proxy, interface_name, function);
+            }
+        }
+
+        proxy("#endif");
+        proxy("");
+    }
+
     // Lambda to emit PROXY_CLEAN_IN cleanup code - used at early return points and at end of function
     void emit_proxy_clean_in(
         bool from_host,
@@ -754,7 +1100,8 @@ namespace synchronous_generator
         const std::vector<std::string>& rethrow_exceptions,
         bool enable_yas,
         bool enable_protobuf,
-        bool enable_nanopb)
+        bool enable_nanopb,
+        bool enable_canonical_crypto)
     {
         if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
         {
@@ -809,6 +1156,10 @@ namespace synchronous_generator
             if (enable_nanopb)
             {
                 unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::nanopb");
+            }
+            if (enable_canonical_crypto)
+            {
+                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::canonical_crypto");
             }
             if (!unsupported_encoding_checks.empty())
             {
@@ -1053,6 +1404,41 @@ namespace synchronous_generator
                 proxy("break;");
                 proxy("}}");
             }
+            if (enable_canonical_crypto)
+            {
+                proxy("case rpc::encoding::canonical_crypto:");
+                proxy("{{");
+                {
+                    proxy.print_tabs();
+                    proxy.raw(
+                        "__rpc_ret = {}proxy_serialiser<rpc::serialiser::canonical_crypto>::{}(",
+                        scoped_namespace,
+                        function->get_name());
+                    count = 1;
+                    for (auto& parameter : function->get_parameters())
+                    {
+                        std::string output;
+                        {
+                            if (!do_in_param(
+                                    PROXY_MARSHALL_IN,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+
+                            proxy.raw(output);
+                        }
+                        count++;
+                    }
+                    proxy.raw("__rpc_in_buf);\n");
+                }
+                proxy("break;");
+                proxy("}}");
+            }
             proxy("default:");
             proxy("__rpc_ret = rpc::error::INCOMPATIBLE_SERIALISATION();");
             proxy("break;");
@@ -1153,6 +1539,41 @@ namespace synchronous_generator
                     stub.print_tabs();
                     stub.raw(
                         "__rpc_ret = {}stub_deserialiser<rpc::serialiser::nanopb>::{}(",
+                        scoped_namespace,
+                        function->get_name());
+                    count = 1;
+                    for (auto& parameter : function->get_parameters())
+                    {
+                        std::string output;
+                        {
+                            if (!do_in_param(
+                                    STUB_MARSHALL_IN,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+
+                            stub.raw(output);
+                        }
+                        count++;
+                    }
+                    stub.raw("__rpc_in_data);\n");
+                }
+                stub("break;");
+                stub("}}");
+            }
+            if (enable_canonical_crypto)
+            {
+                stub("case rpc::encoding::canonical_crypto:");
+                stub("{{");
+                {
+                    stub.print_tabs();
+                    stub.raw(
+                        "__rpc_ret = {}stub_deserialiser<rpc::serialiser::canonical_crypto>::{}(",
                         scoped_namespace,
                         function->get_name());
                     count = 1;
@@ -1568,6 +1989,38 @@ namespace synchronous_generator
                     proxy("break;");
                     proxy("}}");
                 }
+                if (enable_canonical_crypto)
+                {
+                    proxy("case rpc::encoding::canonical_crypto:");
+                    proxy("{{");
+                    {
+                        proxy.print_tabs();
+                        proxy.raw(
+                            "__rpc_ret = {}proxy_deserialiser<rpc::serialiser::canonical_crypto>::{}(",
+                            scoped_namespace,
+                            function->get_name());
+                        count = 1;
+                        for (auto& parameter : function->get_parameters())
+                        {
+                            count++;
+                            std::string output;
+                            if (!do_out_param(
+                                    PROXY_MARSHALL_OUT,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+                            proxy.raw(output);
+                        }
+                        proxy.raw("__rpc_out_buf);\n");
+                    }
+                    proxy("break;");
+                    proxy("}}");
+                }
                 proxy("default:");
                 proxy("__rpc_ret = rpc::error::INCOMPATIBLE_SERIALISATION();");
                 proxy("break;");
@@ -1680,6 +2133,40 @@ namespace synchronous_generator
                     stub("break;");
                     stub("}}");
                 }
+                if (enable_canonical_crypto)
+                {
+                    stub("case rpc::encoding::canonical_crypto:");
+                    stub("{{");
+                    {
+                        count = 1;
+                        stub.print_tabs();
+                        stub.raw(
+                            "{}stub_serialiser<rpc::serialiser::canonical_crypto>::{}(",
+                            scoped_namespace,
+                            function->get_name());
+
+                        for (auto& parameter : function->get_parameters())
+                        {
+                            count++;
+                            std::string output;
+                            if (!do_out_param(
+                                    STUB_MARSHALL_OUT,
+                                    from_host,
+                                    m_ob,
+                                    parameter.get_name(),
+                                    parameter.get_type(),
+                                    parameter,
+                                    count,
+                                    output))
+                                continue;
+
+                            stub.raw(output);
+                        }
+                        stub.raw("__rpc_result.out_buf);\n");
+                    }
+                    stub("break;");
+                    stub("}}");
+                }
                 stub("default:");
                 stub("__rpc_ret = rpc::error::INCOMPATIBLE_SERIALISATION();");
                 stub("break;");
@@ -1729,12 +2216,16 @@ namespace synchronous_generator
         const std::vector<std::string>& rethrow_exceptions,
         bool enable_yas,
         bool enable_protobuf,
-        bool enable_nanopb)
+        bool enable_nanopb,
+        bool enable_canonical_crypto)
     {
         if (m_ob.is_in_import())
             return;
 
         auto interface_name = m_ob.get_name();
+
+        if (enable_canonical_crypto)
+            write_canonical_crypto_interface_serializers(from_host, m_ob, proxy);
 
         std::string base_class_declaration;
         auto bc = m_ob.get_base_classes();
@@ -2018,7 +2509,8 @@ namespace synchronous_generator
                         rethrow_exceptions,
                         enable_yas,
                         enable_protobuf,
-                        enable_nanopb);
+                        enable_nanopb,
+                        enable_canonical_crypto);
             }
 
             stub("default:");
@@ -2202,7 +2694,8 @@ namespace synchronous_generator
         writer& header,
         bool enable_yas,
         bool enable_protobuf,
-        bool enable_nanopb)
+        bool enable_nanopb,
+        bool enable_canonical_crypto)
     {
         if (m_ob.is_in_import())
             return;
@@ -2392,6 +2885,10 @@ namespace synchronous_generator
         {
             header("void nanopb_serialise(std::vector<char>& buffer) const;");
             header("void nanopb_deserialise(const std::vector<char>& buffer);");
+        }
+        if (enable_canonical_crypto)
+        {
+            write_canonical_crypto_struct_methods(m_ob, header);
         }
 
         header("}};");
@@ -2653,7 +3150,8 @@ namespace synchronous_generator
         const std::vector<std::string>& rethrow_exceptions,
         bool enable_yas,
         bool enable_protobuf,
-        bool enable_nanopb)
+        bool enable_nanopb,
+        bool enable_canonical_crypto)
     {
         for (auto& elem : lib.get_elements(entity_type::NAMESPACE_MEMBERS))
         {
@@ -2694,7 +3192,8 @@ namespace synchronous_generator
                     rethrow_exceptions,
                     enable_yas,
                     enable_protobuf,
-                    enable_nanopb);
+                    enable_nanopb,
+                    enable_canonical_crypto);
                 header("}}");
                 proxy("}}");
                 stub("}}");
@@ -2702,7 +3201,7 @@ namespace synchronous_generator
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
                 auto& ent = static_cast<const class_entity&>(*elem);
-                write_struct(ent, header, enable_yas, enable_protobuf, enable_nanopb);
+                write_struct(ent, header, enable_yas, enable_protobuf, enable_nanopb, enable_canonical_crypto);
             }
 
             else if (elem->get_entity_type() == entity_type::INTERFACE)
@@ -2710,7 +3209,16 @@ namespace synchronous_generator
                 auto& ent = static_cast<const class_entity&>(*elem);
                 interface_declaration_generator::write_interface(ent, header);
                 write_interface(
-                    from_host, ent, proxy, stub, catch_stub_exceptions, rethrow_exceptions, enable_yas, enable_protobuf, enable_nanopb);
+                    from_host,
+                    ent,
+                    proxy,
+                    stub,
+                    catch_stub_exceptions,
+                    rethrow_exceptions,
+                    enable_yas,
+                    enable_protobuf,
+                    enable_nanopb,
+                    enable_canonical_crypto);
             }
             else if (elem->get_entity_type() == entity_type::CONSTEXPR)
             {
@@ -2782,7 +3290,8 @@ namespace synchronous_generator
         bool include_rpc_headers,
         bool enable_yas,
         bool enable_protobuf,
-        bool enable_nanopb)
+        bool enable_nanopb,
+        bool enable_canonical_crypto)
     {
         writer header(hos);
         writer proxy(pos);
@@ -2813,6 +3322,13 @@ namespace synchronous_generator
         header("#include <array>");
         header("#include <optional>");
         header("#include <cstdint>");
+        if (enable_canonical_crypto)
+        {
+            header("#include <stdexcept>");
+            header("#ifdef CANOPY_BUILD_CANONICAL_CRYPTO");
+            header("#include <rpc/serialization/canonical_crypto.h>");
+            header("#endif");
+        }
 
         if (include_rpc_headers)
         {
@@ -2889,7 +3405,18 @@ namespace synchronous_generator
         write_namespace_predeclaration(lib, header, proxy, stub);
 
         write_namespace(
-            from_host, lib, prefix, header, proxy, stub, catch_stub_exceptions, rethrow_exceptions, enable_yas, enable_protobuf, enable_nanopb);
+            from_host,
+            lib,
+            prefix,
+            header,
+            proxy,
+            stub,
+            catch_stub_exceptions,
+            rethrow_exceptions,
+            enable_yas,
+            enable_protobuf,
+            enable_nanopb,
+            enable_canonical_crypto);
 
         for (auto& ns : namespaces)
         {

@@ -111,6 +111,11 @@ int main(
         args::Flag protobuf_arg(
             args_parser, "protobuf", "enable Protocol Buffers serialization generation", {'b', "protobuf"});
         args::Flag nanopb_arg(args_parser, "nanopb", "enable Nanopb serialization generation", {"nanopb"});
+        args::Flag canonical_crypto_arg(
+            args_parser,
+            "canonical_crypto",
+            "enable deterministic canonical_crypto serialization generation",
+            {"canonical_crypto"});
         args::Flag javascript_arg(
             args_parser, "javascript", "enable JavaScript proxy/stub generation", {'j', "javascript"});
         args::Flag rust_arg(args_parser, "rust", "enable initial Rust constants generation", {'R', "rust"});
@@ -155,6 +160,7 @@ int main(
         bool enable_yas = args::get(yas_arg);
         bool enable_protobuf = args::get(protobuf_arg);
         bool enable_nanopb = args::get(nanopb_arg);
+        bool enable_canonical_crypto = args::get(canonical_crypto_arg);
         bool enable_javascript = args::get(javascript_arg);
         bool enable_rust = args::get(rust_arg);
         std::vector<std::string> namespaces = args::get(namespaces_arg);
@@ -344,7 +350,8 @@ int main(
                 !no_include_rpc_headers_arg,
                 enable_yas,
                 enable_protobuf,
-                enable_nanopb);
+                enable_nanopb,
+                enable_canonical_crypto);
 
             header_stream << ends;
             proxy_stream << ends;

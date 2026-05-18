@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <rpc/rpc.h>
+#include <example_shared/example_shared.h>
 #include <serialiser_test/test_types.h>
 
 #include "gmock/gmock.h"
@@ -98,15 +99,38 @@ struct protocol_buffers_enc
 };
 #endif
 
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+struct canonical_crypto_enc
+{
+    static constexpr rpc::encoding value = rpc::encoding::canonical_crypto;
+    static constexpr const char* name = "canonical_crypto";
+
+    template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_canonical_crypto(obj); }
+
+    template<typename T>
+    static std::string deserialise(
+        const rpc::byte_span& data,
+        T& obj)
+    {
+        return rpc::from_canonical_crypto(data, obj);
+    }
+};
+#endif
+
 // ============================================================
-// IDL wrapper scalar suite – tests all four encodings including
-// protocol_buffers, using the generated wrapper structs from
+// IDL wrapper scalar suite - tests the enabled encodings, using
+// the generated wrapper structs from
 // tests/idls/serialiser_test/test_types.idl.
 // Each wrapper holds a single scalar field named "value".
 // ============================================================
 
-#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#if defined(CANOPY_BUILD_PROTOCOL_BUFFERS) && defined(CANOPY_BUILD_CANONICAL_CRYPTO)
+using AllEncodings
+    = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc, protocol_buffers_enc, canonical_crypto_enc>;
+#elif defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
 using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc, protocol_buffers_enc>;
+#elif defined(CANOPY_BUILD_CANONICAL_CRYPTO)
+using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc, canonical_crypto_enc>;
 #else
 using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc>;
 #endif
@@ -748,6 +772,118 @@ TEST_F(
     EXPECT_FALSE(result.empty());
 }
 
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+TEST_F(
+    SerialiserTest,
+    ToCanonicalCryptoUsesStableBigEndianBytes)
+{
+    scalar_test::int32_holder obj;
+    obj.value = 0x01020304;
+
+    auto result = rpc::to_canonical_crypto(obj);
+
+    const std::vector<uint8_t> expected = {0x01, 0x02, 0x03, 0x04};
+    EXPECT_EQ(result, expected);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoStringRoundtrip)
+{
+    scalar_test::string_holder obj;
+    obj.value = "abc";
+
+    auto serialized = rpc::to_canonical_crypto(obj);
+    const std::vector<uint8_t> expected = {0, 0, 0, 0, 0, 0, 0, 3, 'a', 'b', 'c'};
+    EXPECT_EQ(serialized, expected);
+
+    rpc::byte_span data_span(serialized);
+    scalar_test::string_holder deserialized;
+    auto error = rpc::from_canonical_crypto(data_span, deserialized);
+
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(deserialized.value, obj.value);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoRejectsTrailingBytes)
+{
+    scalar_test::int16_holder obj;
+    obj.value = 0x1234;
+
+    auto serialized = rpc::to_canonical_crypto(obj);
+    serialized.push_back(0);
+
+    rpc::byte_span data_span(serialized);
+    scalar_test::int16_holder deserialized;
+    auto error = rpc::from_canonical_crypto(data_span, deserialized);
+
+    EXPECT_FALSE(error.empty());
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoInterfaceRequestProxyToStub)
+{
+    std::vector<char> request;
+    auto error = xxx::i_foo::proxy_serialiser<rpc::serialiser::canonical_crypto>::do_multi_val(10, 20, request);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(request.size(), 8u);
+
+    int first = 0;
+    int second = 0;
+    rpc::byte_span request_span(request);
+    error = xxx::i_foo::stub_deserialiser<rpc::serialiser::canonical_crypto>::do_multi_val(first, second, request_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(first, 10);
+    EXPECT_EQ(second, 20);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoInterfaceReplyStubToProxy)
+{
+    std::vector<char> reply;
+    auto error = xxx::i_foo::stub_serialiser<rpc::serialiser::canonical_crypto>::do_something_out_val(42, reply);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(reply.size(), 4u);
+
+    int value = 0;
+    rpc::byte_span reply_span(reply);
+    error = xxx::i_foo::proxy_deserialiser<rpc::serialiser::canonical_crypto>::do_something_out_val(value, reply_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(value, 42);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoInterfaceInOutParameter)
+{
+    int value = 123;
+    std::vector<char> request;
+    auto error = xxx::i_foo::proxy_serialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(value, request);
+    EXPECT_EQ(error, rpc::error::OK());
+
+    int stub_value = 0;
+    rpc::byte_span request_span(request);
+    error = xxx::i_foo::stub_deserialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(
+        stub_value, request_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(stub_value, value);
+
+    stub_value = 456;
+    std::vector<char> reply;
+    error = xxx::i_foo::stub_serialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(stub_value, reply);
+    EXPECT_EQ(error, rpc::error::OK());
+
+    rpc::byte_span reply_span(reply);
+    error = xxx::i_foo::proxy_deserialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(value, reply_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(value, stub_value);
+}
+#endif
+
 // Test to_protobuf serialization with generated structure
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
 TEST_F(
@@ -1086,6 +1222,10 @@ TEST_F(
     auto nanopb_result = rpc::serialise(obj, rpc::encoding::nanopb);
     EXPECT_FALSE(nanopb_result.empty());
 #endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    auto canonical_result = rpc::serialise(obj, rpc::encoding::canonical_crypto);
+    EXPECT_FALSE(canonical_result.empty());
+#endif
 }
 
 TEST_F(
@@ -1197,6 +1337,17 @@ TEST_F(
         EXPECT_EQ(deserialized.string_val, obj.string_val);
     }
 #endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    {
+        auto serialized = rpc::serialise(obj, rpc::encoding::canonical_crypto);
+        rpc::byte_span data_span(serialized);
+        scalar_test::something_complicated deserialized;
+        auto error = rpc::deserialise(rpc::encoding::canonical_crypto, data_span, deserialized);
+        EXPECT_TRUE(error.empty());
+        EXPECT_EQ(deserialized.int_val, obj.int_val);
+        EXPECT_EQ(deserialized.string_val, obj.string_val);
+    }
+#endif
 }
 
 // Test get_saved_size function with all encodings
@@ -1225,6 +1376,10 @@ TEST_F(
     auto nanopb_size = rpc::get_saved_size(obj, rpc::encoding::nanopb);
     EXPECT_GT(nanopb_size, 0u);
 #endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    auto canonical_size = rpc::get_saved_size(obj, rpc::encoding::canonical_crypto);
+    EXPECT_GT(canonical_size, 0u);
+#endif
 
     auto json_result = rpc::serialise(obj, rpc::encoding::yas_json);
     EXPECT_EQ(json_size, json_result.size());
@@ -1239,6 +1394,10 @@ TEST_F(
 #ifdef CANOPY_BUILD_NANOPB
     auto nanopb_result = rpc::serialise(obj, rpc::encoding::nanopb);
     EXPECT_EQ(nanopb_size, nanopb_result.size());
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    auto canonical_result = rpc::serialise(obj, rpc::encoding::canonical_crypto);
+    EXPECT_EQ(canonical_size, canonical_result.size());
 #endif
 }
 
@@ -1308,6 +1467,9 @@ TEST_F(
 #endif
 #ifdef CANOPY_BUILD_NANOPB
         rpc::encoding::nanopb,
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        rpc::encoding::canonical_crypto,
 #endif
     };
 

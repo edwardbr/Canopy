@@ -13,6 +13,10 @@
 #include <type_traits>
 #include <utility>
 
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+#  include <rpc/serialization/canonical_crypto.h>
+#endif
+
 namespace rpc
 {
 
@@ -53,6 +57,38 @@ namespace rpc
 
     template<typename T> inline constexpr bool has_nanopb_deserialise_v = has_nanopb_deserialise<T>::value;
 
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    template<typename T, typename = void> struct has_canonical_crypto_serialise : std::false_type
+    {
+    };
+
+    template<typename T>
+    struct has_canonical_crypto_serialise<
+        T,
+        std::void_t<decltype(std::declval<const T&>().canonical_crypto_serialise(std::declval<std::vector<char>&>()))>>
+        : std::true_type
+    {
+    };
+
+    template<typename T>
+    inline constexpr bool has_canonical_crypto_serialise_v = has_canonical_crypto_serialise<T>::value;
+
+    template<typename T, typename = void> struct has_canonical_crypto_deserialise : std::false_type
+    {
+    };
+
+    template<typename T>
+    struct has_canonical_crypto_deserialise<
+        T,
+        std::void_t<decltype(std::declval<T&>().canonical_crypto_deserialise(std::declval<const std::vector<char>&>()))>>
+        : std::true_type
+    {
+    };
+
+    template<typename T>
+    inline constexpr bool has_canonical_crypto_deserialise_v = has_canonical_crypto_deserialise<T>::value;
+#endif
+
     // Helper to extract array element type and size
     template<typename T> struct array_traits;
 
@@ -74,6 +110,11 @@ namespace rpc
         class nanopb
         {
         };
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        class canonical_crypto
+        {
+        };
+#endif
         class flat_buffers
         {
         };
@@ -130,17 +171,28 @@ namespace rpc
 #if defined(CANOPY_BUILD_NANOPB)
     template<typename T> uint64_t nanopb_saved_size(const T& obj)
     {
-        std::vector<char> buffer;
-        obj.nanopb_serialise(buffer);
-        return buffer.size();
-    }
-
-    template<typename T> uint64_t nanopb_saved_size_if_supported(const T& obj)
-    {
         if constexpr (has_nanopb_serialise_v<T>)
-            return nanopb_saved_size(obj);
+        {
+            std::vector<char> buffer;
+            obj.nanopb_serialise(buffer);
+            return buffer.size();
+        }
         else
             throw std::runtime_error("nanopb serialization is not available for this type");
+    }
+#endif
+
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    template<typename T> uint64_t canonical_crypto_saved_size(const T& obj)
+    {
+        if constexpr (has_canonical_crypto_serialise_v<T>)
+        {
+            std::vector<char> buffer;
+            obj.canonical_crypto_serialise(buffer);
+            return buffer.size();
+        }
+        else
+            throw std::runtime_error("canonical_crypto serialization is not available for this type");
     }
 #endif
 
@@ -257,35 +309,65 @@ namespace rpc
         typename T>
     OutputBlob to_nanopb(const T& obj)
     {
-        std::vector<char> buffer;
-        obj.nanopb_serialise(buffer);
-
-        if constexpr (is_std_array_v<OutputBlob>)
+        if constexpr (has_nanopb_serialise_v<T>)
         {
-            constexpr size_t N = array_traits<OutputBlob>::size;
-            if (N < buffer.size())
+            std::vector<char> buffer;
+            obj.nanopb_serialise(buffer);
+
+            if constexpr (is_std_array_v<OutputBlob>)
             {
-                throw std::runtime_error("Array too small for nanopb serialization");
+                constexpr size_t N = array_traits<OutputBlob>::size;
+                if (N < buffer.size())
+                {
+                    throw std::runtime_error("Array too small for nanopb serialization");
+                }
+                OutputBlob result{};
+                std::copy(buffer.begin(), buffer.end(), result.begin());
+                return result;
             }
-            OutputBlob result{};
-            std::copy(buffer.begin(), buffer.end(), result.begin());
-            return result;
+            else
+            {
+                return OutputBlob(buffer.data(), buffer.data() + buffer.size());
+            }
         }
         else
         {
-            return OutputBlob(buffer.data(), buffer.data() + buffer.size());
+            throw std::runtime_error("nanopb serialization is not available for this type");
         }
     }
+#endif
 
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
     template<
         class OutputBlob = std::vector<std::uint8_t>,
         typename T>
-    OutputBlob to_nanopb_if_supported(const T& obj)
+    OutputBlob to_canonical_crypto(const T& obj)
     {
-        if constexpr (has_nanopb_serialise_v<T>)
-            return to_nanopb<OutputBlob>(obj);
+        if constexpr (has_canonical_crypto_serialise_v<T>)
+        {
+            std::vector<char> buffer;
+            obj.canonical_crypto_serialise(buffer);
+
+            if constexpr (is_std_array_v<OutputBlob>)
+            {
+                constexpr size_t N = array_traits<OutputBlob>::size;
+                if (N < buffer.size())
+                {
+                    throw std::runtime_error("Array too small for canonical_crypto serialization");
+                }
+                OutputBlob result{};
+                std::copy(buffer.begin(), buffer.end(), result.begin());
+                return result;
+            }
+            else
+            {
+                return OutputBlob(buffer.data(), buffer.data() + buffer.size());
+            }
+        }
         else
-            throw std::runtime_error("nanopb serialization is not available for this type");
+        {
+            throw std::runtime_error("canonical_crypto serialization is not available for this type");
+        }
     }
 #endif
 
@@ -309,7 +391,11 @@ namespace rpc
 #endif
 #ifdef CANOPY_BUILD_NANOPB
         if (enc == encoding::nanopb)
-            return to_nanopb_if_supported<OutputBlob>(obj);
+            return to_nanopb<OutputBlob>(obj);
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        if (enc == encoding::canonical_crypto)
+            return to_canonical_crypto<OutputBlob>(obj);
 #endif
         throw std::runtime_error("invalid encoding type");
     }
@@ -332,7 +418,11 @@ namespace rpc
 #endif
 #ifdef CANOPY_BUILD_NANOPB
         if (enc == encoding::nanopb)
-            return nanopb_saved_size_if_supported(obj);
+            return nanopb_saved_size(obj);
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        if (enc == encoding::canonical_crypto)
+            return canonical_crypto_saved_size(obj);
 #endif
         throw std::runtime_error("invalid encoding type");
     }
@@ -451,41 +541,73 @@ namespace rpc
     }
 #endif
 
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    template<typename T>
+    std::string from_canonical_crypto(
+        const byte_span& data,
+        T& obj)
+    {
+        if constexpr (has_canonical_crypto_deserialise_v<T>)
+        {
+            try
+            {
+                return obj.canonical_crypto_deserialise(
+                    std::vector<char>(
+                        reinterpret_cast<const char*>(data.data()),
+                        reinterpret_cast<const char*>(data.data()) + data.size()));
+            }
+            catch (const std::exception& ex)
+            {
+                return std::string(
+                           "An exception has occurred a canonical_crypto data blob was incompatible with the type "
+                           "that is deserialising to: ")
+                       + ex.what();
+            }
+            catch (...)
+            {
+                return "An exception has occurred a canonical_crypto data blob was incompatible with the type that is "
+                       "deserialising to";
+            }
+        }
+        else
+        {
+            return "canonical_crypto deserialization is not available for this type";
+        }
+    }
+#endif
+
 #if defined(CANOPY_BUILD_NANOPB)
     template<typename T>
     std::string from_nanopb(
         const byte_span& data,
         T& obj)
     {
-        try
-        {
-            obj.nanopb_deserialise(
-                std::vector<char>(
-                    reinterpret_cast<const char*>(data.data()), reinterpret_cast<const char*>(data.data()) + data.size()));
-            return "";
-        }
-        catch (const std::exception& ex)
-        {
-            return std::string(
-                       "An exception has occurred a data blob was incompatible with the type that is "
-                       "deserialising to: ")
-                   + ex.what();
-        }
-        catch (...)
-        {
-            return "An exception has occurred a data blob was incompatible with the type that is deserialising to";
-        }
-    }
-
-    template<typename T>
-    std::string from_nanopb_if_supported(
-        const byte_span& data,
-        T& obj)
-    {
         if constexpr (has_nanopb_deserialise_v<T>)
-            return from_nanopb(data, obj);
+        {
+            try
+            {
+                obj.nanopb_deserialise(
+                    std::vector<char>(
+                        reinterpret_cast<const char*>(data.data()),
+                        reinterpret_cast<const char*>(data.data()) + data.size()));
+                return "";
+            }
+            catch (const std::exception& ex)
+            {
+                return std::string(
+                           "An exception has occurred a data blob was incompatible with the type that is "
+                           "deserialising to: ")
+                       + ex.what();
+            }
+            catch (...)
+            {
+                return "An exception has occurred a data blob was incompatible with the type that is deserialising to";
+            }
+        }
         else
+        {
             return "nanopb deserialization is not available for this type";
+        }
     }
 #endif
 
@@ -508,7 +630,11 @@ namespace rpc
 #endif
 #ifdef CANOPY_BUILD_NANOPB
         if (enc == encoding::nanopb)
-            return from_nanopb_if_supported(data, obj);
+            return from_nanopb(data, obj);
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        if (enc == encoding::canonical_crypto)
+            return from_canonical_crypto(data, obj);
 #endif
         return "invalid encoding type";
     }

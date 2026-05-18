@@ -274,7 +274,8 @@ namespace websocket_protocol
         rpc::transport_down_params params{.protocol_version = rpc::get_version(),
             .destination_zone_id = transport->get_zone_id(),
             .caller_zone_id = transport->get_adjacent_zone_id(),
-            .in_back_channel = {}};
+            .in_back_channel = {},
+            .payload = {}};
         co_await svc->transport_down(params);
         co_return;
     }
@@ -443,6 +444,7 @@ namespace websocket_protocol
                 .method_id = request.method_id,
                 .in_data = request.data,
                 .in_back_channel = {},
+                .request_id = 0,
             });
 
         if (send_result.error_code != rpc::error::OK())

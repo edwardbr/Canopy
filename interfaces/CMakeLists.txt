@@ -15,6 +15,7 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
+  canonical_crypto
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR}
   additional_headers stdint.h no_include_rpc_headers ON)
@@ -29,6 +30,7 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
+  canonical_crypto
   dependencies rpc_types_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR})

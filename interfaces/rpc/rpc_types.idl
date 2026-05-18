@@ -25,8 +25,12 @@ namespace rpc
         yas_json = 8,       //we may have different json parsers that have a better implementation e.g. glaze
         protocol_buffers = 16,
         nanopb = 32,
-        // flat_buffers = 64,
-        // mpi = 64
+        // Deterministic field-order serialization for crypto transcripts, KDF inputs,
+        // signatures, and MACs. The backend is compiled only when
+        // CANOPY_BUILD_CANONICAL_CRYPTO is enabled.
+        canonical_crypto = 64,
+        // flat_buffers = 128,
+        // mpi = 256
     };
 
 #cpp_quote(R^__(

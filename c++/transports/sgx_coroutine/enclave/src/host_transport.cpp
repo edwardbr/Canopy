@@ -131,7 +131,8 @@ namespace rpc::sgx::coro::enclave
                 .remote_object_id = *remote_object,
                 .caller_zone_id = get_zone_id(),
                 .options = rpc::release_options::normal,
-                .in_back_channel = {}};
+                .in_back_channel = {},
+                .payload = {}};
         }
 
         CO_RETURN rpc::error::OK();

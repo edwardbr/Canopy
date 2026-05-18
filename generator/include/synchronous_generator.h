@@ -24,5 +24,6 @@ namespace synchronous_generator
         bool include_rpc_headers,
         bool enable_yas,
         bool enable_protobuf,
-        bool enable_nanopb);
+        bool enable_nanopb,
+        bool enable_canonical_crypto);
 }
