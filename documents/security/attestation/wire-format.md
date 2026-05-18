@@ -68,7 +68,7 @@ Reserved or provisional Canopy media types:
 | `application/sgx-report` | SGX local | Raw `sgx_report_t` for local attestation. |
 | `application/eat+cwt` | EAT | Reserved for future EAT/KAT use. |
 | `application/canopy-fake-evidence` | Fake | Development backend. |
-| `application/canopy-sim-evidence` | Simulation | SGX SDK simulation mode. |
+| `application/canopy-sim-evidence` | Simulation | Canopy SGX-sim development profile; not hardware evidence. |
 | `application/tdx-quote` | Intel TDX | Future backend; exact profile deferred. |
 | `application/sev-snp-attestation-report` | AMD SEV-SNP | Future backend; exact profile deferred. |
 | `application/psa-attestation-token` | Arm TrustZone/PSA | Future backend. |
@@ -107,6 +107,15 @@ attestation_frame {
 Evidence in this carrier binds to a TLS exporter value plus Canopy transcript
 context. That binding is intentionally different from `sgx_ttls`, where the
 SGX report data is produced by Intel's certificate helper.
+
+The same conceptual frame sequence can be reused later by direct HTTP and
+WebSocket listeners after their ordinary TLS or secure-stream setup completes.
+Those transports should treat the exchange as direct stream authentication:
+publish the resulting `security_context` to the owning service, then let the
+service-level route handshake protect any remote zones or references carried
+over that stream. Browser-facing JSON APIs must encode opaque CMW payload bytes
+as base64 and must opt in explicitly when the peer is allowed to verify the
+server without sending enclave Evidence of its own.
 
 ## Current SGX Carrier: Quote-Bearing X.509 Via `sgx_ttls`
 

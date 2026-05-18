@@ -80,8 +80,15 @@ policy-hardening work described in the remaining phases.
   rejects Evidence verification. A peer without Evidence is accepted only when
   policy sets both `require_peer_evidence == false` and
   `allow_unattested_peer == true`.
-- `CANOPY_ATTESTATION_BACKEND` currently accepts `FAKE` and `NULL` and defines
-  the backend selected by `make_configured_attestation_service_options(...)`.
+- `CANOPY_ATTESTATION_BACKEND` currently accepts `FAKE`, `SGX_SIM`, and `NULL`
+  and defines the backend selected by
+  `make_configured_attestation_service_options(...)`.
+- `SGX_SIM` is currently a distinct SGX-simulation policy/profile layered over
+  the fake development evidence format. It does not yet call SGX SDK report,
+  quote, or local-attestation APIs. The next SGX-sim slice should replace that
+  placeholder with Intel SGX SDK simulation mechanics where available on
+  non-SGX hardware, while still classifying the result as non-production
+  `security_level::simulation`.
 - Fake Evidence verification checks:
   - policy permission for development Evidence;
   - required backend id;
@@ -336,9 +343,10 @@ policy-hardening work described in the remaining phases.
 - `documents/security/attestation/intermediate-visibility-audit.md` records
   the current field-by-field visibility decision. The audit confirms that
   intermediate transports and passthroughs need route zones, carrier metadata,
-  and current route-control fields, but do not need application object ids,
-  real application interface ids, real application method ids, or payload
-  bytes.
+  and current route-control fields, including the `add_ref` optimistic flag
+  and `release_options` used for passthrough lifetime accounting. They do not
+  need application object ids, real application interface ids, real application
+  method ids, or payload bytes.
 - `rpc::encrypted_payload` is pinned in `interfaces/rpc/rpc_types.idl` with:
   - public `session_id`;
   - public `session_epoch`;
@@ -572,20 +580,29 @@ policy-hardening work described in the remaining phases.
 - Full production CMW / attestation context IDL split. The current route
   handshake has minimal generated IDL carriers for fake Evidence and
   backend-neutral identity.
-- Backend selection for production SGX/DCAP, SGX-sim Evidence, EPID, TDX,
-  SEV-SNP, and TrustZone/PSA. The current build-time factory only selects
-  `FAKE` or `NULL`.
+- Backend selection for production SGX/DCAP, EPID, TDX, SEV-SNP, and
+  TrustZone/PSA. The current build-time factory selects `FAKE`, `SGX_SIM`, or
+  `NULL`. The SGX-sim backend is development evidence with
+  `security_level::simulation`; it is not remote attestation and does not yet
+  use SGX SDK evidence mechanics.
+- SGX-sim evidence backed by SGX SDK simulation APIs. The goal is to use as
+  much SGX machinery as possible on a non-SGX AMD development machine:
+  enclave-side report-data binding, local-report-style report creation and
+  verification if the simulation libraries expose it, and `sgx_ttls` or quote
+  simulation helpers only where they run without hardware services. This must
+  remain explicitly non-production evidence.
 - Strict end-to-end enforcement for every `transport_down`. The protected
   endpoint-originated payload carrier and inbound unwrap support exist, but
   there is no production outbound service hook or sender yet. Route-layer
   plaintext `transport_down` remains valid for intermediate-synthesized
   liveness notifications.
-- A transport-route refactor that hides `add_ref` route-control options and
-  `release_options` from intermediates. Today `build_out_param_channel`,
-  `requesting_zone_id`, and `release_options` remain visible because
-  transport/passthrough routing and lifetime accounting need them before the
-  endpoint service hook can unwrap the encrypted payload. This needs a
-  route-local reference token or state table, not isolated field zeroing.
+- `add_ref` route-control options and `release_options` intentionally remain
+  visible public route-control fields. `build_out_param_channel`, including
+  the optimistic flag, `requesting_zone_id`, and `release_options` are live
+  transport/passthrough routing and lifetime-accounting inputs before the
+  endpoint service hook can unwrap the encrypted payload. These fields are
+  authenticated as protected-RPC AAD and repeated in encrypted plaintext for
+  endpoint binding checks.
 - Broader topology coverage for enclave-local marshaller operations. The
   generic `rpc::local` transports should remain policy-light in-process links;
   enclave policy should live in enclave-specific local transport wrappers or
@@ -625,12 +642,12 @@ left out of the current production attestation path. Stream sign-on and
 service-level route handshakes now distinguish "peer Evidence is not required"
 from "an unattested peer is explicitly allowed", and the backend factory can
 select the current `FAKE` or `NULL` development backends with `NULL` as the
-fail-closed build default for fresh CMake configurations. The next
-implementation slice should reduce the remaining public carrier fields
-documented in `intermediate-visibility-audit.md` with a route-token/state
-refactor. After that, continue backend work for SGX-sim and real SGX/DCAP, then
-apply the same checklist to non-C-ABI coroutine dynamic-library transports that
-are allowed at an enclave boundary.
+fail-closed build default for fresh CMake configurations. The current
+route-control fields documented in `intermediate-visibility-audit.md` should
+stay visible while passthroughs depend on them, and protected RPC should keep
+authenticating them. The next implementation slice should continue backend work
+for SGX-sim and real SGX/DCAP, then apply the same checklist to non-C-ABI
+coroutine dynamic-library transports that are allowed at an enclave boundary.
 
 ## Architectural Layers
 
@@ -1407,6 +1424,36 @@ phase.
   hardware attestation.
 - The websocket demo continues to ship a browser-facing listener that
   does not attest, regardless of phase.
+
+### Direct HTTP And WebSocket Clients
+
+- Direct HTTP and WebSocket clients should be treated as stream-adjacent
+  attestation users, not as a separate protected-RPC envelope. They should
+  reuse the attestation service, CMW Evidence carriers, policy vocabulary, and
+  route-security state where possible.
+- A direct stream that completes attestation before RPC routing starts may
+  publish its `security_context` to the owning `rpc::enclave_service` as the
+  adjacent peer context. Any later remote interface or routed zone introduced
+  across that stream still needs the normal service-level route handshake for
+  the referenced zone; stream attestation proves the adjacent peer, not every
+  future route behind it.
+- Browser and JavaScript clients usually cannot produce enclave Evidence. They
+  must therefore be admitted only by explicit listener policy, such as the
+  existing no-Evidence development/demo mode, or by a future
+  certificate-authenticated encrypted route mode. That mode should be distinct
+  from `unattested_allowed` because it still establishes a protected session
+  and a MITM-resistant peer identity.
+- HTTP and WebSocket transports should not learn protected-RPC internals such
+  as application object ids, method ids, interface ids, decrypted payloads, or
+  application-domain result codes. Their security role is to authenticate and
+  protect the direct stream, expose the resulting session state, enforce stream
+  resource limits, and leave route/reference authorization to
+  `rpc::enclave_service`.
+- Direct non-RPC HTTP endpoints eventually need their own API-level policy:
+  which routes require attestation, which can use certificate-authenticated
+  encryption only, which are public, and what public failure information may be
+  returned to the caller. This should be specified before adding attested REST
+  or browser-facing diagnostic endpoints.
 
 ### Handshake Protocol Identity And Canonical Encoding
 

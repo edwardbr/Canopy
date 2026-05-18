@@ -12,11 +12,23 @@ namespace canopy::security::attestation
     inline constexpr const char* fake_backend_id = "fake";
     inline constexpr const char* fake_evidence_media_type = "application/canopy-fake-evidence";
     inline constexpr const char* fake_evidence_content_format = "canopy.fake.v1";
+    inline constexpr const char* fake_default_development_key = "canopy-fake-attestation-development-key";
 
-    class fake_backend final : public attestation_backend
+    struct fake_backend_profile
+    {
+        std::string backend_id{fake_backend_id};
+        std::string evidence_media_type{fake_evidence_media_type};
+        std::string evidence_content_format{fake_evidence_content_format};
+        security_level level{security_level::development};
+    };
+
+    class fake_backend : public attestation_backend
     {
     public:
-        explicit fake_backend(std::string development_key = "canopy-fake-attestation-development-key");
+        explicit fake_backend(std::string development_key = fake_default_development_key);
+        fake_backend(
+            std::string development_key,
+            fake_backend_profile profile);
 
         [[nodiscard]] auto backend_id() const -> std::string override;
         [[nodiscard]] auto level() const -> security_level override;
@@ -28,5 +40,6 @@ namespace canopy::security::attestation
 
     private:
         std::string development_key_;
+        fake_backend_profile profile_;
     };
 } // namespace canopy::security::attestation

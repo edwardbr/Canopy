@@ -15,7 +15,8 @@ namespace canopy::security::attestation
     enum class configured_backend_kind
     {
         null_backend,
-        fake_backend
+        fake_backend,
+        sgx_sim_backend
     };
 
     [[nodiscard]] auto attestation_backend_kind_name(configured_backend_kind kind) noexcept -> const char*;

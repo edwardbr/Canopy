@@ -12,6 +12,7 @@
 #include <security/attestation/protected_rpc.h>
 #include <attestation/route_attestation_protocol.h>
 #include <security/attestation/service.h>
+#include <security/attestation/simulation_backend.h>
 
 #include <array>
 #include <limits>
@@ -61,6 +62,10 @@ namespace
     using canopy::security::attestation::route_attestation_status;
     using canopy::security::attestation::security_context;
     using canopy::security::attestation::security_level;
+    using canopy::security::attestation::simulation_backend;
+    using canopy::security::attestation::simulation_backend_id;
+    using canopy::security::attestation::simulation_evidence_content_format;
+    using canopy::security::attestation::simulation_evidence_media_type;
     using canopy::security::attestation::unprotect_add_ref_request;
     using canopy::security::attestation::unprotect_object_released_request;
     using canopy::security::attestation::unprotect_post_request;
@@ -263,6 +268,44 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxSimulationProfileBackendIsNotHardwareEvidence)
+{
+    simulation_backend backend;
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"sim-enclave", "sim-zone"};
+    expected_binding.transcript_id = 23;
+    expected_binding.nonce = {9, 8, 7, 6};
+
+    auto evidence = backend.produce_evidence(expected_binding);
+    EXPECT_EQ(backend.backend_id(), simulation_backend_id);
+    EXPECT_EQ(backend.level(), security_level::simulation);
+    EXPECT_EQ(evidence.media_type, simulation_evidence_media_type);
+    EXPECT_EQ(evidence.content_format, simulation_evidence_content_format);
+    EXPECT_FALSE(evidence.payload.empty());
+
+    attestation_policy policy;
+    policy.required_backend_id = simulation_backend_id;
+    policy.minimum_security_level = security_level::simulation;
+    policy.allow_development_evidence = true;
+
+    auto verdict = backend.verify_evidence(evidence, expected_binding, policy);
+    EXPECT_TRUE(verdict.accepted) << verdict.reason;
+    EXPECT_EQ(verdict.backend_id, simulation_backend_id);
+    EXPECT_EQ(verdict.level, security_level::simulation);
+    EXPECT_EQ(verdict.peer_identity.enclave_id, expected_binding.subject.enclave_id);
+    EXPECT_EQ(verdict.peer_identity.zone_id, expected_binding.subject.zone_id);
+
+    auto production_policy = policy;
+    production_policy.allow_development_evidence = false;
+    EXPECT_FALSE(backend.verify_evidence(evidence, expected_binding, production_policy).accepted);
+
+    auto hardware_policy = policy;
+    hardware_policy.minimum_security_level = security_level::hardware;
+    EXPECT_FALSE(backend.verify_evidence(evidence, expected_binding, hardware_policy).accepted);
+}
+
+TEST(
+    AttestationService,
     BackendFactoryUsesConfiguredBackendDefaults)
 {
     auto options = make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"});
@@ -280,7 +323,7 @@ TEST(
         EXPECT_EQ(options.policy.minimum_security_level, security_level::none);
         EXPECT_EQ(options.policy.required_backend_id, null_backend_id);
     }
-    else
+    else if (configured_attestation_backend_kind() == configured_backend_kind::fake_backend)
     {
         EXPECT_TRUE(options.policy.send_local_evidence);
         EXPECT_TRUE(options.policy.require_peer_evidence);
@@ -288,6 +331,16 @@ TEST(
         EXPECT_TRUE(options.policy.allow_development_evidence);
         EXPECT_EQ(options.policy.minimum_security_level, security_level::development);
         EXPECT_EQ(options.policy.required_backend_id, fake_backend_id);
+    }
+    else
+    {
+        EXPECT_EQ(configured_attestation_backend_kind(), configured_backend_kind::sgx_sim_backend);
+        EXPECT_TRUE(options.policy.send_local_evidence);
+        EXPECT_TRUE(options.policy.require_peer_evidence);
+        EXPECT_FALSE(options.policy.allow_unattested_peer);
+        EXPECT_TRUE(options.policy.allow_development_evidence);
+        EXPECT_EQ(options.policy.minimum_security_level, security_level::simulation);
+        EXPECT_EQ(options.policy.required_backend_id, simulation_backend_id);
     }
 }
 
@@ -985,6 +1038,18 @@ TEST(
     EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
     EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
 
+    auto tampered_options = protected_request.value.params;
+    tampered_options.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+    auto tampered_options_result = unprotect_add_ref_request(*service_b, tampered_options);
+    EXPECT_FALSE(tampered_options_result.accepted);
+    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::SECURITY_ERROR());
+
+    auto tampered_requesting_zone = protected_request.value.params;
+    tampered_requesting_zone.requesting_zone_id = make_zone(52);
+    auto tampered_requesting_zone_result = unprotect_add_ref_request(*service_b, tampered_requesting_zone);
+    EXPECT_FALSE(tampered_requesting_zone_result.accepted);
+    EXPECT_EQ(tampered_requesting_zone_result.error.error_code, rpc::error::SECURITY_ERROR());
+
     auto unprotected_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
     EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
@@ -1032,6 +1097,12 @@ TEST(
     expect_protected_payload(protected_request.value.params.payload, payload_encoding);
     EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
     EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
+
+    auto tampered_options = protected_request.value.params;
+    tampered_options.options = rpc::release_options::normal;
+    auto tampered_options_result = unprotect_release_request(*service_b, tampered_options);
+    EXPECT_FALSE(tampered_options_result.accepted);
+    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::SECURITY_ERROR());
 
     auto unprotected_request = unprotect_release_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;

@@ -320,32 +320,42 @@ namespace canopy::security::attestation
     }
 
     fake_backend::fake_backend(std::string development_key)
+        : fake_backend(
+              std::move(development_key),
+              fake_backend_profile{})
+    {
+    }
+
+    fake_backend::fake_backend(
+        std::string development_key,
+        fake_backend_profile profile)
         : development_key_(std::move(development_key))
+        , profile_(std::move(profile))
     {
     }
 
     auto fake_backend::backend_id() const -> std::string
     {
-        return fake_backend_id;
+        return profile_.backend_id;
     }
 
     auto fake_backend::level() const -> security_level
     {
-        return security_level::development;
+        return profile_.level;
     }
 
     auto fake_backend::produce_evidence(const evidence_binding& binding) const -> cmw
     {
         fake_evidence evidence;
-        evidence.backend_id = fake_backend_id;
+        evidence.backend_id = profile_.backend_id;
         evidence.enclave_id = binding.subject.enclave_id;
         evidence.zone_id = binding.subject.zone_id;
         evidence.transcript_id = binding.transcript_id;
         evidence.nonce = binding.nonce;
 
         cmw result;
-        result.media_type = fake_evidence_media_type;
-        result.content_format = fake_evidence_content_format;
+        result.media_type = profile_.evidence_media_type;
+        result.content_format = profile_.evidence_content_format;
         auto signature = fake_signature(evidence, development_key_);
         if (!signature.has_value())
             return result;
@@ -362,36 +372,36 @@ namespace canopy::security::attestation
         const evidence_binding& expected_binding,
         const attestation_policy& policy) const -> attestation_verdict
     {
-        if (evidence.media_type != fake_evidence_media_type)
+        if (evidence.media_type != profile_.evidence_media_type)
             return reject("unsupported fake evidence media type");
-        if (evidence.content_format != fake_evidence_content_format)
+        if (evidence.content_format != profile_.evidence_content_format)
             return reject("unsupported fake evidence content format");
         if (!policy.allow_development_evidence)
-            return reject("development evidence is not allowed by policy");
-        if (!policy.required_backend_id.empty() && policy.required_backend_id != fake_backend_id)
+            return reject("development or simulation evidence is not allowed by policy");
+        if (!policy.required_backend_id.empty() && policy.required_backend_id != profile_.backend_id)
             return reject("policy requires a different backend");
         if (security_level_rank(level()) < security_level_rank(policy.minimum_security_level))
-            return reject("fake evidence does not meet the minimum security level");
+            return reject("evidence does not meet the minimum security level");
 
         fake_evidence parsed;
         if (!parse_fake_evidence(evidence.payload, parsed))
             return reject("malformed fake evidence");
-        if (parsed.backend_id != fake_backend_id)
-            return reject("fake evidence backend id mismatch");
+        if (parsed.backend_id != profile_.backend_id)
+            return reject("evidence backend id mismatch");
         if (parsed.enclave_id != expected_binding.subject.enclave_id || parsed.zone_id != expected_binding.subject.zone_id)
-            return reject("fake evidence identity mismatch");
+            return reject("evidence identity mismatch");
         if (parsed.transcript_id != expected_binding.transcript_id)
-            return reject("fake evidence transcript mismatch");
+            return reject("evidence transcript mismatch");
         if (parsed.nonce != expected_binding.nonce)
-            return reject("fake evidence nonce mismatch");
+            return reject("evidence nonce mismatch");
         auto expected_signature = fake_signature(parsed, development_key_);
         if (!expected_signature.has_value() || parsed.signature != expected_signature.value())
-            return reject("fake evidence signature mismatch");
+            return reject("evidence signature mismatch");
 
         attestation_verdict verdict;
         verdict.accepted = true;
-        verdict.reason = "fake evidence accepted";
-        verdict.backend_id = fake_backend_id;
+        verdict.reason = "development evidence accepted";
+        verdict.backend_id = profile_.backend_id;
         verdict.level = level();
         verdict.peer_identity.enclave_id = parsed.enclave_id;
         verdict.peer_identity.zone_id = parsed.zone_id;

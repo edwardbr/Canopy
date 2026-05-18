@@ -75,6 +75,28 @@ SGX simulation is useful for Intel SDK/runtime integration, but it is not remote
 attestation evidence. Treat simulation evidence as development evidence with a
 distinct backend id.
 
+The current `SGX_SIM` backend is only a Canopy development profile layered over
+the fake evidence machinery. It does not yet call SGX SDK report, quote, or
+local-attestation APIs. Its purpose is to let an SGX-sim build select stricter
+simulation policy defaults without confusing that result with production
+hardware evidence.
+
+The intended next SGX-sim slice is to exercise as much Intel SGX SDK simulation
+machinery as the installed SDK exposes on non-SGX hardware, including AMD
+developer machines:
+
+- enclave creation, ECALL/OCALL, and EDL ABI flow already used by the SGX
+  coroutine transport;
+- enclave-side report-data binding for the Canopy transcript;
+- `sgx_create_report` / `sgx_verify_report` style local-report flow where the
+  SGX simulation libraries support it;
+- SGX quote or `sgx_ttls` simulation helpers only if they are available without
+  hardware services.
+
+This should still report `security_level == simulation`. It tests the Canopy
+enclave code path, SGX SDK integration, evidence binding, and verifier plumbing.
+It does not prove hardware isolation, platform TCB, or a production quote.
+
 Simulation success can prove that the Canopy code path and enclave ABI are
 functioning. It does not prove hardware isolation, platform TCB, or production
 quote verification.
@@ -133,6 +155,14 @@ policy explicitly accepts it.
 An EPID backend is expected to have different operational requirements from
 DCAP, such as dependence on an IAS-style verifier flow and different collateral
 or privacy properties. Those details should stay inside the backend.
+
+The expected hardware split is:
+
+- SGX simulation on development machines, including machines without SGX
+  hardware, for SDK and enclave-path coverage only;
+- SGX1 EPID on legacy SGX hardware where DCAP is unavailable;
+- SGX DCAP and Intel TDX on a separate machine with the required FLC/DCAP
+  platform support and collateral services.
 
 ## Backend Capabilities
 

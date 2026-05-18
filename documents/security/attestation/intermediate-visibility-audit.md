@@ -243,6 +243,14 @@ These are not all equally serious. The most important distinction is that none
 of them should expose application object ids, real application method ids, real
 application interface ids, or encrypted application payload bytes.
 
+`add_ref_params::build_out_param_channel`, including the optimistic flag, and
+`release_params::options` are still live passthrough lifetime-accounting inputs.
+They must remain public while passthroughs maintain separate shared and
+optimistic route counts. Protected RPC therefore authenticates these fields as
+AAD and repeats them in encrypted plaintext for endpoint binding checks. Hiding
+them is not part of the current plan; it would require a replacement
+route-lifetime protocol, not just field zeroing.
+
 ## Recommended Next Refactors
 
 1. Extend the control-status guardrail to any future marshaller operation that
@@ -253,16 +261,15 @@ application interface ids, or encrypted application payload bytes.
    `release` only if those control paths later gain legitimate positive
    application-domain results. For the current model they should expose only
    `OK()` or built-in `rpc::error::*` values.
-3. Split `add_ref` route construction from endpoint lifetime semantics so
-   `build_out_param_channel`, `requesting_zone_id`, and object id can move
-   fully behind the protected payload. Today the direction bits and requesting
-   zone are live routing inputs before the endpoint can decrypt.
-4. Refactor passthrough lifetime accounting so protected `release` does not
-   need visible `release_options`. A route-local reference token or state
-   table would be cleaner than exposing shared-vs-optimistic intent. The
-   `add_ref` optimistic bit, `release_options`, and `object_released`
-   passthrough counts must be changed together; hiding only one of them would
-   unbalance route lifetime accounting.
+3. Keep `add_ref` route construction public where passthroughs need it. Today
+   the direction bits, requesting zone, and optimistic flag are live inputs
+   before the endpoint can decrypt; the object id is already hidden for
+   protected traffic.
+4. Keep `release_options` public and authenticated while passthroughs maintain
+   separate shared and optimistic counts. Hiding the `add_ref` optimistic bit,
+   `release_options`, or `object_released` count state is not a standalone
+   refactor; changing only one of them would unbalance route lifetime
+   accounting.
 5. Decide whether stream sign-on descriptors need privacy beyond the
    peer-to-peer attested stream policy. If they do, initial object/interface
    descriptors need their own setup envelope before `add_ref` can validate

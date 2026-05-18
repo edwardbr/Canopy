@@ -7,6 +7,7 @@
 
 #include <security/attestation/fake_backend.h>
 #include <security/attestation/null_backend.h>
+#include <security/attestation/simulation_backend.h>
 
 #include <exception>
 #include <memory>
@@ -22,6 +23,8 @@ namespace canopy::security::attestation
             return null_backend_id;
         case configured_backend_kind::fake_backend:
             return fake_backend_id;
+        case configured_backend_kind::sgx_sim_backend:
+            return simulation_backend_id;
         }
         std::terminate();
     }
@@ -30,6 +33,8 @@ namespace canopy::security::attestation
     {
 #ifdef CANOPY_ATTESTATION_BACKEND_NULL
         return configured_backend_kind::null_backend;
+#elif defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)
+        return configured_backend_kind::sgx_sim_backend;
 #else
         return configured_backend_kind::fake_backend;
 #endif
@@ -48,6 +53,8 @@ namespace canopy::security::attestation
             return std::make_shared<null_backend>();
         case configured_backend_kind::fake_backend:
             return std::make_shared<fake_backend>();
+        case configured_backend_kind::sgx_sim_backend:
+            return std::make_shared<simulation_backend>();
         }
         std::terminate();
     }
@@ -82,6 +89,13 @@ namespace canopy::security::attestation
             options.policy.allow_unattested_peer = false;
             options.policy.allow_development_evidence = true;
             options.policy.minimum_security_level = security_level::development;
+            break;
+        case configured_backend_kind::sgx_sim_backend:
+            options.policy.send_local_evidence = true;
+            options.policy.require_peer_evidence = true;
+            options.policy.allow_unattested_peer = false;
+            options.policy.allow_development_evidence = true;
+            options.policy.minimum_security_level = security_level::simulation;
             break;
         }
         return options;
