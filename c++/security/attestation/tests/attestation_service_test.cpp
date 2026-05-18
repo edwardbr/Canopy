@@ -152,6 +152,48 @@ namespace
         EXPECT_EQ(decoded.enclave_id, "payload-enclave");
         EXPECT_EQ(decoded.zone_id, expected_zone_id);
     }
+
+    void expect_identity_typed_payload(
+        const std::optional<rpc::typed_payload>& payload,
+        uint64_t type_id,
+        rpc::encoding encoding,
+        const std::string& expected_zone_id)
+    {
+        ASSERT_TRUE(payload.has_value());
+        EXPECT_EQ(payload->get_type_id(), type_id);
+        EXPECT_EQ(payload->get_encoding(), encoding);
+        expect_identity_payload(payload->get_payload(), encoding, expected_zone_id);
+    }
+
+    auto make_raw_payload(
+        uint64_t type_id,
+        rpc::encoding encoding,
+        std::vector<char> payload) -> rpc::typed_payload
+    {
+        return rpc::typed_payload(type_id, encoding, std::move(payload));
+    }
+
+    void expect_payload(
+        const std::optional<rpc::typed_payload>& payload,
+        uint64_t type_id,
+        rpc::encoding encoding,
+        const std::vector<char>& bytes)
+    {
+        ASSERT_TRUE(payload.has_value());
+        EXPECT_EQ(payload->get_type_id(), type_id);
+        EXPECT_EQ(payload->get_encoding(), encoding);
+        EXPECT_EQ(payload->get_payload(), bytes);
+    }
+
+    void expect_protected_payload(
+        const std::optional<rpc::typed_payload>& payload,
+        rpc::encoding encoding)
+    {
+        ASSERT_TRUE(payload.has_value());
+        EXPECT_EQ(payload->get_type_id(), encrypted_payload_type_id(rpc::get_version()));
+        EXPECT_EQ(payload->get_encoding(), encoding);
+        EXPECT_FALSE(payload->get_payload().empty());
+    }
 } // namespace
 
 TEST(
@@ -899,17 +941,16 @@ TEST(
     params.build_out_param_channel = rpc::add_ref_options::build_caller_route | rpc::add_ref_options::optimistic;
     params.in_back_channel.push_back(rpc::back_channel_entry{12, {7, 8, 9}});
     params.request_id = 88;
-    params.payload_type_id = 0xabcdef;
-    params.payload_encoding = rpc::encoding::yas_binary;
-    params.payload = {'a', 'd', 'd'};
+    const auto payload_type_id = 0xabcdefU;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'a', 'd', 'd'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
 
     auto protected_request = protect_add_ref_request(*service_a, context_a, params);
     ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
-    EXPECT_EQ(protected_request.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
-    EXPECT_EQ(protected_request.value.params.payload_encoding, params.payload_encoding);
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
     EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
-    EXPECT_NE(protected_request.value.params.payload, params.payload);
-    EXPECT_FALSE(protected_request.value.params.payload.empty());
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
 
     auto unprotected_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
@@ -922,9 +963,7 @@ TEST(
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 12U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({7, 8, 9}));
     EXPECT_EQ(unprotected_request.value.params.request_id, params.request_id);
-    EXPECT_EQ(unprotected_request.value.params.payload_type_id, params.payload_type_id);
-    EXPECT_EQ(unprotected_request.value.params.payload_encoding, params.payload_encoding);
-    EXPECT_EQ(unprotected_request.value.params.payload, params.payload);
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
 
     auto replayed_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
     EXPECT_FALSE(replayed_request.accepted);
@@ -950,17 +989,16 @@ TEST(
     params.caller_zone_id = caller_zone;
     params.options = rpc::release_options::optimistic;
     params.in_back_channel.push_back(rpc::back_channel_entry{21, {1, 3, 5}});
-    params.payload_type_id = 0xbcdef0;
-    params.payload_encoding = rpc::encoding::yas_binary;
-    params.payload = {'r', 'e', 'l'};
+    const auto payload_type_id = 0xbcdef0U;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'r', 'e', 'l'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
 
     auto protected_request = protect_release_request(*service_a, context_a, params);
     ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
-    EXPECT_EQ(protected_request.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
-    EXPECT_EQ(protected_request.value.params.payload_encoding, params.payload_encoding);
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
     EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
-    EXPECT_NE(protected_request.value.params.payload, params.payload);
-    EXPECT_FALSE(protected_request.value.params.payload.empty());
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
 
     auto unprotected_request = unprotect_release_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
@@ -971,9 +1009,7 @@ TEST(
     ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 21U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({1, 3, 5}));
-    EXPECT_EQ(unprotected_request.value.params.payload_type_id, params.payload_type_id);
-    EXPECT_EQ(unprotected_request.value.params.payload_encoding, params.payload_encoding);
-    EXPECT_EQ(unprotected_request.value.params.payload, params.payload);
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
 
     auto replayed_request = unprotect_release_request(*service_b, protected_request.value.params);
     EXPECT_FALSE(replayed_request.accepted);
@@ -999,18 +1035,15 @@ TEST(
     params.remote_object_id = *remote_object;
     params.interface_id = rpc::interface_ordinal(0x1020304050ULL);
     params.in_back_channel.push_back(rpc::back_channel_entry{31, {2, 4, 6}});
-    params.payload_encoding = rpc::encoding::yas_binary;
 
-    auto protected_request = protect_try_cast_request(*service_a, context_a, params);
+    auto protected_request = protect_try_cast_request(*service_a, context_a, params, rpc::encoding::yas_binary);
     ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
     EXPECT_EQ(
         protected_request.value.params.interface_id,
         canopy::security::attestation::encrypted_payload_interface_id(rpc::get_version()));
-    EXPECT_EQ(protected_request.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
-    EXPECT_EQ(protected_request.value.params.payload_encoding, params.payload_encoding);
+    expect_protected_payload(protected_request.value.params.payload, rpc::encoding::yas_binary);
     EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
     EXPECT_NE(protected_request.value.params.interface_id, params.interface_id);
-    EXPECT_FALSE(protected_request.value.params.payload.empty());
 
     auto unprotected_request = unprotect_try_cast_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
@@ -1018,7 +1051,7 @@ TEST(
     EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
     EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
     EXPECT_EQ(unprotected_request.value.params.interface_id, params.interface_id);
-    EXPECT_EQ(unprotected_request.value.params.payload_encoding, params.payload_encoding);
+    EXPECT_FALSE(unprotected_request.value.params.payload.has_value());
     ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 31U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({2, 4, 6}));
@@ -1046,17 +1079,16 @@ TEST(
     params.remote_object_id = *remote_object;
     params.caller_zone_id = caller_zone;
     params.in_back_channel.push_back(rpc::back_channel_entry{41, {3, 5, 7}});
-    params.payload_type_id = 0xcafe01;
-    params.payload_encoding = rpc::encoding::yas_binary;
-    params.payload = {'o', 'b', 'j'};
+    const auto payload_type_id = 0xcafe01U;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'o', 'b', 'j'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
 
     auto protected_request = protect_object_released_request(*service_owner, owner_context, params);
     ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
-    EXPECT_EQ(protected_request.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
-    EXPECT_EQ(protected_request.value.params.payload_encoding, params.payload_encoding);
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
     EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
-    EXPECT_NE(protected_request.value.params.payload, params.payload);
-    EXPECT_FALSE(protected_request.value.params.payload.empty());
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
 
     auto unprotected_request = unprotect_object_released_request(*service_caller, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
@@ -1066,9 +1098,7 @@ TEST(
     ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 41U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({3, 5, 7}));
-    EXPECT_EQ(unprotected_request.value.params.payload_type_id, params.payload_type_id);
-    EXPECT_EQ(unprotected_request.value.params.payload_encoding, params.payload_encoding);
-    EXPECT_EQ(unprotected_request.value.params.payload, params.payload);
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
 
     auto replayed_request = unprotect_object_released_request(*service_caller, protected_request.value.params);
     EXPECT_FALSE(replayed_request.accepted);
@@ -1091,16 +1121,15 @@ TEST(
     params.destination_zone_id = destination_zone;
     params.caller_zone_id = caller_zone;
     params.in_back_channel.push_back(rpc::back_channel_entry{42, {4, 6, 8}});
-    params.payload_type_id = 0xcafe02;
-    params.payload_encoding = rpc::encoding::yas_binary;
-    params.payload = {'d', 'o', 'w', 'n'};
+    const auto payload_type_id = 0xcafe02U;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'d', 'o', 'w', 'n'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
 
     auto protected_request = protect_transport_down_request(*service_a, context_a, params);
     ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
-    EXPECT_EQ(protected_request.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
-    EXPECT_EQ(protected_request.value.params.payload_encoding, params.payload_encoding);
-    EXPECT_NE(protected_request.value.params.payload, params.payload);
-    EXPECT_FALSE(protected_request.value.params.payload.empty());
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
 
     auto unprotected_request = unprotect_transport_down_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
@@ -1110,9 +1139,7 @@ TEST(
     ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 42U);
     EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({4, 6, 8}));
-    EXPECT_EQ(unprotected_request.value.params.payload_type_id, params.payload_type_id);
-    EXPECT_EQ(unprotected_request.value.params.payload_encoding, params.payload_encoding);
-    EXPECT_EQ(unprotected_request.value.params.payload, params.payload);
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
 
     auto replayed_request = unprotect_transport_down_request(*service_b, protected_request.value.params);
     EXPECT_FALSE(replayed_request.accepted);
@@ -1149,118 +1176,99 @@ TEST(
         add_ref_params.requesting_zone_id = requesting_zone;
         add_ref_params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
         add_ref_params.request_id = 901;
-        add_ref_params.payload_type_id = payload_type_id;
-        add_ref_params.payload_encoding = encoding;
-        add_ref_params.payload = make_identity_payload(encoding, "add-ref");
+        add_ref_params.payload = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "add-ref"));
 
         auto protected_add_ref = protect_add_ref_request(*service_a, context_a, add_ref_params);
         ASSERT_TRUE(protected_add_ref.accepted) << protected_add_ref.error.reason;
-        EXPECT_EQ(protected_add_ref.value.params.payload_encoding, encoding);
-        EXPECT_EQ(protected_add_ref.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
+        expect_protected_payload(protected_add_ref.value.params.payload, encoding);
         EXPECT_EQ(protected_add_ref.value.params.remote_object_id.get_object_id().get_val(), 0U);
-        EXPECT_NE(protected_add_ref.value.params.payload, add_ref_params.payload);
+        EXPECT_NE(protected_add_ref.value.params.payload->get_payload(), add_ref_params.payload->get_payload());
 
         auto unprotected_add_ref = unprotect_add_ref_request(*service_b, protected_add_ref.value.params);
         ASSERT_TRUE(unprotected_add_ref.accepted) << unprotected_add_ref.error.reason;
-        EXPECT_EQ(unprotected_add_ref.value.params.payload_encoding, encoding);
-        EXPECT_EQ(unprotected_add_ref.value.params.payload_type_id, payload_type_id);
         EXPECT_EQ(unprotected_add_ref.value.params.remote_object_id, add_ref_params.remote_object_id);
-        expect_identity_payload(unprotected_add_ref.value.params.payload, encoding, "add-ref");
+        expect_identity_typed_payload(unprotected_add_ref.value.params.payload, payload_type_id, encoding, "add-ref");
 
         rpc::release_params release_params;
         release_params.protocol_version = rpc::get_version();
         release_params.remote_object_id = *remote_object;
         release_params.caller_zone_id = caller_zone;
         release_params.options = rpc::release_options::normal;
-        release_params.payload_type_id = payload_type_id;
-        release_params.payload_encoding = encoding;
-        release_params.payload = make_identity_payload(encoding, "release");
+        release_params.payload = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "release"));
 
         auto protected_release = protect_release_request(*service_a, context_a, release_params);
         ASSERT_TRUE(protected_release.accepted) << protected_release.error.reason;
-        EXPECT_EQ(protected_release.value.params.payload_encoding, encoding);
-        EXPECT_EQ(protected_release.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
+        expect_protected_payload(protected_release.value.params.payload, encoding);
         EXPECT_EQ(protected_release.value.params.remote_object_id.get_object_id().get_val(), 0U);
-        EXPECT_NE(protected_release.value.params.payload, release_params.payload);
+        EXPECT_NE(protected_release.value.params.payload->get_payload(), release_params.payload->get_payload());
 
         auto unprotected_release = unprotect_release_request(*service_b, protected_release.value.params);
         ASSERT_TRUE(unprotected_release.accepted) << unprotected_release.error.reason;
-        EXPECT_EQ(unprotected_release.value.params.payload_encoding, encoding);
-        EXPECT_EQ(unprotected_release.value.params.payload_type_id, payload_type_id);
         EXPECT_EQ(unprotected_release.value.params.remote_object_id, release_params.remote_object_id);
-        expect_identity_payload(unprotected_release.value.params.payload, encoding, "release");
+        expect_identity_typed_payload(unprotected_release.value.params.payload, payload_type_id, encoding, "release");
 
         rpc::try_cast_params try_cast_params;
         try_cast_params.protocol_version = rpc::get_version();
         try_cast_params.caller_zone_id = caller_zone;
         try_cast_params.remote_object_id = *remote_object;
         try_cast_params.interface_id = rpc::interface_ordinal(0xabc123);
-        try_cast_params.payload_type_id = payload_type_id;
-        try_cast_params.payload_encoding = encoding;
-        try_cast_params.payload = make_identity_payload(encoding, "try-cast");
+        try_cast_params.payload = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "try-cast"));
 
         auto protected_try_cast = protect_try_cast_request(*service_a, context_a, try_cast_params);
         ASSERT_TRUE(protected_try_cast.accepted) << protected_try_cast.error.reason;
-        EXPECT_EQ(protected_try_cast.value.params.payload_encoding, encoding);
-        EXPECT_EQ(protected_try_cast.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
+        expect_protected_payload(protected_try_cast.value.params.payload, encoding);
         EXPECT_EQ(
             protected_try_cast.value.params.interface_id,
             canopy::security::attestation::encrypted_payload_interface_id(rpc::get_version()));
         EXPECT_EQ(protected_try_cast.value.params.remote_object_id.get_object_id().get_val(), 0U);
-        EXPECT_NE(protected_try_cast.value.params.payload, try_cast_params.payload);
+        EXPECT_NE(protected_try_cast.value.params.payload->get_payload(), try_cast_params.payload->get_payload());
 
         auto unprotected_try_cast = unprotect_try_cast_request(*service_b, protected_try_cast.value.params);
         ASSERT_TRUE(unprotected_try_cast.accepted) << unprotected_try_cast.error.reason;
-        EXPECT_EQ(unprotected_try_cast.value.params.payload_encoding, encoding);
-        EXPECT_EQ(unprotected_try_cast.value.params.payload_type_id, payload_type_id);
         EXPECT_EQ(unprotected_try_cast.value.params.remote_object_id, try_cast_params.remote_object_id);
         EXPECT_EQ(unprotected_try_cast.value.params.interface_id, try_cast_params.interface_id);
-        expect_identity_payload(unprotected_try_cast.value.params.payload, encoding, "try-cast");
+        expect_identity_typed_payload(unprotected_try_cast.value.params.payload, payload_type_id, encoding, "try-cast");
 
         rpc::object_released_params object_released_params;
         object_released_params.protocol_version = rpc::get_version();
         object_released_params.remote_object_id = *remote_object;
         object_released_params.caller_zone_id = caller_zone;
-        object_released_params.payload_type_id = payload_type_id;
-        object_released_params.payload_encoding = encoding;
-        object_released_params.payload = make_identity_payload(encoding, "object-released");
+        object_released_params.payload
+            = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "object-released"));
 
         auto protected_object_released = protect_object_released_request(*service_a, context_a, object_released_params);
         ASSERT_TRUE(protected_object_released.accepted) << protected_object_released.error.reason;
-        EXPECT_EQ(protected_object_released.value.params.payload_encoding, encoding);
-        EXPECT_EQ(protected_object_released.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
+        expect_protected_payload(protected_object_released.value.params.payload, encoding);
         EXPECT_EQ(protected_object_released.value.params.remote_object_id.get_object_id().get_val(), 0U);
-        EXPECT_NE(protected_object_released.value.params.payload, object_released_params.payload);
+        EXPECT_NE(
+            protected_object_released.value.params.payload->get_payload(), object_released_params.payload->get_payload());
 
         auto unprotected_object_released
             = unprotect_object_released_request(*service_b, protected_object_released.value.params);
         ASSERT_TRUE(unprotected_object_released.accepted) << unprotected_object_released.error.reason;
-        EXPECT_EQ(unprotected_object_released.value.params.payload_encoding, encoding);
-        EXPECT_EQ(unprotected_object_released.value.params.payload_type_id, payload_type_id);
         EXPECT_EQ(unprotected_object_released.value.params.remote_object_id, object_released_params.remote_object_id);
-        expect_identity_payload(unprotected_object_released.value.params.payload, encoding, "object-released");
+        expect_identity_typed_payload(
+            unprotected_object_released.value.params.payload, payload_type_id, encoding, "object-released");
 
         rpc::transport_down_params transport_down_params;
         transport_down_params.protocol_version = rpc::get_version();
         transport_down_params.destination_zone_id = destination_zone;
         transport_down_params.caller_zone_id = caller_zone;
-        transport_down_params.payload_type_id = payload_type_id;
-        transport_down_params.payload_encoding = encoding;
-        transport_down_params.payload = make_identity_payload(encoding, "transport-down");
+        transport_down_params.payload
+            = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "transport-down"));
 
         auto protected_transport_down = protect_transport_down_request(*service_a, context_a, transport_down_params);
         ASSERT_TRUE(protected_transport_down.accepted) << protected_transport_down.error.reason;
-        EXPECT_EQ(protected_transport_down.value.params.payload_encoding, encoding);
-        EXPECT_EQ(protected_transport_down.value.params.payload_type_id, encrypted_payload_type_id(rpc::get_version()));
-        EXPECT_NE(protected_transport_down.value.params.payload, transport_down_params.payload);
+        expect_protected_payload(protected_transport_down.value.params.payload, encoding);
+        EXPECT_NE(
+            protected_transport_down.value.params.payload->get_payload(), transport_down_params.payload->get_payload());
 
         auto unprotected_transport_down
             = unprotect_transport_down_request(*service_b, protected_transport_down.value.params);
         ASSERT_TRUE(unprotected_transport_down.accepted) << unprotected_transport_down.error.reason;
-        EXPECT_EQ(unprotected_transport_down.value.params.payload_encoding, encoding);
-        EXPECT_EQ(unprotected_transport_down.value.params.payload_type_id, payload_type_id);
         EXPECT_EQ(unprotected_transport_down.value.params.destination_zone_id, transport_down_params.destination_zone_id);
-        expect_identity_payload(unprotected_transport_down.value.params.payload, encoding, "transport-down");
+        expect_identity_typed_payload(
+            unprotected_transport_down.value.params.payload, payload_type_id, encoding, "transport-down");
     }
 }
 
@@ -1334,9 +1342,8 @@ TEST(
     add_ref_params.build_out_param_channel = rpc::add_ref_options::normal;
     add_ref_params.in_back_channel.push_back(rpc::back_channel_entry{3, {4}});
     add_ref_params.request_id = 15;
-    add_ref_params.payload_encoding = rpc::encoding::yas_binary;
 
-    auto protected_add_ref = protect_add_ref_request(*service_a, context_a, add_ref_params);
+    auto protected_add_ref = protect_add_ref_request(*service_a, context_a, add_ref_params, rpc::encoding::yas_binary);
     ASSERT_TRUE(protected_add_ref.accepted) << protected_add_ref.error.reason;
 
     auto receiver_add_ref = protected_add_ref.value.params;
@@ -1355,9 +1362,8 @@ TEST(
     release_params.caller_zone_id = caller_zone;
     release_params.options = rpc::release_options::normal;
     release_params.in_back_channel.push_back(rpc::back_channel_entry{4, {5}});
-    release_params.payload_encoding = rpc::encoding::yas_binary;
 
-    auto protected_release = protect_release_request(*service_a, context_a, release_params);
+    auto protected_release = protect_release_request(*service_a, context_a, release_params, rpc::encoding::yas_binary);
     ASSERT_TRUE(protected_release.accepted) << protected_release.error.reason;
 
     auto receiver_release = protected_release.value.params;
@@ -1376,9 +1382,8 @@ TEST(
     try_cast_params.remote_object_id = *remote_object;
     try_cast_params.interface_id = rpc::interface_ordinal(0x998877);
     try_cast_params.in_back_channel.push_back(rpc::back_channel_entry{6, {7}});
-    try_cast_params.payload_encoding = rpc::encoding::yas_binary;
 
-    auto protected_try_cast = protect_try_cast_request(*service_a, context_a, try_cast_params);
+    auto protected_try_cast = protect_try_cast_request(*service_a, context_a, try_cast_params, rpc::encoding::yas_binary);
     ASSERT_TRUE(protected_try_cast.accepted) << protected_try_cast.error.reason;
 
     auto receiver_try_cast = protected_try_cast.value.params;
@@ -1396,9 +1401,9 @@ TEST(
     object_released_params.remote_object_id = *remote_object;
     object_released_params.caller_zone_id = caller_zone;
     object_released_params.in_back_channel.push_back(rpc::back_channel_entry{7, {8}});
-    object_released_params.payload_encoding = rpc::encoding::yas_binary;
 
-    auto protected_object_released = protect_object_released_request(*service_b, context_b, object_released_params);
+    auto protected_object_released
+        = protect_object_released_request(*service_b, context_b, object_released_params, rpc::encoding::yas_binary);
     ASSERT_TRUE(protected_object_released.accepted) << protected_object_released.error.reason;
 
     auto receiver_object_released = protected_object_released.value.params;
@@ -1416,9 +1421,9 @@ TEST(
     transport_down_params.destination_zone_id = destination_zone;
     transport_down_params.caller_zone_id = caller_zone;
     transport_down_params.in_back_channel.push_back(rpc::back_channel_entry{8, {9}});
-    transport_down_params.payload_encoding = rpc::encoding::yas_binary;
 
-    auto protected_transport_down = protect_transport_down_request(*service_a, context_a, transport_down_params);
+    auto protected_transport_down
+        = protect_transport_down_request(*service_a, context_a, transport_down_params, rpc::encoding::yas_binary);
     ASSERT_TRUE(protected_transport_down.accepted) << protected_transport_down.error.reason;
 
     auto receiver_transport_down = protected_transport_down.value.params;

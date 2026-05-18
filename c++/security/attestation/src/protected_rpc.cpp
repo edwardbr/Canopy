@@ -316,6 +316,61 @@ namespace canopy::security::attestation
             return rpc::remote_object(object.as_zone());
         }
 
+        auto payload_type_id(const std::optional<rpc::typed_payload>& payload) -> uint64_t
+        {
+            return payload ? payload->get_type_id() : 0;
+        }
+
+        auto payload_encoding(const std::optional<rpc::typed_payload>& payload) -> rpc::encoding
+        {
+            return payload ? payload->get_encoding() : rpc::encoding::not_set;
+        }
+
+        auto make_typed_payload(
+            uint64_t type_id,
+            rpc::encoding encoding,
+            std::vector<char> payload) -> rpc::typed_payload
+        {
+            return rpc::typed_payload{type_id, encoding, std::move(payload)};
+        }
+
+        auto append_typed_payload_field(
+            writer& out,
+            const std::optional<rpc::typed_payload>& payload) -> bool
+        {
+            if (!out.append_u8(payload ? 1 : 0))
+                return false;
+            if (!payload)
+                return true;
+            return out.append_u64(payload->get_type_id())
+                   && out.append_u64(static_cast<uint64_t>(payload->get_encoding()))
+                   && out.append_chars(payload->get_payload());
+        }
+
+        auto read_typed_payload_field(
+            reader& in,
+            std::optional<rpc::typed_payload>& payload) -> bool
+        {
+            uint8_t present = 0;
+            if (!in.read_u8(present))
+                return false;
+            if (present == 0)
+            {
+                payload.reset();
+                return true;
+            }
+            if (present != 1)
+                return false;
+
+            uint64_t type_id = 0;
+            uint64_t raw_encoding = 0;
+            std::vector<char> payload_bytes;
+            if (!in.read_u64(type_id) || !in.read_u64(raw_encoding) || !in.read_chars(payload_bytes))
+                return false;
+            payload = rpc::typed_payload(type_id, static_cast<rpc::encoding>(raw_encoding), std::move(payload_bytes));
+            return true;
+        }
+
         auto append_envelope_metadata(
             writer& out,
             const rpc::encrypted_payload& envelope) -> bool
@@ -371,8 +426,8 @@ namespace canopy::security::attestation
                    && out.append_bytes(zone_blob(outer.caller_zone_id))
                    && out.append_bytes(zone_blob(outer.requesting_zone_id)) && out.append_u64(outer.request_id)
                    && out.append_u64(static_cast<uint64_t>(outer.build_out_param_channel))
-                   && out.append_u64(outer.payload_type_id)
-                   && out.append_u64(static_cast<uint64_t>(outer.payload_encoding))
+                   && out.append_u64(payload_type_id(outer.payload))
+                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
                    && append_envelope_metadata(out, envelope);
         }
 
@@ -388,8 +443,9 @@ namespace canopy::security::attestation
                    && out.append_u64(outer.protocol_version)
                    && out.append_bytes(remote_object_blob(outer.remote_object_id))
                    && out.append_bytes(zone_blob(outer.caller_zone_id))
-                   && out.append_u64(static_cast<uint64_t>(outer.options)) && out.append_u64(outer.payload_type_id)
-                   && out.append_u64(static_cast<uint64_t>(outer.payload_encoding))
+                   && out.append_u64(static_cast<uint64_t>(outer.options))
+                   && out.append_u64(payload_type_id(outer.payload))
+                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
                    && append_envelope_metadata(out, envelope);
         }
 
@@ -404,8 +460,8 @@ namespace canopy::security::attestation
                    && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::try_cast))
                    && out.append_u64(outer.protocol_version) && out.append_bytes(zone_blob(outer.caller_zone_id))
                    && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_u64(outer.interface_id.get_val()) && out.append_u64(outer.payload_type_id)
-                   && out.append_u64(static_cast<uint64_t>(outer.payload_encoding))
+                   && out.append_u64(outer.interface_id.get_val()) && out.append_u64(payload_type_id(outer.payload))
+                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
                    && append_envelope_metadata(out, envelope);
         }
 
@@ -421,8 +477,8 @@ namespace canopy::security::attestation
                    && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::object_released))
                    && out.append_u64(outer.protocol_version)
                    && out.append_bytes(remote_object_blob(outer.remote_object_id))
-                   && out.append_bytes(zone_blob(outer.caller_zone_id)) && out.append_u64(outer.payload_type_id)
-                   && out.append_u64(static_cast<uint64_t>(outer.payload_encoding))
+                   && out.append_bytes(zone_blob(outer.caller_zone_id)) && out.append_u64(payload_type_id(outer.payload))
+                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
                    && append_envelope_metadata(out, envelope);
         }
 
@@ -437,8 +493,8 @@ namespace canopy::security::attestation
             return out.append_u32(protected_rpc_plaintext_magic) && out.append_u32(protected_rpc_envelope_version)
                    && out.append_u8(static_cast<uint8_t>(protected_rpc_kind::transport_down))
                    && out.append_u64(outer.protocol_version) && out.append_bytes(zone_blob(outer.destination_zone_id))
-                   && out.append_bytes(zone_blob(outer.caller_zone_id)) && out.append_u64(outer.payload_type_id)
-                   && out.append_u64(static_cast<uint64_t>(outer.payload_encoding))
+                   && out.append_bytes(zone_blob(outer.caller_zone_id)) && out.append_u64(payload_type_id(outer.payload))
+                   && out.append_u64(static_cast<uint64_t>(payload_encoding(outer.payload)))
                    && append_envelope_metadata(out, envelope);
         }
 
@@ -638,8 +694,7 @@ namespace canopy::security::attestation
                 || !out.append_bytes(zone_blob(params.caller_zone_id))
                 || !out.append_bytes(zone_blob(params.requesting_zone_id)) || !out.append_u64(params.request_id)
                 || !out.append_u64(static_cast<uint64_t>(params.build_out_param_channel))
-                || !out.append_back_channel(params.in_back_channel) || !out.append_u64(params.payload_type_id)
-                || !out.append_u64(static_cast<uint64_t>(params.payload_encoding)) || !out.append_chars(params.payload)
+                || !out.append_back_channel(params.in_back_channel) || !append_typed_payload_field(out, params.payload)
                 || !out.append_u64(e2e_counter) || !out.append_string(context.session_id)
                 || !out.append_u64(context.session_epoch) || !out.ok())
             {
@@ -660,8 +715,7 @@ namespace canopy::security::attestation
                 || !out.append_bytes(remote_object_blob(params.remote_object_id))
                 || !out.append_bytes(zone_blob(params.caller_zone_id))
                 || !out.append_u64(static_cast<uint64_t>(params.options))
-                || !out.append_back_channel(params.in_back_channel) || !out.append_u64(params.payload_type_id)
-                || !out.append_u64(static_cast<uint64_t>(params.payload_encoding)) || !out.append_chars(params.payload)
+                || !out.append_back_channel(params.in_back_channel) || !append_typed_payload_field(out, params.payload)
                 || !out.append_u64(e2e_counter) || !out.append_string(context.session_id)
                 || !out.append_u64(context.session_epoch) || !out.ok())
             {
@@ -681,10 +735,8 @@ namespace canopy::security::attestation
                 || !out.append_u64(params.protocol_version) || !out.append_bytes(zone_blob(params.caller_zone_id))
                 || !out.append_bytes(remote_object_blob(params.remote_object_id))
                 || !out.append_u64(params.interface_id.get_val()) || !out.append_back_channel(params.in_back_channel)
-                || !out.append_u64(params.payload_type_id)
-                || !out.append_u64(static_cast<uint64_t>(params.payload_encoding)) || !out.append_chars(params.payload)
-                || !out.append_u64(e2e_counter) || !out.append_string(context.session_id)
-                || !out.append_u64(context.session_epoch) || !out.ok())
+                || !append_typed_payload_field(out, params.payload) || !out.append_u64(e2e_counter)
+                || !out.append_string(context.session_id) || !out.append_u64(context.session_epoch) || !out.ok())
             {
                 return std::nullopt;
             }
@@ -701,11 +753,9 @@ namespace canopy::security::attestation
                 || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::object_released))
                 || !out.append_u64(params.protocol_version)
                 || !out.append_bytes(remote_object_blob(params.remote_object_id))
-                || !out.append_bytes(zone_blob(params.caller_zone_id))
-                || !out.append_back_channel(params.in_back_channel) || !out.append_u64(params.payload_type_id)
-                || !out.append_u64(static_cast<uint64_t>(params.payload_encoding)) || !out.append_chars(params.payload)
-                || !out.append_u64(e2e_counter) || !out.append_string(context.session_id)
-                || !out.append_u64(context.session_epoch) || !out.ok())
+                || !out.append_bytes(zone_blob(params.caller_zone_id)) || !out.append_back_channel(params.in_back_channel)
+                || !append_typed_payload_field(out, params.payload) || !out.append_u64(e2e_counter)
+                || !out.append_string(context.session_id) || !out.append_u64(context.session_epoch) || !out.ok())
             {
                 return std::nullopt;
             }
@@ -721,11 +771,9 @@ namespace canopy::security::attestation
             if (!out.append_u32(protected_rpc_plaintext_magic) || !out.append_u32(protected_rpc_envelope_version)
                 || !out.append_u8(static_cast<uint8_t>(protected_rpc_kind::transport_down))
                 || !out.append_u64(params.protocol_version) || !out.append_bytes(zone_blob(params.destination_zone_id))
-                || !out.append_bytes(zone_blob(params.caller_zone_id))
-                || !out.append_back_channel(params.in_back_channel) || !out.append_u64(params.payload_type_id)
-                || !out.append_u64(static_cast<uint64_t>(params.payload_encoding)) || !out.append_chars(params.payload)
-                || !out.append_u64(e2e_counter) || !out.append_string(context.session_id)
-                || !out.append_u64(context.session_epoch) || !out.ok())
+                || !out.append_bytes(zone_blob(params.caller_zone_id)) || !out.append_back_channel(params.in_back_channel)
+                || !append_typed_payload_field(out, params.payload) || !out.append_u64(e2e_counter)
+                || !out.append_string(context.session_id) || !out.append_u64(context.session_epoch) || !out.ok())
             {
                 return std::nullopt;
             }
@@ -851,7 +899,6 @@ namespace canopy::security::attestation
             uint32_t version = 0;
             uint8_t raw_kind = 0;
             uint64_t raw_options = 0;
-            uint64_t raw_payload_encoding = 0;
             std::vector<uint8_t> remote_blob_value;
             std::vector<uint8_t> caller_blob_value;
             std::vector<uint8_t> requesting_blob_value;
@@ -869,10 +916,9 @@ namespace canopy::security::attestation
             if (!in.read_u64(result.add_ref.protocol_version) || !in.read_bytes(remote_blob_value)
                 || !in.read_bytes(caller_blob_value) || !in.read_bytes(requesting_blob_value)
                 || !in.read_u64(result.add_ref.request_id) || !in.read_u64(raw_options)
-                || !in.read_back_channel(result.add_ref.in_back_channel) || !in.read_u64(result.add_ref.payload_type_id)
-                || !in.read_u64(raw_payload_encoding) || !in.read_chars(result.add_ref.payload)
-                || !in.read_u64(result.e2e_counter) || !in.read_string(result.session_id)
-                || !in.read_u64(result.session_epoch) || !in.done())
+                || !in.read_back_channel(result.add_ref.in_back_channel)
+                || !read_typed_payload_field(in, result.add_ref.payload) || !in.read_u64(result.e2e_counter)
+                || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
             {
                 return std::nullopt;
             }
@@ -890,7 +936,6 @@ namespace canopy::security::attestation
             result.add_ref.caller_zone_id = *caller_zone_value;
             result.add_ref.requesting_zone_id = *requesting_zone_value;
             result.add_ref.build_out_param_channel = static_cast<rpc::add_ref_options>(raw_options);
-            result.add_ref.payload_encoding = static_cast<rpc::encoding>(raw_payload_encoding);
             return result;
         }
 
@@ -901,7 +946,6 @@ namespace canopy::security::attestation
             uint32_t version = 0;
             uint8_t raw_kind = 0;
             uint64_t raw_options = 0;
-            uint64_t raw_payload_encoding = 0;
             std::vector<uint8_t> remote_blob_value;
             std::vector<uint8_t> caller_blob_value;
 
@@ -917,10 +961,9 @@ namespace canopy::security::attestation
             result.kind = protected_rpc_kind::release;
             if (!in.read_u64(result.release.protocol_version) || !in.read_bytes(remote_blob_value)
                 || !in.read_bytes(caller_blob_value) || !in.read_u64(raw_options)
-                || !in.read_back_channel(result.release.in_back_channel) || !in.read_u64(result.release.payload_type_id)
-                || !in.read_u64(raw_payload_encoding) || !in.read_chars(result.release.payload)
-                || !in.read_u64(result.e2e_counter) || !in.read_string(result.session_id)
-                || !in.read_u64(result.session_epoch) || !in.done())
+                || !in.read_back_channel(result.release.in_back_channel)
+                || !read_typed_payload_field(in, result.release.payload) || !in.read_u64(result.e2e_counter)
+                || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
             {
                 return std::nullopt;
             }
@@ -936,7 +979,6 @@ namespace canopy::security::attestation
             result.release.remote_object_id = *remote_object_value;
             result.release.caller_zone_id = *caller_zone_value;
             result.release.options = static_cast<rpc::release_options>(raw_options);
-            result.release.payload_encoding = static_cast<rpc::encoding>(raw_payload_encoding);
             return result;
         }
 
@@ -947,7 +989,6 @@ namespace canopy::security::attestation
             uint32_t version = 0;
             uint8_t raw_kind = 0;
             uint64_t raw_interface = 0;
-            uint64_t raw_payload_encoding = 0;
             std::vector<uint8_t> caller_blob_value;
             std::vector<uint8_t> remote_blob_value;
 
@@ -964,8 +1005,7 @@ namespace canopy::security::attestation
             if (!in.read_u64(result.try_cast.protocol_version) || !in.read_bytes(caller_blob_value)
                 || !in.read_bytes(remote_blob_value) || !in.read_u64(raw_interface)
                 || !in.read_back_channel(result.try_cast.in_back_channel)
-                || !in.read_u64(result.try_cast.payload_type_id) || !in.read_u64(raw_payload_encoding)
-                || !in.read_chars(result.try_cast.payload) || !in.read_u64(result.e2e_counter)
+                || !read_typed_payload_field(in, result.try_cast.payload) || !in.read_u64(result.e2e_counter)
                 || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
             {
                 return std::nullopt;
@@ -979,7 +1019,6 @@ namespace canopy::security::attestation
             result.try_cast.caller_zone_id = *caller_zone_value;
             result.try_cast.remote_object_id = *remote_object_value;
             result.try_cast.interface_id = rpc::interface_ordinal(raw_interface);
-            result.try_cast.payload_encoding = static_cast<rpc::encoding>(raw_payload_encoding);
             return result;
         }
 
@@ -990,7 +1029,6 @@ namespace canopy::security::attestation
             uint32_t magic = 0;
             uint32_t version = 0;
             uint8_t raw_kind = 0;
-            uint64_t raw_payload_encoding = 0;
             std::vector<uint8_t> remote_blob_value;
             std::vector<uint8_t> caller_blob_value;
 
@@ -1006,8 +1044,7 @@ namespace canopy::security::attestation
             result.kind = protected_rpc_kind::object_released;
             if (!in.read_u64(result.object_released.protocol_version) || !in.read_bytes(remote_blob_value)
                 || !in.read_bytes(caller_blob_value) || !in.read_back_channel(result.object_released.in_back_channel)
-                || !in.read_u64(result.object_released.payload_type_id) || !in.read_u64(raw_payload_encoding)
-                || !in.read_chars(result.object_released.payload) || !in.read_u64(result.e2e_counter)
+                || !read_typed_payload_field(in, result.object_released.payload) || !in.read_u64(result.e2e_counter)
                 || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
             {
                 return std::nullopt;
@@ -1020,7 +1057,6 @@ namespace canopy::security::attestation
 
             result.object_released.remote_object_id = *remote_object_value;
             result.object_released.caller_zone_id = *caller_zone_value;
-            result.object_released.payload_encoding = static_cast<rpc::encoding>(raw_payload_encoding);
             return result;
         }
 
@@ -1031,7 +1067,6 @@ namespace canopy::security::attestation
             uint32_t magic = 0;
             uint32_t version = 0;
             uint8_t raw_kind = 0;
-            uint64_t raw_payload_encoding = 0;
             std::vector<uint8_t> destination_blob_value;
             std::vector<uint8_t> caller_blob_value;
 
@@ -1047,8 +1082,7 @@ namespace canopy::security::attestation
             result.kind = protected_rpc_kind::transport_down;
             if (!in.read_u64(result.transport_down.protocol_version) || !in.read_bytes(destination_blob_value)
                 || !in.read_bytes(caller_blob_value) || !in.read_back_channel(result.transport_down.in_back_channel)
-                || !in.read_u64(result.transport_down.payload_type_id) || !in.read_u64(raw_payload_encoding)
-                || !in.read_chars(result.transport_down.payload) || !in.read_u64(result.e2e_counter)
+                || !read_typed_payload_field(in, result.transport_down.payload) || !in.read_u64(result.e2e_counter)
                 || !in.read_string(result.session_id) || !in.read_u64(result.session_epoch) || !in.done())
             {
                 return std::nullopt;
@@ -1061,7 +1095,6 @@ namespace canopy::security::attestation
 
             result.transport_down.destination_zone_id = *destination_zone_value;
             result.transport_down.caller_zone_id = *caller_zone_value;
-            result.transport_down.payload_encoding = static_cast<rpc::encoding>(raw_payload_encoding);
             return result;
         }
 
@@ -1369,8 +1402,7 @@ namespace canopy::security::attestation
                    && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address())
                    && outer.caller_zone_id == inner.caller_zone_id
                    && outer.requesting_zone_id == inner.requesting_zone_id && outer.request_id == inner.request_id
-                   && outer.build_out_param_channel == inner.build_out_param_channel
-                   && outer.payload_encoding == inner.payload_encoding;
+                   && outer.build_out_param_channel == inner.build_out_param_channel;
         }
 
         auto validate_visible_release_fields(
@@ -1379,8 +1411,7 @@ namespace canopy::security::attestation
         {
             return outer.protocol_version == inner.protocol_version
                    && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address())
-                   && outer.caller_zone_id == inner.caller_zone_id && outer.options == inner.options
-                   && outer.payload_encoding == inner.payload_encoding;
+                   && outer.caller_zone_id == inner.caller_zone_id && outer.options == inner.options;
         }
 
         auto validate_visible_try_cast_fields(
@@ -1388,8 +1419,7 @@ namespace canopy::security::attestation
             const rpc::try_cast_params& inner) -> bool
         {
             return outer.protocol_version == inner.protocol_version && outer.caller_zone_id == inner.caller_zone_id
-                   && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address())
-                   && outer.payload_encoding == inner.payload_encoding;
+                   && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address());
         }
 
         auto validate_visible_object_released_fields(
@@ -1398,7 +1428,7 @@ namespace canopy::security::attestation
         {
             return outer.protocol_version == inner.protocol_version
                    && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address())
-                   && outer.caller_zone_id == inner.caller_zone_id && outer.payload_encoding == inner.payload_encoding;
+                   && outer.caller_zone_id == inner.caller_zone_id;
         }
 
         auto validate_visible_transport_down_fields(
@@ -1406,7 +1436,7 @@ namespace canopy::security::attestation
             const rpc::transport_down_params& inner) -> bool
         {
             return outer.protocol_version == inner.protocol_version && outer.destination_zone_id == inner.destination_zone_id
-                   && outer.caller_zone_id == inner.caller_zone_id && outer.payload_encoding == inner.payload_encoding;
+                   && outer.caller_zone_id == inner.caller_zone_id;
         }
     } // namespace
 
@@ -1425,6 +1455,13 @@ namespace canopy::security::attestation
         uint64_t protocol_version) -> bool
     {
         return payload_type_id == encrypted_payload_type_id(protocol_version);
+    }
+
+    auto is_protected_rpc_payload(
+        const std::optional<rpc::typed_payload>& payload,
+        uint64_t protocol_version) -> bool
+    {
+        return payload && is_protected_rpc_payload(payload->get_type_id(), protocol_version);
     }
 
     auto is_protected_rpc_envelope(
@@ -1736,13 +1773,19 @@ namespace canopy::security::attestation
     auto protect_add_ref_request(
         attestation_service& service,
         const security_context& context,
-        rpc::add_ref_params params) -> protected_rpc_result<protected_add_ref_request>
+        rpc::add_ref_params params,
+        rpc::encoding envelope_encoding) -> protected_rpc_result<protected_add_ref_request>
     {
         if (!context.established)
             return rejected<protected_add_ref_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
-        if (is_protected_rpc_payload(params.payload_type_id, params.protocol_version))
+        if (is_protected_rpc_payload(params.payload, params.protocol_version))
             return rejected<protected_add_ref_request>(rpc::error::INVALID_DATA(), "add_ref payload is already protected");
+        if (envelope_encoding == rpc::encoding::not_set)
+            envelope_encoding = payload_encoding(params.payload);
+        if (envelope_encoding == rpc::encoding::not_set)
+            return rejected<protected_add_ref_request>(
+                rpc::error::INVALID_DATA(), "protected add_ref requires an envelope encoding");
 
         auto scope = make_request_scope(context, true, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
@@ -1760,9 +1803,9 @@ namespace canopy::security::attestation
 
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
-        outer.payload_type_id = encrypted_payload_type_id(params.protocol_version);
 
         auto envelope = prepare_envelope(context, counter.counter);
+        outer.payload = make_typed_payload(encrypted_payload_type_id(params.protocol_version), envelope_encoding, {});
         auto aad = make_add_ref_request_aad(outer, envelope);
         if (!aad)
             return rejected<protected_add_ref_request>(
@@ -1772,10 +1815,10 @@ namespace canopy::security::attestation
         if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
             return rejected<protected_add_ref_request>(rpc::error::SECURITY_ERROR(), "failed to encrypt protected add_ref");
 
-        auto wire = serialise_envelope(envelope, outer.payload_encoding);
+        auto wire = serialise_envelope(envelope, envelope_encoding);
         if (!wire)
             return rejected<protected_add_ref_request>(rpc::error::INVALID_DATA(), "failed to serialise protected add_ref");
-        outer.payload = std::move(*wire);
+        outer.payload->set_payload(std::move(*wire));
 
         protected_add_ref_request value;
         value.params = std::move(outer);
@@ -1788,10 +1831,10 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::add_ref_params& outer) -> protected_rpc_result<protected_add_ref_request>
     {
-        if (!is_protected_rpc_payload(outer.payload_type_id, outer.protocol_version))
+        if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
             return rejected<protected_add_ref_request>(rpc::error::INVALID_DATA(), "add_ref payload is not protected");
 
-        auto envelope = deserialise_envelope(outer.payload, outer.payload_encoding);
+        auto envelope = deserialise_envelope(outer.payload->get_payload(), outer.payload->get_encoding());
         if (!envelope)
             return rejected<protected_add_ref_request>(
                 rpc::error::INVALID_DATA(), "protected add_ref envelope is malformed");
@@ -1846,13 +1889,19 @@ namespace canopy::security::attestation
     auto protect_release_request(
         attestation_service& service,
         const security_context& context,
-        rpc::release_params params) -> protected_rpc_result<protected_release_request>
+        rpc::release_params params,
+        rpc::encoding envelope_encoding) -> protected_rpc_result<protected_release_request>
     {
         if (!context.established)
             return rejected<protected_release_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
-        if (is_protected_rpc_payload(params.payload_type_id, params.protocol_version))
+        if (is_protected_rpc_payload(params.payload, params.protocol_version))
             return rejected<protected_release_request>(rpc::error::INVALID_DATA(), "release payload is already protected");
+        if (envelope_encoding == rpc::encoding::not_set)
+            envelope_encoding = payload_encoding(params.payload);
+        if (envelope_encoding == rpc::encoding::not_set)
+            return rejected<protected_release_request>(
+                rpc::error::INVALID_DATA(), "protected release requires an envelope encoding");
 
         auto scope = make_request_scope(context, true, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
@@ -1870,9 +1919,9 @@ namespace canopy::security::attestation
 
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
-        outer.payload_type_id = encrypted_payload_type_id(params.protocol_version);
 
         auto envelope = prepare_envelope(context, counter.counter);
+        outer.payload = make_typed_payload(encrypted_payload_type_id(params.protocol_version), envelope_encoding, {});
         auto aad = make_release_request_aad(outer, envelope);
         if (!aad)
             return rejected<protected_release_request>(
@@ -1882,10 +1931,10 @@ namespace canopy::security::attestation
         if (!gcm_encrypt(*key, nonce, *plaintext, *aad, envelope))
             return rejected<protected_release_request>(rpc::error::SECURITY_ERROR(), "failed to encrypt protected release");
 
-        auto wire = serialise_envelope(envelope, outer.payload_encoding);
+        auto wire = serialise_envelope(envelope, envelope_encoding);
         if (!wire)
             return rejected<protected_release_request>(rpc::error::INVALID_DATA(), "failed to serialise protected release");
-        outer.payload = std::move(*wire);
+        outer.payload->set_payload(std::move(*wire));
 
         protected_release_request value;
         value.params = std::move(outer);
@@ -1898,10 +1947,10 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::release_params& outer) -> protected_rpc_result<protected_release_request>
     {
-        if (!is_protected_rpc_payload(outer.payload_type_id, outer.protocol_version))
+        if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
             return rejected<protected_release_request>(rpc::error::INVALID_DATA(), "release payload is not protected");
 
-        auto envelope = deserialise_envelope(outer.payload, outer.payload_encoding);
+        auto envelope = deserialise_envelope(outer.payload->get_payload(), outer.payload->get_encoding());
         if (!envelope)
             return rejected<protected_release_request>(
                 rpc::error::INVALID_DATA(), "protected release envelope is malformed");
@@ -1956,14 +2005,20 @@ namespace canopy::security::attestation
     auto protect_try_cast_request(
         attestation_service& service,
         const security_context& context,
-        rpc::try_cast_params params) -> protected_rpc_result<protected_try_cast_request>
+        rpc::try_cast_params params,
+        rpc::encoding envelope_encoding) -> protected_rpc_result<protected_try_cast_request>
     {
         if (!context.established)
             return rejected<protected_try_cast_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
-        if (is_protected_rpc_payload(params.payload_type_id, params.protocol_version))
+        if (is_protected_rpc_payload(params.payload, params.protocol_version))
             return rejected<protected_try_cast_request>(
                 rpc::error::INVALID_DATA(), "try_cast payload is already protected");
+        if (envelope_encoding == rpc::encoding::not_set)
+            envelope_encoding = payload_encoding(params.payload);
+        if (envelope_encoding == rpc::encoding::not_set)
+            return rejected<protected_try_cast_request>(
+                rpc::error::INVALID_DATA(), "protected try_cast requires an envelope encoding");
 
         auto scope = make_request_scope(context, true, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
@@ -1982,9 +2037,9 @@ namespace canopy::security::attestation
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
         outer.interface_id = encrypted_payload_interface_id(params.protocol_version);
-        outer.payload_type_id = encrypted_payload_type_id(params.protocol_version);
 
         auto envelope = prepare_envelope(context, counter.counter);
+        outer.payload = make_typed_payload(encrypted_payload_type_id(params.protocol_version), envelope_encoding, {});
         auto aad = make_try_cast_request_aad(outer, envelope);
         if (!aad)
             return rejected<protected_try_cast_request>(
@@ -1995,11 +2050,11 @@ namespace canopy::security::attestation
             return rejected<protected_try_cast_request>(
                 rpc::error::SECURITY_ERROR(), "failed to encrypt protected try_cast");
 
-        auto wire = serialise_envelope(envelope, outer.payload_encoding);
+        auto wire = serialise_envelope(envelope, envelope_encoding);
         if (!wire)
             return rejected<protected_try_cast_request>(
                 rpc::error::INVALID_DATA(), "failed to serialise protected try_cast");
-        outer.payload = std::move(*wire);
+        outer.payload->set_payload(std::move(*wire));
 
         protected_try_cast_request value;
         value.params = std::move(outer);
@@ -2012,13 +2067,13 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::try_cast_params& outer) -> protected_rpc_result<protected_try_cast_request>
     {
-        if (!is_protected_rpc_payload(outer.payload_type_id, outer.protocol_version))
+        if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
             return rejected<protected_try_cast_request>(rpc::error::INVALID_DATA(), "try_cast payload is not protected");
         if (outer.interface_id != encrypted_payload_interface_id(outer.protocol_version))
             return rejected<protected_try_cast_request>(
                 rpc::error::INVALID_DATA(), "try_cast interface id is not a protected payload carrier");
 
-        auto envelope = deserialise_envelope(outer.payload, outer.payload_encoding);
+        auto envelope = deserialise_envelope(outer.payload->get_payload(), outer.payload->get_encoding());
         if (!envelope)
             return rejected<protected_try_cast_request>(
                 rpc::error::INVALID_DATA(), "protected try_cast envelope is malformed");
@@ -2075,15 +2130,23 @@ namespace canopy::security::attestation
     auto protect_object_released_request(
         attestation_service& service,
         const security_context& context,
-        rpc::object_released_params params) -> protected_rpc_result<protected_object_released_request>
+        rpc::object_released_params params,
+        rpc::encoding envelope_encoding) -> protected_rpc_result<protected_object_released_request>
     {
         if (!context.established)
             return rejected<protected_object_released_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
-        if (is_protected_rpc_payload(params.payload_type_id, params.protocol_version))
+        if (is_protected_rpc_payload(params.payload, params.protocol_version))
         {
             return rejected<protected_object_released_request>(
                 rpc::error::INVALID_DATA(), "object_released payload is already protected");
+        }
+        if (envelope_encoding == rpc::encoding::not_set)
+            envelope_encoding = payload_encoding(params.payload);
+        if (envelope_encoding == rpc::encoding::not_set)
+        {
+            return rejected<protected_object_released_request>(
+                rpc::error::INVALID_DATA(), "protected object_released requires an envelope encoding");
         }
 
         auto scope = make_response_scope(context, false);
@@ -2107,9 +2170,9 @@ namespace canopy::security::attestation
 
         auto outer = params;
         outer.remote_object_id = route_only_remote_object(params.remote_object_id);
-        outer.payload_type_id = encrypted_payload_type_id(params.protocol_version);
 
         auto envelope = prepare_envelope(context, counter.counter);
+        outer.payload = make_typed_payload(encrypted_payload_type_id(params.protocol_version), envelope_encoding, {});
         auto aad = make_object_released_request_aad(outer, envelope);
         if (!aad)
         {
@@ -2124,13 +2187,13 @@ namespace canopy::security::attestation
                 rpc::error::SECURITY_ERROR(), "failed to encrypt protected object_released");
         }
 
-        auto wire = serialise_envelope(envelope, outer.payload_encoding);
+        auto wire = serialise_envelope(envelope, envelope_encoding);
         if (!wire)
         {
             return rejected<protected_object_released_request>(
                 rpc::error::INVALID_DATA(), "failed to serialise protected object_released");
         }
-        outer.payload = std::move(*wire);
+        outer.payload->set_payload(std::move(*wire));
 
         protected_object_released_request value;
         value.params = std::move(outer);
@@ -2143,13 +2206,13 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::object_released_params& outer) -> protected_rpc_result<protected_object_released_request>
     {
-        if (!is_protected_rpc_payload(outer.payload_type_id, outer.protocol_version))
+        if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
         {
             return rejected<protected_object_released_request>(
                 rpc::error::INVALID_DATA(), "object_released payload is not protected");
         }
 
-        auto envelope = deserialise_envelope(outer.payload, outer.payload_encoding);
+        auto envelope = deserialise_envelope(outer.payload->get_payload(), outer.payload->get_encoding());
         if (!envelope)
         {
             return rejected<protected_object_released_request>(
@@ -2220,15 +2283,23 @@ namespace canopy::security::attestation
     auto protect_transport_down_request(
         attestation_service& service,
         const security_context& context,
-        rpc::transport_down_params params) -> protected_rpc_result<protected_transport_down_request>
+        rpc::transport_down_params params,
+        rpc::encoding envelope_encoding) -> protected_rpc_result<protected_transport_down_request>
     {
         if (!context.established)
             return rejected<protected_transport_down_request>(
                 rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
-        if (is_protected_rpc_payload(params.payload_type_id, params.protocol_version))
+        if (is_protected_rpc_payload(params.payload, params.protocol_version))
         {
             return rejected<protected_transport_down_request>(
                 rpc::error::INVALID_DATA(), "transport_down payload is already protected");
+        }
+        if (envelope_encoding == rpc::encoding::not_set)
+            envelope_encoding = payload_encoding(params.payload);
+        if (envelope_encoding == rpc::encoding::not_set)
+        {
+            return rejected<protected_transport_down_request>(
+                rpc::error::INVALID_DATA(), "protected transport_down requires an envelope encoding");
         }
 
         auto scope = make_request_scope(context, true, protected_rpc_direction::caller_to_destination);
@@ -2251,9 +2322,9 @@ namespace canopy::security::attestation
         }
 
         auto outer = params;
-        outer.payload_type_id = encrypted_payload_type_id(params.protocol_version);
 
         auto envelope = prepare_envelope(context, counter.counter);
+        outer.payload = make_typed_payload(encrypted_payload_type_id(params.protocol_version), envelope_encoding, {});
         auto aad = make_transport_down_request_aad(outer, envelope);
         if (!aad)
         {
@@ -2268,13 +2339,13 @@ namespace canopy::security::attestation
                 rpc::error::SECURITY_ERROR(), "failed to encrypt protected transport_down");
         }
 
-        auto wire = serialise_envelope(envelope, outer.payload_encoding);
+        auto wire = serialise_envelope(envelope, envelope_encoding);
         if (!wire)
         {
             return rejected<protected_transport_down_request>(
                 rpc::error::INVALID_DATA(), "failed to serialise protected transport_down");
         }
-        outer.payload = std::move(*wire);
+        outer.payload->set_payload(std::move(*wire));
 
         protected_transport_down_request value;
         value.params = std::move(outer);
@@ -2287,13 +2358,13 @@ namespace canopy::security::attestation
         attestation_service& service,
         const rpc::transport_down_params& outer) -> protected_rpc_result<protected_transport_down_request>
     {
-        if (!is_protected_rpc_payload(outer.payload_type_id, outer.protocol_version))
+        if (!is_protected_rpc_payload(outer.payload, outer.protocol_version))
         {
             return rejected<protected_transport_down_request>(
                 rpc::error::INVALID_DATA(), "transport_down payload is not protected");
         }
 
-        auto envelope = deserialise_envelope(outer.payload, outer.payload_encoding);
+        auto envelope = deserialise_envelope(outer.payload->get_payload(), outer.payload->get_encoding());
         if (!envelope)
         {
             return rejected<protected_transport_down_request>(

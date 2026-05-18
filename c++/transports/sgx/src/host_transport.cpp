@@ -86,8 +86,6 @@ namespace rpc::sgx
                 params.remote_object_id,
                 params.interface_id,
                 params.in_back_channel,
-                params.payload_type_id,
-                params.payload_encoding,
                 params.payload};
         }
 
@@ -100,8 +98,6 @@ namespace rpc::sgx
                 params.request_id,
                 params.build_out_param_channel,
                 params.in_back_channel,
-                params.payload_type_id,
-                params.payload_encoding,
                 params.payload};
         }
 
@@ -112,20 +108,13 @@ namespace rpc::sgx
                 params.caller_zone_id,
                 params.options,
                 params.in_back_channel,
-                params.payload_type_id,
-                params.payload_encoding,
                 params.payload};
         }
 
         object_released_request to_sgx_request(const rpc::object_released_params& params)
         {
-            return object_released_request{params.protocol_version,
-                params.remote_object_id,
-                params.caller_zone_id,
-                params.in_back_channel,
-                params.payload_type_id,
-                params.payload_encoding,
-                params.payload};
+            return object_released_request{
+                params.protocol_version, params.remote_object_id, params.caller_zone_id, params.in_back_channel, params.payload};
         }
 
         transport_down_request to_sgx_request(const rpc::transport_down_params& params)
@@ -134,8 +123,6 @@ namespace rpc::sgx
                 params.destination_zone_id,
                 params.caller_zone_id,
                 params.in_back_channel,
-                params.payload_type_id,
-                params.payload_encoding,
                 params.payload};
         }
 

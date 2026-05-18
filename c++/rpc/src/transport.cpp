@@ -25,12 +25,38 @@ namespace rpc
 
         template<typename Params> bool payload_encoding_required(const Params& params)
         {
-            return params.payload_type_id != 0 || !params.payload.empty();
+            return params.payload.has_value();
         }
 
         bool payload_encoding_required(const handshake_params& params)
         {
             return params.type_id != 0 || !params.payload.empty();
+        }
+
+        template<typename Params> encoding get_payload_encoding(const Params& params)
+        {
+            return params.payload ? params.payload->get_encoding() : encoding::not_set;
+        }
+
+        encoding get_payload_encoding(const handshake_params& params)
+        {
+            return params.payload_encoding;
+        }
+
+        template<typename Params>
+        void set_payload_encoding(
+            Params& params,
+            encoding selected_encoding)
+        {
+            RPC_ASSERT(params.payload);
+            params.payload->set_encoding(selected_encoding);
+        }
+
+        void set_payload_encoding(
+            handshake_params& params,
+            encoding selected_encoding)
+        {
+            params.payload_encoding = selected_encoding;
         }
 
     }
@@ -40,7 +66,7 @@ namespace rpc
         Params& params,
         const char* operation)
     {
-        if (params.payload_encoding != encoding::not_set)
+        if (get_payload_encoding(params) != encoding::not_set)
             return true;
         if (!payload_encoding_required(params))
             return true;
@@ -52,7 +78,7 @@ namespace rpc
             return false;
         }
 
-        params.payload_encoding = svc->get_default_encoding();
+        set_payload_encoding(params, svc->get_default_encoding());
         return true;
     }
 

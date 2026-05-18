@@ -610,7 +610,7 @@ namespace rpc
     enclave_service::add_ref(add_ref_params params)
     {
         const bool protected_payload
-            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
         if (protected_payload)
         {
             auto service = get_attestation_service();
@@ -622,7 +622,7 @@ namespace rpc
                 CO_RETURN standard_result{request.error.error_code, {}};
             params = std::move(request.value.params);
         }
-        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        else if (protected_rpc_enabled() && params.payload)
         {
             CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
         }
@@ -646,7 +646,7 @@ namespace rpc
     enclave_service::release(release_params params)
     {
         const bool protected_payload
-            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
         if (protected_payload)
         {
             auto service = get_attestation_service();
@@ -658,7 +658,7 @@ namespace rpc
                 CO_RETURN standard_result{request.error.error_code, {}};
             params = std::move(request.value.params);
         }
-        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        else if (protected_rpc_enabled() && params.payload)
         {
             CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
         }
@@ -681,7 +681,7 @@ namespace rpc
     enclave_service::object_released(object_released_params params)
     {
         const bool protected_payload
-            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
         if (protected_payload)
         {
             auto service = get_attestation_service();
@@ -693,7 +693,7 @@ namespace rpc
                 CO_RETURN;
             params = std::move(request.value.params);
         }
-        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        else if (protected_rpc_enabled() && params.payload)
         {
             CO_RETURN;
         }
@@ -716,7 +716,7 @@ namespace rpc
     enclave_service::transport_down(transport_down_params params)
     {
         const bool protected_payload
-            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
         if (protected_payload)
         {
             auto service = get_attestation_service();
@@ -728,7 +728,7 @@ namespace rpc
                 CO_RETURN;
             params = std::move(request.value.params);
         }
-        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        else if (protected_rpc_enabled() && params.payload)
         {
             CO_RETURN;
         }
@@ -930,7 +930,7 @@ namespace rpc
     enclave_service::try_cast(try_cast_params params)
     {
         const bool protected_payload
-            = canopy::security::attestation::is_protected_rpc_payload(params.payload_type_id, params.protocol_version);
+            = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
         if (protected_payload)
         {
             auto service = get_attestation_service();
@@ -942,7 +942,7 @@ namespace rpc
                 CO_RETURN standard_result{request.error.error_code, {}};
             params = std::move(request.value.params);
         }
-        else if (protected_rpc_enabled() && (params.payload_type_id != 0 || !params.payload.empty()))
+        else if (protected_rpc_enabled() && params.payload)
         {
             CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
         }
@@ -1031,9 +1031,6 @@ namespace rpc
         try_cast_params params,
         std::shared_ptr<transport> transport)
     {
-        if (params.payload_encoding == rpc::encoding::not_set)
-            params.payload_encoding = get_default_encoding();
-
         auto service = get_attestation_service();
         if (!protected_rpc_enabled() || !service)
         {
@@ -1050,7 +1047,8 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
-        auto request = canopy::security::attestation::protect_try_cast_request(*service, *context, std::move(params));
+        auto request = canopy::security::attestation::protect_try_cast_request(
+            *service, *context, std::move(params), get_default_encoding());
         if (!request.accepted)
         {
             CO_RETURN standard_result{request.error.error_code, {}};
@@ -1065,9 +1063,6 @@ namespace rpc
         add_ref_params params,
         std::shared_ptr<transport> transport)
     {
-        if (params.payload_encoding == rpc::encoding::not_set)
-            params.payload_encoding = get_default_encoding();
-
         auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
         if (route_zone_id)
         {
@@ -1082,8 +1077,8 @@ namespace rpc
             auto context = get_security_context(*route_zone_id);
             if (context)
             {
-                auto request
-                    = canopy::security::attestation::protect_add_ref_request(*service, *context, std::move(params));
+                auto request = canopy::security::attestation::protect_add_ref_request(
+                    *service, *context, std::move(params), get_default_encoding());
                 if (!request.accepted)
                     CO_RETURN standard_result{request.error.error_code, {}};
                 params = std::move(request.value.params);
@@ -1099,9 +1094,6 @@ namespace rpc
         release_params params,
         std::shared_ptr<transport> transport)
     {
-        if (params.payload_encoding == rpc::encoding::not_set)
-            params.payload_encoding = get_default_encoding();
-
         auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
         if (route_zone_id)
         {
@@ -1117,8 +1109,8 @@ namespace rpc
             auto context = get_security_context(*route_zone_id);
             if (context)
             {
-                auto request
-                    = canopy::security::attestation::protect_release_request(*service, *context, std::move(params));
+                auto request = canopy::security::attestation::protect_release_request(
+                    *service, *context, std::move(params), get_default_encoding());
                 if (!request.accepted)
                     CO_RETURN standard_result{request.error.error_code, {}};
                 params = std::move(request.value.params);
@@ -1134,9 +1126,6 @@ namespace rpc
         object_released_params params,
         std::shared_ptr<transport> transport)
     {
-        if (params.payload_encoding == rpc::encoding::not_set)
-            params.payload_encoding = get_default_encoding();
-
         std::optional<rpc::destination_zone> caller_zone_id;
         if (transport)
         {
@@ -1154,7 +1143,7 @@ namespace rpc
             if (context)
             {
                 auto request = canopy::security::attestation::protect_object_released_request(
-                    *service, *context, std::move(params));
+                    *service, *context, std::move(params), get_default_encoding());
                 if (!request.accepted)
                     CO_RETURN;
                 params = std::move(request.value.params);

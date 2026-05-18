@@ -19,6 +19,7 @@
 #  include <streaming/spsc_queue/stream.h>
 #  include <transports/local/transport.h>
 #  include <transport/tests/streaming_setup_base.h>
+#  include <optional>
 #  include <unordered_map>
 #  ifdef CANOPY_BUILD_ENCLAVE
 #    include <transports/sgx_coroutine/enclave/local_transport.h>
@@ -306,6 +307,11 @@ namespace
                && !encrypted_payload.authentication_tag.empty();
     }
 
+    auto is_valid_encrypted_payload(const std::optional<rpc::typed_payload>& payload) -> bool
+    {
+        return payload.has_value() && is_valid_encrypted_payload(payload->get_payload(), payload->get_encoding());
+    }
+
     auto is_valid_public_control_status(int error_code) -> bool
     {
         return error_code == rpc::error::OK() || rpc::error::is_error(error_code);
@@ -398,24 +404,24 @@ namespace
         CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override
         {
             ++try_cast_count;
-            try_cast_was_protected = canopy::security::attestation::is_protected_rpc_payload(
-                params.payload_type_id, params.protocol_version);
+            try_cast_was_protected
+                = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
             CO_RETURN rpc::standard_result{positive_control_status, {}};
         }
 
         CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override
         {
             ++add_ref_count;
-            add_ref_was_protected = canopy::security::attestation::is_protected_rpc_payload(
-                params.payload_type_id, params.protocol_version);
+            add_ref_was_protected
+                = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
             CO_RETURN rpc::standard_result{positive_control_status, {}};
         }
 
         CORO_TASK(rpc::standard_result) outbound_release(rpc::release_params params) override
         {
             ++release_count;
-            release_was_protected = canopy::security::attestation::is_protected_rpc_payload(
-                params.payload_type_id, params.protocol_version);
+            release_was_protected
+                = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
             CO_RETURN rpc::standard_result{positive_control_status, {}};
         }
 
@@ -472,8 +478,8 @@ namespace
         CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override
         {
             ++try_cast_count;
-            try_cast_was_protected = canopy::security::attestation::is_protected_rpc_payload(
-                params.payload_type_id, params.protocol_version);
+            try_cast_was_protected
+                = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
             last_try_cast_remote_object = params.remote_object_id;
             CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
         }
@@ -500,8 +506,8 @@ namespace
         CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override
         {
             ++object_released_count;
-            object_released_was_protected = canopy::security::attestation::is_protected_rpc_payload(
-                params.payload_type_id, params.protocol_version);
+            object_released_was_protected
+                = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
             last_object_released_remote_object = params.remote_object_id;
             last_object_released_caller_zone = params.caller_zone_id;
             CO_RETURN;
@@ -509,8 +515,8 @@ namespace
         CORO_TASK(void) outbound_transport_down(rpc::transport_down_params params) override
         {
             ++transport_down_count;
-            transport_down_was_protected = canopy::security::attestation::is_protected_rpc_payload(
-                params.payload_type_id, params.protocol_version);
+            transport_down_was_protected
+                = canopy::security::attestation::is_protected_rpc_payload(params.payload, params.protocol_version);
             last_transport_down_destination_zone = params.destination_zone_id;
             last_transport_down_caller_zone = params.caller_zone_id;
             CO_RETURN;
@@ -797,12 +803,11 @@ namespace
             = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::addref_send& request)
             -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
         {
-            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload, prefix.version))
             {
                 ++observer.protected_add_ref_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload
-                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -820,12 +825,11 @@ namespace
             = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::try_cast_send& request)
             -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
         {
-            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload, prefix.version))
             {
                 ++observer.protected_try_cast_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload
-                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -843,12 +847,11 @@ namespace
             = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::release_send& request)
             -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
         {
-            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload, prefix.version))
             {
                 ++observer.protected_release_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload
-                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -866,12 +869,11 @@ namespace
             = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::object_released_send& request)
             -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
         {
-            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload, prefix.version))
             {
                 ++observer.protected_object_released_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload
-                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
                 observer.protected_object_id_visible
                     = observer.protected_object_id_visible || request.destination_zone_id.get_object_id().is_set();
             }
@@ -891,12 +893,11 @@ namespace
             = [&observer](auto, const auto& prefix, const auto&, const rpc::stream_transport::transport_down_send& request)
             -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
         {
-            if (canopy::security::attestation::is_protected_rpc_payload(request.payload_type_id, prefix.version))
+            if (canopy::security::attestation::is_protected_rpc_payload(request.payload, prefix.version))
             {
                 ++observer.protected_transport_down_count;
                 observer.malformed_encrypted_payload
-                    = observer.malformed_encrypted_payload
-                      || !is_valid_encrypted_payload(request.payload, request.payload_encoding);
+                    = observer.malformed_encrypted_payload || !is_valid_encrypted_payload(request.payload);
             }
             else
             {

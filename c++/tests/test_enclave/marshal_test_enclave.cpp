@@ -107,8 +107,6 @@ namespace
             request.remote_object_id,
             request.interface_id,
             request.in_back_channel,
-            request.payload_type_id,
-            request.payload_encoding,
             request.payload};
     }
 
@@ -121,8 +119,6 @@ namespace
             request.build_out_param_channel,
             request.in_back_channel,
             request.request_id,
-            request.payload_type_id,
-            request.payload_encoding,
             request.payload};
     }
 
@@ -133,8 +129,6 @@ namespace
             request.caller_zone_id,
             request.options,
             request.in_back_channel,
-            request.payload_type_id,
-            request.payload_encoding,
             request.payload};
     }
 
@@ -144,8 +138,6 @@ namespace
             request.remote_object_id,
             request.caller_zone_id,
             request.in_back_channel,
-            request.payload_type_id,
-            request.payload_encoding,
             request.payload};
     }
 
@@ -155,8 +147,6 @@ namespace
             request.destination_zone_id,
             request.caller_zone_id,
             request.in_back_channel,
-            request.payload_type_id,
-            request.payload_encoding,
             request.payload};
     }
 

@@ -29,6 +29,14 @@ namespace rpc
         // mpi = 64
     };
 
+#cpp_quote(R^__(
+    template<class OutputBlob, typename T>
+    OutputBlob serialise(const T& obj, encoding enc);
+
+    template<typename T>
+    std::string deserialise(encoding enc, const std::vector<char>& data, T& obj);
+    )__^)
+
     enum transport_status : uint8_t
     {
         CONNECTING = 0,
@@ -144,6 +152,82 @@ namespace rpc
         uint64_t e2e_counter = 0;
         std::vector<uint8_t> payload;
         std::vector<uint8_t> authentication_tag;
+    };
+
+    // Optional RPC control-message blob.
+    //
+    // Plain add_ref/release/try_cast/object_released/transport_down messages do
+    // not need an auxiliary blob at all. When attestation or another extension
+    // adds one, type_id is the IDL fingerprint of the blob schema and
+    // payload_encoding is the concrete serialisation format used for payload.
+    struct typed_payload
+    {
+    private:
+        uint64_t type_id = 0;
+        encoding payload_encoding = encoding::not_set;
+        std::vector<char> payload;
+
+#cpp_quote(R^__(
+    public:
+        friend inline bool operator==(
+            const typed_payload& lhs,
+            const typed_payload& rhs);
+        friend inline bool operator!=(
+            const typed_payload& lhs,
+            const typed_payload& rhs);
+
+        typed_payload() = default;
+        typed_payload(uint64_t type_id, encoding payload_encoding, std::vector<char> payload)
+            : type_id(type_id)
+            , payload_encoding(payload_encoding)
+            , payload(std::move(payload))
+        {
+        }
+
+        [[nodiscard]] bool is_set() const noexcept { return type_id != 0; }
+        [[nodiscard]] uint64_t get_type_id() const noexcept { return type_id; }
+        [[nodiscard]] encoding get_encoding() const noexcept { return payload_encoding; }
+        [[nodiscard]] const std::vector<char>& get_payload() const noexcept { return payload; }
+        [[nodiscard]] std::vector<char>& get_payload() noexcept { return payload; }
+
+        void set_encoding(encoding value) noexcept { payload_encoding = value; }
+        void set_payload(std::vector<char> value) { payload = std::move(value); }
+
+        template<typename T>
+        void set_type(uint64_t protocol_version)
+        {
+            type_id = rpc::id<T>::get(protocol_version);
+        }
+
+        template<typename T>
+        [[nodiscard]] bool is_type(uint64_t protocol_version) const
+        {
+            return type_id == rpc::id<T>::get(protocol_version);
+        }
+
+        template<typename T>
+        void set_value(const T& value, uint64_t protocol_version, encoding encoding_type)
+        {
+            type_id = rpc::id<T>::get(protocol_version);
+            payload_encoding = encoding_type;
+            payload = rpc::serialise<std::vector<char>>(value, encoding_type);
+        }
+
+        template<typename T>
+        [[nodiscard]] std::string get_value(T& value, uint64_t protocol_version) const
+        {
+            if (!is_type<T>(protocol_version))
+                return "typed payload fingerprint does not match the requested type";
+            return rpc::deserialise(payload_encoding, payload, value);
+        }
+
+        void clear()
+        {
+            type_id = 0;
+            payload_encoding = encoding::not_set;
+            payload.clear();
+        }
+)__^)
     };
 
     // Versioned bit-packed zone address blob.

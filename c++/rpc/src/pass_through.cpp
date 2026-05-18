@@ -358,8 +358,6 @@ namespace rpc
             dest_params.build_out_param_channel = build_out_param_channel & ~add_ref_options::build_caller_route;
             dest_params.in_back_channel = params.in_back_channel;
             dest_params.request_id = params.request_id;
-            dest_params.payload_type_id = params.payload_type_id;
-            dest_params.payload_encoding = params.payload_encoding;
             dest_params.payload = params.payload;
 
             auto dest_result = CO_AWAIT destination_transport->add_ref(std::move(dest_params));
@@ -384,8 +382,6 @@ namespace rpc
             caller_params.build_out_param_channel = build_out_param_channel & ~add_ref_options::build_destination_route;
             caller_params.in_back_channel = params.in_back_channel;
             caller_params.request_id = params.request_id;
-            caller_params.payload_type_id = params.payload_type_id;
-            caller_params.payload_encoding = params.payload_encoding;
             caller_params.payload = params.payload;
 
             auto caller_result = CO_AWAIT caller_transport->add_ref(std::move(caller_params));

@@ -512,4 +512,13 @@ namespace rpc
 #endif
         return "invalid encoding type";
     }
+
+    template<typename T>
+    std::string deserialise(
+        encoding enc,
+        const std::vector<char>& data,
+        T& obj)
+    {
+        return deserialise(enc, byte_span(data), obj);
+    }
 }

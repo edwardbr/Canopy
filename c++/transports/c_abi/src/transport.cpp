@@ -76,6 +76,23 @@ namespace rpc::c_abi
             return canopy_remote_object{borrow_zone_address(remote_object.get_address())};
         }
 
+        uint64_t payload_type_id(const std::optional<rpc::typed_payload>& payload)
+        {
+            return payload ? payload->get_type_id() : 0;
+        }
+
+        uint64_t payload_encoding(const std::optional<rpc::typed_payload>& payload)
+        {
+            return payload ? static_cast<uint64_t>(payload->get_encoding())
+                           : static_cast<uint64_t>(rpc::encoding::not_set);
+        }
+
+        const std::vector<char>& payload_bytes(const std::optional<rpc::typed_payload>& payload)
+        {
+            static const std::vector<char> empty;
+            return payload ? payload->get_payload() : empty;
+        }
+
         struct borrowed_back_channel
         {
             std::vector<canopy_back_channel_entry> entries;
@@ -176,9 +193,9 @@ namespace rpc::c_abi
                       remote_object,
                       params.interface_id.get_val(),
                       back_channel.span,
-                      params.payload_type_id,
-                      static_cast<uint64_t>(params.payload_encoding),
-                      borrow_bytes(params.payload)}
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -203,9 +220,9 @@ namespace rpc::c_abi
                       static_cast<uint8_t>(params.build_out_param_channel),
                       back_channel.span,
                       params.request_id,
-                      params.payload_type_id,
-                      static_cast<uint64_t>(params.payload_encoding),
-                      borrow_bytes(params.payload)}
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -226,9 +243,9 @@ namespace rpc::c_abi
                       caller_zone,
                       static_cast<uint8_t>(params.options),
                       back_channel.span,
-                      params.payload_type_id,
-                      static_cast<uint64_t>(params.payload_encoding),
-                      borrow_bytes(params.payload)}
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -248,9 +265,9 @@ namespace rpc::c_abi
                       remote_object,
                       caller_zone,
                       back_channel.span,
-                      params.payload_type_id,
-                      static_cast<uint64_t>(params.payload_encoding),
-                      borrow_bytes(params.payload)}
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -270,9 +287,9 @@ namespace rpc::c_abi
                       destination_zone,
                       caller_zone,
                       back_channel.span,
-                      params.payload_type_id,
-                      static_cast<uint64_t>(params.payload_encoding),
-                      borrow_bytes(params.payload)}
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -310,6 +327,16 @@ namespace rpc::c_abi
         std::vector<char> copy_chars(const canopy_byte_buffer& bytes)
         {
             return copy_chars(canopy_const_byte_buffer{bytes.data, bytes.size});
+        }
+
+        std::optional<rpc::typed_payload> decode_payload(
+            uint64_t type_id,
+            uint64_t encoding,
+            const canopy_const_byte_buffer& payload)
+        {
+            if (type_id == 0 && payload.size == 0)
+                return std::nullopt;
+            return rpc::typed_payload(type_id, static_cast<rpc::encoding>(encoding), copy_chars(payload));
         }
 
         std::vector<uint8_t> extract_host_bytes(
@@ -531,9 +558,7 @@ namespace rpc::c_abi
                 *remote_object,
                 rpc::interface_ordinal(params.interface_id),
                 std::move(*back_channel),
-                params.payload_type_id,
-                static_cast<rpc::encoding>(params.payload_encoding),
-                copy_chars(params.payload)};
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -561,9 +586,7 @@ namespace rpc::c_abi
                 static_cast<rpc::add_ref_options>(params.build_out_param_channel),
                 std::move(*back_channel),
                 params.request_id,
-                params.payload_type_id,
-                static_cast<rpc::encoding>(params.payload_encoding),
-                copy_chars(params.payload)};
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -586,9 +609,7 @@ namespace rpc::c_abi
                 *caller_zone,
                 static_cast<rpc::release_options>(params.options),
                 std::move(*back_channel),
-                params.payload_type_id,
-                static_cast<rpc::encoding>(params.payload_encoding),
-                copy_chars(params.payload)};
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -610,9 +631,7 @@ namespace rpc::c_abi
                 *remote_object,
                 *caller_zone,
                 std::move(*back_channel),
-                params.payload_type_id,
-                static_cast<rpc::encoding>(params.payload_encoding),
-                copy_chars(params.payload)};
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -634,9 +653,7 @@ namespace rpc::c_abi
                 *destination_zone,
                 *caller_zone,
                 std::move(*back_channel),
-                params.payload_type_id,
-                static_cast<rpc::encoding>(params.payload_encoding),
-                copy_chars(params.payload)};
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<

@@ -108,6 +108,10 @@ namespace canopy::security::attestation
         uint64_t payload_type_id,
         uint64_t protocol_version) -> bool;
 
+    [[nodiscard]] auto is_protected_rpc_payload(
+        const std::optional<rpc::typed_payload>& payload,
+        uint64_t protocol_version) -> bool;
+
     // True when a send/post-style interface+method pair is the protected envelope carrier.
     [[nodiscard]] auto is_protected_rpc_envelope(
         rpc::interface_ordinal interface_id,
@@ -149,7 +153,8 @@ namespace canopy::security::attestation
     [[nodiscard]] auto protect_add_ref_request(
         attestation_service& service,
         const security_context& context,
-        rpc::add_ref_params params) -> protected_rpc_result<protected_add_ref_request>;
+        rpc::add_ref_params params,
+        rpc::encoding envelope_encoding = rpc::encoding::not_set) -> protected_rpc_result<protected_add_ref_request>;
 
     [[nodiscard]] auto unprotect_add_ref_request(
         attestation_service& service,
@@ -158,7 +163,8 @@ namespace canopy::security::attestation
     [[nodiscard]] auto protect_release_request(
         attestation_service& service,
         const security_context& context,
-        rpc::release_params params) -> protected_rpc_result<protected_release_request>;
+        rpc::release_params params,
+        rpc::encoding envelope_encoding = rpc::encoding::not_set) -> protected_rpc_result<protected_release_request>;
 
     [[nodiscard]] auto unprotect_release_request(
         attestation_service& service,
@@ -167,7 +173,8 @@ namespace canopy::security::attestation
     [[nodiscard]] auto protect_try_cast_request(
         attestation_service& service,
         const security_context& context,
-        rpc::try_cast_params params) -> protected_rpc_result<protected_try_cast_request>;
+        rpc::try_cast_params params,
+        rpc::encoding envelope_encoding = rpc::encoding::not_set) -> protected_rpc_result<protected_try_cast_request>;
 
     [[nodiscard]] auto unprotect_try_cast_request(
         attestation_service& service,
@@ -176,7 +183,9 @@ namespace canopy::security::attestation
     [[nodiscard]] auto protect_object_released_request(
         attestation_service& service,
         const security_context& context,
-        rpc::object_released_params params) -> protected_rpc_result<protected_object_released_request>;
+        rpc::object_released_params params,
+        rpc::encoding envelope_encoding = rpc::encoding::not_set)
+        -> protected_rpc_result<protected_object_released_request>;
 
     [[nodiscard]] auto unprotect_object_released_request(
         attestation_service& service,
@@ -185,7 +194,9 @@ namespace canopy::security::attestation
     [[nodiscard]] auto protect_transport_down_request(
         attestation_service& service,
         const security_context& context,
-        rpc::transport_down_params params) -> protected_rpc_result<protected_transport_down_request>;
+        rpc::transport_down_params params,
+        rpc::encoding envelope_encoding = rpc::encoding::not_set)
+        -> protected_rpc_result<protected_transport_down_request>;
 
     [[nodiscard]] auto unprotect_transport_down_request(
         attestation_service& service,

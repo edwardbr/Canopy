@@ -229,8 +229,6 @@ namespace rpc::stream_transport
                 .destination_zone_id = params.remote_object_id,
                 .interface_id = params.interface_id,
                 .back_channel = std::move(params.in_back_channel),
-                .payload_type_id = params.payload_type_id,
-                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)});
         int ret = response_result.error_code;
         if (ret != rpc::error::OK())
@@ -256,8 +254,6 @@ namespace rpc::stream_transport
                 .request_id = params.request_id,
                 .build_out_param_channel = params.build_out_param_channel,
                 .back_channel = std::move(params.in_back_channel),
-                .payload_type_id = params.payload_type_id,
-                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)});
         int ret = response_result.error_code;
         if (ret != rpc::error::OK())
@@ -304,8 +300,6 @@ namespace rpc::stream_transport
                 .caller_zone_id = params.caller_zone_id,
                 .options = params.options,
                 .back_channel = std::move(params.in_back_channel),
-                .payload_type_id = params.payload_type_id,
-                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)},
             0);
 
@@ -359,8 +353,6 @@ namespace rpc::stream_transport
             object_released_send{.destination_zone_id = params.remote_object_id,
                 .caller_zone_id = params.caller_zone_id,
                 .back_channel = std::move(params.in_back_channel),
-                .payload_type_id = params.payload_type_id,
-                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)},
             0);
 
@@ -384,8 +376,6 @@ namespace rpc::stream_transport
             transport_down_send{.destination_zone_id = params.destination_zone_id,
                 .caller_zone_id = params.caller_zone_id,
                 .back_channel = std::move(params.in_back_channel),
-                .payload_type_id = params.payload_type_id,
-                .payload_encoding = params.payload_encoding,
                 .payload = std::move(params.payload)},
             0);
 
@@ -1201,8 +1191,6 @@ namespace rpc::stream_transport
                 .remote_object_id = request.destination_zone_id,
                 .interface_id = request.interface_id,
                 .in_back_channel = std::move(request.back_channel),
-                .payload_type_id = request.payload_type_id,
-                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1249,8 +1237,6 @@ namespace rpc::stream_transport
                 .build_out_param_channel = request.build_out_param_channel,
                 .in_back_channel = std::move(request.back_channel),
                 .request_id = request.request_id,
-                .payload_type_id = request.payload_type_id,
-                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1291,8 +1277,6 @@ namespace rpc::stream_transport
                 .caller_zone_id = request.caller_zone_id,
                 .options = request.options,
                 .in_back_channel = std::move(request.back_channel),
-                .payload_type_id = request.payload_type_id,
-                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1418,8 +1402,6 @@ namespace rpc::stream_transport
                 .remote_object_id = request.destination_zone_id,
                 .caller_zone_id = request.caller_zone_id,
                 .in_back_channel = std::move(request.back_channel),
-                .payload_type_id = request.payload_type_id,
-                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
@@ -1450,8 +1432,6 @@ namespace rpc::stream_transport
                 .destination_zone_id = request.destination_zone_id,
                 .caller_zone_id = request.caller_zone_id,
                 .in_back_channel = std::move(request.back_channel),
-                .payload_type_id = request.payload_type_id,
-                .payload_encoding = request.payload_encoding,
                 .payload = std::move(request.payload),
             });
 
