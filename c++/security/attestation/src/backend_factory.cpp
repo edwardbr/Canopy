@@ -8,20 +8,12 @@
 #include <security/attestation/fake_backend.h>
 #include <security/attestation/null_backend.h>
 
+#include <exception>
 #include <memory>
 #include <utility>
 
 namespace canopy::security::attestation
 {
-    auto parse_attestation_backend_kind(std::string_view name) noexcept -> std::optional<configured_backend_kind>
-    {
-        if (name == "FAKE" || name == "fake")
-            return configured_backend_kind::fake_backend;
-        if (name == "NULL" || name == "null")
-            return configured_backend_kind::null_backend;
-        return std::nullopt;
-    }
-
     auto attestation_backend_kind_name(configured_backend_kind kind) noexcept -> const char*
     {
         switch (kind)
@@ -31,7 +23,7 @@ namespace canopy::security::attestation
         case configured_backend_kind::fake_backend:
             return fake_backend_id;
         }
-        return fake_backend_id;
+        std::terminate();
     }
 
     auto configured_attestation_backend_kind() noexcept -> configured_backend_kind
@@ -57,7 +49,7 @@ namespace canopy::security::attestation
         case configured_backend_kind::fake_backend:
             return std::make_shared<fake_backend>();
         }
-        return std::make_shared<fake_backend>();
+        std::terminate();
     }
 
     auto make_configured_attestation_backend() -> std::shared_ptr<attestation_backend>
@@ -65,7 +57,7 @@ namespace canopy::security::attestation
         return make_attestation_backend(configured_attestation_backend_kind());
     }
 
-    auto make_default_attestation_service_options(identity local_identity) -> attestation_service_options
+    auto make_configured_attestation_service_options(identity local_identity) -> attestation_service_options
     {
         auto kind = configured_attestation_backend_kind();
 
@@ -74,7 +66,7 @@ namespace canopy::security::attestation
         options.backend = make_attestation_backend(kind);
 
         options.policy = attestation_policy{};
-        options.policy.required_backend_id = attestation_backend_kind_name(kind);
+        options.policy.required_backend_id = options.backend->backend_id();
         switch (kind)
         {
         case configured_backend_kind::null_backend:

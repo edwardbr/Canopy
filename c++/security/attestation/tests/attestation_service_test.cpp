@@ -36,7 +36,7 @@ namespace
     using canopy::security::attestation::fake_evidence_media_type;
     using canopy::security::attestation::identity;
     using canopy::security::attestation::make_attestation_nonce;
-    using canopy::security::attestation::make_default_attestation_service_options;
+    using canopy::security::attestation::make_configured_attestation_service_options;
     using canopy::security::attestation::make_session_id;
     using canopy::security::attestation::null_backend;
     using canopy::security::attestation::null_backend_id;
@@ -209,7 +209,7 @@ TEST(
     AttestationService,
     BackendFactoryUsesConfiguredBackendDefaults)
 {
-    auto options = make_default_attestation_service_options(identity{"factory-enclave", "factory-zone"});
+    auto options = make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"});
     ASSERT_TRUE(options.backend);
     EXPECT_EQ(options.backend->backend_id(), configured_attestation_backend_name());
     EXPECT_EQ(options.local_identity.enclave_id, "factory-enclave");

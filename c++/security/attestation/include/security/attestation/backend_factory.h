@@ -6,8 +6,6 @@
 #pragma once
 
 #include <memory>
-#include <optional>
-#include <string_view>
 
 #include <security/attestation/service.h>
 #include <security/attestation/types.h>
@@ -20,12 +18,10 @@ namespace canopy::security::attestation
         fake_backend
     };
 
-    [[nodiscard]] auto parse_attestation_backend_kind(std::string_view name) noexcept
-        -> std::optional<configured_backend_kind>;
     [[nodiscard]] auto attestation_backend_kind_name(configured_backend_kind kind) noexcept -> const char*;
     [[nodiscard]] auto configured_attestation_backend_kind() noexcept -> configured_backend_kind;
     [[nodiscard]] auto configured_attestation_backend_name() noexcept -> const char*;
     [[nodiscard]] auto make_attestation_backend(configured_backend_kind kind) -> std::shared_ptr<attestation_backend>;
     [[nodiscard]] auto make_configured_attestation_backend() -> std::shared_ptr<attestation_backend>;
-    [[nodiscard]] auto make_default_attestation_service_options(identity local_identity) -> attestation_service_options;
+    [[nodiscard]] auto make_configured_attestation_service_options(identity local_identity) -> attestation_service_options;
 } // namespace canopy::security::attestation

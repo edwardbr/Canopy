@@ -54,7 +54,7 @@ attestation handshake payload carried by `i_marshaller::handshake()` and
 SGX-sim host integration coverage that drives that handshake through a real
 transport from an unknown-route `add_ref`. It is **not** completion of Phase 1
 or Phase 2 as written below, because the protected envelope still needs
-build-time backend selection, real backend wiring, and the later carrier and
+real SGX/DCAP backend wiring, the later carrier work, and the
 policy-hardening work described in the remaining phases.
 
 ### Implemented
@@ -81,7 +81,7 @@ policy-hardening work described in the remaining phases.
   policy sets both `require_peer_evidence == false` and
   `allow_unattested_peer == true`.
 - `CANOPY_ATTESTATION_BACKEND` currently accepts `FAKE` and `NULL` and defines
-  the backend selected by `make_default_attestation_service_options(...)`.
+  the backend selected by `make_configured_attestation_service_options(...)`.
 - Fake Evidence verification checks:
   - policy permission for development Evidence;
   - required backend id;
@@ -597,12 +597,13 @@ Telemetry and `post_report` are demo/diagnostic surfaces and are intentionally
 left out of the current production attestation path. Stream sign-on and
 service-level route handshakes now distinguish "peer Evidence is not required"
 from "an unattested peer is explicitly allowed", and the backend factory can
-select the current `FAKE` or `NULL` development backends. The next
-implementation slice should continue backend work for SGX-sim and real
-SGX/DCAP, while also reducing the remaining public carrier fields documented in
-`intermediate-visibility-audit.md` with a route-token/state refactor. After
-that, apply the same checklist to non-C-ABI coroutine dynamic-library
-transports that are allowed at an enclave boundary.
+select the current `FAKE` or `NULL` development backends with `NULL` as the
+fail-closed build default for fresh CMake configurations. The next
+implementation slice should reduce the remaining public carrier fields
+documented in `intermediate-visibility-audit.md` with a route-token/state
+refactor, then continue backend work for SGX-sim and real SGX/DCAP. After that,
+apply the same checklist to non-C-ABI coroutine dynamic-library transports that
+are allowed at an enclave boundary.
 
 ## Architectural Layers
 
@@ -802,10 +803,12 @@ attest.
   - `src/null_backend.cpp` -- backend that returns
     `SUPPORTS_PRODUCTION_POLICY=false` and refuses every evidence call.
 - Build option `CANOPY_ATTESTATION_BACKEND` with values
-  `FAKE` (current development default) and `NULL` (explicit no-attestation
-  policy for demos/browser clients).
-- Conditional compilation: when set to `NULL`, the rest of Canopy keeps
-  building exactly as today; no attestation paths are taken.
+  `NULL` (fail-closed build default and explicit no-attestation policy for
+  demos/browser clients) and `FAKE` (development Evidence, selected
+  explicitly).
+- Conditional compilation: when set to `NULL`, Canopy still builds without
+  hardware attestation. Production call sites must not treat this as an
+  attested route; they must explicitly opt in to any no-Evidence policy.
 - IDL additions in `interfaces/rpc/`:
   - `cmw` value type (matches the C++ definition).
   - `attestation_context` and `security_failure_context` back-channel
@@ -889,8 +892,8 @@ the existing Canopy transport, all on a plain Linux host.
     behind a feature flag in this phase; default off until phase 5
     routed attestation is in place, because their semantics interact
     with route construction.
-- `CANOPY_ATTESTATION_BACKEND=FAKE` makes the build use the fake backend
-  by default for tests.
+- `CANOPY_ATTESTATION_BACKEND=FAKE` makes the configured factory use the fake
+  backend for development tests.
 - Tests under `tests/attestation/`:
   - session establishment between two `attestation_service` instances
     in the same process;

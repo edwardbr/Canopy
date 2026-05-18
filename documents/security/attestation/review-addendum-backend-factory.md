@@ -15,6 +15,14 @@ default and several silent fail-open fallbacks. None of it is exercised by
 production code yet, which limits blast radius today but means the risky parts
 will land unreviewed when a call site adopts it.
 
+Resolution note: the backend factory hygiene items from this addendum have now
+been applied. Fresh CMake configurations default `CANOPY_ATTESTATION_BACKEND`
+to `NULL`, the fake backend no longer has an unused compile define, exhaustive
+factory switches terminate rather than falling back to fake, the unused parser
+was removed, the factory helper was renamed to
+`make_configured_attestation_service_options`, and policy now derives the
+required backend id from the constructed backend object.
+
 ---
 
 ## Security
