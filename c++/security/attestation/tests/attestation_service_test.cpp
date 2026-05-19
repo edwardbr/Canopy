@@ -17,7 +17,10 @@
 #include <security/attestation/backends/sgx_epid/sgx_epid_ias_report_verifier.h>
 #include <security/attestation/backends/simulation/simulation_backend.h>
 #include <security/attestation/protected_rpc.h>
+#include <attestation/sgx_dcap_protocol.h>
+#include <attestation/sgx_epid_protocol.h>
 #include <attestation/route_attestation_protocol.h>
+#include <rpc/internal/serialiser.h>
 #include <security/attestation/service.h>
 #include <security/attestation/zone_security_policy.h>
 
@@ -261,6 +264,19 @@ namespace
         EXPECT_FALSE(payload->get_payload().empty());
     }
 
+    template<typename T> auto decode_canonical_payload(const cmw& evidence) -> std::optional<T>
+    {
+        T decoded;
+        if (!rpc::from_canonical_crypto(rpc::byte_span(evidence.payload), decoded).empty())
+            return std::nullopt;
+        return decoded;
+    }
+
+    template<typename T> auto encode_canonical_payload(const T& value) -> std::optional<std::vector<uint8_t>>
+    {
+        return rpc::to_canonical_crypto<std::vector<uint8_t>>(value);
+    }
+
     auto make_sgx_report_data(const std::vector<uint8_t>& report_data_sha256) -> std::vector<uint8_t>
     {
         auto out = report_data_sha256;
@@ -361,6 +377,24 @@ namespace
         }
     };
 
+    class counting_sgx_epid_quote_verifier final : public sgx_epid_quote_verifier
+    {
+    public:
+        mutable int calls{0};
+
+        [[nodiscard]] auto verify_quote(
+            const sgx_epid_verifier_input&,
+            const attestation_policy&) const -> attestation_verdict override
+        {
+            ++calls;
+            attestation_verdict verdict;
+            verdict.accepted = true;
+            verdict.backend_id = sgx_epid_backend_id;
+            verdict.level = security_level::hardware_legacy;
+            return verdict;
+        }
+    };
+
     class test_sgx_dcap_quote_provider final : public sgx_dcap_quote_provider
     {
     public:
@@ -412,6 +446,24 @@ namespace
             verdict.backend_id = sgx_dcap_backend_id;
             verdict.level = security_level::hardware;
             verdict.peer_identity = input.expected_binding.subject;
+            return verdict;
+        }
+    };
+
+    class counting_sgx_dcap_quote_verifier final : public sgx_dcap_quote_verifier
+    {
+    public:
+        mutable int calls{0};
+
+        [[nodiscard]] auto verify_quote(
+            const sgx_dcap_verifier_input&,
+            const attestation_policy&) const -> attestation_verdict override
+        {
+            ++calls;
+            attestation_verdict verdict;
+            verdict.accepted = true;
+            verdict.backend_id = sgx_dcap_backend_id;
+            verdict.level = security_level::hardware;
             return verdict;
         }
     };
@@ -722,6 +774,53 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxEpidHostQuoteProviderRejectsOversizedIntermediateBuffers)
+{
+    sgx_epid_quote_request request;
+    request.binding.subject = identity{"epid-enclave", "epid-zone"};
+    request.binding.transcript_id = 137;
+    request.binding.nonce = {1, 2, 3};
+    request.report_data_sha256 = std::vector<uint8_t>(32U, 0xa5);
+
+    sgx_epid_host_quote_provider_options oversized_target_info_options;
+    oversized_target_info_options.spid = std::vector<uint8_t>(16U, 0x5a);
+    oversized_target_info_options.functions.init_quote = []() -> std::optional<sgx_epid_init_quote_result>
+    {
+        sgx_epid_init_quote_result result;
+        result.qe_target_info = std::vector<uint8_t>((4U * 1024U) + 1U, 0x01);
+        return result;
+    };
+    oversized_target_info_options.report_producer =
+        [](const sgx_epid_report_request&) -> std::optional<std::vector<uint8_t>> { return std::vector<uint8_t>{0x02}; };
+    oversized_target_info_options.functions.calculate_quote_size
+        = [](const std::vector<uint8_t>&) -> std::optional<uint32_t> { return 96U; };
+    oversized_target_info_options.functions.get_quote
+        = [](const sgx_epid_get_quote_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x03}; };
+    sgx_epid_host_quote_provider oversized_target_info_provider(std::move(oversized_target_info_options));
+    EXPECT_FALSE(oversized_target_info_provider.produce_quote(request).has_value());
+
+    sgx_epid_host_quote_provider_options oversized_report_options;
+    oversized_report_options.spid = std::vector<uint8_t>(16U, 0x5a);
+    oversized_report_options.functions.init_quote = []() -> std::optional<sgx_epid_init_quote_result>
+    {
+        sgx_epid_init_quote_result result;
+        result.qe_target_info = {0x01};
+        return result;
+    };
+    oversized_report_options.report_producer = [](const sgx_epid_report_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>((4U * 1024U) + 1U, 0x02); };
+    oversized_report_options.functions.calculate_quote_size
+        = [](const std::vector<uint8_t>&) -> std::optional<uint32_t> { return 96U; };
+    oversized_report_options.functions.get_quote
+        = [](const sgx_epid_get_quote_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x03}; };
+    sgx_epid_host_quote_provider oversized_report_provider(std::move(oversized_report_options));
+    EXPECT_FALSE(oversized_report_provider.produce_quote(request).has_value());
+}
+
+TEST(
+    AttestationService,
     SgxEpidBackendRejectsOversizedEvidenceBeforeVerifier)
 {
     auto verifier = std::make_shared<test_sgx_epid_quote_verifier>();
@@ -766,6 +865,55 @@ TEST(
     EXPECT_EQ(evidence.media_type, sgx_epid_evidence_media_type);
     EXPECT_EQ(evidence.content_format, sgx_epid_unavailable_content_format);
     EXPECT_TRUE(evidence.payload.empty());
+}
+
+TEST(
+    AttestationService,
+    SgxEpidBackendRejectsOversizedWireFieldsBeforeVerifier)
+{
+    auto provider = std::make_shared<test_sgx_epid_quote_provider>();
+    provider->include_ias_report = true;
+    auto verifier = std::make_shared<counting_sgx_epid_quote_verifier>();
+    sgx_epid_backend backend(provider, verifier);
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    expected_binding.transcript_id = 38;
+    expected_binding.nonce = {8, 6, 4, 2};
+
+    auto evidence = backend.produce_evidence(expected_binding);
+    ASSERT_EQ(evidence.content_format, sgx_epid_quote_evidence_content_format);
+
+    auto wire = decode_canonical_payload<rpc::attestation::sgx_epid_quote_evidence>(evidence);
+    ASSERT_TRUE(wire.has_value());
+    ASSERT_TRUE(wire->ias_report.has_value());
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_epid_backend_id;
+    policy.minimum_security_level = security_level::hardware_legacy;
+    policy.allow_development_evidence = false;
+
+    auto oversized_ias_report = wire.value();
+    oversized_ias_report.ias_report->body_json = std::string((64U * 1024U) + 1U, 'x');
+    auto oversized_ias_payload = encode_canonical_payload(oversized_ias_report);
+    ASSERT_TRUE(oversized_ias_payload.has_value());
+
+    auto oversized_ias_evidence = evidence;
+    oversized_ias_evidence.payload = std::move(oversized_ias_payload.value());
+    auto oversized_ias_verdict = backend.verify_evidence(oversized_ias_evidence, expected_binding, policy);
+    EXPECT_FALSE(oversized_ias_verdict.accepted);
+    EXPECT_EQ(verifier->calls, 0);
+
+    auto oversized_sig_rl = wire.value();
+    oversized_sig_rl.sig_rl = std::vector<uint8_t>((64U * 1024U) + 1U, 0x17);
+    auto oversized_sig_rl_payload = encode_canonical_payload(oversized_sig_rl);
+    ASSERT_TRUE(oversized_sig_rl_payload.has_value());
+
+    auto oversized_sig_rl_evidence = evidence;
+    oversized_sig_rl_evidence.payload = std::move(oversized_sig_rl_payload.value());
+    auto oversized_sig_rl_verdict = backend.verify_evidence(oversized_sig_rl_evidence, expected_binding, policy);
+    EXPECT_FALSE(oversized_sig_rl_verdict.accepted);
+    EXPECT_EQ(verifier->calls, 0);
 }
 
 TEST(
@@ -1046,6 +1194,49 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxDcapHostQuoteProviderRejectsOversizedIntermediateBuffers)
+{
+    sgx_dcap_quote_request request;
+    request.binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    request.binding.transcript_id = 146;
+    request.binding.nonce = {1, 2, 3};
+    request.report_data_sha256 = std::vector<uint8_t>(32U, 0xd5);
+
+    sgx_dcap_host_quote_provider_options oversized_target_info_options;
+    oversized_target_info_options.functions.get_target_info = []() -> std::optional<sgx_dcap_target_info_result>
+    {
+        sgx_dcap_target_info_result result;
+        result.qe_target_info = std::vector<uint8_t>((4U * 1024U) + 1U, 0x01);
+        return result;
+    };
+    oversized_target_info_options.report_producer =
+        [](const sgx_dcap_report_request&) -> std::optional<std::vector<uint8_t>> { return std::vector<uint8_t>{0x02}; };
+    oversized_target_info_options.functions.get_quote_size = []() -> std::optional<uint32_t> { return 96U; };
+    oversized_target_info_options.functions.get_quote
+        = [](const sgx_dcap_get_quote_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x03}; };
+    sgx_dcap_host_quote_provider oversized_target_info_provider(std::move(oversized_target_info_options));
+    EXPECT_FALSE(oversized_target_info_provider.produce_quote(request).has_value());
+
+    sgx_dcap_host_quote_provider_options oversized_report_options;
+    oversized_report_options.functions.get_target_info = []() -> std::optional<sgx_dcap_target_info_result>
+    {
+        sgx_dcap_target_info_result result;
+        result.qe_target_info = {0x01};
+        return result;
+    };
+    oversized_report_options.report_producer = [](const sgx_dcap_report_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>((4U * 1024U) + 1U, 0x02); };
+    oversized_report_options.functions.get_quote_size = []() -> std::optional<uint32_t> { return 96U; };
+    oversized_report_options.functions.get_quote
+        = [](const sgx_dcap_get_quote_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x03}; };
+    sgx_dcap_host_quote_provider oversized_report_provider(std::move(oversized_report_options));
+    EXPECT_FALSE(oversized_report_provider.produce_quote(request).has_value());
+}
+
+TEST(
+    AttestationService,
     SgxDcapHostVerifierAcceptsConfiguredQvResult)
 {
     sgx_dcap_host_quote_verifier_options options;
@@ -1173,6 +1364,56 @@ TEST(
     EXPECT_EQ(evidence.media_type, sgx_dcap_evidence_media_type);
     EXPECT_EQ(evidence.content_format, sgx_dcap_unavailable_content_format);
     EXPECT_TRUE(evidence.payload.empty());
+}
+
+TEST(
+    AttestationService,
+    SgxDcapBackendRejectsOversizedWireFieldsBeforeVerifier)
+{
+    auto provider = std::make_shared<test_sgx_dcap_quote_provider>();
+    provider->supplemental_data_size = 1U;
+    auto verifier = std::make_shared<counting_sgx_dcap_quote_verifier>();
+    sgx_dcap_backend backend(provider, verifier);
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    expected_binding.transcript_id = 47;
+    expected_binding.nonce = {8, 6, 4, 2};
+
+    auto evidence = backend.produce_evidence(expected_binding);
+    ASSERT_EQ(evidence.content_format, sgx_dcap_quote_evidence_content_format);
+
+    auto wire = decode_canonical_payload<rpc::attestation::sgx_dcap_quote_evidence>(evidence);
+    ASSERT_TRUE(wire.has_value());
+    ASSERT_TRUE(wire->verification_result.has_value());
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_dcap_backend_id;
+    policy.minimum_security_level = security_level::hardware;
+    policy.allow_development_evidence = false;
+
+    auto oversized_supplemental_data = wire.value();
+    oversized_supplemental_data.verification_result->supplemental_data = std::vector<uint8_t>((256U * 1024U) + 1U, 0x44);
+    auto oversized_supplemental_payload = encode_canonical_payload(oversized_supplemental_data);
+    ASSERT_TRUE(oversized_supplemental_payload.has_value());
+
+    auto oversized_supplemental_evidence = evidence;
+    oversized_supplemental_evidence.payload = std::move(oversized_supplemental_payload.value());
+    auto oversized_supplemental_verdict
+        = backend.verify_evidence(oversized_supplemental_evidence, expected_binding, policy);
+    EXPECT_FALSE(oversized_supplemental_verdict.accepted);
+    EXPECT_EQ(verifier->calls, 0);
+
+    auto oversized_quote = wire.value();
+    oversized_quote.quote = std::vector<uint8_t>((256U * 1024U) + 1U, 0xdc);
+    auto oversized_quote_payload = encode_canonical_payload(oversized_quote);
+    ASSERT_TRUE(oversized_quote_payload.has_value());
+
+    auto oversized_quote_evidence = evidence;
+    oversized_quote_evidence.payload = std::move(oversized_quote_payload.value());
+    auto oversized_quote_verdict = backend.verify_evidence(oversized_quote_evidence, expected_binding, policy);
+    EXPECT_FALSE(oversized_quote_verdict.accepted);
+    EXPECT_EQ(verifier->calls, 0);
 }
 
 TEST(

@@ -14,6 +14,8 @@ namespace canopy::security::attestation
     namespace
     {
         constexpr uint32_t max_dcap_quote_size = 256U * 1024U;
+        constexpr size_t max_dcap_qe_target_info_size = 4U * 1024U;
+        constexpr size_t max_dcap_report_size = 4U * 1024U;
 
         [[nodiscard]] auto valid_options(const sgx_dcap_host_quote_provider_options& options) -> bool
         {
@@ -37,7 +39,8 @@ namespace canopy::security::attestation
         }
 
         auto target_info = options_.functions.get_target_info();
-        if (!target_info.has_value() || target_info->qe_target_info.empty())
+        if (!target_info.has_value() || target_info->qe_target_info.empty()
+            || target_info->qe_target_info.size() > max_dcap_qe_target_info_size)
             return std::nullopt;
 
         // The host quote path cannot manufacture an enclave report itself. It
@@ -49,7 +52,7 @@ namespace canopy::security::attestation
         report_request.report_data_sha256 = request.report_data_sha256;
 
         auto report = options_.report_producer(report_request);
-        if (!report.has_value() || report->empty())
+        if (!report.has_value() || report->empty() || report->size() > max_dcap_report_size)
             return std::nullopt;
 
         auto quote_size = options_.functions.get_quote_size();

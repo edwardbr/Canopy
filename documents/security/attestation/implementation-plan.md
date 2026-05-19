@@ -741,14 +741,18 @@ verifier where the two-message route handshake allows it. The EPID slice now
 has the generated CMW schema, backend selection, fail-closed default behavior,
 quote-provider/verifier seams, explicit verifier-contract documentation,
 defensive EPID payload/field caps, and a backend-neutral prebuilt-backend
-factory override for hardware adapters. It still needs a transcript-bound key
-exchange before it can establish protected-RPC AEAD keys. The DCAP slice now
-has the generated CMW schema, backend selection, hardware policy defaults,
-fail-closed default behavior, quote-provider/verifier seams, and defensive
-payload/field caps. Next, on the best available SGX hardware, wire either the
-EPID provider/verifier path for legacy demos or the DCAP provider/verifier path
-for SGX-FLC machines, and bind that evidence to an agreed shared secret before
-establishing protected-RPC AEAD keys.
+factory override for hardware adapters. Host-only tests now also craft
+canonical EPID Evidence with oversized inner IAS/SigRL fields and confirm the
+backend rejects it before entering the injected verifier. It still needs a
+transcript-bound key exchange before it can establish protected-RPC AEAD keys.
+The DCAP slice now has the generated CMW schema, backend selection, hardware
+policy defaults, fail-closed default behavior, quote-provider/verifier seams,
+and defensive payload/field caps. Host-only tests now cover oversized DCAP
+inner quote/supplemental-data fields before the verifier seam, plus provider
+rejection of oversized target-info/report buffers. Next, on the best available
+SGX hardware, wire either the EPID provider/verifier path for legacy demos or
+the DCAP provider/verifier path for SGX-FLC machines, and bind that evidence to
+an agreed shared secret before establishing protected-RPC AEAD keys.
 
 ## Architectural Layers
 

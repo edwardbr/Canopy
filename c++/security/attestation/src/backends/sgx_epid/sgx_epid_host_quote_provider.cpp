@@ -17,6 +17,8 @@ namespace canopy::security::attestation
         constexpr size_t epid_spid_size = 16U;
         constexpr size_t max_epid_sig_rl_size = 64U * 1024U;
         constexpr uint32_t max_epid_quote_size = 64U * 1024U;
+        constexpr size_t max_epid_qe_target_info_size = 4U * 1024U;
+        constexpr size_t max_epid_report_size = 4U * 1024U;
 
         [[nodiscard]] auto valid_options(const sgx_epid_host_quote_provider_options& options) -> bool
         {
@@ -41,7 +43,7 @@ namespace canopy::security::attestation
         }
 
         auto init = options_.functions.init_quote();
-        if (!init.has_value() || init->qe_target_info.empty())
+        if (!init.has_value() || init->qe_target_info.empty() || init->qe_target_info.size() > max_epid_qe_target_info_size)
             return std::nullopt;
 
         sgx_epid_report_request report_request;
@@ -50,7 +52,7 @@ namespace canopy::security::attestation
         report_request.report_data_sha256 = request.report_data_sha256;
 
         auto report = options_.report_producer(report_request);
-        if (!report.has_value() || report->empty())
+        if (!report.has_value() || report->empty() || report->size() > max_epid_report_size)
             return std::nullopt;
 
         auto quote_size = options_.functions.calculate_quote_size(options_.sig_rl);
