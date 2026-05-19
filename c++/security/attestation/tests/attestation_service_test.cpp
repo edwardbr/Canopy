@@ -514,10 +514,13 @@ TEST(
     auto second = make_session_id(identity{"enclave-a", "zone-a-2"}, identity{"enclave-b", "zone-b-2"}, 99);
     auto third = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-c", "zone-c"}, 99);
     auto fourth = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"}, 100);
+    auto framed_left = make_session_id(identity{"enclave:a", "zone-a"}, identity{"enclave-b", "zone-b"}, 99);
+    auto framed_right = make_session_id(identity{"enclave", "zone-a"}, identity{"a:enclave-b", "zone-b"}, 99);
 
     EXPECT_EQ(first, second);
     EXPECT_NE(first, third);
     EXPECT_NE(first, fourth);
+    EXPECT_NE(framed_left, framed_right);
 }
 
 TEST(
@@ -568,6 +571,11 @@ TEST(
     auto add_ref_decision = evaluate_reference_route_policy(input);
     EXPECT_EQ(add_ref_decision.action, route_attestation_action::start_handshake);
 
+    input.state.status = route_attestation_status::handshaking;
+    auto concurrent_add_ref_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(concurrent_add_ref_decision.action, route_attestation_action::wait_for_handshake);
+
+    input.state.status = route_attestation_status::unknown;
     input.may_start_handshake = false;
     auto existing_control_decision = evaluate_reference_route_policy(input);
     EXPECT_EQ(existing_control_decision.action, route_attestation_action::reject);
@@ -755,46 +763,110 @@ TEST(
     auto material = service->derive_aead_key(scope);
     ASSERT_TRUE(material.has_value());
 
-    const std::array<uint8_t, canopy::security::attestation::aead_key_size> expected_key{0xb2,
-        0x37,
-        0x48,
-        0x74,
-        0x02,
-        0x03,
-        0xdb,
-        0x3b,
-        0x04,
-        0x03,
-        0x5c,
-        0xf3,
-        0x49,
-        0xd8,
-        0x4e,
+    const std::array<uint8_t, canopy::security::attestation::aead_key_size> expected_key{0x1c,
+        0x32,
+        0x9c,
+        0xd2,
         0x64,
-        0xfe,
-        0x43,
-        0xd9,
-        0x1a,
-        0x41,
-        0xc2,
-        0x72,
-        0xcb,
-        0x19,
-        0xf6,
-        0x01,
-        0xe7,
-        0x51,
-        0x6a,
         0x3f,
-        0x81};
+        0x71,
+        0xce,
+        0xde,
+        0x2d,
+        0x51,
+        0xf9,
+        0x1c,
+        0xbe,
+        0xfb,
+        0xc5,
+        0x64,
+        0x9a,
+        0xc7,
+        0x5d,
+        0xf9,
+        0x32,
+        0xe3,
+        0x13,
+        0x63,
+        0x70,
+        0x0f,
+        0xc6,
+        0x4f,
+        0x8d,
+        0xb1,
+        0xe1};
     const std::array<uint8_t, canopy::security::attestation::aead_nonce_prefix_size> expected_nonce_prefix{
-        0x47, 0x52, 0x4b, 0xd5};
+        0xe3, 0x48, 0x7d, 0x60};
     const std::array<uint8_t, canopy::security::attestation::aead_nonce_size> expected_nonce{
-        0x47, 0x52, 0x4b, 0xd5, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07};
+        0xe3, 0x48, 0x7d, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07};
 
     EXPECT_EQ(material->key, expected_key);
     EXPECT_EQ(material->nonce_prefix, expected_nonce_prefix);
     EXPECT_EQ(service->make_aead_nonce(*material, 7), expected_nonce);
+}
+
+TEST(
+    AttestationService,
+    SessionEstablishmentDoesNotResetCountersForSameEpoch)
+{
+    auto service = make_service("enclave-a", "zone-a");
+    const std::vector<uint8_t> shared_secret{1, 2, 3, 4};
+    const auto context = establish(service, identity{"enclave-b", "zone-b"}, 99, shared_secret);
+    ASSERT_TRUE(context.established);
+
+    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
+    auto first_counter = service->next_send_counter(scope);
+    ASSERT_TRUE(first_counter.accepted);
+    EXPECT_EQ(first_counter.counter, 1U);
+
+    auto repeated_context = establish(service, identity{"enclave-b", "zone-b"}, 99, shared_secret);
+    EXPECT_TRUE(repeated_context.established);
+
+    auto second_counter = service->next_send_counter(scope);
+    ASSERT_TRUE(second_counter.accepted);
+    EXPECT_EQ(second_counter.counter, 2U);
+
+    auto conflicting_context = establish(service, identity{"enclave-b", "zone-b"}, 99, {9, 9, 9, 9});
+    EXPECT_FALSE(conflicting_context.established);
+
+    establish_session_params rekey_params;
+    rekey_params.peer_identity = identity{"enclave-b", "zone-b"};
+    rekey_params.transcript_id = 99;
+    rekey_params.local_evidence_sent = true;
+    rekey_params.peer_attested = true;
+    rekey_params.verified_backend_id = fake_backend_id;
+    rekey_params.verified_level = security_level::development;
+    rekey_params.session_epoch = 2;
+    rekey_params.shared_secret = shared_secret;
+
+    auto rekeyed_context = service->establish_session(rekey_params);
+    ASSERT_TRUE(rekeyed_context.established);
+    auto rekeyed_scope = make_scope(rekeyed_context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
+    auto rekeyed_counter = service->next_send_counter(rekeyed_scope);
+    ASSERT_TRUE(rekeyed_counter.accepted);
+    EXPECT_EQ(rekeyed_counter.counter, 1U);
+}
+
+TEST(
+    AttestationService,
+    HardwareGradeSessionRequiresExplicitSharedSecret)
+{
+    auto service = make_service("enclave-a", "zone-a");
+
+    establish_session_params params;
+    params.peer_identity = identity{"enclave-b", "zone-b"};
+    params.transcript_id = 99;
+    params.local_evidence_sent = true;
+    params.peer_attested = true;
+    params.verified_backend_id = sgx_epid_backend_id;
+    params.verified_level = security_level::hardware_legacy;
+
+    auto no_secret_context = service->establish_session(params);
+    EXPECT_FALSE(no_secret_context.established);
+
+    params.shared_secret = {1, 2, 3, 4};
+    auto explicit_secret_context = service->establish_session(params);
+    EXPECT_TRUE(explicit_secret_context.established);
 }
 
 TEST(

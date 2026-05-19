@@ -151,6 +151,13 @@ namespace canopy::security::attestation
 
     struct aead_key_material
     {
+        aead_key_material() = default;
+        aead_key_material(const aead_key_material&) = default;
+        auto operator=(const aead_key_material&) -> aead_key_material& = default;
+        aead_key_material(aead_key_material&&) noexcept = default;
+        auto operator=(aead_key_material&&) noexcept -> aead_key_material& = default;
+        ~aead_key_material();
+
         std::array<uint8_t, aead_key_size> key{};
         std::array<uint8_t, aead_nonce_prefix_size> nonce_prefix{};
         protected_key_scope scope;

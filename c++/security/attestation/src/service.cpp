@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include <openssl/crypto.h>
 #include <openssl/rand.h>
 
 namespace canopy::security::attestation
@@ -46,6 +47,31 @@ namespace canopy::security::attestation
         auto identity_has_enclave(const identity& value) -> bool
         {
             return !value.enclave_id.empty();
+        }
+
+        void secure_clear(std::vector<uint8_t>& bytes) noexcept
+        {
+            if (!bytes.empty())
+                OPENSSL_cleanse(bytes.data(), bytes.size());
+            bytes.clear();
+        }
+
+        auto may_use_development_secret(security_level level) noexcept -> bool
+        {
+            return level == security_level::development || level == security_level::simulation;
+        }
+
+        auto constant_time_equal(
+            const std::vector<uint8_t>& left,
+            const std::vector<uint8_t>& right) noexcept -> bool
+        {
+            if (left.size() != right.size() || left.empty())
+                return false;
+
+            uint8_t difference = 0;
+            for (size_t index = 0; index < left.size(); ++index)
+                difference = static_cast<uint8_t>(difference | (left[index] ^ right[index]));
+            return difference == 0;
         }
 
         auto scope_matches_session(
@@ -99,6 +125,11 @@ namespace canopy::security::attestation
     attestation_service::attestation_service(attestation_service_options options)
         : options_(std::move(options))
     {
+    }
+
+    attestation_service::session_state::~session_state()
+    {
+        secure_clear(root_secret);
     }
 
     auto attestation_service::local_identity() const -> const identity&
@@ -295,25 +326,48 @@ namespace canopy::security::attestation
             context.level = backend_level();
         }
 
-        const auto development_secret = params.shared_secret.empty()
-                                            ? detail::derive_development_shared_secret(context)
-                                            : std::optional<std::vector<uint8_t>>{params.shared_secret};
-        if (!development_secret.has_value())
+        auto session_secret = params.shared_secret.empty() && may_use_development_secret(context.level)
+                                  ? detail::derive_development_shared_secret(context)
+                                  : std::optional<std::vector<uint8_t>>{params.shared_secret};
+        if (!session_secret.has_value() || session_secret->empty())
             return context;
 
-        auto root_secret = detail::derive_session_root_secret(context, development_secret.value());
+        auto root_secret = detail::derive_session_root_secret(context, session_secret.value());
+        secure_clear(session_secret.value());
         if (!root_secret.has_value())
             return context;
 
         context.established = true;
 
-        session_state state;
-        state.context = context;
-        state.root_secret = std::move(root_secret.value());
-
         {
             std::scoped_lock lock(sessions_mutex_);
-            sessions_[context.session_id] = std::move(state);
+            auto existing = sessions_.find(context.session_id);
+            if (existing != sessions_.end())
+            {
+                if (context.session_epoch < existing->second.context.session_epoch)
+                {
+                    context.established = false;
+                    secure_clear(root_secret.value());
+                    return context;
+                }
+                if (context.session_epoch == existing->second.context.session_epoch)
+                {
+                    if (!constant_time_equal(root_secret.value(), existing->second.root_secret))
+                        context.established = false;
+                    secure_clear(root_secret.value());
+                    return context;
+                }
+
+                // A higher epoch means a genuine re-key. Erase first so the old
+                // session_state destructor scrubs root_secret before counters are
+                // reset for the new key epoch.
+                sessions_.erase(existing);
+            }
+
+            session_state state;
+            state.context = context;
+            state.root_secret = std::move(root_secret.value());
+            sessions_.emplace(context.session_id, std::move(state));
         }
         return context;
     }
@@ -335,16 +389,27 @@ namespace canopy::security::attestation
 
     auto attestation_service::derive_aead_key(const protected_key_scope& scope) const -> std::optional<aead_key_material>
     {
-        std::scoped_lock lock(sessions_mutex_);
-        auto it = sessions_.find(scope.session_id);
-        if (it == sessions_.end())
-            return std::nullopt;
-        if (!scope_matches_session(scope, it->second.context))
-            return std::nullopt;
+        std::vector<uint8_t> root_secret;
+        security_context context;
+        {
+            std::scoped_lock lock(sessions_mutex_);
+            auto it = sessions_.find(scope.session_id);
+            if (it == sessions_.end())
+                return std::nullopt;
+            if (!scope_matches_session(scope, it->second.context))
+                return std::nullopt;
+
+            // Copy the stable session inputs while holding the map lock, then
+            // run HKDF after releasing it. Counter allocation remains locked
+            // separately, but expensive key derivation no longer serialises all
+            // sessions behind one process-wide mutex.
+            root_secret = it->second.root_secret;
+            context = it->second.context;
+        }
 
         const auto output_size = aead_key_size + aead_nonce_prefix_size;
-        auto output
-            = detail::derive_protected_rpc_key_material(it->second.root_secret, scope, it->second.context, output_size);
+        auto output = detail::derive_protected_rpc_key_material(root_secret, scope, context, output_size);
+        secure_clear(root_secret);
         if (!output.has_value() || output->size() != output_size)
             return std::nullopt;
 
@@ -352,8 +417,9 @@ namespace canopy::security::attestation
         std::copy(output->begin(), output->begin() + static_cast<std::ptrdiff_t>(aead_key_size), material.key.begin());
         std::copy(
             output->begin() + static_cast<std::ptrdiff_t>(aead_key_size), output->end(), material.nonce_prefix.begin());
+        secure_clear(output.value());
         material.scope = scope;
-        material.session_epoch = it->second.context.session_epoch;
+        material.session_epoch = context.session_epoch;
         return material;
     }
 
@@ -398,6 +464,11 @@ namespace canopy::security::attestation
         if (counter <= state.highest_received)
             return rejected_counter("monotonic receive counter replayed or out of order");
 
+        // This is a deliberately strict replay model: messages for one
+        // protected key scope must arrive in counter order. Ordered stream
+        // transports satisfy that naturally. If a future transport can deliver
+        // one scope out of order, replace this with a bounded replay window
+        // before enabling pipelined protected traffic on that transport.
         state.highest_received = counter;
         return accepted_counter("monotonic receive counter accepted", counter);
     }

@@ -14,10 +14,10 @@
                 "CANOPY_BUILD_COROUTINE": "OFF",
                 "CANOPY_BUILD_DEMOS": "ON",
                 "CANOPY_BUILD_ENCLAVE": "OFF",
+                "CANOPY_BUILD_PROTOCOL_BUFFERS": "ON",
                 "CANOPY_BUILD_TEST": "ON",
                 "CANOPY_DEBUG_ADDRESS": "OFF",
                 "CANOPY_DEBUG_ALL": "OFF",
-                "CANOPY_VERBOSE_GENERATOR": "OFF",
                 "CANOPY_DEBUG_LEAK": "OFF",
                 "CANOPY_DEBUG_THREAD": "OFF",
                 "CANOPY_DEBUG_UNDEFINED": "OFF",
@@ -26,12 +26,14 @@
                 "CANOPY_ENABLE_COVERAGE": "OFF",
                 "CANOPY_HANG_ON_FAILED_ASSERT": "OFF",
                 "CANOPY_LOGGING_LEVEL": "2",
+                "CANOPY_PRODUCTION_RELEASE": "OFF",
                 "CANOPY_STANDALONE": "ON",
                 "CANOPY_USE_CONSOLE_TELEMETRY": "OFF",
                 "CANOPY_USE_LOGGING": "ON",
                 "CANOPY_USE_TELEMETRY_RAII_LOGGING": "OFF",
                 "CANOPY_USE_TELEMETRY": "OFF",
                 "CANOPY_USE_THREAD_LOCAL_LOGGING": "OFF",
+                "CANOPY_VERBOSE_GENERATOR": "OFF",
                 "CMAKE_C_COMPILER": "clang",
                 "CMAKE_CXX_COMPILER": "clang++",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -42,7 +44,6 @@
                 "LIBCORO_EXTERNAL_DEPENDENCIES": "OFF",
                 "LIBCORO_FEATURE_NETWORKING": "OFF",
                 "LIBCORO_FEATURE_TLS": "OFF",
-                "CANOPY_BUILD_PROTOCOL_BUFFERS": "ON",
                 "SGX_DIR:FILEPATH": "/home/edward/sgx/sgxsdk",
                 "SGX_HW": "OFF",
                 "SGX_MODE": "debug"
@@ -189,6 +190,7 @@
             "binaryDir": "build_release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "CANOPY_PRODUCTION_RELEASE": "ON",
                 "CANOPY_LOGGING_INFO": "2"
             }
         },
@@ -208,6 +210,7 @@
             "cacheVariables": {
                 "CANOPY_BUILD_ENCLAVE": "ON",
                 "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
+                "CANOPY_PRODUCTION_RELEASE": "OFF",
                 "SGX_HW": "OFF",
                 "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
                 "CMAKE_BUILD_TYPE": "Release",
@@ -343,8 +346,23 @@
             "cacheVariables": {
                 "CANOPY_BUILD_ENCLAVE": "ON",
                 "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
+                "CANOPY_PRODUCTION_RELEASE": "ON",
                 "SGX_HW": "ON",
                 "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
+                "SGX_MODE": "release"
+            }
+        },
+        {
+            "name": "Release_Coroutine_SGX",
+            "inherits": "Release_Coroutines",
+            "binaryDir": "build_release_coroutine_sgx",
+            "cacheVariables": {
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
+                "CANOPY_PRODUCTION_RELEASE": "ON",
+                "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
+                "CANOPY_BUILD_WEBSOCKET": "ON",
+                "SGX_HW": "ON",
                 "SGX_MODE": "release"
             }
         },
@@ -357,6 +375,7 @@
                 "CANOPY_BUILD_COROUTINE": "ON",
                 "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
                 "CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES": "OFF",
+                "CANOPY_PRODUCTION_RELEASE": "OFF",
                 "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
                 "CANOPY_BUILD_DEMOS": "ON",
                 "CANOPY_BUILD_WEBSOCKET": "ON",
@@ -371,6 +390,7 @@
             "cacheVariables": {
                 "CANOPY_BUILD_ENCLAVE": "ON",
                 "CANOPY_SGX_BACKEND": "Fake",
+                "CANOPY_PRODUCTION_RELEASE": "OFF",
                 "CANOPY_BUILD_PROTOCOL_BUFFERS": "OFF",
                 "CANOPY_BUILD_WEBSOCKET": "ON",
                 "SGX_HW": "OFF",

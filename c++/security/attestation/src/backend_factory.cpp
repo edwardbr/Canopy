@@ -14,6 +14,15 @@
 #include <memory>
 #include <utility>
 
+#if defined(CANOPY_PRODUCTION_RELEASE) && defined(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
+#  error "Production releases must not build fake or SGX-simulation attestation backend implementations"
+#endif
+
+#if !defined(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)                                                           \
+    && (defined(CANOPY_ATTESTATION_BACKEND_FAKE) || defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM))
+#  error "Fake or SGX-simulation attestation backend selected while development backends are disabled"
+#endif
+
 namespace canopy::security::attestation
 {
     auto attestation_backend_kind_name(configured_backend_kind kind) noexcept -> const char*
@@ -36,6 +45,8 @@ namespace canopy::security::attestation
     {
 #ifdef CANOPY_ATTESTATION_BACKEND_NULL
         return configured_backend_kind::null_backend;
+#elif defined(CANOPY_ATTESTATION_BACKEND_FAKE)
+        return configured_backend_kind::fake_backend;
 #elif defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)
         return configured_backend_kind::sgx_sim_backend;
 #elif defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID)
@@ -57,9 +68,17 @@ namespace canopy::security::attestation
         case configured_backend_kind::null_backend:
             return std::make_shared<null_backend>();
         case configured_backend_kind::fake_backend:
+#ifdef CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS
             return std::make_shared<fake_backend>();
+#else
+            std::terminate();
+#endif
         case configured_backend_kind::sgx_sim_backend:
+#ifdef CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS
             return std::make_shared<simulation_backend>();
+#else
+            std::terminate();
+#endif
         case configured_backend_kind::sgx_epid_backend:
             return std::make_shared<sgx_epid_backend>();
         }

@@ -9,7 +9,16 @@ All rights reserved.
 
 Canopy keeps the existing `i_marshaller` polymorphic shape while making RPC
 payloads confidential and tamper-evident end-to-end between the caller enclave
-and destination enclave.
+and destination enclave, but only after the route has an established
+end-to-end shared secret. Evidence verification proves identity and policy
+status; it is not by itself encryption key material.
+
+Current fake and SGX-simulation backends are development mechanisms. They
+exercise the envelope, HKDF, counters, and routing checks, but they must not be
+described as providing production confidentiality or peer authenticity against
+an on-path attacker. Hardware-grade backends such as SGX EPID/DCAP must supply
+real shared key material from a key exchange bound to the attestation transcript
+before protected RPC can claim confidentiality.
 
 The transport still carries familiar fields such as `caller_zone_id`,
 `remote_object_id`, `interface_id`, `method_id`, `in_data`, `request_id`, and
@@ -39,6 +48,12 @@ The protected envelope is responsible for:
   otherwise authenticated end-to-end session;
 - replay protection scoped to the end-to-end zone pair rather than the
   adjacent transport.
+
+The current replay check is strictly monotonic per protected key scope. That
+means messages for one `(session, caller zone, destination zone, direction)`
+must be processed in counter order. Ordered stream transports satisfy this
+naturally. A transport that can deliver one scope out of order needs a bounded
+replay window before enabling pipelined protected traffic on that scope.
 
 For single-hop direct attestation, TLS-layer protections may be sufficient for
 the adjacent link, depending on policy. The protected envelope still matters

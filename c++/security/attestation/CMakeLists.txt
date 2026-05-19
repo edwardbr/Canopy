@@ -11,14 +11,17 @@ set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/aead.cpp
     src/backend_factory.cpp
     src/crypto_hash.cpp
-    src/fake_backend.cpp
     src/kdf.cpp
     src/null_backend.cpp
     src/protected_rpc.cpp
     src/sgx_epid_backend.cpp
+    src/types.cpp
     src/zone_security_policy.cpp
-    src/simulation_backend.cpp
     src/service.cpp)
+
+if(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_SOURCES src/fake_backend.cpp src/simulation_backend.cpp)
+endif()
 
 add_library(security_attestation STATIC ${CANOPY_SECURITY_ATTESTATION_SOURCES})
 add_library(canopy::security_attestation ALIAS security_attestation)
@@ -99,7 +102,7 @@ if(CANOPY_BUILD_ENCLAVE)
   endif()
 endif()
 
-if(CANOPY_BUILD_TEST)
+if(CANOPY_BUILD_TEST AND CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
   add_executable(attestation_service_test tests/attestation_service_test.cpp)
   target_include_directories(attestation_service_test PRIVATE ${CANOPY_INCLUDES})
   target_compile_definitions(attestation_service_test PRIVATE ${CANOPY_DEFINES})
@@ -110,6 +113,8 @@ if(CANOPY_BUILD_TEST)
                                      rpc_log)
   add_test(NAME attestation_service_test COMMAND attestation_service_test)
   message(STATUS "attestation_service_test configured")
+elseif(CANOPY_BUILD_TEST)
+  message(STATUS "attestation_service_test not configured: development attestation backends are disabled")
 endif()
 
 message(STATUS "security_attestation configured")

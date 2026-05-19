@@ -30,8 +30,9 @@ namespace canopy::security::attestation
 
         constexpr size_t max_fake_evidence_field_size = 1024 * 1024;
         constexpr std::string_view fake_session_id_prefix = "fake-enclave-session:";
-        constexpr size_t fake_session_id_separator_count = 2;
+        constexpr std::string_view session_id_format_version = "v2";
         constexpr size_t uint64_decimal_max_digits = std::numeric_limits<uint64_t>::digits10 + 1;
+        constexpr size_t size_t_decimal_max_digits = std::numeric_limits<size_t>::digits10 + 1;
 
         auto can_append(
             const std::vector<uint8_t>& out,
@@ -313,9 +314,21 @@ namespace canopy::security::attestation
 
         std::string out;
         out.reserve(
-            fake_session_id_prefix.size() + left.size() + right.size() + fake_session_id_separator_count
-            + uint64_decimal_max_digits + 1);
-        fmt::format_to(std::back_inserter(out), "{}{}:{}:{}", fake_session_id_prefix, left, right, transcript_id);
+            fake_session_id_prefix.size() + session_id_format_version.size() + left.size() + right.size()
+            + (size_t_decimal_max_digits * 2) + uint64_decimal_max_digits + 5);
+        // The session id is a readable map key, but it is also fed back into
+        // KDF context. Length framing prevents attacker-controlled identity
+        // strings containing ':' from aliasing a different participant pair.
+        fmt::format_to(
+            std::back_inserter(out),
+            "{}{}:{}:{}:{}:{}:{}",
+            fake_session_id_prefix,
+            session_id_format_version,
+            left.size(),
+            left,
+            right.size(),
+            right,
+            transcript_id);
         return out;
     }
 

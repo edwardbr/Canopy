@@ -54,6 +54,23 @@ Fake and SGX simulation backends are useful on machines without SGX hardware,
 including non-Intel development systems. They must never silently satisfy a
 production hardware-attestation policy.
 
+The build system enforces that separation. `CANOPY_PRODUCTION_RELEASE` defaults
+to `OFF`, and formal release presets opt in explicitly. When it is `ON`, it
+rejects `CANOPY_ATTESTATION_BACKEND` values `FAKE` and `SGX_SIM`,
+`CANOPY_SGX_BACKEND=Fake`, and SGX enclave simulation (`SGX_HW=OFF`). It also
+forces `CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS=OFF`, so the fake and
+SGX-sim attestation backend implementations are not compiled into the
+production `security_attestation` library. Release-like simulation presets,
+such as `Release_SGX_Sim`, are build tests rather than formal releases and must
+set `CANOPY_PRODUCTION_RELEASE=OFF` explicitly.
+
+Evidence and encrypted session keys are separate concerns. A backend can prove
+or simulate identity without creating confidential transport key material. Fake
+and SGX-simulation sessions may use development key derivation for tests, but
+hardware-grade verdicts such as SGX EPID or DCAP must be paired with an
+explicit shared secret from a key exchange bound to the same transcript before
+protected RPC is established.
+
 ## Null Backend
 
 The null backend is the explicit no-attestation option. It exists so demos,
@@ -249,6 +266,12 @@ complete IAS implementation. The next runtime slice on SGX1 hardware should
 wire a provider that obtains an EPID quote from the SGX PSW and a verifier that
 checks the IAS report signature, quote status, revocation/collateral state, and
 that the quote report_data contains the Canopy transcript hash.
+
+EPID quote verification does not create the protected-RPC session key. The
+route handshake must also carry, or be bound to, a real key exchange whose
+shared secret is passed into `attestation_service::establish_session`. Until
+that exists, an EPID verdict can prove the peer identity for policy decisions
+but must not be used to derive AEAD keys from public transcript data.
 
 EPID has different operational requirements from DCAP, such as dependence on an
 IAS-style verifier flow and different collateral or privacy properties. Those

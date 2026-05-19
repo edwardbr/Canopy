@@ -66,6 +66,8 @@ namespace rpc
         Params& params,
         const char* operation)
     {
+        (void)operation;
+
         if (get_payload_encoding(params) != encoding::not_set)
             return true;
         if (!payload_encoding_required(params))

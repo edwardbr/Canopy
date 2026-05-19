@@ -108,6 +108,13 @@ namespace canopy::security::attestation
 
         struct session_state
         {
+            session_state() = default;
+            session_state(const session_state&) = delete;
+            auto operator=(const session_state&) -> session_state& = delete;
+            session_state(session_state&&) noexcept = default;
+            auto operator=(session_state&&) noexcept -> session_state& = default;
+            ~session_state();
+
             security_context context;
             std::vector<uint8_t> root_secret;
             std::unordered_map<std::string, key_counter_state> counters;

@@ -152,10 +152,14 @@ policy-hardening work described in the remaining phases.
   encoding instead of anonymous serializer bytes. This encoding uses
   length-prefixed fields, big-endian integers, explicit labels, and the fixed
   canonical encoding domain `Canopy-Attestation-v1`.
-- The current fake path uses a deterministic development shared secret when a
-  real key-exchange secret is not supplied. This is only for no-SGX developer
-  tests; the `attestation_service` API already accepts explicit shared secret
-  bytes for the real exchange.
+- The current fake and SGX-simulation paths may use a deterministic
+  development shared secret when a real key-exchange secret is not supplied.
+  This is only for no-SGX developer tests and does not provide production
+  confidentiality against an on-path attacker.
+- Hardware-grade verdicts are not allowed to fall back to that development
+  secret. `attestation_service::establish_session` requires explicit shared
+  secret bytes for `hardware_legacy` and `hardware` sessions so SGX EPID/DCAP
+  cannot accidentally derive AEAD keys only from public transcript data.
 - The current development handshake uses four in-tunnel frame kinds:
   - `client_hello_attest`
   - `server_hello_attest`
@@ -710,8 +714,10 @@ policy-hardening work described in the remaining phases.
   toward an `enclave_streaming` style name with SGX-specific adapters beneath
   it.
 - Non-zero `service_request_id` semantics.
-- TLS exporter binding. The current development binding is transcript id,
-  identity, role, and nonce based.
+- TLS exporter or ephemeral key-exchange binding. The current development
+  binding is transcript id, identity, role, and nonce based; hardware-grade
+  sessions now require explicit shared key material before protected RPC can be
+  established.
 - `sgx_ttls`, DCAP, production SGX local attestation, EPID PSW/AESM quote
   provider, IAS verifier, TDX, SEV-SNP, or TrustZone/PSA backends.
 
@@ -729,10 +735,12 @@ authenticating them. The SGX-sim backend slice now has verifier-challenge CMW
 blobs carrying peer `sgx_target_info_t`, so reports can be targeted to the
 verifier where the two-message route handshake allows it. The EPID slice now
 has the generated CMW schema, backend selection, fail-closed default behavior,
-and quote-provider/verifier seams. Next, on SGX1 hardware, wire the EPID quote
-provider to the Intel PSW/AESM APIs and decide whether IAS verification lives
-inside the process, behind a local verifier service, or as an explicit
-passport-style Attestation Result.
+and quote-provider/verifier seams. It still needs a transcript-bound key
+exchange before it can establish protected-RPC AEAD keys. Next, on SGX1
+hardware, wire the EPID quote provider to the Intel PSW/AESM APIs, decide
+whether IAS verification lives inside the process, behind a local verifier
+service, or as an explicit passport-style Attestation Result, and bind that
+evidence to an agreed shared secret.
 
 ## Architectural Layers
 
@@ -793,6 +801,16 @@ flowchart TD
   - *Does not*: own sessions, derive session keys, manage counters,
     decide local-versus-remote, touch TLS, touch RPC, log to
     application telemetry.
+
+Production release builds add a second guard at configuration time.
+`CANOPY_PRODUCTION_RELEASE` defaults to `OFF`, and formal release presets opt
+in explicitly. When enabled, it rejects fake attestation, SGX-simulation
+attestation, fake SGX, and SGX simulation hardware mode. It also disables
+`CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS`, which removes the fake and
+SGX-simulation attestation backend implementation files from the production
+`security_attestation` target. Release-like simulation presets are still
+allowed as build tests only by setting `CANOPY_PRODUCTION_RELEASE=OFF`
+explicitly.
 
 - **L4 Attestation Service.**
   - *Does*: one per enclave. Establish and cache enclave-pair
