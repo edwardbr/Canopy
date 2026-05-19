@@ -1457,6 +1457,28 @@ audit, and operational tooling.
   `RESOURCE_EXHAUSTED()` or another public control error without storing new
   state once policy limits are reached. Established attested contexts should
   not be evicted by unauthenticated traffic.
+- Protected-message memory limits: review the current protected field,
+  encrypted payload, and back-channel entry caps against enclave EPC pressure.
+  Keep generous host/test limits if useful, but allow enclave production
+  policy to set smaller per-message and per-route allocation ceilings before
+  authentication succeeds.
+- Replay-window policy: the current receive-counter check is strictly
+  monotonic per protected key scope and therefore assumes in-order delivery for
+  each `(session, caller, destination, direction)`. Ordered stream transports
+  satisfy that rule. If any coroutine, io_uring, passthrough, or future
+  transport can deliver one protected scope out of order, add a bounded replay
+  bitmap/window and tests before enabling pipelined protected traffic on that
+  path.
+- Public control-status downgrade review: public route-control failures are
+  intentionally visible to intermediates and may be unauthenticated in some
+  paths. Audit every public control status to ensure it cannot carry
+  application-domain result codes, decrypted payload information, or sensitive
+  policy details; document remaining denial-of-service or forced-retry
+  behavior as an accepted liveness risk.
+- Attestation-service lock-order note: document mutex ownership and lock
+  ordering for session state, route state, and policy state. Future helpers
+  must not call public methods that reacquire the same non-recursive mutex, and
+  no mutex may be held across `CO_AWAIT`.
 - TCB collateral freshness: a scheduled task inside the enclave that
   asks the host to refresh PCCS collateral on a known cadence; refusal
   to accept stale collateral past the policy window.
@@ -1472,7 +1494,9 @@ audit, and operational tooling.
   (see [Telemetry And Logging Security](../telemetry-and-logging.md)).
 - Negative-test suite: deliberately corrupted quotes, expired
   collateral, downgrade attempts, fake-evidence-in-production
-  rejection, replay across epoch boundaries.
+  rejection, replay across epoch boundaries, out-of-order protected messages
+  under any transport that claims pipelining support, and public-control
+  status injection attempts.
 
 ### Verification
 
@@ -1499,7 +1523,11 @@ Tracked here so the design is not forgotten.
   is the platform adapter: obtain EPID quotes from the SGX PSW/AESM stack on
   SGX1 hardware, call or consume IAS verification, validate report_data against
   the Canopy transcript hash, and map IAS quote status/advisories into
-  destination-zone policy.
+  destination-zone policy. Once the real EPID provider/verifier path exists,
+  repeat the crypto and concurrency review currently applied to the fake and
+  simulation paths, with particular attention to transcript-bound key exchange,
+  session epoch handling, and avoiding any fallback to development-derived
+  secrets.
 - **IETF wire format migration.** Replace the `sgx_ttls`
   certificate-extension envelope with the
   `evidence_proposal`/`evidence_request`/`attestation_evidence` TLS
@@ -1578,6 +1606,15 @@ phase.
 - A "real-SGX" CI job exercises phases 3-7 on a SGX-FLC machine with
   PCCS available. Initially this job can be manual; once stable it
   should gate merges that touch the attestation code.
+- A release-guard CI job configures at least one production preset with
+  `CANOPY_PRODUCTION_RELEASE=ON` and verifies that fake SGX, SGX simulation,
+  fake attestation, and SGX-sim attestation are rejected. Separate simulation
+  release-like build tests must set `CANOPY_PRODUCTION_RELEASE=OFF`
+  explicitly.
+- Add a security-audit CI/test backlog for areas not covered by the first deep
+  review: io_uring scheduler behavior, SGX coroutine host transport, IDL and
+  protobuf/nanopb generator security changes, and documentation consistency
+  against live CMake/code.
 
 ### Compatibility With Existing Code
 
