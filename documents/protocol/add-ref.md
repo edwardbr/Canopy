@@ -792,7 +792,11 @@ The placeholder should be request-scoped. It should not be transport self-owners
 1. A nonzero `request_id` is valid only while the caller service has a pending out-param request entry.
 2. An add_ref with an unknown nonzero `request_id` is a protocol violation and should return `FRAUDULANT_REQUEST()`.
 3. If the callee fails to add_ref a non-null out param, it must not return a descriptor as if the out param were valid.
-4. If a split add_ref partially succeeds, the protocol needs compensation or teardown of the partial ownership. This is a current weak area because release traffic does not carry the same route intent as add_ref.
+4. If a split add_ref partially succeeds after the destination owner leg has
+   accepted the reference, the fork point must send a compensating `release` to
+   the destination owner leg before returning failure. The compensating release
+   uses the same `remote_object_id` and `caller_zone_id`; optimistic add_refs
+   must compensate with `release_options::optimistic`.
 5. If response binding fails after owner-side add_ref succeeded, ordinary cleanup of the request-scoped placeholder and interface pointers must release the temporary hold.
 6. Null out params do not send add_ref and do not require a pending placeholder.
 
@@ -803,7 +807,10 @@ These are the areas that remain fragile or under-specified:
 1. `release_params` does not carry route intent matching `add_ref_options`. That makes it hard to prove that cleanup removes exactly the ownership fact created by a route-building add_ref.
 2. `build_destination_route` has more than one meaning: direct destination-facing ownership and the destination leg of a split handoff. The wire data does not fully distinguish them.
 3. `build_caller_route` has no equally explicit release-side representation, even though it behaves like caller-facing reverse-route ownership.
-4. A combined route-building add_ref can split across multiple transports. If one leg succeeds and another fails, partial cleanup is not fully specified.
+4. A combined route-building add_ref can split across multiple transports. The
+   pass-through implementation compensates a committed destination leg if the
+   caller leg fails, but release traffic still does not carry add_ref route
+   intent, so caller-leg-only cleanup remains a protocol area to review.
 5. The implementation must preserve add_ref-before-release ordering across coroutine scheduling, transport queues, enclave calls, and DLL/SPSC boundaries. Fire-and-forget release in this path would be unsafe.
 6. Multiple out params may refer to the same remote object, possibly through different interface types or pointer kinds. The request-scoped placeholder must deduplicate identity without losing the correct shared or optimistic count semantics.
 7. A callee can return an object that is already being released locally. The owner-side add_ref must either complete first or return an error; it must not race with stub deletion and produce a live-looking descriptor for a gone object.
@@ -817,5 +824,8 @@ These are the areas that remain fragile or under-specified:
 - A local control block with a positive count avoids repeated remote add_refs for copies.
 - Combined route-building add_ref is the complex case; it is not just an owner-side count increment.
 - In the current pass-through implementation, when both route flags are set, the destination-side add_ref is forwarded before the caller-side add_ref.
+- If the caller-side leg fails after that destination-side add_ref succeeds, the
+  pass-through sends a matching release to the destination side and rolls back
+  its local route reservation before reporting the original add_ref failure.
 - `requesting_zone_id` is required for Y-shaped or otherwise partially advertised topologies.
 - Transport-specific implementations should only explain how they carry `add_ref` messages. The route and count semantics belong to this common protocol.

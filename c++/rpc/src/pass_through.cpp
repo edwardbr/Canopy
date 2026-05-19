@@ -6,6 +6,25 @@
 
 namespace rpc
 {
+    namespace
+    {
+        release_options release_options_from_add_ref(add_ref_options options)
+        {
+            return !!(options & add_ref_options::optimistic) ? release_options::optimistic : release_options::normal;
+        }
+
+        release_params make_compensating_release_params(const add_ref_params& params)
+        {
+            release_params release;
+            release.protocol_version = params.protocol_version;
+            release.remote_object_id = params.remote_object_id;
+            release.caller_zone_id = params.caller_zone_id;
+            release.options = release_options_from_add_ref(params.build_out_param_channel);
+            release.in_back_channel = params.in_back_channel;
+            release.payload = {};
+            return release;
+        }
+    }
 
     pass_through::pass_through(
         std::shared_ptr<transport> forward,
@@ -347,6 +366,7 @@ namespace rpc
 
         // We build the result by merging out_back_channels from both calls
         standard_result final_result{error::OK(), {}};
+        bool destination_leg_committed = false;
 
         if (build_dest_channel)
         {
@@ -369,6 +389,7 @@ namespace rpc
                 trigger_self_destruction();
                 CO_RETURN dest_result;
             }
+            destination_leg_committed = true;
             final_result.out_back_channel = std::move(dest_result.out_back_channel);
         }
 
@@ -388,6 +409,24 @@ namespace rpc
 
             if (caller_result.error_code != error::OK())
             {
+                if (destination_leg_committed)
+                {
+                    // The object-owner side has already accepted the reference. Undo it
+                    // before returning failure so an add_ref that forks into two legs
+                    // behaves atomically from the caller's point of view.
+                    auto release_result
+                        = CO_AWAIT destination_transport->release(make_compensating_release_params(params));
+                    if (release_result.error_code != error::OK())
+                    {
+                        RPC_ERROR(
+                            "pass_through::add_ref failed to compensate committed destination leg; "
+                            "add_ref_error={} release_error={} remote_object={} caller={}",
+                            caller_result.error_code,
+                            release_result.error_code,
+                            std::to_string(remote_object_id),
+                            caller_zone_id.get_subnet());
+                    }
+                }
                 rollback_passthrough_ref();
                 end_call();
                 trigger_self_destruction();

@@ -87,7 +87,7 @@ namespace
         uint64_t subnet,
         uint64_t object_id = 0)
     {
-        return rpc::zone_address(
+        auto address = rpc::zone_address::create(
             rpc::zone_address_args(
                 rpc::default_values::version_3,
                 rpc::address_type::local,
@@ -98,6 +98,8 @@ namespace
                 rpc::default_values::default_object_id_size_bits,
                 object_id,
                 {}));
+        RPC_ASSERT(address);
+        return *address;
     }
 } // namespace
 
@@ -542,6 +544,114 @@ TYPED_TEST(
     add_ref_with_transport_down)
 {
     run_passthrough_test(*this, [](auto& lib) { return coro_add_ref_with_transport_down<TypeParam>(lib); });
+}
+
+// Tests the forked add_ref failure case where the destination side accepts the
+// reference but the caller side then fails. The passthrough must compensate the
+// committed destination leg with a matching release before returning failure.
+template<class T> CORO_TASK(bool) coro_add_ref_compensates_destination_leg_when_caller_leg_fails(T& lib)
+{
+    auto forward_transport = lib.get_forward_transport();
+    auto reverse_transport = lib.get_reverse_transport();
+    auto pt = lib.get_passthrough();
+
+    uint64_t initial_shared = pt->get_shared_count();
+    bool saw_compensating_release = false;
+    rpc::release_options compensating_release_options = rpc::release_options::normal;
+
+    reverse_transport->set_add_ref_handler(
+        [](rpc::add_ref_params) -> CORO_TASK(rpc::standard_result)
+        { CO_RETURN rpc::standard_result{rpc::error::TRANSPORT_ERROR(), {}}; });
+    forward_transport->set_release_handler(
+        [&](rpc::release_params params) -> CORO_TASK(rpc::standard_result)
+        {
+            saw_compensating_release = true;
+            compensating_release_options = params.options;
+            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
+        });
+
+    auto result = CO_AWAIT pt->add_ref(
+        rpc::add_ref_params{
+            .protocol_version = rpc::get_version(),
+            .remote_object_id = rpc::remote_object(lib.get_forward_dest()),
+            .caller_zone_id = lib.get_reverse_dest(),
+            .requesting_zone_id = lib.get_forward_dest(),
+            .build_out_param_channel = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route,
+            .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
+        });
+
+    CORO_ASSERT_EQ(result.error_code, rpc::error::TRANSPORT_ERROR());
+    CORO_ASSERT_EQ(forward_transport->get_add_ref_count(), 1);
+    CORO_ASSERT_EQ(reverse_transport->get_add_ref_count(), 1);
+    CORO_ASSERT_EQ(forward_transport->get_release_count(), 1);
+    CORO_ASSERT_EQ(reverse_transport->get_release_count(), 0);
+    CORO_ASSERT_EQ(saw_compensating_release, true);
+    CORO_ASSERT_EQ(compensating_release_options, rpc::release_options::normal);
+    CORO_ASSERT_EQ(pt->get_shared_count(), initial_shared);
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    passthrough_test,
+    add_ref_compensates_destination_leg_when_caller_leg_fails)
+{
+    run_passthrough_test(
+        *this, [](auto& lib) { return coro_add_ref_compensates_destination_leg_when_caller_leg_fails<TypeParam>(lib); });
+}
+
+// The same transaction rule applies to optimistic references; the compensating
+// release must carry release_options::optimistic so the owner decrements the
+// correct reference bucket.
+template<class T> CORO_TASK(bool) coro_optimistic_add_ref_compensates_with_optimistic_release(T& lib)
+{
+    auto forward_transport = lib.get_forward_transport();
+    auto reverse_transport = lib.get_reverse_transport();
+    auto pt = lib.get_passthrough();
+
+    uint64_t initial_optimistic = pt->get_optimistic_count();
+    bool saw_compensating_release = false;
+    rpc::release_options compensating_release_options = rpc::release_options::normal;
+
+    reverse_transport->set_add_ref_handler(
+        [](rpc::add_ref_params) -> CORO_TASK(rpc::standard_result)
+        { CO_RETURN rpc::standard_result{rpc::error::TRANSPORT_ERROR(), {}}; });
+    forward_transport->set_release_handler(
+        [&](rpc::release_params params) -> CORO_TASK(rpc::standard_result)
+        {
+            saw_compensating_release = true;
+            compensating_release_options = params.options;
+            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
+        });
+
+    auto result = CO_AWAIT pt->add_ref(
+        rpc::add_ref_params{
+            .protocol_version = rpc::get_version(),
+            .remote_object_id = rpc::remote_object(lib.get_forward_dest()),
+            .caller_zone_id = lib.get_reverse_dest(),
+            .requesting_zone_id = lib.get_forward_dest(),
+            .build_out_param_channel = rpc::add_ref_options::build_destination_route
+                                       | rpc::add_ref_options::build_caller_route | rpc::add_ref_options::optimistic,
+            .in_back_channel = {},
+            .request_id = 0,
+            .payload = {},
+        });
+
+    CORO_ASSERT_EQ(result.error_code, rpc::error::TRANSPORT_ERROR());
+    CORO_ASSERT_EQ(forward_transport->get_release_count(), 1);
+    CORO_ASSERT_EQ(saw_compensating_release, true);
+    CORO_ASSERT_EQ(compensating_release_options, rpc::release_options::optimistic);
+    CORO_ASSERT_EQ(pt->get_optimistic_count(), initial_optimistic);
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    passthrough_test,
+    optimistic_add_ref_compensates_with_optimistic_release)
+{
+    run_passthrough_test(
+        *this, [](auto& lib) { return coro_optimistic_add_ref_compensates_with_optimistic_release<TypeParam>(lib); });
 }
 
 // Tests balanced add_ref/release operations returning to initial state.

@@ -161,13 +161,16 @@ namespace
             last_add_ref_caller_zone = params.caller_zone_id;
             last_add_ref_requesting_zone = params.requesting_zone_id;
             last_add_ref_options = params.build_out_param_channel;
-            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
+            CO_RETURN rpc::standard_result{outbound_add_ref_error, {}};
         }
 
         CORO_TASK(rpc::standard_result) outbound_release(rpc::release_params params) override
         {
-            std::ignore = params;
-            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
+            ++outbound_release_count;
+            last_release_remote_object = params.remote_object_id;
+            last_release_caller_zone = params.caller_zone_id;
+            last_release_options = params.options;
+            CO_RETURN rpc::standard_result{outbound_release_error, {}};
         }
 
         CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override
@@ -184,12 +187,18 @@ namespace
 
         uint64_t outbound_send_count{0};
         uint64_t outbound_add_ref_count{0};
+        uint64_t outbound_release_count{0};
+        int outbound_add_ref_error{rpc::error::OK()};
+        int outbound_release_error{rpc::error::OK()};
         rpc::remote_object last_send_remote_object;
         rpc::caller_zone last_send_caller_zone;
         rpc::remote_object last_add_ref_remote_object;
         rpc::caller_zone last_add_ref_caller_zone;
         rpc::requesting_zone last_add_ref_requesting_zone;
         rpc::add_ref_options last_add_ref_options{rpc::add_ref_options::normal};
+        rpc::remote_object last_release_remote_object;
+        rpc::caller_zone last_release_caller_zone;
+        rpc::release_options last_release_options{rpc::release_options::normal};
     };
 
 #ifdef CANOPY_BUILD_COROUTINE
@@ -241,6 +250,31 @@ namespace
 
         return done.load();
     }
+
+    int run_passthrough_add_ref_for_test(
+        const std::shared_ptr<rpc::pass_through>& passthrough,
+        rpc::add_ref_params params,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        int error_code = rpc::error::CALL_TIMEOUT();
+        auto task = [&]() -> coro::task<void>
+        {
+            auto result = CO_AWAIT passthrough->add_ref(std::move(params));
+            error_code = result.error_code;
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return rpc::error::TRANSPORT_ERROR();
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return done.load() ? error_code : rpc::error::CALL_TIMEOUT();
+    }
 #else
     bool run_inbound_add_ref_for_test(
         const std::shared_ptr<rpc::transport>& transport,
@@ -257,6 +291,13 @@ namespace
     {
         service->notify_transport_down(transport, destination);
         return true;
+    }
+
+    int run_passthrough_add_ref_for_test(
+        const std::shared_ptr<rpc::pass_through>& passthrough,
+        rpc::add_ref_params params)
+    {
+        return passthrough->add_ref(std::move(params)).error_code;
     }
 #endif
 
@@ -358,6 +399,97 @@ TEST(
     service->remove_transport(destination_zone);
     service->remove_transport(caller_zone);
     service->remove_transport(intermediate_zone);
+}
+
+TEST(
+    transport_registry_tests,
+    forked_passthrough_add_ref_compensates_committed_destination_leg)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-passthrough-add-ref-compensation", scheduler);
+#else
+    auto service = make_test_service("transport-registry-passthrough-add-ref-compensation");
+#endif
+    auto destination_zone = rpc::destination_zone{make_local_zone_address(60)};
+    auto caller_zone = rpc::destination_zone{make_local_zone_address(61)};
+
+    auto destination_transport = std::make_shared<registry_test_transport>("destination-leg", service);
+    destination_transport->set_adjacent_zone_id(destination_zone);
+    auto caller_transport = std::make_shared<registry_test_transport>("caller-leg", service);
+    caller_transport->set_adjacent_zone_id(caller_zone);
+    caller_transport->outbound_add_ref_error = rpc::error::TRANSPORT_ERROR();
+
+    auto passthrough = rpc::transport::create_pass_through(
+        destination_transport, caller_transport, service, destination_zone, caller_zone);
+    ASSERT_NE(passthrough, nullptr);
+
+    rpc::add_ref_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = rpc::remote_object(destination_zone);
+    params.caller_zone_id = caller_zone;
+    params.requesting_zone_id = destination_zone;
+    params.build_out_param_channel
+        = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route;
+
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_EQ(run_passthrough_add_ref_for_test(passthrough, std::move(params), scheduler), rpc::error::TRANSPORT_ERROR());
+#else
+    EXPECT_EQ(run_passthrough_add_ref_for_test(passthrough, std::move(params)), rpc::error::TRANSPORT_ERROR());
+#endif
+
+    EXPECT_EQ(destination_transport->outbound_add_ref_count, 1U);
+    EXPECT_EQ(caller_transport->outbound_add_ref_count, 1U);
+    EXPECT_EQ(destination_transport->outbound_release_count, 1U);
+    EXPECT_EQ(caller_transport->outbound_release_count, 0U);
+    EXPECT_EQ(destination_transport->last_release_remote_object, rpc::remote_object(destination_zone));
+    EXPECT_EQ(destination_transport->last_release_caller_zone, caller_zone);
+    EXPECT_EQ(destination_transport->last_release_options, rpc::release_options::normal);
+    EXPECT_EQ(passthrough->get_shared_count(), 0U);
+}
+
+TEST(
+    transport_registry_tests,
+    optimistic_forked_passthrough_add_ref_compensates_with_optimistic_release)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-passthrough-optimistic-add-ref-compensation", scheduler);
+#else
+    auto service = make_test_service("transport-registry-passthrough-optimistic-add-ref-compensation");
+#endif
+    auto destination_zone = rpc::destination_zone{make_local_zone_address(62)};
+    auto caller_zone = rpc::destination_zone{make_local_zone_address(63)};
+
+    auto destination_transport = std::make_shared<registry_test_transport>("destination-leg", service);
+    destination_transport->set_adjacent_zone_id(destination_zone);
+    auto caller_transport = std::make_shared<registry_test_transport>("caller-leg", service);
+    caller_transport->set_adjacent_zone_id(caller_zone);
+    caller_transport->outbound_add_ref_error = rpc::error::TRANSPORT_ERROR();
+
+    auto passthrough = rpc::transport::create_pass_through(
+        destination_transport, caller_transport, service, destination_zone, caller_zone);
+    ASSERT_NE(passthrough, nullptr);
+
+    rpc::add_ref_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = rpc::remote_object(destination_zone);
+    params.caller_zone_id = caller_zone;
+    params.requesting_zone_id = destination_zone;
+    params.build_out_param_channel = rpc::add_ref_options::build_destination_route
+                                     | rpc::add_ref_options::build_caller_route | rpc::add_ref_options::optimistic;
+
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_EQ(run_passthrough_add_ref_for_test(passthrough, std::move(params), scheduler), rpc::error::TRANSPORT_ERROR());
+#else
+    EXPECT_EQ(run_passthrough_add_ref_for_test(passthrough, std::move(params)), rpc::error::TRANSPORT_ERROR());
+#endif
+
+    EXPECT_EQ(destination_transport->outbound_add_ref_count, 1U);
+    EXPECT_EQ(caller_transport->outbound_add_ref_count, 1U);
+    EXPECT_EQ(destination_transport->outbound_release_count, 1U);
+    EXPECT_EQ(destination_transport->last_release_options, rpc::release_options::optimistic);
+    EXPECT_EQ(passthrough->get_optimistic_count(), 0U);
 }
 
 TEST(
