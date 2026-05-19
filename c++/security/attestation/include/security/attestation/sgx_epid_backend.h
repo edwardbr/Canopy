@@ -68,9 +68,18 @@ namespace canopy::security::attestation
     public:
         virtual ~sgx_epid_quote_verifier() = default;
 
-        // The verifier owns IAS report signature/status/revocation appraisal.
-        // The backend validates the Canopy binding before this call, then
-        // normalizes an accepted verdict to sgx-epid/hardware_legacy.
+        // Load-bearing production verifier contract:
+        //
+        // The backend verifies only the Canopy-owned wrapper: media type,
+        // schema, transcript binding, field sizes, and the canonical
+        // report_data hash. The concrete verifier must reject unless it has
+        // checked every EPID/IAS trust condition that makes the quote usable:
+        // IAS report signature, IAS signing certificate chain and trust anchor,
+        // quote_status and advisory ids, revocation material, quote freshness,
+        // quote report_data == report_data_sha256 || zero(32), MRENCLAVE,
+        // MRSIGNER, ISVPRODID, ISVSVN, debug state, and local policy. IAS is a
+        // legacy/sunset Intel service, so accepted verdicts must stay
+        // hardware_legacy and must never be inflated to hardware.
         [[nodiscard]] virtual auto verify_quote(
             const sgx_epid_verifier_input& input,
             const attestation_policy& policy) const -> attestation_verdict = 0;

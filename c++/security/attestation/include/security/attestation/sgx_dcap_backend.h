@@ -69,10 +69,17 @@ namespace canopy::security::attestation
     public:
         virtual ~sgx_dcap_quote_verifier() = default;
 
-        // The verifier owns QvL/QvE appraisal, collateral status, TCB policy
-        // interpretation, and report_data inspection. The backend validates the
-        // Canopy binding before this call, then normalizes an accepted verdict
-        // to sgx-dcap/hardware.
+        // Load-bearing production verifier contract:
+        //
+        // The backend verifies only the Canopy-owned wrapper: media type,
+        // schema, transcript binding, field sizes, and the canonical
+        // report_data hash. The concrete verifier must reject unless QL/QvL or
+        // QvE/TVL appraisal has checked the quote signature, PCK/certificate
+        // chain, collateral freshness, quote-verification result, advisory ids,
+        // sgx_report_data_t == report_data_sha256 || zero(32), MRENCLAVE,
+        // MRSIGNER, ISVPRODID, ISVSVN, debug state, TCB status, and local
+        // policy. Only this verifier may map a real DCAP success to
+        // security_level::hardware.
         [[nodiscard]] virtual auto verify_quote(
             const sgx_dcap_verifier_input& input,
             const attestation_policy& policy) const -> attestation_verdict = 0;

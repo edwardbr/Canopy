@@ -70,7 +70,7 @@ namespace rpc
         {
             sgx_epid_report_binding binding;
 
-            [description="SHA-256 digest expected in the first 32 bytes of sgx_report_data_t."]
+            [description="Defensive Canopy copy of the SHA-256 digest expected in the first 32 bytes of sgx_report_data_t. Verifiers must still inspect the raw quote report_data field."]
             std::vector<uint8_t> report_data_sha256;
 
             [description="Extended EPID group id returned by the SGX PSW."]

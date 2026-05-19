@@ -738,14 +738,16 @@ authenticating them. The SGX-sim backend slice now has verifier-challenge CMW
 blobs carrying peer `sgx_target_info_t`, so reports can be targeted to the
 verifier where the two-message route handshake allows it. The EPID slice now
 has the generated CMW schema, backend selection, fail-closed default behavior,
-and quote-provider/verifier seams. It still needs a transcript-bound key
+quote-provider/verifier seams, explicit verifier-contract documentation,
+defensive EPID payload/field caps, and a backend-neutral prebuilt-backend
+factory override for hardware adapters. It still needs a transcript-bound key
 exchange before it can establish protected-RPC AEAD keys. The DCAP slice now
 has the generated CMW schema, backend selection, hardware policy defaults,
-fail-closed default behavior, and quote-provider/verifier seams. Next, on the
-best available SGX hardware, wire either the EPID provider/verifier path for
-legacy demos or the DCAP provider/verifier path for SGX-FLC machines, and bind
-that evidence to an agreed shared secret before establishing protected-RPC
-AEAD keys.
+fail-closed default behavior, quote-provider/verifier seams, and defensive
+payload/field caps. Next, on the best available SGX hardware, wire either the
+EPID provider/verifier path for legacy demos or the DCAP provider/verifier path
+for SGX-FLC machines, and bind that evidence to an agreed shared secret before
+establishing protected-RPC AEAD keys.
 
 ## Architectural Layers
 

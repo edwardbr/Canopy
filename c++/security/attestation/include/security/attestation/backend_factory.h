@@ -21,10 +21,23 @@ namespace canopy::security::attestation
         sgx_dcap_backend
     };
 
+    struct backend_factory_overrides
+    {
+        // Optional pre-built backend. This keeps the factory API
+        // backend-neutral: SGX EPID/DCAP provider and verifier objects are
+        // assembled by SGX-specific code, then passed here only as the common
+        // attestation_backend interface.
+        std::shared_ptr<attestation_backend> backend;
+    };
+
     [[nodiscard]] auto attestation_backend_kind_name(configured_backend_kind kind) noexcept -> const char*;
     [[nodiscard]] auto configured_attestation_backend_kind() noexcept -> configured_backend_kind;
     [[nodiscard]] auto configured_attestation_backend_name() noexcept -> const char*;
     [[nodiscard]] auto make_attestation_backend(configured_backend_kind kind) -> std::shared_ptr<attestation_backend>;
     [[nodiscard]] auto make_configured_attestation_backend() -> std::shared_ptr<attestation_backend>;
-    [[nodiscard]] auto make_configured_attestation_service_options(identity local_identity) -> attestation_service_options;
+    [[nodiscard]] auto make_configured_attestation_backend(backend_factory_overrides overrides)
+        -> std::shared_ptr<attestation_backend>;
+    [[nodiscard]] auto make_configured_attestation_service_options(
+        identity local_identity,
+        backend_factory_overrides overrides = {}) -> attestation_service_options;
 } // namespace canopy::security::attestation

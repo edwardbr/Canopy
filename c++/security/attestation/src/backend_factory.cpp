@@ -94,16 +94,28 @@ namespace canopy::security::attestation
 
     auto make_configured_attestation_backend() -> std::shared_ptr<attestation_backend>
     {
+        return make_configured_attestation_backend({});
+    }
+
+    auto make_configured_attestation_backend(backend_factory_overrides overrides) -> std::shared_ptr<attestation_backend>
+    {
+        if (overrides.backend)
+            return std::move(overrides.backend);
         return make_attestation_backend(configured_attestation_backend_kind());
     }
 
-    auto make_configured_attestation_service_options(identity local_identity) -> attestation_service_options
+    auto make_configured_attestation_service_options(
+        identity local_identity,
+        backend_factory_overrides overrides) -> attestation_service_options
     {
         auto kind = configured_attestation_backend_kind();
 
         attestation_service_options options;
         options.local_identity = std::move(local_identity);
-        options.backend = make_attestation_backend(kind);
+        if (overrides.backend)
+            options.backend = std::move(overrides.backend);
+        else
+            options.backend = make_attestation_backend(kind);
 
         options.policy = attestation_policy{};
         options.policy.required_backend_id = options.backend->backend_id();

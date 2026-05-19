@@ -16,6 +16,18 @@ namespace canopy::security::attestation
 {
     namespace
     {
+        constexpr size_t report_data_sha256_size = detail::crypto_sha256_digest_size;
+        constexpr size_t max_epid_cmw_payload_size = 256U * 1024U;
+        constexpr size_t epid_spid_size = 16U;
+        constexpr size_t max_epid_basename_size = 32U;
+        constexpr size_t max_epid_sig_rl_size = 64U * 1024U;
+        constexpr size_t max_epid_quote_size = 64U * 1024U;
+        constexpr size_t max_ias_report_body_json_size = 64U * 1024U;
+        constexpr size_t max_ias_signature_size = 16U * 1024U;
+        constexpr size_t max_ias_signing_certificate_chain_size = 64U * 1024U;
+        constexpr size_t max_ias_quote_status_size = 128U;
+        constexpr size_t max_ias_advisory_ids_size = 4U * 1024U;
+
         [[nodiscard]] auto reject(std::string reason) -> attestation_verdict
         {
             attestation_verdict verdict;
@@ -149,6 +161,46 @@ namespace canopy::security::attestation
             return out;
         }
 
+        [[nodiscard]] auto field_too_large(
+            size_t size,
+            size_t limit) noexcept -> bool
+        {
+            return size > limit;
+        }
+
+        [[nodiscard]] auto validate_ias_report_size(const sgx_epid_ias_report_material& report)
+            -> std::optional<std::string>
+        {
+            if (field_too_large(report.body_json.size(), max_ias_report_body_json_size))
+                return "SGX EPID IAS report body is too large";
+            if (field_too_large(report.signature.size(), max_ias_signature_size))
+                return "SGX EPID IAS report signature is too large";
+            if (field_too_large(report.signing_certificate_chain.size(), max_ias_signing_certificate_chain_size))
+                return "SGX EPID IAS signing certificate chain is too large";
+            if (field_too_large(report.quote_status.size(), max_ias_quote_status_size))
+                return "SGX EPID IAS quote status is too large";
+            if (field_too_large(report.advisory_ids.size(), max_ias_advisory_ids_size))
+                return "SGX EPID IAS advisory id list is too large";
+            return std::nullopt;
+        }
+
+        [[nodiscard]] auto validate_quote_material_size(const sgx_epid_quote_material& quote) -> std::optional<std::string>
+        {
+            if (quote.spid.size() != epid_spid_size)
+                return "SGX EPID SPID has an invalid size";
+            if (field_too_large(quote.basename.size(), max_epid_basename_size))
+                return "SGX EPID basename is too large";
+            if (field_too_large(quote.sig_rl.size(), max_epid_sig_rl_size))
+                return "SGX EPID SigRL is too large";
+            if (quote.quote.empty())
+                return "SGX EPID quote is missing";
+            if (field_too_large(quote.quote.size(), max_epid_quote_size))
+                return "SGX EPID quote is too large";
+            if (quote.ias_report.has_value())
+                return validate_ias_report_size(quote.ias_report.value());
+            return std::nullopt;
+        }
+
         [[nodiscard]] auto policy_accepts_epid(const attestation_policy& policy) -> std::optional<attestation_verdict>
         {
             if (!policy.required_backend_id.empty() && policy.required_backend_id != sgx_epid_backend_id)
@@ -207,6 +259,8 @@ namespace canopy::security::attestation
         auto quote = quote_provider_->produce_quote(request);
         if (!quote.has_value() || quote->quote.empty())
             return make_unavailable_evidence();
+        if (validate_quote_material_size(quote.value()).has_value())
+            return make_unavailable_evidence();
 
         auto evidence = to_wire_quote_evidence(binding, std::move(report_data_sha256.value()), quote.value());
         auto payload = serialise_canonical(evidence);
@@ -235,6 +289,8 @@ namespace canopy::security::attestation
             return std::move(policy_error.value());
         if (!quote_verifier_)
             return reject("SGX EPID quote verifier is not configured");
+        if (field_too_large(evidence.payload.size(), max_epid_cmw_payload_size))
+            return reject("SGX EPID evidence payload is too large");
 
         auto parsed = deserialise_canonical<rpc::attestation::sgx_epid_quote_evidence>(evidence.payload);
         if (!parsed.has_value())
@@ -243,15 +299,18 @@ namespace canopy::security::attestation
             return reject("SGX EPID evidence binding mismatch");
 
         auto expected_hash = make_report_data_hash(parsed->binding);
-        if (!expected_hash.has_value() || parsed->report_data_sha256 != expected_hash.value())
+        if (!expected_hash.has_value() || expected_hash->size() != report_data_sha256_size
+            || parsed->report_data_sha256.size() != report_data_sha256_size
+            || !detail::constant_time_equal(parsed->report_data_sha256, expected_hash.value()))
             return reject("SGX EPID report_data binding mismatch");
-        if (parsed->quote.empty())
-            return reject("SGX EPID quote is missing");
+        auto quote = from_wire_quote_material(parsed.value());
+        if (auto size_error = validate_quote_material_size(quote); size_error.has_value())
+            return reject(std::move(size_error.value()));
 
         sgx_epid_verifier_input input;
         input.expected_binding = expected_binding;
         input.report_data_sha256 = std::move(expected_hash.value());
-        input.quote = from_wire_quote_material(parsed.value());
+        input.quote = std::move(quote);
 
         auto verdict = quote_verifier_->verify_quote(input, policy);
         if (!verdict.accepted)

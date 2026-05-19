@@ -31,6 +31,7 @@ namespace
     using canopy::security::attestation::attestation_service;
     using canopy::security::attestation::attestation_service_options;
     using canopy::security::attestation::attestation_verdict;
+    using canopy::security::attestation::backend_factory_overrides;
     using canopy::security::attestation::cmw;
     using canopy::security::attestation::configured_attestation_backend_kind;
     using canopy::security::attestation::configured_attestation_backend_name;
@@ -48,7 +49,9 @@ namespace
     using canopy::security::attestation::fake_evidence_content_format;
     using canopy::security::attestation::fake_evidence_media_type;
     using canopy::security::attestation::identity;
+    using canopy::security::attestation::make_attestation_backend;
     using canopy::security::attestation::make_attestation_nonce;
+    using canopy::security::attestation::make_configured_attestation_backend;
     using canopy::security::attestation::make_configured_attestation_service_options;
     using canopy::security::attestation::make_session_id;
     using canopy::security::attestation::null_backend;
@@ -83,6 +86,7 @@ namespace
     using canopy::security::attestation::sgx_epid_backend;
     using canopy::security::attestation::sgx_epid_backend_id;
     using canopy::security::attestation::sgx_epid_evidence_media_type;
+    using canopy::security::attestation::sgx_epid_ias_report_material;
     using canopy::security::attestation::sgx_epid_quote_evidence_content_format;
     using canopy::security::attestation::sgx_epid_quote_material;
     using canopy::security::attestation::sgx_epid_quote_provider;
@@ -238,6 +242,10 @@ namespace
     class test_sgx_epid_quote_provider final : public sgx_epid_quote_provider
     {
     public:
+        bool include_ias_report{false};
+        size_t sig_rl_size{3};
+        size_t quote_padding_size{1};
+
         [[nodiscard]] auto produce_quote(const sgx_epid_quote_request& request) const
             -> std::optional<sgx_epid_quote_material> override
         {
@@ -248,9 +256,19 @@ namespace
             quote.extended_epid_group_id = 0x12345678U;
             quote.quote_sign_type = 0;
             quote.spid = std::vector<uint8_t>(16, 0x5a);
-            quote.sig_rl = {1, 2, 3};
+            quote.sig_rl = std::vector<uint8_t>(sig_rl_size, 0x17);
             quote.quote = request.report_data_sha256;
-            quote.quote.push_back(0x42);
+            quote.quote.insert(quote.quote.end(), quote_padding_size, 0x42);
+            if (include_ias_report)
+            {
+                sgx_epid_ias_report_material report;
+                report.body_json = R"({"isvEnclaveQuoteStatus":"OK"})";
+                report.signature = {0x10, 0x20, 0x30};
+                report.signing_certificate_chain = {0x40, 0x50, 0x60};
+                report.quote_status = "OK";
+                report.advisory_ids = "";
+                quote.ias_report = report;
+            }
             return quote;
         }
     };
@@ -279,9 +297,47 @@ namespace
         }
     };
 
+    class strict_test_sgx_epid_quote_verifier final : public sgx_epid_quote_verifier
+    {
+    public:
+        [[nodiscard]] auto verify_quote(
+            const sgx_epid_verifier_input& input,
+            const attestation_policy&) const -> attestation_verdict override
+        {
+            attestation_verdict verdict;
+            if (input.report_data_sha256.size() != 32 || input.quote.quote.size() < 33)
+            {
+                verdict.reason = "test EPID quote report_data was malformed";
+                return verdict;
+            }
+            if (!input.quote.ias_report.has_value())
+            {
+                verdict.reason = "test EPID IAS report is missing";
+                return verdict;
+            }
+            const auto& report = input.quote.ias_report.value();
+            if (report.body_json.empty() || report.signature.empty() || report.signing_certificate_chain.empty()
+                || report.quote_status != "OK")
+            {
+                verdict.reason = "test EPID IAS appraisal was incomplete";
+                return verdict;
+            }
+
+            verdict.accepted = true;
+            verdict.reason = "test EPID quote accepted with IAS report";
+            verdict.backend_id = sgx_epid_backend_id;
+            verdict.level = security_level::hardware_legacy;
+            verdict.peer_identity = input.expected_binding.subject;
+            return verdict;
+        }
+    };
+
     class test_sgx_dcap_quote_provider final : public sgx_dcap_quote_provider
     {
     public:
+        size_t quote_padding_size{1};
+        size_t supplemental_data_size{0};
+
         [[nodiscard]] auto produce_quote(const sgx_dcap_quote_request& request) const
             -> std::optional<sgx_dcap_quote_material> override
         {
@@ -290,12 +346,13 @@ namespace
 
             sgx_dcap_quote_material quote;
             quote.quote = request.report_data_sha256;
-            quote.quote.push_back(0xdc);
+            quote.quote.insert(quote.quote.end(), quote_padding_size, 0xdc);
 
             sgx_dcap_verification_result_material result;
             result.quote_verification_result = 0;
             result.quote_verification_result_name = "OK";
             result.verification_time = 123456U;
+            result.supplemental_data = std::vector<uint8_t>(supplemental_data_size, 0x44);
             quote.verification_result = result;
             return quote;
         }
@@ -309,8 +366,7 @@ namespace
             const attestation_policy&) const -> attestation_verdict override
         {
             attestation_verdict verdict;
-            if (input.report_data_sha256.size() != 32 || input.quote.quote.size() != 33
-                || input.quote.quote.back() != 0xdc)
+            if (input.report_data_sha256.size() != 32 || input.quote.quote.size() != 33 || input.quote.quote.back() != 0xdc)
             {
                 verdict.reason = "test DCAP quote was malformed";
                 return verdict;
@@ -523,6 +579,86 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxEpidBackendRejectsOversizedEvidenceBeforeVerifier)
+{
+    auto verifier = std::make_shared<test_sgx_epid_quote_verifier>();
+    sgx_epid_backend backend(nullptr, std::move(verifier));
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    expected_binding.transcript_id = 33;
+    expected_binding.nonce = {1, 2, 3, 4};
+
+    cmw evidence;
+    evidence.media_type = sgx_epid_evidence_media_type;
+    evidence.content_format = sgx_epid_quote_evidence_content_format;
+    evidence.payload = std::vector<uint8_t>((256U * 1024U) + 1U, 0x7f);
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_epid_backend_id;
+    policy.minimum_security_level = security_level::hardware_legacy;
+    policy.allow_development_evidence = false;
+
+    auto verdict = backend.verify_evidence(evidence, expected_binding, policy);
+    EXPECT_FALSE(verdict.accepted);
+    EXPECT_EQ(verdict.backend_id, sgx_epid_backend_id);
+    EXPECT_EQ(verdict.level, security_level::hardware_legacy);
+}
+
+TEST(
+    AttestationService,
+    SgxEpidBackendRefusesToEmitOversizedProviderMaterial)
+{
+    auto provider = std::make_shared<test_sgx_epid_quote_provider>();
+    provider->sig_rl_size = (64U * 1024U) + 1U;
+    auto verifier = std::make_shared<test_sgx_epid_quote_verifier>();
+    sgx_epid_backend backend(std::move(provider), std::move(verifier));
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    expected_binding.transcript_id = 34;
+    expected_binding.nonce = {4, 3, 2, 1};
+
+    auto evidence = backend.produce_evidence(expected_binding);
+    EXPECT_EQ(evidence.media_type, sgx_epid_evidence_media_type);
+    EXPECT_EQ(evidence.content_format, sgx_epid_unavailable_content_format);
+    EXPECT_TRUE(evidence.payload.empty());
+}
+
+TEST(
+    AttestationService,
+    SgxEpidVerifierContractCanRequireIasChecks)
+{
+    auto provider = std::make_shared<test_sgx_epid_quote_provider>();
+    auto strict_verifier = std::make_shared<strict_test_sgx_epid_quote_verifier>();
+    sgx_epid_backend backend(provider, strict_verifier);
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    expected_binding.transcript_id = 35;
+    expected_binding.nonce = {9, 7, 5, 3};
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_epid_backend_id;
+    policy.minimum_security_level = security_level::hardware_legacy;
+    policy.allow_development_evidence = false;
+
+    auto evidence_without_ias = backend.produce_evidence(expected_binding);
+    auto rejected = backend.verify_evidence(evidence_without_ias, expected_binding, policy);
+    EXPECT_FALSE(rejected.accepted);
+    EXPECT_EQ(rejected.backend_id, sgx_epid_backend_id);
+    EXPECT_EQ(rejected.level, security_level::hardware_legacy);
+
+    provider->include_ias_report = true;
+    auto evidence_with_ias = backend.produce_evidence(expected_binding);
+    auto accepted = backend.verify_evidence(evidence_with_ias, expected_binding, policy);
+    EXPECT_TRUE(accepted.accepted) << accepted.reason;
+    EXPECT_EQ(accepted.backend_id, sgx_epid_backend_id);
+    EXPECT_EQ(accepted.level, security_level::hardware_legacy);
+}
+
+TEST(
+    AttestationService,
     SgxDcapBackendWithoutQuoteProviderFailsClosed)
 {
     sgx_dcap_backend backend;
@@ -588,6 +724,54 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxDcapBackendRejectsOversizedEvidenceBeforeVerifier)
+{
+    auto verifier = std::make_shared<test_sgx_dcap_quote_verifier>();
+    sgx_dcap_backend backend(nullptr, std::move(verifier));
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    expected_binding.transcript_id = 43;
+    expected_binding.nonce = {1, 2, 3, 4};
+
+    cmw evidence;
+    evidence.media_type = sgx_dcap_evidence_media_type;
+    evidence.content_format = sgx_dcap_quote_evidence_content_format;
+    evidence.payload = std::vector<uint8_t>((1024U * 1024U) + 1U, 0x7f);
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_dcap_backend_id;
+    policy.minimum_security_level = security_level::hardware;
+    policy.allow_development_evidence = false;
+
+    auto verdict = backend.verify_evidence(evidence, expected_binding, policy);
+    EXPECT_FALSE(verdict.accepted);
+    EXPECT_EQ(verdict.backend_id, sgx_dcap_backend_id);
+    EXPECT_EQ(verdict.level, security_level::hardware);
+}
+
+TEST(
+    AttestationService,
+    SgxDcapBackendRefusesToEmitOversizedProviderMaterial)
+{
+    auto provider = std::make_shared<test_sgx_dcap_quote_provider>();
+    provider->quote_padding_size = (256U * 1024U) + 1U;
+    auto verifier = std::make_shared<test_sgx_dcap_quote_verifier>();
+    sgx_dcap_backend backend(std::move(provider), std::move(verifier));
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    expected_binding.transcript_id = 44;
+    expected_binding.nonce = {4, 3, 2, 1};
+
+    auto evidence = backend.produce_evidence(expected_binding);
+    EXPECT_EQ(evidence.media_type, sgx_dcap_evidence_media_type);
+    EXPECT_EQ(evidence.content_format, sgx_dcap_unavailable_content_format);
+    EXPECT_TRUE(evidence.payload.empty());
+}
+
+TEST(
+    AttestationService,
     BackendFactoryUsesConfiguredBackendDefaults)
 {
     auto options = make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"});
@@ -643,6 +827,24 @@ TEST(
             EXPECT_EQ(options.policy.required_backend_id, sgx_dcap_backend_id);
         }
     }
+}
+
+TEST(
+    AttestationService,
+    BackendFactoryCanUsePrebuiltHardwareBackendOverride)
+{
+    backend_factory_overrides overrides;
+    overrides.backend = std::make_shared<sgx_epid_backend>(
+        std::make_shared<test_sgx_epid_quote_provider>(), std::make_shared<test_sgx_epid_quote_verifier>());
+
+    auto backend = make_configured_attestation_backend(std::move(overrides));
+    ASSERT_TRUE(backend);
+    EXPECT_EQ(backend->backend_id(), sgx_epid_backend_id);
+    EXPECT_EQ(backend->level(), security_level::hardware_legacy);
+
+    auto default_epid = make_attestation_backend(configured_backend_kind::sgx_epid_backend);
+    ASSERT_TRUE(default_epid);
+    EXPECT_EQ(default_epid->backend_id(), sgx_epid_backend_id);
 }
 
 TEST(

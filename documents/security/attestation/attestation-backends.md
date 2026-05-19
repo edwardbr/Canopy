@@ -278,13 +278,32 @@ Canopy now has the initial EPID backend shape:
 - without an injected quote provider and quote verifier it returns a typed
   unavailable CMW and verification fails closed;
 - injected providers and verifiers are the only code that should call Intel
-  PSW/AESM, IAS, or quote parsing APIs.
+  PSW/AESM, IAS, or quote parsing APIs;
+- `backend_factory_overrides` can supply a prebuilt `attestation_backend`, so
+  SGX-specific provider/verifier objects do not leak into the neutral factory
+  header;
+- the backend applies defensive payload and per-field size caps before handing
+  decoded quote material to a verifier.
 
 The current EPID backend is therefore a protocol and policy skeleton, not a
 complete IAS implementation. The next runtime slice on SGX1 hardware should
 wire a provider that obtains an EPID quote from the SGX PSW and a verifier that
 checks the IAS report signature, quote status, revocation/collateral state, and
 that the quote report_data contains the Canopy transcript hash.
+
+That verifier contract is load-bearing. A production or demo verifier must
+reject unless it has checked the IAS signature, IAS signing certificate chain
+and trust anchor, quote status, advisory ids, revocation material, quote
+freshness, `sgx_report_data_t == report_data_sha256 || zero(32)`,
+`MRENCLAVE`, `MRSIGNER`, `ISVPRODID`, `ISVSVN`, debug state, and local policy.
+The backend normalizes accepted EPID verdicts to `security_level ==
+hardware_legacy`; it must not be promoted to the DCAP/TDX class of hardware
+evidence.
+
+Intel IAS/EPID is a fading trust anchor. New production deployments should
+prefer DCAP/ECDSA or a newer TEE backend. EPID should ship only for explicit
+legacy interop, demonstrations on SGX1 hardware, or environments whose policy
+owner has deliberately accepted IAS dependence.
 
 EPID quote verification does not create the protected-RPC session key. The
 route handshake must also carry, or be bound to, a real key exchange whose
