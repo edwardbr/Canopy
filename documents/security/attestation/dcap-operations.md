@@ -773,6 +773,9 @@ host-side gateway zone):
 - [Overview](overview.md) -- where DCAP fits in the Canopy attestation model.
 - [Attestation Backends](attestation-backends.md) -- the abstract backend
   interface that the DCAP backend implements.
+- [SGX Enclave Identity Developer Guide](sgx-enclave-identity-dev-guide.md) --
+  how developers extract SGX identity fields, write release policy, and keep
+  enclave builds reproducible.
 - [Protected RPC Envelope](protected-rpc-envelope.md) -- what protected
   payloads look like once attestation has established session keys.
 - [Failure Policy](failure-policy.md) -- how attestation failures map to

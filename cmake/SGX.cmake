@@ -21,6 +21,52 @@ message(STATUS "Configuring SGX enclave support...")
 # SGX-specific options
 # ######################################################################################################################
 option(CANOPY_DEBUG_ENCLAVE_MEMLEAK "detect memory leaks in enclaves" OFF)
+option(CANOPY_SGX_DETERMINISTIC_BUILD "Apply deterministic/reproducible-build settings to SGX enclave builds" ON)
+set(CANOPY_SGX_SOURCE_DATE_EPOCH
+    ""
+    CACHE STRING "Optional SOURCE_DATE_EPOCH value passed to SGX helper tools during deterministic enclave builds")
+
+set(CANOPY_SGX_DETERMINISTIC_ENV)
+set(CANOPY_SGX_DETERMINISTIC_COMPILE_OPTIONS)
+set(CANOPY_SGX_DETERMINISTIC_LINK_OPTIONS)
+if(CANOPY_SGX_DETERMINISTIC_BUILD)
+  # These environment variables are intentionally small and non-invasive. LC_ALL stabilises tool output ordering,
+  # ZERO_AR_DATE is honoured by archive tools that still support the historical deterministic-archive switch, and
+  # SOURCE_DATE_EPOCH is propagated only when the caller pins it explicitly or inherited it from the outer build
+  # environment.
+  list(APPEND CANOPY_SGX_DETERMINISTIC_ENV "LC_ALL=C" "ZERO_AR_DATE=1")
+  if(NOT "${CANOPY_SGX_SOURCE_DATE_EPOCH}" STREQUAL "")
+    list(APPEND CANOPY_SGX_DETERMINISTIC_ENV "SOURCE_DATE_EPOCH=${CANOPY_SGX_SOURCE_DATE_EPOCH}")
+  elseif(DEFINED ENV{SOURCE_DATE_EPOCH} AND NOT "$ENV{SOURCE_DATE_EPOCH}" STREQUAL "")
+    list(APPEND CANOPY_SGX_DETERMINISTIC_ENV "SOURCE_DATE_EPOCH=$ENV{SOURCE_DATE_EPOCH}")
+  endif()
+
+  if(NOT WIN32 AND (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+    # Keep absolute source/build paths out of debug sections and macro expansions inside measured enclave objects.
+    # -Wdate-time is valuable here because the top-level warning policy turns warnings into errors for normal builds:
+    # enclave code that uses __DATE__, __TIME__, or __TIMESTAMP__ will fail instead of quietly changing MRENCLAVE.
+    list(
+      APPEND
+      CANOPY_SGX_DETERMINISTIC_COMPILE_OPTIONS
+      "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+      "-ffile-prefix-map=${CMAKE_BINARY_DIR}=./_build"
+      "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=."
+      "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=./_build"
+      "-fmacro-prefix-map=${CMAKE_SOURCE_DIR}=."
+      "-fmacro-prefix-map=${CMAKE_BINARY_DIR}=./_build"
+      -Wdate-time)
+    if(NOT WIN32)
+      list(APPEND CANOPY_SGX_DETERMINISTIC_LINK_OPTIONS "LINKER:--build-id=none")
+    endif()
+  elseif(MSVC)
+    list(
+      APPEND
+      CANOPY_SGX_DETERMINISTIC_COMPILE_OPTIONS
+      /Brepro
+      "/pathmap:${CMAKE_SOURCE_DIR}=."
+      "/pathmap:${CMAKE_BINARY_DIR}=.\\_build")
+  endif()
+endif()
 
 # ######################################################################################################################
 # SGX build messages
@@ -30,6 +76,8 @@ message("SGX_HW ${SGX_HW}")
 message("SGX_KEY ${SGX_KEY}")
 message("CANOPY_AWAIT_ATTACH_ON_ENCLAVE_ERRORS ${CANOPY_AWAIT_ATTACH_ON_ENCLAVE_ERRORS}")
 message("CANOPY_DEBUG_ENCLAVE_MEMLEAK ${CANOPY_DEBUG_ENCLAVE_MEMLEAK}")
+message("CANOPY_SGX_DETERMINISTIC_BUILD ${CANOPY_SGX_DETERMINISTIC_BUILD}")
+message("CANOPY_SGX_SOURCE_DATE_EPOCH ${CANOPY_SGX_SOURCE_DATE_EPOCH}")
 
 # ######################################################################################################################
 # SGX SDK bootstrap options
@@ -193,8 +241,10 @@ function(canopy_bootstrap_sgx_sdk)
     if(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES)
       message(STATUS "Bootstrapping Intel SGX SDK from submodules/confidential-computing.sgx")
       execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
-                "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}" preparation
+        COMMAND
+          "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc"
+          "CXX=g++" "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5"
+          "${CANOPY_MAKE_EXECUTABLE}" preparation
         WORKING_DIRECTORY "${sgx_source_dir}"
         RESULT_VARIABLE sgx_sdk_prep_result)
 
@@ -215,8 +265,9 @@ function(canopy_bootstrap_sgx_sdk)
 
     execute_process(
       COMMAND
-        "${CMAKE_COMMAND}" -E env "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++" "CFLAGS=-std=gnu17"
-        "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}"
+        "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc"
+        "CXX=g++" "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "${CANOPY_MAKE_EXECUTABLE}"
         sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
       WORKING_DIRECTORY "${sgx_source_dir}"
       RESULT_VARIABLE sgx_sdk_build_result)
@@ -526,8 +577,9 @@ function(canopy_configure_sgxssl_for_enclave)
           "-DCANOPY_SGXSSL_SKIP_INTELCPU_CHECK=${_canopy_sgxssl_skip_intelcpu_check}" -P
           "${CMAKE_SOURCE_DIR}/cmake/CanopyPatchSGXSSLBootstrap.cmake"
         COMMAND
-          "${CMAKE_COMMAND}" -E env "SGX_SDK=${SGX_DIR}" "DEBUG=${_canopy_sgxssl_debug_flag}"
-          "HOME=${CANOPY_SGXSSL_BUILD_DIR}" "${CANOPY_BASH_EXECUTABLE}" "${CANOPY_SGXSSL_BUILD_DIR}/prepare_sgxssl.sh"
+          "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "SGX_SDK=${SGX_DIR}"
+          "DEBUG=${_canopy_sgxssl_debug_flag}" "HOME=${CANOPY_SGXSSL_BUILD_DIR}" "${CANOPY_BASH_EXECUTABLE}"
+          "${CANOPY_SGXSSL_BUILD_DIR}/prepare_sgxssl.sh"
         # prepare_sgxssl.sh builds the package; libssl.a is then rebuilt/copied into the archive name expected by the
         # enclave link so TLS symbols are present alongside the SGXSSL glue archive.
         COMMAND "${CMAKE_COMMAND}" -E chdir "${_canopy_sgxssl_openssl_build_dir}" "${CANOPY_MAKE_EXECUTABLE}" libssl.a
@@ -664,10 +716,11 @@ if(WIN32)
   list(REMOVE_DUPLICATES CANOPY_SHARED_ENCLAVE_DEFINES)
 
   # Enclave compile options (Windows)
-  set(CANOPY_SHARED_ENCLAVE_COMPILE_OPTIONS ${CANOPY_SHARED_COMPILE_OPTIONS} /d2FH4- /Qspectre)
+  set(CANOPY_SHARED_ENCLAVE_COMPILE_OPTIONS ${CANOPY_SHARED_COMPILE_OPTIONS} /d2FH4- /Qspectre
+                                             ${CANOPY_SGX_DETERMINISTIC_COMPILE_OPTIONS})
 
   # Enclave link options (Windows)
-  set(CANOPY_SHARED_ENCLAVE_LINK_OPTIONS ${CANOPY_LINK_OPTIONS})
+  set(CANOPY_SHARED_ENCLAVE_LINK_OPTIONS ${CANOPY_LINK_OPTIONS} ${CANOPY_SGX_DETERMINISTIC_LINK_OPTIONS})
 
   if(CMAKE_BUILD_TYPE STREQUAL "Release")
     if(${SGX_MODE} STREQUAL "release")
@@ -780,7 +833,9 @@ else()
       -ffunction-sections
       -fdata-sections
       -Wno-implicit-exception-spec-mismatch
-      -Wno-variadic-macros)
+      -Wno-variadic-macros
+      ${CANOPY_SGX_DETERMINISTIC_COMPILE_OPTIONS})
+  set(CANOPY_ENCLAVE_LINK_OPTIONS ${CANOPY_SGX_DETERMINISTIC_LINK_OPTIONS})
 
   # Enclave-specific pedantic warning set: identical to CANOPY_WARN_PEDANTIC but with -Wno-variadic-macros appended last
   # so it overrides the -Wpedantic re-enablement. SGX SDK headers (sgx_defs.h) use named variadic macros which

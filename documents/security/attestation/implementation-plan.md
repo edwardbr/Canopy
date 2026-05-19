@@ -35,6 +35,7 @@ This plan implements:
 - [Back-Channel Context](back-channel-context.md)
 - [Failure Policy](failure-policy.md)
 - [DCAP Operations](dcap-operations.md)
+- [SGX Enclave Identity Developer Guide](sgx-enclave-identity-dev-guide.md)
 
 If a phase below conflicts with one of those documents, the documents are
 authoritative and the plan must be amended.
