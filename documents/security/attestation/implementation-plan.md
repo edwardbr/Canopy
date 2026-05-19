@@ -649,12 +649,15 @@ policy-hardening work described in the remaining phases.
 - Full production CMW / attestation context IDL split. The current route
   handshake has minimal generated IDL carriers for fake Evidence and
   backend-neutral identity.
-- Backend selection for production SGX/DCAP, TDX, SEV-SNP, and TrustZone/PSA.
-  The current build-time factory selects `FAKE`, `SGX_SIM`, `SGX_EPID`, or
-  `NULL`. The SGX-sim backend is development/simulation evidence with
+- Backend selection for TDX, SEV-SNP, and TrustZone/PSA. The current
+  build-time factory selects `FAKE`, `SGX_SIM`, `SGX_EPID`, `DCAP`, or `NULL`.
+  The SGX-sim backend is development/simulation evidence with
   `security_level::simulation`; it is not remote attestation. The SGX EPID
   backend is a legacy hardware-compatibility skeleton with CMW/schema, policy,
   and provider/verifier seams, but no Intel PSW/AESM or IAS adapter wired yet.
+  The SGX DCAP backend has a generated CMW schema, fail-closed default,
+  production build selection, and quote-provider/verifier seams, but no Intel
+  QL/QvL/QvE adapter wired yet.
 - SGX quote or `sgx_ttls` simulation helpers. The current SGX-sim slice uses
   local-report mechanics only. Quote and TLS-certificate carriers should be
   added only where the Intel simulation libraries run without hardware
@@ -736,11 +739,13 @@ blobs carrying peer `sgx_target_info_t`, so reports can be targeted to the
 verifier where the two-message route handshake allows it. The EPID slice now
 has the generated CMW schema, backend selection, fail-closed default behavior,
 and quote-provider/verifier seams. It still needs a transcript-bound key
-exchange before it can establish protected-RPC AEAD keys. Next, on SGX1
-hardware, wire the EPID quote provider to the Intel PSW/AESM APIs, decide
-whether IAS verification lives inside the process, behind a local verifier
-service, or as an explicit passport-style Attestation Result, and bind that
-evidence to an agreed shared secret.
+exchange before it can establish protected-RPC AEAD keys. The DCAP slice now
+has the generated CMW schema, backend selection, hardware policy defaults,
+fail-closed default behavior, and quote-provider/verifier seams. Next, on the
+best available SGX hardware, wire either the EPID provider/verifier path for
+legacy demos or the DCAP provider/verifier path for SGX-FLC machines, and bind
+that evidence to an agreed shared secret before establishing protected-RPC
+AEAD keys.
 
 ## Architectural Layers
 
@@ -1225,21 +1230,34 @@ Goal: implement the DCAP backend so production hardware can produce and
 verify real Evidence. After this phase, an enclave-to-enclave session
 between SGX-FLC machines is attested and protected.
 
+Current status: the DCAP schema/backend seam is implemented. The code now has
+`sgx_dcap_protocol.idl`, `sgx_dcap_backend`, `sgx_dcap_quote_provider`,
+`sgx_dcap_quote_verifier`, CMake/backend-factory selection for
+`CANOPY_ATTESTATION_BACKEND=DCAP`, fail-closed behavior when no provider or
+verifier is installed, and host tests with injected synthetic quote material.
+The remaining work in this phase is the hardware adapter that calls Intel DCAP
+APIs and maps QL/QvL/QvE results to Canopy policy verdicts.
+
 ### Deliverables
 
-- `src/dcap_backend.cpp` implements `attestation_backend`:
-  - `produce_evidence(report_data)` calls `sgx_qe_get_target_info`
-    inside the host, `sgx_create_report` inside the enclave, and
-    `sgx_qe_get_quote` back in the host, emitting a CMW with
-    `media_type == "application/sgx-quote3"`;
-  - `verify_evidence(cmw, expected_report_data, policy)` calls
-    `sgx_qv_verify_quote` (or `tee_verify_quote`, see
-    [DCAP Operations](dcap-operations.md)) with `qve_report_info`,
-    then inside the enclave calls
-    `sgx_tvl_verify_qve_report_and_identity`, then enforces application
-    policy over the embedded report;
-  - maps `sgx_ql_qv_result_t` to backend verdicts per the failure-mode
-    catalog in `dcap-operations.md`.
+- `src/sgx_dcap_backend.cpp` implements `attestation_backend`:
+  - complete: hashes canonical `sgx_dcap_report_binding` to produce the
+    32-byte value that must be embedded in SGX `report_data`;
+  - complete: emits and parses a Canopy-owned CMW wrapper with
+    `media_type == "application/canopy-sgx-dcap-evidence"`, preserving the raw
+    quote bytes separately from Canopy binding and optional appraisal summary;
+  - complete: fails closed when no quote provider or quote verifier is
+    installed;
+  - remaining: provider `produce_quote(report_data)` calls
+    `sgx_qe_get_target_info` inside the host, `sgx_create_report` inside the
+    enclave, and `sgx_qe_get_quote` back in the host;
+  - remaining: verifier `verify_quote(...)` calls `sgx_qv_verify_quote` (or
+    `tee_verify_quote`, see [DCAP Operations](dcap-operations.md)) with
+    `qve_report_info`, then inside the enclave calls
+    `sgx_tvl_verify_qve_report_and_identity`, then enforces application policy
+    over the embedded report;
+  - remaining: map `sgx_ql_qv_result_t` to backend verdicts per the
+    failure-mode catalog in `dcap-operations.md`.
 - Build wiring:
   - link `libsgx_dcap_ql` and `libsgx_dcap_quoteverify` on the host;
   - link `libsgx_dcap_tvl.a` inside the enclave;

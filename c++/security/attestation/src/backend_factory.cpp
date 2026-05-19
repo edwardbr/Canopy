@@ -7,6 +7,7 @@
 
 #include <security/attestation/fake_backend.h>
 #include <security/attestation/null_backend.h>
+#include <security/attestation/sgx_dcap_backend.h>
 #include <security/attestation/sgx_epid_backend.h>
 #include <security/attestation/simulation_backend.h>
 
@@ -37,6 +38,8 @@ namespace canopy::security::attestation
             return simulation_backend_id;
         case configured_backend_kind::sgx_epid_backend:
             return sgx_epid_backend_id;
+        case configured_backend_kind::sgx_dcap_backend:
+            return sgx_dcap_backend_id;
         }
         std::terminate();
     }
@@ -51,6 +54,8 @@ namespace canopy::security::attestation
         return configured_backend_kind::sgx_sim_backend;
 #elif defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID)
         return configured_backend_kind::sgx_epid_backend;
+#elif defined(CANOPY_ATTESTATION_BACKEND_DCAP)
+        return configured_backend_kind::sgx_dcap_backend;
 #else
         return configured_backend_kind::fake_backend;
 #endif
@@ -81,6 +86,8 @@ namespace canopy::security::attestation
 #endif
         case configured_backend_kind::sgx_epid_backend:
             return std::make_shared<sgx_epid_backend>();
+        case configured_backend_kind::sgx_dcap_backend:
+            return std::make_shared<sgx_dcap_backend>();
         }
         std::terminate();
     }
@@ -129,6 +136,13 @@ namespace canopy::security::attestation
             options.policy.allow_unattested_peer = false;
             options.policy.allow_development_evidence = false;
             options.policy.minimum_security_level = security_level::hardware_legacy;
+            break;
+        case configured_backend_kind::sgx_dcap_backend:
+            options.policy.send_local_evidence = true;
+            options.policy.require_peer_evidence = true;
+            options.policy.allow_unattested_peer = false;
+            options.policy.allow_development_evidence = false;
+            options.policy.minimum_security_level = security_level::hardware;
             break;
         }
         return options;

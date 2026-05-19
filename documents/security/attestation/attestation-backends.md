@@ -165,6 +165,25 @@ exchange.
 The protected-RPC layer should not depend directly on DCAP data structures. It
 should consume a backend-neutral verdict from the attestation service.
 
+Canopy now has the first DCAP backend slice:
+
+- `interfaces/attestation/sgx_dcap_protocol.idl` defines a typed
+  `sgx_dcap_report_binding`, `sgx_dcap_quote_evidence`, and optional
+  `sgx_dcap_verification_result` carrier outside `rpc_types.idl`;
+- `sgx_dcap_backend` is selectable as `CANOPY_ATTESTATION_BACKEND=DCAP`;
+- the default backend has no quote provider or verifier and therefore fails
+  closed with typed unavailable Evidence;
+- injected quote-provider and quote-verifier interfaces define the seams where
+  `sgx_qe_get_target_info`, `sgx_create_report`, `sgx_qe_get_quote`,
+  `sgx_qv_verify_quote` or `tee_verify_quote`, and QvE/TVL appraisal must be
+  wired on a DCAP-capable machine.
+
+This current DCAP backend is a protocol, policy, and build-selection skeleton.
+It does not yet call Intel DCAP quote-generation or quote-verification
+libraries. Production confidentiality and peer authenticity still require the
+real DCAP provider/verifier adapter plus the transcript-bound key exchange
+described in the implementation plan.
+
 ## Future TEE Backends
 
 TDX, SEV-SNP, and TrustZone/PSA should be backend additions, not protocol

@@ -652,20 +652,28 @@ The DCAP integration sits behind the same backend interface described in
 [Attestation Backends](attestation-backends.md). Mapping concrete DCAP calls
 to the Canopy attestation service:
 
-- `produce_evidence(session_id, report_data)` -- in raw-quote mode, inside
-  the enclave call `sgx_create_report` to build a report targeted at the QE3;
-  then on the host call `sgx_qe_get_quote` to wrap it. In `sgx_ttls` RA-TLS
-  mode, the Intel helper owns this report-data construction from the supplied
-  certificate key.
-- `verify_evidence(quote_bytes, expected_report_data, policy)` -- on the
-  host call `sgx_qv_verify_quote` (or `tee_verify_quote`) with a non-null
-  `qve_report_info`; then inside the enclave call
-  `sgx_tvl_verify_qve_report_and_identity` and finally enforce policy on
-  the embedded report.
+- `sgx_dcap_backend::produce_evidence(binding)` -- canonical-serializes
+  `sgx_dcap_report_binding`, hashes it with SHA-256, and passes the digest to
+  an injected `sgx_dcap_quote_provider`. In raw-quote mode, the provider should
+  call `sgx_qe_get_target_info` on the host, ask the enclave to call
+  `sgx_create_report` for that target and report-data digest, then call
+  `sgx_qe_get_quote` on the host. In `sgx_ttls` RA-TLS mode, the Intel helper
+  owns this report-data construction from the supplied certificate key.
+- `sgx_dcap_backend::verify_evidence(cmw, expected_binding, policy)` --
+  validates the Canopy CMW wrapper, recomputes the report-data digest, and
+  passes the raw quote plus expected binding to an injected
+  `sgx_dcap_quote_verifier`. The verifier should call `sgx_qv_verify_quote`
+  or `tee_verify_quote` with a non-null `qve_report_info`; then inside the
+  enclave call `sgx_tvl_verify_qve_report_and_identity` and finally enforce
+  policy on the embedded report.
 - `local_attestation(target_info, report_data)` -- call `sgx_create_report`
   with target set to the peer enclave's `sgx_target_info_t`.
 - `verify_local(report)` -- call `sgx_verify_report` (no DCAP collateral;
   same-CPU verification).
+
+The current code implements the typed CMW wrapper, provider/verifier
+interfaces, backend-factory selection, and fail-closed behavior. The concrete
+Intel DCAP provider/verifier adapter is the remaining hardware-dependent part.
 
 The host side of the SGX coroutine transport
 (`c++/transports/sgx_coroutine/host`) routes quote bytes only. It does not

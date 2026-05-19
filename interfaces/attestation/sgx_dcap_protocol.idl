@@ -1,0 +1,97 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "attestation/route_attestation_protocol.idl"
+
+namespace rpc
+{
+    [inline] namespace v4
+    {
+        namespace attestation
+        {
+        // Transcript fields that must be bound into SGX DCAP quote report_data.
+        //
+        // The DCAP quote producer canonical_crypto serializes this structure,
+        // hashes it with SHA-256, and asks the SGX quote provider to place the
+        // digest into sgx_report_data_t. A verifier recomputes the same digest
+        // before accepting the quote as evidence for this Canopy route
+        // handshake.
+        struct sgx_dcap_report_binding
+        {
+            [description="Backend identity expected to be sgx-dcap for this SGX DCAP quote profile."]
+            std::string backend_id;
+
+            [description="Identity claimed by the SGX enclave route."]
+            attestation_identity subject;
+
+            [description="Caller-generated transcript id for the route-attestation handshake."]
+            uint64_t transcript_id = 0;
+
+            [description="Verifier nonce copied from the route-attestation handshake. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> nonce;
+        };
+
+        // Appraised DCAP verification material.
+        //
+        // A verifier may receive a raw quote and run QvL/QvE locally, or it may
+        // receive an already-appraised quote result from a trusted verifier
+        // service. This structure is intentionally a Canopy-owned summary
+        // rather than an Intel header mirror so the route layer stays stable if
+        // QvL APIs evolve from sgx_qv_verify_quote to tee_verify_quote_qvt.
+        struct sgx_dcap_verification_result
+        {
+            [description="Raw quote-verification result value, for example sgx_ql_qv_result_t, when available."]
+            uint64_t quote_verification_result = 0;
+
+            [description="Human-readable quote-verification result name, for example OK, OUT_OF_DATE, or CONFIG_NEEDED."]
+            std::string quote_verification_result_name;
+
+            [description="Non-zero when collateral was expired according to the verifier."]
+            uint8_t collateral_expired = 0;
+
+            [description="Verifier wall-clock time used for collateral appraisal, seconds since Unix epoch when available."]
+            uint64_t verification_time = 0;
+
+            [description="Supplemental-data version returned by the verifier when available."]
+            uint32_t supplemental_data_version = 0;
+
+            [description="TEE type accepted by a unified verifier, such as SGX or TDX, when available."]
+            uint32_t tee_type = 0;
+
+            [description="Raw QvE report bytes when the verifier used enclave-assisted quote verification. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> qve_report;
+
+            [description="Raw QvE report signature or authentication bytes when available. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> qve_report_signature;
+
+            [description="Raw supplemental data returned by QvL/QvE. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> supplemental_data;
+
+            [description="Comma-separated TCB advisory ids reported by collateral appraisal."]
+            std::string advisory_ids;
+        };
+
+        // Canopy-owned carrier for SGX DCAP/ECDSA remote-attestation Evidence.
+        //
+        // This structure deliberately keeps DCAP details outside rpc_types.idl.
+        // The raw quote remains available as quote bytes, while the binding and
+        // optional verifier result make the Evidence self-describing for
+        // non-TLS, routed, and agent-facing carriers.
+        struct sgx_dcap_quote_evidence
+        {
+            sgx_dcap_report_binding binding;
+
+            [description="SHA-256 digest expected in the first 32 bytes of sgx_report_data_t."]
+            std::vector<uint8_t> report_data_sha256;
+
+            [description="Raw SGX DCAP quote bytes, typically sgx_quote3_t. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> quote;
+
+            [description="Optional local or delegated quote-verification result. Production policy decides whether delegated results are acceptable."]
+            std::optional<sgx_dcap_verification_result> verification_result;
+        };
+        }
+    }
+}

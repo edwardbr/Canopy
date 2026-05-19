@@ -58,6 +58,17 @@ CanopyGenerate(
   install_dir ${GENERATED_INSTALL_DIR})
 
 CanopyGenerate(
+  sgx_dcap_protocol
+  attestation/sgx_dcap_protocol.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  canonical_crypto
+  dependencies route_attestation_protocol_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR})
+
+CanopyGenerate(
   protected_rpc_protocol
   attestation/protected_rpc_protocol.idl
   ${CMAKE_CURRENT_SOURCE_DIR}
