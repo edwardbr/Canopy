@@ -26,6 +26,63 @@
 
 namespace canopy::security::attestation
 {
+    namespace
+    {
+        [[nodiscard]] auto requires_explicit_backend_override(configured_backend_kind kind) noexcept -> bool
+        {
+            return kind == configured_backend_kind::sgx_epid_backend || kind == configured_backend_kind::sgx_dcap_backend;
+        }
+
+        [[noreturn]] void terminate_for_invalid_backend_configuration() noexcept
+        {
+            std::terminate();
+#if defined(FOR_SGX) && (defined(__clang__) || defined(__GNUC__))
+            __builtin_trap();
+#endif
+        }
+
+        [[nodiscard]] auto default_policy_for_backend(const attestation_backend& backend) -> attestation_policy
+        {
+            attestation_policy policy;
+            policy.required_backend_id = backend.backend_id();
+
+            if (policy.required_backend_id == null_backend_id)
+            {
+                policy.send_local_evidence = false;
+                policy.require_peer_evidence = false;
+                policy.allow_unattested_peer = true;
+                policy.allow_development_evidence = false;
+                policy.minimum_security_level = security_level::none;
+            }
+            else if (policy.required_backend_id == fake_backend_id)
+            {
+                policy.send_local_evidence = true;
+                policy.require_peer_evidence = true;
+                policy.allow_unattested_peer = false;
+                policy.allow_development_evidence = true;
+                policy.minimum_security_level = security_level::development;
+            }
+            else if (policy.required_backend_id == simulation_backend_id)
+            {
+                policy.send_local_evidence = true;
+                policy.require_peer_evidence = true;
+                policy.allow_unattested_peer = false;
+                policy.allow_development_evidence = true;
+                policy.minimum_security_level = security_level::simulation;
+            }
+            else
+            {
+                policy.send_local_evidence = true;
+                policy.require_peer_evidence = true;
+                policy.allow_unattested_peer = false;
+                policy.allow_development_evidence = false;
+                policy.minimum_security_level = backend.level();
+            }
+
+            return policy;
+        }
+    } // namespace
+
     auto attestation_backend_kind_name(configured_backend_kind kind) noexcept -> const char*
     {
         switch (kind)
@@ -41,7 +98,7 @@ namespace canopy::security::attestation
         case configured_backend_kind::sgx_dcap_backend:
             return sgx_dcap_backend_id;
         }
-        std::terminate();
+        terminate_for_invalid_backend_configuration();
     }
 
     auto configured_attestation_backend_kind() noexcept -> configured_backend_kind
@@ -76,20 +133,26 @@ namespace canopy::security::attestation
 #ifdef CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS
             return std::make_shared<fake_backend>();
 #else
-            std::terminate();
+            terminate_for_invalid_backend_configuration();
 #endif
         case configured_backend_kind::sgx_sim_backend:
 #ifdef CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS
             return std::make_shared<simulation_backend>();
 #else
-            std::terminate();
+            terminate_for_invalid_backend_configuration();
 #endif
         case configured_backend_kind::sgx_epid_backend:
-            return std::make_shared<sgx_epid_backend>();
         case configured_backend_kind::sgx_dcap_backend:
-            return std::make_shared<sgx_dcap_backend>();
+            // Hardware attestation backends need platform-specific quote
+            // providers, verifiers, trust anchors, and measurement policy. A
+            // default-constructed backend fails closed, but silently building
+            // one from a configured hardware preset is too easy to mistake for
+            // working production attestation. Construct SGX backends directly
+            // in SGX-specific setup code and pass them through
+            // backend_factory_overrides instead.
+            terminate_for_invalid_backend_configuration();
         }
-        std::terminate();
+        terminate_for_invalid_backend_configuration();
     }
 
     auto make_configured_attestation_backend() -> std::shared_ptr<attestation_backend>
@@ -101,6 +164,8 @@ namespace canopy::security::attestation
     {
         if (overrides.backend)
             return std::move(overrides.backend);
+        if (requires_explicit_backend_override(configured_attestation_backend_kind()))
+            terminate_for_invalid_backend_configuration();
         return make_attestation_backend(configured_attestation_backend_kind());
     }
 
@@ -114,49 +179,12 @@ namespace canopy::security::attestation
         options.local_identity = std::move(local_identity);
         if (overrides.backend)
             options.backend = std::move(overrides.backend);
+        else if (requires_explicit_backend_override(kind))
+            terminate_for_invalid_backend_configuration();
         else
             options.backend = make_attestation_backend(kind);
 
-        options.policy = attestation_policy{};
-        options.policy.required_backend_id = options.backend->backend_id();
-        switch (kind)
-        {
-        case configured_backend_kind::null_backend:
-            options.policy.send_local_evidence = false;
-            options.policy.require_peer_evidence = false;
-            options.policy.allow_unattested_peer = true;
-            options.policy.allow_development_evidence = false;
-            options.policy.minimum_security_level = security_level::none;
-            break;
-        case configured_backend_kind::fake_backend:
-            options.policy.send_local_evidence = true;
-            options.policy.require_peer_evidence = true;
-            options.policy.allow_unattested_peer = false;
-            options.policy.allow_development_evidence = true;
-            options.policy.minimum_security_level = security_level::development;
-            break;
-        case configured_backend_kind::sgx_sim_backend:
-            options.policy.send_local_evidence = true;
-            options.policy.require_peer_evidence = true;
-            options.policy.allow_unattested_peer = false;
-            options.policy.allow_development_evidence = true;
-            options.policy.minimum_security_level = security_level::simulation;
-            break;
-        case configured_backend_kind::sgx_epid_backend:
-            options.policy.send_local_evidence = true;
-            options.policy.require_peer_evidence = true;
-            options.policy.allow_unattested_peer = false;
-            options.policy.allow_development_evidence = false;
-            options.policy.minimum_security_level = security_level::hardware_legacy;
-            break;
-        case configured_backend_kind::sgx_dcap_backend:
-            options.policy.send_local_evidence = true;
-            options.policy.require_peer_evidence = true;
-            options.policy.allow_unattested_peer = false;
-            options.policy.allow_development_evidence = false;
-            options.policy.minimum_security_level = security_level::hardware;
-            break;
-        }
+        options.policy = default_policy_for_backend(*options.backend);
         return options;
     }
 } // namespace canopy::security::attestation

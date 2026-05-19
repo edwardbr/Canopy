@@ -14,7 +14,6 @@ namespace canopy::security::attestation
 {
     inline constexpr const char* sgx_dcap_backend_id = "sgx-dcap";
     inline constexpr const char* sgx_dcap_evidence_media_type = "application/canopy-sgx-dcap-evidence";
-    inline constexpr const char* sgx_dcap_raw_quote_media_type = "application/sgx-quote3";
     inline constexpr const char* sgx_dcap_quote_evidence_content_format = "canopy.sgx-dcap-quote.v1";
     inline constexpr const char* sgx_dcap_unavailable_content_format = "canopy.sgx-dcap-unavailable.v1";
 

@@ -182,12 +182,13 @@ struct sgx_release_identity_policy
 
 For DCAP, the callback behind `sgx_dcap_host_quote_verifier_options` should:
 
-1. call the Intel quote verifier (`sgx_qv_verify_quote`, `tee_verify_quote`, or
+1. configure `extract_report_data` so the Canopy adapter can parse the raw
+   quote and enforce `sgx_report_data_t == report_data_sha256 || zero(32)`;
+2. call the Intel quote verifier (`sgx_qv_verify_quote`, `tee_verify_quote`, or
    a QvE/TVL path);
-2. reject unacceptable quote-verification results or expired collateral;
-3. parse the quote body identity fields;
-4. compare those fields with the destination zone's release policy;
-5. confirm `sgx_report_data_t` matches the Canopy transcript binding;
+3. reject unacceptable quote-verification results or expired collateral;
+4. parse the quote body identity fields;
+5. compare those fields with the destination zone's release policy;
 6. return accepted only after all checks pass.
 
 Conceptual wiring:
@@ -196,6 +197,7 @@ Conceptual wiring:
 sgx_release_identity_policy treasury_policy = load_policy("treasury.json");
 
 sgx_dcap_host_quote_verifier_options verifier_options;
+verifier_options.extract_report_data = parse_sgx_quote3_report_data;
 verifier_options.verify_quote =
     [treasury_policy](const sgx_dcap_verifier_input& input,
                       const attestation_policy& policy)

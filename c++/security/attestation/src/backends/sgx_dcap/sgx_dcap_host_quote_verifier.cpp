@@ -5,6 +5,8 @@
 
 #include <security/attestation/backends/sgx_dcap/sgx_dcap_host_quote_verifier.h>
 
+#include "crypto_hash.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -12,6 +14,9 @@ namespace canopy::security::attestation
 {
     namespace
     {
+        constexpr size_t sgx_report_data_size = 64U;
+        constexpr size_t report_data_hash_size = detail::crypto_sha256_digest_size;
+
         [[nodiscard]] auto reject(std::string reason) -> attestation_verdict
         {
             attestation_verdict verdict;
@@ -28,6 +33,21 @@ namespace canopy::security::attestation
         {
             return std::find(allowed.begin(), allowed.end(), actual) != allowed.end();
         }
+
+        [[nodiscard]] auto report_data_matches(
+            const std::vector<uint8_t>& report_data,
+            const std::vector<uint8_t>& expected_hash) -> bool
+        {
+            if (report_data.size() != sgx_report_data_size || expected_hash.size() != report_data_hash_size)
+                return false;
+
+            const std::vector<uint8_t> actual_hash(report_data.begin(), report_data.begin() + report_data_hash_size);
+            if (!detail::constant_time_equal(actual_hash, expected_hash))
+                return false;
+
+            return std::all_of(
+                report_data.begin() + report_data_hash_size, report_data.end(), [](uint8_t value) { return value == 0; });
+        }
     } // namespace
 
     sgx_dcap_host_quote_verifier::sgx_dcap_host_quote_verifier(sgx_dcap_host_quote_verifier_options options)
@@ -41,6 +61,16 @@ namespace canopy::security::attestation
     {
         if (!options_.verify_quote)
             return reject("SGX DCAP quote verifier callback is not configured");
+
+        if (options_.require_report_data_match)
+        {
+            if (!options_.extract_report_data)
+                return reject("SGX DCAP quote report_data extractor is not configured");
+
+            auto report_data = options_.extract_report_data(input.quote.quote);
+            if (!report_data.has_value() || !report_data_matches(report_data.value(), input.report_data_sha256))
+                return reject("SGX DCAP quote report_data does not match the Canopy transcript binding");
+        }
 
         // The concrete callback owns Intel QvL/QvE details: collateral lookup,
         // quote signature checks, PCK chain validation, QvE report verification,

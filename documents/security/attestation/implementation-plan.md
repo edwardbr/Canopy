@@ -85,8 +85,11 @@ policy-hardening work described in the remaining phases.
   policy sets both `require_peer_evidence == false` and
   `allow_unattested_peer == true`.
 - `CANOPY_ATTESTATION_BACKEND` currently accepts `FAKE`, `SGX_SIM`,
-  `SGX_EPID`, and `NULL` and defines the backend selected by
-  `make_configured_attestation_service_options(...)`.
+  `SGX_EPID`, `DCAP`, and `NULL` and defines the backend selected by
+  `make_configured_attestation_service_options(...)`. Hardware backends
+  (`SGX_EPID` and `DCAP`) require an explicit prebuilt backend supplied through
+  `backend_factory_overrides`; this prevents a hardware preset from silently
+  starting with a providerless/verifierless backend that can never attest.
 - `interfaces/attestation/sgx_epid_protocol.idl` defines the first legacy SGX
   EPID CMW payload:
   - `sgx_epid_report_binding`;
@@ -748,12 +751,15 @@ backend rejects it before entering the injected verifier. It still needs a
 transcript-bound key exchange before it can establish protected-RPC AEAD keys.
 The DCAP slice now has the generated CMW schema, backend selection, hardware
 policy defaults, fail-closed default behavior, quote-provider/verifier seams,
-and defensive payload/field caps. Host-only tests now cover oversized DCAP
-inner quote/supplemental-data fields before the verifier seam, plus provider
-rejection of oversized target-info/report buffers. Next, on the best available
-SGX hardware, wire either the EPID provider/verifier path for legacy demos or
-the DCAP provider/verifier path for SGX-FLC machines, and bind that evidence to
-an agreed shared secret before establishing protected-RPC AEAD keys.
+defensive payload/field caps, and adapter-owned `sgx_report_data_t` binding for
+host DCAP verification. Host-only tests now cover oversized DCAP inner
+quote/supplemental-data fields before the verifier seam, provider rejection of
+oversized target-info/report buffers, and rejection before verifier callback
+when raw quote report_data is missing or bound to the wrong transcript. Next,
+on the best available SGX hardware, wire either the EPID provider/verifier path
+for legacy demos or the DCAP provider/verifier path for SGX-FLC machines, and
+bind that evidence to an agreed shared secret before establishing protected-RPC
+AEAD keys.
 
 ## Architectural Layers
 
@@ -1262,7 +1268,12 @@ transcript-bound key exchange.
     caps quote sizes before returning material to the backend;
   - complete: `sgx_dcap_host_quote_verifier` maps an injected QvL/QvE result
     to Canopy's verdict shape, with explicit policy for acceptable
-    quote-verification results and expired collateral;
+    quote-verification results and expired collateral, after its configured
+    `extract_report_data` callback proves the raw quote report_data is bound
+    to the Canopy transcript hash;
+  - remaining: provide a tested reference `sgx_quote3_t` report-data extractor
+    and a production verifier callback wrapper, so deployers are not forced to
+    hand-roll quote-layout parsing or QvL/QvE result handling;
   - remaining: wire the provider function table to `sgx_qe_get_target_info`,
     enclave `sgx_create_report`, and `sgx_qe_get_quote`;
   - remaining: wire the verifier callback to `sgx_qv_verify_quote` (or
@@ -1270,6 +1281,10 @@ transcript-bound key exchange.
     `qve_report_info`, then inside the enclave call
     `sgx_tvl_verify_qve_report_and_identity`, then enforce application policy
     over the embedded report;
+  - remaining: define the only supported delegated-result path for the optional
+    DCAP `verification_result` field. It must verify the QvE report,
+    signature, accepted QvE identity, collateral freshness, and policy before
+    consuming a producer-supplied quote-verification result;
   - remaining: map the full `sgx_ql_qv_result_t` catalog to backend verdicts
     per the failure-mode catalog in `dcap-operations.md`.
 - Build wiring:

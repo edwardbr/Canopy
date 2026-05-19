@@ -216,8 +216,8 @@ namespace canopy::security::attestation
         {
             const auto actual_identity = make_identity(actual.subject);
             return actual.backend_id == sgx_epid_backend_id && actual_identity.enclave_id == expected.subject.enclave_id
-                   && actual_identity.zone_id == expected.subject.zone_id
-                   && actual.transcript_id == expected.transcript_id && actual.nonce == expected.nonce;
+                   && actual_identity.zone_id == expected.subject.zone_id && actual.transcript_id == expected.transcript_id
+                   && detail::constant_time_equal(actual.nonce, expected.nonce);
         }
     } // namespace
 

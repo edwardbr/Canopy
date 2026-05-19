@@ -171,22 +171,35 @@ Canopy now has the first DCAP backend slice:
   `sgx_dcap_report_binding`, `sgx_dcap_quote_evidence`, and optional
   `sgx_dcap_verification_result` carrier outside `rpc_types.idl`;
 - `sgx_dcap_backend` is selectable as `CANOPY_ATTESTATION_BACKEND=DCAP`;
-- the default backend has no quote provider or verifier and therefore fails
-  closed with typed unavailable Evidence;
+- hardware-backed configured services must supply a prebuilt DCAP backend
+  through `backend_factory_overrides`; the neutral factory does not silently
+  construct a providerless/verifierless DCAP backend for a hardware preset;
+- a directly constructed default backend has no quote provider or verifier and
+  therefore fails closed with typed unavailable Evidence;
 - injected quote-provider and quote-verifier interfaces define the seams where
   `sgx_qe_get_target_info`, `sgx_create_report`, `sgx_qe_get_quote`,
   `sgx_qv_verify_quote` or `tee_verify_quote`, and QvE/TVL appraisal must be
   wired on a DCAP-capable machine;
 - `sgx_dcap_host_quote_provider` and `sgx_dcap_host_quote_verifier` provide
-  function-table adapters for that host wiring. The tests exercise the QE
-  target-info/report/quote sequence, quote-size caps, QvL result mapping, and
-  expired-collateral rejection without linking Intel runtime libraries.
+  function-table adapters for that host wiring. The verifier adapter requires
+  a quote `report_data` extractor and enforces
+  `sgx_report_data_t == report_data_sha256 || zero(32)` before mapping any
+  QvL/QvE result to a Canopy verdict. The tests exercise the QE
+  target-info/report/quote sequence, quote-size caps, transcript binding, QvL
+  result mapping, and expired-collateral rejection without linking Intel
+  runtime libraries.
 
 This current DCAP backend is now more than a wire skeleton, but it still does
 not directly call Intel DCAP quote-generation or quote-verification libraries.
 Production confidentiality and peer authenticity still require binding those
 adapters to the real Intel APIs plus the transcript-bound key exchange
 described in the implementation plan.
+
+The optional DCAP `verification_result` field is an appraisal summary, not a
+trust anchor. A verifier may use it only after verifying the QvE report,
+signature, accepted QvE identity, collateral freshness, and local policy. The
+current host verifier adapter safely ignores any producer-supplied result until
+its configured verification callback returns a trusted QvL/QvE outcome.
 
 ## Future TEE Backends
 
@@ -279,8 +292,9 @@ Canopy now has the initial EPID backend shape:
   SHA-256; the digest is the value that the quote provider must bind into
   SGX `report_data`;
 - `sgx_epid_backend` is selectable as `CANOPY_ATTESTATION_BACKEND=SGX_EPID`;
-- without an injected quote provider and quote verifier it returns a typed
-  unavailable CMW and verification fails closed;
+- hardware-backed configured services must supply a prebuilt EPID backend
+  through `backend_factory_overrides`; direct default construction is still
+  available for tests and fails closed with typed unavailable CMW/verification;
 - injected providers and verifiers are the only code that should call Intel
   PSW/AESM, IAS, or quote parsing APIs;
 - `sgx_epid_host_quote_provider` provides a function-table adapter for the
@@ -311,10 +325,10 @@ The backend normalizes accepted EPID verdicts to `security_level ==
 hardware_legacy`; it must not be promoted to the DCAP/TDX class of hardware
 evidence.
 
-Intel IAS/EPID is a fading trust anchor. New production deployments should
-prefer DCAP/ECDSA or a newer TEE backend. EPID should ship only for explicit
-legacy interop, demonstrations on SGX1 hardware, or environments whose policy
-owner has deliberately accepted IAS dependence.
+Intel IAS/EPID is retired/deprecated as the forward SGX attestation path. New
+production deployments should prefer DCAP/ECDSA or a newer TEE backend. EPID
+should ship only for explicit legacy interop, demonstrations on SGX1 hardware,
+or environments whose policy owner has deliberately accepted IAS dependence.
 
 EPID quote verification does not create the protected-RPC session key. The
 route handshake must also carry, or be bound to, a real key exchange whose

@@ -284,6 +284,13 @@ namespace
         return out;
     }
 
+    auto extract_sgx_report_data_prefix(const std::vector<uint8_t>& quote) -> std::optional<std::vector<uint8_t>>
+    {
+        if (quote.size() < 64U)
+            return std::nullopt;
+        return std::vector<uint8_t>(quote.begin(), quote.begin() + 64U);
+    }
+
     class test_sgx_epid_quote_provider final : public sgx_epid_quote_provider
     {
     public:
@@ -958,9 +965,7 @@ TEST(
     options.extract_report_data = [&](const std::vector<uint8_t>& quote) -> std::optional<std::vector<uint8_t>>
     {
         report_data_extracted = true;
-        if (quote.size() < 64U)
-            return std::nullopt;
-        return std::vector<uint8_t>(quote.begin(), quote.begin() + 64U);
+        return extract_sgx_report_data_prefix(quote);
     };
     options.validate_ias_report = [&](const sgx_epid_verifier_input& input,
                                       const attestation_policy& policy) -> sgx_epid_ias_report_validation_result
@@ -1004,7 +1009,7 @@ TEST(
 {
     sgx_epid_ias_report_verifier_options options;
     options.extract_report_data = [](const std::vector<uint8_t>& quote) -> std::optional<std::vector<uint8_t>>
-    { return std::vector<uint8_t>(quote.begin(), quote.begin() + 64U); };
+    { return extract_sgx_report_data_prefix(quote); };
     options.validate_ias_report
         = [](const sgx_epid_verifier_input&, const attestation_policy&) -> sgx_epid_ias_report_validation_result
     { return sgx_epid_ias_report_validation_result{true, "unexpected acceptance"}; };
@@ -1241,16 +1246,17 @@ TEST(
 {
     sgx_dcap_host_quote_verifier_options options;
     bool verified = false;
+    options.extract_report_data = extract_sgx_report_data_prefix;
     options.verify_quote
         = [&](const sgx_dcap_verifier_input& input, const attestation_policy& policy) -> sgx_dcap_host_quote_verification
     {
         verified = true;
         EXPECT_EQ(policy.required_backend_id, sgx_dcap_backend_id);
-        EXPECT_EQ(input.quote.quote, std::vector<uint8_t>({0x10, 0x20}));
+        EXPECT_EQ(input.quote.quote, make_sgx_report_data(input.report_data_sha256));
 
         sgx_dcap_host_quote_verification result;
         result.call_succeeded = true;
-        result.result.quote_verification_result = 0;
+        result.result.quote_verification_result = canopy::security::attestation::sgx_dcap_qv_result_ok;
         result.result.quote_verification_result_name = "OK";
         result.result.collateral_expired = 0;
         return result;
@@ -1260,7 +1266,7 @@ TEST(
     sgx_dcap_verifier_input input;
     input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
     input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
-    input.quote.quote = {0x10, 0x20};
+    input.quote.quote = make_sgx_report_data(input.report_data_sha256);
 
     attestation_policy policy;
     policy.required_backend_id = sgx_dcap_backend_id;
@@ -1276,9 +1282,53 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxDcapHostVerifierRequiresReportDataBoundQuote)
+{
+    bool verify_quote_called = false;
+    sgx_dcap_host_quote_verifier_options missing_extractor_options;
+    missing_extractor_options.verify_quote
+        = [&](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
+    {
+        verify_quote_called = true;
+        return sgx_dcap_host_quote_verification{true, {}, "unexpected verifier call"};
+    };
+
+    sgx_dcap_verifier_input input;
+    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
+    input.quote.quote = make_sgx_report_data(input.report_data_sha256);
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_dcap_backend_id;
+    policy.minimum_security_level = security_level::hardware;
+
+    sgx_dcap_host_quote_verifier missing_extractor_verifier(std::move(missing_extractor_options));
+    auto missing_extractor = missing_extractor_verifier.verify_quote(input, policy);
+    EXPECT_FALSE(missing_extractor.accepted);
+    EXPECT_FALSE(verify_quote_called);
+
+    sgx_dcap_host_quote_verifier_options mismatched_report_data_options;
+    mismatched_report_data_options.extract_report_data = extract_sgx_report_data_prefix;
+    mismatched_report_data_options.verify_quote
+        = [&](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
+    {
+        verify_quote_called = true;
+        return sgx_dcap_host_quote_verification{true, {}, "unexpected verifier call"};
+    };
+
+    input.quote.quote = make_sgx_report_data(std::vector<uint8_t>(32U, 0x34));
+    sgx_dcap_host_quote_verifier mismatched_report_data_verifier(std::move(mismatched_report_data_options));
+    auto mismatched_report_data = mismatched_report_data_verifier.verify_quote(input, policy);
+    EXPECT_FALSE(mismatched_report_data.accepted);
+    EXPECT_FALSE(verify_quote_called);
+}
+
+TEST(
+    AttestationService,
     SgxDcapHostVerifierRejectsUnacceptedQvResultAndExpiredCollateral)
 {
     sgx_dcap_host_quote_verifier_options options;
+    options.extract_report_data = extract_sgx_report_data_prefix;
     options.verify_quote = [](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
     {
         sgx_dcap_host_quote_verification result;
@@ -1292,7 +1342,7 @@ TEST(
     sgx_dcap_verifier_input input;
     input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
     input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
-    input.quote.quote = {0x10, 0x20};
+    input.quote.quote = make_sgx_report_data(input.report_data_sha256);
 
     attestation_policy policy;
     policy.required_backend_id = sgx_dcap_backend_id;
@@ -1302,6 +1352,7 @@ TEST(
     EXPECT_FALSE(bad_qv_result.accepted);
 
     sgx_dcap_host_quote_verifier_options expired_options;
+    expired_options.extract_report_data = extract_sgx_report_data_prefix;
     expired_options.verify_quote
         = [](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
     {
@@ -1420,13 +1471,22 @@ TEST(
     AttestationService,
     BackendFactoryUsesConfiguredBackendDefaults)
 {
+    const auto configured_kind = configured_attestation_backend_kind();
+    if (configured_kind == configured_backend_kind::sgx_epid_backend
+        || configured_kind == configured_backend_kind::sgx_dcap_backend)
+    {
+        EXPECT_DEATH_IF_SUPPORTED(
+            (void)make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"}), "");
+        return;
+    }
+
     auto options = make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"});
     ASSERT_TRUE(options.backend);
     EXPECT_EQ(options.backend->backend_id(), configured_attestation_backend_name());
     EXPECT_EQ(options.local_identity.enclave_id, "factory-enclave");
     EXPECT_EQ(options.local_identity.zone_id, "factory-zone");
 
-    if (configured_attestation_backend_kind() == configured_backend_kind::null_backend)
+    if (configured_kind == configured_backend_kind::null_backend)
     {
         EXPECT_FALSE(options.policy.send_local_evidence);
         EXPECT_FALSE(options.policy.require_peer_evidence);
@@ -1435,7 +1495,7 @@ TEST(
         EXPECT_EQ(options.policy.minimum_security_level, security_level::none);
         EXPECT_EQ(options.policy.required_backend_id, null_backend_id);
     }
-    else if (configured_attestation_backend_kind() == configured_backend_kind::fake_backend)
+    else if (configured_kind == configured_backend_kind::fake_backend)
     {
         EXPECT_TRUE(options.policy.send_local_evidence);
         EXPECT_TRUE(options.policy.require_peer_evidence);
@@ -1444,7 +1504,7 @@ TEST(
         EXPECT_EQ(options.policy.minimum_security_level, security_level::development);
         EXPECT_EQ(options.policy.required_backend_id, fake_backend_id);
     }
-    else if (configured_attestation_backend_kind() == configured_backend_kind::sgx_sim_backend)
+    else if (configured_kind == configured_backend_kind::sgx_sim_backend)
     {
         EXPECT_TRUE(options.policy.send_local_evidence);
         EXPECT_TRUE(options.policy.require_peer_evidence);
@@ -1452,26 +1512,6 @@ TEST(
         EXPECT_TRUE(options.policy.allow_development_evidence);
         EXPECT_EQ(options.policy.minimum_security_level, security_level::simulation);
         EXPECT_EQ(options.policy.required_backend_id, simulation_backend_id);
-    }
-    else
-    {
-        ASSERT_TRUE(
-            configured_attestation_backend_kind() == configured_backend_kind::sgx_epid_backend
-            || configured_attestation_backend_kind() == configured_backend_kind::sgx_dcap_backend);
-        EXPECT_TRUE(options.policy.send_local_evidence);
-        EXPECT_TRUE(options.policy.require_peer_evidence);
-        EXPECT_FALSE(options.policy.allow_unattested_peer);
-        EXPECT_FALSE(options.policy.allow_development_evidence);
-        if (configured_attestation_backend_kind() == configured_backend_kind::sgx_epid_backend)
-        {
-            EXPECT_EQ(options.policy.minimum_security_level, security_level::hardware_legacy);
-            EXPECT_EQ(options.policy.required_backend_id, sgx_epid_backend_id);
-        }
-        else
-        {
-            EXPECT_EQ(options.policy.minimum_security_level, security_level::hardware);
-            EXPECT_EQ(options.policy.required_backend_id, sgx_dcap_backend_id);
-        }
     }
 }
 
@@ -1488,9 +1528,28 @@ TEST(
     EXPECT_EQ(backend->backend_id(), sgx_epid_backend_id);
     EXPECT_EQ(backend->level(), security_level::hardware_legacy);
 
-    auto default_epid = make_attestation_backend(configured_backend_kind::sgx_epid_backend);
-    ASSERT_TRUE(default_epid);
-    EXPECT_EQ(default_epid->backend_id(), sgx_epid_backend_id);
+    backend_factory_overrides service_overrides;
+    service_overrides.backend = std::make_shared<sgx_epid_backend>(
+        std::make_shared<test_sgx_epid_quote_provider>(), std::make_shared<test_sgx_epid_quote_verifier>());
+
+    auto service_options = make_configured_attestation_service_options(
+        identity{"factory-enclave", "factory-zone"}, std::move(service_overrides));
+    ASSERT_TRUE(service_options.backend);
+    EXPECT_EQ(service_options.backend->backend_id(), sgx_epid_backend_id);
+    EXPECT_TRUE(service_options.policy.send_local_evidence);
+    EXPECT_TRUE(service_options.policy.require_peer_evidence);
+    EXPECT_FALSE(service_options.policy.allow_unattested_peer);
+    EXPECT_FALSE(service_options.policy.allow_development_evidence);
+    EXPECT_EQ(service_options.policy.minimum_security_level, security_level::hardware_legacy);
+    EXPECT_EQ(service_options.policy.required_backend_id, sgx_epid_backend_id);
+}
+
+TEST(
+    AttestationService,
+    BackendFactoryRequiresExplicitHardwareBackendConstruction)
+{
+    EXPECT_DEATH_IF_SUPPORTED((void)make_attestation_backend(configured_backend_kind::sgx_epid_backend), "");
+    EXPECT_DEATH_IF_SUPPORTED((void)make_attestation_backend(configured_backend_kind::sgx_dcap_backend), "");
 }
 
 TEST(
