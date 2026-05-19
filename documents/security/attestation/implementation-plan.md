@@ -207,6 +207,10 @@ policy-hardening work described in the remaining phases.
   peer is the adjacent zone; for routed end-to-end protection it must be the
   final destination zone. The base `rpc::service` and generic
   `rpc::stream_transport::transport` remain attestation-neutral.
+- Route-attestation transcript ids are allocated from the destination route's
+  `route_attestation_state`, not from a service-global counter. This keeps
+  transcript uniqueness, replay reasoning, and audit state scoped to the
+  route/session domain that owns the handshake.
 - `route_attestation_state` now has a pure
   `evaluate_route_attestation_state(...)` decision helper. It maps route state
   to `allow`, `start_handshake`, `wait_for_handshake`, or `reject`; host tests

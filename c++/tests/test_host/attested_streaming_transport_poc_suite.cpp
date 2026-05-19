@@ -918,6 +918,8 @@ namespace
         route_attestation_status responder_route_status{route_attestation_status::attested};
         bool initiator_context_established{true};
         bool responder_context_established{true};
+        uint64_t initiator_next_transcript_id{2};
+        uint64_t responder_next_transcript_id{1};
     };
 
     CORO_TASK(bool)
@@ -961,6 +963,8 @@ namespace
             initiator_service->get_attestation_route_state(responder_zone).status, route_attestation_status::unknown);
         CORO_ASSERT_EQ(
             responder_service->get_attestation_route_state(initiator_zone).status, route_attestation_status::unknown);
+        CORO_ASSERT_EQ(initiator_service->get_attestation_route_state(responder_zone).next_transcript_id, 1U);
+        CORO_ASSERT_EQ(responder_service->get_attestation_route_state(initiator_zone).next_transcript_id, 1U);
 
         auto send_queue = std::make_shared<streaming::spsc_queue::queue_type>();
         auto receive_queue = std::make_shared<streaming::spsc_queue::queue_type>();
@@ -1003,6 +1007,8 @@ namespace
         auto responder_state = responder_service->get_attestation_route_state(initiator_zone);
         CORO_ASSERT_EQ(initiator_state.status, expected.initiator_route_status);
         CORO_ASSERT_EQ(responder_state.status, expected.responder_route_status);
+        CORO_ASSERT_EQ(initiator_state.next_transcript_id, expected.initiator_next_transcript_id);
+        CORO_ASSERT_EQ(responder_state.next_transcript_id, expected.responder_next_transcript_id);
         CORO_ASSERT_EQ(
             initiator_state.context && initiator_state.context->established, expected.initiator_context_established);
         CORO_ASSERT_EQ(

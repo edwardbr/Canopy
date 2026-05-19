@@ -205,10 +205,14 @@ namespace rpc
             if (!route_zone_id.is_set())
                 return;
 
+            const auto current_state = service.get_attestation_route_state(route_zone_id);
             canopy::security::attestation::route_attestation_state failed_state;
             failed_state.status = canopy::security::attestation::route_attestation_status::failed;
-            failed_state.failure_epoch = previous_failure_epoch + 1;
+            failed_state.failure_epoch = (current_state.failure_epoch > previous_failure_epoch ? current_state.failure_epoch
+                                                                                               : previous_failure_epoch)
+                                         + 1;
             failed_state.failure_reason = std::move(reason);
+            failed_state.next_transcript_id = current_state.next_transcript_id;
             service.set_attestation_route_state(route_zone_id, std::move(failed_state));
         }
 
@@ -265,6 +269,8 @@ namespace rpc
         RPC_ASSERT(attested_zone_id.get_subnet());
         std::lock_guard<std::mutex> lock(security_context_mutex_);
         canopy::security::attestation::route_attestation_state state;
+        if (auto item = attestation_route_states_.find(attested_zone_id); item != attestation_route_states_.end())
+            state.next_transcript_id = item->second.next_transcript_id;
         state.status = canopy::security::attestation::route_attestation_status::attested;
         state.context = std::move(context);
         attestation_route_states_[attested_zone_id] = std::move(state);
@@ -434,6 +440,8 @@ namespace rpc
         if (allowed)
         {
             canopy::security::attestation::route_attestation_state state;
+            if (item != attestation_route_states_.end())
+                state.next_transcript_id = item->second.next_transcript_id;
             state.status = canopy::security::attestation::route_attestation_status::unattested_allowed;
             attestation_route_states_[route_zone_id] = std::move(state);
             return;
@@ -493,18 +501,22 @@ namespace rpc
         // No usable route state exists, so this coroutine becomes the handshake
         // owner. Store "handshaking" before creating evidence to avoid multiple
         // unbounded concurrent evidence-generation attempts for the same route.
-        canopy::security::attestation::route_attestation_state handshaking_state;
+        canopy::security::attestation::route_attestation_state handshaking_state = state;
         handshaking_state.status = canopy::security::attestation::route_attestation_status::handshaking;
-        set_attestation_route_state(route_zone_id, std::move(handshaking_state));
+        handshaking_state.context.reset();
+        handshaking_state.failure_reason.clear();
 
-        auto service = get_attestation_service();
-        const auto transcript_id = next_route_attestation_transcript_id_.fetch_add(1);
-        if (transcript_id == 0)
+        const auto transcript_id = handshaking_state.next_transcript_id;
+        if (transcript_id == 0 || transcript_id == std::numeric_limits<uint64_t>::max())
         {
             set_failed_attestation_route(
                 *this, route_zone_id, state.failure_epoch, "route attestation transcript id exhausted");
             CO_RETURN standard_result{rpc::error::RESOURCE_EXHAUSTED(), {}};
         }
+        ++handshaking_state.next_transcript_id;
+        set_attestation_route_state(route_zone_id, handshaking_state);
+
+        auto service = get_attestation_service();
 
         rpc::route_attestation_handshake_request request;
         request.transcript_id = transcript_id;

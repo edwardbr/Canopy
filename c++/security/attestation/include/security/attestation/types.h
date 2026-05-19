@@ -109,6 +109,10 @@ namespace canopy::security::attestation
         std::optional<security_context> context;
         std::string failure_reason;
         uint64_t failure_epoch{0};
+        // Transcript ids separate one route-attestation handshake run from the
+        // next. They are route-owned rather than service-global because replay
+        // and audit reasoning is scoped to the destination route/session domain.
+        uint64_t next_transcript_id{1};
     };
 
     struct reference_route_policy_input

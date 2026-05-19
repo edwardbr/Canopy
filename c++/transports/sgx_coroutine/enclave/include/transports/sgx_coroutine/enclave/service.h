@@ -10,7 +10,6 @@
 #include <security/attestation/types.h>
 #include <security/attestation/zone_security_policy.h>
 
-#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -136,7 +135,6 @@ namespace rpc
 
         mutable std::mutex security_context_mutex_;
         std::unordered_map<rpc::destination_zone, canopy::security::attestation::route_attestation_state> attestation_route_states_;
-        std::atomic<uint64_t> next_route_attestation_transcript_id_{1};
 
         mutable std::mutex attestation_service_mutex_;
         std::shared_ptr<canopy::security::attestation::attestation_service> attestation_service_;
