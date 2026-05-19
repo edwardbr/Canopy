@@ -230,9 +230,29 @@ interface. It is not the default forward production target for new deployments,
 but the protocol should not preclude an EPID verifier where an application
 policy explicitly accepts it.
 
-An EPID backend is expected to have different operational requirements from
-DCAP, such as dependence on an IAS-style verifier flow and different collateral
-or privacy properties. Those details should stay inside the backend.
+Canopy now has the initial EPID backend shape:
+
+- `interfaces/attestation/sgx_epid_protocol.idl` defines
+  `sgx_epid_report_binding`, `sgx_epid_ias_report`, and
+  `sgx_epid_quote_evidence`;
+- `sgx_epid_report_binding` is canonical_crypto encoded and hashed with
+  SHA-256; the digest is the value that the quote provider must bind into
+  SGX `report_data`;
+- `sgx_epid_backend` is selectable as `CANOPY_ATTESTATION_BACKEND=SGX_EPID`;
+- without an injected quote provider and quote verifier it returns a typed
+  unavailable CMW and verification fails closed;
+- injected providers and verifiers are the only code that should call Intel
+  PSW/AESM, IAS, or quote parsing APIs.
+
+The current EPID backend is therefore a protocol and policy skeleton, not a
+complete IAS implementation. The next runtime slice on SGX1 hardware should
+wire a provider that obtains an EPID quote from the SGX PSW and a verifier that
+checks the IAS report signature, quote status, revocation/collateral state, and
+that the quote report_data contains the Canopy transcript hash.
+
+EPID has different operational requirements from DCAP, such as dependence on an
+IAS-style verifier flow and different collateral or privacy properties. Those
+details should stay inside the backend and verifier adapter.
 
 The expected hardware split is:
 

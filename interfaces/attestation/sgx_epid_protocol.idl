@@ -1,0 +1,99 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "attestation/route_attestation_protocol.idl"
+
+namespace rpc
+{
+    [inline] namespace v4
+    {
+        namespace attestation
+        {
+        // Transcript fields that must be bound into SGX EPID quote report_data.
+        //
+        // The EPID quote producer canonical_crypto serializes this structure,
+        // hashes it with SHA-256, and asks the SGX quote provider to place the
+        // digest into sgx_report_data_t. A verifier recomputes the same digest
+        // before accepting the quote as evidence for this Canopy route
+        // handshake.
+        struct sgx_epid_report_binding
+        {
+            [description="Backend identity expected to be sgx-epid for this legacy SGX quote profile."]
+            std::string backend_id;
+
+            [description="Identity claimed by the SGX enclave route."]
+            attestation_identity subject;
+
+            [description="Caller-generated transcript id for the route-attestation handshake."]
+            uint64_t transcript_id = 0;
+
+            [description="Verifier nonce copied from the route-attestation handshake. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> nonce;
+        };
+
+        // IAS attestation report material for an SGX EPID quote.
+        //
+        // The raw quote proves little on its own to a remote machine. In the
+        // EPID flow an IAS response, signature, and signing certificate chain
+        // are needed so the verifier can check quote status and revocation.
+        // These fields are optional at the wire-schema level because the first
+        // backend slice can generate or relay a quote before the IAS verifier is
+        // configured; production policy must reject Evidence without a verified
+        // IAS result.
+        struct sgx_epid_ias_report
+        {
+            [description="IAS report body JSON as returned by the attestation verification report endpoint."]
+            std::string body_json;
+
+            [description="IAS report signature bytes. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> signature;
+
+            [description="IAS signing certificate chain bytes or PEM text. JSON serializers must expose binary DER as base64."]
+            std::vector<uint8_t> signing_certificate_chain;
+
+            [description="IAS quote status string, for example OK or GROUP_OUT_OF_DATE."]
+            std::string quote_status;
+
+            [description="Comma-separated IAS advisory ids. Kept as a string to preserve the IAS report spelling exactly."]
+            std::string advisory_ids;
+        };
+
+        // Canopy-owned carrier for legacy SGX EPID remote-attestation Evidence.
+        //
+        // This structure deliberately keeps EPID details outside rpc_types.idl.
+        // The CMW payload type/fingerprint identifies this schema, and the
+        // payload itself is canonical_crypto encoded before being carried by
+        // route_attestation_handshake_request/response.
+        struct sgx_epid_quote_evidence
+        {
+            sgx_epid_report_binding binding;
+
+            [description="SHA-256 digest expected in the first 32 bytes of sgx_report_data_t."]
+            std::vector<uint8_t> report_data_sha256;
+
+            [description="Extended EPID group id returned by the SGX PSW."]
+            uint32_t extended_epid_group_id = 0;
+
+            [description="SGX quote sign type selected by the producer, for example unlinkable or linkable."]
+            uint32_t quote_sign_type = 0;
+
+            [description="Service provider id used by the EPID quote request. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> spid;
+
+            [description="Optional EPID basename for linkable quotes. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> basename;
+
+            [description="Signature revocation list supplied to quote generation. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> sig_rl;
+
+            [description="Raw SGX EPID quote bytes returned by the quote provider. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> quote;
+
+            [description="Optional IAS report material used by verifiers that receive an already-appraised quote."]
+            std::optional<sgx_epid_ias_report> ias_report;
+        };
+        }
+    }
+}

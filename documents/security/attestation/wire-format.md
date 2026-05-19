@@ -69,6 +69,7 @@ Reserved or provisional Canopy media types:
 | `application/eat+cwt` | EAT | Reserved for future EAT/KAT use. |
 | `application/canopy-fake-evidence` | Fake | Development backend. |
 | `application/canopy-sim-evidence` | Simulation | Canopy SGX-sim development profile. May carry `sgx_sim_report_evidence`; not hardware evidence. |
+| `application/canopy-sgx-epid-evidence` | SGX EPID | Canopy legacy SGX1 EPID profile. Carries `sgx_epid_quote_evidence` when a quote provider and verifier are configured; fail-closed otherwise. |
 | `application/tdx-quote` | Intel TDX | Future backend; exact profile deferred. |
 | `application/sev-snp-attestation-report` | AMD SEV-SNP | Future backend; exact profile deferred. |
 | `application/psa-attestation-token` | Arm TrustZone/PSA | Future backend. |

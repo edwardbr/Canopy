@@ -12,6 +12,7 @@
 #include <security/attestation/protected_rpc.h>
 #include <attestation/route_attestation_protocol.h>
 #include <security/attestation/service.h>
+#include <security/attestation/sgx_epid_backend.h>
 #include <security/attestation/simulation_backend.h>
 #include <security/attestation/zone_security_policy.h>
 
@@ -28,6 +29,7 @@ namespace
     using canopy::security::attestation::attestation_policy;
     using canopy::security::attestation::attestation_service;
     using canopy::security::attestation::attestation_service_options;
+    using canopy::security::attestation::attestation_verdict;
     using canopy::security::attestation::cmw;
     using canopy::security::attestation::configured_attestation_backend_kind;
     using canopy::security::attestation::configured_attestation_backend_name;
@@ -66,6 +68,16 @@ namespace
     using canopy::security::attestation::route_attestation_status;
     using canopy::security::attestation::security_context;
     using canopy::security::attestation::security_level;
+    using canopy::security::attestation::sgx_epid_backend;
+    using canopy::security::attestation::sgx_epid_backend_id;
+    using canopy::security::attestation::sgx_epid_evidence_media_type;
+    using canopy::security::attestation::sgx_epid_quote_evidence_content_format;
+    using canopy::security::attestation::sgx_epid_quote_material;
+    using canopy::security::attestation::sgx_epid_quote_provider;
+    using canopy::security::attestation::sgx_epid_quote_request;
+    using canopy::security::attestation::sgx_epid_quote_verifier;
+    using canopy::security::attestation::sgx_epid_unavailable_content_format;
+    using canopy::security::attestation::sgx_epid_verifier_input;
     using canopy::security::attestation::simulation_backend;
     using canopy::security::attestation::simulation_backend_id;
     using canopy::security::attestation::simulation_evidence_content_format;
@@ -210,6 +222,50 @@ namespace
         EXPECT_EQ(payload->get_encoding(), encoding);
         EXPECT_FALSE(payload->get_payload().empty());
     }
+
+    class test_sgx_epid_quote_provider final : public sgx_epid_quote_provider
+    {
+    public:
+        [[nodiscard]] auto produce_quote(const sgx_epid_quote_request& request) const
+            -> std::optional<sgx_epid_quote_material> override
+        {
+            if (request.binding.transcript_id == 0 || request.report_data_sha256.size() != 32)
+                return std::nullopt;
+
+            sgx_epid_quote_material quote;
+            quote.extended_epid_group_id = 0x12345678U;
+            quote.quote_sign_type = 0;
+            quote.spid = std::vector<uint8_t>(16, 0x5a);
+            quote.sig_rl = {1, 2, 3};
+            quote.quote = request.report_data_sha256;
+            quote.quote.push_back(0x42);
+            return quote;
+        }
+    };
+
+    class test_sgx_epid_quote_verifier final : public sgx_epid_quote_verifier
+    {
+    public:
+        [[nodiscard]] auto verify_quote(
+            const sgx_epid_verifier_input& input,
+            const attestation_policy&) const -> attestation_verdict override
+        {
+            attestation_verdict verdict;
+            if (input.report_data_sha256.size() != 32 || input.quote.quote.empty()
+                || input.quote.extended_epid_group_id != 0x12345678U)
+            {
+                verdict.reason = "test EPID quote was malformed";
+                return verdict;
+            }
+
+            verdict.accepted = true;
+            verdict.reason = "test EPID quote accepted";
+            verdict.backend_id = sgx_epid_backend_id;
+            verdict.level = security_level::hardware_legacy;
+            verdict.peer_identity = input.expected_binding.subject;
+            return verdict;
+        }
+    };
 } // namespace
 
 TEST(
@@ -338,6 +394,71 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxEpidBackendWithoutQuoteProviderFailsClosed)
+{
+    sgx_epid_backend backend;
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    expected_binding.transcript_id = 31;
+    expected_binding.nonce = {2, 4, 6, 8};
+
+    auto evidence = backend.produce_evidence(expected_binding);
+    EXPECT_EQ(backend.backend_id(), sgx_epid_backend_id);
+    EXPECT_EQ(backend.level(), security_level::hardware_legacy);
+    EXPECT_EQ(evidence.media_type, sgx_epid_evidence_media_type);
+    EXPECT_EQ(evidence.content_format, sgx_epid_unavailable_content_format);
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_epid_backend_id;
+    policy.minimum_security_level = security_level::hardware_legacy;
+    policy.allow_development_evidence = false;
+
+    auto verdict = backend.verify_evidence(evidence, expected_binding, policy);
+    EXPECT_FALSE(verdict.accepted);
+}
+
+TEST(
+    AttestationService,
+    SgxEpidBackendUsesInjectedQuoteProviderAndVerifier)
+{
+    auto provider = std::make_shared<test_sgx_epid_quote_provider>();
+    auto verifier = std::make_shared<test_sgx_epid_quote_verifier>();
+    sgx_epid_backend backend(std::move(provider), std::move(verifier));
+
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    expected_binding.transcript_id = 32;
+    expected_binding.nonce = {3, 5, 7, 9};
+
+    auto evidence = backend.produce_evidence(expected_binding);
+    EXPECT_EQ(evidence.media_type, sgx_epid_evidence_media_type);
+    EXPECT_EQ(evidence.content_format, sgx_epid_quote_evidence_content_format);
+    EXPECT_FALSE(evidence.payload.empty());
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_epid_backend_id;
+    policy.minimum_security_level = security_level::hardware_legacy;
+    policy.allow_development_evidence = false;
+
+    auto verdict = backend.verify_evidence(evidence, expected_binding, policy);
+    EXPECT_TRUE(verdict.accepted) << verdict.reason;
+    EXPECT_EQ(verdict.backend_id, sgx_epid_backend_id);
+    EXPECT_EQ(verdict.level, security_level::hardware_legacy);
+    EXPECT_EQ(verdict.peer_identity.enclave_id, expected_binding.subject.enclave_id);
+    EXPECT_EQ(verdict.peer_identity.zone_id, expected_binding.subject.zone_id);
+
+    auto wrong_nonce_binding = expected_binding;
+    wrong_nonce_binding.nonce.push_back(11);
+    EXPECT_FALSE(backend.verify_evidence(evidence, wrong_nonce_binding, policy).accepted);
+
+    auto hardware_only_policy = policy;
+    hardware_only_policy.minimum_security_level = security_level::hardware;
+    EXPECT_FALSE(backend.verify_evidence(evidence, expected_binding, hardware_only_policy).accepted);
+}
+
+TEST(
+    AttestationService,
     BackendFactoryUsesConfiguredBackendDefaults)
 {
     auto options = make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"});
@@ -364,15 +485,24 @@ TEST(
         EXPECT_EQ(options.policy.minimum_security_level, security_level::development);
         EXPECT_EQ(options.policy.required_backend_id, fake_backend_id);
     }
-    else
+    else if (configured_attestation_backend_kind() == configured_backend_kind::sgx_sim_backend)
     {
-        EXPECT_EQ(configured_attestation_backend_kind(), configured_backend_kind::sgx_sim_backend);
         EXPECT_TRUE(options.policy.send_local_evidence);
         EXPECT_TRUE(options.policy.require_peer_evidence);
         EXPECT_FALSE(options.policy.allow_unattested_peer);
         EXPECT_TRUE(options.policy.allow_development_evidence);
         EXPECT_EQ(options.policy.minimum_security_level, security_level::simulation);
         EXPECT_EQ(options.policy.required_backend_id, simulation_backend_id);
+    }
+    else
+    {
+        EXPECT_EQ(configured_attestation_backend_kind(), configured_backend_kind::sgx_epid_backend);
+        EXPECT_TRUE(options.policy.send_local_evidence);
+        EXPECT_TRUE(options.policy.require_peer_evidence);
+        EXPECT_FALSE(options.policy.allow_unattested_peer);
+        EXPECT_FALSE(options.policy.allow_development_evidence);
+        EXPECT_EQ(options.policy.minimum_security_level, security_level::hardware_legacy);
+        EXPECT_EQ(options.policy.required_backend_id, sgx_epid_backend_id);
     }
 }
 

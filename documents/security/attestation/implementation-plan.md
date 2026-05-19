@@ -61,15 +61,18 @@ policy-hardening work described in the remaining phases.
 
 - `c++/security/attestation/` now builds a `security_attestation` target with
   backend-neutral passive types, a development fake backend, a null backend,
-  and a small configured-backend factory:
+  an initial fail-closed SGX EPID backend, and a small configured-backend
+  factory:
   - `include/security/attestation/types.h`
   - `include/security/attestation/backend_factory.h`
   - `include/security/attestation/fake_backend.h`
   - `include/security/attestation/null_backend.h`
+  - `include/security/attestation/sgx_epid_backend.h`
   - `include/security/attestation/service.h`
   - `src/backend_factory.cpp`
   - `src/fake_backend.cpp`
   - `src/null_backend.cpp`
+  - `src/sgx_epid_backend.cpp`
   - `src/service.cpp`
 - The fake backend produces CMW-like fake Evidence using
   `media_type == "application/canopy-fake-evidence"` and
@@ -80,9 +83,20 @@ policy-hardening work described in the remaining phases.
   rejects Evidence verification. A peer without Evidence is accepted only when
   policy sets both `require_peer_evidence == false` and
   `allow_unattested_peer == true`.
-- `CANOPY_ATTESTATION_BACKEND` currently accepts `FAKE`, `SGX_SIM`, and `NULL`
-  and defines the backend selected by
+- `CANOPY_ATTESTATION_BACKEND` currently accepts `FAKE`, `SGX_SIM`,
+  `SGX_EPID`, and `NULL` and defines the backend selected by
   `make_configured_attestation_service_options(...)`.
+- `interfaces/attestation/sgx_epid_protocol.idl` defines the first legacy SGX
+  EPID CMW payload:
+  - `sgx_epid_report_binding`;
+  - `sgx_epid_ias_report`;
+  - `sgx_epid_quote_evidence`.
+  The EPID backend hashes the canonical `sgx_epid_report_binding` to produce
+  the report_data value that a real quote provider must embed in the SGX quote.
+  The default backend has no provider or verifier and fails closed with
+  `content_format == "canopy.sgx-epid-unavailable.v1"`. Tests exercise the
+  provider/verifier seams with injected fakes; no test claims production EPID
+  trust on non-SGX hardware.
 - `SGX_SIM` is a distinct SGX-simulation policy/profile. Host-only builds still
   use a signed development fallback. Intel SGX simulation enclave builds now
   have two IDL-defined SGX-report paths:
@@ -631,10 +645,12 @@ policy-hardening work described in the remaining phases.
 - Full production CMW / attestation context IDL split. The current route
   handshake has minimal generated IDL carriers for fake Evidence and
   backend-neutral identity.
-- Backend selection for production SGX/DCAP, EPID, TDX, SEV-SNP, and
-  TrustZone/PSA. The current build-time factory selects `FAKE`, `SGX_SIM`, or
+- Backend selection for production SGX/DCAP, TDX, SEV-SNP, and TrustZone/PSA.
+  The current build-time factory selects `FAKE`, `SGX_SIM`, `SGX_EPID`, or
   `NULL`. The SGX-sim backend is development/simulation evidence with
-  `security_level::simulation`; it is not remote attestation.
+  `security_level::simulation`; it is not remote attestation. The SGX EPID
+  backend is a legacy hardware-compatibility skeleton with CMW/schema, policy,
+  and provider/verifier seams, but no Intel PSW/AESM or IAS adapter wired yet.
 - SGX quote or `sgx_ttls` simulation helpers. The current SGX-sim slice uses
   local-report mechanics only. Quote and TLS-certificate carriers should be
   added only where the Intel simulation libraries run without hardware
@@ -696,8 +712,8 @@ policy-hardening work described in the remaining phases.
 - Non-zero `service_request_id` semantics.
 - TLS exporter binding. The current development binding is transcript id,
   identity, role, and nonce based.
-- `sgx_ttls`, DCAP, production SGX local attestation, EPID, TDX, SEV-SNP, or
-  TrustZone/PSA backends.
+- `sgx_ttls`, DCAP, production SGX local attestation, EPID PSW/AESM quote
+  provider, IAS verifier, TDX, SEV-SNP, or TrustZone/PSA backends.
 
 ### Current Best Next Step
 
@@ -711,10 +727,12 @@ route-control fields documented in `intermediate-visibility-audit.md` should
 stay visible while passthroughs depend on them, and protected RPC should keep
 authenticating them. The SGX-sim backend slice now has verifier-challenge CMW
 blobs carrying peer `sgx_target_info_t`, so reports can be targeted to the
-verifier where the two-message route handshake allows it. Next, continue real
-SGX backend work: EPID for SGX1 demonstration hardware, DCAP/`sgx_ttls` where
-the platform supports it, and the same boundary checklist for non-C-ABI
-coroutine dynamic-library transports that are allowed at an enclave boundary.
+verifier where the two-message route handshake allows it. The EPID slice now
+has the generated CMW schema, backend selection, fail-closed default behavior,
+and quote-provider/verifier seams. Next, on SGX1 hardware, wire the EPID quote
+provider to the Intel PSW/AESM APIs and decide whether IAS verification lives
+inside the process, behind a local verifier service, or as an explicit
+passport-style Attestation Result.
 
 ## Architectural Layers
 
@@ -1458,9 +1476,12 @@ audit, and operational tooling.
 
 Tracked here so the design is not forgotten.
 
-- **EPID/IAS backend.** Implement only if a deployment with SGX1-only
-  hardware requires it. The CMW envelope, backend interface, and
-  policy layer all already accommodate it.
+- **EPID/IAS runtime adapter.** The CMW envelope, backend interface,
+  fail-closed backend selection, and policy layer now exist. The deferred work
+  is the platform adapter: obtain EPID quotes from the SGX PSW/AESM stack on
+  SGX1 hardware, call or consume IAS verification, validate report_data against
+  the Canopy transcript hash, and map IAS quote status/advisories into
+  destination-zone policy.
 - **IETF wire format migration.** Replace the `sgx_ttls`
   certificate-extension envelope with the
   `evidence_proposal`/`evidence_request`/`attestation_evidence` TLS

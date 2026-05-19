@@ -16,7 +16,8 @@ namespace canopy::security::attestation
     {
         null_backend,
         fake_backend,
-        sgx_sim_backend
+        sgx_sim_backend,
+        sgx_epid_backend
     };
 
     [[nodiscard]] auto attestation_backend_kind_name(configured_backend_kind kind) noexcept -> const char*;
