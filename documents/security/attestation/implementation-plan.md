@@ -84,12 +84,18 @@ policy-hardening work described in the remaining phases.
   and defines the backend selected by
   `make_configured_attestation_service_options(...)`.
 - `SGX_SIM` is a distinct SGX-simulation policy/profile. Host-only builds still
-  use a signed development fallback, but Intel SGX simulation enclave builds now
-  carry `sgx_sim_report_evidence`: an IDL-defined payload with transcript-bound
-  `sgx_report_data_t`, raw `sgx_target_info_t`, raw `sgx_report_t`, and a
-  development HMAC over the payload. The producer must verify the self-targeted
-  report with `sgx_verify_report` before sending it. This remains
-  non-production `security_level::simulation` evidence.
+  use a signed development fallback. Intel SGX simulation enclave builds now
+  have two IDL-defined SGX-report paths:
+  - `sgx_sim_report_evidence` is the standalone/self-test payload with
+    transcript-bound `sgx_report_data_t`, raw `sgx_target_info_t`, raw
+    `sgx_report_t`, and a development HMAC over the payload. The producer must
+    verify this self-targeted report with `sgx_verify_report` before sending it.
+  - `sgx_sim_local_attestation_challenge` plus
+    `sgx_sim_local_attestation_report` is the route-handshake payload pair. The
+    verifier sends its `sgx_target_info_t` as a backend-neutral CMW
+    `verifier_challenge`, and the peer returns a report targeted to that
+    verifier.
+  Both paths remain non-production `security_level::simulation` evidence.
 - Test-only SGX SIM runtime coverage now lives in dedicated attestation test
   infrastructure rather than in the io_uring test interface:
   - `c++/tests/idls/attestation_test/attestation_test.idl`
@@ -97,8 +103,9 @@ policy-hardening work described in the remaining phases.
   - `c++/tests/attestation_test_host/`
   The test enclave calls the SGX-sim backend inside the enclave, observes
   `canopy.sgx-sim-report.v1` evidence, checks that report and target-info bytes
-  are present, and verifies the evidence before returning success to the host
-  gtest.
+  are present, verifies the evidence before returning success to the host
+  gtest, and also exercises peer-targeted local-report challenge/response
+  between two test enclaves.
 - Fake Evidence verification checks:
   - policy permission for development Evidence;
   - required backend id;
@@ -628,10 +635,6 @@ policy-hardening work described in the remaining phases.
   TrustZone/PSA. The current build-time factory selects `FAKE`, `SGX_SIM`, or
   `NULL`. The SGX-sim backend is development/simulation evidence with
   `security_level::simulation`; it is not remote attestation.
-- Peer-targeted SGX local-attestation exchange. The current SGX-sim report is
-  self-targeted because the generic route handshake does not yet exchange peer
-  `sgx_target_info_t`. A future SGX-local protocol should add that target-info
-  request/response step before using local reports as peer evidence.
 - SGX quote or `sgx_ttls` simulation helpers. The current SGX-sim slice uses
   local-report mechanics only. Quote and TLS-certificate carriers should be
   added only where the Intel simulation libraries run without hardware
@@ -693,7 +696,7 @@ policy-hardening work described in the remaining phases.
 - Non-zero `service_request_id` semantics.
 - TLS exporter binding. The current development binding is transcript id,
   identity, role, and nonce based.
-- `sgx_ttls`, DCAP, local SGX attestation, EPID, TDX, SEV-SNP, or
+- `sgx_ttls`, DCAP, production SGX local attestation, EPID, TDX, SEV-SNP, or
   TrustZone/PSA backends.
 
 ### Current Best Next Step
@@ -706,12 +709,12 @@ select the current `FAKE` or `NULL` development backends with `NULL` as the
 fail-closed build default for fresh CMake configurations. The current
 route-control fields documented in `intermediate-visibility-audit.md` should
 stay visible while passthroughs depend on them, and protected RPC should keep
-authenticating them. The current SGX-sim backend slice is moving from
-self-targeted report probes to verifier-challenge CMW blobs carrying peer
-`sgx_target_info_t`, so reports can be targeted to the verifier where the
-two-message route handshake allows it. After that, continue real SGX/DCAP
-backend work and apply the same checklist to non-C-ABI coroutine
-dynamic-library transports that are allowed at an enclave boundary.
+authenticating them. The SGX-sim backend slice now has verifier-challenge CMW
+blobs carrying peer `sgx_target_info_t`, so reports can be targeted to the
+verifier where the two-message route handshake allows it. Next, continue real
+SGX backend work: EPID for SGX1 demonstration hardware, DCAP/`sgx_ttls` where
+the platform supports it, and the same boundary checklist for non-C-ABI
+coroutine dynamic-library transports that are allowed at an enclave boundary.
 
 ## Architectural Layers
 

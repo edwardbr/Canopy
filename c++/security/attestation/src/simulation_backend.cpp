@@ -233,10 +233,10 @@ namespace canopy::security::attestation
             evidence.target_info = bytes_from_trivial_object(target_info);
             evidence.report = bytes_from_trivial_object(report);
 
-            // This is a self-targeted report because the current generic
-            // handshake has no peer target-info exchange. Verifying it here
-            // proves the SIM report path works in this enclave, but it is not
-            // a substitute for peer-targeted local attestation.
+            // This standalone evidence shape is self-targeted. Verifying it
+            // here proves the SIM report path works in this enclave. Route
+            // handshakes that carry verifier_challenge use
+            // make_local_report_evidence() below for peer-targeted reports.
             sgx_report_t report_copy = report;
             if (sgx_verify_report(&report_copy) != SGX_SUCCESS)
                 return false;

@@ -30,9 +30,13 @@
 #ifdef CANOPY_BUILD_COROUTINE
 namespace
 {
+    using canopy::security::attestation::attestation_backend;
     using canopy::security::attestation::attestation_policy;
     using canopy::security::attestation::attestation_service;
     using canopy::security::attestation::attestation_service_options;
+    using canopy::security::attestation::attestation_verdict;
+    using canopy::security::attestation::cmw;
+    using canopy::security::attestation::evidence_binding;
     using canopy::security::attestation::fake_backend;
     using canopy::security::attestation::fake_backend_id;
     using canopy::security::attestation::identity;
@@ -67,9 +71,94 @@ namespace
     constexpr uint64_t concurrent_route_first_object_id = 201;
     constexpr uint64_t concurrent_route_second_object_id = 202;
     constexpr int enclave_local_post_message_value = 77;
+    constexpr uint8_t verifier_challenge_test_magic = 0xa7U;
+    constexpr const char* verifier_challenge_test_media_type = "application/canopy-test-verifier-challenge";
+    constexpr const char* verifier_challenge_test_content_format = "canopy.test.verifier-challenge.v1";
+
+    [[nodiscard]] auto make_verifier_challenge_test_payload(const evidence_binding& binding) -> std::vector<uint8_t>
+    {
+        std::vector<uint8_t> payload;
+        payload.reserve(1 + sizeof(binding.transcript_id) + binding.nonce.size());
+        payload.push_back(verifier_challenge_test_magic);
+        for (auto shift = 56; shift >= 0; shift -= 8)
+            payload.push_back(static_cast<uint8_t>((binding.transcript_id >> shift) & 0xffU));
+        payload.insert(payload.end(), binding.nonce.begin(), binding.nonce.end());
+        return payload;
+    }
+
+    [[nodiscard]] auto verifier_challenge_test_matches(
+        const cmw& challenge,
+        const evidence_binding& binding) -> bool
+    {
+        return challenge.media_type == verifier_challenge_test_media_type
+               && challenge.content_format == verifier_challenge_test_content_format
+               && challenge.payload == make_verifier_challenge_test_payload(binding);
+    }
+
+    struct verifier_challenge_test_counts
+    {
+        size_t challenges_made{0};
+        size_t challenge_bound_evidence_made{0};
+        size_t challenge_bound_evidence_verified{0};
+    };
+
+    class fake_backend_with_verifier_challenge final : public fake_backend
+    {
+    public:
+        explicit fake_backend_with_verifier_challenge(std::shared_ptr<verifier_challenge_test_counts> counts)
+            : counts_(std::move(counts))
+        {
+        }
+
+        [[nodiscard]] auto supports_verifier_challenge() const -> bool override { return true; }
+
+        [[nodiscard]] auto make_verifier_challenge(const evidence_binding& binding) const -> std::optional<cmw> override
+        {
+            if (!counts_ || binding.transcript_id == 0 || binding.nonce.empty())
+                return std::nullopt;
+
+            ++counts_->challenges_made;
+            cmw challenge;
+            challenge.media_type = verifier_challenge_test_media_type;
+            challenge.content_format = verifier_challenge_test_content_format;
+            challenge.payload = make_verifier_challenge_test_payload(binding);
+            return challenge;
+        }
+
+        [[nodiscard]] auto produce_evidence_for_challenge(
+            const cmw& verifier_challenge,
+            const evidence_binding& binding) const -> std::optional<cmw> override
+        {
+            if (!counts_ || !verifier_challenge_test_matches(verifier_challenge, binding))
+                return std::nullopt;
+
+            ++counts_->challenge_bound_evidence_made;
+            return fake_backend::produce_evidence(binding);
+        }
+
+        [[nodiscard]] auto verify_evidence_for_challenge(
+            const cmw& evidence,
+            const cmw& verifier_challenge,
+            const evidence_binding& expected_binding,
+            const attestation_policy& policy) const -> attestation_verdict override
+        {
+            if (!counts_ || !verifier_challenge_test_matches(verifier_challenge, expected_binding))
+            {
+                attestation_verdict rejected;
+                rejected.reason = "verifier challenge did not match expected binding";
+                return rejected;
+            }
+
+            ++counts_->challenge_bound_evidence_verified;
+            return fake_backend::verify_evidence(evidence, expected_binding, policy);
+        }
+
+    private:
+        std::shared_ptr<verifier_challenge_test_counts> counts_;
+    };
 
     auto make_test_attestation_service(
-        const std::shared_ptr<fake_backend>& backend,
+        const std::shared_ptr<attestation_backend>& backend,
         std::string enclave_id,
         std::string zone_id,
         bool send_evidence,
@@ -1021,7 +1110,8 @@ namespace
         bool responder_sends_evidence,
         bool responder_requires_peer_evidence,
         bool responder_allows_unattested_peer,
-        service_level_route_handshake_expectation expected)
+        service_level_route_handshake_expectation expected,
+        std::shared_ptr<attestation_backend> backend_override = nullptr)
     {
         auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
         auto responder_zone = make_service_level_route_zone(service_level_route_responder_subnet);
@@ -1031,7 +1121,8 @@ namespace
         auto responder_service = std::make_shared<rpc::enclave_service>(
             "service-level-route-responder", responder_zone, initiator_zone, scheduler);
 
-        auto backend = std::make_shared<fake_backend>();
+        std::shared_ptr<attestation_backend> backend
+            = backend_override ? std::move(backend_override) : std::make_shared<fake_backend>();
         initiator_service->set_attestation_service(make_test_attestation_service(
             backend,
             "service-level-initiator-enclave",
@@ -2367,7 +2458,8 @@ namespace
         bool responder_sends_evidence,
         bool responder_requires_peer_evidence,
         bool responder_allows_unattested_peer,
-        service_level_route_handshake_expectation expected)
+        service_level_route_handshake_expectation expected,
+        std::shared_ptr<attestation_backend> backend_override = nullptr)
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
             coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
@@ -2385,7 +2477,8 @@ namespace
                 responder_sends_evidence,
                 responder_requires_peer_evidence,
                 responder_allows_unattested_peer,
-                expected);
+                expected,
+                std::move(backend_override));
             done.store(true);
             CO_RETURN;
         };
@@ -2850,6 +2943,31 @@ TEST(
             .responder_route_status = route_attestation_status::attested,
             .initiator_context_established = true,
             .responder_context_established = true});
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    AddRefUsesVerifierChallengeWhenBackendSupportsIt)
+{
+    auto counts = std::make_shared<verifier_challenge_test_counts>();
+    auto backend = std::make_shared<fake_backend_with_verifier_challenge>(counts);
+
+    run_service_level_route_handshake_test(
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        service_level_route_handshake_expectation{.initiator_route_status = route_attestation_status::attested,
+            .responder_route_status = route_attestation_status::attested,
+            .initiator_context_established = true,
+            .responder_context_established = true},
+        std::move(backend));
+
+    EXPECT_EQ(counts->challenges_made, 1U);
+    EXPECT_EQ(counts->challenge_bound_evidence_made, 1U);
+    EXPECT_EQ(counts->challenge_bound_evidence_verified, 1U);
 }
 
 TEST(

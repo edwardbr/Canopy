@@ -43,11 +43,13 @@ namespace rpc
         //   target_info = sgx_target_info_t bytes when available;
         //   report      = sgx_report_t bytes when available.
         //
-        // The current producer creates a self-targeted report because the
-        // generic route handshake does not yet exchange verifier target_info.
-        // A later SGX-local-attestation protocol should add a target-info
-        // request/response step so each enclave can create a report targeted to
-        // its peer.
+        // This older evidence shape is kept for enclave self-tests and for
+        // builds that need a single standalone Evidence blob. It is
+        // self-targeted: the producer supplies its own target_info and verifies
+        // the report before sending it. Route handshakes that can carry a
+        // verifier_challenge should prefer sgx_sim_local_attestation_challenge
+        // plus sgx_sim_local_attestation_report below, because that path
+        // targets the report to the verifier enclave.
         struct sgx_sim_report_evidence
         {
             sgx_sim_report_binding binding;
