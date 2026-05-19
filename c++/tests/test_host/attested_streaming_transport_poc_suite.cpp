@@ -60,6 +60,10 @@ namespace
     constexpr uint64_t enclave_local_subject_zone_subnet = 8192;
     constexpr uint64_t enclave_local_adjacent_zone_subnet = 8193;
     constexpr uint64_t enclave_local_referenced_zone_subnet = 8194;
+    constexpr uint64_t add_ref_route_subject_local_subnet = 8300;
+    constexpr uint64_t add_ref_route_subject_adjacent_subnet = 8301;
+    constexpr uint64_t add_ref_route_subject_destination_subnet = 8302;
+    constexpr uint64_t add_ref_route_subject_caller_subnet = 8303;
     constexpr uint64_t concurrent_route_first_object_id = 201;
     constexpr uint64_t concurrent_route_second_object_id = 202;
     constexpr int enclave_local_post_message_value = 77;
@@ -296,6 +300,17 @@ namespace
         params.verified_backend_id = fake_backend_id;
         params.verified_level = canopy::security::attestation::security_level::development;
         return service.establish_session(params);
+    }
+
+    void mark_route_failed(
+        const std::shared_ptr<rpc::enclave_service>& service,
+        rpc::destination_zone route_zone_id,
+        std::string reason)
+    {
+        canopy::security::attestation::route_attestation_state state;
+        state.status = route_attestation_status::failed;
+        state.failure_reason = std::move(reason);
+        service->set_attestation_route_state(route_zone_id, std::move(state));
     }
 
     auto is_valid_encrypted_payload(
@@ -1559,6 +1574,207 @@ namespace
     }
 
     CORO_TASK(bool)
+    coro_add_ref_enforces_each_route_subject(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto local_zone = make_service_level_route_zone(add_ref_route_subject_local_subnet);
+        auto adjacent_zone = make_service_level_route_zone(add_ref_route_subject_adjacent_subnet);
+        auto destination_zone = make_service_level_route_zone(add_ref_route_subject_destination_subnet);
+        auto caller_zone = make_service_level_route_zone(add_ref_route_subject_caller_subnet);
+
+        auto local_object = local_zone.with_object(rpc::dummy_object_id);
+        auto destination_object = destination_zone.with_object(rpc::dummy_object_id);
+        CORO_ASSERT_EQ(local_object.has_value(), true);
+        CORO_ASSERT_EQ(destination_object.has_value(), true);
+
+        auto make_service = [&](const char* name)
+        {
+            auto service = std::make_shared<rpc::enclave_service>(name, local_zone, adjacent_zone, scheduler);
+            service->set_add_ref_attestation_required(true);
+            return service;
+        };
+
+        {
+            // Destination-only add_ref must check the owner route and must not
+            // reject solely because the caller route is failed. This is the
+            // owner-side leg after a combined handoff has been split.
+            auto service = make_service("add-ref-destination-only-allows-failed-caller");
+            service->set_route_unattested_allowed(destination_zone, true);
+            mark_route_failed(service, caller_zone, "caller route is not part of destination-only add_ref");
+
+            auto destination_transport
+                = std::make_shared<recording_reference_control_transport>(local_zone, adjacent_zone);
+            service->add_transport(destination_zone, destination_transport);
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *destination_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel = rpc::add_ref_options::normal;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::OK());
+            CORO_ASSERT_EQ(destination_transport->add_ref_count, 1U);
+
+            service->remove_transport(destination_zone);
+            std::static_pointer_cast<rpc::transport>(destination_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        }
+
+        {
+            // The same destination-only leg must fail before forwarding if the
+            // owner route itself is rejected.
+            auto service = make_service("add-ref-destination-only-rejects-destination");
+            mark_route_failed(service, destination_zone, "destination route rejected");
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *destination_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel = rpc::add_ref_options::normal;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::ZONE_NOT_SUPPORTED());
+        }
+
+        {
+            // Caller-only add_ref prepares the holder side, but it still names
+            // a destination object. The owner route must be admitted before the
+            // local holder can bind that reference.
+            auto service = make_service("add-ref-caller-only-rejects-failed-destination");
+            service->set_route_unattested_allowed(caller_zone, true);
+            mark_route_failed(service, destination_zone, "caller-only add_ref still references destination object");
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *destination_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::ZONE_NOT_SUPPORTED());
+        }
+
+        {
+            // Caller-only add_ref must fail before forwarding if the holder
+            // route is rejected.
+            auto service = make_service("add-ref-caller-only-rejects-caller");
+            mark_route_failed(service, caller_zone, "caller route rejected");
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *local_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::ZONE_NOT_SUPPORTED());
+        }
+
+        {
+            // A combined handoff introduces both route subjects. Destination
+            // admission alone is not enough; the caller route must also be
+            // admitted before reference state is created.
+            auto service = make_service("add-ref-combined-rejects-failed-caller");
+            service->set_route_unattested_allowed(destination_zone, true);
+            mark_route_failed(service, caller_zone, "caller route rejected");
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *destination_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel
+                = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::ZONE_NOT_SUPPORTED());
+        }
+
+        {
+            // The inverse combined case should also fail: a caller route is not
+            // sufficient when the owner route is rejected.
+            auto service = make_service("add-ref-combined-rejects-failed-destination");
+            service->set_route_unattested_allowed(caller_zone, true);
+            mark_route_failed(service, destination_zone, "destination route rejected");
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *destination_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel
+                = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::ZONE_NOT_SUPPORTED());
+        }
+
+        {
+            // A third-direction add_ref may arrive through an adjacent peer that
+            // is neither the owner nor the holder. A failed adjacent route must
+            // not block the operation when both message route subjects are
+            // explicitly admitted by policy.
+            auto service = make_service("add-ref-third-direction-ignores-adjacent-route-state");
+            service->set_route_unattested_allowed(destination_zone, true);
+            service->set_route_unattested_allowed(caller_zone, true);
+            mark_route_failed(service, adjacent_zone, "adjacent peer is only the next hop");
+
+            auto intermediate_transport
+                = std::make_shared<recording_reference_control_transport>(local_zone, adjacent_zone);
+            service->add_transport(destination_zone, intermediate_transport);
+            service->add_transport(caller_zone, intermediate_transport);
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *destination_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel
+                = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::OK());
+            CORO_ASSERT_EQ(intermediate_transport->add_ref_count, 2U);
+
+            service->remove_transport(destination_zone);
+            service->remove_transport(caller_zone);
+            std::static_pointer_cast<rpc::transport>(intermediate_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        }
+
+        {
+            // Protected-route downgrade checks apply to the caller route as
+            // well as the destination route. Otherwise a caller-only add_ref
+            // could be stripped to plaintext after the holder route was
+            // attested.
+            auto service = make_service("add-ref-caller-route-rejects-plaintext-downgrade");
+            auto backend = std::make_shared<fake_backend>();
+            auto attestation_service = make_test_attestation_service(
+                backend, "add-ref-route-subject-local-enclave", "add-ref-route-subject-local-zone", true, true);
+            auto context = make_attested_security_context(
+                *attestation_service, identity{"add-ref-route-subject-caller-enclave", "caller-zone"}, 93);
+            CORO_ASSERT_EQ(context.established, true);
+            service->set_attestation_service(attestation_service);
+            service->set_security_context(caller_zone, std::move(context));
+            service->set_protected_rpc_enabled(true);
+
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *local_object;
+            params.caller_zone_id = caller_zone;
+            params.requesting_zone_id = adjacent_zone;
+            params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            CORO_ASSERT_EQ(result.error_code, rpc::error::FRAUDULANT_REQUEST());
+        }
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
     coro_stream_route_control_messages_remain_public_control(const std::shared_ptr<coro::scheduler>& scheduler)
     {
         auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
@@ -2334,6 +2550,31 @@ namespace
         scheduler->shutdown();
     }
 
+    void run_add_ref_route_subject_admission_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_add_ref_enforces_each_route_subject(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
     void run_transport_final_control_status_sanitiser_test()
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -2679,6 +2920,13 @@ TEST(
     InboundNoEvidenceHandshakeDoesNotDowngradeAttestedRoute)
 {
     run_inbound_no_evidence_handshake_preserves_attested_route_test();
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    AddRefChecksDestinationAndCallerRouteSubjects)
+{
+    run_add_ref_route_subject_admission_test();
 }
 
 TEST(

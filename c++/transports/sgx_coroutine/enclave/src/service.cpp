@@ -1165,19 +1165,44 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::INVALID_VERSION(), {}};
         }
 
-        const auto route_zone_id = params.remote_object_id.as_zone();
-        // The attestation route is the owner of the referenced remote_object,
-        // not necessarily the adjacent transport peer that delivered this add_ref.
-        auto route_result = CO_AWAIT ensure_add_ref_route_allowed(route_zone_id, "inbound add_ref remote object");
-        if (route_result.error_code != rpc::error::OK())
-            CO_RETURN route_result;
+        const auto destination_route_zone_id = params.remote_object_id.as_zone();
+        const bool build_caller_channel = !!(params.build_out_param_channel & rpc::add_ref_options::build_caller_route);
 
-        if (!protected_payload && protected_rpc_enabled() && get_security_context(route_zone_id))
+        // add_ref can introduce two independent route subjects:
+        //
+        // - the destination/object-owner route named by remote_object_id, which
+        //   is security-relevant even on a caller-only leg because the holder is
+        //   being given a reference to that owner's object; and
+        // - the caller/holder route named by caller_zone_id when a caller-side
+        //   route is being built.
+        //
+        // Neither subject is necessarily the adjacent transport that delivered
+        // this message. A routed object handoff can arrive via an intermediate
+        // and still require policy checks for the owner route, the caller route,
+        // or both.
+        auto destination_route_result = CO_AWAIT ensure_add_ref_route_allowed(
+            destination_route_zone_id, "inbound add_ref destination object route");
+        if (destination_route_result.error_code != rpc::error::OK())
+            CO_RETURN destination_route_result;
+        if (build_caller_channel)
+        {
+            auto route_result
+                = CO_AWAIT ensure_add_ref_route_allowed(params.caller_zone_id, "inbound add_ref caller route");
+            if (route_result.error_code != rpc::error::OK())
+                CO_RETURN route_result;
+        }
+
+        if (!protected_payload && protected_rpc_enabled()
+            && (get_security_context(destination_route_zone_id)
+                || (build_caller_channel && get_security_context(params.caller_zone_id))))
         {
             // Once a route has an established protected context, downgrade to a
             // plaintext add_ref is rejected. That prevents an intermediate from
             // stripping the protected wrapper while keeping routable fields.
-            RPC_WARNING("plaintext add_ref rejected for protected route {}", rpc::to_string(route_zone_id));
+            RPC_WARNING(
+                "plaintext add_ref rejected for protected route subjects destination={} caller={}",
+                rpc::to_string(destination_route_zone_id),
+                rpc::to_string(params.caller_zone_id));
             CO_RETURN standard_result{rpc::error::FRAUDULANT_REQUEST(), {}};
         }
 
