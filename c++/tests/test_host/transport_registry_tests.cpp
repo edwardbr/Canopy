@@ -13,6 +13,8 @@
 #include <rpc/rpc.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
+#  include <atomic>
+#  include <chrono>
 #  include <coro/scheduler.hpp>
 #endif
 
@@ -134,7 +136,9 @@ namespace
 
         CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override
         {
-            std::ignore = params;
+            ++outbound_send_count;
+            last_send_remote_object = params.remote_object_id;
+            last_send_caller_zone = params.caller_zone_id;
             CO_RETURN rpc::send_result{rpc::error::OK(), {}, {}};
         }
 
@@ -173,7 +177,95 @@ namespace
             std::ignore = params;
             CO_RETURN;
         }
+
+        uint64_t outbound_send_count{0};
+        rpc::remote_object last_send_remote_object;
+        rpc::caller_zone last_send_caller_zone;
     };
+
+#ifdef CANOPY_BUILD_COROUTINE
+    bool run_notify_transport_down_for_test(
+        const std::shared_ptr<rpc::service>& service,
+        const std::shared_ptr<rpc::transport>& transport,
+        rpc::destination_zone destination,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            CO_AWAIT service->notify_transport_down(transport, destination);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return false;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return done.load();
+    }
+#else
+    bool run_notify_transport_down_for_test(
+        const std::shared_ptr<rpc::service>& service,
+        const std::shared_ptr<rpc::transport>& transport,
+        rpc::destination_zone destination)
+    {
+        service->notify_transport_down(transport, destination);
+        return true;
+    }
+#endif
+
+#ifdef CANOPY_BUILD_COROUTINE
+    bool run_proxy_send_for_test(
+        const std::shared_ptr<rpc::service_proxy>& proxy,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        int error_code = rpc::error::CALL_TIMEOUT();
+        std::vector<char> empty_payload;
+
+        auto task = [&]() -> coro::task<void>
+        {
+            auto result = CO_AWAIT proxy->send_from_this_zone(
+                rpc::get_version(),
+                proxy->get_encoding(),
+                0,
+                rpc::object{1},
+                rpc::interface_ordinal{1},
+                rpc::method{1},
+                rpc::byte_span(empty_payload));
+            error_code = result.error_code;
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return false;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return done.load() && error_code == rpc::error::OK();
+    }
+#else
+    bool run_proxy_send_for_test(const std::shared_ptr<rpc::service_proxy>& proxy)
+    {
+        std::vector<char> empty_payload;
+        auto result = proxy->send_from_this_zone(
+            rpc::get_version(),
+            proxy->get_encoding(),
+            0,
+            rpc::object{1},
+            rpc::interface_ordinal{1},
+            rpc::method{1},
+            rpc::byte_span(empty_payload));
+        return result.error_code == rpc::error::OK();
+    }
+#endif
 } // namespace
 
 TEST(
@@ -261,4 +353,59 @@ TEST(
 
     service->remove_transport_if_matches(destination, replacement_transport.get());
     EXPECT_EQ(service->get_transport(destination), nullptr);
+}
+
+TEST(
+    transport_registry_tests,
+    stale_transport_down_does_not_remove_replacement_route)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_registry_test_service("transport-registry-stale-down", scheduler);
+#else
+    auto service = make_registry_test_service("transport-registry-stale-down");
+#endif
+    auto destination = rpc::destination_zone{make_local_zone_address(45)};
+
+    auto stale_transport = std::make_shared<registry_test_transport>("stale", service);
+    stale_transport->set_adjacent_zone_id(destination);
+    auto replacement_transport = std::make_shared<registry_test_transport>("replacement", service);
+    replacement_transport->set_adjacent_zone_id(destination);
+
+    EXPECT_EQ(service->add_transport(destination, stale_transport).get(), stale_transport.get());
+    auto stale_proxy = rpc::service_proxy::create("stale-proxy", service, stale_transport, destination);
+    EXPECT_EQ(service->add_zone_proxy_for_test(stale_proxy).get(), stale_proxy.get());
+
+    stale_transport->set_status(rpc::transport_status::DISCONNECTING);
+    EXPECT_EQ(service->add_transport(destination, replacement_transport).get(), replacement_transport.get());
+
+    auto replacement_proxy = rpc::service_proxy::create("replacement-proxy", service, replacement_transport, destination);
+    EXPECT_EQ(service->add_zone_proxy_for_test(replacement_proxy).get(), replacement_proxy.get());
+
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_TRUE(run_notify_transport_down_for_test(service, stale_transport, destination, scheduler));
+#else
+    EXPECT_TRUE(run_notify_transport_down_for_test(service, stale_transport, destination));
+#endif
+
+    EXPECT_EQ(service->get_transport(destination).get(), replacement_transport.get());
+
+    stale_proxy.reset();
+    auto duplicate_proxy
+        = rpc::service_proxy::create("duplicate-after-stale-down", service, replacement_transport, destination);
+    auto proxy_after_stale_down = service->add_zone_proxy_for_test(duplicate_proxy);
+    EXPECT_EQ(proxy_after_stale_down.get(), replacement_proxy.get());
+
+    // This is the observable part of the repair: after the stale transport reports
+    // down, the canonical route must still be usable, and any new lookup must route
+    // through the replacement transport rather than the stale one.
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_TRUE(run_proxy_send_for_test(proxy_after_stale_down, scheduler));
+#else
+    EXPECT_TRUE(run_proxy_send_for_test(proxy_after_stale_down));
+#endif
+    EXPECT_EQ(stale_transport->outbound_send_count, 0U);
+    EXPECT_EQ(replacement_transport->outbound_send_count, 1U);
+    EXPECT_EQ(replacement_transport->last_send_remote_object.as_zone(), destination);
+    EXPECT_EQ(replacement_transport->last_send_caller_zone, service->get_zone_id());
 }

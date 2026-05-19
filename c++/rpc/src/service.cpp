@@ -1357,7 +1357,12 @@ namespace rpc
         if (existing != service_proxies_.end())
         {
             auto registered_proxy = existing->second.lock();
+            auto registered_transport = registered_proxy ? registered_proxy->get_transport() : nullptr;
             if (!registered_proxy)
+            {
+                service_proxies_.erase(existing);
+            }
+            else if (!registered_transport || registered_transport->get_status() >= transport_status::DISCONNECTING)
             {
                 service_proxies_.erase(existing);
             }
@@ -1797,6 +1802,28 @@ namespace rpc
         std::vector<remote_object> objects_to_notify;
 
         {
+            std::lock_guard g(service_proxy_control_);
+            auto route_item = transports_.find(remote_zone);
+            if (route_item != transports_.end())
+            {
+                auto registered_transport = route_item->second.lock();
+                if (registered_transport && registered_transport.get() != transport.get())
+                {
+                    RPC_DEBUG(
+                        "notify_transport_down: ignoring stale transport down for service zone={} remote_zone={} "
+                        "stale_adjacent={} canonical_adjacent={}",
+                        std::to_string(zone_id_),
+                        std::to_string(remote_zone),
+                        transport ? std::to_string(transport->get_adjacent_zone_id()) : std::string{"(none)"},
+                        std::to_string(registered_transport->get_adjacent_zone_id()));
+                    CO_RETURN;
+                }
+                if (!registered_transport)
+                    transports_.erase(route_item);
+            }
+        }
+
+        {
             std::lock_guard l(stub_control_);
 
             // Clean up service proxy for this specific zone
@@ -1805,7 +1832,10 @@ namespace rpc
                 auto zit = service_proxies_.find(remote_zone);
                 if (zit != service_proxies_.end())
                 {
-                    service_proxies_.erase(zit);
+                    auto registered_proxy = zit->second.lock();
+                    auto registered_transport = registered_proxy ? registered_proxy->get_transport() : nullptr;
+                    if (!registered_proxy || registered_transport.get() == transport.get())
+                        service_proxies_.erase(zit);
                 }
             }
 
@@ -1843,7 +1873,13 @@ namespace rpc
             // keep transports_ consistent so the service destructor's check_is_empty() passes.
             {
                 std::lock_guard g(service_proxy_control_);
-                transports_.erase(remote_zone);
+                auto route_item = transports_.find(remote_zone);
+                if (route_item != transports_.end())
+                {
+                    auto registered_transport = route_item->second.lock();
+                    if (!registered_transport || registered_transport.get() == transport.get())
+                        transports_.erase(route_item);
+                }
             }
         } // stub_control_ released here
 

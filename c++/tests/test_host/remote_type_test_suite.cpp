@@ -94,6 +94,138 @@ extern bool enable_multithreaded_tests; // NOLINT(cppcoreguidelines-avoid-non-co
 
 #include "type_test_fixture.h"
 
+namespace
+{
+    rpc::destination_zone make_transport_down_repair_destination(uint64_t step)
+    {
+        auto destination = rpc::DEFAULT_PREFIX;
+        // Keep these synthetic destinations well away from the normal test zone
+        // allocator. They only exercise the root service registry repair path;
+        // no real peer owns these addresses.
+        std::ignore = destination.set_subnet(0x70000000ULL + step);
+        return rpc::destination_zone{destination};
+    }
+
+    class transport_down_repair_test_transport final : public rpc::transport
+    {
+    public:
+        transport_down_repair_test_transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service)
+            : rpc::transport(
+                  std::move(name),
+                  std::move(service))
+        {
+            set_status(rpc::transport_status::CONNECTED);
+        }
+
+        CORO_TASK(rpc::connect_result)
+        inner_connect(
+            std::shared_ptr<rpc::object_stub> stub,
+            rpc::connection_settings input_descr) override
+        {
+            std::ignore = stub;
+            std::ignore = input_descr;
+            CO_RETURN rpc::connect_result{rpc::error::OK(), {}};
+        }
+
+        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
+
+        CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override
+        {
+            ++outbound_send_count;
+            last_send_remote_object = params.remote_object_id;
+            last_send_caller_zone = params.caller_zone_id;
+            CO_RETURN rpc::send_result{rpc::error::OK(), {}, {}};
+        }
+
+        CORO_TASK(void) outbound_post(rpc::post_params params) override
+        {
+            std::ignore = params;
+            CO_RETURN;
+        }
+
+        CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override
+        {
+            std::ignore = params;
+            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
+        }
+
+        CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override
+        {
+            std::ignore = params;
+            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
+        }
+
+        CORO_TASK(rpc::standard_result) outbound_release(rpc::release_params params) override
+        {
+            std::ignore = params;
+            CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
+        }
+
+        CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override
+        {
+            std::ignore = params;
+            CO_RETURN;
+        }
+
+        CORO_TASK(void) outbound_transport_down(rpc::transport_down_params params) override
+        {
+            std::ignore = params;
+            CO_RETURN;
+        }
+
+        uint64_t outbound_send_count{0};
+        rpc::remote_object last_send_remote_object;
+        rpc::caller_zone last_send_caller_zone;
+    };
+
+    template<class T>
+    CORO_TASK(bool)
+    exercise_stale_transport_down_repair(
+        T& lib,
+        uint64_t step)
+    {
+        auto service = lib.get_root_service();
+        if (!service)
+            CO_RETURN true;
+
+        const auto destination = make_transport_down_repair_destination(step);
+        auto stale_transport = std::make_shared<transport_down_repair_test_transport>("topology-stale-transport", service);
+        stale_transport->set_adjacent_zone_id(destination);
+        auto replacement_transport
+            = std::make_shared<transport_down_repair_test_transport>("topology-replacement-transport", service);
+        replacement_transport->set_adjacent_zone_id(destination);
+
+        CORO_ASSERT_EQ(service->add_transport(destination, stale_transport).get(), stale_transport.get());
+        stale_transport->set_status(rpc::transport_status::DISCONNECTING);
+        CORO_ASSERT_EQ(service->add_transport(destination, replacement_transport).get(), replacement_transport.get());
+
+        CO_AWAIT service->notify_transport_down(stale_transport, destination);
+        CORO_ASSERT_EQ(service->get_transport(destination).get(), replacement_transport.get());
+
+        auto replacement_proxy
+            = rpc::service_proxy::create("topology-replacement-proxy", service, replacement_transport, destination);
+        std::vector<char> empty_payload;
+        auto send_result = CO_AWAIT replacement_proxy->send_from_this_zone(
+            rpc::get_version(),
+            replacement_proxy->get_encoding(),
+            0,
+            rpc::object{1},
+            rpc::interface_ordinal{1},
+            rpc::method{1},
+            rpc::byte_span(empty_payload));
+
+        CORO_ASSERT_EQ(send_result.error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(stale_transport->outbound_send_count, 0U);
+        CORO_ASSERT_EQ(replacement_transport->outbound_send_count, 1U);
+        CORO_ASSERT_EQ(replacement_transport->last_send_remote_object.as_zone(), destination);
+        CORO_ASSERT_EQ(replacement_transport->last_send_caller_zone, service->get_zone_id());
+
+        CO_RETURN true;
+    }
+} // namespace
+
 // Type list for remote type_test instantiations.
 // Requires the various remote-capable setup helpers to be included before this header.
 
@@ -671,10 +803,22 @@ TYPED_TEST(
 //     enclaveb->set_host(nullptr);
 // }
 
-template<class T> CORO_TASK(bool) coro_check_identity(T& lib)
+template<class T>
+CORO_TASK(bool)
+coro_check_identity(
+    T& lib,
+    bool inject_transport_down_repairs = false)
 {
     if (!lib.get_use_host_in_child())
         CO_RETURN true;
+
+    uint64_t repair_step = 0;
+    auto repair = [&]() -> CORO_TASK(bool)
+    {
+        if (!inject_transport_down_repairs)
+            CO_RETURN true;
+        CO_RETURN CO_AWAIT exercise_stale_transport_down_repair(lib, ++repair_step);
+    };
 
     rpc::shared_ptr<xxx::i_baz> output;
 
@@ -684,12 +828,14 @@ template<class T> CORO_TASK(bool) coro_check_identity(T& lib)
         CO_AWAIT lib.get_example()->create_example_in_subordinate_zone(new_zone, lib.get_local_host_ptr()),
         rpc::error::OK()); // second level
     CORO_ASSERT_NE(new_zone, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<yyy::i_example> new_new_zone;
     CORO_ASSERT_EQ(
         CO_AWAIT new_zone->create_example_in_subordinate_zone(new_new_zone, lib.get_local_host_ptr()),
         rpc::error::OK()); // third level
     CORO_ASSERT_NE(new_new_zone, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     auto new_zone_fork = CO_AWAIT lib.create_new_zone(); // second level
     if (!new_zone_fork)
@@ -697,15 +843,19 @@ template<class T> CORO_TASK(bool) coro_check_identity(T& lib)
         // SPSC and other peer-to-peer transports don't support hierarchical zone creation
         CO_RETURN true;
     }
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<xxx::i_baz> new_baz;
     CORO_ASSERT_EQ(CO_AWAIT new_zone->create_baz(new_baz), 0);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<xxx::i_baz> new_new_baz;
     CORO_ASSERT_EQ(CO_AWAIT new_new_zone->create_baz(new_new_baz), 0);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<xxx::i_baz> new_baz_fork;
     CORO_ASSERT_EQ(CO_AWAIT new_zone_fork->create_baz(new_baz_fork), 0);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     // topology looks like this now flinging bazes around these nodes to ensure that the identity of bazes is the same
     // *4                           #
@@ -721,34 +871,43 @@ template<class T> CORO_TASK(bool) coro_check_identity(T& lib)
 
     CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     CORO_ASSERT_EQ(CO_AWAIT new_zone->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     CORO_ASSERT_EQ(CO_AWAIT new_new_zone->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     input = new_baz;
 
     CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     CORO_ASSERT_EQ(CO_AWAIT new_zone->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     CORO_ASSERT_EQ(CO_AWAIT new_new_zone->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     input = new_new_baz;
 
     CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     CORO_ASSERT_EQ(CO_AWAIT new_zone->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     CORO_ASSERT_EQ(CO_AWAIT new_new_zone->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     input = new_baz_fork;
 
@@ -758,6 +917,7 @@ template<class T> CORO_TASK(bool) coro_check_identity(T& lib)
 
     CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     // *z3                       #
     //  \                        #
@@ -767,6 +927,7 @@ template<class T> CORO_TASK(bool) coro_check_identity(T& lib)
 
     CORO_ASSERT_EQ(CO_AWAIT new_zone->send_interface_back(input, output), rpc::error::OK());
     CORO_ASSERT_EQ(input, output);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     // *z4                          #
     //  \                           #
@@ -786,6 +947,13 @@ TYPED_TEST(
     check_identity)
 {
     run_coro_test(*this, [](auto& lib) { return coro_check_identity<TypeParam>(lib); });
+}
+
+TYPED_TEST(
+    remote_type_test,
+    check_identity_with_transport_down_repairs)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_check_identity<TypeParam>(lib, true); });
 }
 
 template<class T> CORO_TASK(bool) coro_check_deeply_nested_zone_reference_counting_fork_scenario(T& lib)
@@ -1519,7 +1687,11 @@ TYPED_TEST(
         *this, [](auto& lib, const auto&) { return coro_check_interface_routing_with_out_params<TypeParam>(lib); }, *this);
 }
 
-template<class T> CORO_TASK(bool) coro_test_y_topology_and_return_new_prong_object(T& lib)
+template<class T>
+CORO_TASK(bool)
+coro_test_y_topology_and_return_new_prong_object(
+    T& lib,
+    bool inject_transport_down_repairs = false)
 {
     /*
      * Test for the Y-shaped topology bug described in service.cpp line 222-229:
@@ -1538,27 +1710,39 @@ template<class T> CORO_TASK(bool) coro_test_y_topology_and_return_new_prong_obje
      * - The fix: requesting_zone parameter + reverse proxy creation
      */
 
+    uint64_t repair_step = 1000;
+    auto repair = [&]() -> CORO_TASK(bool)
+    {
+        if (!inject_transport_down_repairs)
+            CO_RETURN true;
+        CO_RETURN CO_AWAIT exercise_stale_transport_down_repair(lib, ++repair_step);
+    };
+
     // Create the first prong of the Y: Zone 1 → Zone 2 → Zone 3 (factory)
     rpc::shared_ptr<yyy::i_example> zone2;
     CORO_ASSERT_EQ(
         CO_AWAIT lib.get_example()->create_example_in_subordinate_zone(zone2, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone2, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<yyy::i_example> zone3_factory;
     CORO_ASSERT_EQ(
         CO_AWAIT zone2->create_example_in_subordinate_zone(zone3_factory, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone3_factory, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     // Continue the first prong: Zone 3 → Zone 4 → Zone 5 (deep zone)
     rpc::shared_ptr<yyy::i_example> zone4;
     CORO_ASSERT_EQ(
         CO_AWAIT zone3_factory->create_example_in_subordinate_zone(zone4, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone4, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<yyy::i_example> zone5_deep_service;
     CORO_ASSERT_EQ(
         CO_AWAIT zone4->create_example_in_subordinate_zone(zone5_deep_service, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone5_deep_service, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     // THE CRITICAL TEST: Zone 5 autonomously creates the second prong through Zone 3 factory
     // Zone 1 (root) is NOT involved in this call, so it remains unaware of Zone 6 and Zone 7
@@ -1569,6 +1753,7 @@ template<class T> CORO_TASK(bool) coro_test_y_topology_and_return_new_prong_obje
         CO_AWAIT zone5_deep_service->create_fork_and_return_object(zone3_factory, fork_zone_ids, object_from_unknown_zone),
         rpc::error::OK());
     CORO_ASSERT_NE(object_from_unknown_zone, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     CO_RETURN true;
 }
@@ -1580,13 +1765,21 @@ TYPED_TEST(
     run_coro_test(*this, [](auto& lib) { return coro_test_y_topology_and_return_new_prong_object<TypeParam>(lib); });
 }
 
+TYPED_TEST(
+    remote_type_test,
+    test_y_topology_and_return_new_prong_object_with_transport_down_repairs)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_test_y_topology_and_return_new_prong_object<TypeParam>(lib, true); });
+}
+
 template<
     class T,
     class U>
 CORO_TASK(bool)
 coro_test_y_topology_and_cache_and_retrieve_prong_object(
     T& lib,
-    const U& context)
+    const U& context,
+    bool inject_transport_down_repairs = false)
 {
     std::ignore = context;
     /*
@@ -1610,24 +1803,36 @@ coro_test_y_topology_and_cache_and_retrieve_prong_object(
      * 5. Without requesting_zone fix: routing failure or infinite recursion
      */
 
+    uint64_t repair_step = 2000;
+    auto repair = [&]() -> CORO_TASK(bool)
+    {
+        if (!inject_transport_down_repairs)
+            CO_RETURN true;
+        CO_RETURN CO_AWAIT exercise_stale_transport_down_repair(lib, ++repair_step);
+    };
+
     // Create Deep Chain: Zone 1 → Zone 2 → Zone 3 → Zone 4 → Zone 5 (deep factory)
     rpc::shared_ptr<yyy::i_example> zone2;
     CORO_ASSERT_EQ(
         CO_AWAIT lib.get_example()->create_example_in_subordinate_zone(zone2, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone2, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<yyy::i_example> zone3;
     CORO_ASSERT_EQ(CO_AWAIT zone2->create_example_in_subordinate_zone(zone3, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone3, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<yyy::i_example> zone4;
     CORO_ASSERT_EQ(CO_AWAIT zone3->create_example_in_subordinate_zone(zone4, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone4, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     rpc::shared_ptr<yyy::i_example> zone5_deep_factory;
     CORO_ASSERT_EQ(
         CO_AWAIT zone4->create_example_in_subordinate_zone(zone5_deep_factory, lib.get_local_host_ptr()), rpc::error::OK());
     CORO_ASSERT_NE(zone5_deep_factory, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     // STEP 1: Zone 5 autonomously creates longer fork: Zone 5 → Zone 6 → Zone 7
     // This creates maximum isolation - no ancestor zones know about this branch
@@ -1635,6 +1840,7 @@ coro_test_y_topology_and_cache_and_retrieve_prong_object(
 
     RPC_INFO("Zone 5 autonomously creating deep fork (Zone 6 → Zone 7) and caching object from Zone 7...");
     CORO_ASSERT_EQ(CO_AWAIT zone5_deep_factory->create_y_topology_fork(zone3, deep_autonomous_zones), rpc::error::OK());
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     // STEP 2: Zone 5 retrieves Zone 7 object to begin the long journey back to Zone 1
     rpc::shared_ptr<yyy::i_example> zone7_object;
@@ -1642,6 +1848,7 @@ coro_test_y_topology_and_cache_and_retrieve_prong_object(
     RPC_INFO("Zone 5 retrieving Zone 7 object to pass up the chain...");
     CORO_ASSERT_EQ(CO_AWAIT zone5_deep_factory->retrieve_cached_autonomous_object(zone7_object), rpc::error::OK());
     CORO_ASSERT_NE(zone7_object, nullptr);
+    CORO_ASSERT_EQ(CO_AWAIT repair(), true);
 
     RPC_INFO("Test completed - Zone 1 successfully worked with Zone 7 object from deep autonomous fork");
 
@@ -1656,6 +1863,17 @@ TYPED_TEST(
         *this,
         [](auto& lib, const auto& context)
         { return coro_test_y_topology_and_cache_and_retrieve_prong_object<TypeParam>(lib, context); },
+        *this);
+}
+
+TYPED_TEST(
+    remote_type_test,
+    test_y_topology_and_cache_and_retrieve_prong_object_with_transport_down_repairs)
+{
+    run_coro_test(
+        *this,
+        [](auto& lib, const auto& context)
+        { return coro_test_y_topology_and_cache_and_retrieve_prong_object<TypeParam>(lib, context, true); },
         *this);
 }
 
