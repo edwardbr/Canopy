@@ -12,16 +12,21 @@ set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/backend_factory.cpp
     src/crypto_hash.cpp
     src/kdf.cpp
-    src/null_backend.cpp
+    src/backends/null/null_backend.cpp
     src/protected_rpc.cpp
-    src/sgx_dcap_backend.cpp
-    src/sgx_epid_backend.cpp
+    src/backends/sgx_dcap/sgx_dcap_backend.cpp
+    src/backends/sgx_dcap/sgx_dcap_host_quote_provider.cpp
+    src/backends/sgx_dcap/sgx_dcap_host_quote_verifier.cpp
+    src/backends/sgx_epid/sgx_epid_backend.cpp
+    src/backends/sgx_epid/sgx_epid_host_quote_provider.cpp
+    src/backends/sgx_epid/sgx_epid_ias_report_verifier.cpp
     src/types.cpp
     src/zone_security_policy.cpp
     src/service.cpp)
 
 if(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
-  list(APPEND CANOPY_SECURITY_ATTESTATION_SOURCES src/fake_backend.cpp src/simulation_backend.cpp)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_SOURCES src/backends/fake/fake_backend.cpp
+       src/backends/simulation/simulation_backend.cpp)
 endif()
 
 add_library(security_attestation STATIC ${CANOPY_SECURITY_ATTESTATION_SOURCES})
@@ -30,7 +35,7 @@ add_library(canopy::security_attestation ALIAS security_attestation)
 target_include_directories(
   security_attestation
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
-  PRIVATE ${CANOPY_INCLUDES})
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${CANOPY_INCLUDES})
 target_compile_definitions(security_attestation PRIVATE ${CANOPY_DEFINES})
 target_compile_options(security_attestation PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(security_attestation PRIVATE ${CANOPY_LINK_OPTIONS})
@@ -57,7 +62,7 @@ if(CANOPY_BUILD_ENCLAVE)
     target_include_directories(
       security_attestation_enclave
       PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
-      PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+      PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
     target_compile_definitions(security_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
     target_compile_options(security_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
                                                                ${CANOPY_WARN_OK_ENCLAVE})

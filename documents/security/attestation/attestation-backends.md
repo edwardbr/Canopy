@@ -176,12 +176,16 @@ Canopy now has the first DCAP backend slice:
 - injected quote-provider and quote-verifier interfaces define the seams where
   `sgx_qe_get_target_info`, `sgx_create_report`, `sgx_qe_get_quote`,
   `sgx_qv_verify_quote` or `tee_verify_quote`, and QvE/TVL appraisal must be
-  wired on a DCAP-capable machine.
+  wired on a DCAP-capable machine;
+- `sgx_dcap_host_quote_provider` and `sgx_dcap_host_quote_verifier` provide
+  function-table adapters for that host wiring. The tests exercise the QE
+  target-info/report/quote sequence, quote-size caps, QvL result mapping, and
+  expired-collateral rejection without linking Intel runtime libraries.
 
-This current DCAP backend is a protocol, policy, and build-selection skeleton.
-It does not yet call Intel DCAP quote-generation or quote-verification
-libraries. Production confidentiality and peer authenticity still require the
-real DCAP provider/verifier adapter plus the transcript-bound key exchange
+This current DCAP backend is now more than a wire skeleton, but it still does
+not directly call Intel DCAP quote-generation or quote-verification libraries.
+Production confidentiality and peer authenticity still require binding those
+adapters to the real Intel APIs plus the transcript-bound key exchange
 described in the implementation plan.
 
 ## Future TEE Backends
@@ -279,17 +283,24 @@ Canopy now has the initial EPID backend shape:
   unavailable CMW and verification fails closed;
 - injected providers and verifiers are the only code that should call Intel
   PSW/AESM, IAS, or quote parsing APIs;
+- `sgx_epid_host_quote_provider` provides a function-table adapter for the
+  PSW/AESM quote sequence: initialize quote, ask enclave code for a targeted
+  report carrying the Canopy transcript hash, calculate quote size, and obtain
+  quote bytes;
+- `sgx_epid_ias_report_verifier` provides a policy adapter for IAS reports. It
+  requires an injected quote report_data extractor and an IAS validator callback
+  so Intel quote parsing, IAS signature/certificate verification, and local
+  measurement policy stay explicit;
 - `backend_factory_overrides` can supply a prebuilt `attestation_backend`, so
   SGX-specific provider/verifier objects do not leak into the neutral factory
   header;
 - the backend applies defensive payload and per-field size caps before handing
   decoded quote material to a verifier.
 
-The current EPID backend is therefore a protocol and policy skeleton, not a
-complete IAS implementation. The next runtime slice on SGX1 hardware should
-wire a provider that obtains an EPID quote from the SGX PSW and a verifier that
-checks the IAS report signature, quote status, revocation/collateral state, and
-that the quote report_data contains the Canopy transcript hash.
+The current EPID backend is therefore a protocol, policy, and adapter skeleton,
+not a complete IAS implementation. The next runtime slice on SGX1 hardware
+should wire the provider callbacks to the SGX PSW/AESM APIs and wire the IAS
+validator callback to a real IAS verification implementation.
 
 That verifier contract is load-bearing. A production or demo verifier must
 reject unless it has checked the IAS signature, IAS signing certificate chain

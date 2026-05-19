@@ -11,7 +11,7 @@
 #include <rpc/internal/serialiser.h>
 #include <rpc/rpc.h>
 #include <security/attestation/service.h>
-#include <security/attestation/simulation_backend.h>
+#include <security/attestation/backends/simulation/simulation_backend.h>
 #include <transports/sgx_coroutine/host/connect.h>
 #include <transports/sgx_coroutine/host/transport.h>
 

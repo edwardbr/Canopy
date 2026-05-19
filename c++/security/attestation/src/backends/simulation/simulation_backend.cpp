@@ -3,7 +3,7 @@
  *   All rights reserved.
  */
 
-#include <security/attestation/simulation_backend.h>
+#include <security/attestation/backends/simulation/simulation_backend.h>
 
 #include "crypto_hash.h"
 

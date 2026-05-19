@@ -5,11 +5,11 @@
 
 #include <security/attestation/backend_factory.h>
 
-#include <security/attestation/fake_backend.h>
-#include <security/attestation/null_backend.h>
-#include <security/attestation/sgx_dcap_backend.h>
-#include <security/attestation/sgx_epid_backend.h>
-#include <security/attestation/simulation_backend.h>
+#include <security/attestation/backends/fake/fake_backend.h>
+#include <security/attestation/backends/null/null_backend.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_backend.h>
+#include <security/attestation/backends/sgx_epid/sgx_epid_backend.h>
+#include <security/attestation/backends/simulation/simulation_backend.h>
 
 #include <exception>
 #include <memory>

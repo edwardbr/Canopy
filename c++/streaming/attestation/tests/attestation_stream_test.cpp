@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-#include <security/attestation/fake_backend.h>
+#include <security/attestation/backends/fake/fake_backend.h>
 #include <streaming/attestation/stream.h>
 #include <streaming/spsc_queue/stream.h>
 

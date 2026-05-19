@@ -13,7 +13,7 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <attestation/route_attestation_protocol.h>
-#  include <security/attestation/fake_backend.h>
+#  include <security/attestation/backends/fake/fake_backend.h>
 #  include <security/attestation/protected_rpc.h>
 #  include <streaming/attestation/stream.h>
 #  include <streaming/spsc_queue/stream.h>

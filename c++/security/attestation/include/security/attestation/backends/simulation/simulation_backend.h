@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <security/attestation/fake_backend.h>
+#include <security/attestation/backends/fake/fake_backend.h>
 
 namespace canopy::security::attestation
 {

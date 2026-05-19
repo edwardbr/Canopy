@@ -3,7 +3,7 @@
  *   All rights reserved.
  */
 
-#include <security/attestation/sgx_dcap_backend.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_backend.h>
 
 #include "crypto_hash.h"
 

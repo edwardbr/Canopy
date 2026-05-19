@@ -3,7 +3,7 @@
  *   All rights reserved.
  */
 
-#include <security/attestation/fake_backend.h>
+#include <security/attestation/backends/fake/fake_backend.h>
 
 #include <fmt/format.h>
 

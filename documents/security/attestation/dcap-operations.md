@@ -672,8 +672,10 @@ to the Canopy attestation service:
   same-CPU verification).
 
 The current code implements the typed CMW wrapper, provider/verifier
-interfaces, backend-factory selection, and fail-closed behavior. The concrete
-Intel DCAP provider/verifier adapter is the remaining hardware-dependent part.
+interfaces, backend-factory selection, fail-closed behavior, and function-table
+host adapters for quote production and QvL/QvE result mapping. The remaining
+hardware-dependent part is wiring those callbacks to the concrete Intel DCAP
+calls and enclave report/QvE verification code.
 
 The host side of the SGX coroutine transport
 (`c++/transports/sgx_coroutine/host`) routes quote bytes only. It does not

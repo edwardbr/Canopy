@@ -8,7 +8,7 @@
 #include <example/example.h>
 #include <rpc/internal/serialiser.h>
 #include <rpc/rpc.h>
-#include <security/attestation/simulation_backend.h>
+#include <security/attestation/backends/simulation/simulation_backend.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 
 #include <cstdint>

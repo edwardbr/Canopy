@@ -7,14 +7,18 @@
 
 #include <security/attestation/aead.h>
 #include <security/attestation/backend_factory.h>
-#include <security/attestation/fake_backend.h>
-#include <security/attestation/null_backend.h>
+#include <security/attestation/backends/fake/fake_backend.h>
+#include <security/attestation/backends/null/null_backend.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_backend.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_host_quote_provider.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_host_quote_verifier.h>
+#include <security/attestation/backends/sgx_epid/sgx_epid_backend.h>
+#include <security/attestation/backends/sgx_epid/sgx_epid_host_quote_provider.h>
+#include <security/attestation/backends/sgx_epid/sgx_epid_ias_report_verifier.h>
+#include <security/attestation/backends/simulation/simulation_backend.h>
 #include <security/attestation/protected_rpc.h>
 #include <attestation/route_attestation_protocol.h>
 #include <security/attestation/service.h>
-#include <security/attestation/sgx_dcap_backend.h>
-#include <security/attestation/sgx_epid_backend.h>
-#include <security/attestation/simulation_backend.h>
 #include <security/attestation/zone_security_policy.h>
 
 #include <array>
@@ -75,23 +79,41 @@ namespace
     using canopy::security::attestation::sgx_dcap_backend;
     using canopy::security::attestation::sgx_dcap_backend_id;
     using canopy::security::attestation::sgx_dcap_evidence_media_type;
+    using canopy::security::attestation::sgx_dcap_get_quote_request;
+    using canopy::security::attestation::sgx_dcap_host_quote_provider;
+    using canopy::security::attestation::sgx_dcap_host_quote_provider_functions;
+    using canopy::security::attestation::sgx_dcap_host_quote_provider_options;
+    using canopy::security::attestation::sgx_dcap_host_quote_verification;
+    using canopy::security::attestation::sgx_dcap_host_quote_verifier;
+    using canopy::security::attestation::sgx_dcap_host_quote_verifier_options;
     using canopy::security::attestation::sgx_dcap_quote_evidence_content_format;
     using canopy::security::attestation::sgx_dcap_quote_material;
     using canopy::security::attestation::sgx_dcap_quote_provider;
     using canopy::security::attestation::sgx_dcap_quote_request;
     using canopy::security::attestation::sgx_dcap_quote_verifier;
+    using canopy::security::attestation::sgx_dcap_report_request;
+    using canopy::security::attestation::sgx_dcap_target_info_result;
     using canopy::security::attestation::sgx_dcap_unavailable_content_format;
     using canopy::security::attestation::sgx_dcap_verification_result_material;
     using canopy::security::attestation::sgx_dcap_verifier_input;
     using canopy::security::attestation::sgx_epid_backend;
     using canopy::security::attestation::sgx_epid_backend_id;
     using canopy::security::attestation::sgx_epid_evidence_media_type;
+    using canopy::security::attestation::sgx_epid_get_quote_request;
+    using canopy::security::attestation::sgx_epid_host_quote_provider;
+    using canopy::security::attestation::sgx_epid_host_quote_provider_functions;
+    using canopy::security::attestation::sgx_epid_host_quote_provider_options;
     using canopy::security::attestation::sgx_epid_ias_report_material;
+    using canopy::security::attestation::sgx_epid_ias_report_validation_result;
+    using canopy::security::attestation::sgx_epid_ias_report_verifier;
+    using canopy::security::attestation::sgx_epid_ias_report_verifier_options;
+    using canopy::security::attestation::sgx_epid_init_quote_result;
     using canopy::security::attestation::sgx_epid_quote_evidence_content_format;
     using canopy::security::attestation::sgx_epid_quote_material;
     using canopy::security::attestation::sgx_epid_quote_provider;
     using canopy::security::attestation::sgx_epid_quote_request;
     using canopy::security::attestation::sgx_epid_quote_verifier;
+    using canopy::security::attestation::sgx_epid_report_request;
     using canopy::security::attestation::sgx_epid_unavailable_content_format;
     using canopy::security::attestation::sgx_epid_verifier_input;
     using canopy::security::attestation::simulation_backend;
@@ -237,6 +259,13 @@ namespace
         EXPECT_EQ(payload->get_type_id(), encrypted_payload_type_id(rpc::get_version()));
         EXPECT_EQ(payload->get_encoding(), encoding);
         EXPECT_FALSE(payload->get_payload().empty());
+    }
+
+    auto make_sgx_report_data(const std::vector<uint8_t>& report_data_sha256) -> std::vector<uint8_t>
+    {
+        auto out = report_data_sha256;
+        out.resize(64U, 0);
+        return out;
     }
 
     class test_sgx_epid_quote_provider final : public sgx_epid_quote_provider
@@ -579,6 +608,120 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxEpidHostQuoteProviderRunsPswStyleQuoteSequence)
+{
+    evidence_binding binding;
+    binding.subject = identity{"epid-enclave", "epid-zone"};
+    binding.transcript_id = 36;
+    binding.nonce = {1, 4, 9, 16};
+    const std::vector<uint8_t> report_data_hash(32U, 0xa5);
+    const std::vector<uint8_t> spid(16U, 0x5a);
+    const std::vector<uint8_t> sig_rl{0x01, 0x02, 0x03};
+    const std::vector<uint8_t> target_info{0x10, 0x20, 0x30};
+    const std::vector<uint8_t> report{0x40, 0x50};
+    const uint32_t quote_sign_type = 2;
+
+    int init_calls = 0;
+    int report_calls = 0;
+    int size_calls = 0;
+    int quote_calls = 0;
+
+    sgx_epid_host_quote_provider_options options;
+    options.spid = spid;
+    options.sig_rl = sig_rl;
+    options.quote_sign_type = quote_sign_type;
+    options.functions.init_quote = [&]() -> std::optional<sgx_epid_init_quote_result>
+    {
+        ++init_calls;
+        sgx_epid_init_quote_result result;
+        result.qe_target_info = target_info;
+        result.extended_epid_group_id = 0x12345678U;
+        return result;
+    };
+    options.report_producer = [&](const sgx_epid_report_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        ++report_calls;
+        EXPECT_EQ(request.binding.subject.enclave_id, binding.subject.enclave_id);
+        EXPECT_EQ(request.binding.subject.zone_id, binding.subject.zone_id);
+        EXPECT_EQ(request.binding.transcript_id, binding.transcript_id);
+        EXPECT_EQ(request.qe_target_info, target_info);
+        EXPECT_EQ(request.report_data_sha256, report_data_hash);
+        return report;
+    };
+    options.functions.calculate_quote_size = [&](const std::vector<uint8_t>& actual_sig_rl) -> std::optional<uint32_t>
+    {
+        ++size_calls;
+        EXPECT_EQ(actual_sig_rl, sig_rl);
+        return 96U;
+    };
+    options.functions.get_quote = [&](const sgx_epid_get_quote_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        ++quote_calls;
+        EXPECT_EQ(request.binding.transcript_id, binding.transcript_id);
+        EXPECT_EQ(request.report, report);
+        EXPECT_EQ(request.quote_sign_type, quote_sign_type);
+        EXPECT_EQ(request.spid, spid);
+        EXPECT_EQ(request.sig_rl, sig_rl);
+        EXPECT_EQ(request.quote_size, 96U);
+        EXPECT_EQ(request.report_data_sha256, report_data_hash);
+        auto quote = make_sgx_report_data(request.report_data_sha256);
+        quote.push_back(0x99);
+        return quote;
+    };
+
+    sgx_epid_host_quote_provider provider(std::move(options));
+    sgx_epid_quote_request request;
+    request.binding = binding;
+    request.report_data_sha256 = report_data_hash;
+
+    auto material = provider.produce_quote(request);
+    ASSERT_TRUE(material.has_value());
+    EXPECT_EQ(material->extended_epid_group_id, 0x12345678U);
+    EXPECT_EQ(material->quote_sign_type, 2U);
+    EXPECT_EQ(material->spid, spid);
+    EXPECT_EQ(material->sig_rl, sig_rl);
+    ASSERT_EQ(material->quote.size(), 65U);
+    EXPECT_EQ(
+        std::vector<uint8_t>(material->quote.begin(), material->quote.begin() + 64U),
+        make_sgx_report_data(report_data_hash));
+    EXPECT_EQ(material->quote.back(), 0x99);
+    EXPECT_EQ(init_calls, 1);
+    EXPECT_EQ(report_calls, 1);
+    EXPECT_EQ(size_calls, 1);
+    EXPECT_EQ(quote_calls, 1);
+}
+
+TEST(
+    AttestationService,
+    SgxEpidHostQuoteProviderFailsClosedOnInvalidPswInputs)
+{
+    sgx_epid_host_quote_provider_options options;
+    options.spid = std::vector<uint8_t>(16U, 0x5a);
+    options.functions.init_quote = []() -> std::optional<sgx_epid_init_quote_result>
+    {
+        sgx_epid_init_quote_result result;
+        result.qe_target_info = {0x01};
+        return result;
+    };
+    options.report_producer = [](const sgx_epid_report_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x02}; };
+    options.functions.calculate_quote_size
+        = [](const std::vector<uint8_t>&) -> std::optional<uint32_t> { return (64U * 1024U) + 1U; };
+    options.functions.get_quote = [](const sgx_epid_get_quote_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x03}; };
+
+    sgx_epid_host_quote_provider provider(std::move(options));
+    sgx_epid_quote_request request;
+    request.binding.subject = identity{"epid-enclave", "epid-zone"};
+    request.binding.transcript_id = 37;
+    request.binding.nonce = {1, 2, 3};
+    request.report_data_sha256 = std::vector<uint8_t>(32U, 0xa5);
+
+    EXPECT_FALSE(provider.produce_quote(request).has_value());
+}
+
+TEST(
+    AttestationService,
     SgxEpidBackendRejectsOversizedEvidenceBeforeVerifier)
 {
     auto verifier = std::make_shared<test_sgx_epid_quote_verifier>();
@@ -659,6 +802,88 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxEpidIasVerifierAcceptsReportDataBoundQuote)
+{
+    sgx_epid_ias_report_verifier_options options;
+    bool report_data_extracted = false;
+    bool ias_report_validated = false;
+    options.extract_report_data = [&](const std::vector<uint8_t>& quote) -> std::optional<std::vector<uint8_t>>
+    {
+        report_data_extracted = true;
+        if (quote.size() < 64U)
+            return std::nullopt;
+        return std::vector<uint8_t>(quote.begin(), quote.begin() + 64U);
+    };
+    options.validate_ias_report = [&](const sgx_epid_verifier_input& input,
+                                      const attestation_policy& policy) -> sgx_epid_ias_report_validation_result
+    {
+        ias_report_validated = true;
+        EXPECT_EQ(policy.required_backend_id, sgx_epid_backend_id);
+        EXPECT_TRUE(input.quote.ias_report.has_value());
+        EXPECT_EQ(input.quote.ias_report->quote_status, "OK");
+        return sgx_epid_ias_report_validation_result{true, "IAS report accepted"};
+    };
+
+    sgx_epid_ias_report_verifier verifier(std::move(options));
+    sgx_epid_verifier_input input;
+    input.expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    input.report_data_sha256 = std::vector<uint8_t>(32U, 0x44);
+    input.quote.quote = make_sgx_report_data(input.report_data_sha256);
+    input.quote.quote.push_back(0x17);
+    sgx_epid_ias_report_material report;
+    report.body_json = R"({"isvEnclaveQuoteStatus":"OK"})";
+    report.signature = {0x10};
+    report.signing_certificate_chain = {0x20};
+    report.quote_status = "OK";
+    input.quote.ias_report = report;
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_epid_backend_id;
+    policy.minimum_security_level = security_level::hardware_legacy;
+
+    auto verdict = verifier.verify_quote(input, policy);
+    EXPECT_TRUE(verdict.accepted) << verdict.reason;
+    EXPECT_EQ(verdict.backend_id, sgx_epid_backend_id);
+    EXPECT_EQ(verdict.level, security_level::hardware_legacy);
+    EXPECT_EQ(verdict.peer_identity.enclave_id, input.expected_binding.subject.enclave_id);
+    EXPECT_TRUE(report_data_extracted);
+    EXPECT_TRUE(ias_report_validated);
+}
+
+TEST(
+    AttestationService,
+    SgxEpidIasVerifierRejectsUnexpectedStatusAndReportData)
+{
+    sgx_epid_ias_report_verifier_options options;
+    options.extract_report_data = [](const std::vector<uint8_t>& quote) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>(quote.begin(), quote.begin() + 64U); };
+    options.validate_ias_report
+        = [](const sgx_epid_verifier_input&, const attestation_policy&) -> sgx_epid_ias_report_validation_result
+    { return sgx_epid_ias_report_validation_result{true, "unexpected acceptance"}; };
+
+    sgx_epid_ias_report_verifier verifier(std::move(options));
+    sgx_epid_verifier_input input;
+    input.expected_binding.subject = identity{"epid-enclave", "epid-zone"};
+    input.report_data_sha256 = std::vector<uint8_t>(32U, 0x44);
+    input.quote.quote = make_sgx_report_data(std::vector<uint8_t>(32U, 0x55));
+    sgx_epid_ias_report_material report;
+    report.quote_status = "GROUP_OUT_OF_DATE";
+    input.quote.ias_report = report;
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_epid_backend_id;
+    policy.minimum_security_level = security_level::hardware_legacy;
+
+    auto bad_status = verifier.verify_quote(input, policy);
+    EXPECT_FALSE(bad_status.accepted);
+
+    input.quote.ias_report->quote_status = "OK";
+    auto bad_report_data = verifier.verify_quote(input, policy);
+    EXPECT_FALSE(bad_report_data.accepted);
+}
+
+TEST(
+    AttestationService,
     SgxDcapBackendWithoutQuoteProviderFailsClosed)
 {
     sgx_dcap_backend backend;
@@ -720,6 +945,186 @@ TEST(
     auto wrong_backend_policy = policy;
     wrong_backend_policy.required_backend_id = sgx_epid_backend_id;
     EXPECT_FALSE(backend.verify_evidence(evidence, expected_binding, wrong_backend_policy).accepted);
+}
+
+TEST(
+    AttestationService,
+    SgxDcapHostQuoteProviderRunsQeQuoteSequence)
+{
+    evidence_binding binding;
+    binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    binding.transcript_id = 45;
+    binding.nonce = {2, 3, 5, 7};
+    const std::vector<uint8_t> report_data_hash(32U, 0xd5);
+    const std::vector<uint8_t> target_info{0x11, 0x22, 0x33};
+    const std::vector<uint8_t> report{0x44, 0x55};
+
+    int target_info_calls = 0;
+    int report_calls = 0;
+    int size_calls = 0;
+    int quote_calls = 0;
+
+    sgx_dcap_host_quote_provider_options options;
+    options.functions.get_target_info = [&]() -> std::optional<sgx_dcap_target_info_result>
+    {
+        ++target_info_calls;
+        sgx_dcap_target_info_result result;
+        result.qe_target_info = target_info;
+        return result;
+    };
+    options.report_producer = [&](const sgx_dcap_report_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        ++report_calls;
+        EXPECT_EQ(request.binding.subject.enclave_id, binding.subject.enclave_id);
+        EXPECT_EQ(request.binding.subject.zone_id, binding.subject.zone_id);
+        EXPECT_EQ(request.binding.transcript_id, binding.transcript_id);
+        EXPECT_EQ(request.qe_target_info, target_info);
+        EXPECT_EQ(request.report_data_sha256, report_data_hash);
+        return report;
+    };
+    options.functions.get_quote_size = [&]() -> std::optional<uint32_t>
+    {
+        ++size_calls;
+        return 96U;
+    };
+    options.functions.get_quote = [&](const sgx_dcap_get_quote_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        ++quote_calls;
+        EXPECT_EQ(request.binding.transcript_id, binding.transcript_id);
+        EXPECT_EQ(request.report, report);
+        EXPECT_EQ(request.quote_size, 96U);
+        EXPECT_EQ(request.report_data_sha256, report_data_hash);
+        auto quote = make_sgx_report_data(request.report_data_sha256);
+        quote.push_back(0xdc);
+        return quote;
+    };
+
+    sgx_dcap_host_quote_provider provider(std::move(options));
+    sgx_dcap_quote_request request;
+    request.binding = binding;
+    request.report_data_sha256 = report_data_hash;
+
+    auto material = provider.produce_quote(request);
+    ASSERT_TRUE(material.has_value());
+    ASSERT_EQ(material->quote.size(), 65U);
+    EXPECT_EQ(
+        std::vector<uint8_t>(material->quote.begin(), material->quote.begin() + 64U),
+        make_sgx_report_data(report_data_hash));
+    EXPECT_EQ(material->quote.back(), 0xdc);
+    EXPECT_EQ(target_info_calls, 1);
+    EXPECT_EQ(report_calls, 1);
+    EXPECT_EQ(size_calls, 1);
+    EXPECT_EQ(quote_calls, 1);
+}
+
+TEST(
+    AttestationService,
+    SgxDcapHostQuoteProviderFailsClosedOnInvalidQeInputs)
+{
+    sgx_dcap_host_quote_provider_options options;
+    options.functions.get_target_info = []() -> std::optional<sgx_dcap_target_info_result>
+    {
+        sgx_dcap_target_info_result result;
+        result.qe_target_info = {0x01};
+        return result;
+    };
+    options.report_producer = [](const sgx_dcap_report_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x02}; };
+    options.functions.get_quote_size = []() -> std::optional<uint32_t> { return (256U * 1024U) + 1U; };
+    options.functions.get_quote = [](const sgx_dcap_get_quote_request&) -> std::optional<std::vector<uint8_t>>
+    { return std::vector<uint8_t>{0x03}; };
+
+    sgx_dcap_host_quote_provider provider(std::move(options));
+    sgx_dcap_quote_request request;
+    request.binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    request.binding.transcript_id = 46;
+    request.binding.nonce = {1, 2, 3};
+    request.report_data_sha256 = std::vector<uint8_t>(32U, 0xd5);
+
+    EXPECT_FALSE(provider.produce_quote(request).has_value());
+}
+
+TEST(
+    AttestationService,
+    SgxDcapHostVerifierAcceptsConfiguredQvResult)
+{
+    sgx_dcap_host_quote_verifier_options options;
+    bool verified = false;
+    options.verify_quote
+        = [&](const sgx_dcap_verifier_input& input, const attestation_policy& policy) -> sgx_dcap_host_quote_verification
+    {
+        verified = true;
+        EXPECT_EQ(policy.required_backend_id, sgx_dcap_backend_id);
+        EXPECT_EQ(input.quote.quote, std::vector<uint8_t>({0x10, 0x20}));
+
+        sgx_dcap_host_quote_verification result;
+        result.call_succeeded = true;
+        result.result.quote_verification_result = 0;
+        result.result.quote_verification_result_name = "OK";
+        result.result.collateral_expired = 0;
+        return result;
+    };
+
+    sgx_dcap_host_quote_verifier verifier(std::move(options));
+    sgx_dcap_verifier_input input;
+    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
+    input.quote.quote = {0x10, 0x20};
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_dcap_backend_id;
+    policy.minimum_security_level = security_level::hardware;
+
+    auto verdict = verifier.verify_quote(input, policy);
+    EXPECT_TRUE(verdict.accepted) << verdict.reason;
+    EXPECT_EQ(verdict.backend_id, sgx_dcap_backend_id);
+    EXPECT_EQ(verdict.level, security_level::hardware);
+    EXPECT_EQ(verdict.peer_identity.enclave_id, input.expected_binding.subject.enclave_id);
+    EXPECT_TRUE(verified);
+}
+
+TEST(
+    AttestationService,
+    SgxDcapHostVerifierRejectsUnacceptedQvResultAndExpiredCollateral)
+{
+    sgx_dcap_host_quote_verifier_options options;
+    options.verify_quote = [](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
+    {
+        sgx_dcap_host_quote_verification result;
+        result.call_succeeded = true;
+        result.result.quote_verification_result = 2;
+        result.result.quote_verification_result_name = "CONFIG_NEEDED";
+        return result;
+    };
+
+    sgx_dcap_host_quote_verifier verifier(std::move(options));
+    sgx_dcap_verifier_input input;
+    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
+    input.quote.quote = {0x10, 0x20};
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_dcap_backend_id;
+    policy.minimum_security_level = security_level::hardware;
+
+    auto bad_qv_result = verifier.verify_quote(input, policy);
+    EXPECT_FALSE(bad_qv_result.accepted);
+
+    sgx_dcap_host_quote_verifier_options expired_options;
+    expired_options.verify_quote
+        = [](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
+    {
+        sgx_dcap_host_quote_verification result;
+        result.call_succeeded = true;
+        result.result.quote_verification_result = 0;
+        result.result.quote_verification_result_name = "OK";
+        result.result.collateral_expired = 1;
+        return result;
+    };
+
+    sgx_dcap_host_quote_verifier expired_verifier(std::move(expired_options));
+    auto expired = expired_verifier.verify_quote(input, policy);
+    EXPECT_FALSE(expired.accepted);
 }
 
 TEST(

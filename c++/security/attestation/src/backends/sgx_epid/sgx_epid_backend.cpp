@@ -3,7 +3,7 @@
  *   All rights reserved.
  */
 
-#include <security/attestation/sgx_epid_backend.h>
+#include <security/attestation/backends/sgx_epid/sgx_epid_backend.h>
 
 #include "crypto_hash.h"
 

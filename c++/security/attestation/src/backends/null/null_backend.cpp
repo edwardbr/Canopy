@@ -3,7 +3,7 @@
  *   All rights reserved.
  */
 
-#include <security/attestation/null_backend.h>
+#include <security/attestation/backends/null/null_backend.h>
 
 namespace canopy::security::attestation
 {
