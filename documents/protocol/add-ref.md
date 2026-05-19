@@ -797,8 +797,14 @@ The placeholder should be request-scoped. It should not be transport self-owners
    the destination owner leg before returning failure. The compensating release
    uses the same `remote_object_id` and `caller_zone_id`; optimistic add_refs
    must compensate with `release_options::optimistic`.
-5. If response binding fails after owner-side add_ref succeeded, ordinary cleanup of the request-scoped placeholder and interface pointers must release the temporary hold.
-6. Null out params do not send add_ref and do not require a pending placeholder.
+5. A fork point can only synthesize that compensating `release` for a plain
+   add_ref with no extension payload. If the add_ref carries an opaque typed
+   payload, such as a protected RPC envelope, the intermediate must not invent a
+   plaintext release because it cannot authenticate the matching protected
+   payload. Protected reference-control needs endpoint-owned compensation or an
+   explicit abort rule before this case can be made fully atomic.
+6. If response binding fails after owner-side add_ref succeeded, ordinary cleanup of the request-scoped placeholder and interface pointers must release the temporary hold.
+7. Null out params do not send add_ref and do not require a pending placeholder.
 
 ### Weaknesses And Open Risks
 
@@ -811,12 +817,44 @@ These are the areas that remain fragile or under-specified:
    pass-through implementation compensates a committed destination leg if the
    caller leg fails, but release traffic still does not carry add_ref route
    intent, so caller-leg-only cleanup remains a protocol area to review.
-5. The implementation must preserve add_ref-before-release ordering across coroutine scheduling, transport queues, enclave calls, and DLL/SPSC boundaries. Fire-and-forget release in this path would be unsafe.
-6. Multiple out params may refer to the same remote object, possibly through different interface types or pointer kinds. The request-scoped placeholder must deduplicate identity without losing the correct shared or optimistic count semantics.
-7. A callee can return an object that is already being released locally. The owner-side add_ref must either complete first or return an error; it must not race with stub deletion and produce a live-looking descriptor for a gone object.
-8. `inout` parameters are not a single transition. They are an incoming release or preservation decision plus an outgoing add_ref handoff, and should be documented separately.
-9. Hostile or malformed traffic can try to reuse `request_id`, invent caller zones, or convert handoff traffic into direct ownership. The receiver must validate topology and pending-request state rather than trusting fields blindly.
-10. Service-proxy lifetime, object-proxy ownership, stub counts, and pass-through joins are separate ownership layers. Out-param handoff must not double-count one layer or let cleanup of one layer consume another.
+5. The current compensation rule deliberately does not synthesize plaintext
+   release messages for opaque/protected add_ref payloads. Without a protected
+   abort/compensation message owned by an endpoint, that partial-success case
+   may leave repair to connection teardown or later protocol work.
+6. The implementation must preserve add_ref-before-release ordering across coroutine scheduling, transport queues, enclave calls, and DLL/SPSC boundaries. Fire-and-forget release in this path would be unsafe.
+7. Multiple out params may refer to the same remote object, possibly through different interface types or pointer kinds. The request-scoped placeholder must deduplicate identity without losing the correct shared or optimistic count semantics.
+8. A callee can return an object that is already being released locally. The owner-side add_ref must either complete first or return an error; it must not race with stub deletion and produce a live-looking descriptor for a gone object.
+9. `inout` parameters are not a single transition. They are an incoming release or preservation decision plus an outgoing add_ref handoff, and should be documented separately.
+10. Hostile or malformed traffic can try to reuse `request_id`, invent caller zones, or convert handoff traffic into direct ownership. The receiver must validate topology and pending-request state rather than trusting fields blindly.
+11. Service-proxy lifetime, object-proxy ownership, stub counts, and pass-through joins are separate ownership layers. Out-param handoff must not double-count one layer or let cleanup of one layer consume another.
+
+### Deferred Protected Split-Route Atomicity
+
+This is deliberately not part of the current implementation slice.
+
+For plaintext `add_ref`, an intermediate pass-through can repair a split
+handoff by sending a synthesized compensating `release` to the destination
+owner leg. That works only because the release is fully described by public
+route fields.
+
+For protected `add_ref`, the intermediate sees an opaque typed payload. It must
+not synthesize a plaintext release, and it must not become a crypto authority
+that can create protected reference-control payloads for another endpoint. The
+current safe behavior is fail-closed: roll back local pass-through state, avoid
+plaintext downgrade, and let teardown or later endpoint logic handle any
+owner-side provisional state.
+
+The later fix should extend the protected reference-control protocol, not the
+plain pass-through authority model. The likely shape is:
+
+1. the owner-side protected `add_ref` is accepted only as provisional;
+2. the caller-side leg completes or fails;
+3. an endpoint-authored protected commit or abort/release message finalizes the
+   owner-side provisional count;
+4. stale provisional counts expire by policy if the commit/abort is lost.
+
+That future work should be designed together with protected `release`,
+`object_released`, route teardown, and route-state DDoS limits.
 
 ## Validation Notes
 

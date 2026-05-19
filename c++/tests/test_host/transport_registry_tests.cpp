@@ -494,6 +494,51 @@ TEST(
 
 TEST(
     transport_registry_tests,
+    forked_passthrough_add_ref_with_opaque_payload_does_not_synthesise_plain_release)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-passthrough-opaque-add-ref-compensation", scheduler);
+#else
+    auto service = make_test_service("transport-registry-passthrough-opaque-add-ref-compensation");
+#endif
+    auto destination_zone = rpc::destination_zone{make_local_zone_address(64)};
+    auto caller_zone = rpc::destination_zone{make_local_zone_address(65)};
+
+    auto destination_transport = std::make_shared<registry_test_transport>("destination-leg", service);
+    destination_transport->set_adjacent_zone_id(destination_zone);
+    auto caller_transport = std::make_shared<registry_test_transport>("caller-leg", service);
+    caller_transport->set_adjacent_zone_id(caller_zone);
+    caller_transport->outbound_add_ref_error = rpc::error::TRANSPORT_ERROR();
+
+    auto passthrough = rpc::transport::create_pass_through(
+        destination_transport, caller_transport, service, destination_zone, caller_zone);
+    ASSERT_NE(passthrough, nullptr);
+
+    rpc::add_ref_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = rpc::remote_object(destination_zone);
+    params.caller_zone_id = caller_zone;
+    params.requesting_zone_id = destination_zone;
+    params.build_out_param_channel
+        = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route;
+    params.payload = rpc::typed_payload{0x1234U, rpc::encoding::yas_binary, std::vector<char>{'p'}};
+
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_EQ(run_passthrough_add_ref_for_test(passthrough, std::move(params), scheduler), rpc::error::TRANSPORT_ERROR());
+#else
+    EXPECT_EQ(run_passthrough_add_ref_for_test(passthrough, std::move(params)), rpc::error::TRANSPORT_ERROR());
+#endif
+
+    EXPECT_EQ(destination_transport->outbound_add_ref_count, 1U);
+    EXPECT_EQ(caller_transport->outbound_add_ref_count, 1U);
+    EXPECT_EQ(destination_transport->outbound_release_count, 0U);
+    EXPECT_EQ(caller_transport->outbound_release_count, 0U);
+    EXPECT_EQ(passthrough->get_shared_count(), 0U);
+}
+
+TEST(
+    transport_registry_tests,
     duplicate_live_transport_keeps_first_registration)
 {
 #ifdef CANOPY_BUILD_COROUTINE

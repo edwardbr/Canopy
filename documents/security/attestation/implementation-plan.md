@@ -1499,6 +1499,18 @@ Tracked here so the design is not forgotten.
   formats, that each side chooses the correct verifier backend from CMW
   metadata, and that destination-zone policy can accept or reject each peer
   backend independently.
+- **Protected split add_ref atomicity.** Plain routed `add_ref` can currently
+  compensate a committed destination leg by synthesizing a plaintext `release`
+  if the caller leg fails. Protected `add_ref` cannot safely use that repair
+  because an intermediate pass-through sees only an opaque typed payload and
+  does not own the endpoint keys needed to authenticate the matching protected
+  release. Keep the current fail-closed rule for now: do not synthesize
+  plaintext compensation for opaque/protected payloads, roll back local
+  pass-through state, and leave any owner-side partial state to teardown or
+  later endpoint logic. A later protocol revision should add owner-side
+  provisional reference counts plus endpoint-authored protected commit and
+  abort/release messages, or an equivalent expiry-based repair, without making
+  intermediates cryptographic authorities.
 - **TDX backend.** When TDX support is required, add a backend that
   emits TDX quotes via the same DCAP host APIs (`tee_verify_quote` is
   already TDX-aware). CMW media types extend with

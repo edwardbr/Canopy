@@ -205,6 +205,17 @@ permitted unattested-client policy. Protected inbound `release` does not start
 a new route-attestation handshake: if the caller route is unknown, failed, or
 still handshaking, the release fails closed because the corresponding protected
 `add_ref` should already have established the route state.
+
+One split-route edge case is intentionally deferred. If an intermediate
+pass-through forwards a protected `add_ref` to the destination owner leg and
+then the caller leg fails, the pass-through cannot synthesize the protected
+compensating `release`: it does not own the endpoint keys and must not downgrade
+the repair to plaintext. The current rule is to fail closed and avoid plaintext
+compensation for opaque payloads. A later protocol revision should add
+endpoint-authored protected commit/abort or provisional-reference expiry so
+split protected `add_ref` can be made atomic without making intermediates
+cryptographic authorities.
+
 Protected `try_cast` follows the existing call route and encrypts the requested
 interface id. Its `standard_result` response is a control result: it must be
 `OK()` or a built-in `rpc::error::*` value. Positive application-domain result

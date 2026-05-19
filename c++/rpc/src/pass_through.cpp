@@ -13,6 +13,16 @@ namespace rpc
             return !!(options & add_ref_options::optimistic) ? release_options::optimistic : release_options::normal;
         }
 
+        bool can_synthesise_compensating_release(const add_ref_params& params)
+        {
+            // Plain add_ref has enough public information for the pass-through
+            // to construct the matching release. Once an extension payload is
+            // present, especially an encrypted/protected RPC payload, the
+            // pass-through cannot know how to produce the corresponding release
+            // blob and must not downgrade the compensation to plaintext.
+            return !params.payload.has_value();
+        }
+
         release_params make_compensating_release_params(const add_ref_params& params)
         {
             release_params release;
@@ -409,7 +419,7 @@ namespace rpc
 
             if (caller_result.error_code != error::OK())
             {
-                if (destination_leg_committed)
+                if (destination_leg_committed && can_synthesise_compensating_release(params))
                 {
                     // The object-owner side has already accepted the reference. Undo it
                     // before returning failure so an add_ref that forks into two legs
@@ -426,6 +436,14 @@ namespace rpc
                             std::to_string(remote_object_id),
                             caller_zone_id.get_subnet());
                     }
+                }
+                else if (destination_leg_committed)
+                {
+                    RPC_ERROR(
+                        "pass_through::add_ref cannot compensate committed destination leg with an opaque payload; "
+                        "remote_object={} caller={}",
+                        std::to_string(remote_object_id),
+                        caller_zone_id.get_subnet());
                 }
                 rollback_passthrough_ref();
                 end_call();
