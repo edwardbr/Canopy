@@ -102,14 +102,14 @@ namespace rpc::sgx::coro::enclave
         // host transport before any connection request is dispatched. This
         // function only completes the normal child-zone wiring for the first
         // service connection coming from the host.
-        enclave_svc->add_transport(input_descr.remote_object_id.as_zone(), parent_transport);
-        rpc::transport_keep_alive ka(parent_transport, input_descr.remote_object_id.as_zone());
+        auto route_transport = enclave_svc->add_transport(input_descr.remote_object_id.as_zone(), parent_transport);
+        rpc::transport_keep_alive ka(route_transport, input_descr.remote_object_id.as_zone());
 
         rpc::transport_keep_alive adjacent_ka;
         if (input_descr.remote_object_id != adjacent_zone_id)
         {
-            enclave_svc->add_transport(adjacent_zone_id, parent_transport);
-            adjacent_ka = rpc::transport_keep_alive(parent_transport, adjacent_zone_id);
+            auto adjacent_transport = enclave_svc->add_transport(adjacent_zone_id, parent_transport);
+            adjacent_ka = rpc::transport_keep_alive(adjacent_transport, adjacent_zone_id);
         }
 
         if (input_descr.get_object_id() == 0)
@@ -119,8 +119,8 @@ namespace rpc::sgx::coro::enclave
         }
 
         auto parent_service_proxy
-            = rpc::service_proxy::create("parent", enclave_svc, parent_transport, input_descr.remote_object_id.as_zone());
-        enclave_svc->add_parent_zone_proxy(parent_service_proxy);
+            = rpc::service_proxy::create("parent", enclave_svc, route_transport, input_descr.remote_object_id.as_zone());
+        parent_service_proxy = enclave_svc->add_parent_zone_proxy(parent_service_proxy);
 
         bool new_proxy_added = true;
         auto proxy_result = CO_AWAIT parent_service_proxy->get_or_create_object_proxy(

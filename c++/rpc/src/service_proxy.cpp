@@ -91,7 +91,7 @@ namespace rpc
 
         RPC_ASSERT(proxies_.empty());
         if (service)
-            service->remove_zone_proxy(destination_zone_id_);
+            service->remove_zone_proxy_if_matches(destination_zone_id_, this);
     }
 
     void service_proxy::update_remote_rpc_version(uint64_t version)

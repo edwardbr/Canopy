@@ -203,7 +203,7 @@ namespace rpc
     private:
         mutable std::mutex pending_out_params_control_;
         std::unordered_map<uint64_t, std::unordered_map<remote_object, pending_out_param_entry>> pending_out_params_;
-        void inner_add_transport(
+        std::shared_ptr<transport> inner_add_transport(
             destination_zone adjacent_zone_id,
             const std::shared_ptr<transport>& transport_ptr);
         void inner_remove_transport(destination_zone destination_zone_id);
@@ -568,17 +568,22 @@ namespace rpc
             caller_zone caller_zone_id);
 
         /**
-         * @brief Register a transport to an adjacent zone
-         * @param adjacent_zone_id The zone ID this transport connects to
-         * @param transport_ptr The transport to register
+         * @brief Register a transport for a destination zone.
+         * @param destination_zone_id The destination zone the transport can route to.
+         * @param transport_ptr The transport to register.
+         * @return The canonical live transport for the destination.
          *
          * Transports are owned by service_proxies and passthroughs. The service
-         * maintains only weak references for lookup purposes.
+         * maintains only weak references for lookup purposes. If a second live
+         * transport is registered for the same destination, the first transport
+         * remains canonical and is returned to the caller. That lets racing direct
+         * connection attempts converge without replacing the route still holding
+         * the destination reference counts.
          *
          * Thread-Safety: Protected by service_proxy_control_ mutex
          */
-        void add_transport(
-            destination_zone adjacent_zone_id,
+        std::shared_ptr<transport> add_transport(
+            destination_zone destination_zone_id,
             const std::shared_ptr<transport>& transport_ptr);
 
         /**
@@ -623,7 +628,7 @@ namespace rpc
             destination_zone remote_zone);
 
     protected:
-        virtual void add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& zone);
+        virtual std::shared_ptr<rpc::service_proxy> add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& zone);
 
     private:
         virtual std::shared_ptr<rpc::service_proxy> get_zone_proxy(
@@ -631,6 +636,9 @@ namespace rpc
             destination_zone destination_zone_id,
             bool& new_proxy_added);
         virtual void remove_zone_proxy(destination_zone destination_zone_id);
+        void remove_zone_proxy_if_matches(
+            destination_zone destination_zone_id,
+            const service_proxy* expected);
 
         /////////////////////////////////
         // BINDING LOGIC
@@ -690,7 +698,7 @@ namespace rpc
         /////////////////////////////////
         // PRIVATE FUNCTIONS
         /////////////////////////////////
-        void inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy);
+        std::shared_ptr<rpc::service_proxy> inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy);
         void cleanup_service_proxy(const std::shared_ptr<rpc::service_proxy>& other_zone);
 
         CORO_TASK(void)
@@ -1036,23 +1044,24 @@ namespace rpc
             // This ensures parent zone remains reachable while child exists
             child_svc->set_parent_transport(parent_transport);
 
-            child_svc->add_transport(input_descr.remote_object_id.as_zone(), parent_transport);
-            transport_keep_alive ka(parent_transport, input_descr.remote_object_id.as_zone());
+            auto route_transport = child_svc->add_transport(input_descr.remote_object_id.as_zone(), parent_transport);
+            transport_keep_alive ka(route_transport, input_descr.remote_object_id.as_zone());
             transport_keep_alive adjacent_ka;
             if (input_descr.remote_object_id != parent_transport->get_adjacent_zone_id())
             {
-                child_svc->add_transport(parent_transport->get_adjacent_zone_id(), parent_transport);
-                adjacent_ka = transport_keep_alive(parent_transport, parent_transport->get_adjacent_zone_id());
+                auto adjacent_transport
+                    = child_svc->add_transport(parent_transport->get_adjacent_zone_id(), parent_transport);
+                adjacent_ka = transport_keep_alive(adjacent_transport, parent_transport->get_adjacent_zone_id());
             }
 
             rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
             if (input_descr.get_object_id() != 0)
             {
                 auto parent_service_proxy = rpc::service_proxy::create(
-                    "parent", child_svc, parent_transport, input_descr.remote_object_id.as_zone());
+                    "parent", child_svc, route_transport, input_descr.remote_object_id.as_zone());
                 parent_service_proxy->set_encoding(input_descr.encoding_type);
 
-                child_svc->add_zone_proxy(parent_service_proxy);
+                parent_service_proxy = child_svc->add_zone_proxy(parent_service_proxy);
 
                 bool new_proxy_added = true;
 
@@ -1242,13 +1251,14 @@ namespace rpc
         // Demarshal output interface if provided
         if (output_descr.get_object_id() != 0 && output_descr.is_set())
         {
+            auto proxy_transport = add_transport(child_transport->get_adjacent_zone_id(), child_transport);
             // Create service_proxy for this connection
             auto new_service_proxy = rpc::service_proxy::create(
-                name, shared_from_this(), child_transport, child_transport->get_adjacent_zone_id());
+                name, shared_from_this(), proxy_transport, child_transport->get_adjacent_zone_id());
             new_service_proxy->set_encoding(input_descr.encoding_type);
 
             // add the proxy to the service
-            add_zone_proxy(new_service_proxy);
+            new_service_proxy = add_zone_proxy(new_service_proxy);
 
             auto bind_result
                 = CO_AWAIT rpc::proxy_bind_out_param<out_param_type, rpc::shared_ptr>(new_service_proxy, 0, output_descr);
@@ -1303,22 +1313,22 @@ namespace rpc
         auto adjacent_zone_id = peer_transport->get_adjacent_zone_id();
 
         rpc::shared_ptr<PARENT_INTERFACE> parent_ptr;
-        add_transport(input_descr.remote_object_id.as_zone(), peer_transport);
-        transport_keep_alive ka(peer_transport, input_descr.remote_object_id.as_zone());
+        auto route_transport = add_transport(input_descr.remote_object_id.as_zone(), peer_transport);
+        transport_keep_alive ka(route_transport, input_descr.remote_object_id.as_zone());
         transport_keep_alive adjacent_ka;
         if (input_descr.remote_object_id != adjacent_zone_id)
         {
-            add_transport(adjacent_zone_id, peer_transport);
-            adjacent_ka = transport_keep_alive(peer_transport, adjacent_zone_id);
+            auto adjacent_transport = add_transport(adjacent_zone_id, peer_transport);
+            adjacent_ka = transport_keep_alive(adjacent_transport, adjacent_zone_id);
         }
 
         if (input_descr.get_object_id() != 0)
         {
             auto parent_service_proxy = rpc::service_proxy::create(
-                name, shared_from_this(), peer_transport, input_descr.remote_object_id.as_zone());
+                name, shared_from_this(), route_transport, input_descr.remote_object_id.as_zone());
             parent_service_proxy->set_encoding(input_descr.encoding_type);
 
-            add_zone_proxy(parent_service_proxy);
+            parent_service_proxy = add_zone_proxy(parent_service_proxy);
 
             bool new_proxy_added = true;
 

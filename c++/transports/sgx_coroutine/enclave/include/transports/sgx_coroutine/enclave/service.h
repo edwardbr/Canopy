@@ -82,7 +82,10 @@ namespace rpc
             rpc::destination_zone route_zone_id,
             bool allowed);
 
-        void add_parent_zone_proxy(const std::shared_ptr<rpc::service_proxy>& proxy) { add_zone_proxy(proxy); }
+        std::shared_ptr<rpc::service_proxy> add_parent_zone_proxy(const std::shared_ptr<rpc::service_proxy>& proxy)
+        {
+            return add_zone_proxy(proxy);
+        }
 
         CORO_TASK(send_result) send(send_params params) override;
         CORO_TASK(void) post(post_params params) override;

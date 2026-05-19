@@ -1342,51 +1342,85 @@ namespace rpc
         RPC_DEBUG("transport_down: Cleanup complete, {} objects deleted", objects_to_notify.size());
     }
 
-    void service::inner_add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)
+    std::shared_ptr<rpc::service_proxy> service::inner_add_zone_proxy(
+        const std::shared_ptr<rpc::service_proxy>& service_proxy)
     {
-        // this is for internal use only has no lock
-        // service_proxy->add_external_ref();
+        // This is for internal use only and expects service_proxy_control_ to
+        // already be held by the caller. Duplicate direct connection races can
+        // create two service_proxy instances for the same destination; keep the
+        // first live proxy as the canonical owner and let the loser destruct
+        // without removing the canonical map entry.
         auto destination_zone_id = service_proxy->get_destination_zone_id();
-        // auto caller_zone_id = service_proxy->get_caller_zone_id();
         RPC_ASSERT(destination_zone_id != zone_id_);
-        RPC_ASSERT(service_proxies_.find(destination_zone_id) == service_proxies_.end());
+
+        auto existing = service_proxies_.find(destination_zone_id);
+        if (existing != service_proxies_.end())
+        {
+            auto registered_proxy = existing->second.lock();
+            if (!registered_proxy)
+            {
+                service_proxies_.erase(existing);
+            }
+            else if (registered_proxy.get() == service_proxy.get())
+            {
+                return registered_proxy;
+            }
+            else
+            {
+                RPC_WARNING(
+                    "inner_add_zone_proxy: keeping existing proxy for service zone={} destination_zone={}",
+                    std::to_string(zone_id_),
+                    std::to_string(destination_zone_id));
+                return registered_proxy;
+            }
+        }
+
         service_proxies_[destination_zone_id] = service_proxy;
-        RPC_ASSERT(transports_.find(destination_zone_id) != transports_.end());
-        // transports_[destination_zone_id] = service_proxy->get_transport();
+        auto canonical_transport = inner_add_transport(destination_zone_id, service_proxy->get_transport());
+        RPC_ASSERT(canonical_transport.get() == service_proxy->get_transport().get());
         RPC_DEBUG(
             "inner_add_zone_proxy service zone: {} destination_zone={} adjacent_zone={}",
             std::to_string(zone_id_),
             std::to_string(service_proxy->destination_zone_id_),
             std::to_string(service_proxy->get_transport()->get_adjacent_zone_id()));
+        return service_proxy;
     }
 
-    void service::add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)
+    std::shared_ptr<rpc::service_proxy> service::add_zone_proxy(const std::shared_ptr<rpc::service_proxy>& service_proxy)
     {
         RPC_ASSERT(service_proxy->get_destination_zone_id() != zone_id_);
         std::lock_guard g(service_proxy_control_);
-        inner_add_zone_proxy(service_proxy);
+        return inner_add_zone_proxy(service_proxy);
     }
 
-    void service::inner_add_transport(
+    std::shared_ptr<transport> service::inner_add_transport(
         destination_zone destination_zone_id,
         const std::shared_ptr<transport>& transport_ptr)
     {
         RPC_ASSERT(destination_zone_id.get_subnet());
+        RPC_ASSERT(transport_ptr);
         auto existing = transports_.find(destination_zone_id);
         if (existing != transports_.end())
         {
             auto registered_transport = existing->second.lock();
-            if (!registered_transport)
+            if (!registered_transport || registered_transport->get_status() >= transport_status::DISCONNECTING)
             {
                 transports_.erase(existing);
             }
             else if (registered_transport.get() == transport_ptr.get())
             {
-                return;
+                return registered_transport;
             }
             else
             {
-                RPC_ASSERT(false);
+                RPC_WARNING(
+                    "inner_add_transport: keeping existing transport for service zone={} destination_zone={} "
+                    "existing_adjacent={} duplicate_adjacent={}",
+                    std::to_string(zone_id_),
+                    std::to_string(destination_zone_id),
+                    std::to_string(registered_transport->get_adjacent_zone_id()),
+                    std::to_string(transport_ptr->get_adjacent_zone_id()));
+                return registered_transport;
             }
         }
         transports_[destination_zone_id] = transport_ptr;
@@ -1395,6 +1429,7 @@ namespace rpc
             std::to_string(zone_id_),
             std::to_string(destination_zone_id),
             std::to_string(transport_ptr->get_adjacent_zone_id()));
+        return transport_ptr;
     }
 
     void service::inner_remove_transport(destination_zone destination_zone_id)
@@ -1434,12 +1469,12 @@ namespace rpc
         return nullptr;
     }
 
-    void service::add_transport(
+    std::shared_ptr<transport> service::add_transport(
         destination_zone destination_zone_id,
         const std::shared_ptr<transport>& transport_ptr)
     {
         std::lock_guard g(service_proxy_control_);
-        inner_add_transport(destination_zone_id, transport_ptr);
+        return inner_add_transport(destination_zone_id, transport_ptr);
     }
 
     void service::remove_transport(destination_zone adjacent_zone_id)
@@ -1564,6 +1599,27 @@ namespace rpc
             return;
         }
         service_proxies_.erase(item);
+    }
+
+    void service::remove_zone_proxy_if_matches(
+        destination_zone destination_zone_id,
+        const service_proxy* expected)
+    {
+        RPC_DEBUG(
+            "remove_zone_proxy_if_matches service zone: {} destination_zone={}",
+            std::to_string(zone_id_),
+            std::to_string(destination_zone_id));
+
+        std::lock_guard g(service_proxy_control_);
+        auto item = service_proxies_.find(destination_zone_id);
+        if (item == service_proxies_.end())
+            return;
+
+        auto registered = item->second.lock();
+        if (registered && registered.get() == expected)
+            service_proxies_.erase(item);
+        else if (!registered)
+            service_proxies_.erase(item);
     }
 
     void service::add_service_event(const std::weak_ptr<service_event>& event)

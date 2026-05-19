@@ -83,8 +83,8 @@ if(CANOPY_BUILD_ENCLAVE AND SGX_HW)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  # list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
-  # "$<TARGET_FILE:canopy_ipc_child_process>")
+#list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
+#"$<TARGET_FILE:canopy_ipc_child_process>")
   list(APPEND COROUTINE_TESTS attested_streaming_transport_poc_suite.cpp)
 endif()
 
@@ -98,6 +98,7 @@ add_executable(
   atomic_smart_ptr_tests.cpp
   optimistic_ptr_tests.cpp
   streaming_transport_regression_suite.cpp
+  transport_registry_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${C_ABI_DLL_TRANSPORT_SOURCES}
   ${LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES}
@@ -202,7 +203,7 @@ if(CANOPY_BUILD_COROUTINE)
 endif()
 
 include(CTest)
-# Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
+#Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
 if(NOT CANOPY_DEBUG_ADDRESS)
   gtest_discover_tests(rpc_test)
 endif()
